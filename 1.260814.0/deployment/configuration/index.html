@@ -1,0 +1,4248 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/deployment/configuration/">
+      
+      
+        <link rel="prev" href="../installation/">
+      
+      
+        <link rel="next" href="../authentication/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_1" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#urls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        URLs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platform-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-storage-s3-minio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File storage (S3 / MinIO)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI providers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#email-smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email (SMTP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security feature flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-oauth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP OAuth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opensandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSandbox
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OpenSandbox">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-the-opensandbox-server-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the OpenSandbox server itself
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sandbox-call-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sandbox call log fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook delivery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook delivery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#response-statuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response statuses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skill-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill loading
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#urls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        URLs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platform-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-storage-s3-minio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File storage (S3 / MinIO)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI providers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#email-smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email (SMTP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security feature flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-oauth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP OAuth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opensandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSandbox
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OpenSandbox">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-the-opensandbox-server-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the OpenSandbox server itself
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sandbox-call-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sandbox call log fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook delivery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook delivery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#response-statuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response statuses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skill-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill loading
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../overview/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Deployment &amp; Setup
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../overview/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Platform
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/deployment/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/deployment/configuration.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="configuration">Configuration</h1>
+<p>This page documents all available environment variables for XTM One. The <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/.env.sample"><code>.env.sample</code></a> file is the canonical source and includes inline comments for each variable.</p>
+<div class="admonition warning">
+<p class="admonition-title">SECRET_KEY</p>
+<p>This is the most critical value. It encrypts all stored integration credentials. If you lose it or change it, all encrypted data becomes unrecoverable.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">ADMIN_PASSWORD</p>
+<p>The platform resets the admin password to the value in <code>.env</code> on every startup. This means <code>.env</code> is a standing password reset mechanism — anyone with read access to the file can take over the admin account by restarting the service. Treat <code>.env</code> as a privileged secret (owner-only permissions, never committed to version control). After first login, consider rotating the password via the UI and keeping the <code>.env</code> value in sync.</p>
+</div>
+<h2 id="security">Security</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SECRET_KEY</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>JWT signing + Fernet encryption key. Generate with <code>python -c "import secrets; print(secrets.token_urlsafe(48))"</code>. Never change after deployment.</td>
+</tr>
+<tr>
+<td><code>ADMIN_EMAIL</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Default admin account email. Created or updated on every startup.</td>
+</tr>
+<tr>
+<td><code>ADMIN_PASSWORD</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Default admin account password. Reset to this value on every startup.</td>
+</tr>
+<tr>
+<td><code>ADMIN_TOKEN</code></td>
+<td>No</td>
+<td>—</td>
+<td>Programmatic API token for the admin (must start with <code>fcp-</code>, min 16 chars).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="urls">URLs</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BASE_URL</code></td>
+<td><strong>Yes</strong></td>
+<td><code>http://localhost:4000</code></td>
+<td>Public URL of the platform. Used for OAuth/SAML callbacks and email links.</td>
+</tr>
+<tr>
+<td><code>FRONTEND_URL</code></td>
+<td><strong>Yes</strong></td>
+<td><code>http://localhost:4000</code></td>
+<td>Public URL of the frontend. Usually same as <code>BASE_URL</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="platform-mode">Platform mode</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PLATFORM_MODE</code></td>
+<td>No</td>
+<td><code>xtm_one</code></td>
+<td>Set this explicitly to <code>xtm_one</code>, the open standalone platform.</td>
+</tr>
+<tr>
+<td><code>PLATFORM_REGISTRATION_TOKEN</code></td>
+<td>No</td>
+<td>—</td>
+<td>Shared token for OpenCTI/OpenAEV registration. Must match across services.</td>
+</tr>
+<tr>
+<td><code>ENTERPRISE_LICENSE</code></td>
+<td>No</td>
+<td>—</td>
+<td>Enterprise license PEM. Can also be configured from Settings UI.</td>
+</tr>
+<tr>
+<td><code>PLATFORM_NAME</code></td>
+<td>No</td>
+<td>Mode default</td>
+<td>Display name override. DB value takes precedence.</td>
+</tr>
+<tr>
+<td><code>PLATFORM_LOGO</code></td>
+<td>No</td>
+<td>Mode default</td>
+<td>Logo override (data URI). DB value takes precedence.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="database">Database</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>No</td>
+<td>Built from <code>DB_PASSWORD</code></td>
+<td>Full asyncpg connection string. Override when using external PostgreSQL.</td>
+</tr>
+<tr>
+<td><code>DB_PASSWORD</code></td>
+<td>Yes (if bundled)</td>
+<td>—</td>
+<td>Password for the bundled PostgreSQL container.</td>
+</tr>
+<tr>
+<td><code>DB_POOL_SIZE</code></td>
+<td>No</td>
+<td><code>15</code></td>
+<td>Connections per worker process.</td>
+</tr>
+<tr>
+<td><code>DB_MAX_OVERFLOW</code></td>
+<td>No</td>
+<td><code>10</code></td>
+<td>Extra connections allowed beyond pool size.</td>
+</tr>
+<tr>
+<td><code>PG_MAX_CONNECTIONS</code></td>
+<td>No</td>
+<td><code>200</code></td>
+<td>PostgreSQL <code>max_connections</code> (Docker Compose managed only).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="redis">Redis</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td>No</td>
+<td><code>redis://redis:6379</code></td>
+<td>Redis connection string. Override for external Redis.</td>
+</tr>
+<tr>
+<td><code>REDIS_PASSWORD</code></td>
+<td>No</td>
+<td>—</td>
+<td>Redis password (if required).</td>
+</tr>
+<tr>
+<td><code>REDIS_MODE</code></td>
+<td>No</td>
+<td><code>standalone</code></td>
+<td><code>standalone</code> or <code>sentinel</code>.</td>
+</tr>
+<tr>
+<td><code>REDIS_SENTINEL_HOSTS</code></td>
+<td>No</td>
+<td>—</td>
+<td>Comma-separated Sentinel addresses (host:port).</td>
+</tr>
+<tr>
+<td><code>REDIS_SENTINEL_SERVICE</code></td>
+<td>No</td>
+<td><code>mymaster</code></td>
+<td>Sentinel service name.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="file-storage-s3-minio">File storage (S3 / MinIO)</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>S3_ACCESS_KEY</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>S3/MinIO access key.</td>
+</tr>
+<tr>
+<td><code>S3_SECRET_KEY</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>S3/MinIO secret key.</td>
+</tr>
+<tr>
+<td><code>S3_ENDPOINT</code></td>
+<td>No</td>
+<td><code>minio:9000</code></td>
+<td>S3-compatible endpoint.</td>
+</tr>
+<tr>
+<td><code>S3_BUCKET</code></td>
+<td>No</td>
+<td><code>copilot-files</code></td>
+<td>Bucket name.</td>
+</tr>
+<tr>
+<td><code>S3_USE_SSL</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Enable TLS for S3 connections.</td>
+</tr>
+<tr>
+<td><code>S3_REGION</code></td>
+<td>No</td>
+<td>—</td>
+<td>AWS region (required for AWS S3).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ai-providers">AI providers</h2>
+<p>Pre-provision LLM providers via environment variables so the platform is ready without UI configuration.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LLM_PROVIDER_{NAME}_API_KEY</code></td>
+<td>No</td>
+<td>—</td>
+<td>API key for the named provider.</td>
+</tr>
+<tr>
+<td><code>LLM_PROVIDER_{NAME}_MODELS</code></td>
+<td>No</td>
+<td>All available</td>
+<td>Comma-separated list of models to expose.</td>
+</tr>
+<tr>
+<td><code>DEFAULT_MODEL</code></td>
+<td>No</td>
+<td>First configured</td>
+<td>Platform-wide default model.</td>
+</tr>
+</tbody>
+</table>
+<p>Supported provider names: <code>OPENAI</code>, <code>ANTHROPIC</code>, <code>GEMINI</code>, <code>OPENROUTER</code>, <code>OLLAMA</code>, <code>MISTRAL</code>, <code>AZURE_OPENAI</code>, <code>BEDROCK</code>, <code>LITELLM</code>, <code>CUSTOM_OPENAI</code>.</p>
+<h2 id="performance">Performance</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WEB_WORKERS</code></td>
+<td>No</td>
+<td><code>2</code></td>
+<td>Uvicorn worker processes. Production: <code>2 × CPU cores + 1</code>.</td>
+</tr>
+<tr>
+<td><code>WORKER_CONCURRENCY</code></td>
+<td>No</td>
+<td><code>20</code></td>
+<td>Concurrent async jobs per worker container.</td>
+</tr>
+<tr>
+<td><code>MAX_CONCURRENT_RUNS</code></td>
+<td>No</td>
+<td><code>10</code></td>
+<td>Max parallel assignment executions.</td>
+</tr>
+<tr>
+<td><code>MAX_CONCURRENT_SUB_AGENT_TASKS</code></td>
+<td>No</td>
+<td><code>5</code></td>
+<td>Max parallel sub-agent tasks.</td>
+</tr>
+<tr>
+<td><code>MAX_CONCURRENT_AUTONOMOUS_RUNS</code></td>
+<td>No</td>
+<td><code>12</code></td>
+<td>Dedicated slots for autonomous attack-path runs, separate from the assignment/sub-agent pool so dozens can run in parallel without starving normal execution. <code>0</code> shares the pool.</td>
+</tr>
+<tr>
+<td><code>AUTONOMOUS_BURST_MAX_CYCLES</code></td>
+<td>No</td>
+<td><code>8</code></td>
+<td>Max decision cycles an autonomous run chains back-to-back before briefly yielding, so a multi-step engagement doesn't stall between cycles.</td>
+</tr>
+<tr>
+<td><code>AUTONOMOUS_BURST_BUDGET_SECONDS</code></td>
+<td>No</td>
+<td><code>180</code></td>
+<td>Wall-clock budget for that back-to-back burst (whichever limit is reached first triggers the yield).</td>
+</tr>
+<tr>
+<td><code>AUTONOMOUS_WAITING_INPUT_RECHECK_SECONDS</code></td>
+<td>No</td>
+<td><code>3600</code></td>
+<td>How often a run waiting on operator input re-checks for an answer or stop. <code>0</code> waits purely for the operator's reply.</td>
+</tr>
+<tr>
+<td><code>AUTONOMOUS_CANCEL_POLL_SECONDS</code></td>
+<td>No</td>
+<td><code>2</code></td>
+<td>How often the worker re-checks whether an in-flight run was stopped, so an operator Stop aborts the running agent within seconds instead of after the current decision cycle finishes. <code>0</code> falls back to the slower lease-heartbeat detection.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">PostgreSQL connection budget</p>
+<p><code>(DB_POOL_SIZE + DB_MAX_OVERFLOW) × (WEB_WORKERS + SAQ workers) + 20 &lt; PG_MAX_CONNECTIONS</code></p>
+<p>Example with 4 web workers and 1 SAQ worker: <code>(15 + 10) × (4 + 1) + 20 = 145</code> → fits the default <code>PG_MAX_CONNECTIONS=200</code>.</p>
+</div>
+<h2 id="logging">Logging</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LOG_LEVEL</code></td>
+<td>No</td>
+<td><code>info</code></td>
+<td><code>debug</code>, <code>info</code>, <code>warning</code>, <code>error</code>, <code>critical</code>.</td>
+</tr>
+<tr>
+<td><code>LOG_FORMAT</code></td>
+<td>No</td>
+<td><code>json</code></td>
+<td><code>json</code> (structured) or <code>console</code> (human-readable). When unset, defaults to <code>json</code> in production or <code>console</code> when <code>DEBUG=true</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="email-smtp">Email (SMTP)</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SMTP_HOSTNAME</code></td>
+<td>No</td>
+<td>—</td>
+<td>SMTP server hostname.</td>
+</tr>
+<tr>
+<td><code>SMTP_PORT</code></td>
+<td>No</td>
+<td><code>587</code></td>
+<td>SMTP port.</td>
+</tr>
+<tr>
+<td><code>SMTP_USERNAME</code></td>
+<td>No</td>
+<td>—</td>
+<td>SMTP authentication username.</td>
+</tr>
+<tr>
+<td><code>SMTP_PASSWORD</code></td>
+<td>No</td>
+<td>—</td>
+<td>SMTP authentication password.</td>
+</tr>
+<tr>
+<td><code>SMTP_FROM</code></td>
+<td>No</td>
+<td>—</td>
+<td>Sender address for outgoing emails.</td>
+</tr>
+<tr>
+<td><code>SMTP_STARTTLS</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Use STARTTLS.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="observability">Observability</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LANGFUSE_HOST</code></td>
+<td>No</td>
+<td><code>https://cloud.langfuse.com</code></td>
+<td>Langfuse server URL.</td>
+</tr>
+<tr>
+<td><code>LANGFUSE_PUBLIC_KEY</code></td>
+<td>No</td>
+<td>—</td>
+<td>Langfuse public key.</td>
+</tr>
+<tr>
+<td><code>LANGFUSE_SECRET_KEY</code></td>
+<td>No</td>
+<td>—</td>
+<td>Langfuse secret key.</td>
+</tr>
+<tr>
+<td><code>PROMETHEUS_ENABLED</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Enable Prometheus metrics endpoint.</td>
+</tr>
+<tr>
+<td><code>PROMETHEUS_BEARER_TOKEN</code></td>
+<td>No</td>
+<td>—</td>
+<td>Bearer token for metrics endpoint (min 16 chars).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="security-feature-flags">Security feature flags</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DISABLE_CODE_INTERPRETER</code></td>
+<td>No</td>
+<td><code>true</code> (xtm_one mode)</td>
+<td>Disable code interpreter at infra level.</td>
+</tr>
+<tr>
+<td><code>DISABLE_CUSTOM_TOOLS</code></td>
+<td>No</td>
+<td><code>true</code> (xtm_one mode)</td>
+<td>Disable custom tools at infra level.</td>
+</tr>
+<tr>
+<td><code>CUSTOM_TOOL_SANDBOX</code></td>
+<td>No</td>
+<td><code>auto</code></td>
+<td>Custom tool execution mode: <code>auto</code>, <code>docker</code>, <code>subprocess</code>, <code>opensandbox</code>. <code>opensandbox</code> delegates to an OpenSandbox-managed container (also used by the code interpreter) and requires the OpenSandbox connection variables below.</td>
+</tr>
+<tr>
+<td><code>DISABLE_SANDBOX_QUOTA_USAGE</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Opt out of per-user sandbox usage counting (<code>quota_usage</code> rows with <code>usage_type="sandbox"</code>, alongside the existing LLM-proxy/agentic usage). Counted by default; set <code>true</code> for self-hosted/on-prem deployments that manage their own sandbox infrastructure independently of hosted usage-based billing. Restart required to take effect.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mcp-oauth">MCP OAuth</h2>
+<p>MCP OAuth runs in two independent directions, and each has its own switch.</p>
+<p><strong>Inbound</strong> — an external MCP client (Claude Desktop, Cursor, …) connecting <em>to</em> XTM One. The platform acts as the authorization server and lets clients self-register, which the MCP specification requires because a client has no credentials before any user session exists.</p>
+<p><strong>Outbound</strong> — XTM One connecting <em>to</em> a remote MCP server. With no client ID configured, the platform discovers the remote authorization server and registers itself, so a server can be added from its URL alone. This is the MCP specification's intended onboarding path: modern remote MCP servers do not issue static credentials to paste into a form.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MCP_DCR_ENABLED</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td><strong>Inbound.</strong> Allow external MCP clients to self-register against this platform (<code>POST /mcp/oauth/register</code>, RFC 7591). The endpoint is unauthenticated by specification, so it is protected by a per-IP rate limit and a bounded client table rather than a login. Set <code>false</code> to turn registration off entirely (the endpoint then returns 403).</td>
+</tr>
+<tr>
+<td><code>MCP_DCR_MAX_CLIENTS</code></td>
+<td>No</td>
+<td><code>500</code></td>
+<td><strong>Inbound.</strong> Upper bound on dynamically registered clients. At the cap the oldest registrations are evicted; RFC 7591 clients re-register transparently. Values below 1 are clamped to 1.</td>
+</tr>
+<tr>
+<td><code>MCP_OUTBOUND_DCR_ENABLED</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td><strong>Outbound.</strong> Let the platform register <em>itself</em> with a remote MCP server that advertises a registration endpoint, so remote servers can be connected without pre-provisioned credentials. Set <code>false</code> to require every outbound OAuth client to be provisioned by hand — connecting a remote server then needs an explicitly configured client ID.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="opensandbox">OpenSandbox</h2>
+<p>Only used when <code>CUSTOM_TOOL_SANDBOX=opensandbox</code>. Governs the OpenSandbox-managed sandbox used by the code interpreter and by custom tools.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENSANDBOX_DOMAIN</code></td>
+<td>Yes (if <code>opensandbox</code> mode)</td>
+<td><code>localhost:8090</code></td>
+<td>Host (and optional port) of the OpenSandbox service. The default matches local dev (see <code>dev.sh</code>) and isn't enforced at startup — a production deployment that forgets to set this won't fail loudly, it will just try to reach <code>localhost:8090</code> and fail to connect.</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_PROTOCOL</code></td>
+<td>No</td>
+<td><code>http</code></td>
+<td>Protocol used to reach OpenSandbox (<code>http</code> or <code>https</code>).</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_API_KEY</code></td>
+<td>No</td>
+<td>—</td>
+<td>API key for authenticating to OpenSandbox.</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_IMAGES</code></td>
+<td>No</td>
+<td><code>python:sandbox-python:0.1,nodejs:sandbox-nodejs:0.1</code></td>
+<td>Per-key container image, as comma-separated <code>key:image</code> pairs (split on the first <code>:</code> per entry, so a registry:port-qualified image survives intact). Overrides merge on top of the defaults, so overriding one key leaves the other on its default.</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_K8S_POOL_NAMES</code></td>
+<td>No</td>
+<td>— (cold start, k8s-only)</td>
+<td>Per-key Kubernetes <code>Pool</code> binding, as comma-separated <code>key:pool-name</code> pairs, e.g. <code>python:my-python-pool,nodejs:my-js-pool</code>. A <code>Pool</code>'s warm pods run one fixed image, so one name can't back both sandbox kinds — a key missing from the mapping (or the whole variable unset) cold-starts for that key.</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_NETWORK_ALLOW</code></td>
+<td>No</td>
+<td>— (all egress denied)</td>
+<td>Comma-separated list of domains/IPs to allow as egress from every OpenSandbox container. Empty means all egress is denied.</td>
+</tr>
+<tr>
+<td><code>SANDBOX_CPU</code></td>
+<td>No</td>
+<td><code>1</code></td>
+<td>CPU requested for each OpenSandbox container (code interpreter + custom tools). Passed through as-is to the OpenSandbox SDK's <code>resource</code> argument on the cold-start path. When <code>OPENSANDBOX_K8S_POOL_NAMES</code> binds that sandbox kind to a k8s <code>Pool</code>, this is not read at all — the <code>Pool</code> manifest's own <code>resources.requests</code> governs warm-pod sizing instead, so there's no sync requirement between the two - see <code>dev-docs/opensandbox-pool-management.md</code>.</td>
+</tr>
+<tr>
+<td><code>SANDBOX_RAM</code></td>
+<td>No</td>
+<td><code>128Mi</code></td>
+<td>Memory requested for each OpenSandbox container. Same cold-start-only pass-through as <code>SANDBOX_CPU</code>.</td>
+</tr>
+<tr>
+<td><code>OPENSANDBOX_USE_SERVER_PROXY</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Route sandbox traffic through the OpenSandbox server instead of connecting directly to each sandbox's endpoint. Useful for any deployment topology where this process can reach the OpenSandbox server but not the individual sandbox endpoints it hands back — e.g. a native <code>dev.sh</code> backend against a containerized server, where the server advertises endpoints via a hostname like <code>host.docker.internal</code> that only resolves from inside other containers (<code>dev.sh</code> sets this automatically in that case), or a production/k8s deployment where sandbox pods aren't directly routable from this process but the server's service is.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="running-the-opensandbox-server-itself">Running the OpenSandbox server itself</h3>
+<p>The variables above configure how the platform <em>connects to</em> an
+OpenSandbox server. These configure how that server <em>itself</em> runs:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENSANDBOX_SERVER_DOCKER</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Local dev only (<code>dev.sh</code> / <code>dev.ps1</code> / <code>dev-podman.sh</code>). By default the launcher runs <code>opensandbox-server</code> natively; set <code>true</code> to run it as the <code>opensandbox</code> Docker Compose service (<code>docker-compose.dev.yml</code>, plain bridge networking) instead. The native default remains preferred on WSL2, where Docker Desktop's port-publish relay has been observed to fail, or hang unpredictably, for this container. <code>dev.sh</code> also sets <code>OPENSANDBOX_USE_SERVER_PROXY=true</code> automatically when this is enabled, since the backend runs natively but the server does not — see that variable above.</td>
+</tr>
+<tr>
+<td><code>KUBECONFIG_PATH</code></td>
+<td>Yes (if the <code>opensandbox-k8s</code> Compose profile is enabled)</td>
+<td>—</td>
+<td>Production only (<code>docker-compose.yml</code>). Path to a kubeconfig, authorized against the target cluster, mounted into the <code>opensandbox-k8s</code> service so it can manage sandbox pods there instead of local Docker containers. That cluster must already have the BatchSandbox CRD, <code>opensandbox-controller</code>, and the <code>kata-fc</code> RuntimeClass installed.</td>
+</tr>
+</tbody>
+</table>
+<p><code>docker-compose.yml</code> (production) exposes two mutually exclusive, opt-in profiles for the OpenSandbox server, matching where sandbox containers/pods should run: <code>docker compose --profile opensandbox-docker up -d</code> (Docker containers on the same host) or <code>docker compose --profile opensandbox-k8s up -d</code> (pods on an external Kubernetes cluster).</p>
+<ul>
+<li><strong>Target namespace for the <code>opensandbox-k8s</code> profile</strong>: set via the <code>namespace</code> key in <code>[kubernetes]</code> in <code>backend/sandbox/sandbox.k8s.firecracker.toml</code> (mounted into that service) — there's no env var for this specific setting, it's TOML-only. (<code>opensandbox-server</code> itself does read two env vars: <code>OPENSANDBOX_SERVER_API_KEY</code> for its API key, and <code>SANDBOX_CONFIG_PATH</code> as a fallback for <code>--config</code> when no CLI flag is given — <code>dev.ps1</code> relies on the latter — but neither substitutes for TOML settings like <code>namespace</code>.) Defaults to <code>null</code> (server default) if omitted. See the <a href="https://github.com/opensandbox-group/OpenSandbox/blob/main/server/configuration.md#kubernetes--only-when-runtime--kubernetes">OpenSandbox server configuration reference</a> for the full <code>[kubernetes]</code> section.</li>
+</ul>
+<h3 id="sandbox-call-log-fields">Sandbox call log fields</h3>
+<p>Every OpenSandbox-routed call (code interpreter, custom JS tool, custom
+Python tool) emits one structured <code>sandbox_call</code> log event to stdout
+(JSON in production — see <a href="#logging">Logging</a> above), independent of the
+<code>quota_usage</code> counters. These fields are stable
+across releases so a log pipeline (e.g. shipping stdout into Grafana/Loki)
+can filter and aggregate on them; a field not listed here (e.g. <code>level</code>,
+<code>timestamp</code>, <code>logger</code>) is generic structlog metadata, not part of this
+schema.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Present when</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>usage_type</code></td>
+<td>string</td>
+<td>Always</td>
+<td>One of <code>code_interpreter</code>, <code>custom_tool_js</code>, <code>custom_tool_python</code>.</td>
+</tr>
+<tr>
+<td><code>user_id</code></td>
+<td>string (UUID)</td>
+<td>Only when the call had a known user context</td>
+<td>The caller's user ID.</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>string</td>
+<td>Always</td>
+<td><code>success</code> or <code>failure</code>.</td>
+</tr>
+<tr>
+<td><code>failure_reason</code></td>
+<td>string</td>
+<td>Only when <code>outcome=failure</code></td>
+<td>One of <code>sandbox_ready_timeout</code> (the sandbox never became ready in time), <code>sandbox_create_failed</code> (other sandbox-creation error), <code>sandbox_create_error</code> (unexpected error creating the sandbox), <code>nonzero_exit</code> (the executed code/tool exited with a non-zero status), <code>execution_error</code> (an unexpected error while running the code/tool).</td>
+</tr>
+<tr>
+<td><code>cpu_used_percentage</code></td>
+<td>float</td>
+<td>Successful calls and <code>nonzero_exit</code> failures, when metrics could be retrieved</td>
+<td>CPU used, as a percentage.</td>
+</tr>
+<tr>
+<td><code>cpu_count</code></td>
+<td>float</td>
+<td>Same as <code>cpu_used_percentage</code></td>
+<td>Number of CPU cores allocated to the sandbox.</td>
+</tr>
+<tr>
+<td><code>memory_used_in_mib</code></td>
+<td>float</td>
+<td>Same as <code>cpu_used_percentage</code></td>
+<td>Memory used, in MiB.</td>
+</tr>
+<tr>
+<td><code>memory_total_in_mib</code></td>
+<td>float</td>
+<td>Same as <code>cpu_used_percentage</code></td>
+<td>Memory allocated to the sandbox, in MiB.</td>
+</tr>
+<tr>
+<td><code>tte_ms</code></td>
+<td>integer</td>
+<td>Successful calls and <code>nonzero_exit</code> failures, when the sandbox backend reported a completed execution</td>
+<td>Time-to-execute: the sandbox's own reported execution duration, in milliseconds (not overall call time, which also includes sandbox creation/setup). Can be absent even on a <code>nonzero_exit</code> failure if the process errored before an execution-complete event was ever emitted (e.g. an immediate crash).</td>
+</tr>
+<tr>
+<td><code>egress_default_action</code></td>
+<td>string</td>
+<td>Always</td>
+<td>Always <code>"deny"</code> today.</td>
+</tr>
+<tr>
+<td><code>egress_allow_list</code></td>
+<td>array of strings</td>
+<td>Always (may be empty)</td>
+<td>The egress allow-list (<code>OPENSANDBOX_NETWORK_ALLOW</code>) applied when the sandbox was created.</td>
+</tr>
+</tbody>
+</table>
+<p>CPU/RAM/TTE are omitted (not emitted as <code>null</code>) whenever they aren't
+available — e.g. no sandbox was ever created (<code>sandbox_ready_timeout</code>,
+<code>sandbox_create_failed</code>, <code>sandbox_create_error</code>), or the metrics lookup
+itself failed or timed out. A slow or unreachable metrics lookup is
+bounded to a few seconds and never delays or fails the underlying sandbox
+call.</p>
+<hr>
+<h2 id="webhook-delivery">Webhook delivery</h2>
+<p>Governs <code>POST /api/hooks/assignments/{assignment_id}</code> — the endpoint an external system (SIEM/SOAR, ticketing, CI) posts to in order to drive an agent.</p>
+<p>An assignment runs one execution at a time, because parallel runs of the same assignment race the same tools and database writes. A delivery arriving while a run is active is therefore <strong>queued</strong>, not discarded: it becomes a run in the <code>queued</code> status and starts as soon as the assignment goes idle. An accepted delivery produces exactly one run, eventually.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_ENABLED</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Queue deliveries that arrive while the assignment is busy. Set <code>false</code> only to restore the legacy behaviour, where such a delivery was <strong>discarded</strong> and still answered <code>200</code>.</td>
+</tr>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_MAX_DEPTH</code></td>
+<td>No</td>
+<td><code>20</code></td>
+<td>Maximum deliveries held per assignment. Bounds the backlog a slow or stuck assignment can accumulate.</td>
+</tr>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_OVERFLOW_POLICY</code></td>
+<td>No</td>
+<td><code>reject</code></td>
+<td>What happens to a delivery arriving at a full queue. <code>reject</code>: HTTP 429 + <code>Retry-After</code>, so a sender with retry logic loses nothing. <code>drop_oldest</code>: the oldest waiting delivery is finalized as a <code>skipped</code> run (visible, payload preserved) and the new one takes its slot. <code>drop_newest</code>: the incoming delivery is discarded with a <code>200</code> and a warning — no run row is created.</td>
+</tr>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_RETRY_AFTER_SECONDS</code></td>
+<td>No</td>
+<td><code>30</code></td>
+<td><code>Retry-After</code> value returned with the <code>reject</code> policy's 429.</td>
+</tr>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_HOLD_ON_AWAITING_HUMAN</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Whether a run paused for human input holds its place in the queue. <code>true</code> keeps deliveries waiting behind the unanswered approval — bounded and visible, unlike the old silent drop. <code>false</code> lets the queue drain past a paused run; only safe when a HITL pause leaves no half-written shared state.</td>
+</tr>
+<tr>
+<td><code>ASSIGNMENT_QUEUE_DRAIN_BATCH</code></td>
+<td>No</td>
+<td><code>20</code></td>
+<td>Maximum assignments drained per reconciler cycle.</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_REQUESTS_PER_MINUTE</code></td>
+<td>No</td>
+<td><code>60</code></td>
+<td>Per-assignment delivery throttle, applied before the request body is read. Over-limit deliveries get 429 + <code>Retry-After</code>. Raise it for a high-cadence alert feed — the queue still bounds how many accepted deliveries become runs.</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_DEDUP_TTL_SECONDS</code></td>
+<td>No</td>
+<td><code>300</code></td>
+<td>Idempotency window. A delivery whose key was already seen within the window replays the first delivery's response instead of firing a second run.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="response-statuses">Response statuses</h3>
+<table>
+<thead>
+<tr>
+<th><code>status</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ok</code></td>
+<td>A run started. <code>triggered[0].run_id</code> is its id.</td>
+</tr>
+<tr>
+<td><code>queued</code></td>
+<td>Accepted, waiting behind the active run. <code>run_id</code> is the queued run, <code>queue_depth</code> the current backlog.</td>
+</tr>
+<tr>
+<td><code>duplicate</code> (with <code>deduplicated: true</code>)</td>
+<td>The same idempotency key already arrived within the window. The original response is replayed; nothing new was triggered.</td>
+</tr>
+<tr>
+<td><code>dropped</code></td>
+<td>The queue was full under <code>drop_newest</code>. <strong>This delivery will never run.</strong></td>
+</tr>
+<tr>
+<td><code>ignored</code></td>
+<td>The target does not resolve (unknown, disabled, or not a webhook trigger), or an event filter excluded it.</td>
+</tr>
+<tr>
+<td>HTTP 429</td>
+<td>Not accepted — retry after the <code>Retry-After</code> delay. Either the per-assignment throttle or a full queue under <code>reject</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="idempotency">Idempotency</h3>
+<p>Duplicate deliveries — proxy retries, sender at-least-once redelivery, a double-submitted test POST — are deduplicated so a retry returns the original <code>run_id</code> without re-running the assignment. The key is derived in this order:</p>
+<ol>
+<li>An explicit header: <code>Idempotency-Key</code>, <code>X-Idempotency-Key</code>, <code>X-GitHub-Delivery</code>, <code>Webhook-Id</code> / <code>Svix-Id</code>, or <code>X-Hook-Signature-Id</code>.</li>
+<li>A provider-specific id in the payload (OpenCTI <code>notification_id</code>, Slack <code>event_id</code>, HubSpot <code>eventId</code>, or a JSON-API <code>type</code> + <code>id</code> pair).</li>
+<li>A SHA-256 of the URL scope + raw request body.</li>
+</ol>
+<div class="admonition tip">
+<p class="admonition-title">Send an <code>Idempotency-Key</code></p>
+<p>Step 3 cannot tell a retry apart from a genuine recurrence. Two distinct events carrying byte-identical bodies inside the window — a repeated detection with no timestamp, a state notification with no counter — collapse into a single run, and the second delivery is answered with <code>deduplicated: true</code>. Sending an <code>Idempotency-Key</code> that is unique per logical event removes the ambiguity entirely. Failing that, shorten <code>WEBHOOK_DEDUP_TTL_SECONDS</code> below the sender's event cadence.</p>
+</div>
+<hr>
+<h2 id="runners">Runners</h2>
+<p>A Runner is a downloadable native daemon a user installs on a machine they control, enrolls once from <strong>Profile &gt; Runners</strong>, and leaves running. It makes only outbound connections and <strong>pulls</strong> commands from the platform (the platform never opens a connection to the machine), giving agents genuine full-desktop screenshots, real-browser control, shell + file operations, and synthetic input through the <code>computer_use</code> built-in tool. Enrollment is a single-use, short-lived token exchanged once for a durable credential stored in the machine's OS keychain.</p>
+<p>The runner installers, bare-binary archives, and self-update artifacts are <strong>built by the release pipeline and embedded in the platform image</strong> — every instance serves its own version-matched downloads directly from <strong>Profile &gt; Runners</strong> and answers the runners' self-update checks from the same embedded set. There is no external download URL, CDN, or GitHub Releases dependency to configure, and an air-gapped deployment is fully self-sufficient. A source/dev build (no embedded distribution) simply reports downloads as unavailable while everything else — enrollment, transport, <code>computer_use</code> — keeps working with runners you built yourself (<code>apps/runner/build.ps1</code> / <code>build.sh</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RUNNERS_ENABLED</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Master switch for the whole Runner subsystem: enrollment, the runner transport (WebSocket + long-poll), and the <code>computer_use</code> agent tools. Set <code>false</code> to remove it entirely (every runner endpoint then returns 404 and the Profile tab is hidden).</td>
+</tr>
+<tr>
+<td><code>RUNNER_DIST_DIR</code></td>
+<td>No</td>
+<td><code>runner_dist</code></td>
+<td>Directory of the embedded runner distribution inside the image, populated by CI at image build time. Only needs changing if you repackage the image and relocate the artifacts. Empty/absent (source builds) reports downloads as unavailable.</td>
+</tr>
+<tr>
+<td><code>RUNNER_MIN_SUPPORTED_VERSION</code></td>
+<td>No</td>
+<td>—</td>
+<td>Minimum runner binary version accepted at connect (protocol gate). Empty means no floor; a runner below it is told to self-update. Format <code>MAJOR.YYMMDD.SEQ</code>.</td>
+</tr>
+<tr>
+<td><code>RUNNER_MAX_PER_USER</code></td>
+<td>No</td>
+<td><code>200</code></td>
+<td>Cap on active runners a single user (or the company-managed fleet) may have enrolled at once, enforced at enrollment so an unattended roll-out cannot create unbounded records. <code>0</code> = unlimited.</td>
+</tr>
+<tr>
+<td><code>RUNNER_MAX_INFLIGHT_COMMANDS</code></td>
+<td>No</td>
+<td><code>10</code></td>
+<td>Cap on concurrent in-flight commands per runner; a burst past this is refused with a transient "busy" so parallel tool calls cannot swamp one machine. <code>0</code> = unlimited.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Tuning knobs</p>
+<p>The transport cadence and timeouts (<code>RUNNER_HEARTBEAT_INTERVAL_SECONDS</code>, <code>RUNNER_OFFLINE_AFTER_SECONDS</code>, <code>RUNNER_LONG_POLL_TIMEOUT_SECONDS</code>, <code>RUNNER_RESULT_WAIT_TIMEOUT_SECONDS</code>, <code>RUNNER_COMMAND_DEFAULT_TIMEOUT_SECONDS</code>, <code>RUNNER_MAX_RESULT_BYTES</code>, <code>RUNNER_ENROLLMENT_TTL_SECONDS</code>) have sensible defaults and rarely need changing. See <code>.env.sample</code> for the full list.</p>
+</div>
+<h2 id="feature-flags">Feature flags</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ENABLED_FEATURES</code></td>
+<td>No</td>
+<td>— (none enabled)</td>
+<td>Comma-separated list of feature flag ids to turn on experimental/in-development features, e.g. <code>MY_FLAG,OTHER_FLAG</code>. Use <code>*</code> to enable all of them. Leaving this unset enables none of them. Changing it requires a restart — there is no toggle in the Settings UI. An unrecognized flag id (e.g. left over from another branch) is logged as a warning and ignored — it never enables anything and never prevents the platform from starting.</td>
+</tr>
+</tbody>
+</table>
+<p>The resolved list of enabled flags is also sent to the frontend (as part of the public, boot-time <code>GET /auth/config</code> response), so a flag can control both backend behavior and whether a UI element is shown — with the backend independently enforcing the same flag on any route it gates.</p>
+<hr>
+<h2 id="skill-loading">Skill loading</h2>
+<p>An agent's prompt carries a catalog of its attached skills (name + description) and the agent pulls a skill's full content in on demand with the <code>load_skill</code> tool, so prompt size scales with the <em>number</em> of attached skills rather than with the size of their content. A skill that must stay in the prompt at all times can be pinned per agent on the agent's <code>Configuration</code> tab.</p>
+<p>These caps bound the worst case and rarely need changing:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SKILL_LOAD_MAX_CHARS</code></td>
+<td>No</td>
+<td><code>60000</code></td>
+<td>Maximum characters returned by one <code>load_skill</code> call. Longer content is truncated with an explicit marker naming how much was cut.</td>
+</tr>
+<tr>
+<td><code>SKILL_LOAD_BUDGET</code></td>
+<td>No</td>
+<td><code>8</code></td>
+<td>Maximum number of distinct skills one run may load. Re-loading an already-loaded skill never counts again. <code>0</code> = unlimited.</td>
+</tr>
+<tr>
+<td><code>SKILL_RESOURCE_MAX_BYTES</code></td>
+<td>No</td>
+<td><code>40000</code></td>
+<td>Maximum bytes returned by one <code>read_skill_resource</code> call (files bundled with a packaged skill).</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="August 16, 2026 12:02:52 UTC"><span class="timeago" datetime="2026-08-16T12:02:52+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="August 16, 2026 12:02:52 UTC">2026-08-16</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="June 22, 2026 12:59:05 UTC"><span class="timeago" datetime="2026-06-22T12:59:05+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="June 22, 2026 12:59:05 UTC">2026-06-22</span>
+  </span>
+
+    
+    
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../installation/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Installation">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Installation
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../authentication/" class="md-footer__link md-footer__link--next" aria-label="Next: Authentication">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Authentication
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran. All rights reserved
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
