@@ -72,14 +72,14 @@ If you want to know more on XTM One, you can read the [documentation on the tool
 
 ## Releases download
 
-The releases are available on the [Github releases page](https://github.com/XTM-One-Platform/xtm-one/releases). The platform is also distributed as Docker images published on [Docker Hub](https://hub.docker.com/u/xtmone).
+The releases are available on the [GitHub releases page](https://github.com/XTM-One-Platform/xtm-one/releases). The platform is also distributed as Docker images published on [Docker Hub](https://hub.docker.com/u/xtmone).
 
 ## Installation
 
 ### Compatibility
 XTM One 1.260604.0 is compatible from [OpenCTI 7.260604.0](https://github.com/OpenCTI-Platform/opencti/releases/tag/7.260604.0) or later and [OpenAEV 2.260604.0](https://github.com/OpenAEV-Platform/openaev/releases/tag/2.260604.0) or later
 
-### Install from Github repository
+### Install from GitHub repository
 
 All you need to install the XTM One platform can be found in the [official documentation](https://docs.xtmone.io/). The fastest way to get started is with Docker:
 
@@ -113,7 +113,7 @@ If you want to actively help XTM One, please refer to the [documentation](https:
 
 ### Status & bugs
 
-Currently XTM One is under heavy development, if you wish to report bugs or ask for new features, you can directly use the [Github issues module](https://github.com/XTM-One-Platform/xtm-one/issues).
+Currently XTM One is under heavy development, if you wish to report bugs or ask for new features, you can directly use the [GitHub issues module](https://github.com/XTM-One-Platform/xtm-one/issues).
 
 ### Discussion
 
