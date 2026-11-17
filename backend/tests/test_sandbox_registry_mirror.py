@@ -101,9 +101,25 @@ def test_the_shipped_mirror_is_read_only() -> None:
     assert 'proxy_set_header Authorization "";' in conf
     assert 'proxy_set_header Cookie "";' in conf
     # The three upstreams, and nothing else answered but a refusal.
-    for upstream in ("https://registry.npmjs.org/", "https://pypi.org/simple/", "https://files.pythonhosted.org/"):
-        assert f"proxy_pass {upstream}" in conf
+    for host in ("registry.npmjs.org", "pypi.org", "files.pythonhosted.org"):
+        assert f" {host};" in conf
     assert "return 403;" in conf
+
+
+def test_the_shipped_mirror_resolves_its_upstreams_at_request_time() -> None:
+    conf = NGINX_CONF.read_text(encoding="utf-8")
+
+    # nginx consults the resolver only when proxy_pass holds a variable; a literal host is pinned at startup.
+    assert "resolver " in conf
+    proxy_passes = [line.strip() for line in conf.splitlines() if line.strip().startswith("proxy_pass ")]
+    assert proxy_passes == [
+        "proxy_pass https://$npm_upstream$npm_path;",
+        "proxy_pass https://$pypi_upstream/simple$pypi_simple_path;",
+        "proxy_pass https://$files_upstream$pypi_files_path;",
+    ]
+    assert "set $npm_upstream registry.npmjs.org;" in conf
+    assert "set $pypi_upstream pypi.org;" in conf
+    assert "set $files_upstream files.pythonhosted.org;" in conf
 
 
 def test_the_command_and_service_containers_take_the_mirror() -> None:
