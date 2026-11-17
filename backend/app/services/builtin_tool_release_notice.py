@@ -35,6 +35,12 @@ An owner who deliberately leaves a function out dismisses it (#12245): the
 release never names it again for that agent, and the bell entries about the
 agent are marked read once nothing they name is left to act on
 (:func:`resolve_notices`). A function a later release ships is told as before.
+
+A group whose list the platform wrote, not a person (#39: a former id folded
+into its group, a group a fleet role granted scoped; the agent's ``config``
+names it under ``IMPLICIT_SCOPE_CONFIG_KEY``), is no restriction anybody
+chose: the release adds its new functions to the list itself
+(:func:`grant_implicit`) and tells nobody.
 """
 
 from __future__ import annotations
@@ -118,9 +124,19 @@ def still_outside(agent: Any, groups: Mapping[str, Iterable[str]]) -> dict[str, 
     ``config``. A group the agent does not carry, or carries unscoped, has
     nothing left out.
     """
+    return _left_out(agent, groups, implicit=False)
+
+
+def implicit_left_out(agent: Any, groups: Mapping[str, Iterable[str]]) -> dict[str, list[str]]:
+    """Per group, the functions of *groups* a platform-written list of the agent leaves out (#39). Pure."""
+    return _left_out(agent, groups, implicit=True)
+
+
+def _left_out(agent: Any, groups: Mapping[str, Iterable[str]], *, implicit: bool) -> dict[str, list[str]]:
     allowed = getattr(agent, "builtin_allowed_tools", None)
     if not isinstance(allowed, dict) or not allowed:
         return {}
+    from app.services.builtin_allowed_tools import implicit_scope_groups
     from app.services.builtin_tool_aliases import canonical_builtin_selection, current_function_name
 
     try:
@@ -128,11 +144,13 @@ def still_outside(agent: Any, groups: Mapping[str, Iterable[str]]) -> dict[str, 
     except Exception as exc:  # a stale stored value never fails the notice
         logger.debug("Agent %s skipped by the release notice: %s", getattr(agent, "id", None), exc)
         return {}
-    dismissed = set(dismissed_functions(getattr(agent, "config", None)))
+    config = getattr(agent, "config", None)
+    platform_written = set(implicit_scope_groups(config))
+    dismissed = set(dismissed_functions(config))
     out: dict[str, list[str]] = {}
     for group, fresh in groups.items():
         names = (folded or {}).get(group)
-        if group not in ids or names is None:
+        if group not in ids or names is None or (group in platform_written) != implicit:
             continue
         granted = {current_function_name(str(name)) for name in names}
         missing = [fn for fn in fresh if fn not in granted and f"{group}.{fn}" not in dismissed]
@@ -332,6 +350,49 @@ async def _previous_snapshot(db: Any, version: str | None, git_sha: str | None) 
     return value if isinstance(value, dict) else None
 
 
+def granted_allowlist(agent: Any, groups: Mapping[str, Iterable[str]]) -> dict[str, list[str]] | None:
+    """The agent's ``builtin_allowed_tools`` with *groups*' functions added to their lists, canonical. Pure."""
+    from app.services.builtin_tool_aliases import canonical_builtin_selection
+
+    _ids, folded = canonical_builtin_selection(
+        getattr(agent, "builtin_tool_ids", None) or (), getattr(agent, "builtin_allowed_tools", None)
+    )
+    out = {g: list(fns) for g, fns in (folded or {}).items()}
+    for group, fns in groups.items():
+        if out.get(group) is not None:
+            out[group] += [fn for fn in fns if fn not in out[group]]
+    return out or None
+
+
+async def grant_implicit(db: Any, added: Mapping[str, list[str]], agents: Iterable[Any]) -> int:
+    """Add *added*'s functions to every platform-written list that leaves them out (#39); the agents changed.
+
+    Only ``builtin_allowed_tools`` is written; ``builtin_tool_ids`` and the
+    marker stay as they are. The caller commits.
+    """
+    if not added:
+        return 0
+    from sqlalchemy import update
+
+    from app.models.agent import Agent
+
+    changed = 0
+    for agent in agents:
+        groups = implicit_left_out(agent, added)
+        if not groups:
+            continue
+        await db.execute(
+            update(Agent).where(Agent.id == agent.id).values(builtin_allowed_tools=granted_allowlist(agent, groups))
+        )
+        logger.info(
+            "Agent %s: new built-in tools %s granted (allowlist written by the platform).",
+            agent.id,
+            ", ".join(f"{g}.{fn}" for g, fns in sorted(groups.items()) for fn in fns),
+        )
+        changed += 1
+    return changed
+
+
 async def _scoped_agents(db: Any) -> list[Any]:
     from sqlalchemy import select
 
@@ -377,7 +438,9 @@ async def on_release_deployed(release: dict[str, Any]) -> int:
                 return 0
             previous = await _previous_snapshot(db, release.get("previous_version"), release.get("previous_git_sha"))
             added = new_functions(previous, catalog)
-            owners = by_owner(agents_left_out(added, await _scoped_agents(db))) if added else {}
+            scoped = await _scoped_agents(db) if added else []
+            granted = await grant_implicit(db, added, scoped)
+            owners = by_owner(agents_left_out(added, scoped)) if added else {}
             label = str(release.get("release") or version)
             for owner_id, agents in owners.items():
                 title, summary, extra = notice(label, agents)
@@ -385,6 +448,8 @@ async def on_release_deployed(release: dict[str, Any]) -> int:
                     db, owner_id, title=title, summary=summary, source_label=SOURCE_LABEL, extra_data=extra
                 )
             await db.commit()
+        if granted:
+            logger.info("Release %s: new built-in tools granted to %d agent(s) scoped by the platform.", label, granted)
         if owners:
             logger.info("Release %s: new built-in tools outside allowlists, %d owner(s) notified.", label, len(owners))
         return len(owners)

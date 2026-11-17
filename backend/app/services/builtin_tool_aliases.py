@@ -502,6 +502,11 @@ def fold_builtin_selection(target: Any) -> bool:
     granted, so the builder shows one group card for it and a save never
     stores the former id next to its group. Returns
     whether anything changed; a canonical selection is left untouched.
+
+    A group the fold scopes while no list of the row named it (nor one of its
+    former ids) is a list the platform wrote: when *target* carries a
+    ``config`` it is marked so (``IMPLICIT_SCOPE_CONFIG_KEY``, #39) and the
+    functions later releases add to the group reach the agent.
     """
     ids = list(getattr(target, "builtin_tool_ids", None) or [])
     allowed = getattr(target, "builtin_allowed_tools", None)
@@ -512,7 +517,26 @@ def fold_builtin_selection(target: Any) -> bool:
     folded_ids, folded_allowed = canonical_builtin_selection(ids, allowed)
     target.builtin_tool_ids = folded_ids
     target.builtin_allowed_tools = folded_allowed
+    implicit = platform_scoped_groups(allowed, folded_allowed)
+    if implicit and hasattr(target, "config"):
+        from app.services.builtin_allowed_tools import with_implicit_scope
+
+        target.config = with_implicit_scope(getattr(target, "config", None), add=implicit)
     return True
+
+
+def platform_scoped_groups(
+    allowed_before: Mapping[str, list[str] | None] | None,
+    allowed_after: Mapping[str, list[str] | None] | None,
+) -> list[str]:
+    """The groups *allowed_after* scopes that no key of *allowed_before* scoped. Pure.
+
+    A key of *allowed_before* scopes its group when it is the group or one of
+    its former ids and maps to a list. Such a group got its list from the
+    fold of former ids alone: the platform wrote it, no person did (#39).
+    """
+    named = {alias_group(str(key)) or str(key) for key, fns in (allowed_before or {}).items() if fns is not None}
+    return [str(g) for g, fns in (allowed_after or {}).items() if fns is not None and str(g) not in named]
 
 
 def runtime_builtin_tool_ids(
