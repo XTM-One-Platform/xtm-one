@@ -1,4 +1,4 @@
-import { defineConfig, type ProxyOptions } from "vite";
+import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
@@ -16,8 +16,25 @@ const endWithBackend: ProxyOptions["configure"] = (proxy) => {
   });
 };
 
+/**
+ * Lab only (#63): with VITE_LAB_PAGE_BUILD_ID set (the xtm-one lab under
+ * LAB_STALE_BUILD=on), the dev server writes it in `<meta name="build-id">`,
+ * which `src/lib/build-version.ts` reads; the lab's backend reports another
+ * build on /auth/config, so the stale build notice renders natively. Never in
+ * a build (`apply: "serve"`): production's meta is written by the backend.
+ */
+const labPageBuildId = (): Plugin => ({
+  name: "lab-page-build-id",
+  apply: "serve",
+  transformIndexHtml: (html) => {
+    const buildId = process.env.VITE_LAB_PAGE_BUILD_ID;
+    if (!buildId || !/^[0-9a-f]+$/.test(buildId)) return html;
+    return html.replace("</head>", `  <meta name="build-id" content="${buildId}" />\n  </head>`);
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), labPageBuildId()],
   // Relative base: the bundle's OWN references - code-split chunks,
   // fonts, images, CSS `url()` - resolve from the bundle's location, so the
   // same build serves at `/` and under a reverse-proxy path prefix

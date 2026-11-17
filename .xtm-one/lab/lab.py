@@ -1579,6 +1579,8 @@ def backend_env() -> dict[str, str]:
         "LAB_NOVA_ENGINE": os.environ.get("LAB_NOVA_ENGINE", "1"),
         # With it, an empty Nova semantic override is answered as ignored, so the second calibration line renders.
         "LAB_NOVA_OVERRIDE_IGNORED": os.environ.get("LAB_NOVA_OVERRIDE_IGNORED", "1"),
+        # ``LAB_STALE_BUILD=on``: ``lab_asgi`` reports another frontend build than the page's on ``/auth/config`` (#63).
+        "LAB_STALE_BUILD_SERVER_ID": stale_build_ids()[1],
         # ``lab_asgi`` keeps the seeded today row of the CTEM posture history over the live (empty) collection.
         "LAB_CTEM_POSTURE_HISTORY": "1" if seeds_ctem_posture_history() else "0",
         # The stale-embedding knowledge bases ``seed_kb_stale_embeddings`` writes stay stale: the background
@@ -1639,6 +1641,13 @@ LAB_ORG_SETUP_PROMPT_STATES = ("off", "on")
 #: ``LAB_PERF_THREAD`` values: ``on`` seeds a 200-message conversation and a short one for the administrator
 #: (``seed_perf_thread.py``), so long-thread scroll, open and switch timings need no hand-edited seed.
 LAB_PERF_THREAD_STATES = ("off", "on")
+#: ``LAB_STALE_BUILD`` values: ``on`` serves the page one frontend build and reports another on ``/auth/config``,
+#: so the "A new version is available" notice (``useStaleBuildNotice``) renders natively (#63).
+LAB_STALE_BUILD_STATES = ("off", "on")
+#: The build the Vite dev server writes in ``<meta name="build-id">`` under ``LAB_STALE_BUILD=on`` (``vite.config.ts``).
+LAB_STALE_PAGE_BUILD_ID = "1ab0000000000001"
+#: The other build ``lab_asgi`` answers as ``build_id`` of ``GET /api/v1/auth/config`` under the same switch.
+LAB_STALE_SERVER_BUILD_ID = "1ab0000000000002"
 #: ``LAB_CTEM_FINDINGS`` values: ``on`` answers the CTEM findings the rule-based Recommended actions act on.
 LAB_CTEM_FINDINGS_STATES = ("off", "on")
 #: The OpenAEV expectation types ``LAB_CTEM_FINDINGS=on`` fails (``ctem_sample.FINDINGS_EXPECTATION_BUCKETS``).
@@ -7111,6 +7120,11 @@ def seed_entities() -> None:
                 seeded["CTEM tailored KEV"] = seed_ctem_kev_tailored(token, base)
             except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
                 skipped["CTEM tailored KEV"] = str(exc)[:600]
+    if lab_switch("LAB_STALE_BUILD", LAB_STALE_BUILD_STATES) == "on":
+        try:
+            seeded["stale build notice"] = seed_stale_build_notice(token, base)
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["stale build notice"] = str(exc)[:600]
     # Last: every run any seed above created is deleted, so the Live activity card shows the feed.
     if mode == "xtm_one" and lab_switch("LAB_CTEM_ACTIVITY", LAB_CTEM_ACTIVITY_STATES) == "on":
         try:
@@ -7295,6 +7309,38 @@ def seed_org_ai_draft_stub(token: str, base: str) -> dict[str, str]:
         saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
         version = saved.get("version") if isinstance(saved, dict) else None
     return {"id": f"profile version {version}", "url": f"{base}/settings/organization"}
+
+
+def stale_build_ids() -> tuple[str, str]:
+    """``(page build, server build)`` under ``LAB_STALE_BUILD=on`` (#63); ``("", "")`` otherwise.
+
+    The Vite dev server writes the first in ``<meta name="build-id">`` (``VITE_LAB_PAGE_BUILD_ID``, dev server
+    only) and ``lab_asgi`` answers the second as ``build_id`` of ``GET /api/v1/auth/config``
+    (``LAB_STALE_BUILD_SERVER_ID``): two known, different builds, so ``isStaleBuild`` holds and the page offers
+    a reload. Off, neither is written: the dev page has no build and the notice never shows, as before.
+    """
+    if lab_switch("LAB_STALE_BUILD", LAB_STALE_BUILD_STATES) != "on":
+        return "", ""
+    return LAB_STALE_PAGE_BUILD_ID, LAB_STALE_SERVER_BUILD_ID
+
+
+def seed_stale_build_notice(token: str, base: str) -> dict[str, str]:
+    """``LAB_STALE_BUILD=on``: the stale build notice renders on the preview with no override (#63).
+
+    Read back: the preview's ``index.html`` carries the page build in ``<meta name="build-id">`` and
+    ``GET /auth/config`` answers the server build, two different ids. Logged ``seeded stale build notice: <base>/``
+    (the notice shows on load and again when the tab regains focus). May raise: the caller logs and skips.
+    """
+    page_build, server_build = stale_build_ids()
+    with urllib.request.urlopen(f"http://127.0.0.1:{WEB_PORT}/", timeout=60) as response:
+        html = response.read().decode("utf-8", "replace")
+    if f'<meta name="build-id" content="{page_build}"' not in html:
+        raise RuntimeError(f"the preview's index.html carries no <meta name=\"build-id\" content=\"{page_build}\">")
+    config = api("GET", "/auth/config", token)
+    answered = config.get("build_id") if isinstance(config, dict) else None
+    if answered != server_build or answered == page_build:
+        raise RuntimeError(f"GET /auth/config answers build_id {answered!r}, expected {server_build!r}")
+    return {"id": f"page {page_build}, server {server_build}", "url": f"{base}/"}
 
 
 def seed_org_setup_prompt(token: str, base: str) -> dict[str, str]:
@@ -7971,6 +8017,8 @@ def main() -> None:
             # LAB_CTEM_OPENCTI=on: /opencti of the preview is the lab's own OpenCTI (#12058).
             **({"VITE_OPENCTI_URL": LIVE_OPENCTI_URL, "VITE_OPENCTI_TOKEN": CTEM_OPENCTI_TOKEN}
                if lab_switch("LAB_CTEM_OPENCTI", LAB_CTEM_OPENCTI_STATES) == "on" else {}),
+            # LAB_STALE_BUILD=on: the dev server writes this build in <meta name="build-id"> (#63).
+            **({"VITE_LAB_PAGE_BUILD_ID": stale_build_ids()[0]} if stale_build_ids()[0] else {}),
             "PATH": f"{toolchain['node'].parent}:{os.environ.get('PATH', '')}",
         },
     )
