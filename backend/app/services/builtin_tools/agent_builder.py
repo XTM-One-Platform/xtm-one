@@ -6469,12 +6469,16 @@ def build_agent_builder_tool(
                 from app.services.builtin_allowed_tools import (
                     BuiltinAllowedToolsError,
                     normalize_builtin_allowed_tools,
+                    record_person_scope,
                 )
 
+                _ba_before = agent.builtin_allowed_tools
                 try:
                     agent.builtin_allowed_tools = normalize_builtin_allowed_tools(_ba_v)
                 except BuiltinAllowedToolsError as exc:
                     return f"Error: {exc}"
+                # A list a person asked for is no longer the platform's (#39).
+                record_person_scope(agent, _ba_before)
                 updated.append("builtin_allowed_tools")
 
             # A [DEPRECATED] built-in id is stored as its group.

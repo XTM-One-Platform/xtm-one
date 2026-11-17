@@ -22,11 +22,22 @@ runtime filter is ``filtering.filter_builtin_tools``.
 Every writer (the agents and assignments APIs, the agent-builder tools) goes
 through :func:`normalize_builtin_allowed_tools`, so a typo is refused with the
 group's valid functions instead of silently emptying the group.
+
+A list the platform wrote, not a person (#39), is named in the agent's
+``config`` under :data:`IMPLICIT_SCOPE_CONFIG_KEY`: a former id folded into its
+group (``fold_builtin_selection``) or a group a fleet role granted scoped
+(``fleets.grant_group_functions``). A function a release adds to such a group
+reaches the agent by itself (``builtin_tool_release_notice``); the group
+leaves the marker the moment a person writes a different list for it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from typing import Any
+
+#: ``Agent.config`` key of the built-in groups whose allow list the platform wrote, not a person (#39).
+IMPLICIT_SCOPE_CONFIG_KEY = "builtin_scope_implicit"
 
 
 class BuiltinAllowedToolsError(ValueError):
@@ -64,6 +75,57 @@ def builtin_functions_outside_allowlist(value: Any) -> dict[str, list[str]]:
         if left_out:
             outside[group] = left_out
     return outside
+
+
+def implicit_scope_groups(config: Any) -> list[str]:
+    """The groups of *config* whose allow list the platform wrote, in stored order. Pure."""
+    raw = config.get(IMPLICIT_SCOPE_CONFIG_KEY) if isinstance(config, Mapping) else None
+    if not isinstance(raw, list):
+        return []
+    return list(dict.fromkeys(group for group in raw if isinstance(group, str)))
+
+
+def with_implicit_scope(config: Any, add: Iterable[str] = (), remove: Iterable[str] = ()) -> dict[str, Any]:
+    """A copy of *config* with *add* marked platform-written and *remove* unmarked. Pure.
+
+    The key is dropped when no group is left, so an agent nobody scoped keeps
+    a config without it.
+    """
+    dropped = set(remove)
+    groups = [g for g in implicit_scope_groups(config) if g not in dropped]
+    groups += [g for g in dict.fromkeys(add) if g not in groups and g not in dropped]
+    out = dict(config) if isinstance(config, Mapping) else {}
+    if groups:
+        out[IMPLICIT_SCOPE_CONFIG_KEY] = groups
+    else:
+        out.pop(IMPLICIT_SCOPE_CONFIG_KEY, None)
+    return out
+
+
+def groups_a_person_changed(before: Any, after: Any) -> list[str]:
+    """The groups whose list differs between two stored ``builtin_allowed_tools`` values. Pure.
+
+    A group present on one side only counts as changed; list order does not.
+    """
+    left = before if isinstance(before, Mapping) else {}
+    right = after if isinstance(after, Mapping) else {}
+    changed: list[str] = []
+    for group in dict.fromkeys([*left, *right]):
+        a, b = left.get(group), right.get(group)
+        if (a is None) != (b is None) or (a is not None and sorted(map(str, a)) != sorted(map(str, b or []))):
+            changed.append(str(group))
+    return changed
+
+
+def record_person_scope(agent: Any, before: Any) -> None:
+    """Unmark the groups a person's write changed on *agent* (``builtin_allowed_tools`` against *before*)."""
+    marked = implicit_scope_groups(getattr(agent, "config", None))
+    if not marked:
+        return
+    changed = set(groups_a_person_changed(before, getattr(agent, "builtin_allowed_tools", None)))
+    gone = [g for g in marked if g in changed]
+    if gone:
+        agent.config = with_implicit_scope(agent.config, remove=gone)
 
 
 def normalize_builtin_allowed_tools(value: Any) -> dict[str, list[str]] | None:

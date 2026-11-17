@@ -823,7 +823,12 @@ def grant_group_functions(agent: Agent, group: str, functions: Sequence[str]) ->
     The rule of :func:`grant_program_status` for any group: an unscoped group
     already offers them, a scoped one gets them added, none gets the group
     scoped to these functions alone. Idempotent.
+
+    A group this adds scoped is a list the platform wrote (#39): it is marked
+    in the agent's ``config`` so the functions later releases add to the
+    group reach the agent without an allowlist notice.
     """
+    from app.services.builtin_allowed_tools import with_implicit_scope
     from app.services.builtin_tool_aliases import canonical_builtin_selection
 
     before_ids = list(agent.builtin_tool_ids or [])
@@ -833,6 +838,7 @@ def grant_group_functions(agent: Agent, group: str, functions: Sequence[str]) ->
     if group not in ids:
         ids.append(group)
         allowed[group] = list(functions)
+        agent.config = with_implicit_scope(getattr(agent, "config", None), add=[group])
     elif allowed.get(group) is not None:
         kept = list(allowed[group])
         allowed[group] = kept + [fn for fn in functions if fn not in kept]

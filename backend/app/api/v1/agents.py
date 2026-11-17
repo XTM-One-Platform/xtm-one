@@ -2084,7 +2084,14 @@ async def update_agent(
                 cleaned = {k: v for k, v in raw.items() if v is not None}
                 raw = cleaned if cleaned else None
             if nullable_field == "builtin_allowed_tools":
+                from app.services.builtin_allowed_tools import record_person_scope
+
                 raw = _builtin_allowed_or_422(raw)
+                before_allowed = agent.builtin_allowed_tools
+                setattr(agent, nullable_field, raw)
+                # A list a person wrote is no longer the platform's (#39).
+                record_person_scope(agent, before_allowed)
+                continue
             setattr(agent, nullable_field, raw)
 
     # A [DEPRECATED] built-in id is stored as its group, so a save from the
