@@ -14,7 +14,7 @@ Tool categories:
     3. Folders — list, browse
     4. Data Sources — list, get details
     5. Queries — run queries against data sources
-    6. Alerts — list, get rule details, get alertmanager config
+    6. Alerts — list, get rule details, create/update/delete rules, get alertmanager config
     7. Annotations — list annotations (notes, tags, system)
     8. Search — unified search across dashboards, folders, panels
     9. Panel images — render a panel as a PNG (needs the Grafana image renderer)
@@ -246,6 +246,24 @@ _LEGACY_ALERTS_PATH = "/api/alerts"
 # One Grafana-managed rule by uid (Grafana 9.1+): the uids the unified rules
 # API lists. /api/v1/rule/grafana/{uid} is not a Grafana route (it 404s).
 _PROVISIONING_RULES_PATH = "/api/v1/provisioning/alert-rules"
+# A rule written through the API stays editable in the Grafana UI.
+_PROVENANCE_HEADER = {"X-Disable-Provenance": "true"}
+_RULE_CREATE_FIELDS = ("title", "folderUID", "ruleGroup", "condition", "data")
+
+
+def _parse_rule_json(rule_json: str, *, require_create_fields: bool) -> tuple[dict[str, Any], str | None]:
+    """The rule object of *rule_json*, or an error naming what is wrong."""
+    try:
+        rule = json.loads(rule_json or "")
+    except ValueError as exc:
+        return {}, f"rule_json is not valid JSON: {exc}"
+    if not isinstance(rule, dict):
+        return {}, "rule_json must be a JSON object."
+    missing = [f for f in _RULE_CREATE_FIELDS if not rule.get(f)]
+    if require_create_fields and missing:
+        return {}, f"rule_json is missing: {', '.join(missing)}."
+    return rule, None
+
 
 # Caller-facing state filter -> (unified rule state, legacy alert state).
 _ALERT_STATE_FILTERS: dict[str, tuple[str, str]] = {
@@ -1463,6 +1481,75 @@ def build_tools(
                 return err
             return _format_provisioned_rule(resp.json(), uid)
 
+    async def _write_alert_rule(method: str, uid: str, rule_json: str) -> str:
+        rule, error = _parse_rule_json(rule_json, require_create_fields=method == "post")
+        if error:
+            return error
+        url = f"{base_url}{_PROVISIONING_RULES_PATH}"
+        if uid:
+            url = f"{url}/{quote(uid, safe='')}"
+            rule["uid"] = uid
+        action = "create alert rule" if method == "post" else "update alert rule"
+        async with egress_client(timeout=_TIMEOUT_READ) as client:
+            # Mutation: no transient retry, a write could land twice.
+            resp, err = await safe_request(
+                client,
+                method,
+                url,
+                _PROVIDER,
+                action,
+                headers={**headers, **_PROVENANCE_HEADER},
+                json=rule,
+            )
+            if err or resp is None:
+                return err or f"Grafana did not answer ({action})."
+            written = resp.json() if resp.content else {}
+            written_uid = (written.get("uid") if isinstance(written, dict) else None) or uid
+            if not written_uid:
+                return f"Grafana answered without a rule uid ({action})."
+            # Read-back: the rule as Grafana serves it now.
+            back, err = await _grafana_request(
+                client,
+                "get",
+                f"{base_url}{_PROVISIONING_RULES_PATH}/{quote(written_uid, safe='')}",
+                _PROVIDER,
+                "read back alert rule",
+                headers=headers,
+            )
+        verb = "Created" if method == "post" else "Updated"
+        if err or back is None:
+            return f"{verb} alert rule {written_uid}; the read-back failed: {err or 'no answer'}"
+        return f"{verb} alert rule {written_uid}.\n\n{_format_provisioned_rule(back.json(), written_uid)}"
+
+    async def create_grafana_alert_rule(rule_json: str) -> str:
+        """Create a Grafana-managed alert rule through the provisioning API, then read it back."""
+        return await _write_alert_rule("post", "", rule_json)
+
+    async def update_grafana_alert_rule(alert_uid: str, rule_json: str) -> str:
+        """Replace the alert rule *alert_uid* with *rule_json*, then read it back."""
+        uid = (alert_uid or "").strip()
+        if not uid:
+            return "alert_uid is required: pass a UID that list_grafana_alerts returns."
+        return await _write_alert_rule("put", uid, rule_json)
+
+    async def delete_grafana_alert_rule(alert_uid: str) -> str:
+        """Delete the alert rule *alert_uid*."""
+        uid = (alert_uid or "").strip()
+        if not uid:
+            return "alert_uid is required: pass a UID that list_grafana_alerts returns."
+        async with egress_client(timeout=_TIMEOUT_READ) as client:
+            _resp, err = await safe_request(
+                client,
+                "delete",
+                f"{base_url}{_PROVISIONING_RULES_PATH}/{quote(uid, safe='')}",
+                _PROVIDER,
+                "delete alert rule",
+                headers={**headers, **_PROVENANCE_HEADER},
+            )
+        if err:
+            return err
+        return f"Deleted alert rule {uid}."
+
     async def get_grafana_alertmanager_config(datasource: str = "grafana") -> str:
         """Get the Alertmanager configuration (receivers, routes).
 
@@ -2020,6 +2107,9 @@ def build_tools(
     executor.register("get_prometheus_label_values", get_prometheus_label_values)
     executor.register("list_grafana_alerts", list_grafana_alerts)
     executor.register("read_grafana_alert", read_grafana_alert)
+    executor.register("create_grafana_alert_rule", create_grafana_alert_rule)
+    executor.register("update_grafana_alert_rule", update_grafana_alert_rule)
+    executor.register("delete_grafana_alert_rule", delete_grafana_alert_rule)
     executor.register(
         "get_grafana_alertmanager_config", get_grafana_alertmanager_config
     )
@@ -2567,6 +2657,50 @@ def build_tools(
                 "properties": {
                     "alert_uid": {"type": "string", "description": "Alert rule UID."}
                 },
+            },
+            source="integration:grafana",
+        ),
+        ToolDefinition(
+            name="create_grafana_alert_rule",
+            description=(
+                "Create a Grafana-managed alert rule (provisioning API) and read it back. "
+                "Needs Editor or alerting rule write permission."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["rule_json"],
+                "properties": {
+                    "rule_json": {
+                        "type": "string",
+                        "description": "Rule as JSON: title, folderUID, ruleGroup, condition, data (queries); optional for, labels, annotations.",
+                    }
+                },
+            },
+            source="integration:grafana",
+        ),
+        ToolDefinition(
+            name="update_grafana_alert_rule",
+            description="Replace a Grafana-managed alert rule by UID with the given rule and read it back.",
+            input_schema={
+                "type": "object",
+                "required": ["alert_uid", "rule_json"],
+                "properties": {
+                    "alert_uid": {"type": "string", "description": "Alert rule UID."},
+                    "rule_json": {
+                        "type": "string",
+                        "description": "The whole rule as JSON (read_grafana_alert fields).",
+                    },
+                },
+            },
+            source="integration:grafana",
+        ),
+        ToolDefinition(
+            name="delete_grafana_alert_rule",
+            description="Delete a Grafana-managed alert rule by UID.",
+            input_schema={
+                "type": "object",
+                "required": ["alert_uid"],
+                "properties": {"alert_uid": {"type": "string", "description": "Alert rule UID."}},
             },
             source="integration:grafana",
         ),
