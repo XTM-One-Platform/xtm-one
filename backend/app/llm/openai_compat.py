@@ -510,7 +510,9 @@ async def _create_completion(client, params: dict, model: str | None, replay: Bl
     except openai.APIStatusError as exc:
         if replay is None or not replay.sent or not _refuses_replay(exc):
             raise
-        retry = replay.retry_without(_error_message(exc), params["messages"])
+        message = _error_message(exc)
+        too_big = exc.status_code == 413 or says_prompt_too_long(message)
+        retry = replay.retry_without(message, params["messages"], too_big=too_big)
         if retry is None:
             raise
         params["messages"] = retry
@@ -959,14 +961,22 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         replay = BlocksReplay.build(
             oai_messages, messages, self.provider_name, model, blocks=not kwargs.get("disable_thinking")
         )
-        if replay.sent:
+        limit = self._resolve_context_window(model) * self._OVERFLOW_THRESHOLD
+        # The blocks go first; the signatures, small, only when they alone do not fit.
+        for signatures in (False, True):
+            if not replay.sent:
+                break
             estimated = self._estimate_resolved_tokens(
                 text_chars=text_chars + replay.chars(), image_count=image_count,
                 native_file_bytes=native_file_bytes, tool_chars=self._tool_definition_chars(tools),
             )[0]
-            if estimated > self._resolve_context_window(model) * self._OVERFLOW_THRESHOLD:
-                logger.info("Dropping replayed thinking blocks (model=%s): ~%d tokens with them", model, estimated)
-                replay.drop()
+            if estimated <= limit:
+                break
+            if replay.drop(signatures=signatures):
+                logger.info(
+                    "Dropping replayed %s (model=%s): ~%d tokens with them",
+                    "thought signatures" if signatures else "thinking blocks", model, estimated,
+                )
         return replay.messages, replay
 
     # ------------------------------------------------------------------
