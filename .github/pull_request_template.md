@@ -33,11 +33,13 @@ Optional, read on every deploy (an edit of either deploys again while the box
 is checked), and shown in the Actions run and in AWX: no secrets.
 - The block: extra env for the platform and worker, one KEY=value per line,
   the value being the rest of the line, verbatim; # comments allowed.
-- The chart line: the xtm-suite chart as <repository>:<version>, for example
-  filigran/xtm-suite:0.261009.4; empty for the latest release.
+- The chart line: the xtm-suite chart as <repository>:<version>, written in
+  place of the # example; empty, or left as the # example, for the latest
+  release.
 -->
+Env. variables:
 ```env staging
 # LOG_LEVEL=debug
 ```
 
-Staging chart:
+Staging chart: # filigran/xtm-suite:0.261009.4
