@@ -844,7 +844,15 @@ async def test_a_check_lost_after_its_install_ran_first_reinstalls_in_the_new_co
     await workspace.put_tree(
         [("co/.xtm-one/checks.toml", toml.encode()), ("co/yarn.lock", b"# lock\n"), ("co/package.json", b"{}\n")]
     )
-    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 1.5)
+    # The install is waited for whatever the runner's speed (it must end inside this call for the check to run
+    # after it); only the check, which sleeps 5 s, is answered running. A fixed 1.5 s budget for both timed the
+    # install out on a loaded runner (xtm-one main red, ci.yml run 44137451621).
+    state = "workspace/co/node_modules/.yarn-state.yml"
+
+    def budget(*_a):
+        return 1.5 if any((c.root / state).exists() for c in api.containers.values()) else 30.0
+
+    monkeypatch.setattr(commands, "wait_budget", budget)
     first = await commands.run_command(await _resolve(workspace, check="unit"), workspace=workspace, sandbox_api=api)
     assert first.running and first.run_id and "install ran first" in first.text, first.text
     held = (await workspace.latest_kernel_state())["commands"]["python"]["run"]
