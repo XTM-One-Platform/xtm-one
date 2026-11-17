@@ -986,7 +986,7 @@ def build_tools(
             resp, err = await safe_request(
                 client,
                 "get",
-                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{host}",
+                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{_url_encode(host, safe='')}",
                 _PROVIDER,
                 f"get TI host {host}",
                 headers=_headers(access_token),
@@ -1016,7 +1016,7 @@ def build_tools(
             resp, err = await safe_request(
                 client,
                 "get",
-                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{host}/reputation",
+                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{_url_encode(host, safe='')}/reputation",
                 _PROVIDER,
                 f"get TI reputation for {host}",
                 headers=_headers(access_token),
@@ -1050,7 +1050,7 @@ def build_tools(
             resp, err = await safe_request(
                 client,
                 "get",
-                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{host}/passiveDns",
+                f"{_GRAPH_BASE}/security/threatIntelligence/hosts/{_url_encode(host, safe='')}/passiveDns",
                 _PROVIDER,
                 f"get passive DNS for {host}",
                 headers=_headers(access_token),
