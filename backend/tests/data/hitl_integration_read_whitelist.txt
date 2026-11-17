@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1774 tools across 110 providers; 51 held back by hand.
+# 1777 tools across 110 providers; 51 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -499,6 +499,7 @@ fortisiem:list_fortisiem_watchlists
 gemini:list_gemini_models
 gemini:query_gemini
 gemini:query_gemini_grounded
+github:get_github_ai_usage
 github:get_github_authenticated_user
 github:get_github_blame
 github:get_github_branch_protection
@@ -507,6 +508,7 @@ github:get_github_check_runs
 github:get_github_ci_status
 github:get_github_commit
 github:get_github_commit_status
+github:get_github_engineering_metrics
 github:get_github_enterprise
 github:get_github_file
 github:get_github_issue
@@ -562,6 +564,7 @@ github:list_github_teams
 github:list_github_workflow_jobs
 github:list_github_workflow_runs
 github:list_github_workflows
+github:lookup_github_identities
 github:query_github_graphql
 github:search_github_code
 github:search_github_commits

@@ -67,6 +67,7 @@ from . import (
     issues,
     merge,
     orgs,
+    people,
     pr_states,
     projects,
     pulls,
@@ -210,6 +211,7 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         projects,
         search,
         users,
+        people,
         graphql,
     ):
         if module is contents:
