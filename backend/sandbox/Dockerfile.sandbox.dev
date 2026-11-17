@@ -41,7 +41,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: python-builder - the backend's locked environment. Never shipped.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS python-builder
+FROM docker.io/library/python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS python-builder
 
 ARG APT_FILE=backend/sandbox/apt.sandbox.dev.txt
 
@@ -75,7 +75,7 @@ RUN for attempt in 1 2 3; do \
 # artefact by its pinned URL, checks its sha256 (a mismatch fails the build)
 # and unpacks it; this is the only network the stores ever see.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS stores-fetch
+FROM docker.io/library/python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS stores-fetch
 
 COPY .xtm-one/stores.py /tmp/stores.py
 RUN python /tmp/stores.py install /opt/stores
@@ -83,7 +83,7 @@ RUN python /tmp/stores.py install /opt/stores
 # ---------------------------------------------------------------------------
 # Stage 2: python-dev - Debian-slim, the venv, git, the stores. Non-root (sandboxuser).
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS python-dev
+FROM docker.io/library/python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS python-dev
 
 ARG RUNTIME_APT_FILE=backend/sandbox/apt.sandbox.dev.runtime.txt
 
@@ -138,7 +138,7 @@ USER sandboxuser
 # Debian trixie, as python:3.14-slim: apt.sandbox.dev.runtime.txt names trixie
 # packages (libmagic1t64), and the interpreter copied into nodejs-dev below
 # links against trixie's glibc. node:24-slim is bookworm and fails both.
-FROM docker.io/library/node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS node-builder
+FROM docker.io/library/node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS node-builder
 
 ENV COREPACK_HOME=/opt/corepack \
     YARN_ENABLE_GLOBAL_CACHE=true \
@@ -159,7 +159,7 @@ RUN corepack enable \
 # Stage 4: nodejs-dev - Node 24, yarn from the corepack cache, the yarn global
 # cache, git. Non-root (the image's own node user, 1000).
 # ---------------------------------------------------------------------------
-FROM docker.io/library/node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS nodejs-dev
+FROM docker.io/library/node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS nodejs-dev
 
 ARG RUNTIME_APT_FILE=backend/sandbox/apt.sandbox.dev.runtime.txt
 

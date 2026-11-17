@@ -53,7 +53,7 @@
 # Stage 1: builder — compiles/installs dependencies. Never shipped: neither
 # final target inherits FROM this stage, only specific files are COPY'd out.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS builder
+FROM docker.io/library/python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS builder
 
 ARG APT_FILE=apt.sandbox.base.txt
 ARG REQ_FILE=requirements.sandbox.base.txt
@@ -124,7 +124,7 @@ RUN mkdir -p /opt/console-scripts && \
 # hardened: no compilers/*-dev headers (only $RUNTIME_APT_FILE's shared-lib
 # subset is installed here), non-root by default.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS final-full
+FROM docker.io/library/python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS final-full
 
 ARG RUNTIME_APT_FILE=apt.sandbox.extended.runtime.txt
 
@@ -201,7 +201,7 @@ USER sandboxuser
 # move the path with it. The `sandbox-image-smoke-test` CI job's import check
 # is the safety net: a mismatch makes every import fail loudly.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/busybox:1-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37 AS busybox
+FROM docker.io/library/busybox:1-musl@sha256:80e38f9a1b39188b8bdb28879178edb322a4402b081a9aedda1924609decd6f6 AS busybox
 
 # Only the applets bootstrap.sh and the idle keep-alive actually exec.
 # Everything else busybox can do (wget/nc/telnet/tftp/nslookup/httpd/
@@ -244,7 +244,7 @@ RUN set -eux; \
       | grep -vE '/(libc|libm|libdl|libpthread|librt|libutil|libresolv|libgcc_s|libstdc\+\+|libssl|libcrypto|libz|libzstd|libpython3\.14)\.so' \
       | while read -r lib; do cp -L "$lib" "/rootfs$libdir/$(basename "$lib")"; done
 
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:83b9b50586253821cf63ffcec87d3d94265a093ad30da232039af962dd8f4edf AS final-minimal
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2 AS final-minimal
 
 COPY --from=busybox /rootfs/bin/ /bin/
 COPY --from=python-runtime /rootfs/ /
