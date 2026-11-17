@@ -34,6 +34,7 @@ from app.llm.identity import (
 from app.llm.music import MusicGenerationError, MusicProviderBusyError, MusicReference, MusicRequest
 from app.llm.openai_compat import is_retryable_openai
 from app.tools.base import ToolDefinition
+from tests.gateway_helpers import gateway_refusal_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 AUD = _normalize_url(GATEWAY_URL)
@@ -1058,10 +1059,7 @@ class TestChatAndModels:
             body = json.loads(request.content)
             bodies.append(body)
             if "dimensions" in body:
-                return httpx.Response(502, json={"error": {
-                    "message": f"provider error: upstream returned status 400 Bad Request: {provider_message}",
-                    "type": "provider_error", "code": "provider_error", "retryable": False,
-                }})
+                return httpx.Response(502, json=gateway_refusal_body(provider_message))
             return httpx.Response(200, json={
                 "object": "list",
                 "data": [{"object": "embedding", "index": 0, "embedding": [0.1] * 3072}],
@@ -1075,11 +1073,13 @@ class TestChatAndModels:
         return provider
 
     @pytest.mark.asyncio
-    async def test_a_dimension_the_provider_names_falls_back_to_the_native_size(self):
+    @pytest.mark.parametrize("provider_message", [
+        "Invalid value for 'dimensions' = 4096. Must be less than or equal to 3072.",
+        "Dimensions must be at most 3072.",
+    ])
+    async def test_a_dimension_the_provider_names_falls_back_to_the_native_size(self, provider_message):
         bodies: list[dict] = []
-        provider = self._provider_message_gateway(
-            bodies, "Invalid value for 'dimensions' = 4096. Must be less than or equal to 3072."
-        )
+        provider = self._provider_message_gateway(bodies, provider_message)
         assert len(await provider.embed("hello", model="text-embedding-3-large")) == 3072
         assert [("dimensions" in b) for b in bodies] == [True, False]
 

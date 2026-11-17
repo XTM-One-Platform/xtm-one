@@ -13,7 +13,8 @@ import httpx
 import openai
 import pytest
 
-from app.llm.openai_compat import create_with_effort_retry, gateway_provider_message
+from app.llm.openai_compat import FUNCTION_TOOLS_UNSUPPORTED, create_with_effort_retry, gateway_provider_message
+from tests.gateway_helpers import gateway_refusal_body
 
 _EFFORT_REFUSAL = (
     "Unsupported value: 'reasoning_effort' does not support 'none' with this model. "
@@ -23,12 +24,9 @@ _TEMPERATURE_REFUSAL = "Unsupported parameter: 'temperature' is not supported wi
 
 
 def _gateway_502(provider_message: str | None, *, status: str = "400 Bad Request", retryable: bool = False):
-    message = f"provider error: upstream returned status {status}"
-    if provider_message is not None:
-        message += f": {provider_message}"
-    body = {"message": message, "type": "provider_error", "code": "provider_error", "retryable": retryable}
+    body = {**gateway_refusal_body(provider_message, status=status)["error"], "retryable": retryable}
     request = httpx.Request("POST", "https://gateway.example/v1/chat/completions")
-    return openai.InternalServerError(message, response=httpx.Response(502, request=request), body=body)
+    return openai.InternalServerError(body["message"], response=httpx.Response(502, request=request), body=body)
 
 
 def test_the_provider_message_is_read_after_the_status():
@@ -85,3 +83,18 @@ async def test_a_gateway_502_without_such_a_message_is_sent_once(provider_messag
     with pytest.raises(openai.InternalServerError):
         await create_with_effort_retry(create, {"temperature": 0.2, "reasoning_effort": "none"}, "m")
     assert len(calls) == 1
+
+
+async def test_tools_refused_with_every_effort_behind_the_gateway_end_on_one_400():
+    async def create(params: dict[str, Any]) -> str:
+        if params.get("reasoning_effort") == "none":
+            raise _gateway_502(_EFFORT_REFUSAL)
+        raise _gateway_502(
+            "Function tools with reasoning_effort are not supported for this model in "
+            "/v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'."
+        )
+
+    with pytest.raises(openai.BadRequestError) as raised:
+        await create_with_effort_retry(create, {"reasoning_effort": "low"}, "m")
+    assert raised.value.status_code == 400
+    assert raised.value.code == FUNCTION_TOOLS_UNSUPPORTED

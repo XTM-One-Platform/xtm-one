@@ -308,7 +308,9 @@ def function_tools_unsupported(exc: openai.APIStatusError, model: str | None) ->
     """
     message = f"function tools unsupported on chat completions for {model or 'this model'}"
     body = {"message": message, "param": "reasoning_effort", "code": FUNCTION_TOOLS_UNSUPPORTED, "retryable": False}
-    return openai.BadRequestError(message, response=exc.response, body=body)
+    # A 400 even after a gateway 502: the leg ends on the request, not on the gateway.
+    response = httpx.Response(400, headers=exc.response.headers, request=exc.request)
+    return openai.BadRequestError(message, response=response, body=body)
 
 
 def _coerce_usage_int(value: object) -> int | None:
@@ -473,11 +475,16 @@ def _refused(exc: Exception) -> bool:
 
 
 def _refuses_replay(exc: Exception) -> bool:
-    """A refusal the replayed thinking blocks may have caused: its message must say so.
-    A refusal without one (a 413, a gateway 502 with no provider message) cannot be told apart."""
+    """A refusal the replayed thinking blocks may have caused. A 400 must say so, as must the
+    provider's 400 behind the gateway; any other refusal (a 413) cannot be told apart."""
     if not _refused(exc):
         return False
-    message = _error_message(exc) if exc.status_code == 400 else gateway_provider_message(exc)
+    if exc.status_code == 400:
+        message = _error_message(exc)
+    elif "upstream returned status 400" in _error_message(exc):
+        message = gateway_provider_message(exc)
+    else:
+        return True
     if message is None:
         return True
     return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)

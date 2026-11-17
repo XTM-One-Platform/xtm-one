@@ -504,8 +504,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             if not shorten or not _may_refuse_dimensions(exc):
                 raise
             response = await self.client.embeddings.create(input=text, model=m, extra_headers=headers)
-            # Every upstream 400 looks alike; only a native vector smaller than ``dims``
-            # proves the size was refused (text-embedding-3 refuses only above native).
+            # Only a native vector smaller than ``dims`` proves the size was refused
+            # (text-embedding-3 refuses only above native): the message may not say why.
             if len(response.data[0].embedding) < dims:
                 self._refused_dimensions.add((m, dims))
         return list(response.data[0].embedding)
@@ -529,7 +529,8 @@ def _may_refuse_dimensions(exc: openai.APIStatusError) -> bool:
     if exc.status_code != 502:
         return False
     if (message := gateway_provider_message(exc)) is not None:
-        return "Invalid value for 'dimensions'" in message
+        # OpenAI: "Invalid value for 'dimensions'"; not one provider's exact wording.
+        return "dimensions" in message.lower()
     return "upstream returned status 400" in str(exc)
 
 

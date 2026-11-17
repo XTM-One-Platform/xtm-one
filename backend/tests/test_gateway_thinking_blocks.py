@@ -20,6 +20,7 @@ from app.llm.identity import _llm_caller, set_llm_caller
 from app.llm.litellm_provider import LiteLLMProvider
 from app.llm.openai_thinking_blocks import EXTRA_KEY, ThinkingBlocks
 from app.tools.base import ToolCall, ToolDefinition
+from tests.gateway_helpers import gateway_refusal_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 MODEL = "claude-sonnet-4-5"
@@ -75,12 +76,8 @@ class _Gateway:
         return [m for m in self.sent[index]["messages"] if m["role"] == "assistant"]
 
 
-def _gateway_refusal(provider_message: str) -> httpx.Response:
-    """The gateway's 502 for an upstream 400, carrying the provider's message (ai-gateway#348)."""
-    message = f"provider error: upstream returned status 400 Bad Request: {provider_message}"
-    return httpx.Response(502, json={"error": {
-        "type": "provider_error", "code": "provider_error", "message": message, "retryable": False,
-    }})
+def _gateway_refusal(provider_message: str, status: str = "400 Bad Request") -> httpx.Response:
+    return httpx.Response(502, json=gateway_refusal_body(provider_message, status=status))
 
 
 def _ok() -> httpx.Response:
@@ -204,8 +201,9 @@ async def test_a_loop_nudge_does_not_end_the_round():
         httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
                                             "retryable": False}}),
         _gateway_refusal("messages.1.content.0: Invalid `signature` in `thinking` block"),
+        _gateway_refusal("Request exceeds the maximum size", status="413 Request Entity Too Large"),
     ],
-    ids=["direct 400", "gateway 502 without the provider's message", "gateway 502 with it"],
+    ids=["direct 400", "gateway 502 without the provider's message", "gateway 502 with it", "gateway 502 for a 413"],
 )
 @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
 async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(refusal, call):
