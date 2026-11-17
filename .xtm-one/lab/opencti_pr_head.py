@@ -288,6 +288,21 @@ def run_seed(plan: list[dict], base: str, ids: dict[str, str] | None = None) -> 
 
 PLAYBOOK_PATH = "/dashboard/data/processing/automation/{id}"
 SEEDED_REF = "{seeded:"
+#: An Enrich-through-connector step names its connector: OpenCTI validates ``required: ['connector']`` at
+#: ``playbookAddNode`` on current heads, so the seed resolves a playbook-compatible enrichment connector first
+#: (:func:`enrichment_connector`) and passes it as ``{seeded:connector-enrichment}``.
+CONNECTOR_COMPONENT = "PLAYBOOK_CONNECTOR_COMPONENT"
+CONNECTOR_KIND = "connector-enrichment"
+#: The enrichment connector the lab registers when the backend has none: a fixed id, so a restart finds it again.
+LAB_CONNECTOR: dict = {
+    "id": "5e1ab0c0-7a1b-4c0d-8e5e-0000000c0de1",
+    "name": "Lab enrichment (seed)",
+    "type": "INTERNAL_ENRICHMENT",
+    "scope": ["Report"],
+    "auto": False,
+    "only_contextual": False,
+    "playbook_compatible": True,
+}
 #: The report qualification pipeline the playbook editor rounds review: 12 steps, 15 links (11 parent links and
 #: 4 ``unmodified`` links joining a branch back). ``parent`` is ``[node key, out port]``; the entry point has none.
 #: Every step uses a component the lab's backend exposes (:data:`LAB_COMPONENTS`): an unexposed one leaves the
@@ -298,8 +313,8 @@ PLAYBOOK: dict = {
     "nodes": [
         {"key": "listen", "component_id": "PLAYBOOK_INTERNAL_DATA_STREAM", "name": "Listen new reports",
          "parent": None, "configuration": {"create": True, "update": False, "delete": False}},
-        {"key": "scrape", "component_id": "PLAYBOOK_CONNECTOR_COMPONENT", "name": "Scrape full article",
-         "parent": ["listen", "out"]},
+        {"key": "scrape", "component_id": CONNECTOR_COMPONENT, "name": "Scrape full article",
+         "parent": ["listen", "out"], "configuration": {"connector": "{seeded:connector-enrichment}"}},
         {"key": "qualify", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Qualify & translate",
          "parent": ["scrape", "out"]},
         {"key": "status", "component_id": "PLAYBOOK_FILTERING_COMPONENT", "name": "Status is QUALIFIED",
@@ -367,6 +382,35 @@ def playbook_counts(playbook: dict) -> tuple[int, int]:
     """``(nodes, links)`` the definition ends with: one link per parented node plus the extra links."""
     nodes = playbook.get("nodes") or []
     return len(nodes), sum(1 for n in nodes if n.get("parent")) + len(playbook.get("links") or [])
+
+
+def uses_component(playbook: dict, component_id: str) -> bool:
+    return any(node.get("component_id") == component_id for node in playbook.get("nodes") or [])
+
+
+def enrichment_connector() -> str:
+    """The id of a playbook-compatible enrichment connector, the lab's own registered when none exists; empty (logged).
+
+    A release whose ``Connector`` or ``RegisterConnectorInput`` has no ``playbook_compatible`` (older heads) is read
+    and registered without it.
+    """
+    answer = graphql("query LabConnectors { connectors { id name connector_type playbook_compatible } }")
+    if answer.get("errors") and "playbook_compatible" in str(answer.get("errors")):
+        answer = graphql("query LabConnectors { connectors { id name connector_type } }")
+    rows = (answer.get("data") or {}).get("connectors") if isinstance(answer, dict) else None
+    for row in rows if isinstance(rows, list) else []:
+        if (isinstance(row, dict) and row.get("id") and row.get("connector_type") == "INTERNAL_ENRICHMENT"
+                and row.get("playbook_compatible", True) is not False):
+            return str(row["id"])
+    register = "mutation LabConnector($input: RegisterConnectorInput) { registerConnector(input: $input) { id } }"
+    answer = graphql(register, {"input": LAB_CONNECTOR})
+    if answer.get("errors") and "playbook_compatible" in str(answer.get("errors")):
+        answer = graphql(register, {"input": {k: v for k, v in LAB_CONNECTOR.items() if k != "playbook_compatible"}})
+    connector_id = created_id(answer)
+    if not connector_id:
+        lab.log(f"opencti-pr-head: no playbook-compatible enrichment connector, and registering "
+                f"{LAB_CONNECTOR['name']} failed: {str(answer.get('errors'))[:300]}")
+    return connector_id
 
 
 def resolve_seeded(value: object, ids: dict[str, str]) -> object:
@@ -473,6 +517,13 @@ def seed_playbook(playbook: dict, base: str, ids: dict[str, str], label: str = "
         lab.log(f"opencti-pr-head: seed {label} skipped: components not available on this backend: {', '.join(missing)}")
         return None
     playbook_id, existing = existing_playbook(playbook["name"])
+    if (not existing or existing != nodes_count) and uses_component(playbook, CONNECTOR_COMPONENT) \
+            and not ids.get(CONNECTOR_KIND):
+        ids[CONNECTOR_KIND] = enrichment_connector()
+        if not ids[CONNECTOR_KIND]:
+            # Named before any write: a connector step without its connector is refused and leaves a partial canvas.
+            lab.log(f"opencti-pr-head: seed {label} skipped: no enrichment connector for the {CONNECTOR_COMPONENT} step")
+            return None
     if playbook_id and existing and existing != nodes_count:
         # An earlier fixture (another step count) is replaced, so a kept canvas is always the current fixture.
         answer = graphql("mutation LabPlaybookDelete($id: ID!) { playbookDelete(id: $id) }", {"id": playbook_id})
