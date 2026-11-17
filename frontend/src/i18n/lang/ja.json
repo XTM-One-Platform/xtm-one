@@ -18956,5 +18956,8 @@
   "Knowledge and sources": "ナレッジとソース",
   "About the organization profile": "組織プロファイルについて",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, other {# 件の提案}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, other {未入力の項目 # 件（必要とするすべてのエージェントが報告）}}"
+  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, other {未入力の項目 # 件（必要とするすべてのエージェントが報告）}}",
+  "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "設定済みのLLMプロバイダーはモデルを提供していません。いずれかが提供するまで、エージェント機能とLLM機能は利用できません。",
+  "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "{variable} を設定して再起動するか、LLM_PROVIDER_MODELS_EDITABLE=true を設定してここでモデルを選択してください。",
+  "Select models on a provider in this section.": "このセクションのプロバイダーでモデルを選択してください。"
 }
