@@ -4250,6 +4250,47 @@ def seed_kb_sync_sources(token: str, base: str) -> dict[str, dict[str, str]]:
     }
 
 
+#: The knowledge base the activity log is seeded on, created when absent.
+KB_ACTIVITY_KB = f"{SEED_NAME} knowledge base activity"
+
+
+def seed_kb_activity(token: str, base: str) -> dict[str, dict[str, str]]:
+    """A knowledge base whose Activity tab lists every event kind on more than one page (#61).
+
+    Only a sync, an upload, an embedding pass or a reprocess writes an activity row:
+    ``seed_kb_activity.py`` (backend interpreter and environment) writes them through the backend's
+    model on :data:`KB_ACTIVITY_KB` (created through the API when absent). Read back: the total from
+    ``GET /knowledge-bases/<id>/activity/count`` over one page (50), and each of the ``sync``,
+    ``documents`` and ``embeddings`` event types listed. Logged
+    ``seeded KB activity: <base>/knowledge/<id>?tab=activity``. May raise: the caller logs and skips.
+    """
+    listed = api("GET", "/knowledge-bases", token)
+    knowledge = next((str(kb["id"]) for kb in (listed if isinstance(listed, list) else [])
+                      if isinstance(kb, dict) and kb.get("name") == KB_ACTIVITY_KB), None)
+    if knowledge is None:
+        knowledge = _created(api("POST", "/knowledge-bases", token, {
+            "name": KB_ACTIVITY_KB, "description": "Seeded by the lab: every activity event kind.",
+        }))
+    out = ROOT / "kb_activity.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_kb_activity.py"), knowledge, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_kb_activity.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    counted = api("GET", f"/knowledge-bases/{knowledge}/activity/count", token)
+    total = counted.get("count") if isinstance(counted, dict) else counted
+    if not isinstance(total, int) or total <= 50:
+        raise RuntimeError(f"stored, but GET /knowledge-bases/{knowledge}/activity/count answers {str(counted)[:200]}")
+    for event_type in ("sync", "documents", "embeddings"):
+        rows = api("GET", f"/knowledge-bases/{knowledge}/activity?event_type={event_type}&limit=1", token)
+        if not rows:
+            raise RuntimeError(f"stored, but no {event_type} row is listed on knowledge base {knowledge}")
+    url = f"{base}/knowledge/{knowledge}?tab=activity"
+    log(f"seeded KB activity: {url}")
+    return {"KB activity": {"id": knowledge, "url": url}}
+
+
 def seed_oauth_missing_scopes(token: str, base: str) -> dict[str, dict[str, str]]:
     """A connected Google OAuth integration whose token was granted all but one requested scope (#9813).
 
@@ -6901,6 +6942,10 @@ def seed_entities() -> None:
         seeded.update(seed_kb_sync_sources(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["KB sync sources"] = str(exc)[:600]
+    try:
+        seeded.update(seed_kb_activity(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["KB activity"] = str(exc)[:600]
     # Before the AI switches (Enable fleet is refused while AI is off).
     if peer_id and "opencti" in suite:
         try:
