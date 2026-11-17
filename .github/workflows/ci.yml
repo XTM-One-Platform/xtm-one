@@ -195,8 +195,11 @@ jobs:
   # `cancelled` (whatever else failed), so no red-check wakes; a step past its
   # timeout fails the job and the run concludes `failure`. The job cap only
   # bounds a stuck setup (a slow runner spent 13 minutes in checkout).
+  # A sharded job's name holds no matrix expression: GitHub appends the values
+  # itself ("Backend (Python) (1/6)"), while a skipped job never expands them
+  # and would show the expression as written.
   backend:
-    name: Backend (Python) ${{ matrix.shard }}
+    name: Backend (Python)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -313,7 +316,7 @@ jobs:
   # a cache the repository's quota evicted, fetched again from a throttled
   # mirror: 37 minutes of installs on their own, at 50 kB/s.
   browser-tool:
-    name: Browser tool (Chromium) ${{ matrix.shard }}
+    name: Browser tool (Chromium)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -504,7 +507,7 @@ jobs:
   # near 5 minutes, install included. The cap sits on the test step, not the
   # job, for the reason given above the backend job.
   frontend-unit:
-    name: Frontend unit tests ${{ matrix.shard }}
+    name: Frontend unit tests
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -566,7 +569,7 @@ jobs:
   # a pull request that changes the database waits on it, so four shards keep
   # each near 7 minutes of tests, collection (about 70 s) aside.
   bootstrap:
-    name: Bootstrap (fresh DB) ${{ matrix.shard }}
+    name: Bootstrap (fresh DB)
     needs: migration-changes
     if: needs.migration-changes.outputs.run == 'true'
     runs-on: ubuntu-26.04
