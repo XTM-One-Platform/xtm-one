@@ -130,7 +130,7 @@ def pickaxe_hits(files: list[dict[str, Any]], needle: str, path: str = "") -> tu
             continue
         added = removed = 0
         for line in patch.splitlines():
-            if line.startswith(("+++", "---")) or needle not in line:
+            if needle not in line:
                 continue
             if line.startswith("+"):
                 added += 1
