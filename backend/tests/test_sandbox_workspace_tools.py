@@ -1056,6 +1056,19 @@ async def test_diff_files_diffs_two_files_and_merges_three(store):
     assert "+<<<<<<< workspace/m/pr.py\n" in clash.content and "+>>>>>>> workspace/m/clash.py\n" in clash.content
     assert "Written" not in clash.content
     assert await _workspace_bytes(store, conversation, "m/pr.py") == b"a = 10\nb = 2\nc = 3\n"
+    # Written with a conflict: the hunks to settle, numbered, never the merged-against-ours diff.
+    held = await _call(
+        composite,
+        "sandbox_diff_files",
+        path="m/pr.py",
+        other="m/clash.py",
+        base="m/base.py",
+        write_merge_to="m/held.py",
+    )
+    assert not held.is_error, held.content
+    assert "Written to workspace/m/held.py" in held.content and "@@ lines 1-" in held.content
+    assert "     1 | <<<<<<< workspace/m/pr.py\n" in held.content and "--- workspace/m/pr.py" not in held.content
+    assert "Call again without write_merge_to" in clean.content and "+++ merged" not in clean.content
     no_base = await _call(composite, "sandbox_diff_files", path="m/pr.py", other="m/main.py", write_merge_to="m/x.py")
     assert no_base.is_error and "write_merge_to needs base" in no_base.content
     missing = await _call(composite, "sandbox_diff_files", path="m/pr.py", other="m/nope.py")

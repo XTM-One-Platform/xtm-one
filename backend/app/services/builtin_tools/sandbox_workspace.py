@@ -2116,10 +2116,14 @@ def build_sandbox_workspace_tools(
             )
         metrics.operation("diff_files", "ok")
         added, removed = filediff.changed_lines(ours, merged.text)
-        return (
-            f"{head}{written}\nThe merged text against {ours_name}: +{added} -{removed} lines.\n\n"
-            + filediff.two_way(ours_name, ours, "merged", merged.text, context=context)
-        )
+        stat = f"{head}{written}\nThe merged text against {ours_name}: +{added} -{removed} lines."
+        if target:
+            # Written: the conflicts to settle, never the whole diff of the other side's clean changes
+            # (a lock file with one conflict answered 30,000 characters of bumps).
+            if merged.conflicts:
+                return f"{stat}\n\n" + filediff.conflict_hunks(merged.text, merged.marker_lines, context=context)
+            return f"{stat} Call again without write_merge_to for the whole diff.\n"
+        return f"{stat}\n\n" + filediff.two_way(ours_name, ours, "merged", merged.text, context=context)
 
     async def sandbox_checkout_diff(
         checkout: str = "",
@@ -4002,7 +4006,7 @@ def build_sandbox_workspace_tools(
                 "(diff3 -m: path as ours and other as theirs, merged line by line from base, overlapping hunks between "
                 "<<<<<<< / ======= / >>>>>>> markers labelled with the file names): the conflict count, the line of "
                 "each conflict in the merged text and the merged text's diff against path. write_merge_to stores the "
-                "merged file (replacing it when it exists), ready for sandbox_edit_file and "
+                "merged file (replacing it) and answers its conflict hunks alone, ready for sandbox_edit_file and "
                 "merge_github_branch(resolutions=[{path, workspace_path}]). Workspace files only; use it, not a "
                 "code_interpreter difflib script, to compare or merge versions of a file."
             ),

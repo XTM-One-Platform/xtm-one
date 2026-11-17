@@ -6,6 +6,8 @@ refusals, write_merge_to) is in ``test_sandbox_workspace_tools.py``.
 
 from __future__ import annotations
 
+import pytest
+
 from app.services.sandbox_workspace import filediff
 
 BASE = "a = 1\nb = 2\nc = 3\nd = 4\n"
@@ -51,6 +53,20 @@ def test_three_way_locates_each_conflict_by_its_first_marker():
     lines = merged.text.splitlines()
     assert merged.marker_lines == (2,)
     assert lines[1:6] == ["<<<<<<< pr/a.py", "b = 20", "=======", "b = 21", ">>>>>>> main/a.py"]
+
+
+def test_conflict_hunks_answer_each_conflict_with_its_context_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    long_base = "".join(f"l{n}\n" for n in range(1, 101))
+    ours = long_base.replace("l50\n", "ours\n").replace("l2\n", "two\n")
+    theirs = long_base.replace("l50\n", "theirs\n").replace("l90\n", "ninety\n")
+    merged = filediff.three_way(long_base, ours, theirs, ours_label="pr/a", theirs_label="main/a")
+    assert merged.conflicts == 1 and merged.marker_lines == (50,)
+    text = filediff.conflict_hunks(merged.text, merged.marker_lines, context=2)
+    assert text.startswith("@@ lines 48-56 @@\n    48 | l48\n    49 | l49\n    50 | <<<<<<< pr/a\n")
+    assert "    54 | >>>>>>> main/a\n    55 | l51\n    56 | l52\n" in text
+    assert "two" not in text and "ninety" not in text
+    monkeypatch.setattr(filediff, "MAX_DIFF_CHARS", 30)
+    assert "[hunks cut:" in filediff.conflict_hunks(merged.text, merged.marker_lines)
 
 
 def test_changed_lines_counts_like_a_diffstat():

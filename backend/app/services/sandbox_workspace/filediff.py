@@ -40,6 +40,7 @@ MAX_CONTEXT_LINES = 10
 #: Conflict markers located by line in the answer.
 MAX_LISTED_CONFLICTS = 30
 CONFLICT_START = "<<<<<<< "
+CONFLICT_END = ">>>>>>> "
 
 
 def clamp_context(value: object) -> int:
@@ -137,6 +138,28 @@ def three_way(base: str, ours: str, theirs: str, *, ours_label: str, theirs_labe
     )
     kind, defect = ("", "") if merged.conflicts else structured.merge_defect(ours_label, ours, theirs, merged.text)
     return ThreeWay(merged.text, merged.conflicts, markers, validated="" if defect else kind, defect=defect)
+
+
+def conflict_hunks(text: str, marker_lines: tuple[int, ...], *, context: int = DEFAULT_CONTEXT_LINES) -> str:
+    """Each conflict of a merged *text* with *context* lines around it, numbered as in the text.
+
+    The answer of a merge written to a file: the hunks to settle, never the whole
+    merged-against-ours diff (a lock file merged with one conflict answered every
+    clean change of the other side). Bounded like :func:`two_way`.
+    """
+    lines = text.splitlines()
+    blocks: list[str] = []
+    for start in marker_lines:
+        end = start
+        while end < len(lines) and not lines[end - 1].startswith(CONFLICT_END):
+            end += 1
+        first, last = max(1, start - context), min(len(lines), end + context)
+        numbered = "".join(f"{n:>6} |{_bounded(' ' + lines[n - 1] + chr(10))}" for n in range(first, last + 1))
+        blocks.append(f"@@ lines {first}-{last} @@\n{numbered}")
+    out = "".join(blocks)
+    if len(out) > MAX_DIFF_CHARS:
+        return out[:MAX_DIFF_CHARS] + f"\n... [hunks cut: {len(out) - MAX_DIFF_CHARS:,} more characters]\n"
+    return out
 
 
 def describe_markers(lines: tuple[int, ...]) -> str:
