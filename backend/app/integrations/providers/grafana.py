@@ -243,6 +243,9 @@ def _format_alertmanager_config(body: dict[str, Any], datasource: str) -> str:
 # gone once legacy alerting is removed: it is only a fallback on a 404.
 _UNIFIED_RULES_PATH = "/api/prometheus/grafana/api/v1/rules"
 _LEGACY_ALERTS_PATH = "/api/alerts"
+# One Grafana-managed rule by uid (Grafana 9.1+): the uids the unified rules
+# API lists. /api/v1/rule/grafana/{uid} is not a Grafana route (it 404s).
+_PROVISIONING_RULES_PATH = "/api/v1/provisioning/alert-rules"
 
 # Caller-facing state filter -> (unified rule state, legacy alert state).
 _ALERT_STATE_FILTERS: dict[str, tuple[str, str]] = {
@@ -311,6 +314,34 @@ def _parse_unified_rules(payload: Any, wanted: str) -> list[dict[str, Any]]:
                 }
             )
     return rules_out
+
+
+def _format_provisioned_rule(rule: Any, uid: str) -> str:
+    """A ``/api/v1/provisioning/alert-rules/{uid}`` answer, one field per line."""
+    if not isinstance(rule, dict) or not rule:
+        return f"Alert rule with UID '{uid}' not found."
+    lines = [
+        f"Alert: {rule.get('title', '?')} (UID: {rule.get('uid') or uid})",
+        f"Folder UID: {rule.get('folderUID') or 'N/A'}",
+        f"Rule Group: {rule.get('ruleGroup') or 'N/A'}",
+        f"Condition: {rule.get('condition') or 'N/A'}",
+        f"Pending period (for): {rule.get('for') or 'N/A'}",
+        f"No data state: {rule.get('noDataState') or 'N/A'}",
+        f"Error state: {rule.get('execErrState') or 'N/A'}",
+    ]
+    if rule.get("isPaused"):
+        lines.append("Paused: yes")
+    queries = [q for q in rule.get("data") or [] if isinstance(q, dict)]
+    if queries:
+        lines.append(f"Queries ({len(queries)}):")
+        for q in queries:
+            lines.append(f"  {q.get('refId', '?')}: datasource {q.get('datasourceUid') or 'N/A'}")
+    for title, key in (("Labels", "labels"), ("Annotations", "annotations")):
+        values = rule.get(key)
+        if isinstance(values, dict) and values:
+            lines.append(f"{title}:")
+            lines.extend(f"  {k}: {v}" for k, v in values.items())
+    return "\n".join(lines)
 
 
 def _parse_legacy_alerts(payload: Any, wanted: str) -> list[dict[str, Any]]:
@@ -1411,43 +1442,26 @@ def build_tools(
         return _format_alert_rules(rules_out, limit, wanted)
 
     async def read_grafana_alert(alert_uid: str) -> str:
-        """Get full alert rule details by UID."""
+        """Get full alert rule details by UID.
+
+        Reads the provisioning API (Grafana 9.1+), which serves every
+        Grafana-managed rule by the uid ``list_grafana_alerts`` lists.
+        """
+        uid = (alert_uid or "").strip()
+        if not uid:
+            return "alert_uid is required: pass a UID that list_grafana_alerts returns."
         async with egress_client(timeout=_TIMEOUT_READ) as client:
             resp, err = await _grafana_request(
                 client,
                 "get",
-                f"{base_url}/api/v1/rule/grafana/{alert_uid}",
+                f"{base_url}{_PROVISIONING_RULES_PATH}/{quote(uid, safe='')}",
                 _PROVIDER,
                 "get alert rule",
                 headers=headers,
             )
             if err:
                 return err
-            rule = resp.json()
-            rule_data = rule.get("data", {})
-            groups = rule_data.get("groups", [])
-            if not groups:
-                return f"Alert with UID '{alert_uid}' not found."
-            group = groups[0]
-            rules = group.get("rules", [])
-            if not rules:
-                return f"Alert with UID '{alert_uid}' has no rules."
-            r = rules[0]
-            grafana_alert = r.get("grafana_alert", {})
-            lines = [
-                f"Alert: {grafana_alert.get('name', '?')} (UID: {alert_uid})",
-                f"Folder: {group.get('name', 'N/A')}",
-                f"Condition: {grafana_alert.get('condition', 'N/A')}",
-                f"Exec Datasource UID: {grafana_alert.get('exec_datasource_uid', 'N/A')}",
-                f"Rule Group: {grafana_alert.get('rule_group', 'N/A')}",
-                f"Health: {r.get('health', 'N/A')}",
-            ]
-            annotations = grafana_alert.get("annotations", {})
-            if annotations:
-                lines.append("Annotations:")
-                for k, v in annotations.items():
-                    lines.append(f"  {k}: {v}")
-            return "\n".join(lines)
+            return _format_provisioned_rule(resp.json(), uid)
 
     async def get_grafana_alertmanager_config(datasource: str = "grafana") -> str:
         """Get the Alertmanager configuration (receivers, routes).
