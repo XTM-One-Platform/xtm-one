@@ -170,12 +170,24 @@ def test_a_fixture_with_a_hidden_component_is_not_seeded(monkeypatch):
     assert any("components not available" in line and "PLAYBOOK_CONNECTOR_COMPONENT" in line for line in logged)
 
 
-def _playbook_backend(existing_nodes: int = 0, playbook_exists: bool = False, components=None):
+ENRICHMENT = {"id": "conn-1", "name": "Enricher", "connector_type": "INTERNAL_ENRICHMENT", "playbook_compatible": True}
+
+
+def _playbook_backend(
+    existing_nodes: int = 0, playbook_exists: bool = False, components=None, connectors=None, register_error: str = ""
+):
     calls: list[tuple[str, dict]] = []
     listed = _module().LAB_COMPONENTS if components is None else components
+    registered = [ENRICHMENT] if connectors is None else connectors
 
     def fake(query, variables=None):
         calls.append((query, variables or {}))
+        if "LabConnectors" in query:
+            return {"data": {"connectors": registered}}
+        if "registerConnector" in query:
+            if register_error:
+                return {"errors": [{"message": register_error}]}
+            return {"data": {"registerConnector": {"id": variables["input"]["id"]}}}
         if "LabPlaybookComponents" in query:
             return {"data": {"playbookComponents": [{"id": c} for c in sorted(listed)]}}
         if "LabPlaybooks" in query:
@@ -213,8 +225,54 @@ def test_a_fresh_lab_builds_the_pipeline_and_logs_its_page_with_the_counts(monke
     assert sum(1 for n in nodes if n.get("parentNodeId")) == 11 and "parentNodeId" not in nodes[0]
     assert all(n["parentNodeId"].startswith("node-") for n in nodes[1:])
     assert json.loads(nodes[0]["configuration"]) == {"create": True, "update": False, "delete": False}
+    # The Enrich-through-connector step names the backend's playbook-compatible enrichment connector.
+    assert json.loads(nodes[1]["configuration"]) == {"connector": "conn-1"}
+    assert not any("registerConnector" in q for q, _v in calls)
     [line] = [entry for entry in logged if entry.startswith(module.SESSION_PREFIX)]
     assert line.startswith("seeded opencti page Playbook Report qualification pipeline (12 nodes, 15 links, built)")
+    assert not any("partial" in entry for entry in logged)
+
+
+def test_a_backend_without_an_enrichment_connector_gets_the_lab_one_registered(monkeypatch):
+    module = _module()
+    other = {"id": "imp-1", "name": "Importer", "connector_type": "EXTERNAL_IMPORT", "playbook_compatible": True}
+    off = {**ENRICHMENT, "id": "conn-off", "playbook_compatible": False}
+    calls, fake = _playbook_backend(connectors=[other, off])
+    monkeypatch.setattr(module, "graphql", fake)
+    monkeypatch.setattr(module.lab, "log", lambda _line: None)
+    assert module.seed_playbook(module.PLAYBOOK, "http://localhost:3500", {})
+    [registered] = [v["input"] for q, v in calls if "registerConnector" in q]
+    assert registered["type"] == "INTERNAL_ENRICHMENT" and registered["playbook_compatible"] is True
+    nodes = [v["input"] for q, v in calls if "playbookAddNode" in q]
+    assert json.loads(nodes[1]["configuration"]) == {"connector": module.LAB_CONNECTOR["id"]}
+
+
+def test_no_enrichment_connector_is_named_before_any_playbook_write(monkeypatch):
+    module = _module()
+    calls, fake = _playbook_backend(connectors=[], register_error="Access denied")
+    logged: list[str] = []
+    monkeypatch.setattr(module, "graphql", fake)
+    monkeypatch.setattr(module.lab, "log", logged.append)
+    assert module.seed_playbook(module.PLAYBOOK, "http://localhost:3500", {}) is None
+    assert not any("playbookAdd" in q for q, _v in calls)
+    assert any("no enrichment connector for the PLAYBOOK_CONNECTOR_COMPONENT step" in line for line in logged)
+    assert any("Lab enrichment (seed)" in line and "Access denied" in line for line in logged)
+    assert not any("partial" in line for line in logged)
+
+
+def test_an_older_head_without_playbook_compatible_still_resolves_its_connector(monkeypatch):
+    module = _module()
+    calls: list[str] = []
+
+    def fake(query, variables=None):
+        calls.append(query)
+        if "playbook_compatible" in query:
+            return {"errors": [{"message": 'Cannot query field "playbook_compatible" on type "Connector".'}]}
+        return {"data": {"connectors": [{"id": "old-1", "name": "Old", "connector_type": "INTERNAL_ENRICHMENT"}]}}
+
+    monkeypatch.setattr(module, "graphql", fake)
+    assert module.enrichment_connector() == "old-1"
+    assert len(calls) == 2
 
 
 def test_the_seed_is_idempotent_across_restarts(monkeypatch):
