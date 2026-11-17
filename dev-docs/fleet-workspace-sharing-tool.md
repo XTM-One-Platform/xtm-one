@@ -30,4 +30,6 @@ Each entity whose grants change gets one `update` entry (`entity_type` `fleet` o
 
 ## Tests
 
+`backend/tests/test_fleet_workspace_share_tool_postgres.py` (integration): an administrator's agent shares a colleague's fleet and workspace, the user then reads the fleet, a stranger is refused with nothing stored, one audit row per entity names the agent, the unshare clears both.
+
 `backend/tests/test_fleet_workspace_share_tool.py`: refusal of a caller who is neither administrator nor workspace owner, share as the owner (both entities, both audit entries), share as an administrator with `edit`, unshare, list, unknown account, company-managed workspace, argument checks.
