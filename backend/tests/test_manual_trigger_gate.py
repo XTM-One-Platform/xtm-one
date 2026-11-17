@@ -438,8 +438,9 @@ _ROLE_GATES = {
     ("services/builtin_tools/evaluations.py", "_trigger_evaluation"): 1,
     # Company-managed fleet creation is admin-only, like the builder's creates;
     # a built-in fleet's seeded automations are paused or resumed by an admin only;
-    # update_fleet sets the instructions position for an admin only (#10255).
-    ("services/builtin_tools/fleets.py", "_action"): 3,
+    # update_fleet sets the instructions position for an admin only (#10255);
+    # share_fleet_workspace is for an administrator or the workspace owner (#24).
+    ("services/builtin_tools/fleets.py", "_action"): 4,
     # update_fleet raises the autonomy level for an administrator's chat agent
     # only, on confirmation (#10439): a permission gate on the caller's role.
     ("services/builtin_tools/fleets.py", "_check_autonomy_raise"): 1,
