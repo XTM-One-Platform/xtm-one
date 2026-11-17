@@ -400,13 +400,15 @@ def register(
                 for key in ("opened", "unmerged", "reviewed"):
                     total[key] += cell[key] or 0
                 total["merged"] += len(in_bucket)
-                total["unique"] += unique
                 total["reviews"] += reviews_in
                 lines.append(
                     f"| {login} | {label} | {_dash(cell['opened'])} | {len(in_bucket)} | {unique} | "
                     f"{_dash(cell['unmerged'])} | {_fmt(_median(leads))} | "
                     f"{_fmt(_median([float(p['size']) for p in in_bucket]))} | {reviews_in} | {_dash(cell['reviewed'])} |"
                 )
+            # Collapsed once over the whole range: a fix and its backport merged in
+            # adjacent buckets count once in the total, not once per bucket.
+            total["unique"] = collapse_backports(prs)
             all_leads = [h for p in prs if (h := _hours(p["createdAt"], p["mergedAt"])) is not None]
             lines.append(
                 f"| **{login}** | **total** | {total['opened']} | {total['merged']} | {total['unique']} | "

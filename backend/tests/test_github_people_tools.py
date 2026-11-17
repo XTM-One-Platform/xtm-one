@@ -94,6 +94,43 @@ async def test_engineering_metrics_cohort_table():
 
 
 @pytest.mark.asyncio
+async def test_engineering_metrics_total_collapses_a_backport_in_the_next_bucket() -> None:
+    fn = _fn("get_github_engineering_metrics")
+
+    def _pr(merged_at: str) -> dict[str, Any]:
+        return {
+            "createdAt": merged_at,
+            "mergedAt": merged_at,
+            "additions": 1,
+            "deletions": 1,
+            "reviews": {"totalCount": 0},
+            "closingIssuesReferences": {"nodes": [{"number": 7}]},
+        }
+
+    async def fake_gql(
+        client: Any, headers: Any, query: str, variables: dict[str, str] | None = None, *, action: str = "", **_kw: Any
+    ) -> tuple[dict[str, Any], None]:
+        if "issueCount}" in query and "nodes" not in query:
+            return {alias.replace("v", "q"): {"issueCount": 0} for alias in variables or {}}, None
+        # The fix on the last day of January, its backport on the first day of February.
+        nodes = [_pr("2025-01-31T10:00:00Z"), _pr("2025-02-01T10:00:00Z")]
+        return {"search": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}, None
+
+    with patch("app.integrations.providers.github._common.gh_graphql", side_effect=fake_gql):
+        out = await fn(logins=["dev-one"], org="acme", since="2025-01-01", until="2025-02-28", bucket="month")
+
+    def _unique(label: str) -> str:
+        row = next(line for line in out.splitlines() if line.startswith(f"| {label} |"))
+        return str(row.split("|")[5].strip())
+
+    assert _unique("dev-one | 2025-01") == "1"
+    assert _unique("dev-one | 2025-02") == "1"
+    total = next(line for line in out.splitlines() if line.startswith("| **dev-one** | **total** |"))
+    assert total.split("|")[4].strip() == "2"  # merged: both PRs
+    assert total.split("|")[5].strip() == "1"  # unique: one closed issue
+
+
+@pytest.mark.asyncio
 async def test_engineering_metrics_validates_inputs():
     fn = _fn("get_github_engineering_metrics")
     assert "exactly one" in await fn(logins=["dev-one"])
