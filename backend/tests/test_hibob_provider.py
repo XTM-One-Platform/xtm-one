@@ -2355,3 +2355,141 @@ def test_whos_out_without_employee_is_unchanged(monkeypatch):
     _route(monkeypatch, {"/timeoff/whosout": _OUTS}, calls)
     content = _run_tool("get_hibob_whos_out", {"from_date": "2026-01-01", "to_date": "2026-12-31"})
     assert "Person A" in content and "Person B" in content
+
+
+def _goal(goal_id: int, owner: str, cycle: int = 1) -> dict[str, Any]:
+    return {
+        "fields": {
+            "id": {"value": goal_id},
+            "title": {"value": f"Goal {goal_id}"},
+            "status": {"value": "onTrack"},
+            "progress": {"value": 40},
+            "owner": {"value": owner},
+            "cycleId": {"value": cycle},
+        }
+    }
+
+
+def _goal_pages(monkeypatch: Any, pages: list[dict[str, Any]], krs: dict[str, Any], bodies: list[Any]) -> None:
+    """Answer goal searches page by page (by cursor) and KR searches by goal id."""
+
+    @asynccontextmanager
+    async def fake_client(timeout: int = 30) -> Any:
+        yield object()
+
+    async def fake_safe_request(
+        _client: Any, method: str, url: str, _provider: str, _action: str, **kwargs: Any
+    ) -> tuple[Any, str | None]:
+        body = kwargs.get("json") or {}
+        bodies.append((url, json.loads(json.dumps(body))))
+        if url.endswith("/key-results/search"):
+            goal_id = body["filters"][0]["values"][0]
+            return _FakeResponse({"items": krs.get(goal_id, [])}), None
+        if url.endswith("/goals/goals/search"):
+            index = int(body.get("cursor") or 0)
+            return _FakeResponse(pages[index]), None
+        if url.endswith("/people/search"):
+            return _FakeResponse({"employees": [{"id": "1002", "email": "b@example.com"}]}), None
+        return None, f"Error: unexpected {url}"
+
+    monkeypatch.setattr(hibob, "_client", fake_client)
+    monkeypatch.setattr(hibob, "safe_request", fake_safe_request)
+
+
+_GOAL_PAGES = [
+    {"items": [_goal(1, "1001"), _goal(2, "1002")], "responseMetadata": {"nextCursor": "1"}},
+    {"items": [_goal(3, "1002", cycle=2), _goal(4, "1003")], "responseMetadata": {"nextCursor": None}},
+]
+
+
+def test_goals_owner_filter_walks_every_page(monkeypatch: Any) -> None:
+    bodies: list[Any] = []
+    _goal_pages(monkeypatch, _GOAL_PAGES, {}, bodies)
+    content = _run_tool("search_hibob_goals", {"owner": "1002"})
+    assert "Found 2 goal(s)" in content
+    assert "[2] Goal 2" in content and "[3] Goal 3" in content
+    assert "Goal 1 " not in content and "Goal 4" not in content
+    assert "Progress: 40%" in content
+    goal_calls = [b for url, b in bodies if url.endswith("/goals/goals/search")]
+    assert len(goal_calls) == 2
+    assert goal_calls[1]["cursor"] == "1"
+    assert "progress" in goal_calls[0]["fields"]
+
+
+def test_goals_owner_by_email_is_resolved(monkeypatch: Any) -> None:
+    bodies: list[Any] = []
+    _goal_pages(monkeypatch, _GOAL_PAGES, {}, bodies)
+    content = _run_tool("search_hibob_goals", {"owner": "b@example.com", "cycle_id": "2"})
+    assert "Found 1 goal(s)" in content
+    assert "[3] Goal 3" in content
+
+
+def test_goals_without_client_filter_reads_one_page(monkeypatch: Any) -> None:
+    bodies: list[Any] = []
+    _goal_pages(monkeypatch, _GOAL_PAGES, {}, bodies)
+    content = _run_tool("search_hibob_goals", {})
+    assert "Found 2 goal(s)" in content
+    assert len([1 for url, _ in bodies if url.endswith("/goals/goals/search")]) == 1
+
+
+def test_goals_include_key_results(monkeypatch: Any) -> None:
+    bodies: list[Any] = []
+    krs = {
+        "2": [
+            {
+                "fields": {
+                    "id": {"value": 21},
+                    "title": {"value": "KR A"},
+                    "measureType": {"value": "number"},
+                    "startValue": {"value": 0},
+                    "target": {"value": 10},
+                    "currentValue": {"value": 5},
+                    "progress": {"value": 50},
+                }
+            }
+        ]
+    }
+    _goal_pages(monkeypatch, _GOAL_PAGES, krs, bodies)
+    content = _run_tool("search_hibob_goals", {"owner": "1002", "include_key_results": True})
+    assert "KR [21] KR A | Measure: number | Start: 0 | Target: 10 | Current: 5 | Progress: 50%" in content
+    assert content.count("No key results.") == 1
+    kr_calls = [b for url, b in bodies if url.endswith("/key-results/search")]
+    assert [c["filters"][0]["values"] for c in kr_calls] == [["2"], ["3"]]
+
+
+def test_withheld_field_ids_names_requested_fields_not_returned() -> None:
+    emp = {
+        "id": "1",
+        "work": {"title": "Engineer", "manager": None},
+        "/payroll/salary": {"value": None},
+        "people_analytics": {"flight_risk": {"value": "low"}},
+    }
+    requested = [
+        "root.id",
+        "work.title",
+        "work.manager",
+        "payroll.salary",
+        "people_analytics.flight_risk",
+        "people_analytics.low_performance",
+    ]
+    assert hibob._withheld_field_ids(emp, requested) == [
+        "work.manager",
+        "payroll.salary",
+        "people_analytics.low_performance",
+    ]
+
+
+def test_get_employee_lists_withheld_fields(monkeypatch: Any) -> None:
+    calls: list[tuple[str, Any]] = []
+    _route(
+        monkeypatch,
+        {
+            "/company/people/fields": [{"id": "work.title"}, {"id": "people_analytics.low_performance"}],
+            "/people/1001": {"id": "1001", "displayName": "Person A", "work": {"title": "Engineer"}},
+        },
+        calls,
+    )
+    content = _run_tool("get_hibob_employee", {"identifier": "1001"})
+    assert "Title: Engineer" in content
+    assert "Requested fields not returned (1)" in content
+    assert "people_analytics.low_performance" in content

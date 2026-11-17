@@ -595,6 +595,73 @@ def _flatten_employee_fields(emp: dict) -> dict[str, str]:
     return out
 
 
+#: Most requested-but-absent field ids listed by name in an employee read.
+_MAX_WITHHELD_LISTED = 60
+
+
+def _returned_paths(emp: dict[str, Any]) -> set[str]:
+    """Every dotted path that carries a non-null value in *emp*, any depth.
+
+    Unlike :func:`_flatten_employee_fields` it keeps dict and list nodes, so a
+    table or an object field counts as returned. Slash-path keys
+    (``/work/title``) are normalised to dotted paths.
+    """
+    paths: set[str] = set()
+
+    def _walk(node: Any, prefix: str) -> None:
+        if node is None:
+            return
+        if prefix:
+            paths.add(prefix)
+        if isinstance(node, dict):
+            if prefix and _is_value_wrapper(node) and _coerce_scalar(node) is None:
+                paths.discard(prefix)
+                return
+            for key, val in node.items():
+                norm = str(key).strip("/").replace("/", ".")
+                if norm:
+                    _walk(val, f"{prefix}.{norm}" if prefix else norm)
+
+    _walk(emp, "")
+    return paths
+
+
+def _withheld_field_ids(emp: dict[str, Any], requested: list[str]) -> list[str]:
+    """The requested field ids the People read did not return.
+
+    HiBob drops a field the service user may not read without an error, and an
+    empty field the same way: the caller names both so an absent indicator is
+    never read as "not set". ``root.`` ids are matched on the top-level key
+    the API answers them under.
+    """
+    present = _returned_paths(emp)
+    missing: list[str] = []
+    for fid in requested:
+        if not isinstance(fid, str) or not fid:
+            continue
+        bare = fid.removeprefix("root.")
+        if fid in present or bare in present:
+            continue
+        missing.append(fid)
+    return missing
+
+
+def _withheld_lines(missing: list[str]) -> list[str]:
+    """Render the withheld-field footer of an employee read."""
+    if not missing:
+        return []
+    shown = missing[:_MAX_WITHHELD_LISTED]
+    more = len(missing) - len(shown)
+    lines = [
+        f"Requested fields not returned ({len(missing)}): withheld by the "
+        "service user's permissions, or empty for this employee:",
+        "  " + ", ".join(shown),
+    ]
+    if more:
+        lines.append(f"  ... and {more} more")
+    return lines
+
+
 def _custom_field_lines(emp: dict) -> list[str]:
     """Return ``"path: value"`` strings for any custom fields/columns present
     in *emp*.  Custom data uses the ``…custom.field_*`` /
@@ -1011,6 +1078,87 @@ def _whos_out_range_error(from_date: str, to_date: str) -> str:
     return ""
 
 
+#: Default fields of a goal search (``progress`` is the goal's average KR progress).
+_GOAL_FIELDS: tuple[str, ...] = (
+    "id",
+    "title",
+    "status",
+    "progress",
+    "owner",
+    "dueDate",
+    "isPrivate",
+    "typeId",
+    "cycleId",
+    "description",
+    "startDate",
+    "alignedGoal",
+)
+#: Fields read for each key result.
+_KEY_RESULT_FIELDS: tuple[str, ...] = (
+    "id",
+    "title",
+    "measureType",
+    "startValue",
+    "target",
+    "currentValue",
+    "currency",
+    "currencySymbol",
+    "progress",
+    "dueDate",
+)
+#: Pages a goal search walks when it filters client-side (owner, cycle).
+_GOAL_SEARCH_MAX_PAGES = 50
+
+
+def _goal_value(fields: Any, key: str, default: Any = None) -> Any:
+    """A value of a Goals API ``fields`` dict: ``{"key": {"value": ...}}``."""
+    entry = fields.get(key) if isinstance(fields, dict) else None
+    if isinstance(entry, dict):
+        return entry.get("value", default)
+    return default
+
+
+def _format_goal_line(fields: Any) -> str:
+    """One goal of a search, on one line."""
+    gid = _goal_value(fields, "id", "N/A")
+    title = _goal_value(fields, "title", "Untitled")
+    status = _goal_value(fields, "status", "N/A")
+    owner = _goal_value(fields, "owner", "N/A")
+    due = _goal_value(fields, "dueDate", "N/A")
+    parts = [f"[{gid}] {title}", f"Status: {status}"]
+    progress = _goal_value(fields, "progress")
+    if progress is not None:
+        parts.append(f"Progress: {progress}%")
+    parts += [f"Owner: {owner}", f"Due: {due}"]
+    cycle = _goal_value(fields, "cycleId")
+    if cycle is not None:
+        parts.append(f"CycleID: {cycle}")
+    type_id = _goal_value(fields, "typeId")
+    if type_id is not None:
+        parts.append(f"TypeID: {type_id}")
+    return " | ".join(parts)
+
+
+def _format_key_result(fields: Any) -> str:
+    """One key result, on one line."""
+    kid = _goal_value(fields, "id", "N/A")
+    title = _goal_value(fields, "title", "Untitled")
+    measure = _goal_value(fields, "measureType", "N/A")
+    target = _goal_value(fields, "target", "N/A")
+    current = _goal_value(fields, "currentValue", 0)
+    currency = _goal_value(fields, "currency")
+    unit = f" {currency}" if currency else ""
+    parts = [f"[{kid}] {title}", f"Measure: {measure}"]
+    start = _goal_value(fields, "startValue")
+    if start is not None:
+        parts.append(f"Start: {start}{unit}")
+    parts += [f"Target: {target}{unit}", f"Current: {current}{unit}"]
+    progress = _goal_value(fields, "progress")
+    if progress is not None:
+        parts.append(f"Progress: {progress}%")
+    return " | ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Tool builder
 # ---------------------------------------------------------------------------
@@ -1141,7 +1289,7 @@ def build_tools(
                 body["fields"] = all_ids
 
         async with _client() as client:
-            resp, err = await safe_request(
+            resp, read_err = await safe_request(
                 client,
                 "post",
                 f"{_BASE_URL}/people/{resolved_id}",
@@ -1150,12 +1298,17 @@ def build_tools(
                 headers=headers,
                 json=body,
             )
-            if err:
-                return err
+            if read_err or resp is None:
+                return read_err or f"Error: HiBob API returned no response while getting employee {resolved_id}."
             data, parse_err = _safe_parse_json(resp, f"getting employee {resolved_id}")
             if parse_err:
                 return parse_err
-            return _format_employee_detail(data if isinstance(data, dict) else {})
+            emp = data if isinstance(data, dict) else {}
+            lines = [_format_employee_detail(emp)]
+            requested = body.get("fields")
+            if isinstance(requested, list):
+                lines.extend(_withheld_lines(_withheld_field_ids(emp, requested)))
+            return "\n".join(lines)
 
     async def list_hibob_profiles(count: int = 100) -> str:
         body: dict[str, Any] = {
@@ -3108,6 +3261,30 @@ def build_tools(
                 lines.append(f"Total: {meta['totalCount']}")
             return "\n".join(lines)
 
+    async def _key_result_lines(client: Any, goal_id: str) -> list[str]:
+        """One goal's key results, indented, for ``include_key_results``."""
+        resp, err = await safe_request(
+            client,
+            "post",
+            f"{_BASE_URL}/goals/goals/key-results/search",
+            _PROVIDER,
+            f"search key results for goal {goal_id}",
+            headers=headers,
+            json={
+                "fields": list(_KEY_RESULT_FIELDS),
+                "filters": [{"fieldId": "goalId", "operator": "equals", "values": [str(goal_id)]}],
+            },
+        )
+        if err or resp is None:
+            return [f"      Key results not read: {err or 'no response'}"]
+        data, parse_err = _safe_parse_json(resp, f"reading key results of goal {goal_id}")
+        if parse_err:
+            return [f"      Key results not read: {parse_err}"]
+        krs = data.get("items", []) if isinstance(data, dict) else []
+        if not krs:
+            return ["      No key results."]
+        return [f"      KR {_format_key_result(kr.get('fields', {}))}" for kr in krs if isinstance(kr, dict)]
+
     async def search_hibob_goals(
             status: str = "",
             type_id: str = "",
@@ -3117,23 +3294,31 @@ def build_tools(
             limit: int = 50,
             cursor: str = "",
             count: int = 50,
+        owner: str = "",
+        cycle_id: str = "",
+        include_key_results: bool = False,
     ) -> str:
         """
-        Search goals. Supported filter fields: status, isPrivate, typeId.
-        NOTE: cycleId is NOT a supported filter — filter by cycle client-side
-        after fetching, using the cycleId field in the response.
+        Search goals. Supported server-side filter fields: id, status,
+        isPrivate, typeId. ``owner`` and ``cycle_id`` are applied client-side
+        over every page, since the Goals API cannot filter on them.
         """
         parsed_fields = _parse_json_param(fields_json) if fields_json else []
         if fields_json and not isinstance(parsed_fields, list):
             return "Error: fields_json must be a JSON array of field IDs."
 
-        body: dict[str, Any] = {
-            "fields": parsed_fields if parsed_fields else [
-                "id", "title", "status", "owner", "dueDate",
-                "isPrivate", "typeId", "cycleId", "description",
-                "startDate", "alignedGoal",
-            ],
-        }
+        owner_id = ""
+        if owner.strip():
+            owner_id, err = await _resolve_employee_id(headers, owner)
+            if err:
+                return err
+
+        fields = list(parsed_fields) if parsed_fields else list(_GOAL_FIELDS)
+        # The client-side filters and the KR expansion read these fields.
+        for needed in ("id", "owner", "cycleId"):
+            if needed not in fields:
+                fields.append(needed)
+        body: dict[str, Any] = {"fields": fields}
 
         filters: list[dict[str, Any]] = []
 
@@ -3162,43 +3347,62 @@ def build_tools(
             body["limit"] = limit
         if cursor:
             body["cursor"] = cursor
+        # A client-side filter must see every goal, not the first page.
+        walk_pages = bool(owner_id or cycle_id.strip())
 
         async with _client() as client:
-            resp, err = await safe_request(
-                client, "post",
-                f"{_BASE_URL}/goals/goals/search",
-                _PROVIDER, "search goals",
-                headers=headers, json=body,
-            )
-            if err:
-                return err
-            data = resp.json()
-            goals = data.get("items", []) if isinstance(data, dict) else []
+            goals: list[Any] = []
+            server_total: Any = None
+            next_cursor: str | None = None
+            for _page in range(_GOAL_SEARCH_MAX_PAGES):
+                resp, search_err = await safe_request(
+                    client,
+                    "post",
+                    f"{_BASE_URL}/goals/goals/search",
+                    _PROVIDER,
+                    "search goals",
+                    headers=headers,
+                    json=body,
+                )
+                if search_err or resp is None:
+                    return search_err or "Error: HiBob API returned no response while searching goals."
+                data, parse_err = _safe_parse_json(resp, "searching goals")
+                if parse_err:
+                    return parse_err
+                page = data.get("items", []) if isinstance(data, dict) else []
+                goals.extend(g for g in page if isinstance(g, dict))
+                meta = data.get("responseMetadata", {}) if isinstance(data, dict) else {}
+                meta = meta if isinstance(meta, dict) else {}
+                server_total = meta.get("totalCount", server_total)
+                next_cursor = meta.get("nextCursor") or None
+                if not walk_pages or not next_cursor or not page:
+                    break
+                body["cursor"] = next_cursor
+            if owner_id:
+                goals = [g for g in goals if str(_extract_goal_field(g.get("fields", {}), "owner", "")) == owner_id]
+            if cycle_id.strip():
+                goals = [
+                    g for g in goals if str(_extract_goal_field(g.get("fields", {}), "cycleId", "")) == cycle_id.strip()
+                ]
             if not goals:
-                return "No goals found matching the criteria."
+                scope = f" for owner {owner_id}" if owner_id else ""
+                return f"No goals found matching the criteria{scope}."
             total = len(goals)
             limited = goals[:count]
             lines = [f"Found {total} goal(s){f' (showing {count})' if total > count else ''}:"]
             for g in limited:
-                if not isinstance(g, dict):
-                    continue
                 f = g.get("fields", {})
-                gid = _extract_goal_field(f, "id", "N/A")
-                gtitle = _extract_goal_field(f, "title", "Untitled")
-                gstatus = _extract_goal_field(f, "status", "N/A")
-                gowner = _extract_goal_field(f, "owner", "N/A")
-                gdue = _extract_goal_field(f, "dueDate", "N/A")
-                gcycle = _extract_goal_field(f, "cycleId")
-                gtype = _extract_goal_field(f, "typeId")
-                cycle_str = f" | CycleID: {gcycle}" if gcycle is not None else ""
-                type_str = f" | TypeID: {gtype}" if gtype is not None else ""
+                lines.append(f"  {_format_goal_line(f)}")
+                if include_key_results:
+                    gid = _extract_goal_field(f, "id")
+                    if gid is not None:
+                        lines.extend(await _key_result_lines(client, str(gid)))
+            if server_total and not (owner_id or cycle_id.strip()):
+                lines.append(f"Total (server): {server_total}")
+            if walk_pages and next_cursor:
                 lines.append(
-                    f"  [{gid}] {gtitle} | Status: {gstatus} "
-                    f"| Owner: {gowner} | Due: {gdue}{cycle_str}{type_str}"
+                    f"Stopped after {_GOAL_SEARCH_MAX_PAGES} pages: goals past them were not filtered."
                 )
-            meta = data.get("responseMetadata", {})
-            if meta.get("totalCount"):
-                lines.append(f"Total (server): {meta['totalCount']}")
             return "\n".join(lines)
 
     async def get_hibob_goal(goal_id: str, fields_json: str = "") -> str:
@@ -3307,10 +3511,7 @@ def build_tools(
             return "Error: fields_json must be a JSON array of field IDs."
 
         body: dict[str, Any] = {
-            "fields": parsed_fields if parsed_fields else [
-                "id", "title", "measureType", "target",
-                "currentValue", "currency", "currencySymbol",
-            ],
+            "fields": parsed_fields if parsed_fields else list(_KEY_RESULT_FIELDS),
             "filters": [
                 {"fieldId": "goalId", "operator": "equals", "values": [str(goal_id)]}
             ],
@@ -3337,18 +3538,7 @@ def build_tools(
             for kr in krs:
                 if not isinstance(kr, dict):
                     continue
-                f = kr.get("fields", {})
-                kid = _extract_goal_field(f, "id", "N/A")
-                ktitle = _extract_goal_field(f, "title", "Untitled")
-                kmeasure = _extract_goal_field(f, "measureType", "N/A")
-                ktarget = _extract_goal_field(f, "target", "N/A")
-                kcurrent = _extract_goal_field(f, "currentValue", 0)
-                kcurrency = _extract_goal_field(f, "currency")
-                currency_str = f" {kcurrency}" if kcurrency else ""
-                lines.append(
-                    f"  [{kid}] {ktitle} | Measure: {kmeasure} "
-                    f"| Target: {ktarget}{currency_str} | Current: {kcurrent}{currency_str}"
-                )
+                lines.append(f"  {_format_key_result(kr.get('fields', {}))}")
             meta = data.get("responseMetadata", {})
             if meta.get("totalCount"):
                 lines.append(f"Total: {meta['totalCount']}")
@@ -5264,10 +5454,29 @@ def build_tools(
             name="search_hibob_goals",
             source=src,
             priority=1,
-            description="Search goals with optional filters by status, type, or privacy.",
+            description=(
+                "Search goals by status, type, privacy, owner or cycle, with "
+                "progress; include_key_results adds each goal's KRs. Check-ins "
+                "and comments are not in the public Goals API."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Goal owner: employee ID, email or name (filtered over all pages)",
+                        "default": "",
+                    },
+                    "cycle_id": {
+                        "type": "string",
+                        "description": "Goal cycle ID (from search_hibob_goal_cycles)",
+                        "default": "",
+                    },
+                    "include_key_results": {
+                        "type": "boolean",
+                        "description": "Add each listed goal's key results",
+                        "default": False,
+                    },
                     "status": {
                         "type": "string",
                         "description": "Filter: onTrack, offTrack, completed, incomplete, other",
