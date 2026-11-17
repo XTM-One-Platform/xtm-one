@@ -6349,7 +6349,9 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import build_fleet_tools
 
                 # The run is where export_fleet_spec keeps the full spec file.
-                fl_defs, fl_exec = build_fleet_tools(str(effective_user_id), assignment_run_id=str(run.id))
+                fl_defs, fl_exec = build_fleet_tools(
+                    str(effective_user_id), assignment_run_id=str(run.id), agent_id=str(run.agent_id)
+                )
                 composite.add_tools(fl_defs, fl_exec)
 
             # --- ROI and outcomes (#10006 S2): as the run's acting user ---

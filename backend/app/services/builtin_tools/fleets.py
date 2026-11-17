@@ -16,7 +16,9 @@
 Eight tools over the fleet rules of ``app.services.fleets`` (phases 1a/1b),
 the ones ``api/v1/fleets.py`` applies: ``list_fleets``, ``get_fleet``,
 ``create_fleet``, ``update_fleet``, ``delete_fleet``, ``set_fleet_members``,
-``set_fleet_exposure`` and ``set_fleet_member_parent`` (the hierarchy
+``set_fleet_exposure``, ``share_fleet_workspace`` (the fleet and its workspace
+shared in one grant, administrator or workspace owner only) and
+``set_fleet_member_parent`` (the hierarchy
 ``PATCH /fleets/{id}/members/{member_id}`` writes), plus ``move_fleet_member``
 (``POST /fleets/{id}/members/{member_id}/move``, one transaction),
 ``set_fleet_automations`` (Pause all / Resume of ``POST /fleets/{id}/pause|resume``,
@@ -97,6 +99,12 @@ _RAISE_NO_CHAT = (
 #: administrator (#10255): the REST route lets a manager lower it, a tool does not.
 _INSTRUCTIONS_POSITION_ADMIN_ONLY = (
     "Only an administrator's agent can set a fleet's instructions position. Nothing was saved."
+)
+#: Who may share a fleet's workspace from a tool (#24): never wider than the
+#: Share dialog, so an administrator, or the workspace's owner who may manage the fleet.
+_SHARE_NOT_ALLOWED = (
+    "Only a platform administrator or the owner of the fleet's workspace can share it from an agent. "
+    "Nothing was changed: ask an administrator, or the owner from the fleet page."
 )
 
 #: Field widths of the model (``app.models.fleet``).
@@ -243,15 +251,18 @@ def build_fleet_tools(
     *,
     conversation_id: str | None = None,
     assignment_run_id: str | None = None,
+    agent_id: str | None = None,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The ``fleets`` suite for *user_id*, as definitions and their executor.
 
     *conversation_id* / *assignment_run_id* are the scope ``export_fleet_spec``
     writes the full spec file under and ``apply_fleet_spec`` reads a ``file_id``
     from; without either, no file is written and only the files of the
-    turn's context are read.
+    turn's context are read. *agent_id* is the agent acting for the user,
+    named in the audit of ``share_fleet_workspace``.
     """
     platform = _platform_label()
+    acting_agent_id = str(agent_id) if agent_id else None
 
     def _caller_id() -> uuid.UUID | None:
         return safe_uuid(user_id) if user_id else None
@@ -1106,6 +1117,131 @@ def build_fleet_tools(
 
         return await _run(_action, write=True)
 
+    # ── share_fleet_workspace ─────────────────────────────────────────
+
+    async def _share_fleet_workspace(
+        fleet_id: str,
+        action: str = "add",
+        users: object = None,
+        groups: object = None,
+        permission: str = "",
+    ) -> str:
+        """Share a fleet and its workspace with people or groups, or list who has them (#24).
+
+        One grant, written on both: the fleet page and the workspace it
+        coordinates in. The gate is never wider than the Share dialog: a
+        platform administrator, or the owner of the fleet's workspace who may
+        manage the fleet. The writes are the REST routes' own
+        (``apply_group_share_fields``, ``apply_user_share_fields``) and each
+        entity gets its audit entry, the acting agent named.
+        """
+        from fastapi import HTTPException
+        from sqlalchemy import select
+
+        from app.api.v1.helpers import apply_group_share_fields, apply_user_share_fields
+        from app.models.workspace import Workspace
+        from app.services.audit import log_audit
+        from app.services.presentation_sharing import (
+            audience_line,
+            format_sharing_result,
+            normalize_share_action,
+            normalize_share_permission,
+            plan_sharing,
+        )
+        from app.services.share_principals import (
+            MAX_PRINCIPALS_PER_CALL,
+            load_principals,
+            principal_entries,
+            resolve_principals,
+        )
+
+        listing = str(action or "").strip().lower() == "list"
+        verb = None if listing else normalize_share_action(action)
+        if not listing and verb is None:
+            return "action must be add, remove, replace or list. Nothing was changed."
+        tier = normalize_share_permission(permission)
+        if not listing and verb != "remove" and tier is None:
+            return "permission must be view or edit. Nothing was changed."
+        user_entries = principal_entries(users)
+        group_entries = principal_entries(groups)
+        if not listing and verb != "replace" and not user_entries and not group_entries:
+            return f"Name at least one user (email or id) or group to {verb}. Nothing was changed."
+        if len(user_entries) + len(group_entries) > MAX_PRINCIPALS_PER_CALL:
+            return f"One call names at most {MAX_PRINCIPALS_PER_CALL} people and groups. Nothing was changed."
+
+        async def _action(db: AsyncSession, user: User) -> str:
+            fleet = await _manageable_fleet(db, user, _one_id(fleet_id, "fleet_id"), action="share")
+            workspace = (
+                await db.execute(
+                    select(Workspace)
+                    .where(Workspace.id == fleet.workspace_id)
+                    .with_for_update(of=Workspace)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if workspace is None:
+                raise _RefusedError(f"Fleet **{fleet.name}** has no workspace to share. Nothing was changed.")
+            if not user.is_admin and workspace.user_id != user.id:
+                raise _RefusedError(_SHARE_NOT_ALLOWED)
+            entities: tuple[tuple[str, Any], ...] = (("fleet", fleet), ("workspace", workspace))
+            if listing:
+                lines = [f"Who has fleet **{fleet.name}** and its workspace **{workspace.name}**:"]
+                for label, entity in entities:
+                    index = await load_principals(db, entity)
+                    lines.append(f"  • {label.capitalize()}: {audience_line(entity, index)}")
+                lines.append(f"  • Page: {fleet_link(fleet.id)}")
+                return "\n".join(lines)
+            for label, entity in entities:
+                if entity.is_company_managed and not entity.access_restricted:
+                    raise _RefusedError(
+                        f"The {label} **{entity.name}** is company-managed: everyone already sees it. "
+                        "Nothing was changed."
+                    )
+            resolved = await resolve_principals(db, user_entries, group_entries)
+            refusal = resolved.refusal(granting=verb != "remove")
+            if refusal:
+                raise _RefusedError(refusal)
+            answer: list[str] = []
+            for label, entity in entities:
+                plan = plan_sharing(
+                    entity,
+                    action=verb,
+                    permission=tier or "read_only",
+                    users=resolved.users,
+                    groups=resolved.groups,
+                )
+                if plan.changed:
+                    try:
+                        await apply_group_share_fields(db, entity, plan.changes, partial=True)
+                        await apply_user_share_fields(db, entity, plan.changes, partial=True)
+                    except HTTPException as exc:
+                        raise _RefusedError(f"{str(exc.detail).rstrip('.')}. Nothing was changed.") from None
+                    await log_audit(
+                        db,
+                        user=user,
+                        action="update",
+                        entity_type=label,
+                        entity_id=entity.id,
+                        entity_name=entity.name,
+                        summary=f"Changed who can open {label} '{entity.name}' through an agent",
+                        details={
+                            **plan.audit_details(),
+                            "agent_id": acting_agent_id,
+                            "fleet_id": str(fleet.id),
+                            "workspace_id": str(workspace.id),
+                            "sharing_changed": True,
+                        },
+                    )
+                index = await load_principals(db, entity)
+                index.add(resolved.users)
+                index.add(resolved.groups)
+                answer.append(format_sharing_result(f"{label} {entity.name}", plan, index))
+                answer.append(audience_line(entity, index))
+            answer.append(f"  • Page: {fleet_link(fleet.id)}")
+            return "\n".join(answer)
+
+        return await _run(_action, write=not listing)
+
     # ── export_fleet_spec / apply_fleet_spec ───────────────────
 
     has_file_scope = bool(conversation_id or assignment_run_id)
@@ -1887,7 +2023,7 @@ def build_fleet_tools(
         f"A {platform} fleet groups agents around an orchestrator (the entry agent) and exactly one "
         "workspace (where they coordinate). An agent has one home fleet and may be connected to others."
     )
-    fleet_ref = {"type": "string", "description": "The fleet's id, as list_fleets shows it."}
+    fleet_ref = {"type": "string", "description": "Fleet id (list_fleets)."}
     ids_array = {"type": "array", "items": {"type": "string"}}
     connected_schema = {
         "type": "array",
@@ -1907,7 +2043,7 @@ def build_fleet_tools(
     definitions = [
         ToolDefinition(
             name="list_fleets",
-            description=f"List the fleets the user can see, with their orchestrator, workspace and page. {about}",
+            description="List the fleets the user can see, with their orchestrator, workspace and page.",
             input_schema={
                 "type": "object",
                 "properties": {"include_archived": {"type": "boolean", "default": False}},
@@ -1919,7 +2055,7 @@ def build_fleet_tools(
             name="get_fleet",
             description=(
                 "Get one fleet: workspace, orchestrator, home members (id, whom each reports to), "
-                "connected agents, exposure, page, and its automations badge with each one off and why."
+                "connected agents, exposure, page, automations badge with each one off and why."
             ),
             input_schema={"type": "object", "properties": {"fleet_id": fleet_ref}, "required": ["fleet_id"]},
             source=_source(),
@@ -2014,7 +2150,7 @@ def build_fleet_tools(
         ),
         ToolDefinition(
             name="delete_fleet",
-            description=("Delete a fleet. Its agents and workspace are kept; the agents have no home fleet."),
+            description=("Delete a fleet; its agents (left with no home fleet) and workspace are kept."),
             input_schema={"type": "object", "properties": {"fleet_id": fleet_ref}, "required": ["fleet_id"]},
             source=_source(),
         ),
@@ -2044,6 +2180,25 @@ def build_fleet_tools(
                 "type": "object",
                 "properties": {"fleet_id": fleet_ref, "agent_ids": {**ids_array, "description": "Home member ids."}},
                 "required": ["fleet_id", "agent_ids"],
+            },
+            source=_source(),
+        ),
+        ToolDefinition(
+            name="share_fleet_workspace",
+            description=(
+                "Share a fleet and its workspace with people or groups, or list who has them. "
+                "Admin or workspace owner only."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "fleet_id": fleet_ref,
+                    "action": {"type": "string", "enum": ["add", "remove", "replace", "list"]},
+                    "users": {**ids_array, "description": "Emails or ids"},
+                    "groups": {**ids_array, "description": "Ids or names"},
+                    "permission": {"type": "string", "enum": ["view", "edit"]},
+                },
+                "required": ["fleet_id"],
             },
             source=_source(),
         ),
@@ -2274,6 +2429,7 @@ def build_fleet_tools(
     executor.register("set_fleet_automations", _set_fleet_automations)
     executor.register("set_fleet_members", _set_fleet_members)
     executor.register("set_fleet_exposure", _set_fleet_exposure)
+    executor.register("share_fleet_workspace", _share_fleet_workspace)
     executor.register("set_fleet_member_parent", _set_fleet_member_parent)
     executor.register("move_fleet_member", _move_fleet_member)
     executor.register("regenerate_fleet_documentation", _regenerate_fleet_documentation)

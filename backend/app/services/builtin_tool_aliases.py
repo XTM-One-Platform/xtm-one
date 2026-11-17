@@ -251,6 +251,7 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             "delete_fleet",
             "set_fleet_members",
             "set_fleet_exposure",
+            "share_fleet_workspace",
             "set_fleet_member_parent",
             "move_fleet_member",
             "get_fleet_prerequisites",
