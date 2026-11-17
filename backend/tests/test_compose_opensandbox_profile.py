@@ -40,6 +40,7 @@ _FORWARDED_SANDBOX_SETTINGS = {
     "OPENSANDBOX_API_KEY": str(Settings.model_fields["opensandbox_api_key"].default),
     "OPENSANDBOX_USE_SERVER_PROXY": str(Settings.model_fields["opensandbox_use_server_proxy"].default).lower(),
     "OPENSANDBOX_NETWORK_ALLOW": str(Settings.model_fields["opensandbox_network_allow"].default),
+    "SANDBOX_REGISTRY_MIRROR_URL": str(Settings.model_fields["sandbox_registry_mirror_url"].default),
 }
 
 

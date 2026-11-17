@@ -141,6 +141,7 @@ x-app-environment: &app-environment
   OPENSANDBOX_API_KEY: ${OPENSANDBOX_API_KEY:-}
   OPENSANDBOX_USE_SERVER_PROXY: ${OPENSANDBOX_USE_SERVER_PROXY:-false}
   OPENSANDBOX_NETWORK_ALLOW: ${OPENSANDBOX_NETWORK_ALLOW:-}
+  SANDBOX_REGISTRY_MIRROR_URL: ${SANDBOX_REGISTRY_MIRROR_URL:-}
 
 # Sandboxes the opensandbox service starts publish their ports on the host
 # and are advertised as host.docker.internal (backend/sandbox/sandbox.docker.toml).

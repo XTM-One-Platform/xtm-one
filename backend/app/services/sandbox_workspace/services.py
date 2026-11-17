@@ -265,6 +265,7 @@ def _default_api(user_id: uuid.UUID | None) -> Any:
     from app.core.config import settings
     from app.services._sandbox_selector import _build_opensandbox_config, _create_opensandbox
     from app.services.sandbox_workspace.paths import WORKSPACE_ENV
+    from app.services.sandbox_workspace.registry_mirror import command_egress, command_env
 
     async def _connect(sandbox_id: str) -> Any:
         return await Sandbox.connect(sandbox_id, connection_config=_build_opensandbox_config())
@@ -277,9 +278,10 @@ def _default_api(user_id: uuid.UUID | None) -> Any:
             # Counted and logged as the checks are: one kind of command container.
             usage_type="sandbox_command",
             user_id=user_id,
-            egress_allow_list=settings.opensandbox_network_allow_list,
+            # Package installs reach the read-only registry mirror only, when one is set.
+            egress_allow_list=command_egress(),
             resource=settings.sandbox_resources(image_key),
-            env={WORKSPACE_ENV: remote.REMOTE_WORKSPACE},
+            env={**command_env(), WORKSPACE_ENV: remote.REMOTE_WORKSPACE},
         )
 
     return SimpleNamespace(connect=_connect, create=_create)
