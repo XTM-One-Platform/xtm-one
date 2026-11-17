@@ -102,6 +102,45 @@ def _window_label(start: int, shown: int, total: int) -> str:
     return f" ({shown} of {total} shown)"
 
 
+#: Commits a ``contains`` search reads the diff of, at most (one request each).
+_MAX_PICKAXE_COMMITS = 50
+
+
+def _under(filename: str, path: str) -> bool:
+    """Whether *filename* is *path* itself or a file below the directory *path* (every file when empty)."""
+    path = path.strip("/")
+    return not path or filename == path or filename.startswith(f"{path}/")
+
+
+def pickaxe_hits(files: list[dict[str, Any]], needle: str, path: str = "") -> tuple[list[str], int]:
+    """The files of a commit whose diff adds or removes a line holding *needle*, as git log -S does.
+
+    Returns one ``file (+A -R)`` entry per matching file under *path* (A lines
+    added and R lines removed that hold *needle*) and the count of files under
+    *path* whose patch GitHub left out (binary or too large), never searched.
+    """
+    hits: list[str] = []
+    unread = 0
+    for f in files:
+        if not isinstance(f, dict) or not _under(str(f.get("filename") or ""), path):
+            continue
+        patch = f.get("patch")
+        if not isinstance(patch, str):
+            unread += 1
+            continue
+        added = removed = 0
+        for line in patch.splitlines():
+            if line.startswith(("+++", "---")) or needle not in line:
+                continue
+            if line.startswith("+"):
+                added += 1
+            elif line.startswith("-"):
+                removed += 1
+        if added or removed:
+            hits.append(f"{f.get('filename')} (+{added} -{removed})")
+    return hits, unread
+
+
 def _fmt_commit_line(c: dict) -> str:
     commit = c.get("commit") or {}
     msg = (commit.get("message") or "").splitlines()[0] if commit.get("message") else "(no message)"
@@ -126,12 +165,21 @@ def register(
         since: str = "",
         until: str = "",
         count: int = 30,
+        contains: str = "",
     ) -> str:
-        """List commits on a repository, optionally filtered by branch, file path, author, or date range."""
+        """List commits on a repository, optionally filtered by branch, file path, author, or date range.
+
+        With *contains*, only the commits whose diff (under *path*) adds or
+        removes a line holding that text are answered: the pickaxe search of
+        ``git log -S`` for a checkout that has no history.
+        """
         owner, name, rerr = parse_repo(repo)
         if rerr:
             return rerr
-        params: dict[str, Any] = {"per_page": max(1, min(count, 100))}
+        if contains and not path.strip("/"):
+            return "Error: contains needs a path (a file or directory) to bound the search."
+        limit = _MAX_PICKAXE_COMMITS if contains else 100
+        params: dict[str, Any] = {"per_page": max(1, min(count, limit))}
         if branch:
             params["sha"] = branch
         if path:
@@ -155,9 +203,43 @@ def register(
             if err:
                 return err
             commits = resp.json()
+            if contains:
+                return await _pickaxe(client, owner, name, repo, commits, contains, path)
             return _common.format_entity_list(
                 commits, _fmt_commit_line, noun="commit", empty_msg=f"No commits found in {repo}."
             )
+
+    async def _pickaxe(client: Any, owner: str, name: str, repo: str, commits: Any, needle: str, path: str) -> str:
+        """The commits of *commits* whose diff under *path* adds or removes a line holding *needle*."""
+        listed = [c for c in commits if isinstance(c, dict) and c.get("sha")] if isinstance(commits, list) else []
+        lines: list[str] = []
+        unread_total = 0
+        for c in listed:
+            resp, err = await _common.safe_request(
+                client,
+                "get",
+                f"{_BASE_URL}/repos/{owner}/{name}/commits/{_enc(c['sha'])}",
+                _PROVIDER,
+                f"read the diff of {c['sha'][:8]} in {repo}",
+                headers=headers,
+            )
+            if err:
+                return f"{err}\nSearched {len(lines)} match(es) before it." if lines else err
+            detail = resp.json() or {}
+            hits, unread = pickaxe_hits(detail.get("files") or [], needle, path)
+            unread_total += unread
+            if hits:
+                lines.append(f"{_fmt_commit_line(c)}: {', '.join(hits)}")
+        where = f"{repo}:{path.strip('/')}"
+        header = f"{len(lines)} of {len(listed)} commit(s) touching {where} add or remove a line holding {needle!r}"
+        if not lines:
+            header = f"No commit of the {len(listed)} touching {where} adds or removes a line holding {needle!r}"
+        out = [header + (":" if lines else "."), *lines]
+        if unread_total:
+            out.append(f"{unread_total} file diff(s) not shown by GitHub (binary or too large) were not searched.")
+        if len(listed) >= _MAX_PICKAXE_COMMITS:
+            out.append(f"Only the newest {_MAX_PICKAXE_COMMITS} commits were searched: narrow path, since or until.")
+        return "\n".join(out)
 
     async def get_github_commit(repo: str, ref: str, full_message: bool = False) -> str:
         """Get a single commit's details: message (bounded unless *full_message*), author, stats, and changed files."""
@@ -465,6 +547,11 @@ def register(
                     "since": {"type": "string", "description": "ISO 8601 timestamp lower bound (optional)", "default": ""},
                     "until": {"type": "string", "description": "ISO 8601 timestamp upper bound (optional)", "default": ""},
                     "count": {"type": "integer", "description": "Max commits (max 100)", "default": 30},
+                    "contains": {
+                        "type": "string",
+                        "description": "Only commits whose diff under path adds or removes a line holding this text (git log -S); needs path, reads 50 commits at most",
+                        "default": "",
+                    },
                 },
                 "required": ["repo"],
             },
