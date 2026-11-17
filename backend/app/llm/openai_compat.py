@@ -165,14 +165,39 @@ _QUOTED_VALUE = re.compile(r"'([a-z]+)'")
 _NO_RETRY = object()
 
 
-def _effort_after_refusal(exc: openai.BadRequestError, sent: str | None) -> object:
+# The AI Gateway's 502 for an upstream 4xx, once it carries the provider's message
+# (XTM-One-Platform/ai-gateway#348): "... upstream returned status 400 Bad Request: <message>".
+_GATEWAY_PROVIDER_MESSAGE = re.compile(r"upstream returned status 4\d\d[^:]*: (.+)", re.DOTALL)
+
+
+def gateway_provider_message(exc: BaseException) -> str | None:
+    """The provider's own message in the gateway's 502 for an upstream 4xx.
+
+    ``None`` when there is none: another error, an older gateway, or a message it withheld.
+    """
+    if not (isinstance(exc, openai.APIStatusError) and exc.status_code == 502 and marked_not_retryable(exc.body)):
+        return None
+    match = _GATEWAY_PROVIDER_MESSAGE.search(_error_message(exc))
+    return match.group(1) if match else None
+
+
+def _refusal_message(exc: openai.APIStatusError) -> str | None:
+    """What a refused request says: a 400's message, or the provider's behind the gateway."""
+    if isinstance(exc, openai.BadRequestError):
+        return str(getattr(exc, "message", "") or exc)
+    return gateway_provider_message(exc)
+
+
+def _effort_after_refusal(exc: openai.APIStatusError, sent: str | None) -> object:
     """The ``reasoning_effort`` to retry with after *exc*, ``None`` to omit it, or ``_NO_RETRY``.
 
-    Only an HTTP 400 that names ``reasoning_effort`` is answered: the value the
+    Only a refusal (``_refusal_message``) that names ``reasoning_effort`` is answered: the value the
     error lists that is nearest below *sent* (the lowest when *sent* is not a
     platform level), ``none`` when the error asks for it, else no parameter.
     """
-    message = str(getattr(exc, "message", "") or exc)
+    message = _refusal_message(exc)
+    if message is None:
+        return _NO_RETRY
     if getattr(exc, "param", None) != "reasoning_effort" and "reasoning_effort" not in message:
         return _NO_RETRY
     if "reasoning_effort to 'none'" in message:
@@ -201,11 +226,12 @@ def _log_effort_refused(model: str | None, sent: str | None, retried: str | None
     )
 
 
-def _refuses_temperature(exc: openai.BadRequestError) -> bool:
-    """Whether *exc* is the 400 a model answers a ``temperature`` it does not take with."""
-    if getattr(exc, "param", None) == "temperature":
-        return True
-    return "Unsupported parameter: 'temperature'" in str(getattr(exc, "message", "") or exc)
+def _refuses_temperature(exc: openai.APIStatusError) -> bool:
+    """Whether *exc* is the refusal a model answers a ``temperature`` it does not take with."""
+    message = _refusal_message(exc)
+    if message is None:
+        return False
+    return getattr(exc, "param", None) == "temperature" or "Unsupported parameter: 'temperature'" in message
 
 
 @functools.lru_cache(maxsize=64)
@@ -217,7 +243,7 @@ def _log_temperature_refused(model: str | None) -> None:
 async def create_without_refused_temperature[T](
     create: Callable[[dict[str, Any]], Awaitable[T]], params: dict[str, Any], model: str | None
 ) -> T:
-    """Run ``create(params)``; on a 400 that refuses ``temperature``, retry once without it.
+    """Run ``create(params)``; on a refusal of ``temperature``, retry once without it.
 
     The capability table (``omit_temperature``) is the first line; this keeps
     a model the table does not flag yet on the same leg, on chat completions
@@ -225,7 +251,7 @@ async def create_without_refused_temperature[T](
     """
     try:
         return await create(params)
-    except openai.BadRequestError as exc:
+    except openai.APIStatusError as exc:
         if "temperature" not in params or not _refuses_temperature(exc):
             raise
         _log_temperature_refused(model)
@@ -235,7 +261,7 @@ async def create_without_refused_temperature[T](
 async def create_with_effort_retry[T](
     create: Callable[[dict[str, Any]], Awaitable[T]], params: dict[str, Any], model: str | None
 ) -> T:
-    """Run ``create(params)``; on a 400 that refuses ``reasoning_effort``, retry once corrected.
+    """Run ``create(params)``; on a refusal of ``reasoning_effort``, retry once corrected.
 
     The capability table (``normalize_openai_reasoning_effort``) is the first
     line; this answers a model the table does not know yet, or one whose
@@ -249,7 +275,7 @@ async def create_with_effort_retry[T](
 
     try:
         return await send(params)
-    except openai.BadRequestError as exc:
+    except openai.APIStatusError as exc:
         sent = params.get("reasoning_effort")
         retried = _effort_after_refusal(exc, sent)
         if retried is _NO_RETRY:
@@ -260,7 +286,7 @@ async def create_with_effort_retry[T](
         _log_effort_refused(model, sent, retried)
         try:
             return await send(corrected)
-        except openai.BadRequestError as second:
+        except openai.APIStatusError as second:
             if retried == "none" and _effort_after_refusal(second, "none") is not _NO_RETRY:
                 raise function_tools_unsupported(second, model) from second
             raise
@@ -271,7 +297,7 @@ async def create_with_effort_retry[T](
 FUNCTION_TOOLS_UNSUPPORTED = "function_tools_unsupported"
 
 
-def function_tools_unsupported(exc: openai.BadRequestError, model: str | None) -> openai.BadRequestError:
+def function_tools_unsupported(exc: openai.APIStatusError, model: str | None) -> openai.BadRequestError:
     """The one 400 a model with no valid chat-completions request with tools ends on.
 
     Its tools refusal asks for ``reasoning_effort: none`` and ``none`` is
@@ -447,13 +473,13 @@ def _refused(exc: Exception) -> bool:
 
 
 def _refuses_replay(exc: Exception) -> bool:
-    """A refusal the replayed thinking blocks may have caused. A 400 must say so;
-    the gateway's 502 drops the upstream message, so it cannot be told apart."""
+    """A refusal the replayed thinking blocks may have caused: its message must say so.
+    A refusal without one (a 413, a gateway 502 with no provider message) cannot be told apart."""
     if not _refused(exc):
         return False
-    if exc.status_code != 400:
+    message = _error_message(exc) if exc.status_code == 400 else gateway_provider_message(exc)
+    if message is None:
         return True
-    message = _error_message(exc)
     return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)
 
 

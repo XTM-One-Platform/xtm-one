@@ -1048,6 +1048,51 @@ class TestChatAndModels:
         assert len(await provider.embed("hello", model="text-embedding-3-large")) == 1024
         assert [b.get("dimensions") for b in bodies] == [1024, None, 1024]
 
+    @staticmethod
+    def _provider_message_gateway(bodies: list[dict], provider_message: str) -> FiligranGatewayProvider:
+        """A gateway refusing ``dimensions`` with the provider's message (ai-gateway#348)."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            body = json.loads(request.content)
+            bodies.append(body)
+            if "dimensions" in body:
+                return httpx.Response(502, json={"error": {
+                    "message": f"provider error: upstream returned status 400 Bad Request: {provider_message}",
+                    "type": "provider_error", "code": "provider_error", "retryable": False,
+                }})
+            return httpx.Response(200, json={
+                "object": "list",
+                "data": [{"object": "embedding", "index": 0, "embedding": [0.1] * 3072}],
+                "model": body["model"],
+            })
+
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        provider.client = provider.client.with_options(max_retries=0)
+        provider.embedding_dimensions = 4096
+        return provider
+
+    @pytest.mark.asyncio
+    async def test_a_dimension_the_provider_names_falls_back_to_the_native_size(self):
+        bodies: list[dict] = []
+        provider = self._provider_message_gateway(
+            bodies, "Invalid value for 'dimensions' = 4096. Must be less than or equal to 3072."
+        )
+        assert len(await provider.embed("hello", model="text-embedding-3-large")) == 3072
+        assert [("dimensions" in b) for b in bodies] == [True, False]
+
+    @pytest.mark.asyncio
+    async def test_a_400_the_provider_says_is_about_another_input_is_not_asked_again(self):
+        bodies: list[dict] = []
+        provider = self._provider_message_gateway(
+            bodies, "This model's maximum context length is 8192 tokens, however you requested 9000 tokens."
+        )
+        with pytest.raises(openai.InternalServerError):
+            await provider.embed("hello", model="text-embedding-3-large")
+        assert len(bodies) == 1
+
     @pytest.mark.asyncio
     async def test_another_upstream_failure_is_not_taken_for_a_refused_dimension(self):
         def handler(request: httpx.Request) -> httpx.Response:

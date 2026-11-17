@@ -10,6 +10,7 @@ import json
 import uuid
 
 import httpx
+import openai
 import pytest
 
 from app.core.xtm_auth import _normalize_url
@@ -72,6 +73,14 @@ class _Gateway:
 
     def assistant_turns(self, index: int = -1) -> list[dict]:
         return [m for m in self.sent[index]["messages"] if m["role"] == "assistant"]
+
+
+def _gateway_refusal(provider_message: str) -> httpx.Response:
+    """The gateway's 502 for an upstream 400, carrying the provider's message (ai-gateway#348)."""
+    message = f"provider error: upstream returned status 400 Bad Request: {provider_message}"
+    return httpx.Response(502, json={"error": {
+        "type": "provider_error", "code": "provider_error", "message": message, "retryable": False,
+    }})
 
 
 def _ok() -> httpx.Response:
@@ -194,7 +203,9 @@ async def test_a_loop_nudge_does_not_end_the_round():
         httpx.Response(400, json={"error": {"message": "Invalid `signature` in `thinking` block"}}),
         httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
                                             "retryable": False}}),
+        _gateway_refusal("messages.1.content.0: Invalid `signature` in `thinking` block"),
     ],
+    ids=["direct 400", "gateway 502 without the provider's message", "gateway 502 with it"],
 )
 @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
 async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(refusal, call):
@@ -217,6 +228,16 @@ async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(ref
     assert "thinking_blocks" in gateway.assistant_turns(0)[0]
     assert "thinking_blocks" not in gateway.assistant_turns(1)[0]
     assert messages[1]._provider_extra[EXTRA_KEY].refused
+
+
+@pytest.mark.asyncio
+async def test_a_gateway_refusal_naming_another_cause_keeps_the_blocks():
+    gateway = _Gateway(_gateway_refusal("tools.0.custom.name: String should match pattern"))
+    messages = _round(_kept())
+    with pytest.raises(openai.InternalServerError):
+        await gateway.provider().chat(messages, model=MODEL, tools=[TOOL])
+    assert len(gateway.sent) == 1
+    assert not messages[1]._provider_extra[EXTRA_KEY].refused
 
 
 REFUSED_BLOCKS = {"error": {"message": "Invalid `signature` in `thinking` block"}}

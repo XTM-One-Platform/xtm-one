@@ -60,6 +60,7 @@ from app.llm.music import (
 from app.llm.openai_compat import (
     OpenAICompatibleProvider,
     declared_model_types,
+    gateway_provider_message,
     marked_not_retryable,
 )
 from app.llm.system_prompt_split import split_system_prompt
@@ -499,9 +500,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         try:
             response = await self.client.embeddings.create(input=text, model=m, extra_headers=headers, **shorten)
         except openai.APIStatusError as exc:
-            # The gateway reports an upstream 400 as ``502 provider_error``; a size above
-            # the model's native one is refused that way, so ask again at the native size.
-            if not shorten or exc.status_code != 502 or "upstream returned status 400" not in str(exc):
+            # A size above the model's native one is refused: ask again at the native size.
+            if not shorten or not _may_refuse_dimensions(exc):
                 raise
             response = await self.client.embeddings.create(input=text, model=m, extra_headers=headers)
             # Every upstream 400 looks alike; only a native vector smaller than ``dims``
@@ -521,6 +521,16 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             model=m, prompt=prompt, n=1, size=size, extra_headers=await self._target_headers(m)
         )
         return base64.b64decode(response.data[0].b64_json)
+
+
+def _may_refuse_dimensions(exc: openai.APIStatusError) -> bool:
+    """The gateway's 502 for an upstream 400 that refuses ``dimensions``. Without the
+    provider's message (an older gateway), any upstream 400 may be that refusal."""
+    if exc.status_code != 502:
+        return False
+    if (message := gateway_provider_message(exc)) is not None:
+        return "Invalid value for 'dimensions'" in message
+    return "upstream returned status 400" in str(exc)
 
 
 def mark_claude_cache_breakpoints(params: dict, cache_control: dict | None) -> None:
