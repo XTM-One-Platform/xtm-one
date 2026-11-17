@@ -48,6 +48,22 @@ _SOURCE = "integration:github"
 _AGENT_LOGINS = {"copilot", "copilot-swe-agent", "claude", "anthropic-code-agent", "codex"}
 
 
+def comment_id_of(comment: Any) -> int | None:
+    """The numeric id of an issue comment given as its id or its link (``...#issuecomment-N``)."""
+    text = str(comment if comment is not None else "").strip()
+    if "#issuecomment-" in text:
+        text = text.rsplit("#issuecomment-", 1)[1]
+    elif "/issues/comments/" in text:
+        text = text.rsplit("/issues/comments/", 1)[1]
+    return int(text) if text.isdigit() and int(text) > 0 else None
+
+
+def _number_of_issue_url(issue_url: str) -> int | None:
+    """The issue or pull request number at the end of a comment's ``issue_url``."""
+    tail = issue_url.rstrip("/").rsplit("/", 1)[-1]
+    return int(tail) if tail.isdigit() else None
+
+
 def first_line(body: str | None) -> str:
     """The first non-empty line of a comment body, stripped (``""`` for an empty body)."""
     return next((line.strip() for line in (body or "").splitlines() if line.strip()), "")
@@ -545,6 +561,62 @@ def register(
             await mark_self_action(repo, issue_number)
             stored = f" with {len(lines)} attachment(s) stored on branch {attachments.ASSETS_BRANCH}" if lines else ""
             return f"Comment added{stored}: {comment['html_url']}"
+
+    async def update_github_comment(
+        repo: str,
+        comment: str,
+        body: str = "",
+        edits: list[dict[str, Any]] | None = None,
+        expect_updated_at: str = "",
+    ) -> str:
+        """Change a comment of an issue or pull request in place.
+
+        ``comment`` is the comment's id or its link (``...#issuecomment-N``).
+        ``edits`` are find/replace edits on the body as stored (:mod:`.body_edits`),
+        so a correction never resends the whole comment; ``body`` replaces it whole.
+        ``expect_updated_at`` refuses a write over a newer edit.
+        """
+        if e := _common.repo_error(repo):
+            return e
+        comment_id = comment_id_of(comment)
+        if comment_id is None:
+            return (
+                "Error: 'comment' is the comment's id or its link ending in #issuecomment-N "
+                f"(got {str(comment)[:80]!r}). Nothing was written."
+            )
+        if edits and body:
+            return "Error: give 'body' or 'edits', not both. Nothing was written."
+        if not edits and not body:
+            return "Error: give 'body' or 'edits'. Nothing was written."
+        url = f"{_BASE_URL}/repos/{repo}/issues/comments/{comment_id}"
+        what = f"comment {comment_id} in {repo}"
+        async with egress_client(timeout=30) as client:
+            diff = ""
+            if edits or expect_updated_at:
+                new_body, diff, eerr = await body_edits.edited_body(
+                    client, url, headers, edits, expect_updated_at, what
+                )
+                if eerr:
+                    return eerr
+                if edits:
+                    body = new_body
+            resp, err = await _common.safe_request(
+                client,
+                "patch",
+                url,
+                _PROVIDER,
+                f"update {what}",
+                headers=_json_headers(headers),
+                json={"body": body},
+            )
+            if err:
+                return err
+            stored = resp.json() or {}
+            number = _number_of_issue_url(str(stored.get("issue_url") or ""))
+            if number is not None:
+                await mark_self_action(repo, number)
+            updated = f"Comment updated: {stored.get('html_url', '')}"
+            return f"{updated}\nBody diff:\n{diff}" if diff else updated
 
     async def _comment_with_first_line(client: Any, repo: str, issue_number: int, body: str) -> tuple[str, str | None]:
         """The comment of ``issue_number`` that opens with ``body``'s first line, as an answer line, or ``""``."""
@@ -1113,6 +1185,7 @@ def register(
     executor.register("create_github_issue", create_github_issue)
     executor.register("update_github_issue", update_github_issue)
     executor.register("add_github_comment", add_github_comment)
+    executor.register("update_github_comment", update_github_comment)
     executor.register("assign_coding_agent_to_issue", assign_coding_agent_to_issue)
     executor.register("add_github_labels", add_github_labels)
     executor.register("remove_github_labels", remove_github_labels)
@@ -1306,6 +1379,26 @@ def register(
             # A resumed turn's repeat of a comment that landed is answered with it, never posted twice.
             landed_probe=comment_probe(headers),
             landed_key=comment_key,
+        ),
+        ToolDefinition(
+            name="update_github_comment",
+            description=(
+                "Change an issue or pull request comment in place: find/replace 'edits' on the stored body "
+                "(diff returned), or a whole 'body'."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "repo": _repo,
+                    "comment": {"type": "string", "description": "Comment id, or its link ending in #issuecomment-N"},
+                    "body": {"type": "string", "description": "New whole body (instead of edits)"},
+                    "edits": body_edits.EDITS_SCHEMA,
+                    "expect_updated_at": body_edits.EXPECT_UPDATED_AT_SCHEMA,
+                },
+                "required": ["repo", "comment"],
+            },
+            source=_SOURCE,
+            priority=1,
         ),
         ToolDefinition(
             name="assign_coding_agent_to_issue",

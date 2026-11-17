@@ -407,6 +407,10 @@ GitHub offers no upload API for comments, so an agent attaches a file of the con
 
 An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line as the new comment, nothing is committed or posted and the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
 
+### GitHub: a comment corrected in place
+
+`update_github_comment` changes a comment the account can edit, named by its id or by its link (`...#issuecomment-N`). `edits` are find/replace edits on the comment as GitHub stores it: every find must exist and be unique (or set `replace_all`), nothing is written unless every edit applies, and the answer is the diff, not the comment. `body` replaces the whole comment instead. `expect_updated_at` (the `updated_at` the agent read) refuses the write when someone changed the comment since. A wrong figure in a posted verdict is then fixed in the same comment, never by a second one.
+
 ### GitHub: labels set when the pull request opens
 
 Some repositories run a check on a new pull request that reads its labels at start (a `dependencies` label that exempts a bump from the linked-issue rule, for example). A label added in a later call can arrive after that check, which then fails. `create_github_pr` takes `labels`: each one is checked on the repository before anything is written (an unknown label refuses the call and is named), then the labels are written first after the pull request is created, before the assignees, and the result reads them back on a `Labels:` line. Without `labels` the tool behaves as before.
