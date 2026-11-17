@@ -1,0 +1,1095 @@
+{
+  "format": "xtm-one-widget-pack",
+  "version": 1,
+  "name": "OpenAEV - Simulation results",
+  "widgets": [
+    {
+      "id": "detection",
+      "title": "Detection",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Detection",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "inject_expectation_status",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "prevention",
+      "title": "Prevention",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Prevention",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "PREVENTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "inject_expectation_status",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "vulnerability",
+      "title": "Vulnerability",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Vulnerability",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "VULNERABILITY"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "inject_expectation_status",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "recommended-action",
+      "title": "Recommended action",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Recommended action",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "vulnerable-endpoint"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "vulnerable_endpoint_action",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "inject",
+      "title": "Inject",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "Inject",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "vulnerable-endpoints-number",
+      "title": "Vulnerable endpoints number",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "Vulnerable endpoints number",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "vulnerable-endpoint"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "endpoints",
+      "title": "endpoints",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "endpoints",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "endpoints",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "endpoint"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cves-found",
+      "title": "CVEs Found",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "CVEs Found",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "CVEsfound",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "finding_type",
+                    "values": [
+                      "CVE"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "findings",
+      "title": "findings",
+      "width": "full",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "list",
+      "size": "m",
+      "native": {
+        "widget_type": "list",
+        "widget_config": {
+          "widget_configuration_type": "list",
+          "title": "findings",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "perspective": {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": "base_entity",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ]
+            }
+          },
+          "columns": [
+            "finding_value",
+            "base_created_at",
+            "finding_type"
+          ],
+          "sorts": [
+            {
+              "fieldName": "base_created_at",
+              "direction": "DESC"
+            }
+          ],
+          "limit": 100
+        }
+      }
+    },
+    {
+      "id": "total-number-of-findings",
+      "title": "Total number of findings",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "Total number of findings",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ports-open",
+      "title": "Ports Open",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "widget_type": "number",
+        "widget_config": {
+          "widget_configuration_type": "flat",
+          "title": "Ports Open",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "finding_type",
+                    "values": [
+                      "Port",
+                      "PortsScan"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "latest-findings",
+      "title": "Latest findings",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "hbar",
+      "size": "m",
+      "native": {
+        "widget_type": "horizontal-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Latest findings",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "finding_type",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "vulnerable-endpoints",
+      "title": "Vulnerable endpoints",
+      "width": "full",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "list",
+      "size": "m",
+      "native": {
+        "widget_type": "list",
+        "widget_config": {
+          "widget_configuration_type": "list",
+          "title": "Vulnerable endpoints",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "perspective": {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": "base_entity",
+                  "values": [
+                    "vulnerable-endpoint"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ]
+            }
+          },
+          "columns": [
+            "vulnerable_endpoint_hostname",
+            "base_created_at",
+            "vulnerable_endpoint_agents_active_status",
+            "vulnerable_endpoint_action",
+            "vulnerable_endpoint_findings_summary"
+          ],
+          "sorts": [
+            {
+              "fieldName": "base_created_at",
+              "direction": "DESC"
+            }
+          ],
+          "limit": 100
+        }
+      }
+    },
+    {
+      "id": "undetected-unprevented-injects-by-week",
+      "title": "UNDETECTED/UNPREVENTED INJECTS BY WEEK",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "bar",
+      "size": "m",
+      "native": {
+        "widget_type": "vertical-barchart",
+        "widget_config": {
+          "widget_configuration_type": "temporal-histogram",
+          "title": "UNDETECTED/UNPREVENTED INJECTS BY WEEK",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "Not Detected",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Not Prevented",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "PREVENTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "temporal",
+          "interval": "week",
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "most-detected-prevented-ttps",
+      "title": "Most Detected & Prevented TTPs",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "hbar",
+      "size": "m",
+      "native": {
+        "widget_type": "horizontal-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Most Detected & Prevented TTPs",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "Detected TTPs",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "SUCCESS"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Prevented TTPs",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "PREVENTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "SUCCESS"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "base_attack_patterns_side",
+          "limit": 10,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "most-undetected-unprevented-ttps",
+      "title": "MOST UNDETECTED &UNPREVENTED TTPS",
+      "width": "third",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "hbar",
+      "size": "m",
+      "native": {
+        "widget_type": "horizontal-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "MOST UNDETECTED &UNPREVENTED TTPS",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "Undetected TTPs",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "UnpreventedTTPs",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "PREVENTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "base_attack_patterns_side",
+          "limit": 10,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "last-detection-coverage",
+      "title": "LAST DETECTION COVERAGE",
+      "width": "full",
+      "kind": "platform",
+      "source": "openaev",
+      "size": "m",
+      "native": {
+        "widget_type": "security-coverage",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "LAST DETECTION COVERAGE",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "SUCCESS",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "SUCCESS"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "FAILED",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "and"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "base_attack_patterns_side",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "inject-undetected-unprevented-by-securit",
+      "title": "Inject undetected & unprevented by security platform",
+      "width": "full",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "bar",
+      "size": "m",
+      "native": {
+        "widget_type": "vertical-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Inject undetected & unprevented by security platform",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "Not Detected",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "DETECTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Not Prevented",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "expectation-inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_type",
+                    "values": [
+                      "PREVENTION"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  },
+                  {
+                    "key": "inject_expectation_status",
+                    "values": [
+                      "FAILED"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "base_security_platforms_side",
+          "limit": 100,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "inject-status",
+      "title": "Inject status",
+      "width": "half",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "Inject status",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "key": "base_entity",
+                    "values": [
+                      "inject"
+                    ],
+                    "operator": "eq",
+                    "mode": "or"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "inject_status",
+          "limit": 10,
+          "stacked": false,
+          "display_legend": false
+        }
+      }
+    },
+    {
+      "id": "latest-injects",
+      "title": "Latest Injects",
+      "width": "half",
+      "kind": "platform",
+      "source": "openaev",
+      "view": "list",
+      "size": "m",
+      "native": {
+        "widget_type": "list",
+        "widget_config": {
+          "widget_configuration_type": "list",
+          "title": "Latest Injects",
+          "time_range": "DEFAULT",
+          "date_attribute": "base_created_at",
+          "perspective": {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": "base_entity",
+                  "values": [
+                    "inject"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ]
+            }
+          },
+          "columns": [
+            "inject_status",
+            "base_created_at",
+            "execution_date",
+            "base_attack_patterns_side"
+          ],
+          "sorts": [
+            {
+              "fieldName": "base_created_at",
+              "direction": "DESC"
+            }
+          ],
+          "limit": 10
+        }
+      }
+    }
+  ],
+  "description": "Results of the technical simulations run in OpenAEV, across all of them: detection, prevention and vulnerability expectations and their outcomes over time."
+}

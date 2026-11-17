@@ -1,0 +1,52 @@
+{
+  "procedure": "treatmentPlans.getTreatmentPlan",
+  "source": "recorded",
+  "data": {
+    "id": "019edb28-0022-7000-8000-000000000002",
+    "organizationId": "2938b146-a565-4468-baa4-568acd4c92af",
+    "name": "Widen endpoint coverage",
+    "status": "draft",
+    "ownerId": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+    "startDate": "2026-09-14",
+    "endDate": "2027-03-13",
+    "rationale": "The endpoint controls hold on the servers and cover less than half the workstation fleet, which is where the ransomware scenarios land.",
+    "costOneOff": 95000,
+    "costRecurringAnnual": 140000,
+    "promisedAleReduction": null,
+    "promisedAt": null,
+    "scopeVersion": 1,
+    "createdAt": "2026-08-16T10:13:56.862Z",
+    "updatedAt": "2026-08-16T10:13:56.862Z",
+    "moves": [
+      {
+        "id": "01a139e7-8604-73db-b981-fb7aa168554a",
+        "planId": "019edb28-0022-7000-8000-000000000002",
+        "capabilityId": "5972a172-5856-59d7-aa74-49c9ba62a7ff",
+        "targetStrengthRung": null,
+        "targetCoverageBucket": "L2"
+      },
+      {
+        "id": "01a139e7-8604-73db-b981-fb7b124372e3",
+        "planId": "019edb28-0022-7000-8000-000000000002",
+        "capabilityId": "7558247f-4bdc-5f5e-b911-cad0720aa5dd",
+        "targetStrengthRung": null,
+        "targetCoverageBucket": "L3"
+      },
+      {
+        "id": "01a139e7-8604-73db-b981-fb7c644b7644",
+        "planId": "019edb28-0022-7000-8000-000000000002",
+        "capabilityId": "7924f5d0-3449-5bc5-8eee-5877de2bea49",
+        "targetStrengthRung": null,
+        "targetCoverageBucket": "L3"
+      }
+    ],
+    "organization": {
+      "id": "2938b146-a565-4468-baa4-568acd4c92af",
+      "name": "Acme Bank Europe"
+    },
+    "owner": {
+      "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+      "name": "Bob Johnson"
+    }
+  }
+}

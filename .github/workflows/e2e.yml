@@ -1,0 +1,465 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit SHA to test"
+        required: false
+        default: ""
+  # The merge queue tests the exact commit main moves to, so a merge does not
+  # run the suite again. main runs it to refresh the caches the queue restores,
+  # which only main can save (an entry a merge group saves is readable by that
+  # ref alone): when a file their keys or the images' dependency layers follow
+  # changes, and nightly (the base images and the runner image move too).
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - Dockerfile.worker
+      - .dockerignore
+      - docker/chromium-distrusted-roots/**
+      - backend/pyproject.toml
+      - backend/uv.lock
+      - frontend/package.json
+      - frontend/yarn.lock
+      - frontend/.yarnrc.yml
+      - apps/microsoft-office/package.json
+      - apps/microsoft-office/package-lock.json
+      - .github/workflows/e2e.yml
+  schedule:
+    - cron: "47 3 * * *"
+  # The suite runs in the merge queue: on a pull request its jobs skip, which
+  # reports the required check as passed so the pull request can enter the queue. Run it on
+  # a branch by hand: `gh workflow run e2e.yml --ref <branch>`.
+  pull_request:
+  # A required check that never reports on `merge_group` events stalls the
+  # queue forever.
+  merge_group:
+
+permissions:
+  contents: read
+
+# A pull request or a manual run replaces its previous run. Any other run is
+# one per commit: a group keeps one pending run, so grouping main's pushes by
+# ref would cancel the middle merge of a burst.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'workflow_dispatch' && (inputs.ref || github.ref)) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+
+# Workflow level because two consumers read the same names: compose passes them
+# to the containers through the `x-e2e-environment` anchor, and the A2A suite
+# reads them to know what clock it asserts against (tests_e2e/a2a/instance.ts).
+# docker-compose.e2e.yml explains each one.
+env:
+  A2A_ALLOW_INSECURE_LOOPBACK: "true"
+  # Docker's default address pools: the suite reaches the platform from
+  # the compose network's bridge gateway (dev-docs/a2a-e2e-test-design.md).
+  # The platform refuses to start with it unless the line above is set.
+  TEST_ONLY_INSECURE_TRANSPORT_PEERS: "172.16.0.0/12,192.168.0.0/16"
+  A2A_CLIENT_DEV_TRUSTED_ORIGINS: http://localhost:4000
+  A2A_CLIENT_CALLBACK_BASE_URL: http://localhost:4000
+  A2A_CLIENT_FLOOR_INTERVAL_SECONDS: "5"
+  A2A_CLIENT_DELEGATION_CEILING_SECONDS: "20"
+  A2A_CLIENT_GRACE_SECONDS: "3"
+  A2A_CLIENT_BREAKER_THRESHOLD: "2"
+  A2A_CLIENT_BREAKER_COOLDOWN_SECONDS: "5"
+  A2A_REAP_INTERVAL_SECONDS: "5"
+  A2A_RUN_LEASE_SECONDS: "60"
+  A2A_DEDUP_WINDOW_SECONDS: "30"
+  A2A_TASK_CREATE_RATE_LIMIT: "500"
+  A2A_TASK_READ_RATE_LIMIT: "20000"
+  A2A_UNAUTHENTICATED_RATE_LIMIT: "100000"
+  # `<key>||<base_url>`: the scripted server authenticates nobody, so the
+  # key half is the literal string `none`.
+  LLM_PROVIDER_CUSTOM_OPENAI_API_KEY: none||http://scripted-llm:9099/v1
+  # The image's default model id; must equal SERVED_MODEL in tests_e2e/scripted-llm/client.ts.
+  LLM_PROVIDER_CUSTOM_OPENAI_MODELS: scripted-llm
+  # Both files, for every `docker compose` in this workflow. The e2e overlay is
+  # separate so the shipped descriptor cannot pass these names through from
+  # an operator's own `.env`; docker-compose.e2e.yml says what it adds.
+  COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
+  # Pinned so the images built below carry the names compose runs:
+  # `<project>-<service>` for a service with a `build:` and no `image:`.
+  COMPOSE_PROJECT_NAME: xtm-one
+
+jobs:
+  # One stack per job, each running its share of the spec files exactly as the
+  # whole suite ran before: one Playwright worker against its own platform,
+  # database and scripted model. The files are dealt by their CI timings
+  # (E2E_SHARD, tests_e2e/shards.ts), and a job runs the setup project its
+  # files depend on. A2A files never run concurrently on one deployment
+  # (dev-docs/a2a-e2e-test-design.md); each of its jobs has a deployment of
+  # its own.
+  shard:
+    name: E2E ${{ matrix.project }} ${{ matrix.shard }}
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: core, shard: 1/6 }
+          - { project: core, shard: 2/6 }
+          - { project: core, shard: 3/6 }
+          - { project: core, shard: 4/6 }
+          - { project: core, shard: 5/6 }
+          - { project: core, shard: 6/6 }
+          - { project: a2a, shard: 1/2 }
+          - { project: a2a, shard: 2/2 }
+          # Evaluation runs only in copilot or dev mode with EVALUATION on:
+          # its specs get a stack of their own. Every other job keeps
+          # the defaults below (xtm_one, FLOW_BUILDER).
+          - { project: evaluation, shard: 1/1, platform_mode: copilot, features: "FLOW_BUILDER,EVALUATION" }
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # Nothing here pushes; the token stays out of .git/config, where
+          # every later step (the pull request's own code included) could read it.
+          persist-credentials: false
+
+      # Both images, the build cache, node_modules and the browsers outgrow the
+      # runner's free disk ("No space left on device"), so the SDKs this job
+      # never uses are removed. In the background: it overlaps the image builds,
+      # and "Free the build cache" waits for the room it needs. Each directory
+      # is first renamed aside (atomic, same filesystem), so a later step never
+      # sees a half-deleted one: the runner resolves PATH before every step, and
+      # an entry such as /usr/local/.ghcup/bin vanishing mid-scan failed a step
+      # with "Could not find a part of the path" (#9758). Gone is fine, half is not.
+      - name: Remove unused SDKs
+        run: |
+          df -h /
+          removing=()
+          for dir in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$dir" ] && sudo mv "$dir" "$dir.removing"; then
+              removing+=("$dir.removing")
+            fi
+          done
+          sudo rm -rf "${removing[@]}" > /dev/null 2>&1 &
+          echo $! > "$RUNNER_TEMP/remove-sdks.pid"
+
+      # The runner's Docker keeps images in the containerd store, where the
+      # `docker` driver builds straight into the image store and still reads
+      # and writes the GitHub Actions cache: no BuildKit container to start and
+      # no image tarball to export and load (~50 s). On a runner without
+      # that store the driver cannot use the cache, so the job falls back to a
+      # `docker-container` builder - slower, never failed.
+      - name: Pick the BuildKit driver
+        id: buildx-driver
+        run: |
+          store="$(docker info --format '{{range .DriverStatus}}{{if eq (index . 0) "driver-type"}}{{index . 1}}{{end}}{{end}}' || true)"
+          if [ "$store" = "io.containerd.snapshotter.v1" ]; then
+            echo "driver=docker" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Docker's image store is '${store:-graph driver}', not containerd: building with docker-container, which exports and loads a tarball."
+            echo "driver=docker-container" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Built through BuildKit's GitHub Actions cache rather than
+      # `docker compose build`, which starts from nothing on every runner. Only
+      # main writes it (an entry a pull request or a merge group writes is
+      # readable by that ref alone), and only its first job: every job builds
+      # the same layers, and each write uploads all of them.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: ${{ steps.buildx-driver.outputs.driver }}
+
+      - name: Build platform image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          tags: ${{ env.COMPOSE_PROJECT_NAME }}-platform:latest
+          load: true
+          cache-from: type=gha,scope=e2e-platform
+          cache-to: ${{ github.ref == 'refs/heads/main' && !inputs.ref && strategy.job-index == 0 && 'type=gha,scope=e2e-platform,mode=max,ignore-error=true' || '' }}
+
+      # The worker's runtime stage is the platform's, layer for layer, so it
+      # reads the platform's cache scope and writes none of its own: from its
+      # own scope (`e2e-worker`, built apart from the platform's) the 9 layers
+      # came back `CACHED` and were then downloaded a second time while the
+      # image was unpacked, ~1 GB and 45-55 s on 7 jobs of 8. The same
+      # blobs are already on disk after the build above.
+      - name: Build worker image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.worker
+          tags: ${{ env.COMPOSE_PROJECT_NAME }}-worker:latest
+          load: true
+          cache-from: type=gha,scope=e2e-platform
+
+      # Both images are in Docker now; the build cache is dead weight for the
+      # rest of the job (most of it, on the docker-container fallback, where
+      # the builder keeps its own copy of every layer). The SDK removal is only
+      # waited for until the disk holds 15 GB free, several times what
+      # node_modules, the browsers and the run take; it finishes in the
+      # background past that.
+      - name: Free the build cache
+        run: |
+          docker buildx prune --all --force > /dev/null
+          pid="$(cat "$RUNNER_TEMP/remove-sdks.pid")"
+          while sudo kill -0 "$pid" 2>/dev/null && [ "$(df --output=avail -BG / | tail -n 1 | tr -dc '0-9')" -lt 15 ]; do
+            sleep 1
+          done
+          df -h /
+
+      - name: CI license
+        uses: ./.github/actions/ci-license
+        with:
+          fallback: ${{ secrets.E2E_ENTERPRISE_LICENSE }}
+
+      # The registry images, pulled apart from `up` so a transient Docker Hub
+      # reset (`read: connection reset by peer` on a blob download) is retried
+      # instead of failing the shard before any test runs. Three attempts, 10 s
+      # then 20 s apart; a registry still unreachable after that fails here,
+      # under a step that names it. `platform` and `worker` were built above.
+      - name: Pull service images
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose pull --quiet --ignore-buildable \
+              minio postgres redis scripted-llm; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::docker compose pull failed (attempt $attempt of 3), retrying in $((attempt * 10))s"
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::docker compose pull failed after 3 attempts"
+          exit 1
+
+      # `scripted-llm` is there because half of A2A is a decision an agent
+      # makes and a fresh database carries no LLM provider; `worker` because a
+      # `delegate` handover waits on the reconciler. Started before the
+      # frontend install so the platform boots while it runs.
+      - name: Start services
+        env:
+          ADMIN_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+          # A full Playwright run opens an activity SSE stream per page load, and
+          # each SSE subscription pins a Redis connection for its lifetime. A long
+          # run drifts toward the default 50-connection pool ceiling, after which
+          # every Redis command fails with "Too many connections". Worse, once the
+          # single uvicorn worker hits MAX_REQUESTS its graceful shutdown blocks on
+          # those long-lived streams (no shutdown timeout), so the server stops
+          # responding mid-run (socket hang up). Give the throwaway test platform
+          # ample pool headroom and never recycle the lone worker mid-run.
+          REDIS_MAX_CONNECTIONS: "500"
+          MAX_REQUESTS: "0"
+          # The suite exercises the visual flow builder (tests_e2e/flows.spec.ts),
+          # which still exists and still works — `FLOW_BUILDER` only hides it from
+          # deployments while the feature is not announced externally. Without the
+          # flag the flow library tab and the canvas are gone and those specs fail
+          # on a "New flow" button that is not there. The flag-off shape is
+          # asserted in backend/tests/test_flow_builder_feature_flag.py instead.
+          ENABLED_FEATURES: ${{ matrix.features || 'FLOW_BUILDER' }}
+          PLATFORM_MODE: ${{ matrix.platform_mode || 'xtm_one' }}
+        run: |
+          docker compose up -d --no-build \
+            minio postgres redis scripted-llm platform worker
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Get Yarn cache directory
+        id: yarn-cache-dir
+        working-directory: frontend
+        run: echo "dir=$(yarn config get cacheFolder)" >> "$GITHUB_OUTPUT"
+
+      # Only main saves the caches below: a pull request's entry is readable by
+      # that pull request alone, and every workflow shares the repository's
+      # cache quota - an entry saved past it evicts the oldest-used ones, the
+      # Browser tool jobs' apt packages among them.
+      - name: Restore Yarn dependencies
+        id: yarn-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('frontend/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --immutable
+
+      - name: Save Yarn dependencies
+        if: github.ref == 'refs/heads/main' && steps.yarn-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('frontend/yarn.lock') }}
+
+      - name: Restore Playwright browsers
+        id: playwright-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
+
+      # The browsers come from Playwright's CDN, not from Ubuntu. Their system
+      # libraries used to come from `--with-deps` / `install-deps`, which runs
+      # apt-get update on every shard: when the runner cannot resolve the
+      # Ubuntu mirrors ("Temporary failure resolving", exit 100, for minutes on
+      # end) the shard failed before any test ran, retries or not (#11154).
+      # The runner image already carries most of them, so the browsers are
+      # installed without apt and the libraries are checked with ldd, as
+      # Playwright checks them at launch: apt runs only for a library the image
+      # lacks. No test timeout depends on this.
+      - name: Make apt retry transient network failures
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: |
+          for attempt in 1 2 3; do
+            yarn playwright install chromium && exit 0
+            echo "::warning::playwright install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      - name: Save Playwright browsers
+        if: github.ref == 'refs/heads/main' && steps.playwright-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
+
+      - name: Install the system libraries the runner image lacks
+        working-directory: frontend
+        run: |
+          missing=$(find ~/.cache/ms-playwright -type f \( -name chrome -o -name headless_shell \) -exec ldd {} \; 2>/dev/null | awk '/not found/ {print $1}' | sort -u)
+          if [ -z "$missing" ]; then
+            echo "The runner image carries every library Chromium links: no apt."
+            exit 0
+          fi
+          echo "Missing libraries: $(echo "$missing" | tr '\n' ' ')"
+          for attempt in 1 2 3; do
+            yarn playwright install-deps chromium && exit 0
+            echo "::warning::playwright install-deps failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      # All three, not just the platform. A missing scripted model or worker
+      # does not fail anything fast — it turns dozens of agentic specs into
+      # three-minute timeouts with nothing in the failure naming the cause.
+      - name: Wait for the stack to be healthy
+        run: |
+          # Poll READINESS: since the startup-gate fix the liveness
+          # endpoint returns 200 before migrations/seeding finish, while all
+          # non-health routes answer 503 until startup completes.
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:4000/api/health/ready > /dev/null; then
+              echo "Platform is ready after ~$((i * 5))s"
+              break
+            fi
+            if [ "$i" -eq 40 ]; then
+              echo "Platform did not become healthy in time"
+              docker compose logs --tail 200 platform
+              exit 1
+            fi
+            echo "  Attempt $i/40 – sleeping 5s..."
+            sleep 5
+          done
+          curl -sf http://localhost:9099/v1/models > /dev/null || {
+            echo "The scripted model is not answering; every agentic spec would time out."
+            docker compose logs --tail 50 scripted-llm
+            exit 1
+          }
+          docker compose ps worker --status running | grep -q worker || {
+            echo "the worker is not running; every delegate handover would sit at pending."
+            docker compose logs --tail 50 worker
+            exit 1
+          }
+
+      - name: Run E2E tests
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:4000
+          E2E_SCRIPTED_LLM: http://localhost:9099
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+          E2E_SHARD: ${{ matrix.shard }}
+        run: yarn test:e2e --project=${{ matrix.project }}
+
+      # Where the disk stands at its fullest - the image, the stack's data,
+      # node_modules, the browsers and the results - so "Remove unused SDKs"
+      # and "Free the build cache" can be judged on numbers.
+      - name: Disk usage after the run
+        if: always()
+        run: |
+          df -h /
+          docker system df || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.project }}-${{ strategy.job-index }}
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results (screenshots / videos)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.project }}-${{ strategy.job-index }}
+          path: frontend/test-results/
+          retention-days: 7
+
+      # Per service, not one merged stream: a failure is usually one service's
+      # story and the merge interleaves six.
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          df -h /
+          for svc in postgres redis minio scripted-llm worker platform; do
+            echo "::group::$svc"
+            docker compose logs --no-color --tail 200 "$svc" || true
+            echo "::endgroup::"
+          done
+          # The license verdict is logged at startup, long before the last 200
+          # lines: a run that came up as Community Edition says why here.
+          echo "::group::license lines (platform and worker, whole log)"
+          docker compose logs --no-color platform worker | grep -iE "licen[cs]e" | tail -n 50 || true
+          echo "::endgroup::"
+          # The last 200 lines are written at the end of the shard, minutes after
+          # a failing test: the agent loop and the warnings of the whole run say
+          # what the stack did while it failed.
+          echo "::group::agent loop, warnings and errors (platform and worker, whole log)"
+          docker compose logs --no-color --timestamps platform worker \
+            | grep -E 'Agent loop iter|"level": "(warning|error|critical)"' | tail -n 400 || true
+          echo "::endgroup::"
+
+  # The check the rest of the repository reads: one status for the whole suite,
+  # under the name the single job used to carry. Required, so it runs even when
+  # the run is cancelled: skipped, it would count as passed. On a pull request
+  # it skips with the shards (the suite runs in the merge queue): a job its
+  # condition skips reports the required check as passed, so the pull request
+  # can enter the queue.
+  e2e:
+    name: E2E (Playwright / Chromium)
+    if: always() && github.event_name != 'pull_request'
+    needs: shard
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Every shard passed
+        run: |
+          if [ "${{ needs.shard.result }}" != "success" ]; then
+            echo "::error::An E2E shard ended ${{ needs.shard.result }} - its job above has the report and the service logs."
+            exit 1
+          fi
+          echo "All E2E shards passed."

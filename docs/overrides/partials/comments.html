@@ -1,0 +1,21 @@
+{% if page.meta.comments %}
+  <h2 id="__comments">{{ lang.t("meta.comments") }}</h2>
+  <!-- Giscus is dormant until a page sets `comments: true` in its frontmatter.
+       Before enabling it, generate the repo/category IDs for XTM-One-Platform/xtm-one
+       at https://giscus.app and fill in data-repo-id / data-category-id below. -->
+  <script src="https://giscus.app/client.js"
+        data-repo="XTM-One-Platform/xtm-one"
+        data-repo-id=""
+        data-category="General"
+        data-category-id=""
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="bottom"
+        data-theme="transparent_dark"
+        data-lang="en"
+        crossorigin="anonymous"
+        async>
+  </script>
+{% endif %}

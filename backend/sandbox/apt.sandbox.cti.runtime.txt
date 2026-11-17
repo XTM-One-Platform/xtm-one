@@ -1,0 +1,13 @@
+# Final-stage runtime packages for sandbox-python-cti only.
+#
+# sandbox-python-cti moved from final-minimal to final-full (see
+# dev-docs/sandbox-image-hardening.md) because pycti's own __init__.py
+# eagerly imports python-magic (a transitive dependency, not listed directly
+# in requirements.sandbox.cti.txt), which needs libmagic.so at import time —
+# discovered by actually running the built image, not by inspection. This is
+# a pre-existing gap (even a plain python:3.14-slim base never shipped
+# libmagic), not a regression introduced by this hardening feature.
+libmagic1t64
+# Pillow's FreeType loads the system Brotli (see SANDBOX.md);
+# Pillow comes from bokeh, matplotlib and mitreattack-python.
+libbrotli1

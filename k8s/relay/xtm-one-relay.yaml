@@ -1,0 +1,99 @@
+# XTM One Relay on Kubernetes - run it in a cluster INSIDE the network
+# whose services the platform must reach (Splunk, Tanium, an on-premises
+# OpenCTI...). It connects out to XTM One over HTTPS; nothing connects to it.
+#
+#   1. In XTM One: Relays > a group > Enroll a relay > Kubernetes. Copy the
+#      reusable enrollment key (rlenr-...).
+#   2. kubectl create namespace xtm-one-relay
+#      kubectl -n xtm-one-relay create secret generic xtm-one-relay \
+#        --from-literal=enrollment-key='rlenr-...'
+#   3. Replace VERSION in the image with the relay version that dialog shows
+#      (e.g. 1.261002.1), set XTM_RELAY_SERVER_URL and
+#      XTM_RELAY_ALLOWED_DESTINATIONS below, then
+#      kubectl -n xtm-one-relay apply -f xtm-one-relay.yaml
+#
+# Each replica enrolls as its own relay (its credential and state live on its
+# own volume) and the group balances requests across them. Scale with
+# `kubectl scale`; a replica removed for good can be deleted in XTM One.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: xtm-one-relay
+  labels:
+    app.kubernetes.io/name: xtm-one-relay
+spec:
+  serviceName: xtm-one-relay
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: xtm-one-relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: xtm-one-relay
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          # The version your platform serves, never a moving tag: a restart
+          # must not swap the relay for another build. A relay in a container
+          # is updated by changing this tag.
+          image: xtmone/relay:VERSION
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: XTM_RELAY_SERVER_URL
+              value: "https://xtm-one.example.com"
+            - name: XTM_RELAY_ENROLLMENT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: xtm-one-relay
+                  key: enrollment-key
+            # The relay's local allow-list, the hard boundary of what it
+            # reaches: host:port, *.corp.local:443, 10.20.0.0/16:8089.
+            - name: XTM_RELAY_ALLOWED_DESTINATIONS
+              value: "splunk.corp.local:8089"
+            - name: XTM_RELAY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: XTM_RELAY_HEALTH_LISTEN
+              value: "0.0.0.0:8080"
+            # Through an egress proxy: the relay then uses long-poll.
+            # - name: XTM_RELAY_UPSTREAM_PROXY
+            #   value: "http://proxy.corp.local:3128"
+          # Ready while connected to the platform. No liveness probe on it: a
+          # platform outage must not restart every relay; a crash restarts it.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/xtm-one-relay
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 64Mi

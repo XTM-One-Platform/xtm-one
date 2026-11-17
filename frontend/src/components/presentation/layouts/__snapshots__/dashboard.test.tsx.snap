@@ -1,0 +1,107 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`dashboard panel grid > draws one panel on three columns as it always has 1`] = `
+{
+  "columns": "repeat(3, minmax(0, 1fr))",
+  "panels": [
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+  ],
+  "rowTracks": "minmax(0, 1fr)",
+  "rows": "1",
+}
+`;
+
+exports[`dashboard panel grid > draws six single panels on three columns as it always has 1`] = `
+{
+  "columns": "repeat(3, minmax(0, 1fr))",
+  "panels": [
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+  ],
+  "rowTracks": "repeat(2, minmax(0, 1fr))",
+  "rows": "2",
+}
+`;
+
+exports[`dashboard panel grid > draws spans 2 and 1 on one row on three columns as it always has 1`] = `
+{
+  "columns": "repeat(3, minmax(0, 1fr))",
+  "panels": [
+    {
+      "gridColumn": "span 2",
+      "span": "2",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+  ],
+  "rowTracks": "minmax(0, 1fr)",
+  "rows": "1",
+}
+`;
+
+exports[`dashboard panel grid > draws spans 3, 1, 2 on three columns as it always has 1`] = `
+{
+  "columns": "repeat(3, minmax(0, 1fr))",
+  "panels": [
+    {
+      "gridColumn": "span 3",
+      "span": "3",
+    },
+    {
+      "gridColumn": "",
+      "span": "1",
+    },
+    {
+      "gridColumn": "span 2",
+      "span": "2",
+    },
+  ],
+  "rowTracks": "repeat(2, minmax(0, 1fr))",
+  "rows": "2",
+}
+`;
+
+exports[`dashboard panel grid > draws two full-width panels on three columns as it always has 1`] = `
+{
+  "columns": "repeat(3, minmax(0, 1fr))",
+  "panels": [
+    {
+      "gridColumn": "span 3",
+      "span": "3",
+    },
+    {
+      "gridColumn": "span 3",
+      "span": "3",
+    },
+  ],
+  "rowTracks": "repeat(2, minmax(0, 1fr))",
+  "rows": "2",
+}
+`;

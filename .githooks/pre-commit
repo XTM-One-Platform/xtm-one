@@ -1,0 +1,25 @@
+#!/bin/sh
+# Enable with `make setup-hooks`. Checks that the commit gives every Enterprise
+# Edition file its license header (backend/scripts/license_headers.py --staged):
+# it reads the index and writes nothing, so it holds under `git commit <paths>`.
+# Skip once with `git commit --no-verify`: CI's Editions check (license_headers.py
+# --check) still checks.
+#
+# Only a commit that touches what the check reads runs it: the trees of
+# license_headers.SCOPE, licensing/ and LICENSE (test_license_headers.py pins
+# this list to SCOPE).
+git -c core.quotePath=false diff --cached --name-only | grep -qE '^((backend/app|frontend/src|apps|licensing)/|LICENSE$)' || exit 0
+# Its own small environment (PyYAML only, the version of backend/uv.lock), not the
+# backend's: a commit never syncs the backend. One start-up: the check exits 0
+# (nothing wrong) or 1 (it found problems, printed); any other status is uv that
+# could not set the environment up (offline first run, no Python 3.13+), and the
+# check is skipped like without uv: CI still checks.
+skipped() {
+    echo "pre-commit: the EE license header check could not start (uv, Python 3.13+ or PyYAML), skipped (CI still checks)" >&2
+    exit 0
+}
+command -v uv >/dev/null 2>&1 || skipped
+status=0
+uv run --quiet --no-project --python ">=3.13" --with "pyyaml==6.0.3" python backend/scripts/license_headers.py --staged || status=$?
+[ "$status" -le 1 ] || skipped
+exit "$status"

@@ -1,0 +1,31 @@
+{
+  "container": "filigran-video",
+  "source": "The Filigran brand pack (brand_assets/filigran) and the partner, integration and customer logos, included whole and never copied: every predefined asset of the Filigran deck, for the image scenes, statement backdrops, composed pictures and figures of a product video. The marks the cards and the watermark draw are listed here under captions of their own.",
+  "include": [
+    {"pack": "filigran"},
+    {"pack": "filigran-badges"},
+    {"pack": "filigran-partner-logos"},
+    {"pack": "filigran-integration-logos"},
+    {"pack": "filigran-customer-logos"}
+  ],
+  "assets": [
+    {
+      "file": "filigran-logo.svg",
+      "pack": "filigran",
+      "role": "logo",
+      "description": "Filigran wordmark (cyan mark + white wordmark), light-on-dark - drawn on the title and closing cards of a dark video."
+    },
+    {
+      "file": "filigran-logo-light.svg",
+      "pack": "filigran",
+      "role": "logo_light",
+      "description": "Filigran wordmark in dark ink - drawn on the title and closing cards of a light video."
+    },
+    {
+      "file": "filigran-mark.svg",
+      "pack": "filigran",
+      "role": "logo_mark",
+      "description": "Filigran symbol alone - the watermark in the corner of every frame."
+    }
+  ]
+}

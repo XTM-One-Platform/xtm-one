@@ -1,0 +1,130 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""Centralized model imports – ensures SQLAlchemy metadata is fully populated.
+
+Importing this package (``import app.models``) is sufficient to register
+every ORM model with ``Base.metadata``.  This replaces the duplicated
+per-model import lists that previously lived in ``main.py``, ``worker.py``,
+and ``alembic/env.py``.
+
+When adding a **new model**, add a single import line here and it will
+automatically be picked up by the app, the SAQ worker, and Alembic.
+"""
+
+import app.models.a2a
+import app.models.access_request
+import app.models.activity
+import app.models.agent
+import app.models.agent_account
+import app.models.agent_config_version
+import app.models.agent_delegation
+import app.models.agent_friction
+import app.models.agent_memory_entry
+import app.models.agent_skill
+import app.models.agent_skill_package_origin
+import app.models.agent_skill_resource
+import app.models.agent_template
+import app.models.agent_tombstone
+import app.models.agentic_execution
+import app.models.ai_adoption_metric
+import app.models.annotation
+import app.models.api_key
+import app.models.app_lock
+import app.models.arcade
+import app.models.assignment
+import app.models.audit_log
+import app.models.browser_profile
+import app.models.channel_bot
+import app.models.chat
+import app.models.chat_image
+import app.models.concierge
+import app.models.concierge_cycle
+import app.models.concierge_dataset
+import app.models.concierge_experiment
+import app.models.concierge_finding
+import app.models.concierge_pet
+import app.models.conversation_channel_binding
+import app.models.conversation_share
+import app.models.ctem_case
+import app.models.ctem_metric
+import app.models.ctem_posture_snapshot
+import app.models.custom_dashboard
+import app.models.custom_integration_definition
+import app.models.custom_tool
+import app.models.custom_tool_source
+import app.models.dashboard_widget_pack
+import app.models.dataset
+import app.models.dataset_version
+import app.models.department
+import app.models.embedding
+import app.models.evaluation
+import app.models.evaluation_metric
+import app.models.evaluation_param
+import app.models.feedback_criterion
+import app.models.file_attachment
+import app.models.fleet
+import app.models.flow
+import app.models.flow_event
+import app.models.flow_run
+import app.models.flow_shadow
+import app.models.general_assistant_config
+import app.models.group
+import app.models.improvement_proposal
+import app.models.integration
+import app.models.integration_openapi_spec
+import app.models.integration_user_credential
+import app.models.intent
+import app.models.investigation
+import app.models.investigation_pack
+import app.models.knowledge_base
+import app.models.langfuse_config
+import app.models.llm_config
+import app.models.llm_model_price
+import app.models.llm_trace
+import app.models.mcp_server
+import app.models.memory_consolidation
+import app.models.mobile_device
+import app.models.model_catalog_announcement
+import app.models.notification_read_state
+import app.models.nova_rule
+import app.models.nova_rule_source
+import app.models.oauth_client
+import app.models.oauth_default
+import app.models.orchestration
+import app.models.organization
+import app.models.organization_context
+import app.models.platform_build
+import app.models.platform_event_task_watch
+import app.models.platform_procedure_manifest
+import app.models.platform_registration
+import app.models.platform_settings
+import app.models.platform_timer
+import app.models.presentation
+import app.models.prompt
+import app.models.prompt_version
+import app.models.quota
+import app.models.relay
+import app.models.report
+import app.models.roi
+import app.models.runner
+import app.models.sandbox_copy
+import app.models.sandbox_workspace
+import app.models.secret_vault_provider
+import app.models.security_audit_finding_state
+import app.models.shared_state
+import app.models.skill_version
+import app.models.sso_config
+import app.models.sub_agent_task
+import app.models.support_code
+import app.models.task
+import app.models.template_container
+import app.models.tool_approval
+import app.models.user
+import app.models.variable
+import app.models.video_studio
+import app.models.whatsapp_inbound_message
+import app.models.whatsapp_poll_tally
+import app.models.work_item
+import app.models.workset
+import app.models.workspace
+import app.models.xtm_hub_registration

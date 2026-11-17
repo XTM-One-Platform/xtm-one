@@ -1,0 +1,70 @@
+{
+  "procedure": "dashboard.getScenarioSummaries",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-0011-7000-8000-000000000002",
+      "name": "Data Breach on AML/KYC Screening Platform",
+      "organizationId": "2938b146-a565-4468-baa4-568acd4c92af",
+      "organizationName": "Acme Bank Europe",
+      "attackOutcomeName": "Data Breach & Resale",
+      "noMappedAsset": false,
+      "latestRun": {
+        "runId": "01a139e7-a27e-79a8-b229-eef1f4a94186",
+        "createdAt": "2026-10-14T10:14:04.163Z",
+        "aleMean": null,
+        "aleP10": null,
+        "aleP90": null,
+        "lefMean": null
+      },
+      "trend": null,
+      "likelihoodChange": null
+    },
+    {
+      "id": "f2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Business Interruption on Internet Banking Platform",
+      "organizationId": "2938b146-a565-4468-baa4-568acd4c92af",
+      "organizationName": "Acme Bank Europe",
+      "attackOutcomeName": "Service Disruption",
+      "noMappedAsset": false,
+      "latestRun": {
+        "runId": "01a139e7-9a75-720c-8287-d110c96132af",
+        "createdAt": "2026-10-14T10:14:02.106Z",
+        "aleMean": 144971.49380445734,
+        "aleP10": 23563.98318229635,
+        "aleP90": 313089.00042246724,
+        "lefMean": 0.12978842024835477
+      },
+      "trend": {
+        "baselineAleMean": 141873.0567765118,
+        "currentAleMean": 144971.49380445734,
+        "delta": 3098.4370279455325,
+        "deltaPct": 0.021839502850963474
+      },
+      "likelihoodChange": 0.08928241151137895
+    },
+    {
+      "id": "b4d5e6f7-a8b9-4c0d-9e2f-3a4b5c6d7e8f",
+      "name": "Espionage / Intellectual Property Loss on Proprietary Trading Algorithms",
+      "organizationId": "0c04d416-9b28-4c43-b10d-23db92eb6bb0",
+      "organizationName": "Acme Wealth Management",
+      "attackOutcomeName": "Espionage",
+      "noMappedAsset": false,
+      "latestRun": {
+        "runId": "01a139e7-a611-7e07-97ba-90c622f87769",
+        "createdAt": "2026-10-14T10:14:05.078Z",
+        "aleMean": 485761.6356957783,
+        "aleP10": 64708.537004730504,
+        "aleP90": 1131594.128692943,
+        "lefMean": 0.07126354486442238
+      },
+      "trend": {
+        "baselineAleMean": 906133.2349414566,
+        "currentAleMean": 485761.6356957783,
+        "delta": -420371.5992456783,
+        "deltaPct": -0.4639180895653139
+      },
+      "likelihoodChange": 0.041993094857002644
+    }
+  ]
+}

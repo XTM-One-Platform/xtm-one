@@ -1,0 +1,178 @@
+# =============================================================================
+# XTM One Worker — lean image for background job processing (SAQ)
+# =============================================================================
+
+# The deck fonts render_html_to_image and the Video Studio inline into their
+# headless Chromium (Geologica, Elms Sans, IBM Plex Sans / Mono). The platform
+# image reads them from its built frontend; this image has none, so every render
+# of an assignment run fell back to system fonts. The @fontsource packages come
+# from the same locked install as the platform's frontend-build stage (these
+# instructions are its first ones, so a build next to the platform's reuses its
+# cached layers), and only their latin woff2 subsets are kept (~1 MB).
+FROM docker.io/library/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS deck-fonts
+
+WORKDIR /app
+COPY frontend/package.json frontend/yarn.lock frontend/.yarnrc.yml ./
+RUN corepack enable && yarn install --immutable
+RUN mkdir /fonts \
+    && find node_modules/@fontsource/geologica node_modules/@fontsource/elms-sans \
+            node_modules/@fontsource/ibm-plex-sans node_modules/@fontsource/ibm-plex-mono \
+            -path '*/files/*-latin-[4-7]00-*.woff2' -exec cp {} /fonts/ \; \
+    && ls /fonts | grep -q '^geologica-latin-400-normal'
+
+# The locked backend dependencies (backend/uv.lock), without the dev group, as
+# a hash-pinned requirements list. A stage of its own so the install below is
+# keyed on that list alone: pyproject.toml also holds the ruff and pytest
+# settings, and editing them must not reinstall every package and re-download
+# Chromium. --locked fails the build when pyproject.toml was changed without
+# relocking.
+FROM docker.io/library/python:3.14-slim AS backend-deps
+COPY --from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5 /uv /usr/local/bin/
+WORKDIR /src
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file /requirements.txt
+
+FROM docker.io/library/python:3.14-slim
+
+WORKDIR /app
+
+# System dependencies (libxmlsec1 for SAML, git for VCS installs, ffmpeg for
+# the Video Studio's recordings and renders, tesseract-ocr for the
+# labels a recording reads on a graph canvas, libmagic for
+# python-magic, which pycti imports)
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev git \
+    pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl \
+    ffmpeg tesseract-ocr \
+    libmagic1t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 24 (required for stdio MCP servers that use npx). The npm bundled
+# with the NodeSource package is used as-is — an unpinned `npm@latest`
+# upgrade made the layer non-reproducible. The package is left unpinned so a
+# build takes the latest Node 24 security release (nothing bumps an apt pin),
+# and fails below 24.22.1, the first release with the CA bundle that blocks the
+# compromised eMudhra intermediates; 24.18.1 cleared the CVEs.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh \
+    && bash nodesource_setup.sh \
+    && apt-get install -y --no-install-recommends nodejs \
+    && node_version="$(dpkg-query -W -f='${Version}' nodejs)" \
+    && { dpkg --compare-versions "$node_version" ge 24.22.1 \
+        || { echo "nodejs $node_version is older than 24.22.1" >&2; exit 1; }; } \
+    && rm -f nodesource_setup.sh \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
+# uv/uvx (required for stdio MCP servers distributed as Python packages).
+# Copying the prebuilt binaries from astral's official image is faster and
+# leaner than running their installer script or pulling in pip/pipx.
+COPY --from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5 /uv /uvx /usr/local/bin/
+
+# The backend-deps list, installed into the image's own Python so `uvicorn`,
+# `saq`, `playwright` and `python` resolve as they always have. Every package is
+# pinned and hash-checked; --compile-bytecode does what pip did by default, so
+# the first import does not pay for it.
+COPY --from=backend-deps /requirements.txt /tmp/backend-requirements.txt
+# pypi.org can stop answering for several minutes, and a docker build does not
+# see the workflow env of CI and Deploy: uv gets the same values here (each
+# download retries 5 times at 30 s, the install runs up to 3 times, a minute
+# apart). Per command rather than ENV, so the runtime image does not inherit them.
+#
+# The Pillow wheels bundle Brotli 1.2.0 (CVE-2026-111497) for FreeType: in this
+# same layer, replace the bundled libbrotlidec with a link to the system one
+# (libbrotli1, fixed) and remove the bundled libbrotlicommon, which only it
+# loads.
+# The link keeps the bundled name (libbrotlidec-<hash>.so.1.2.0), the one
+# FreeType loads, but resolves to the system version.
+RUN for attempt in 1 2 3; do \
+        UV_HTTP_TIMEOUT=30 UV_HTTP_RETRIES=5 \
+            uv pip install --system --require-hashes --no-cache --compile-bytecode \
+            -r /tmp/backend-requirements.txt && break; \
+        echo "uv pip install failed (attempt $attempt of 3)" >&2; \
+        if [ "$attempt" -lt 3 ]; then sleep 60; else exit 1; fi; \
+    done \
+    && cd /usr/local/lib/python3*/site-packages/pillow.libs \
+    && rm libbrotlicommon-* \
+    && ln -sf "/usr/lib/$(uname -m)-linux-gnu/libbrotlidec.so.1" libbrotlidec-*
+
+# pycti loads python-magic, which needs libmagic as soon as it is imported,
+# and the STIX tools derive standard ids through pycti: a missing
+# system library fails the build here, never an agent at runtime.
+RUN python -c "import pycti"
+
+# Chromium for the Playwright-backed PDF renderer (generate_file) and the
+# browser automation tool. Assignments run in the worker, so it needs the
+# browser binary + OS libs too — the Python package alone is not enough.
+#
+# Install browsers into a fixed, world-readable path instead of root's
+# ~/.cache/ms-playwright. In production the container runs as a non-root user
+# (Kubernetes runAsUser), whose $HOME is not /root, so a default-location
+# install would be invisible at runtime ("Executable doesn't exist at
+# /.cache/ms-playwright/..."). Baking PLAYWRIGHT_BROWSERS_PATH as an ENV makes
+# the build-time install and the runtime lookup agree for any user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# A Video Studio recording lane on a GPU node (VIDEO_STUDIO_RECORDING_GL=gpu):
+# Chromium draws WebGL through ANGLE on the host's Vulkan or EGL
+# driver. The NVIDIA container runtime mounts the driver's libraries
+# (libGLX/libEGL_nvidia, the Vulkan ICD) only with the graphics capability, and
+# the Vulkan loader and the EGL vendor dispatch must be in the image. Without a
+# GPU nothing here is used: Chromium draws on SwiftShader as before.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvulkan1 libegl1 libgles2 \
+    && rm -rf /var/lib/apt/lists/*
+# The GLVND EGL vendor file and the Vulkan ICD file that point the dispatch at
+# the NVIDIA libraries the runtime mounts. Without them the EGL
+# dispatch and the Vulkan loader only see Mesa, and Chromium's ANGLE draws on
+# llvmpipe (a CPU rasterizer) on a GPU node. On a node without the NVIDIA
+# driver the libraries are absent: the loaders skip these files and fall back
+# as before.
+RUN mkdir -p /usr/share/glvnd/egl_vendor.d /usr/share/vulkan/icd.d \
+    && printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "libEGL_nvidia.so.0"}}\n' \
+       > /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
+    && printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "libGLX_nvidia.so.0", "api_version": "1.3"}}\n' \
+       > /usr/share/vulkan/icd.d/nvidia_icd.json
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+
+# Chromium reads its certificate trust settings from $HOME/.pki/nssdb, and only
+# when it can open it read-write: the roots in docker/chromium-distrusted-roots
+# are marked as not trusted there, for root (HOME=/root) and for a Kubernetes
+# runAsUser with no passwd entry (HOME=/, group 0).
+COPY docker/chromium-distrusted-roots/ /tmp/chromium-distrusted-roots/
+RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools \
+    && mkdir -p /etc/chromium/nssdb /root/.pki /.pki \
+    && certutil -d sql:/etc/chromium/nssdb -N --empty-password \
+    && for cert in /tmp/chromium-distrusted-roots/*.pem; do \
+         certutil -d sql:/etc/chromium/nssdb -A -t p,p,p -n "$(basename "$cert" .pem)" -i "$cert"; \
+       done \
+    && chmod -R a+rX,g+w /etc/chromium/nssdb \
+    && ln -s /etc/chromium/nssdb /root/.pki/nssdb \
+    && ln -s /etc/chromium/nssdb /.pki/nssdb \
+    && apt-get purge -y libnss3-tools \
+    && rm -rf /var/lib/apt/lists/* /tmp/chromium-distrusted-roots
+
+# Backend application
+COPY backend/ .
+
+# The deck fonts (deck-fonts stage), read by font_face_css() at /app/fonts.
+COPY --from=deck-fonts /fonts /app/fonts
+
+# Version metadata — injected at build time. Last, so a new version reuses
+# every cached layer above: a RUN after a changed ARG misses the cache.
+ARG APP_VERSION=0.0.0-dev
+ENV APP_VERSION=$APP_VERSION
+ARG VITE_GIT_SHA=
+# The commit, as in the platform image: recorded with the version in
+# platform_builds, so a worker reads its own build as deployed (#10718).
+ENV GIT_SHA=$VITE_GIT_SHA
+LABEL org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$VITE_GIT_SHA \
+      org.opencontainers.image.source="https://github.com/XTM-One-Platform/xtm-one" \
+      org.opencontainers.image.title="XTM One Worker" \
+      org.opencontainers.image.licenses="Apache-2.0 AND LicenseRef-XTM-One-Enterprise-Edition"
+
+CMD ["saq", "app.worker.settings"]

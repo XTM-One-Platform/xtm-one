@@ -1,0 +1,56 @@
+{
+  "title": "Synthetic Quarterly Review (revised)",
+  "theme": "dark",
+  "aspect_ratio": "16:9",
+  "transition": "slide",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Synthetic Quarterly Review",
+      "subtitle": "Revised after the dry run",
+      "footer": "dev fixture"
+    },
+    {
+      "layout": "generic",
+      "title": "Executive summary",
+      "bullets": [
+        "Exposure down, coverage up, one vendor regression",
+        "Recommendation: buy, not build"
+      ],
+      "notes": "New slide, inserted second."
+    },
+    {
+      "layout": "two_columns",
+      "title": "What changed this quarter",
+      "left": {
+        "heading": "Improved",
+        "bullets": [
+          "Patch latency down from 9 to 3 days",
+          "Detection coverage on edge assets",
+          "Two runbooks fully automated"
+        ]
+      },
+      "right": {
+        "heading": "Regressed",
+        "rich_text": "<ul><li>Third-party posture — one vendor stopped reporting</li><li>Inventory drift on the lab network</li></ul>"
+      }
+    },
+    {
+      "layout": "dashboard",
+      "title": "Posture at a glance",
+      "metrics": [
+        { "label": "Critical exposures", "value": "12", "delta": "-4", "trend": "down" },
+        { "label": "Mean time to remediate", "value": "3.1h", "delta": "-40m", "trend": "down" },
+        { "label": "Asset coverage", "value": "87%", "delta": "+6 pts", "trend": "up" }
+      ]
+    },
+    {
+      "layout": "generic",
+      "title": "Next steps",
+      "bullets": [
+        "Close the twelve critical exposures",
+        "Onboard the lab network into inventory"
+      ]
+    }
+  ]
+}

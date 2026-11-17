@@ -1,0 +1,11 @@
+{
+  "procedure": "findingScore.getOpenFindingFigures",
+  "source": "recorded",
+  "data": {
+    "open": 28,
+    "critical": 0,
+    "internetExposed": 8,
+    "knownExploited": 21,
+    "aged": 19
+  }
+}

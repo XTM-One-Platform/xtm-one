@@ -1,0 +1,499 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`chips_align > center is drawn the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "348.51775999999995",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "400.372016",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "460.226272",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "535.88488",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "619.543488",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "679.512864",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": "logo",
+  "overflow": null,
+  "title": "Platform",
+  "tone": null,
+}
+`;
+
+exports[`chips_align > end is drawn the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "667.0355199999999",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "718.8897759999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "778.744032",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "854.4026399999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "938.061248",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "998.030624",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": "logo",
+  "overflow": null,
+  "title": "Platform",
+  "tone": null,
+}
+`;
+
+exports[`chips_align > start is drawn the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "286.064608",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "337.91886400000004",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "397.77312000000006",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "473.4317280000001",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "557.0903360000001",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "617.0597120000001",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": "logo",
+  "overflow": null,
+  "title": "Platform",
+  "tone": null,
+}
+`;
+
+exports[`the 5-column grid with a zone headed by its logo and its chips > leaves the nodes and every edge as they are without the chips 1`] = `
+[
+  {
+    "key": "middle->anchor#0",
+    "points": [
+      [
+        920,
+        418,
+      ],
+      [
+        920,
+        313.6,
+      ],
+    ],
+  },
+  {
+    "key": "left->anchor#1",
+    "points": [
+      [
+        168,
+        640,
+      ],
+      [
+        168,
+        268.8,
+      ],
+      [
+        854,
+        268.8,
+      ],
+    ],
+  },
+  {
+    "key": "right->anchor#2",
+    "points": [
+      [
+        1672,
+        640,
+      ],
+      [
+        1672,
+        268.8,
+      ],
+      [
+        986,
+        268.8,
+      ],
+    ],
+  },
+  {
+    "key": "left->middle#3",
+    "points": [
+      [
+        308,
+        709,
+      ],
+      [
+        920,
+        709,
+      ],
+      [
+        920,
+        556,
+      ],
+    ],
+  },
+  {
+    "key": "middle->right#4",
+    "points": [
+      [
+        1060,
+        487,
+      ],
+      [
+        1108,
+        487,
+      ],
+      [
+        1108,
+        709,
+      ],
+      [
+        1532,
+        709,
+      ],
+    ],
+  },
+]
+`;
+
+exports[`zone chips alone > are drawn in the zone, tinted by its colour, the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "534.4080319999999",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "586.2622879999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "646.116544",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "721.7751519999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "805.43376",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "865.403136",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "933.372512",
+        "35",
+        "124.62748800000003",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Integrations",
+        "x": "995.6862560000001",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": null,
+  "overflow": null,
+  "title": null,
+  "tone": null,
+}
+`;
+
+exports[`zone chips with a logo > are drawn in the zone, tinted by its colour, the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "534.4080319999999",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "586.2622879999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "646.116544",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "721.7751519999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "805.43376",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "865.403136",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "933.372512",
+        "35",
+        "124.62748800000003",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Integrations",
+        "x": "995.6862560000001",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": "logo",
+  "overflow": null,
+  "title": null,
+  "tone": null,
+}
+`;
+
+exports[`zone chips with a logo and a label > are drawn in the zone, tinted by its colour, the same in both schemes 1`] = `
+{
+  "chips": [
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "534.4080319999999",
+        "35",
+        "103.70851200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "AI agents",
+        "x": "586.2622879999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "646.116544",
+        "35",
+        "151.317216",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Shared context",
+        "x": "721.7751519999999",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "805.43376",
+        "35",
+        "119.93875200000001",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Automation",
+        "x": "865.403136",
+        "y": "50",
+      },
+    },
+    {
+      "className": "deck-arch-chip deck-arch-zone-chip",
+      "pill": [
+        "933.372512",
+        "35",
+        "124.62748800000003",
+        "30",
+        "15",
+      ],
+      "text": {
+        "size": "17",
+        "value": "Integrations",
+        "x": "995.6862560000001",
+        "y": "50",
+      },
+    },
+  ],
+  "color": "brand_1",
+  "logo": "logo",
+  "overflow": null,
+  "title": "Platform",
+  "tone": null,
+}
+`;

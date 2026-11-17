@@ -1,0 +1,113 @@
+{
+  "procedure": "controlCapabilities.getControlCapability",
+  "source": "recorded",
+  "data": {
+    "id": "23c2d8f6-fe50-51ab-8b72-c527dd60be67",
+    "externalId": "CSPM",
+    "name": "Cloud Security Posture Management",
+    "description": "Cloud Security Posture Management continuously audits the configuration of cloud infrastructure (compute, storage, network, service settings, resource hierarchy) against secure baselines and provider best practices, reading the cloud control plane and its audit telemetry to surface deviations. As a resist function it lowers the conditional probability that an attack step succeeds by removing misco",
+    "assessment": {
+      "strengthRung": "L0",
+      "coverageBucket": "L1",
+      "strengthMode": "auto",
+      "coverageMode": "auto",
+      "coverageBasis": "assumed",
+      "comment": null
+    },
+    "lastAssessedAt": "2026-10-14T12:56:14.653Z",
+    "lastAssessedBy": null,
+    "lastAssessedConnector": "derivation",
+    "lastDerivedAt": "2026-10-14T12:56:14.653Z",
+    "lastDerivedBy": null,
+    "assessmentSources": [
+      {
+        "axis": "strength",
+        "source": "drata",
+        "frameworkTitle": null
+      },
+      {
+        "axis": "strength",
+        "source": "nist-csf-2.0",
+        "frameworkTitle": "NIST CSF 2.0"
+      },
+      {
+        "axis": "coverage",
+        "source": "nist-csf-2.0",
+        "frameworkTitle": "NIST CSF 2.0"
+      }
+    ],
+    "rungs": [
+      {
+        "rung": "L0",
+        "label": "No cloud posture management. Cloud accounts are configured ad hoc, and misconfigurations (public storage, open security groups, legacy IMDSv1, unused regions) persist undetected. Counterfactual anchor: no CSPM edge is instantiated."
+      },
+      {
+        "rung": "L1",
+        "label": "Agentless posture scanning against a single provider on a scheduled cadence (daily or slower). Findings are reported for manual remediation, with no enforcement. Catches the common misconfigurations (public buckets, open ports, IMDSv1) but with drift between scans. Mechanism: read-only config snapshot compared to a fixed baseline."
+      },
+      {
+        "rung": "L2",
+        "label": "Continuous multi-cloud posture monitoring with near-real-time evaluation of control-plane changes, findings prioritized by attack path, and guardrail enforcement (preventive org and policy rules and auto-remediation of high-severity drift). Reference rung. Gain over L1: the drift window shrinks from days to minutes and the strongest misconfigurations are blocked at the control plane, not merely re"
+      },
+      {
+        "rung": "L3",
+        "label": "L2 plus pre-deployment infrastructure-as-code scanning that blocks misconfigured resources before provisioning, policy-as-code tuned to the tenant threat model, and closed-loop integration so posture findings drive automated response. Gain over L2: misconfigurations are caught pre-provision (shift-left) and remediation is autonomous rather than ticketed."
+      }
+    ],
+    "edges": [
+      {
+        "techniqueId": "414a3ce3-0099-59ec-b0ad-914aa2347012",
+        "techniqueExternalId": "T1021",
+        "techniqueName": "Remote Services",
+        "function": "prevent",
+        "source": "catalogue",
+        "state": "recommended",
+        "tactics": [
+          {
+            "externalId": "TA0008",
+            "name": "Lateral Movement",
+            "order": 11
+          }
+        ]
+      },
+      {
+        "techniqueId": "6e5b4f11-263c-5877-8251-7ab4d735063b",
+        "techniqueExternalId": "T1021.008",
+        "techniqueName": "Direct Cloud VM Connections",
+        "function": "prevent",
+        "source": "catalogue",
+        "state": "recommended",
+        "tactics": [
+          {
+            "externalId": "TA0008",
+            "name": "Lateral Movement",
+            "order": 11
+          }
+        ]
+      },
+      {
+        "techniqueId": "33d82c20-f0d5-5627-ac02-4323d1f67379",
+        "techniqueExternalId": "T1040",
+        "techniqueName": "Network Sniffing",
+        "function": "detect",
+        "source": "catalogue",
+        "state": "recommended",
+        "tactics": [
+          {
+            "externalId": "TA0006",
+            "name": "Credential Access",
+            "order": 9
+          },
+          {
+            "externalId": "TA0007",
+            "name": "Discovery",
+            "order": 10
+          }
+        ]
+      }
+    ],
+    "protectedFamilies": [
+      "cloud_resource"
+    ]
+  }
+}

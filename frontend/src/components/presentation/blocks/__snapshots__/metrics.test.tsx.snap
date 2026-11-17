@@ -1,0 +1,180 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`dashboard tile_size > draws the six regional tiles at each size 1`] = `
+{
+  "sm": {
+    "attributes": {
+      "count": "6",
+      "size": "sm",
+    },
+    "delta": 16,
+    "label": 16,
+    "padding": [
+      12,
+      16,
+    ],
+    "sparkline": [
+      84,
+      30,
+    ],
+    "sublabel": 16,
+    "value": 36,
+  },
+  "unset": {
+    "attributes": {
+      "count": "6",
+      "size": "md",
+    },
+    "delta": 20,
+    "label": 20,
+    "padding": [
+      16,
+      24,
+    ],
+    "sparkline": [
+      120,
+      40,
+    ],
+    "sublabel": 20,
+    "value": 44,
+  },
+  "unsetCrowded": {
+    "attributes": {
+      "count": "8",
+      "size": "md",
+    },
+    "delta": 20,
+    "label": 20,
+    "padding": [
+      12,
+      16,
+    ],
+    "sparkline": [
+      84,
+      30,
+    ],
+    "sublabel": 20,
+    "value": 36,
+  },
+}
+`;
+
+exports[`delta_tone > draws a loss that fell as a green down arrow 1`] = `
+{
+  "drawn": {
+    "arrow": "lucide-trending-down",
+    "arrowColour": "success",
+    "colour": "success",
+    "text": "-18.4% QoQ",
+    "trend": "down",
+  },
+  "tile": <div
+    class="deck-metric"
+    data-tone="accent"
+  >
+    <div
+      class="deck-metric-value"
+    >
+      <span>
+        EUR 1.7M
+      </span>
+    </div>
+    <div
+      class="deck-metric-label"
+    >
+      Loss, Q3
+    </div>
+    <div
+      class="deck-icon-text deck-metric-delta"
+      data-tone="success"
+      data-trend="down"
+    >
+      <span
+        class="deck-icon-text-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-trending-down deck-icon"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.75"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M16 17h6v-6"
+          />
+          <path
+            d="m22 17-8.5-8.5-5 5L2 7"
+          />
+        </svg>
+      </span>
+      <span
+        class="deck-icon-text-label"
+      >
+        <span>
+          -18.4% QoQ
+        </span>
+      </span>
+    </div>
+  </div>,
+}
+`;
+
+exports[`metrics_grid size > draws its tiles at size lg 1`] = `
+{
+  "attributes": {
+    "density": "tight",
+    "hold": "metrics_grid",
+    "size": "lg",
+  },
+  "delta": 24,
+  "label": 28,
+  "padding": [
+    20,
+    30,
+  ],
+  "sublabel": 24,
+  "value": 55,
+}
+`;
+
+exports[`metrics_grid size > draws its tiles at size md 1`] = `
+{
+  "attributes": {
+    "density": "tight",
+    "hold": "metrics_grid",
+    "size": "md",
+  },
+  "delta": 20,
+  "label": 24,
+  "padding": [
+    16,
+    24,
+  ],
+  "sublabel": 20,
+  "value": 44,
+}
+`;
+
+exports[`metrics_grid size > draws its tiles at size sm 1`] = `
+{
+  "attributes": {
+    "density": "tight",
+    "hold": "metrics_grid",
+    "size": "sm",
+  },
+  "delta": 20,
+  "label": 20,
+  "padding": [
+    11.2,
+    16.8,
+  ],
+  "sublabel": 20,
+  "value": 30.8,
+}
+`;

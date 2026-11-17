@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xtm.one/schemas/video-studio/pronunciation-lexicon.json",
+  "title": "Video Studio pronunciation lexicon seed",
+  "description": "The readings the platform lexicon starts with. Read once, when the platform has no lexicon yet; an administrator edits it in Settings from then on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "say"],
+      "properties": {
+        "text": {
+          "description": "The term as written in a narration.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "say": {
+          "description": "How the voice reads it. Letters read one by one are capitals joined by hyphens (X-T-M).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "ipa": {
+          "description": "Its reading in the International Phonetic Alphabet, without slashes.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "match": {
+          "description": "exact: the whole token, case and all; word: the whole word, case and all; case_insensitive: the whole word in any case.",
+          "enum": ["exact", "word", "case_insensitive"],
+          "default": "word"
+        },
+        "apply_to": {
+          "description": "What reads the entry: the voice (default), the captions, or both. Captions keep the written form otherwise.",
+          "enum": ["voice", "captions", "both"],
+          "default": "voice"
+        },
+        "note": {
+          "description": "Who confirmed the reading and what it must never sound like. Documentation only.",
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

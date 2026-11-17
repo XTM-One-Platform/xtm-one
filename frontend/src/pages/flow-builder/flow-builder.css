@@ -1,0 +1,252 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/**
+ * Canvas theming for the flow builder.
+ *
+ * `@xyflow/react` ships a stylesheet built for a light page: hardcoded white
+ * panels, near-black text, `#b1b1b7` handles. Left alone it renders a white
+ * rectangle in the middle of the dark app shell, so every surface it owns is
+ * re-pointed at the platform's own tokens here.
+ *
+ * Edge strokes go through CSS variables rather than Tailwind classes because
+ * `TypedEdge` draws a raw `<path>` — SVG presentation attributes cannot
+ * reference utility classes, and a variable is the one thing that both the
+ * stylesheet and the SVG can read. This is the same constraint `agent-flow.tsx`
+ * solves with `useColorMode`; a variable is lighter where the value is static
+ * per theme.
+ *
+ * Scoped to `.flow-canvas` so nothing here leaks into the rest of the app.
+ */
+
+.flow-canvas {
+  --flow-edge-data: hsl(197 100% 45%);
+  --flow-edge-handover: hsl(263 70% 65%);
+  --flow-edge-branch: hsl(38 92% 55%);
+  --flow-edge-error: hsl(0 72% 60%);
+  --flow-edge-capability: hsl(160 60% 45%);
+  --flow-grid: hsl(220 16% 30%);
+  --flow-handle: hsl(220 12% 45%);
+  --flow-handle-connected: hsl(152 60% 45%);
+  --flow-loop-outline: hsl(27 96% 61% / 0.6);
+  --flow-helper-line: hsl(197 100% 55% / 0.8);
+  --flow-exec-pin: hsl(220 10% 72% / 0.9);
+}
+
+[data-mode="light"] .flow-canvas {
+  --flow-edge-data: hsl(197 100% 34%);
+  --flow-edge-handover: hsl(263 60% 50%);
+  --flow-edge-branch: hsl(38 92% 40%);
+  --flow-edge-error: hsl(0 72% 48%);
+  --flow-edge-capability: hsl(160 60% 32%);
+  --flow-grid: hsl(220 16% 85%);
+  --flow-handle: hsl(220 12% 65%);
+  --flow-handle-connected: hsl(152 60% 36%);
+  --flow-loop-outline: hsl(21 90% 42% / 0.6);
+  --flow-helper-line: hsl(197 100% 34% / 0.8);
+  --flow-exec-pin: hsl(220 10% 38% / 0.9);
+}
+
+/* ── React Flow surfaces ─────────────────────────────────────────────────── */
+
+/* The canvas surface. `colorMode="dark"` (set so the nodes inherit the dark
+   token set — see FlowCanvas) also turns on React Flow's own dark palette,
+   whose `.react-flow.dark` paints the container `--xy-background-color-default:
+   #141414` — a flat grey that does not match the app's elevation surface.
+   Re-point its background variable at the platform token so the canvas is the
+   same surface as the rest of the app in both themes. */
+.flow-canvas .react-flow {
+  --xy-background-color: var(--bg-elevation-default);
+}
+
+.flow-canvas .react-flow__background {
+  background-color: transparent;
+}
+
+.flow-canvas .react-flow__controls {
+  box-shadow: none;
+}
+
+.flow-canvas .react-flow__controls-button {
+  background: var(--bg-elevation-default);
+  border-bottom: 1px solid var(--border-elevation-subtle);
+  color: var(--text-default-secondary);
+}
+
+.flow-canvas .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--text-default-primary) 6%, var(--bg-elevation-default));
+  color: var(--text-default-primary);
+}
+
+.flow-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.flow-canvas .react-flow__minimap {
+  background: var(--bg-elevation-default);
+  border: 1px solid var(--border-elevation-subtle);
+  border-radius: 0.5rem;
+}
+
+.flow-canvas .react-flow__attribution {
+  background: transparent;
+  color: var(--text-default-secondary);
+  opacity: 0.4;
+  font-size: 9px;
+}
+
+/* ── Handles ─────────────────────────────────────────────────────────────── */
+
+.flow-canvas .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg-elevation-default);
+  background: var(--flow-handle);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.flow-canvas .react-flow__handle:hover,
+.flow-canvas .react-flow__handle.connectingfrom {
+  background: var(--flow-edge-data);
+  transform: scale(1.25);
+}
+
+/* A handle the in-flight connection may not land on. React Flow adds
+   `valid`/`connectingto` while dragging; anything not valid is dimmed so the
+   legal drop targets are the ones that stand out. */
+.flow-canvas .react-flow__handle.connectingto:not(.valid) {
+  background: var(--flow-edge-error);
+}
+
+/* Accessory (capability) sockets on the agent are hidden by default, so the
+   node shows only its core ports (in / out / on error / handover). They
+   appear when the node is hovered or while a connection is being dragged, and
+   a socket that already has an edge stays visible and GREEN. */
+.flow-canvas .react-flow__handle.flow-cap-socket {
+  opacity: 0;
+}
+.flow-canvas .react-flow__node:hover .react-flow__handle.flow-cap-socket,
+.flow-canvas .react-flow__handle.flow-cap-socket.connectingto,
+.flow-canvas .react-flow__handle.flow-cap-socket.flow-cap-connected {
+  opacity: 1;
+}
+.flow-canvas .react-flow__handle.flow-cap-socket.flow-cap-connected {
+  background: var(--flow-handle-connected);
+}
+
+/* ── Selection ───────────────────────────────────────────────────────────── */
+
+.flow-canvas .react-flow__selection {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 1px solid var(--color-accent);
+}
+
+.flow-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 3;
+}
+
+.flow-canvas .react-flow__edge-text {
+  fill: var(--text-default-secondary);
+  font-size: 10px;
+}
+
+.flow-canvas .react-flow__edge-textbg {
+  fill: var(--bg-elevation-default);
+}
+
+/* ── Minimap ─────────────────────────────────────────────────────────────── */
+/* React Flow's minimap paints its own SVG rects: a near-white panel and a
+   `rgba(240,240,240,.6)` viewport mask. Both are hardcoded in its stylesheet,
+   so they survive the `.react-flow__minimap` background above and render as a
+   light-grey block in dark mode. Repaint them from tokens. */
+
+.flow-canvas .react-flow__minimap-svg {
+  background: var(--bg-elevation-default);
+}
+
+.flow-canvas .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--bg-elevation-default) calc(0.6 * 100%), transparent);
+  stroke: var(--border-elevation-subtle);
+  stroke-width: 1;
+}
+
+.flow-canvas .react-flow__minimap-node {
+  stroke: none;
+}
+
+/* ── Loop body marker ────────────────────────────────────────────────────── */
+
+/* The double outline on nodes downstream of a Loop's `each` port: the card's
+   own border is the first line, this offset outline the second — "this branch
+   re-executes every pass" at a glance. Orange — the loop node's own accent — and outside the box model so it never shifts layout nor
+   fights the selection ring. */
+.flow-canvas .flow-loop-branch {
+  outline: 1.5px solid var(--flow-loop-outline);
+  outline-offset: 3px;
+}
+
+/* Declared-parameter pins (trigger.manual): data affordances, not exec flow —
+   the cyan diamond-ish tint separates them from the neutral exec sockets. */
+.react-flow__handle.flow-param-handle {
+  background: hsl(197 100% 45%);
+  border-color: hsl(197 100% 75% / 0.7);
+}
+
+/* `value` edges: a Value node / parameter pin feeding a field — same cyan
+   family as the param handles, dotted (see EDGE_DASH), never executed. */
+:root {
+  --flow-object-edge: hsl(140 60% 45%);
+  --flow-object-pin: hsl(140 65% 45%);
+  --flow-param-edge: hsl(197 80% 55% / 0.55);
+}
+
+/* The execution front: the wire feeding the running node pulses (UE-style
+   exec animation). Dash offset only — colour stays the edge's own. */
+.react-flow__edge-path.flow-edge-live {
+  animation: flow-edge-march 0.6s linear infinite;
+}
+@keyframes flow-edge-march {
+  from { stroke-dashoffset: 14; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* UE-style exec pins: the pentagon/chevron glyph. clip-path eats borders, so
+   the fill IS the pin; the connection dot stays a React Flow handle underneath
+   (hit area unchanged — only the paint differs). */
+.react-flow__handle.flow-exec-handle {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 0;
+  background: var(--flow-exec-pin);
+  clip-path: polygon(0% 0%, 55% 0%, 100% 50%, 55% 100%, 0% 100%);
+}
+.react-flow__handle.flow-exec-handle:hover {
+  background: var(--flow-edge-data);
+}
+/* Left-side (target) pins point INTO the node too — same chevron. */
+.react-flow__handle-left.flow-exec-handle {
+  transform: translate(-70%, -50%);
+}
+.react-flow__handle-right.flow-exec-handle {
+  transform: translate(70%, -50%);
+}
+
+
+/* UE struct pin: object-typed constants pin and wire in green. */
+.react-flow__handle.flow-param-handle.flow-object-handle {
+  background: var(--flow-object-pin);
+  border-color: var(--flow-object-pin);
+}

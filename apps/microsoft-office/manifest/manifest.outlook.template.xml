@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE — do not edit the generated output (manifest.outlook.xml) directly.
+  Run ./apps/generate-manifests.sh to regenerate.
+
+  APP_NAME is resolved by the script from:
+    1. PLATFORM_NAME env var  (trimmed, if not blank)
+    2. PLATFORM_MODE=copilot or dev  →  "Filigran Copilot"
+    3. Otherwise (xtm_one or ai_disabled)  →  "XTM One"
+
+  Outlook manifest.
+  Separate from the Word/Excel/PowerPoint manifest because Outlook uses MailApp type.
+
+  For production: replace COPILOT_URL with your instance URL (e.g. https://xtm-one.example.com)
+  For dev: replace COPILOT_URL with https://localhost:3100
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+  xsi:type="MailApp">
+
+  <Id>b7f3a1c4-e5d6-4890-abcd-ef1234567891</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Filigran</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="{{APP_NAME}}" />
+  <Description DefaultValue="AI-powered assistant for Outlook — powered by {{APP_NAME}} agents." />
+  <IconUrl DefaultValue="COPILOT_URL/office/assets/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="COPILOT_URL/office/assets/icon-128.png" />
+  <SupportUrl DefaultValue="https://filigran.io/support" />
+
+  <AppDomains>
+    <AppDomain>COPILOT_URL</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Mailbox" />
+  </Hosts>
+
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.3" />
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="COPILOT_URL/office/" />
+        <RequestedHeight>450</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+    <Form xsi:type="ItemEdit">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="COPILOT_URL/office/" />
+        <RequestedHeight>450</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteMailbox</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit" />
+    <Rule xsi:type="ItemIs" ItemType="Appointment" FormType="Read" />
+    <Rule xsi:type="ItemIs" ItemType="Appointment" FormType="Edit" />
+  </Rule>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.3">
+        <bt:Set Name="Mailbox" />
+      </bt:Sets>
+    </Requirements>
+
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+
+          <!-- Reading an email -->
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="OutlookReadGroup">
+                <Label resid="group.label" />
+                <Control xsi:type="Button" id="OutlookReadCopilot">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="taskpane.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpane.url" />
+                    <SupportsPinning>true</SupportsPinning>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+          <!-- Composing an email -->
+          <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="OutlookComposeGroup">
+                <Label resid="group.label" />
+                <Control xsi:type="Button" id="OutlookComposeCopilot">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="compose.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpane.url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+          <!-- Reading an appointment -->
+          <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="OutlookApptGroup">
+                <Label resid="group.label" />
+                <Control xsi:type="Button" id="OutlookApptCopilot">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="taskpane.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpane.url" />
+                    <SupportsPinning>true</SupportsPinning>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon.16" DefaultValue="COPILOT_URL/office/assets/icon-16.png" />
+        <bt:Image id="icon.32" DefaultValue="COPILOT_URL/office/assets/icon-32.png" />
+        <bt:Image id="icon.80" DefaultValue="COPILOT_URL/office/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="taskpane.url" DefaultValue="COPILOT_URL/office/" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="group.label" DefaultValue="{{APP_NAME}}" />
+        <bt:String id="taskpane.label" DefaultValue="{{APP_NAME}}" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="taskpane.tip" DefaultValue="Open {{APP_NAME}} to analyze, summarize, or draft a reply to this email." />
+        <bt:String id="compose.tip" DefaultValue="Open {{APP_NAME}} to help draft, improve, or translate your email." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

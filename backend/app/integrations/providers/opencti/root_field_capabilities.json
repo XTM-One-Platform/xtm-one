@@ -1,0 +1,2824 @@
+{
+ "source": "OpenCTI-Platform/opencti@a0f7a44 schema @auth(for: [...]) directives of the Query and Mutation root fields",
+ "query": {
+  "administrativeArea": [
+   "KNOWLEDGE"
+  ],
+  "administrativeAreas": [
+   "KNOWLEDGE"
+  ],
+  "allowedTransitions": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "askAiActivity": [
+   "KNOWLEDGE"
+  ],
+  "assignees": [
+   "KNOWLEDGE"
+  ],
+  "attackPattern": [
+   "KNOWLEDGE"
+  ],
+  "attackPatterns": [
+   "KNOWLEDGE"
+  ],
+  "attackPatternsMatrix": [
+   "KNOWLEDGE"
+  ],
+  "audit": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "audits": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "auditsDistribution": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "auditsMultiTimeSeries": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "auditsNumber": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "auditsTimeSeries": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "auditsTimeSeriesBreakdown": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "authLogHistoryById": [
+   "SETTINGS_SETAUTH"
+  ],
+  "authenticationProvider": [
+   "SETTINGS_SETAUTH"
+  ],
+  "authenticationProviders": [
+   "SETTINGS_SETAUTH"
+  ],
+  "availableSecrets": [
+   "SETTINGS_SETAUTH"
+  ],
+  "backgroundTask": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "backgroundTasks": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "bookmarks": [
+   "KNOWLEDGE"
+  ],
+  "campaign": [
+   "KNOWLEDGE"
+  ],
+  "campaigns": [
+   "KNOWLEDGE"
+  ],
+  "campaignsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "capabilities": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "capabilitiesInDraft": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "case": [
+   "KNOWLEDGE"
+  ],
+  "caseIncident": [
+   "KNOWLEDGE"
+  ],
+  "caseIncidentContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "caseIncidents": [
+   "KNOWLEDGE"
+  ],
+  "caseRfi": [
+   "KNOWLEDGE"
+  ],
+  "caseRfiContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "caseRfis": [
+   "KNOWLEDGE"
+  ],
+  "caseRft": [
+   "KNOWLEDGE"
+  ],
+  "caseRftContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "caseRfts": [
+   "KNOWLEDGE"
+  ],
+  "cases": [
+   "KNOWLEDGE"
+  ],
+  "catalog": [
+   "INGESTION"
+  ],
+  "catalogs": [
+   "INGESTION"
+  ],
+  "catalogsRevisions": [
+   "INGESTION"
+  ],
+  "channel": [
+   "KNOWLEDGE"
+  ],
+  "channels": [
+   "KNOWLEDGE"
+  ],
+  "cities": [
+   "KNOWLEDGE"
+  ],
+  "city": [
+   "KNOWLEDGE"
+  ],
+  "configPresetExportableItems": [
+   "BYPASS"
+  ],
+  "configPresetExportableTypes": [
+   "BYPASS"
+  ],
+  "configPresetImportPreview": [
+   "BYPASS"
+  ],
+  "configPresetImportRunning": [
+   "BYPASS"
+  ],
+  "configPresetImportSession": [
+   "BYPASS"
+  ],
+  "connector": [
+   "MODULES"
+  ],
+  "connectorManager": [
+   "MODULES"
+  ],
+  "connectorManagers": [
+   "MODULES"
+  ],
+  "connectorMigrationAssessment": [
+   "MODULES_MODMANAGE"
+  ],
+  "connectors": [
+   "MODULES"
+  ],
+  "connectorsForAnalysis": [
+   "KNOWLEDGE"
+  ],
+  "connectorsForExport": [
+   "KNOWLEDGE"
+  ],
+  "connectorsForImport": [
+   "KNOWLEDGE"
+  ],
+  "connectorsForManagers": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "connectorsForNotification": [
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "connectorsForWorker": [
+   "MODULES"
+  ],
+  "container": [
+   "KNOWLEDGE"
+  ],
+  "containers": [
+   "KNOWLEDGE"
+  ],
+  "containersAskAiSummary": [
+   "KNOWLEDGE"
+  ],
+  "containersDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "containersNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "containersObjectsOfObject": [
+   "KNOWLEDGE"
+  ],
+  "contract": [
+   "INGESTION"
+  ],
+  "countries": [
+   "KNOWLEDGE"
+  ],
+  "country": [
+   "KNOWLEDGE"
+  ],
+  "courseOfAction": [
+   "KNOWLEDGE"
+  ],
+  "coursesOfAction": [
+   "KNOWLEDGE"
+  ],
+  "creators": [
+   "KNOWLEDGE"
+  ],
+  "csvFeedAddInputFromImport": [
+   "CSVMAPPERS",
+   "INGESTION"
+  ],
+  "csvMapper": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "csvMapperAddInputFromImport": [
+   "CSVMAPPERS"
+  ],
+  "csvMapperSchemaAttributes": [
+   "CSVMAPPERS",
+   "KNOWLEDGE"
+  ],
+  "csvMapperTest": [
+   "CSVMAPPERS"
+  ],
+  "csvMappers": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "customFieldDefinition": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMFIELDS",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customFieldDefinitions": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMFIELDS",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customFieldDefinitionsForEntityType": [
+   "KNOWLEDGE"
+  ],
+  "customFieldStixFilterKeys": [
+   "KNOWLEDGE"
+  ],
+  "customViewsSettings": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "dataComponent": [
+   "KNOWLEDGE"
+  ],
+  "dataComponents": [
+   "KNOWLEDGE"
+  ],
+  "dataSanityExecutions": [
+   "BYPASS"
+  ],
+  "dataSanityOperationDryRun": [
+   "BYPASS"
+  ],
+  "dataSanityOperations": [
+   "BYPASS"
+  ],
+  "dataSource": [
+   "KNOWLEDGE"
+  ],
+  "dataSources": [
+   "KNOWLEDGE"
+  ],
+  "decayExclusionRule": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayExclusionRules": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayRule": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayRules": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "defaultIngestionGroupCount": [
+   "INGESTION"
+  ],
+  "deleteOperation": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "deleteOperations": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "disseminationList": [
+   "KNOWLEDGE_KNDISSEMINATION",
+   "SETTINGS_SETDISSEMINATION"
+  ],
+  "disseminationLists": [
+   "KNOWLEDGE_KNDISSEMINATION",
+   "SETTINGS_SETDISSEMINATION"
+  ],
+  "draftWorkspace": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceContainerObjects": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceEntities": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceEntityContainerRefs": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceEntityFields": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceEntityRelations": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceRelationships": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceResolveIds": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaceSightingRelationships": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspaces": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspacesDistribution": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspacesNumber": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspacesRestricted": [
+   "KNOWLEDGE"
+  ],
+  "draftWorkspacesTimeSeries": [
+   "KNOWLEDGE"
+  ],
+  "elasticSearchMetrics": [
+   "MODULES"
+  ],
+  "emailTemplate": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "emailTemplates": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "enrichmentConnectors": [
+   "KNOWLEDGE_KNENRICHMENT",
+   "MODULES"
+  ],
+  "event": [
+   "KNOWLEDGE"
+  ],
+  "events": [
+   "KNOWLEDGE"
+  ],
+  "exclusionList": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "exclusionListCacheStatus": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "exclusionLists": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "externalReference": [
+   "KNOWLEDGE"
+  ],
+  "externalReferences": [
+   "KNOWLEDGE"
+  ],
+  "feed": [
+   "TAXIIAPI"
+  ],
+  "feedback": [
+   "KNOWLEDGE"
+  ],
+  "feedbackContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "feedbacks": [
+   "KNOWLEDGE"
+  ],
+  "file": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "filesMetrics": [
+   "SETTINGS_FILEINDEXING"
+  ],
+  "filtersRepresentatives": [
+   "INGESTION_SETINGESTIONS",
+   "KNOWLEDGE",
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelDesign": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelDesigns": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelTemplate": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "form": [
+   "KNOWLEDGE_KNASKIMPORT",
+   "KNOWLEDGE_KNFORMINTAKE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "forms": [
+   "KNOWLEDGE_KNASKIMPORT",
+   "KNOWLEDGE_KNFORMINTAKE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "globalSearch": [
+   "KNOWLEDGE"
+  ],
+  "group": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "grouping": [
+   "KNOWLEDGE"
+  ],
+  "groupingContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "groupings": [
+   "KNOWLEDGE"
+  ],
+  "groupingsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "groupingsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "groupingsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "groups": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "guessMimeType": [
+   "KNOWLEDGE_KNASKIMPORT",
+   "KNOWLEDGE_KNUPLOAD"
+  ],
+  "identities": [
+   "INGESTION_SETINGESTIONS",
+   "KNOWLEDGE"
+  ],
+  "identity": [
+   "KNOWLEDGE"
+  ],
+  "importFiles": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "incident": [
+   "KNOWLEDGE"
+  ],
+  "incidents": [
+   "KNOWLEDGE"
+  ],
+  "incidentsTimeSeries": [
+   "KNOWLEDGE"
+  ],
+  "indexedFiles": [
+   "KNOWLEDGE"
+  ],
+  "indexedFilesCount": [
+   "KNOWLEDGE"
+  ],
+  "indexedFilesMetrics": [
+   "SETTINGS_FILEINDEXING"
+  ],
+  "indicator": [
+   "KNOWLEDGE"
+  ],
+  "indicators": [
+   "KNOWLEDGE"
+  ],
+  "indicatorsDistribution": [
+   "KNOWLEDGE"
+  ],
+  "indicatorsNumber": [
+   "KNOWLEDGE"
+  ],
+  "indicatorsTimeSeries": [
+   "KNOWLEDGE"
+  ],
+  "individual": [
+   "KNOWLEDGE"
+  ],
+  "individuals": [
+   "KNOWLEDGE"
+  ],
+  "infrastructure": [
+   "KNOWLEDGE"
+  ],
+  "infrastructures": [
+   "KNOWLEDGE"
+  ],
+  "ingestionCsv": [
+   "INGESTION"
+  ],
+  "ingestionCsvLogs": [
+   "INGESTION"
+  ],
+  "ingestionCsvs": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationAllowedTypes": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationDefaultExcludedFields": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationDefaultTtl": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationFields": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationRules": [
+   "INGESTION"
+  ],
+  "ingestionDeduplicationUserUsages": [
+   "INGESTION"
+  ],
+  "ingestionHealthSettings": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "ingestionJson": [
+   "INGESTION"
+  ],
+  "ingestionJsonLogs": [
+   "INGESTION"
+  ],
+  "ingestionJsons": [
+   "INGESTION"
+  ],
+  "ingestionRss": [
+   "INGESTION"
+  ],
+  "ingestionRssAddInputFromImport": [
+   "INGESTION"
+  ],
+  "ingestionRssLogs": [
+   "INGESTION"
+  ],
+  "ingestionRsss": [
+   "INGESTION"
+  ],
+  "ingestionTaxii": [
+   "INGESTION"
+  ],
+  "ingestionTaxiiCollection": [
+   "INGESTION"
+  ],
+  "ingestionTaxiiCollectionAddInputFromImport": [
+   "INGESTION"
+  ],
+  "ingestionTaxiiCollections": [
+   "INGESTION"
+  ],
+  "ingestionTaxiiLogs": [
+   "INGESTION"
+  ],
+  "ingestionTaxiis": [
+   "INGESTION"
+  ],
+  "intrusionSet": [
+   "KNOWLEDGE"
+  ],
+  "intrusionSets": [
+   "KNOWLEDGE"
+  ],
+  "isWorkAlive": [
+   "MODULES"
+  ],
+  "jsonMapper": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "jsonMappers": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "killChainPhase": [
+   "KNOWLEDGE",
+   "SETTINGS_SETKILLCHAINPHASES"
+  ],
+  "killChainPhases": [
+   "KNOWLEDGE",
+   "SETTINGS_SETKILLCHAINPHASES"
+  ],
+  "label": [
+   "KNOWLEDGE",
+   "SETTINGS_SETLABELS"
+  ],
+  "labels": [
+   "KNOWLEDGE",
+   "SETTINGS_SETLABELS"
+  ],
+  "language": [
+   "KNOWLEDGE"
+  ],
+  "languages": [
+   "KNOWLEDGE"
+  ],
+  "location": [
+   "KNOWLEDGE"
+  ],
+  "locations": [
+   "KNOWLEDGE"
+  ],
+  "log": [
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES"
+  ],
+  "logs": [
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES"
+  ],
+  "malware": [
+   "KNOWLEDGE"
+  ],
+  "malwareAnalyses": [
+   "KNOWLEDGE"
+  ],
+  "malwareAnalysis": [
+   "KNOWLEDGE"
+  ],
+  "malwares": [
+   "KNOWLEDGE"
+  ],
+  "managerConfiguration": [
+   "SETTINGS_FILEINDEXING"
+  ],
+  "markingDefinition": [
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETMARKINGS"
+  ],
+  "markingDefinitions": [
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETMARKINGS"
+  ],
+  "members": [
+   "CONNECTORAPI",
+   "EXPLORE_EXUPDATE",
+   "INGESTION_SETINGESTIONS",
+   "KNOWLEDGE_KNUPDATE",
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "myOpinion": [
+   "KNOWLEDGE"
+  ],
+  "narrative": [
+   "KNOWLEDGE"
+  ],
+  "narratives": [
+   "KNOWLEDGE"
+  ],
+  "note": [
+   "KNOWLEDGE"
+  ],
+  "noteContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "notes": [
+   "KNOWLEDGE"
+  ],
+  "notesDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "notesNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "notesTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "notifications": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "notifier": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "notifierTest": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "notifiers": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "observedData": [
+   "KNOWLEDGE"
+  ],
+  "observedDataContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "observedDatas": [
+   "KNOWLEDGE"
+  ],
+  "observedDatasDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "observedDatasNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "observedDatasTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "opinion": [
+   "KNOWLEDGE"
+  ],
+  "opinionContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "opinions": [
+   "KNOWLEDGE"
+  ],
+  "opinionsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "opinionsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "opinionsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "organization": [
+   "KNOWLEDGE",
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "organizations": [
+   "KNOWLEDGE",
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "participants": [
+   "KNOWLEDGE"
+  ],
+  "pendingFiles": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "pir": [
+   "PIRAPI"
+  ],
+  "pirLogs": [
+   "KNOWLEDGE",
+   "PIRAPI"
+  ],
+  "pirRelationships": [
+   "KNOWLEDGE",
+   "PIRAPI"
+  ],
+  "pirRelationshipsDistribution": [
+   "KNOWLEDGE",
+   "PIRAPI"
+  ],
+  "pirRelationshipsMultiTimeSeries": [
+   "KNOWLEDGE",
+   "PIRAPI"
+  ],
+  "pirs": [
+   "PIRAPI"
+  ],
+  "playbook": [
+   "AUTOMATION"
+  ],
+  "playbookComponents": [
+   "AUTOMATION"
+  ],
+  "playbookManagerInfo": [
+   "AUTOMATION"
+  ],
+  "playbooks": [
+   "AUTOMATION"
+  ],
+  "playbooksForEnrollment": [
+   "AUTOMATION"
+  ],
+  "playbooksForEnrollmentByFilters": [
+   "AUTOMATION"
+  ],
+  "playbooksForEntity": [
+   "AUTOMATION"
+  ],
+  "position": [
+   "KNOWLEDGE"
+  ],
+  "positions": [
+   "KNOWLEDGE"
+  ],
+  "publicDashboard": [
+   "EXPLORE"
+  ],
+  "publicDashboards": [
+   "EXPLORE"
+  ],
+  "rabbitMQMetrics": [
+   "MODULES"
+  ],
+  "region": [
+   "KNOWLEDGE"
+  ],
+  "regions": [
+   "KNOWLEDGE"
+  ],
+  "report": [
+   "KNOWLEDGE"
+  ],
+  "reportContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "reports": [
+   "KNOWLEDGE"
+  ],
+  "reportsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "reportsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "reportsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "retentionRule": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "retentionRules": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "role": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "roles": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "rule": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "ruleManagerInfo": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "rules": [
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "runtimeAttributes": [
+   "KNOWLEDGE"
+  ],
+  "schemaAttributeNames": [
+   "KNOWLEDGE",
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "schemaAttributes": [
+   "KNOWLEDGE"
+  ],
+  "sector": [
+   "KNOWLEDGE"
+  ],
+  "sectors": [
+   "KNOWLEDGE"
+  ],
+  "securityCoverage": [
+   "KNOWLEDGE"
+  ],
+  "securityCoverageResult": [
+   "KNOWLEDGE"
+  ],
+  "securityCoverageResults": [
+   "KNOWLEDGE"
+  ],
+  "securityCoverages": [
+   "KNOWLEDGE"
+  ],
+  "securityOrganizations": [
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "securityPlatform": [
+   "KNOWLEDGE"
+  ],
+  "securityPlatforms": [
+   "KNOWLEDGE"
+  ],
+  "sessions": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "smtpConfiguration": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "stix": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreBackgroundActiveOperations": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObject": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectAnalysis": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectAskAiActivity": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectAskAiForecast": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectAskAiHistory": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectOrStixCoreRelationship": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectRaw": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjects": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsExportFiles": [
+   "KNOWLEDGE_KNGETEXPORT"
+  ],
+  "stixCoreObjectsMultiDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsMultiNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsMultiTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsRestricted": [
+   "BYPASS"
+  ],
+  "stixCoreObjectsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreObjectsTimeSeriesBreakdown": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationship": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationshipsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationshipsExportFiles": [
+   "KNOWLEDGE_KNGETEXPORT"
+  ],
+  "stixCoreRelationshipsMultiTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationshipsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCoreRelationshipsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCyberObservable": [
+   "KNOWLEDGE"
+  ],
+  "stixCyberObservables": [
+   "KNOWLEDGE"
+  ],
+  "stixCyberObservablesDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCyberObservablesExportFiles": [
+   "KNOWLEDGE_KNGETEXPORT"
+  ],
+  "stixCyberObservablesNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixCyberObservablesTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixDomainObject": [
+   "KNOWLEDGE"
+  ],
+  "stixDomainObjects": [
+   "KNOWLEDGE"
+  ],
+  "stixDomainObjectsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixDomainObjectsExportFiles": [
+   "KNOWLEDGE_KNGETEXPORT"
+  ],
+  "stixDomainObjectsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "stixDomainObjectsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "stixMetaObject": [
+   "KNOWLEDGE"
+  ],
+  "stixMetaObjects": [
+   "KNOWLEDGE"
+  ],
+  "stixNestedRefRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixObjectOrStixRelationship": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixObjectOrStixRelationships": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixRefRelationship": [
+   "KNOWLEDGE"
+  ],
+  "stixRefRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixRefRelationshipsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixRefRelationshipsNumber": [
+   "KNOWLEDGE"
+  ],
+  "stixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "stixRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixRelationshipsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixRelationshipsMultiTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixRelationshipsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "stixRelationshipsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "stixRelationshipsTimeSeriesBreakdown": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixSchemaRefRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixSchemaRefRelationshipsPossibleTypes": [
+   "KNOWLEDGE"
+  ],
+  "stixSightingRelationship": [
+   "KNOWLEDGE"
+  ],
+  "stixSightingRelationships": [
+   "KNOWLEDGE"
+  ],
+  "stixSightingRelationshipsDistribution": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixSightingRelationshipsNumber": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "stixSightingRelationshipsTimeSeries": [
+   "EXPLORE",
+   "KNOWLEDGE"
+  ],
+  "streamCollection": [
+   "TAXIIAPI"
+  ],
+  "supportPackage": [
+   "SETTINGS_SUPPORT"
+  ],
+  "supportPackages": [
+   "SETTINGS_SUPPORT"
+  ],
+  "synchronizer": [
+   "INGESTION"
+  ],
+  "synchronizerAddInputFromImport": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerFetch": [
+   "INGESTION"
+  ],
+  "synchronizerLogs": [
+   "INGESTION"
+  ],
+  "synchronizers": [
+   "INGESTION"
+  ],
+  "system": [
+   "KNOWLEDGE"
+  ],
+  "systemMembers": [
+   "CONNECTORAPI",
+   "EXPLORE_EXUPDATE",
+   "INGESTION_SETINGESTIONS",
+   "KNOWLEDGE_KNUPDATE",
+   "SETTINGS_SECURITYACTIVITY",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "systems": [
+   "KNOWLEDGE"
+  ],
+  "taskContainsStixObjectOrStixRelationship": [
+   "KNOWLEDGE"
+  ],
+  "taskTemplate": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "taskTemplates": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "taxiiCollection": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "taxiiFeedAddInputFromImport": [
+   "INGESTION"
+  ],
+  "threatActor": [
+   "KNOWLEDGE"
+  ],
+  "threatActorGroup": [
+   "KNOWLEDGE"
+  ],
+  "threatActorIndividual": [
+   "KNOWLEDGE"
+  ],
+  "threatActors": [
+   "KNOWLEDGE"
+  ],
+  "threatActorsGroup": [
+   "KNOWLEDGE"
+  ],
+  "threatActorsIndividuals": [
+   "KNOWLEDGE"
+  ],
+  "tool": [
+   "KNOWLEDGE"
+  ],
+  "tools": [
+   "KNOWLEDGE"
+  ],
+  "triggerActivity": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "triggersActivity": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "unknownStixCoreObjects": [
+   "KNOWLEDGE"
+  ],
+  "user": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "userAlreadyExists": [
+   "INGESTION"
+  ],
+  "userMergeCoverage": [
+   "BYPASS"
+  ],
+  "userMergeJournal": [
+   "BYPASS"
+  ],
+  "userMergeSourceDeletionReadiness": [
+   "BYPASS"
+  ],
+  "users": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "vocabularies": [
+   "INGESTION_SETINGESTIONS",
+   "INVESTIGATION_INUPDATE",
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETVOCABULARIES"
+  ],
+  "vocabulary": [
+   "KNOWLEDGE",
+   "SETTINGS_SETACCESSES",
+   "SETTINGS_SETVOCABULARIES"
+  ],
+  "vulnerabilities": [
+   "KNOWLEDGE"
+  ],
+  "vulnerability": [
+   "KNOWLEDGE"
+  ],
+  "work": [
+   "MODULES"
+  ],
+  "workflowBypassStatuses": [
+   "BYPASS"
+  ],
+  "workflowDefinition": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "workflowDefinitionPublished": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "workflowInstance": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "workflowMassTransitions": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "workflowStatuses": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "works": [
+   "MODULES"
+  ],
+  "workspace": [
+   "EXPLORE",
+   "INVESTIGATION",
+   "SETTINGS_SETACCESSES"
+  ],
+  "workspaces": [
+   "EXPLORE",
+   "INVESTIGATION",
+   "SETTINGS_SETACCESSES"
+  ]
+ },
+ "mutation": {
+  "administrativeAreaAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "administrativeAreaContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "administrativeAreaContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "administrativeAreaDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "administrativeAreaFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "administrativeAreaRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "administrativeAreaRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiChangeTone": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiContainerGenerateReport": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiConvertFilesToStix": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiConvertIndicator": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiExplain": [
+   "KNOWLEDGE"
+  ],
+  "aiFixSpelling": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiImproveWriting": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiMakeLonger": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiMakeShorter": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiNLQ": [
+   "KNOWLEDGE"
+  ],
+  "aiSummarize": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiSummarizeFiles": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiThreatGenerateReport": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "aiVictimGenerateReport": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "artifactImport": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "askJobImport": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "attackPatternAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "attackPatternEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "autoRegisterOpenCTI": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "bookmarkAdd": [
+   "KNOWLEDGE"
+  ],
+  "bookmarkDelete": [
+   "KNOWLEDGE"
+  ],
+  "campaignAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "campaignEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "caseDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "caseIncidentAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "caseIncidentDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "caseRfiAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "caseRfiApprove": [
+   "KNOWLEDGE_KNUPDATE_KNMANAGEAUTHMEMBERS",
+   "KNOWLEDGE_KNUPDATE_KNORGARESTRICT"
+  ],
+  "caseRfiDecline": [
+   "KNOWLEDGE_KNUPDATE_KNMANAGEAUTHMEMBERS",
+   "KNOWLEDGE_KNUPDATE_KNORGARESTRICT"
+  ],
+  "caseRfiDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "caseRftAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "caseRftDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "caseSetTemplate": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "caseTemplateAdd": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "caseTemplateDelete": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "caseTemplateFieldPatch": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "caseTemplateRelationAdd": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "caseTemplateRelationDelete": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "channelAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "channelContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "channelContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "channelDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "channelFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "channelRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "channelRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "checkXTMHubConnectivity": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "cityAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "cityEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "clearWorkflowPendingState": [
+   "BYPASS"
+  ],
+  "configPresetExport": [
+   "BYPASS"
+  ],
+  "configPresetImport": [
+   "BYPASS"
+  ],
+  "configPresetImportSessionBackToSelection": [
+   "BYPASS"
+  ],
+  "configPresetImportSessionClear": [
+   "BYPASS"
+  ],
+  "configPresetImportSessionSave": [
+   "BYPASS"
+  ],
+  "configPresetImportUpload": [
+   "BYPASS"
+  ],
+  "configPresetPartialImport": [
+   "BYPASS"
+  ],
+  "configPresetPartialImportPreview": [
+   "BYPASS"
+  ],
+  "connectorJWT": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "connectorMigrateToManaged": [
+   "MODULES_MODMANAGE"
+  ],
+  "containerEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "countryAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "countryEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "courseOfActionAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "courseOfActionEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "createDraftAndAskJobImport": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "csvMapperAdd": [
+   "CSVMAPPERS"
+  ],
+  "csvMapperDelete": [
+   "CSVMAPPERS"
+  ],
+  "csvMapperFieldPatch": [
+   "CSVMAPPERS"
+  ],
+  "csvMapperTest": [
+   "CSVMAPPERS"
+  ],
+  "customFieldDefinitionAdd": [
+   "SETTINGS_SETCUSTOMFIELDS"
+  ],
+  "customFieldDefinitionAddEntityType": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customFieldDefinitionDelete": [
+   "SETTINGS_SETCUSTOMFIELDS"
+  ],
+  "customFieldDefinitionFieldPatch": [
+   "SETTINGS_SETCUSTOMFIELDS"
+  ],
+  "customFieldDefinitionRemoveEntityType": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customFieldDefinitionUpdateEntityType": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewConfigurationImport": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewDuplicate": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewEdit": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "customViewWidgetConfigurationImport": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "dataComponentAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataComponentContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataComponentContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataComponentDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "dataComponentFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataComponentRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataComponentRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSanityOperationRequestRun": [
+   "BYPASS"
+  ],
+  "dataSanityOperationStop": [
+   "BYPASS"
+  ],
+  "dataSourceAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSourceContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSourceContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSourceDataComponentAdd": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "dataSourceDataComponentDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "dataSourceDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "dataSourceFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSourceRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "dataSourceRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "decayExclusionRuleAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayExclusionRuleDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayExclusionRuleFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayRuleAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayRuleDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "decayRuleFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "deleteConnector": [
+   "MODULES_MODMANAGE"
+  ],
+  "deleteImport": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "deleteOperationConfirm": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "deleteOperationRestore": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "disseminationListAdd": [
+   "SETTINGS_SETDISSEMINATION"
+  ],
+  "disseminationListDelete": [
+   "SETTINGS_SETDISSEMINATION"
+  ],
+  "disseminationListFieldPatch": [
+   "SETTINGS_SETDISSEMINATION"
+  ],
+  "disseminationListSend": [
+   "KNOWLEDGE_KNDISSEMINATION"
+  ],
+  "draftWorkspaceAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "draftWorkspaceContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "draftWorkspaceDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "draftWorkspaceEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "draftWorkspaceEditAuthorizedMembers": [
+   "KNOWLEDGE_KNUPDATE_KNMANAGEAUTHMEMBERS"
+  ],
+  "draftWorkspaceFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "draftWorkspaceValidate": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "emailTemplateAdd": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "emailTemplateDelete": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "emailTemplateFieldPatch": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "emailTemplateTestSend": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "entitySettingsFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION",
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "eventAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "eventContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "eventContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "eventDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "eventFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "eventRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "eventRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "exclusionListDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "exclusionListFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "exclusionListFileAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "externalReferenceAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "feedAdd": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "feedDelete": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "feedEdit": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "feedbackDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "feedbackEditAuthorizedMembers": [
+   "KNOWLEDGE_KNUPDATE_KNMANAGEAUTHMEMBERS"
+  ],
+  "fintelDesignAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelDesignContextPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelDesignDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelDesignFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelTemplateAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelTemplateConfigurationImport": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelTemplateDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "fintelTemplateFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "formAdd": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "formDelete": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "formFieldPatch": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "formImport": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "formSubmit": [
+   "KNOWLEDGE_KNFORMINTAKE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupAdd": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "groupEdit": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "groupingAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupingContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupingContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupingDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "groupingFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupingRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "groupingRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "identityAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "identityEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "incidentAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "incidentEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "indicatorFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "indicatorRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "individualAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "individualEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "infrastructureAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "infrastructureEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "ingestionCsvAdd": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionCsvAddAutoUser": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionCsvDelete": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionCsvFieldPatch": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionCsvResetState": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionCsvTester": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionDeduplicationRuleAdd": [
+   "INGESTION_SETINGESTIONS",
+   "SETTINGS_SETACCESSES"
+  ],
+  "ingestionDeduplicationRuleDelete": [
+   "INGESTION_SETINGESTIONS",
+   "SETTINGS_SETACCESSES"
+  ],
+  "ingestionDeduplicationRuleFieldPatch": [
+   "INGESTION_SETINGESTIONS",
+   "SETTINGS_SETACCESSES"
+  ],
+  "ingestionHealthSettingsEdit": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "ingestionJsonAdd": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonAddInputFromImport": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonDelete": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonEdit": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonFieldPatch": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonResetState": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionJsonTester": [
+   "CSVMAPPERS",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionRssAdd": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionRssAddAutoUser": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionRssDelete": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionRssFieldPatch": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionRssResetState": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiAdd": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiAddAutoUser": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiCollectionAdd": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiCollectionDelete": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiCollectionFieldPatch": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiDelete": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiFieldPatch": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "ingestionTaxiiResetState": [
+   "INGESTION_SETINGESTIONS"
+  ],
+  "intrusionSetAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "intrusionSetEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "investigationDuplicate": [
+   "INVESTIGATION_INUPDATE"
+  ],
+  "jsonMapperAdd": [
+   "CSVMAPPERS"
+  ],
+  "jsonMapperDelete": [
+   "CSVMAPPERS"
+  ],
+  "jsonMapperFieldPatch": [
+   "CSVMAPPERS"
+  ],
+  "jsonMapperImport": [
+   "CSVMAPPERS"
+  ],
+  "jsonMapperTest": [
+   "CSVMAPPERS"
+  ],
+  "killChainPhaseAdd": [
+   "KNOWLEDGE_KNUPDATE",
+   "SETTINGS_SETKILLCHAINPHASES"
+  ],
+  "killChainPhaseEdit": [
+   "SETTINGS_SETKILLCHAINPHASES"
+  ],
+  "labelAdd": [
+   "SETTINGS_SETLABELS"
+  ],
+  "labelEdit": [
+   "SETTINGS_SETLABELS"
+  ],
+  "languageAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "languageContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "languageContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "languageDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "languageFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "languageRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "languageRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "ldapProviderAdd": [
+   "SETTINGS_SETAUTH"
+  ],
+  "ldapProviderDelete": [
+   "SETTINGS_SETAUTH"
+  ],
+  "ldapProviderEdit": [
+   "SETTINGS_SETAUTH"
+  ],
+  "locationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "locationEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "malwareAnalysisFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareAnalysisRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "malwareEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "managedConnectorAdd": [
+   "CONNECTORAPI"
+  ],
+  "managedConnectorEdit": [
+   "CONNECTORAPI"
+  ],
+  "managerConfigurationFieldPatch": [
+   "SETTINGS_FILEINDEXING"
+  ],
+  "markingDefinitionAdd": [
+   "SETTINGS_SETMARKINGS"
+  ],
+  "markingDefinitionEdit": [
+   "SETTINGS_SETMARKINGS"
+  ],
+  "metricPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "narrativeFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "narrativeRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "noteAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "noteEdit": [
+   "KNOWLEDGE_KNPARTICIPATE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "notifierAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "notifierDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "notifierFieldPatch": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "observedDataAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "observedDataEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "oidcProviderAdd": [
+   "SETTINGS_SETAUTH"
+  ],
+  "oidcProviderDelete": [
+   "SETTINGS_SETAUTH"
+  ],
+  "oidcProviderEdit": [
+   "SETTINGS_SETAUTH"
+  ],
+  "opinionAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "opinionEdit": [
+   "KNOWLEDGE_KNPARTICIPATE",
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "organizationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "organizationAdminAdd": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "organizationAdminRemove": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "organizationContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "organizationContextPatch": [
+   "KNOWLEDGE_KNUPDATE",
+   "SETTINGS_SETACCESSES"
+  ],
+  "organizationDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "organizationEditAuthorizedAuthorities": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "organizationFieldPatch": [
+   "KNOWLEDGE_KNUPDATE",
+   "SETTINGS_SETACCESSES"
+  ],
+  "organizationRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "organizationRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "otpUserDeactivation": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "pingConnector": [
+   "CONNECTORAPI"
+  ],
+  "pirAdd": [
+   "PIRAPI_PIRUPDATE"
+  ],
+  "pirDelete": [
+   "PIRAPI_PIRUPDATE"
+  ],
+  "pirEditAuthorizedMembers": [
+   "PIRAPI_PIRUPDATE"
+  ],
+  "pirFieldPatch": [
+   "PIRAPI_PIRUPDATE"
+  ],
+  "pirFlagElement": [
+   "BYPASS"
+  ],
+  "pirUnflagElement": [
+   "BYPASS"
+  ],
+  "playbookAdd": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookAddLink": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookAddNode": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookDelete": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookDeleteLink": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookDeleteNode": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookDuplicate": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookExecute": [
+   "AUTOMATION"
+  ],
+  "playbookFieldPatch": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookImport": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookInsertNode": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookReplaceNode": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "playbookStepExecution": [
+   "CONNECTORAPI"
+  ],
+  "playbookUpdatePositions": [
+   "AUTOMATION_AUTMANAGE"
+  ],
+  "positionAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "positionEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "publicDashboardAdd": [
+   "EXPLORE_EXUPDATE_PUBLISH"
+  ],
+  "publicDashboardDelete": [
+   "EXPLORE_EXUPDATE_PUBLISH"
+  ],
+  "publicDashboardFieldPatch": [
+   "EXPLORE_EXUPDATE_PUBLISH"
+  ],
+  "regionAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "regionEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "registerConnector": [
+   "CONNECTORAPI"
+  ],
+  "registerConnectorsManager": [
+   "CONNECTORAPI"
+  ],
+  "reportAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "reportEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "reportWorkflowAsyncActionResult": [
+   "BYPASS"
+  ],
+  "requestAccessAdd": [
+   "KNOWLEDGE"
+  ],
+  "requestAccessConfigure": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "resetFileIndexing": [
+   "SETTINGS_FILEINDEXING"
+  ],
+  "resetStateConnector": [
+   "MODULES_MODMANAGE"
+  ],
+  "retentionRuleAdd": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "retentionRuleCheck": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "retentionRuleEdit": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "roleAdd": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "roleEdit": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "ruleApply": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "ruleApplyAsync": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "ruleClear": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "ruleManagerClean": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "ruleSetActivation": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "rulesRescan": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "rulesRescanAsync": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "samlProviderAdd": [
+   "SETTINGS_SETAUTH"
+  ],
+  "samlProviderDelete": [
+   "SETTINGS_SETAUTH"
+  ],
+  "samlProviderEdit": [
+   "SETTINGS_SETAUTH"
+  ],
+  "savedFilterEditAuthorizedMembers": [
+   "KNOWLEDGE_KNSHAREFILTERS"
+  ],
+  "sectorAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "sectorEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "securityCoverageFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageResultAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageResultDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "securityCoverageResultEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageResultRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityCoverageResultRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "securityPlatformFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "securityPlatformRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "sendUserMail": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "sessionKill": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "setWorkflowStatus": [
+   "BYPASS"
+  ],
+  "setupEnterpriseLicense": [
+   "SETTINGS_SETMANAGEXTMHUB",
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "smtpConfigurationDelete": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "smtpConfigurationEdit": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "smtpConfigurationTest": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "statusTemplateAdd": [
+   "SETTINGS_SETSTATUSTEMPLATES"
+  ],
+  "statusTemplateContextClean": [
+   "SETTINGS_SETSTATUSTEMPLATES"
+  ],
+  "statusTemplateContextPatch": [
+   "SETTINGS_SETSTATUSTEMPLATES"
+  ],
+  "statusTemplateDelete": [
+   "SETTINGS_SETSTATUSTEMPLATES"
+  ],
+  "statusTemplateFieldPatch": [
+   "SETTINGS_SETSTATUSTEMPLATES"
+  ],
+  "stixBundlePush": [
+   "CONNECTORAPI"
+  ],
+  "stixCoreObjectsExportAsk": [
+   "KNOWLEDGE_KNGETEXPORT_KNASKEXPORT"
+  ],
+  "stixCoreObjectsExportPush": [
+   "CONNECTORAPI"
+  ],
+  "stixCoreRelationshipAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixCoreRelationshipDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixCoreRelationshipEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixCoreRelationshipsExportAsk": [
+   "KNOWLEDGE_KNGETEXPORT_KNASKEXPORT"
+  ],
+  "stixCoreRelationshipsExportPush": [
+   "CONNECTORAPI"
+  ],
+  "stixCyberObservableAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixCyberObservablesExportAsk": [
+   "KNOWLEDGE_KNGETEXPORT_KNASKEXPORT"
+  ],
+  "stixCyberObservablesExportPush": [
+   "CONNECTORAPI"
+  ],
+  "stixDomainObjectAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixDomainObjectsDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "stixDomainObjectsExportAsk": [
+   "KNOWLEDGE_KNGETEXPORT_KNASKEXPORT"
+  ],
+  "stixDomainObjectsExportPush": [
+   "CONNECTORAPI"
+  ],
+  "stixEdit": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE",
+   "KNOWLEDGE_KNUPDATE_KNMERGE"
+  ],
+  "stixRefRelationshipAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixRefRelationshipEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixRelationshipEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixSightingRelationshipAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "stixSightingRelationshipEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "streamCollectionAdd": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "streamCollectionEdit": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "subTypeEdit": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "supportPackageAdd": [
+   "SETTINGS_SUPPORT"
+  ],
+  "supportPackageDelete": [
+   "SETTINGS_SUPPORT"
+  ],
+  "supportPackageForceZip": [
+   "SETTINGS_SUPPORT"
+  ],
+  "synchronizerAdd": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerAddAutoUser": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerEdit": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerStart": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerStop": [
+   "CONNECTORAPI"
+  ],
+  "synchronizerTest": [
+   "CONNECTORAPI",
+   "INGESTION_SETINGESTIONS"
+  ],
+  "systemAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "systemEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "taskAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "taskDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "taskFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "taskRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "taskRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "taskTemplateAdd": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "taskTemplateDelete": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "taskTemplateFieldPatch": [
+   "SETTINGS_SETCASETEMPLATES"
+  ],
+  "taxiiCollectionAdd": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "taxiiCollectionEdit": [
+   "TAXIIAPI_SETCOLLECTIONS"
+  ],
+  "themeAdd": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "themeDelete": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "themeFieldPatch": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "themeImport": [
+   "SETTINGS_SETPARAMETERS"
+  ],
+  "threatActorGroupAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorGroupEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualContextClean": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualContextPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualDelete": [
+   "KNOWLEDGE_KNUPDATE_KNDELETE"
+  ],
+  "threatActorIndividualFieldPatch": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualRelationAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "threatActorIndividualRelationDelete": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "toolAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "toolEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "triggerActivityDelete": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "triggerActivityDigestAdd": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "triggerActivityFieldPatch": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "triggerActivityLiveAdd": [
+   "SETTINGS_SECURITYACTIVITY"
+  ],
+  "triggerWorkflowEvent": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "updateConnectorCurrentStatus": [
+   "CONNECTORAPI"
+  ],
+  "updateConnectorHealth": [
+   "CONNECTORAPI"
+  ],
+  "updateConnectorLogs": [
+   "CONNECTORAPI"
+  ],
+  "updateConnectorManagerStatus": [
+   "CONNECTORAPI"
+  ],
+  "updateConnectorRequestedStatus": [
+   "MODULES_MODMANAGE"
+  ],
+  "updateConnectorTrigger": [
+   "MODULES_MODMANAGE"
+  ],
+  "uploadAndAskJobImport": [
+   "KNOWLEDGE_KNASKIMPORT",
+   "KNOWLEDGE_KNUPLOAD"
+  ],
+  "uploadImport": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "uploadPending": [
+   "KNOWLEDGE_KNASKIMPORT"
+  ],
+  "userAdd": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "userAdminTokenAdd": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "userAdminTokenRevoke": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "userEdit": [
+   "SETTINGS_SETACCESSES",
+   "VIRTUAL_ORGANIZATION_ADMIN"
+  ],
+  "userMerge": [
+   "BYPASS"
+  ],
+  "userMergeDeleteSource": [
+   "BYPASS"
+  ],
+  "userNoteAdd": [
+   "KNOWLEDGE_KNPARTICIPATE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "userOpinionAdd": [
+   "KNOWLEDGE_KNPARTICIPATE",
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "userSessionsKill": [
+   "SETTINGS_SETACCESSES"
+  ],
+  "userTokenAdd": [
+   "APIACCESS_USETOKEN"
+  ],
+  "userTokenRevoke": [
+   "APIACCESS_USETOKEN"
+  ],
+  "vocabularyAdd": [
+   "SETTINGS_SETVOCABULARIES"
+  ],
+  "vocabularyDelete": [
+   "SETTINGS_SETVOCABULARIES"
+  ],
+  "vocabularyFieldPatch": [
+   "SETTINGS_SETVOCABULARIES"
+  ],
+  "vulnerabilityAdd": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "vulnerabilityEdit": [
+   "KNOWLEDGE_KNUPDATE"
+  ],
+  "workAdd": [
+   "CONNECTORAPI",
+   "KNOWLEDGE_KNASKIMPORT",
+   "KNOWLEDGE_KNGETEXPORT_KNASKEXPORT",
+   "MODULES_MODMANAGE"
+  ],
+  "workDelete": [
+   "CONNECTORAPI",
+   "MODULES_MODMANAGE"
+  ],
+  "workEdit": [
+   "CONNECTORAPI",
+   "MODULES_MODMANAGE"
+  ],
+  "workInvestigationStatusEdit": [
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workflowDefinitionDelete": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "workflowDefinitionPublish": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "workflowDefinitionRestorePublished": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "workflowDefinitionSet": [
+   "SETTINGS_SETCUSTOMIZATION"
+  ],
+  "workspaceAdd": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceConfigurationImport": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceContextClean": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceContextPatch": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceDelete": [
+   "EXPLORE_EXUPDATE_EXDELETE",
+   "INVESTIGATION_INUPDATE_INDELETE"
+  ],
+  "workspaceDuplicate": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceEditAuthorizedMembers": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceFieldPatch": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ],
+  "workspaceVariableDelete": [
+   "EXPLORE_EXUPDATE"
+  ],
+  "workspaceVariableUpsert": [
+   "EXPLORE_EXUPDATE"
+  ],
+  "workspaceWidgetConfigurationImport": [
+   "EXPLORE_EXUPDATE",
+   "INVESTIGATION_INUPDATE"
+  ]
+ }
+}

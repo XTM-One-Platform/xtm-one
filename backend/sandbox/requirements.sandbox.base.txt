@@ -1,0 +1,15 @@
+numpy==2.4.6
+pandas==3.0.3
+matplotlib==3.10.9
+scipy==1.17.1
+tabulate==0.10.0
+# Password-protected archives: pyzipper writes and reads WinZip AES (AE-1/AE-2)
+# ZIPs (AESZipFile, setpassword, setencryption(WZ_AES, nbits=256)) and pulls
+# pycryptodomex; cryptography carries the same pin as backend/pyproject.toml.
+pyzipper==0.4.0
+pycryptodomex==3.24.2
+cryptography==50.0.0
+# Video frames: PyAV decodes MP4/WebM/MOV in process (its manylinux wheel bundles
+# the FFmpeg libraries), so code_interpreter reads a frame with no ffmpeg binary
+# and no subprocess (both absent from the distroless image).
+av==19.0.2

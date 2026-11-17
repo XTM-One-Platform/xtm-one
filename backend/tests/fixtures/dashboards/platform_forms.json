@@ -1,0 +1,5409 @@
+{
+  "forms": [
+    {
+      "source": "opencti",
+      "name": "OpenCTI",
+      "form": {
+        "version": 1,
+        "typePath": "type",
+        "types": [
+          {
+            "value": "number",
+            "label": "Number",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "number",
+              "attribute": false,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "number",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "list",
+            "label": "List",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "list",
+              "attribute": false,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "list",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "distribution-list",
+            "label": "Distribution list",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "distribution-list",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "vertical-bar",
+            "label": "Vertical bars",
+            "attrs": {
+              "limit": 5,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "timeseries",
+              "attribute": false,
+              "stacked": true,
+              "legend": true,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "vertical-bar",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "line",
+            "label": "Line",
+            "attrs": {
+              "limit": 5,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "timeseries",
+              "attribute": false,
+              "stacked": false,
+              "legend": true,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "line",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "area",
+            "label": "Area",
+            "attrs": {
+              "limit": 5,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "timeseries",
+              "attribute": false,
+              "stacked": true,
+              "legend": true,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "area",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "timeline",
+            "label": "Timeline",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships"
+              ],
+              "category": "list",
+              "attribute": false,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "timeline",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "donut",
+            "label": "Donut",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "donut",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "horizontal-bar",
+            "label": "Horizontal bars",
+            "attrs": {
+              "limit": 2,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "horizontal-bar",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "radar",
+            "label": "Radar",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "radar",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "polar-area",
+            "label": "Polar area",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "polar-area",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "heatmap",
+            "label": "Heatmap",
+            "attrs": {
+              "limit": 5,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "timeseries",
+              "attribute": false,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "heatmap",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "tree",
+            "label": "Tree",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": true
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "tree",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "map",
+            "label": "Map",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "relationships"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "map",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "relationships"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "relationships"
+                }
+              }
+            }
+          },
+          {
+            "value": "bookmark",
+            "label": "Bookmarks",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities"
+              ],
+              "category": "list",
+              "attribute": false,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "bookmark",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          },
+          {
+            "value": "wordcloud",
+            "label": "Word cloud",
+            "attrs": {
+              "limit": 1,
+              "perspectives": [
+                "entities",
+                "relationships",
+                "audits"
+              ],
+              "category": "distribution",
+              "attribute": true,
+              "stacked": false,
+              "legend": false,
+              "distributed": false
+            },
+            "new": {
+              "$template": "widget",
+              "with": {
+                "type": "wordcloud",
+                "perspective": {
+                  "$cond": {
+                    "in": [
+                      {
+                        "$param": "perspective"
+                      },
+                      [
+                        "entities",
+                        "relationships",
+                        "audits"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$param": "perspective"
+                  },
+                  "else": "entities"
+                }
+              }
+            }
+          }
+        ],
+        "default": {
+          "type": "number"
+        },
+        "carries": {
+          "isArray": {
+            "$root": "dataSelection"
+          },
+          "of": "object",
+          "min": 1
+        },
+        "templates": {
+          "emptyGroup": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "typeKey": {
+            "$cond": {
+              "eq": [
+                {
+                  "$param": "perspective"
+                },
+                "relationships"
+              ]
+            },
+            "then": "relationship_type",
+            "else": "entity_type"
+          },
+          "defaultColumns": {
+            "relationships": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ],
+            "entities": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          },
+          "dates": {
+            "$concat": [
+              [
+                "created_at",
+                "updated_at",
+                "created",
+                "modified"
+              ],
+              {
+                "$cond": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$param": "perspective"
+                        },
+                        "relationships"
+                      ]
+                    },
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$param": "types"
+                          },
+                          [
+                            "stix-sighting-relationship"
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "then": [
+                  "start_time",
+                  "stop_time"
+                ],
+                "else": []
+              },
+              {
+                "$cond": {
+                  "any": [
+                    {
+                      "eq": [
+                        {
+                          "$param": "perspective"
+                        },
+                        "entities"
+                      ]
+                    },
+                    {
+                      "eq": [
+                        {
+                          "$param": "types"
+                        },
+                        [
+                          "stix-sighting-relationship"
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                "then": [
+                  "first_seen",
+                  "last_seen"
+                ],
+                "else": []
+              }
+            ]
+          },
+          "availableColumns": {
+            "$cond": {
+              "eq": [
+                {
+                  "$param": "perspective"
+                },
+                "relationships"
+              ]
+            },
+            "then": {
+              "$concat": [
+                {
+                  "$get": [
+                    {
+                      "$template": "defaultColumns",
+                      "with": {}
+                    },
+                    "relationships"
+                  ]
+                },
+                [
+                  {
+                    "attribute": "start_time"
+                  },
+                  {
+                    "attribute": "stop_time"
+                  }
+                ]
+              ]
+            },
+            "else": {
+              "$cond": {
+                "eq": [
+                  {
+                    "$param": "perspective"
+                  },
+                  "entities"
+                ]
+              },
+              "then": {
+                "$concat": [
+                  {
+                    "$get": [
+                      {
+                        "$template": "defaultColumns",
+                        "with": {}
+                      },
+                      "entities"
+                    ]
+                  },
+                  {
+                    "$cond": {
+                      "eq": [
+                        {
+                          "$len": {
+                            "$param": "types"
+                          }
+                        },
+                        1
+                      ]
+                    },
+                    "then": {
+                      "$coalesce": [
+                        {
+                          "$get": [
+                            {
+                              "Report": [
+                                {
+                                  "attribute": "report_types",
+                                  "label": "Report type"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                },
+                                {
+                                  "attribute": "objectParticipant"
+                                }
+                              ],
+                              "Grouping": [
+                                {
+                                  "attribute": "context"
+                                }
+                              ],
+                              "Malware-Analysis": [
+                                {
+                                  "attribute": "product",
+                                  "label": "Product"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                }
+                              ],
+                              "Note": [
+                                {
+                                  "attribute": "note_types",
+                                  "label": "Note type"
+                                }
+                              ],
+                              "Case-Incident": [
+                                {
+                                  "attribute": "priority"
+                                },
+                                {
+                                  "attribute": "severity",
+                                  "label": "Severity"
+                                },
+                                {
+                                  "attribute": "response_types",
+                                  "label": "Response type"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                },
+                                {
+                                  "attribute": "objectParticipant"
+                                }
+                              ],
+                              "Case-Rfi": [
+                                {
+                                  "attribute": "priority"
+                                },
+                                {
+                                  "attribute": "severity",
+                                  "label": "Severity"
+                                },
+                                {
+                                  "attribute": "information_types",
+                                  "label": "Request for information types"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                },
+                                {
+                                  "attribute": "objectParticipant"
+                                }
+                              ],
+                              "Case-Rft": [
+                                {
+                                  "attribute": "priority"
+                                },
+                                {
+                                  "attribute": "severity",
+                                  "label": "Severity"
+                                },
+                                {
+                                  "attribute": "takedown_types",
+                                  "label": "Request for takedown types"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                },
+                                {
+                                  "attribute": "objectParticipant"
+                                }
+                              ],
+                              "Task": [
+                                {
+                                  "attribute": "due_date",
+                                  "label": "Due date"
+                                },
+                                {
+                                  "attribute": "objectAssignee"
+                                },
+                                {
+                                  "attribute": "objectParticipant"
+                                }
+                              ],
+                              "Incident": [
+                                {
+                                  "attribute": "incident_type"
+                                },
+                                {
+                                  "attribute": "severity",
+                                  "label": "Severity"
+                                }
+                              ],
+                              "Indicator": [
+                                {
+                                  "attribute": "pattern_type",
+                                  "label": "Pattern type"
+                                },
+                                {
+                                  "attribute": "valid_from",
+                                  "label": "Valid from"
+                                },
+                                {
+                                  "attribute": "valid_until",
+                                  "label": "Valid until"
+                                },
+                                {
+                                  "attribute": "x_opencti_score"
+                                }
+                              ],
+                              "Threat-Actor": [
+                                {
+                                  "attribute": "threat_actor_types",
+                                  "label": "Threat actor types"
+                                }
+                              ],
+                              "Threat-Actor-Individual": [
+                                {
+                                  "attribute": "threat_actor_types",
+                                  "label": "Threat actor types"
+                                }
+                              ],
+                              "Threat-Actor-Group": [
+                                {
+                                  "attribute": "threat_actor_types",
+                                  "label": "Threat actor types"
+                                }
+                              ],
+                              "Intrusion-Set": [
+                                {
+                                  "attribute": "resource_level",
+                                  "label": "Resource level"
+                                }
+                              ],
+                              "Malware": [
+                                {
+                                  "attribute": "malware_types",
+                                  "label": "Malware type"
+                                }
+                              ],
+                              "Channel": [
+                                {
+                                  "attribute": "channel_types",
+                                  "label": "Channel type"
+                                }
+                              ],
+                              "Tool": [
+                                {
+                                  "attribute": "tool_types",
+                                  "label": "Tool types"
+                                }
+                              ],
+                              "Vulnerability": [
+                                {
+                                  "attribute": "x_opencti_cvss_base_score",
+                                  "label": "CVSS3 - Score"
+                                },
+                                {
+                                  "attribute": "x_opencti_cvss_base_severity",
+                                  "label": "CVSS3 - Severity"
+                                },
+                                {
+                                  "attribute": "x_opencti_cvss_v4_base_score",
+                                  "label": "CVSS4 - Score"
+                                },
+                                {
+                                  "attribute": "x_opencti_cvss_v4_base_severity",
+                                  "label": "CVSS4 - Severity"
+                                },
+                                {
+                                  "attribute": "x_opencti_cisa_kev",
+                                  "label": "CISA - KEV"
+                                },
+                                {
+                                  "attribute": "x_opencti_epss_score",
+                                  "label": "EPSS Score"
+                                },
+                                {
+                                  "attribute": "x_opencti_epss_percentile",
+                                  "label": "EPSS Percentile"
+                                }
+                              ],
+                              "Attack-Pattern": [
+                                {
+                                  "attribute": "x_mitre_id",
+                                  "label": "External ID"
+                                }
+                              ],
+                              "Course-Of-Action": [
+                                {
+                                  "attribute": "x_mitre_id",
+                                  "label": "External ID"
+                                }
+                              ],
+                              "Event": [
+                                {
+                                  "attribute": "event_types",
+                                  "label": "Event type"
+                                }
+                              ],
+                              "Organization": [
+                                {
+                                  "attribute": "x_opencti_organization_type",
+                                  "label": "Organization type"
+                                },
+                                {
+                                  "attribute": "x_opencti_score",
+                                  "label": "Score"
+                                }
+                              ]
+                            },
+                            {
+                              "$param": "types.0"
+                            }
+                          ]
+                        },
+                        []
+                      ]
+                    },
+                    "else": []
+                  }
+                ]
+              },
+              "else": []
+            }
+          },
+          "newSelection": {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": {
+              "$param": "perspective"
+            },
+            "filters": {
+              "$template": "emptyGroup",
+              "with": {}
+            },
+            "dynamicFrom": {
+              "$template": "emptyGroup",
+              "with": {}
+            },
+            "dynamicTo": {
+              "$template": "emptyGroup",
+              "with": {}
+            },
+            "columns": {
+              "$cond": {
+                "eq": [
+                  {
+                    "$param": "perspective"
+                  },
+                  "audits"
+                ]
+              },
+              "then": [],
+              "else": {
+                "$get": [
+                  {
+                    "$template": "defaultColumns",
+                    "with": {}
+                  },
+                  {
+                    "$param": "perspective"
+                  }
+                ]
+              }
+            }
+          },
+          "addedSelection": {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": {
+              "$param": "perspective"
+            },
+            "filters": {
+              "$template": "emptyGroup",
+              "with": {}
+            },
+            "dynamicFrom": {
+              "$template": "emptyGroup",
+              "with": {}
+            },
+            "dynamicTo": {
+              "$template": "emptyGroup",
+              "with": {}
+            }
+          },
+          "widget": {
+            "type": {
+              "$param": "type"
+            },
+            "perspective": {
+              "$param": "perspective"
+            },
+            "dataSelection": [
+              {
+                "$template": "newSelection",
+                "with": {
+                  "perspective": {
+                    "$param": "perspective"
+                  }
+                }
+              }
+            ],
+            "parameters": {}
+          }
+        },
+        "filters": {
+          "keyForm": "list",
+          "nested": true,
+          "maxDepth": 3,
+          "ids": false,
+          "newFilterMode": "or",
+          "groupMode": true,
+          "operators": [
+            {
+              "when": {
+                "in": [
+                  {
+                    "$var": "key.type"
+                  },
+                  [
+                    "date"
+                  ]
+                ]
+              },
+              "value": [
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "nil",
+                "not_nil",
+                "within"
+              ]
+            },
+            {
+              "when": {
+                "in": [
+                  {
+                    "$var": "key.type"
+                  },
+                  [
+                    "integer",
+                    "float"
+                  ]
+                ]
+              },
+              "value": [
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "eq",
+                "not_eq"
+              ]
+            },
+            {
+              "when": {
+                "in": [
+                  {
+                    "$var": "key.type"
+                  },
+                  [
+                    "boolean"
+                  ]
+                ]
+              },
+              "value": [
+                "eq",
+                "not_eq"
+              ]
+            },
+            {
+              "when": {
+                "in": [
+                  {
+                    "$var": "key.type"
+                  },
+                  [
+                    "string"
+                  ]
+                ]
+              },
+              "value": [
+                "eq",
+                "not_eq",
+                "nil",
+                "not_nil",
+                "contains",
+                "not_contains",
+                "starts_with",
+                "not_starts_with",
+                "ends_with",
+                "not_ends_with",
+                "search"
+              ]
+            },
+            {
+              "when": {
+                "in": [
+                  {
+                    "$var": "key.type"
+                  },
+                  [
+                    "text"
+                  ]
+                ]
+              },
+              "value": [
+                "search",
+                "nil",
+                "not_nil"
+              ]
+            },
+            {
+              "when": {
+                "truthy": {
+                  "$var": "key.multiple"
+                }
+              },
+              "value": [
+                "eq",
+                "not_eq",
+                "only_eq_to",
+                "not_only_eq_to",
+                "nil",
+                "not_nil"
+              ]
+            },
+            {
+              "value": [
+                "eq",
+                "not_eq",
+                "nil",
+                "not_nil"
+              ]
+            }
+          ],
+          "defaultOperator": [
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "date"
+                ]
+              },
+              "value": "within"
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "integer"
+                ]
+              },
+              "value": "gt"
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "float"
+                ]
+              },
+              "value": "gt"
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "boolean"
+                ]
+              },
+              "value": "eq"
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "string"
+                ]
+              },
+              "value": "starts_with"
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$var": "key.type"
+                  },
+                  "text"
+                ]
+              },
+              "value": "search"
+            },
+            {
+              "value": "eq"
+            }
+          ],
+          "dateInput": "text",
+          "dateHint": "A date, or relative to now: now-7d",
+          "searched": {
+            "not": {
+              "in": [
+                {
+                  "$var": "type"
+                },
+                [
+                  "string",
+                  "text"
+                ]
+              ]
+            }
+          },
+          "pairs": {
+            "regardingOf": [
+              {
+                "key": "id",
+                "label": "Entities",
+                "search": "regardingOf.id"
+              },
+              {
+                "key": "relationship_type",
+                "label": "Relationship types",
+                "search": "regardingOf.relationship_type"
+              }
+            ]
+          }
+        },
+        "fields": [
+          {
+            "kind": "row",
+            "fields": [
+              {
+                "kind": "select",
+                "id": "type",
+                "label": "Widget",
+                "path": "type",
+                "options": [
+                  {
+                    "value": "number",
+                    "label": "Number",
+                    "icon": "hash"
+                  },
+                  {
+                    "value": "list",
+                    "label": "List",
+                    "icon": "list"
+                  },
+                  {
+                    "value": "distribution-list",
+                    "label": "Distribution list",
+                    "icon": "list-ordered"
+                  },
+                  {
+                    "value": "vertical-bar",
+                    "label": "Vertical bars",
+                    "icon": "chart-column"
+                  },
+                  {
+                    "value": "line",
+                    "label": "Line",
+                    "icon": "chart-line"
+                  },
+                  {
+                    "value": "area",
+                    "label": "Area",
+                    "icon": "chart-area"
+                  },
+                  {
+                    "value": "timeline",
+                    "label": "Timeline",
+                    "icon": "git-commit-vertical"
+                  },
+                  {
+                    "value": "donut",
+                    "label": "Donut",
+                    "icon": "chart-pie"
+                  },
+                  {
+                    "value": "horizontal-bar",
+                    "label": "Horizontal bars",
+                    "icon": "chart-bar"
+                  },
+                  {
+                    "value": "radar",
+                    "label": "Radar",
+                    "icon": "radar"
+                  },
+                  {
+                    "value": "polar-area",
+                    "label": "Polar area",
+                    "icon": "chart-pie"
+                  },
+                  {
+                    "value": "heatmap",
+                    "label": "Heatmap",
+                    "icon": "grid-3x3"
+                  },
+                  {
+                    "value": "tree",
+                    "label": "Tree",
+                    "icon": "layout-dashboard"
+                  },
+                  {
+                    "value": "map",
+                    "label": "Map",
+                    "icon": "map"
+                  },
+                  {
+                    "value": "bookmark",
+                    "label": "Bookmarks",
+                    "icon": "bookmark"
+                  },
+                  {
+                    "value": "wordcloud",
+                    "label": "Word cloud",
+                    "icon": "cloud"
+                  }
+                ],
+                "display": "tiles",
+                "onChange": [
+                  {
+                    "truncate": "dataSelection",
+                    "max": {
+                      "$attr": "limit"
+                    }
+                  },
+                  {
+                    "if": {
+                      "not": {
+                        "in": [
+                          {
+                            "$": "perspective"
+                          },
+                          {
+                            "$attr": "perspectives"
+                          }
+                        ]
+                      }
+                    },
+                    "then": [
+                      {
+                        "change": "perspective",
+                        "value": {
+                          "$attr": "perspectives.0"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "select",
+                "id": "perspective",
+                "label": "Perspective",
+                "path": "perspective",
+                "options": {
+                  "$map": {
+                    "$attr": "perspectives"
+                  },
+                  "as": "item",
+                  "to": {
+                    "value": {
+                      "$var": "item"
+                    },
+                    "label": {
+                      "$get": [
+                        {
+                          "entities": "Entities",
+                          "relationships": "Knowledge graph",
+                          "audits": "Activity & history"
+                        },
+                        {
+                          "$var": "item"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "onChange": [
+                  {
+                    "each": "dataSelection",
+                    "when": {
+                      "ne": [
+                        {
+                          "$": "perspective"
+                        },
+                        {
+                          "$value": ""
+                        }
+                      ]
+                    },
+                    "do": [
+                      {
+                        "set": "perspective",
+                        "value": {
+                          "$value": ""
+                        }
+                      },
+                      {
+                        "set": "filters",
+                        "value": {
+                          "$template": "emptyGroup",
+                          "with": {}
+                        }
+                      },
+                      {
+                        "set": "dynamicFrom",
+                        "value": {
+                          "$template": "emptyGroup",
+                          "with": {}
+                        }
+                      },
+                      {
+                        "set": "dynamicTo",
+                        "value": {
+                          "$template": "emptyGroup",
+                          "with": {}
+                        }
+                      },
+                      {
+                        "set": "columns",
+                        "value": {
+                          "$cond": {
+                            "eq": [
+                              {
+                                "$value": ""
+                              },
+                              "audits"
+                            ]
+                          },
+                          "then": [],
+                          "else": {
+                            "$get": [
+                              {
+                                "$template": "defaultColumns",
+                                "with": {}
+                              },
+                              {
+                                "$value": ""
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "remove": "filters_id"
+                      },
+                      {
+                        "set": "attribute",
+                        "value": "entity_type"
+                      },
+                      {
+                        "set": "date_attribute",
+                        "value": {
+                          "$cond": {
+                            "in": [
+                              {
+                                "$": "date_attribute"
+                              },
+                              {
+                                "$template": "dates",
+                                "with": {
+                                  "perspective": {
+                                    "$value": ""
+                                  },
+                                  "types": []
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "$": "date_attribute"
+                          },
+                          "else": "created_at"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "text",
+            "label": "Title",
+            "path": "parameters.title",
+            "max": 200,
+            "empty": "remove"
+          },
+          {
+            "kind": "list",
+            "path": "dataSelection",
+            "title": "Data selection {n}",
+            "removeLabel": "Remove data selection {n}",
+            "min": 1,
+            "max": {
+              "$attr": "limit"
+            },
+            "count": "{count} of {max} data selections",
+            "footerWhen": {
+              "gt": [
+                {
+                  "$attr": "limit"
+                },
+                1
+              ]
+            },
+            "badge": {
+              "text": {
+                "$get": [
+                  {
+                    "entities": "Entities",
+                    "relationships": "Knowledge graph",
+                    "audits": "Activity & history"
+                  },
+                  {
+                    "$var": "perspective"
+                  }
+                ]
+              },
+              "when": {
+                "gt": [
+                  {
+                    "$var": "count"
+                  },
+                  1
+                ]
+              }
+            },
+            "add": [
+              {
+                "label": "Add relationships",
+                "item": {
+                  "$template": "addedSelection",
+                  "with": {
+                    "perspective": "relationships"
+                  }
+                },
+                "when": {
+                  "eq": [
+                    {
+                      "$": "perspective"
+                    },
+                    "relationships"
+                  ]
+                }
+              },
+              {
+                "label": "Add entities",
+                "item": {
+                  "$template": "addedSelection",
+                  "with": {
+                    "perspective": "entities"
+                  }
+                },
+                "when": {
+                  "eq": [
+                    {
+                      "$": "perspective"
+                    },
+                    "relationships"
+                  ]
+                }
+              },
+              {
+                "label": "Add a data selection",
+                "item": {
+                  "$template": "addedSelection",
+                  "with": {
+                    "perspective": {
+                      "$": "perspective"
+                    }
+                  }
+                },
+                "when": {
+                  "ne": [
+                    {
+                      "$": "perspective"
+                    },
+                    "relationships"
+                  ]
+                },
+                "disabled": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$": "perspective"
+                        },
+                        "audits"
+                      ]
+                    },
+                    {
+                      "eq": [
+                        {
+                          "$attr": "category"
+                        },
+                        "distribution"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "vars": {
+              "perspective": {
+                "$coalesce": [
+                  {
+                    "$": "perspective"
+                  },
+                  {
+                    "$root": "perspective"
+                  }
+                ]
+              },
+              "types": {
+                "$filterValues": {
+                  "group": {
+                    "$": "filters"
+                  },
+                  "match": {
+                    "key": {
+                      "$template": "typeKey",
+                      "with": {
+                        "perspective": {
+                          "$var": "perspective"
+                        }
+                      }
+                    },
+                    "operator": "eq",
+                    "exact": true
+                  }
+                }
+              }
+            },
+            "sources": {
+              "types": {
+                "kind": "entity_types",
+                "perspective": {
+                  "$var": "perspective"
+                },
+                "when": {
+                  "all": [
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$var": "perspective"
+                          },
+                          "audits"
+                        ]
+                      }
+                    },
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$root": "type"
+                          },
+                          "bookmark"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "keys": {
+                "kind": "filter_keys",
+                "perspective": {
+                  "$var": "perspective"
+                },
+                "when": {
+                  "not": {
+                    "eq": [
+                      {
+                        "$root": "type"
+                      },
+                      "bookmark"
+                    ]
+                  }
+                }
+              },
+              "savedFilters": {
+                "kind": "saved_filters",
+                "perspective": {
+                  "$var": "perspective"
+                },
+                "when": {
+                  "not": {
+                    "eq": [
+                      {
+                        "$root": "type"
+                      },
+                      "bookmark"
+                    ]
+                  }
+                }
+              },
+              "endKeys": {
+                "kind": "filter_keys",
+                "perspective": "entities",
+                "when": {
+                  "eq": [
+                    {
+                      "$var": "perspective"
+                    },
+                    "relationships"
+                  ]
+                }
+              },
+              "attributes": {
+                "kind": "attributes",
+                "perspective": {
+                  "$var": "perspective"
+                },
+                "types": {
+                  "$var": "types"
+                },
+                "when": {
+                  "all": [
+                    {
+                      "truthy": {
+                        "$attr": "attribute"
+                      }
+                    },
+                    {
+                      "eq": [
+                        {
+                          "$var": "perspective"
+                        },
+                        "entities"
+                      ]
+                    },
+                    {
+                      "gt": [
+                        {
+                          "$len": {
+                            "$var": "types"
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "fields": [
+              {
+                "kind": "text",
+                "label": "Label",
+                "path": "label",
+                "max": 200,
+                "empty": "keep",
+                "ariaLabel": "Label of data selection {n}"
+              },
+              {
+                "kind": "multiselect",
+                "id": "types",
+                "label": {
+                  "$cond": {
+                    "eq": [
+                      {
+                        "$var": "perspective"
+                      },
+                      "relationships"
+                    ]
+                  },
+                  "then": "Relationship types",
+                  "else": "Entity types"
+                },
+                "bind": {
+                  "filterValues": {
+                    "group": "filters",
+                    "match": {
+                      "key": {
+                        "$template": "typeKey",
+                        "with": {
+                          "perspective": {
+                            "$var": "perspective"
+                          }
+                        }
+                      },
+                      "operator": "eq",
+                      "exact": true
+                    },
+                    "new": {
+                      "key": [
+                        {
+                          "$param": "key"
+                        }
+                      ],
+                      "values": {
+                        "$param": "values"
+                      },
+                      "operator": "eq",
+                      "mode": "or"
+                    }
+                  }
+                },
+                "options": {
+                  "$cond": {
+                    "eq": [
+                      {
+                        "$var": "perspective"
+                      },
+                      "audits"
+                    ]
+                  },
+                  "then": [
+                    "History",
+                    "Activity"
+                  ],
+                  "else": {
+                    "$cond": {
+                      "eq": [
+                        {
+                          "$root": "type"
+                        },
+                        "bookmark"
+                      ]
+                    },
+                    "then": [
+                      "Malware",
+                      "Threat-Actor-Individual",
+                      "Threat-Actor-Group",
+                      "Intrusion-Set",
+                      "Campaign"
+                    ],
+                    "else": {
+                      "$map": {
+                        "$source": "types"
+                      },
+                      "as": "item",
+                      "to": {
+                        "value": {
+                          "$var": "item.value"
+                        },
+                        "text": {
+                          "$var": "item.label"
+                        }
+                      }
+                    }
+                  }
+                },
+                "placeholder": "All types",
+                "emptyLabel": "No type found"
+              },
+              {
+                "kind": "select",
+                "label": "Saved filter",
+                "path": "filters_id",
+                "default": "",
+                "options": {
+                  "$concat": [
+                    [
+                      {
+                        "value": "",
+                        "label": "No saved filter"
+                      }
+                    ],
+                    {
+                      "$map": {
+                        "$coalesce": [
+                          {
+                            "$source": "savedFilters"
+                          },
+                          []
+                        ]
+                      },
+                      "as": "item",
+                      "to": {
+                        "value": {
+                          "$var": "item.value"
+                        },
+                        "text": {
+                          "$var": "item.label"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "onChange": [
+                  {
+                    "if": {
+                      "truthy": {
+                        "$value": ""
+                      }
+                    },
+                    "then": [
+                      {
+                        "set": "filters",
+                        "value": {
+                          "$template": "emptyGroup",
+                          "with": {}
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "when": {
+                  "all": [
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$root": "type"
+                          },
+                          "bookmark"
+                        ]
+                      }
+                    },
+                    {
+                      "any": [
+                        {
+                          "truthy": {
+                            "$": "filters_id"
+                          }
+                        },
+                        {
+                          "gt": [
+                            {
+                              "$len": {
+                                "$coalesce": [
+                                  {
+                                    "$source": "savedFilters"
+                                  },
+                                  []
+                                ]
+                              }
+                            },
+                            0
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "filters",
+                "label": "Filters",
+                "path": "filters",
+                "keys": {
+                  "$coalesce": [
+                    {
+                      "$source": "keys"
+                    },
+                    []
+                  ]
+                },
+                "hidden": [
+                  {
+                    "key": {
+                      "$template": "typeKey",
+                      "with": {
+                        "perspective": {
+                          "$var": "perspective"
+                        }
+                      }
+                    },
+                    "operator": "eq",
+                    "exact": true
+                  }
+                ],
+                "perspective": {
+                  "$var": "perspective"
+                },
+                "when": {
+                  "all": [
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$root": "type"
+                          },
+                          "bookmark"
+                        ]
+                      }
+                    },
+                    {
+                      "not": {
+                        "truthy": {
+                          "$": "filters_id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "filters",
+                "label": "Source filters",
+                "path": "dynamicFrom",
+                "keys": {
+                  "$coalesce": [
+                    {
+                      "$source": "endKeys"
+                    },
+                    []
+                  ]
+                },
+                "perspective": "entities",
+                "when": {
+                  "eq": [
+                    {
+                      "$var": "perspective"
+                    },
+                    "relationships"
+                  ]
+                }
+              },
+              {
+                "kind": "filters",
+                "label": "Target filters",
+                "path": "dynamicTo",
+                "keys": {
+                  "$coalesce": [
+                    {
+                      "$source": "endKeys"
+                    },
+                    []
+                  ]
+                },
+                "perspective": "entities",
+                "when": {
+                  "eq": [
+                    {
+                      "$var": "perspective"
+                    },
+                    "relationships"
+                  ]
+                }
+              },
+              {
+                "kind": "row",
+                "fields": [
+                  {
+                    "kind": "select",
+                    "label": "Date",
+                    "path": "date_attribute",
+                    "default": "created_at",
+                    "options": {
+                      "$template": "dates",
+                      "with": {
+                        "perspective": {
+                          "$var": "perspective"
+                        },
+                        "types": {
+                          "$var": "types"
+                        }
+                      }
+                    },
+                    "when": {
+                      "all": [
+                        {
+                          "not": {
+                            "eq": [
+                              {
+                                "$var": "perspective"
+                              },
+                              "audits"
+                            ]
+                          }
+                        },
+                        {
+                          "not": {
+                            "eq": [
+                              {
+                                "$root": "type"
+                              },
+                              "bookmark"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "kind": "select",
+                    "label": "Counted by",
+                    "path": "attribute",
+                    "default": "entity_type",
+                    "when": {
+                      "truthy": {
+                        "$attr": "attribute"
+                      }
+                    },
+                    "options": {
+                      "$cond": {
+                        "eq": [
+                          {
+                            "$var": "perspective"
+                          },
+                          "relationships"
+                        ]
+                      },
+                      "then": [
+                        "internal_id",
+                        "entity_type",
+                        "relationship_type",
+                        "created-by.internal_id",
+                        "object-marking.internal_id",
+                        "kill-chain-phase.internal_id",
+                        "creator_id",
+                        "x_opencti_workflow_id"
+                      ],
+                      "else": {
+                        "$cond": {
+                          "eq": [
+                            {
+                              "$var": "perspective"
+                            },
+                            "audits"
+                          ]
+                        },
+                        "then": [
+                          "entity_type",
+                          "context_data.id",
+                          "context_data.created_by_ref_id",
+                          "context_data.labels_ids",
+                          "context_data.marking_definitions",
+                          "context_data.creator_ids",
+                          "context_data.search",
+                          "event_type",
+                          "event_scope",
+                          "user_id",
+                          "group_ids",
+                          "organization_ids"
+                        ],
+                        "else": {
+                          "$cond": {
+                            "all": [
+                              {
+                                "gt": [
+                                  {
+                                    "$len": {
+                                      "$var": "types"
+                                    }
+                                  },
+                                  0
+                                ]
+                              },
+                              {
+                                "truthy": {
+                                  "$source": "attributes"
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "$map": {
+                              "$source": "attributes"
+                            },
+                            "as": "item",
+                            "where": {
+                              "truthy": {
+                                "$var": "item.value"
+                              }
+                            },
+                            "to": {
+                              "$var": "item.value"
+                            }
+                          },
+                          "else": [
+                            "entity_type",
+                            "created-by.internal_id",
+                            "object-label.internal_id",
+                            "object-assignee.internal_id",
+                            "object-marking.internal_id",
+                            "kill-chain-phase.internal_id",
+                            "x_opencti_workflow_id"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "kind": "number",
+                    "label": "Number of results",
+                    "path": "number",
+                    "default": 10,
+                    "min": 1,
+                    "max": {
+                      "$cond": {
+                        "eq": [
+                          {
+                            "$root": "type"
+                          },
+                          "list"
+                        ]
+                      },
+                      "then": 500,
+                      "else": 100
+                    },
+                    "empty": "null",
+                    "when": {
+                      "in": [
+                        {
+                          "$attr": "category"
+                        },
+                        [
+                          "distribution",
+                          "list"
+                        ]
+                      ]
+                    }
+                  },
+                  {
+                    "kind": "select",
+                    "label": "Sort by",
+                    "path": "sort_by",
+                    "default": "created_at",
+                    "options": [
+                      "created",
+                      "created_at",
+                      "modified",
+                      "updated_at",
+                      "name",
+                      "valid_from",
+                      "valid_until",
+                      "entity_type",
+                      "value",
+                      "x_opencti_workflow_id",
+                      "opinions_metrics_mean",
+                      "opinions_metrics_max",
+                      "opinions_metrics_min",
+                      "opinions_metrics_total"
+                    ],
+                    "when": {
+                      "all": [
+                        {
+                          "eq": [
+                            {
+                              "$attr": "category"
+                            },
+                            "list"
+                          ]
+                        },
+                        {
+                          "eq": [
+                            {
+                              "$var": "perspective"
+                            },
+                            "entities"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "kind": "select",
+                    "label": "Sort order",
+                    "path": "sort_mode",
+                    "default": "desc",
+                    "options": [
+                      {
+                        "value": "desc",
+                        "label": "Descending"
+                      },
+                      {
+                        "value": "asc",
+                        "label": "Ascending"
+                      }
+                    ],
+                    "when": {
+                      "eq": [
+                        {
+                          "$attr": "category"
+                        },
+                        "list"
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "switch",
+                "label": "Display the source",
+                "hint": "Count the source of the relationships instead of their target.",
+                "path": "isTo",
+                "invert": true,
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$var": "perspective"
+                        },
+                        "relationships"
+                      ]
+                    },
+                    {
+                      "truthy": {
+                        "$attr": "attribute"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "switch",
+                "label": "Distinct",
+                "path": "unique",
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$var": "perspective"
+                        },
+                        "audits"
+                      ]
+                    },
+                    {
+                      "in": [
+                        {
+                          "$root": "type"
+                        },
+                        [
+                          "number",
+                          "line",
+                          "area"
+                        ]
+                      ]
+                    },
+                    {
+                      "not": {
+                        "truthy": {
+                          "$attr": "attribute"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "row",
+                "columns": 3,
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$root": "type"
+                        },
+                        "map"
+                      ]
+                    },
+                    {
+                      "eq": [
+                        {
+                          "$var": "perspective"
+                        },
+                        "relationships"
+                      ]
+                    }
+                  ]
+                },
+                "fields": [
+                  {
+                    "kind": "number",
+                    "label": "Zoom",
+                    "path": "zoom",
+                    "default": 2,
+                    "min": 0,
+                    "max": 20,
+                    "empty": "remove"
+                  },
+                  {
+                    "kind": "number",
+                    "label": "Center latitude",
+                    "path": "centerLat",
+                    "min": -90,
+                    "max": 90,
+                    "empty": "remove",
+                    "decimal": true
+                  },
+                  {
+                    "kind": "number",
+                    "label": "Center longitude",
+                    "path": "centerLng",
+                    "min": -180,
+                    "max": 180,
+                    "empty": "remove",
+                    "decimal": true
+                  }
+                ]
+              },
+              {
+                "kind": "columns",
+                "path": "columns",
+                "items": "objects",
+                "valueKey": "attribute",
+                "labelKey": "label",
+                "available": {
+                  "$template": "availableColumns",
+                  "with": {
+                    "perspective": {
+                      "$var": "perspective"
+                    },
+                    "types": {
+                      "$var": "types"
+                    }
+                  }
+                },
+                "reset": {
+                  "$get": [
+                    {
+                      "$template": "defaultColumns",
+                      "with": {}
+                    },
+                    {
+                      "$cond": {
+                        "eq": [
+                          {
+                            "$var": "perspective"
+                          },
+                          "relationships"
+                        ]
+                      },
+                      "then": "relationships",
+                      "else": "entities"
+                    }
+                  ]
+                },
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$root": "type"
+                        },
+                        "list"
+                      ]
+                    },
+                    {
+                      "not": {
+                        "eq": [
+                          {
+                            "$var": "perspective"
+                          },
+                          "audits"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "fields": [
+              {
+                "kind": "select",
+                "label": "Interval",
+                "path": "parameters.interval",
+                "default": "day",
+                "options": [
+                  {
+                    "value": "day",
+                    "label": "Day"
+                  },
+                  {
+                    "value": "week",
+                    "label": "Week"
+                  },
+                  {
+                    "value": "month",
+                    "label": "Month"
+                  },
+                  {
+                    "value": "quarter",
+                    "label": "Quarter"
+                  },
+                  {
+                    "value": "year",
+                    "label": "Year"
+                  }
+                ],
+                "when": {
+                  "eq": [
+                    {
+                      "$attr": "category"
+                    },
+                    "timeseries"
+                  ]
+                }
+              },
+              {
+                "kind": "switch",
+                "label": "Stacked",
+                "path": "parameters.stacked",
+                "when": {
+                  "truthy": {
+                    "$attr": "stacked"
+                  }
+                }
+              },
+              {
+                "kind": "switch",
+                "label": "Display legend",
+                "path": "parameters.legend",
+                "when": {
+                  "truthy": {
+                    "$attr": "legend"
+                  }
+                }
+              },
+              {
+                "kind": "switch",
+                "label": "Distributed",
+                "path": "parameters.distributed",
+                "when": {
+                  "truthy": {
+                    "$attr": "distributed"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "note",
+            "text": "Activity and history are read by OpenCTI administrators only: XTM One shows this widget as a link to OpenCTI.",
+            "when": {
+              "eq": [
+                {
+                  "$": "perspective"
+                },
+                "audits"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "openaev",
+      "name": "OpenAEV",
+      "form": {
+        "version": 1,
+        "typePath": "widget_type",
+        "types": [
+          {
+            "value": "command-center",
+            "label": "Command Center",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 3,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "command-center",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "exposure-score",
+            "label": "Exposure Score",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 2,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "exposure-score",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "resilience-gauge",
+            "label": "Resilience Gauge",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 1,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "resilience-gauge",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "posture-radar",
+            "label": "Posture Radar",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 5,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "posture-radar",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "average",
+            "label": "Security Domains",
+            "attrs": {
+              "configs": [
+                "average"
+              ],
+              "maxSeries": 1,
+              "kind": "domains",
+              "limit": false,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "average",
+              "widget_config": {
+                "widget_configuration_type": "average",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": "expectation-inject",
+                      "mode": "or"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "value": "security-coverage",
+            "label": "Security Coverage",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 2,
+              "kind": "coverage",
+              "limit": false,
+              "fields": [
+                "base_attack_patterns_side",
+                "base_created_at",
+                "base_updated_at"
+              ],
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "security-coverage",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": {
+                  "$template": "coverageSeries",
+                  "with": {
+                    "expectation": "DETECTION",
+                    "simulation": null
+                  }
+                },
+                "mode": "structural",
+                "field": "base_attack_patterns_side"
+              }
+            }
+          },
+          {
+            "value": "attack-path",
+            "label": "Attack Paths",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 2,
+              "kind": "coverage",
+              "limit": false,
+              "fields": [
+                "base_attack_patterns_side",
+                "base_created_at",
+                "base_updated_at"
+              ],
+              "simulationRequired": true
+            },
+            "new": {
+              "widget_type": "attack-path",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": {
+                  "$template": "coverageSeries",
+                  "with": {
+                    "expectation": "DETECTION",
+                    "simulation": null
+                  }
+                },
+                "mode": "structural",
+                "field": "base_attack_patterns_side"
+              }
+            }
+          },
+          {
+            "value": "vertical-barchart",
+            "label": "Vertical bars",
+            "attrs": {
+              "configs": [
+                "structural-histogram",
+                "temporal-histogram"
+              ],
+              "maxSeries": 5,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "vertical-barchart",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "horizontal-barchart",
+            "label": "Horizontal bars",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 2,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "horizontal-barchart",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "line",
+            "label": "Line",
+            "attrs": {
+              "configs": [
+                "temporal-histogram"
+              ],
+              "maxSeries": 5,
+              "kind": "series",
+              "limit": false,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "line",
+              "widget_config": {
+                "widget_configuration_type": "temporal-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "temporal",
+                "interval": "week"
+              }
+            }
+          },
+          {
+            "value": "donut",
+            "label": "Donut",
+            "attrs": {
+              "configs": [
+                "structural-histogram"
+              ],
+              "maxSeries": 1,
+              "kind": "series",
+              "limit": true,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "donut",
+              "widget_config": {
+                "widget_configuration_type": "structural-histogram",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ],
+                "mode": "structural",
+                "field": "",
+                "limit": 10
+              }
+            }
+          },
+          {
+            "value": "list",
+            "label": "List",
+            "attrs": {
+              "configs": [
+                "list"
+              ],
+              "maxSeries": 1,
+              "kind": "perspective",
+              "limit": false,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "list",
+              "widget_config": {
+                "widget_configuration_type": "list",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "perspective": {
+                  "$template": "series",
+                  "with": {
+                    "entity": {
+                      "$param": "entity"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "value": "number",
+            "label": "Number",
+            "attrs": {
+              "configs": [
+                "flat"
+              ],
+              "maxSeries": 1,
+              "kind": "series",
+              "limit": false,
+              "fields": null,
+              "simulationRequired": false
+            },
+            "new": {
+              "widget_type": "number",
+              "widget_config": {
+                "widget_configuration_type": "flat",
+                "title": "",
+                "date_attribute": "base_created_at",
+                "time_range": "DEFAULT",
+                "series": [
+                  {
+                    "$template": "series",
+                    "with": {
+                      "entity": {
+                        "$param": "entity"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "default": {
+          "type": "number",
+          "params": {
+            "entity": "finding"
+          }
+        },
+        "carries": {
+          "all": [
+            {
+              "in": [
+                {
+                  "$root": "widget_config.widget_configuration_type"
+                },
+                {
+                  "$attr": "configs"
+                }
+              ]
+            },
+            {
+              "any": [
+                {
+                  "absent": {
+                    "$root": "widget_config.series"
+                  }
+                },
+                {
+                  "isArray": {
+                    "$root": "widget_config.series"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "templates": {
+          "entityFilter": {
+            "id": {
+              "$uuid": true
+            },
+            "key": "base_entity",
+            "mode": {
+              "$coalesce": [
+                {
+                  "$param": "mode"
+                },
+                "and"
+              ]
+            },
+            "values": [
+              {
+                "$param": "entity"
+              }
+            ],
+            "operator": "eq"
+          },
+          "series": {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "$template": "entityFilter",
+                  "with": {
+                    "entity": {
+                      "$param": "entity"
+                    },
+                    "mode": {
+                      "$param": "mode"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "coverageSeries": [
+            {
+              "name": "SUCCESS",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "base_entity",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      "expectation-inject"
+                    ]
+                  },
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "inject_expectation_status",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      "SUCCESS"
+                    ]
+                  },
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "inject_expectation_type",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      {
+                        "$param": "expectation"
+                      }
+                    ]
+                  },
+                  {
+                    "$if": {
+                      "truthy": {
+                        "$param": "simulation"
+                      }
+                    },
+                    "then": {
+                      "id": {
+                        "$uuid": true
+                      },
+                      "key": "base_simulation_side",
+                      "mode": "and",
+                      "operator": "eq",
+                      "values": [
+                        {
+                          "$param": "simulation"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "FAILED",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "base_entity",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      "expectation-inject"
+                    ]
+                  },
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "inject_expectation_status",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      "FAILED"
+                    ]
+                  },
+                  {
+                    "id": {
+                      "$uuid": true
+                    },
+                    "key": "inject_expectation_type",
+                    "mode": "and",
+                    "operator": "eq",
+                    "values": [
+                      {
+                        "$param": "expectation"
+                      }
+                    ]
+                  },
+                  {
+                    "$if": {
+                      "truthy": {
+                        "$param": "simulation"
+                      }
+                    },
+                    "then": {
+                      "id": {
+                        "$uuid": true
+                      },
+                      "key": "base_simulation_side",
+                      "mode": "and",
+                      "operator": "eq",
+                      "values": [
+                        {
+                          "$param": "simulation"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "filterKeys": {
+            "expectation-inject": [
+              "base_created_at",
+              "inject_expectation_status",
+              "inject_expectation_type",
+              "base_updated_at",
+              "base_simulation_side",
+              "base_scenario_side",
+              "base_asset_side",
+              "base_asset_group_side",
+              "base_security_platforms_side"
+            ],
+            "finding": [
+              "base_created_at",
+              "finding_type",
+              "base_updated_at",
+              "base_endpoint_side",
+              "base_simulation_side",
+              "base_scenario_side"
+            ],
+            "asset": [
+              "base_created_at",
+              "asset_category",
+              "endpoint_arch",
+              "endpoint_platform",
+              "asset_ips",
+              "asset_hostname",
+              "base_simulation_side",
+              "base_scenario_side"
+            ],
+            "vulnerable-endpoint": [
+              "base_created_at",
+              "vulnerable_endpoint_architecture",
+              "vulnerable_endpoint_agents_active_status",
+              "vulnerable_endpoint_agents_privileges",
+              "vulnerable_endpoint_platform",
+              "base_simulation_side",
+              "base_scenario_side"
+            ],
+            "inject": [
+              "base_created_at",
+              "inject_status",
+              "base_tags_side",
+              "base_assets_side",
+              "base_asset_groups_side",
+              "base_teams_side",
+              "base_platforms_side_denormalized",
+              "base_simulation_side",
+              "base_scenario_side"
+            ],
+            "simulation": [
+              "base_created_at",
+              "status",
+              "base_tags_side",
+              "base_assets_side",
+              "base_asset_groups_side",
+              "base_teams_side",
+              "base_platforms_side_denormalized",
+              "base_scenario_side"
+            ],
+            "scenario": [
+              "base_created_at",
+              "status",
+              "base_tags_side",
+              "base_assets_side",
+              "base_asset_groups_side",
+              "base_teams_side",
+              "base_platforms_side_denormalized"
+            ]
+          }
+        },
+        "filters": {
+          "keyForm": "string",
+          "nested": false,
+          "maxDepth": 1,
+          "ids": true,
+          "newFilterMode": "and",
+          "groupMode": false,
+          "operators": [
+            {
+              "when": {
+                "gt": [
+                  {
+                    "$len": {
+                      "$var": "key.operators"
+                    }
+                  },
+                  0
+                ]
+              },
+              "value": {
+                "$var": "key.operators"
+              }
+            },
+            {
+              "when": {
+                "eq": [
+                  {
+                    "$lower": {
+                      "$var": "key.type"
+                    }
+                  },
+                  "instant"
+                ]
+              },
+              "value": [
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "empty",
+                "not_empty"
+              ]
+            },
+            {
+              "when": {
+                "in": [
+                  {
+                    "$lower": {
+                      "$var": "key.type"
+                    }
+                  },
+                  [
+                    "double",
+                    "float",
+                    "integer",
+                    "int",
+                    "long",
+                    "short",
+                    "number",
+                    "bigdecimal"
+                  ]
+                ]
+              },
+              "value": [
+                "gte",
+                "lte",
+                "gt",
+                "lt",
+                "eq",
+                "not_eq",
+                "empty",
+                "not_empty"
+              ]
+            },
+            {
+              "when": {
+                "all": [
+                  {
+                    "not": {
+                      "truthy": {
+                        "$var": "key.multiple"
+                      }
+                    }
+                  },
+                  {
+                    "any": [
+                      {
+                        "gt": [
+                          {
+                            "$len": {
+                              "$var": "key.values"
+                            }
+                          },
+                          0
+                        ]
+                      },
+                      {
+                        "truthy": {
+                          "$var": "key.dynamic"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "value": [
+                "eq",
+                "not_eq",
+                "empty",
+                "not_empty"
+              ]
+            },
+            {
+              "when": {
+                "truthy": {
+                  "$var": "key.multiple"
+                }
+              },
+              "value": [
+                "contains",
+                "not_contains",
+                "empty",
+                "not_empty"
+              ]
+            },
+            {
+              "value": [
+                "eq",
+                "not_eq",
+                "contains",
+                "not_contains",
+                "starts_with",
+                "not_starts_with"
+              ]
+            }
+          ],
+          "dateInput": "datetime",
+          "searched": {
+            "truthy": {
+              "$var": "key.dynamic"
+            }
+          }
+        },
+        "vars": {
+          "entities": {
+            "$unique": {
+              "$map": {
+                "$cond": {
+                  "eq": [
+                    {
+                      "$attr": "kind"
+                    },
+                    "perspective"
+                  ]
+                },
+                "then": [
+                  {
+                    "$": "widget_config.perspective"
+                  }
+                ],
+                "else": {
+                  "$coalesce": [
+                    {
+                      "$": "widget_config.series"
+                    },
+                    []
+                  ]
+                }
+              },
+              "as": "item",
+              "to": {
+                "$get": [
+                  {
+                    "$filterValues": {
+                      "group": {
+                        "$var": "item.filter"
+                      },
+                      "match": {
+                        "key": "base_entity"
+                      }
+                    }
+                  },
+                  0
+                ]
+              }
+            }
+          }
+        },
+        "sources": {
+          "props": {
+            "kind": "filter_keys",
+            "types": {
+              "$var": "entities"
+            },
+            "when": {
+              "gt": [
+                {
+                  "$len": {
+                    "$var": "entities"
+                  }
+                },
+                0
+              ]
+            }
+          }
+        },
+        "fields": [
+          {
+            "kind": "select",
+            "id": "type",
+            "label": "Widget",
+            "path": "widget_type",
+            "options": [
+              {
+                "value": "command-center",
+                "label": "Command Center",
+                "icon": "orbit"
+              },
+              {
+                "value": "exposure-score",
+                "label": "Exposure Score",
+                "icon": "gauge"
+              },
+              {
+                "value": "resilience-gauge",
+                "label": "Resilience Gauge",
+                "icon": "shield-check"
+              },
+              {
+                "value": "posture-radar",
+                "label": "Posture Radar",
+                "icon": "radar"
+              },
+              {
+                "value": "average",
+                "label": "Security Domains",
+                "icon": "layout-grid"
+              },
+              {
+                "value": "security-coverage",
+                "label": "Security Coverage",
+                "icon": "grid-3x3"
+              },
+              {
+                "value": "attack-path",
+                "label": "Attack Paths",
+                "icon": "route"
+              },
+              {
+                "value": "vertical-barchart",
+                "label": "Vertical bars",
+                "icon": "chart-column"
+              },
+              {
+                "value": "horizontal-barchart",
+                "label": "Horizontal bars",
+                "icon": "chart-bar"
+              },
+              {
+                "value": "line",
+                "label": "Line",
+                "icon": "chart-line"
+              },
+              {
+                "value": "donut",
+                "label": "Donut",
+                "icon": "chart-pie"
+              },
+              {
+                "value": "list",
+                "label": "List",
+                "icon": "list"
+              },
+              {
+                "value": "number",
+                "label": "Number",
+                "icon": "hash"
+              }
+            ],
+            "display": "tiles",
+            "onChange": [
+              {
+                "if": {
+                  "any": [
+                    {
+                      "absent": {
+                        "$oldAttr": "kind"
+                      }
+                    },
+                    {
+                      "ne": [
+                        {
+                          "$oldAttr": "kind"
+                        },
+                        {
+                          "$attr": "kind"
+                        }
+                      ]
+                    },
+                    {
+                      "ne": [
+                        {
+                          "$attr": "kind"
+                        },
+                        "series"
+                      ]
+                    }
+                  ]
+                },
+                "then": [
+                  {
+                    "rebuild": {
+                      "entity": {
+                        "$or": [
+                          {
+                            "$get": [
+                              {
+                                "$filterValues": {
+                                  "group": {
+                                    "$coalesce": [
+                                      {
+                                        "$old": "widget_config.series.0.filter"
+                                      },
+                                      {
+                                        "$old": "widget_config.perspective.filter"
+                                      }
+                                    ]
+                                  },
+                                  "match": {
+                                    "key": "base_entity"
+                                  }
+                                }
+                              },
+                              0
+                            ]
+                          },
+                          "finding"
+                        ]
+                      }
+                    },
+                    "carry": [
+                      "widget_config.title",
+                      "widget_config.time_range",
+                      "widget_config.start",
+                      "widget_config.end",
+                      "widget_config.date_attribute"
+                    ]
+                  }
+                ],
+                "else": [
+                  {
+                    "change": "mode",
+                    "value": {
+                      "$cond": {
+                        "in": [
+                          {
+                            "$": "widget_config.widget_configuration_type"
+                          },
+                          {
+                            "$attr": "configs"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "$": "widget_config.widget_configuration_type"
+                      },
+                      "else": {
+                        "$attr": "configs.0"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "text",
+            "label": "Title",
+            "path": "widget_config.title",
+            "max": 200,
+            "empty": "keep"
+          },
+          {
+            "kind": "list",
+            "path": "widget_config.series",
+            "when": {
+              "eq": [
+                {
+                  "$attr": "kind"
+                },
+                "series"
+              ]
+            },
+            "title": "Series {n}",
+            "removeLabel": "Remove series {n}",
+            "min": 1,
+            "max": {
+              "$attr": "maxSeries"
+            },
+            "count": "{count} of {max} series",
+            "footerWhen": {
+              "gt": [
+                {
+                  "$attr": "maxSeries"
+                },
+                1
+              ]
+            },
+            "add": [
+              {
+                "label": "Add a series",
+                "item": {
+                  "$template": "series",
+                  "with": {
+                    "entity": {
+                      "$or": [
+                        {
+                          "$var": "entities.0"
+                        },
+                        "finding"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "vars": {
+              "entity": {
+                "$coalesce": [
+                  {
+                    "$get": [
+                      {
+                        "$filterValues": {
+                          "group": {
+                            "$": "filter"
+                          },
+                          "match": {
+                            "key": "base_entity"
+                          }
+                        }
+                      },
+                      0
+                    ]
+                  },
+                  ""
+                ]
+              }
+            },
+            "sources": {
+              "keys": {
+                "kind": "filter_keys",
+                "types": [
+                  {
+                    "$var": "entity"
+                  }
+                ],
+                "when": {
+                  "truthy": {
+                    "$var": "entity"
+                  }
+                }
+              }
+            },
+            "fields": [
+              {
+                "kind": "row",
+                "fields": [
+                  {
+                    "kind": "text",
+                    "label": "Label",
+                    "path": "name",
+                    "max": 200,
+                    "empty": "keep",
+                    "ariaLabel": "Label of series {n}"
+                  },
+                  {
+                    "kind": "select",
+                    "id": "entity",
+                    "label": "Entity type",
+                    "default": "",
+                    "options": [
+                      "expectation-inject",
+                      "finding",
+                      "asset",
+                      "vulnerable-endpoint",
+                      "inject",
+                      "scenario",
+                      "simulation"
+                    ],
+                    "bind": {
+                      "filterValues": {
+                        "group": "filter",
+                        "match": {
+                          "key": "base_entity"
+                        },
+                        "single": true,
+                        "clearOthers": true,
+                        "new": {
+                          "$template": "entityFilter",
+                          "with": {
+                            "entity": {
+                              "$get": [
+                                {
+                                  "$param": "values"
+                                },
+                                0
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "filters",
+                "label": "Filters",
+                "path": "filter",
+                "hidden": [
+                  {
+                    "key": "base_entity"
+                  }
+                ],
+                "keys": {
+                  "$map": {
+                    "$source": "keys"
+                  },
+                  "as": "item",
+                  "where": {
+                    "all": [
+                      {
+                        "any": [
+                          {
+                            "not": {
+                              "truthy": {
+                                "$var": "item.entity"
+                              }
+                            }
+                          },
+                          {
+                            "eq": [
+                              {
+                                "$var": "item.entity"
+                              },
+                              {
+                                "$var": "entity"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "in": [
+                          {
+                            "$var": "item.key"
+                          },
+                          {
+                            "$coalesce": [
+                              {
+                                "$get": [
+                                  {
+                                    "$template": "filterKeys",
+                                    "with": {}
+                                  },
+                                  {
+                                    "$var": "entity"
+                                  }
+                                ]
+                              },
+                              []
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "section",
+            "path": "widget_config.perspective",
+            "title": "Rows listed",
+            "when": {
+              "all": [
+                {
+                  "eq": [
+                    {
+                      "$attr": "kind"
+                    },
+                    "perspective"
+                  ]
+                },
+                {
+                  "truthy": {
+                    "$": "widget_config.perspective"
+                  }
+                }
+              ]
+            },
+            "vars": {
+              "entity": {
+                "$coalesce": [
+                  {
+                    "$get": [
+                      {
+                        "$filterValues": {
+                          "group": {
+                            "$": "filter"
+                          },
+                          "match": {
+                            "key": "base_entity"
+                          }
+                        }
+                      },
+                      0
+                    ]
+                  },
+                  ""
+                ]
+              }
+            },
+            "sources": {
+              "keys": {
+                "kind": "filter_keys",
+                "types": [
+                  {
+                    "$var": "entity"
+                  }
+                ],
+                "when": {
+                  "truthy": {
+                    "$var": "entity"
+                  }
+                }
+              }
+            },
+            "fields": [
+              {
+                "kind": "row",
+                "fields": [
+                  {
+                    "kind": "text",
+                    "label": "Label",
+                    "path": "name",
+                    "max": 200,
+                    "empty": "keep",
+                    "ariaLabel": "Label of series {n}"
+                  },
+                  {
+                    "kind": "select",
+                    "id": "entity",
+                    "label": "Entity type",
+                    "default": "",
+                    "options": [
+                      "expectation-inject",
+                      "finding",
+                      "asset",
+                      "vulnerable-endpoint",
+                      "inject",
+                      "scenario",
+                      "simulation"
+                    ],
+                    "bind": {
+                      "filterValues": {
+                        "group": "filter",
+                        "match": {
+                          "key": "base_entity"
+                        },
+                        "single": true,
+                        "clearOthers": true,
+                        "new": {
+                          "$template": "entityFilter",
+                          "with": {
+                            "entity": {
+                              "$get": [
+                                {
+                                  "$param": "values"
+                                },
+                                0
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "filters",
+                "label": "Filters",
+                "path": "filter",
+                "hidden": [
+                  {
+                    "key": "base_entity"
+                  }
+                ],
+                "keys": {
+                  "$map": {
+                    "$source": "keys"
+                  },
+                  "as": "item",
+                  "where": {
+                    "all": [
+                      {
+                        "any": [
+                          {
+                            "not": {
+                              "truthy": {
+                                "$var": "item.entity"
+                              }
+                            }
+                          },
+                          {
+                            "eq": [
+                              {
+                                "$var": "item.entity"
+                              },
+                              {
+                                "$var": "entity"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "in": [
+                          {
+                            "$var": "item.key"
+                          },
+                          {
+                            "$coalesce": [
+                              {
+                                "$get": [
+                                  {
+                                    "$template": "filterKeys",
+                                    "with": {}
+                                  },
+                                  {
+                                    "$var": "entity"
+                                  }
+                                ]
+                              },
+                              []
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "compose",
+            "path": "widget_config.series",
+            "when": {
+              "eq": [
+                {
+                  "$attr": "kind"
+                },
+                "coverage"
+              ]
+            },
+            "params": {
+              "expectation": {
+                "$cond": {
+                  "eq": [
+                    {
+                      "$get": [
+                        {
+                          "$filterValues": {
+                            "group": {
+                              "$": "widget_config.series.0.filter"
+                            },
+                            "match": {
+                              "key": "inject_expectation_type"
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    "PREVENTION"
+                  ]
+                },
+                "then": "PREVENTION",
+                "else": "DETECTION"
+              },
+              "simulation": {
+                "$coalesce": [
+                  {
+                    "$get": [
+                      {
+                        "$filterValues": {
+                          "group": {
+                            "$": "widget_config.series.0.filter"
+                          },
+                          "match": {
+                            "key": "base_simulation_side"
+                          }
+                        }
+                      },
+                      0
+                    ]
+                  },
+                  null
+                ]
+              }
+            },
+            "build": {
+              "$template": "coverageSeries",
+              "with": {
+                "expectation": {
+                  "$param": "expectation"
+                },
+                "simulation": {
+                  "$param": "simulation"
+                }
+              }
+            },
+            "fields": [
+              {
+                "kind": "row",
+                "fields": [
+                  {
+                    "kind": "segmented",
+                    "label": "Expectation",
+                    "bind": {
+                      "param": "expectation"
+                    },
+                    "options": [
+                      {
+                        "value": "DETECTION",
+                        "label": "Detection"
+                      },
+                      {
+                        "value": "PREVENTION",
+                        "label": "Prevention"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "values",
+                    "label": {
+                      "$cond": {
+                        "truthy": {
+                          "$attr": "simulationRequired"
+                        }
+                      },
+                      "then": "Simulation",
+                      "else": "Simulation (optional)"
+                    },
+                    "hint": {
+                      "text": "An attack path needs a simulation.",
+                      "when": {
+                        "all": [
+                          {
+                            "truthy": {
+                              "$attr": "simulationRequired"
+                            }
+                          },
+                          {
+                            "not": {
+                              "truthy": {
+                                "$param": "simulation"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "bind": {
+                      "param": "simulation"
+                    },
+                    "filterKey": "base_simulation_side",
+                    "single": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "filters",
+            "label": "Filters",
+            "path": "widget_config.series.0.filter",
+            "when": {
+              "all": [
+                {
+                  "eq": [
+                    {
+                      "$attr": "kind"
+                    },
+                    "domains"
+                  ]
+                },
+                {
+                  "truthy": {
+                    "$": "widget_config.series.0"
+                  }
+                }
+              ]
+            },
+            "hidden": [
+              {
+                "key": "base_entity"
+              }
+            ],
+            "keys": {
+              "$map": {
+                "$source": "props"
+              },
+              "as": "item",
+              "where": {
+                "in": [
+                  {
+                    "$var": "item.key"
+                  },
+                  [
+                    "base_simulation_side",
+                    "base_scenario_side"
+                  ]
+                ]
+              }
+            }
+          },
+          {
+            "kind": "row",
+            "fields": [
+              {
+                "kind": "select",
+                "label": "Time range",
+                "path": "widget_config.time_range",
+                "default": "DEFAULT",
+                "options": [
+                  {
+                    "value": "DEFAULT",
+                    "label": "Dashboard time range"
+                  },
+                  {
+                    "value": "ALL_TIME",
+                    "label": "All time"
+                  },
+                  {
+                    "value": "CUSTOM",
+                    "label": "Custom range"
+                  },
+                  {
+                    "value": "LAST_DAY",
+                    "label": "Last 24 hours"
+                  },
+                  {
+                    "value": "LAST_WEEK",
+                    "label": "Last 7 days"
+                  },
+                  {
+                    "value": "LAST_MONTH",
+                    "label": "Last month"
+                  },
+                  {
+                    "value": "LAST_QUARTER",
+                    "label": "Last 3 months"
+                  },
+                  {
+                    "value": "LAST_SEMESTER",
+                    "label": "Last 6 months"
+                  },
+                  {
+                    "value": "LAST_YEAR",
+                    "label": "Last year"
+                  }
+                ],
+                "onChange": [
+                  {
+                    "if": {
+                      "ne": [
+                        {
+                          "$value": ""
+                        },
+                        "CUSTOM"
+                      ]
+                    },
+                    "then": [
+                      {
+                        "remove": "widget_config.start"
+                      },
+                      {
+                        "remove": "widget_config.end"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "select",
+                "label": "Date",
+                "path": "widget_config.date_attribute",
+                "default": "base_created_at",
+                "options": {
+                  "$map": {
+                    "$unique": {
+                      "$concat": [
+                        [
+                          "base_created_at"
+                        ],
+                        {
+                          "$map": {
+                            "$source": "props"
+                          },
+                          "as": "item",
+                          "where": {
+                            "eq": [
+                              {
+                                "$var": "item.type"
+                              },
+                              "instant"
+                            ]
+                          },
+                          "to": {
+                            "$var": "item.key"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "as": "v",
+                  "to": {
+                    "value": {
+                      "$var": "v"
+                    },
+                    "text": {
+                      "$coalesce": [
+                        {
+                          "$find": {
+                            "$source": "props"
+                          },
+                          "as": "p",
+                          "where": {
+                            "eq": [
+                              {
+                                "$var": "p.key"
+                              },
+                              {
+                                "$var": "v"
+                              }
+                            ]
+                          },
+                          "to": {
+                            "$var": "p.label"
+                          }
+                        },
+                        {
+                          "$var": "v"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "day",
+                "label": "Start",
+                "path": "widget_config.start",
+                "when": {
+                  "eq": [
+                    {
+                      "$": "widget_config.time_range"
+                    },
+                    "CUSTOM"
+                  ]
+                }
+              },
+              {
+                "kind": "day",
+                "label": "End",
+                "path": "widget_config.end",
+                "when": {
+                  "eq": [
+                    {
+                      "$": "widget_config.time_range"
+                    },
+                    "CUSTOM"
+                  ]
+                }
+              },
+              {
+                "kind": "segmented",
+                "id": "mode",
+                "label": "Mode",
+                "path": "widget_config.widget_configuration_type",
+                "when": {
+                  "gt": [
+                    {
+                      "$len": {
+                        "$attr": "configs"
+                      }
+                    },
+                    1
+                  ]
+                },
+                "options": [
+                  {
+                    "value": "structural-histogram",
+                    "label": "Breakdown"
+                  },
+                  {
+                    "value": "temporal-histogram",
+                    "label": "Over time"
+                  }
+                ],
+                "onChange": [
+                  {
+                    "truncate": "widget_config.series",
+                    "max": {
+                      "$coalesce": [
+                        {
+                          "$attr": "maxSeries"
+                        },
+                        5
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "eq": [
+                        {
+                          "$value": ""
+                        },
+                        "temporal-histogram"
+                      ]
+                    },
+                    "then": [
+                      {
+                        "set": "widget_config.mode",
+                        "value": "temporal"
+                      },
+                      {
+                        "set": "widget_config.interval",
+                        "value": {
+                          "$coalesce": [
+                            {
+                              "$": "widget_config.interval"
+                            },
+                            "week"
+                          ]
+                        }
+                      },
+                      {
+                        "remove": "widget_config.field"
+                      },
+                      {
+                        "remove": "widget_config.limit"
+                      }
+                    ],
+                    "else": [
+                      {
+                        "if": {
+                          "eq": [
+                            {
+                              "$value": ""
+                            },
+                            "structural-histogram"
+                          ]
+                        },
+                        "then": [
+                          {
+                            "set": "widget_config.mode",
+                            "value": "structural"
+                          },
+                          {
+                            "remove": "widget_config.interval"
+                          },
+                          {
+                            "set": "widget_config.field",
+                            "value": {
+                              "$coalesce": [
+                                {
+                                  "$": "widget_config.field"
+                                },
+                                ""
+                              ]
+                            }
+                          },
+                          {
+                            "set": "widget_config.limit",
+                            "value": {
+                              "$cond": {
+                                "truthy": {
+                                  "$attr": "limit"
+                                }
+                              },
+                              "then": {
+                                "$coalesce": [
+                                  {
+                                    "$": "widget_config.limit"
+                                  },
+                                  10
+                                ]
+                              },
+                              "else": {
+                                "$": "widget_config.limit"
+                              }
+                            }
+                          }
+                        ],
+                        "else": [
+                          {
+                            "remove": "widget_config.mode"
+                          },
+                          {
+                            "remove": "widget_config.field"
+                          },
+                          {
+                            "remove": "widget_config.limit"
+                          },
+                          {
+                            "remove": "widget_config.interval"
+                          },
+                          {
+                            "remove": "widget_config.stacked"
+                          },
+                          {
+                            "remove": "widget_config.display_legend"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "select",
+                "label": "Interval",
+                "path": "widget_config.interval",
+                "default": "day",
+                "options": {
+                  "$concat": [
+                    [
+                      {
+                        "value": "day",
+                        "label": "Day"
+                      },
+                      {
+                        "value": "week",
+                        "label": "Week"
+                      },
+                      {
+                        "value": "month",
+                        "label": "Month"
+                      },
+                      {
+                        "value": "quarter",
+                        "label": "Quarter"
+                      },
+                      {
+                        "value": "year",
+                        "label": "Year"
+                      }
+                    ],
+                    {
+                      "$cond": {
+                        "eq": [
+                          {
+                            "$": "widget_config.interval"
+                          },
+                          "hour"
+                        ]
+                      },
+                      "then": [
+                        {
+                          "value": "hour",
+                          "label": "Hour"
+                        }
+                      ],
+                      "else": []
+                    }
+                  ]
+                },
+                "when": {
+                  "eq": [
+                    {
+                      "$": "widget_config.widget_configuration_type"
+                    },
+                    "temporal-histogram"
+                  ]
+                }
+              },
+              {
+                "kind": "select",
+                "label": "Breakdown by",
+                "path": "widget_config.field",
+                "default": "",
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$": "widget_config.widget_configuration_type"
+                        },
+                        "structural-histogram"
+                      ]
+                    },
+                    {
+                      "ne": [
+                        {
+                          "$attr": "kind"
+                        },
+                        "coverage"
+                      ]
+                    }
+                  ]
+                },
+                "options": {
+                  "$map": {
+                    "$cond": {
+                      "truthy": {
+                        "$attr": "fields"
+                      }
+                    },
+                    "then": {
+                      "$attr": "fields"
+                    },
+                    "else": {
+                      "$unique": {
+                        "$map": {
+                          "$source": "props"
+                        },
+                        "as": "item",
+                        "where": {
+                          "ne": [
+                            {
+                              "$var": "item.type"
+                            },
+                            "instant"
+                          ]
+                        },
+                        "to": {
+                          "$var": "item.key"
+                        }
+                      }
+                    }
+                  },
+                  "as": "v",
+                  "to": {
+                    "value": {
+                      "$var": "v"
+                    },
+                    "text": {
+                      "$coalesce": [
+                        {
+                          "$find": {
+                            "$source": "props"
+                          },
+                          "as": "p",
+                          "where": {
+                            "eq": [
+                              {
+                                "$var": "p.key"
+                              },
+                              {
+                                "$var": "v"
+                              }
+                            ]
+                          },
+                          "to": {
+                            "$var": "p.label"
+                          }
+                        },
+                        {
+                          "$var": "v"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "number",
+                "label": "Number of results",
+                "path": "widget_config.limit",
+                "default": 10,
+                "min": 1,
+                "max": 100,
+                "empty": "default",
+                "when": {
+                  "all": [
+                    {
+                      "eq": [
+                        {
+                          "$": "widget_config.widget_configuration_type"
+                        },
+                        "structural-histogram"
+                      ]
+                    },
+                    {
+                      "truthy": {
+                        "$attr": "limit"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "number",
+                "label": "Number of results",
+                "path": "widget_config.limit",
+                "default": 100,
+                "min": 1,
+                "max": 1000,
+                "empty": "default",
+                "when": {
+                  "eq": [
+                    {
+                      "$": "widget_config.widget_configuration_type"
+                    },
+                    "list"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "when": {
+              "in": [
+                {
+                  "$": "widget_config.widget_configuration_type"
+                },
+                [
+                  "temporal-histogram",
+                  "structural-histogram"
+                ]
+              ]
+            },
+            "fields": [
+              {
+                "kind": "switch",
+                "label": "Stacked",
+                "path": "widget_config.stacked"
+              },
+              {
+                "kind": "switch",
+                "label": "Display legend",
+                "path": "widget_config.display_legend"
+              }
+            ]
+          },
+          {
+            "kind": "columns",
+            "path": "widget_config.columns",
+            "when": {
+              "eq": [
+                {
+                  "$": "widget_config.widget_configuration_type"
+                },
+                "list"
+              ]
+            },
+            "items": "strings",
+            "available": {
+              "$unique": {
+                "$map": {
+                  "$source": "props"
+                },
+                "as": "item",
+                "where": {
+                  "any": [
+                    {
+                      "not": {
+                        "endsWith": [
+                          {
+                            "$var": "item.key"
+                          },
+                          "_side"
+                        ]
+                      }
+                    },
+                    {
+                      "in": [
+                        {
+                          "$var": "item.key"
+                        },
+                        [
+                          "base_tags_side",
+                          "base_attack_patterns_side"
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                "to": {
+                  "$var": "item.key"
+                }
+              }
+            },
+            "names": {
+              "$map": {
+                "$source": "props"
+              },
+              "as": "item",
+              "to": {
+                "value": {
+                  "$var": "item.key"
+                },
+                "text": {
+                  "$var": "item.label"
+                }
+              }
+            },
+            "reset": []
+          },
+          {
+            "kind": "note",
+            "text": "With no column chosen, OpenAEV shows them all.",
+            "when": {
+              "all": [
+                {
+                  "eq": [
+                    {
+                      "$": "widget_config.widget_configuration_type"
+                    },
+                    "list"
+                  ]
+                },
+                {
+                  "eq": [
+                    {
+                      "$len": {
+                        "$": "widget_config.columns"
+                      }
+                    },
+                    0
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "kind": "sorts",
+            "label": "Sort",
+            "path": "widget_config.sorts",
+            "when": {
+              "eq": [
+                {
+                  "$": "widget_config.widget_configuration_type"
+                },
+                "list"
+              ]
+            },
+            "fieldKey": "fieldName",
+            "directionKey": "direction",
+            "choices": {
+              "$map": {
+                "$unique": {
+                  "$map": {
+                    "$source": "props"
+                  },
+                  "as": "item",
+                  "to": {
+                    "$var": "item.key"
+                  }
+                }
+              },
+              "as": "v",
+              "to": {
+                "value": {
+                  "$var": "v"
+                },
+                "text": {
+                  "$coalesce": [
+                    {
+                      "$find": {
+                        "$source": "props"
+                      },
+                      "as": "p",
+                      "where": {
+                        "eq": [
+                          {
+                            "$var": "p.key"
+                          },
+                          {
+                            "$var": "v"
+                          }
+                        ]
+                      },
+                      "to": {
+                        "$var": "p.label"
+                      }
+                    },
+                    {
+                      "$var": "v"
+                    }
+                  ]
+                }
+              }
+            },
+            "directions": [
+              {
+                "value": "DESC",
+                "label": "Descending"
+              },
+              {
+                "value": "ASC",
+                "label": "Ascending"
+              }
+            ],
+            "new": {
+              "fieldName": "base_created_at",
+              "direction": "DESC"
+            },
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "source": "opencrq",
+      "name": "OpenCRQ",
+      "form": {
+        "version": 1,
+        "typePath": "metric",
+        "types": [
+          {
+            "value": "exposure_trend_ale",
+            "label": "Annual loss expectancy over time",
+            "attrs": {
+              "window": true
+            },
+            "new": {
+              "metric": "exposure_trend_ale"
+            }
+          },
+          {
+            "value": "exposure_trend_lef",
+            "label": "Loss event frequency over time",
+            "attrs": {
+              "window": true
+            },
+            "new": {
+              "metric": "exposure_trend_lef"
+            }
+          },
+          {
+            "value": "scenario_ale",
+            "label": "Risk scenarios by annual loss expectancy",
+            "attrs": {
+              "window": true
+            },
+            "new": {
+              "metric": "scenario_ale"
+            }
+          },
+          {
+            "value": "risk_by_scope",
+            "label": "Annual loss expectancy by scope",
+            "attrs": {
+              "window": true
+            },
+            "new": {
+              "metric": "risk_by_scope"
+            }
+          },
+          {
+            "value": "tolerance_gaps",
+            "label": "Scenarios outside risk tolerance",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "tolerance_gaps"
+            }
+          },
+          {
+            "value": "top_controls",
+            "label": "Controls that reduce risk the most",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "top_controls"
+            }
+          },
+          {
+            "value": "most_active_threats",
+            "label": "Most active threats",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "most_active_threats"
+            }
+          },
+          {
+            "value": "active_findings",
+            "label": "Active findings",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "active_findings"
+            }
+          },
+          {
+            "value": "critical_findings",
+            "label": "Critical findings",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "critical_findings"
+            }
+          },
+          {
+            "value": "kev_findings",
+            "label": "Known exploited vulnerabilities",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "kev_findings"
+            }
+          },
+          {
+            "value": "impacted_assets",
+            "label": "Impacted assets",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "impacted_assets"
+            }
+          },
+          {
+            "value": "findings_by_severity",
+            "label": "Findings by severity",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "findings_by_severity"
+            }
+          },
+          {
+            "value": "findings_trend",
+            "label": "New and dismissed findings over time",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "findings_trend"
+            }
+          },
+          {
+            "value": "assets_by_category",
+            "label": "Assets by category",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "assets_by_category"
+            }
+          },
+          {
+            "value": "assets_by_exposure",
+            "label": "Assets by exposure",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "assets_by_exposure"
+            }
+          },
+          {
+            "value": "top_assets",
+            "label": "Most exposed assets",
+            "attrs": {
+              "window": false
+            },
+            "new": {
+              "metric": "top_assets"
+            }
+          }
+        ],
+        "default": {
+          "type": "exposure_trend_ale"
+        },
+        "fields": [
+          {
+            "kind": "row",
+            "fields": [
+              {
+                "kind": "select",
+                "id": "type",
+                "label": "Metric",
+                "path": "metric",
+                "options": [
+                  {
+                    "value": "exposure_trend_ale",
+                    "label": "Annual loss expectancy over time"
+                  },
+                  {
+                    "value": "exposure_trend_lef",
+                    "label": "Loss event frequency over time"
+                  },
+                  {
+                    "value": "scenario_ale",
+                    "label": "Risk scenarios by annual loss expectancy"
+                  },
+                  {
+                    "value": "risk_by_scope",
+                    "label": "Annual loss expectancy by scope"
+                  },
+                  {
+                    "value": "tolerance_gaps",
+                    "label": "Scenarios outside risk tolerance"
+                  },
+                  {
+                    "value": "top_controls",
+                    "label": "Controls that reduce risk the most"
+                  },
+                  {
+                    "value": "most_active_threats",
+                    "label": "Most active threats"
+                  },
+                  {
+                    "value": "active_findings",
+                    "label": "Active findings"
+                  },
+                  {
+                    "value": "critical_findings",
+                    "label": "Critical findings"
+                  },
+                  {
+                    "value": "kev_findings",
+                    "label": "Known exploited vulnerabilities"
+                  },
+                  {
+                    "value": "impacted_assets",
+                    "label": "Impacted assets"
+                  },
+                  {
+                    "value": "findings_by_severity",
+                    "label": "Findings by severity"
+                  },
+                  {
+                    "value": "findings_trend",
+                    "label": "New and dismissed findings over time"
+                  },
+                  {
+                    "value": "assets_by_category",
+                    "label": "Assets by category"
+                  },
+                  {
+                    "value": "assets_by_exposure",
+                    "label": "Assets by exposure"
+                  },
+                  {
+                    "value": "top_assets",
+                    "label": "Most exposed assets"
+                  }
+                ],
+                "onChange": [
+                  {
+                    "if": {
+                      "not": {
+                        "truthy": {
+                          "$attr": "window"
+                        }
+                      }
+                    },
+                    "then": [
+                      {
+                        "remove": "window_days"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "number",
+                "label": "Days",
+                "path": "window_days",
+                "default": 90,
+                "min": 1,
+                "max": 366,
+                "empty": "min",
+                "when": {
+                  "truthy": {
+                    "$attr": "window"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

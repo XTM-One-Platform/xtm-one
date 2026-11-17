@@ -1,0 +1,45 @@
+{
+  "procedure": "attackOutcomes.getMitreTechniquesForOutcome",
+  "source": "recorded",
+  "data": {
+    "evidenceMode": "attacker-mixture",
+    "techniques": [
+      {
+        "mitreTechniqueId": "ae203936-22dd-5279-97f4-c842a02d9047",
+        "category": "signature",
+        "externalId": "T1041",
+        "name": "Exfiltration Over C2 Channel",
+        "revoked": false,
+        "weight": 0.18328140035174317,
+        "threats": [
+          {
+            "id": "01a139a3-cada-720f-a03a-c710e53c2a4b",
+            "canonicalName": "Lazarus Group",
+            "entityType": "intrusion-set",
+            "share": 0.092075768776657
+          }
+        ],
+        "sourceCount": 2,
+        "bindingShare": 0
+      },
+      {
+        "mitreTechniqueId": "8d894d9c-61f9-5074-a088-4a2f6828218b",
+        "category": "signature",
+        "externalId": "T1048",
+        "name": "Exfiltration Over Alternative Protocol",
+        "revoked": false,
+        "weight": 0.2847111988879125,
+        "threats": [
+          {
+            "id": "01a139a3-ca12-7ffa-a903-3017db33d110",
+            "canonicalName": "ALPHV (BlackCat)",
+            "entityType": "intrusion-set",
+            "share": 0.10648063307809322
+          }
+        ],
+        "sourceCount": 3,
+        "bindingShare": 0
+      }
+    ]
+  }
+}

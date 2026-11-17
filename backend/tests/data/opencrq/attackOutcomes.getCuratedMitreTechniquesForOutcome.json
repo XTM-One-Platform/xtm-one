@@ -1,0 +1,27 @@
+{
+  "procedure": "attackOutcomes.getCuratedMitreTechniquesForOutcome",
+  "source": "recorded",
+  "data": [
+    {
+      "mitreTechniqueId": "ae203936-22dd-5279-97f4-c842a02d9047",
+      "externalId": "T1041",
+      "name": "Exfiltration Over C2 Channel",
+      "revoked": false,
+      "category": "signature"
+    },
+    {
+      "mitreTechniqueId": "8d894d9c-61f9-5074-a088-4a2f6828218b",
+      "externalId": "T1048",
+      "name": "Exfiltration Over Alternative Protocol",
+      "revoked": false,
+      "category": "signature"
+    },
+    {
+      "mitreTechniqueId": "275cbb0a-a613-57cc-862d-bf29b8758f0f",
+      "externalId": "T1567",
+      "name": "Exfiltration Over Web Service",
+      "revoked": false,
+      "category": "signature"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "procedure": "riskScenarios.getRiskScenariosOverview",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-0011-7000-8000-000000000001",
+      "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Data Breach on Retail Lending Platform",
+      "description": "Access broker resells a foothold into the retail credit decision process, exposing applicant records gathered for scoring and underwriting.",
+      "ownerId": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+      "attackOutcomeId": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+      "tefMode": "manual",
+      "organization": {
+        "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "name": "Acme Bank"
+      },
+      "attackOutcome": {
+        "id": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+        "name": "Data Breach & Resale"
+      },
+      "primaryAssets": [
+        {
+          "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "name": "Credit Decision Process"
+        }
+      ],
+      "owner": {
+        "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+        "name": "Bob Johnson"
+      },
+      "noMappedAsset": false,
+      "latestRun": {
+        "runId": "01a13aaf-f0e7-70cc-b9f0-4953cc4a5801",
+        "createdAt": "2026-10-14T13:52:51.431Z",
+        "aleMean": 18670570.884618536,
+        "aleP10": 9109407.522325756,
+        "aleP90": 30389563.791064348,
+        "lefMean": 0.4798611293726831,
+        "techniqueCount": 39,
+        "coveredTechniqueCount": 39
+      },
+      "changeOverLifeline": {
+        "delta": -7357826.133649468,
+        "deltaPct": -0.28268456672477316,
+        "spanDays": 89
+      },
+      "readiness": {
+        "status": "ready",
+        "missing": [],
+        "outdated": []
+      }
+    },
+    {
+      "id": "e1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c",
+      "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Data Breach / Exfiltration on Core Banking Database",
+      "description": "Organized crime group targets the core banking database to exfiltrate 3M+ customer account records for identity fraud and dark market resale.",
+      "ownerId": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "attackOutcomeId": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+      "tefMode": "auto",
+      "organization": {
+        "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "name": "Acme Bank"
+      },
+      "attackOutcome": {
+        "id": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+        "name": "Data Breach & Resale"
+      },
+      "primaryAssets": [
+        {
+          "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "name": "Customer Account Data"
+        },
+        {
+          "id": "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f",
+          "name": "Interbank Payment Processing"
+        }
+      ],
+      "owner": {
+        "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+        "name": "Alice Martin"
+      },
+      "noMappedAsset": false,
+      "latestRun": {
+        "runId": "01a13aaf-fbc6-7624-a9fc-4632c44e84f8",
+        "createdAt": "2026-10-14T13:52:54.215Z",
+        "aleMean": 2111063.1621554364,
+        "aleP10": 418539.6306159907,
+        "aleP90": 4202587.829288155,
+        "lefMean": 0.05213906320549668,
+        "techniqueCount": 39,
+        "coveredTechniqueCount": 39
+      },
+      "changeOverLifeline": {
+        "delta": -1767506.9292696281,
+        "deltaPct": -0.4557109676004877,
+        "spanDays": 86
+      },
+      "readiness": {
+        "status": "ready",
+        "missing": [],
+        "outdated": []
+      }
+    }
+  ]
+}

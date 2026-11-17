@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "actions": {
+      "type": "array",
+      "maxItems": 3,
+      "description": "The actions of the week, ranked by loss avoided per effort.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string"},
+          "asset": {"type": "string"},
+          "change": {"type": "string"},
+          "evidence": {"type": "string"},
+          "owner_role": {"type": "string"},
+          "loss_avoided": {"type": "number"},
+          "detections": {"type": "array", "items": {"type": "string"}, "description": "The detection rules drafted for this action."},
+          "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target; proposed, never filed."},
+          "retest": {"type": "string", "description": "The re-test that proves the action."}
+        },
+        "required": ["title", "asset", "change", "evidence", "owner_role", "ticket_draft", "retest"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["actions"],
+  "additionalProperties": false
+}

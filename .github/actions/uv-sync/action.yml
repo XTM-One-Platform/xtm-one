@@ -1,0 +1,27 @@
+name: uv sync
+description: >-
+  Installs a uv project's locked dependencies (`uv sync --locked`, dev group
+  included) into its .venv, then puts that .venv/bin first on the PATH of the
+  job's later steps. pypi.org can stop answering for several minutes: the sync
+  runs up to 3 times, a minute apart (the workflow env gives each download its
+  retries and timeout). Expects uv installed (astral-sh/setup-uv).
+inputs:
+  directory:
+    description: The uv project directory (pyproject.toml + uv.lock), from the repository root.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: uv sync --locked
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      run: |
+        for attempt in 1 2 3; do
+          if uv sync --locked; then
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+            exit 0
+          fi
+          echo "::warning::uv sync failed (attempt $attempt of 3)"
+          if [ "$attempt" -lt 3 ]; then sleep 60; fi
+        done
+        exit 1

@@ -1,0 +1,24 @@
+{
+  "procedure": "findingScore.getFindingsPanelCounts",
+  "source": "recorded",
+  "data": {
+    "windowStart": "2026-10-07T14:44:05.622Z",
+    "findings": 28,
+    "impactedAssets": 16,
+    "newInWindow": 2,
+    "estateAssetCount": 40,
+    "bands": [
+      {
+        "band": "low",
+        "total": 17,
+        "newInWindow": 2
+      },
+      {
+        "band": "medium",
+        "total": 4,
+        "newInWindow": 0
+      }
+    ],
+    "pendingVector": 7
+  }
+}

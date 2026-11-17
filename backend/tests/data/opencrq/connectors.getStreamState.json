@@ -1,0 +1,17 @@
+{
+  "procedure": "connectors.getStreamState",
+  "source": "recorded",
+  "data": {
+    "connection": "not_configured",
+    "streamId": null,
+    "cursor": null,
+    "lastEventAt": null,
+    "historyStartAt": null,
+    "backfillTargetAt": null,
+    "reachedLiveTail": false,
+    "backfillPercent": null,
+    "objectsRead": 0,
+    "objectsReadAt": null,
+    "objectsHeld": 0
+  }
+}

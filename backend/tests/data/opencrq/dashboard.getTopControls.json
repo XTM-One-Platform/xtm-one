@@ -1,0 +1,22 @@
+{
+  "procedure": "dashboard.getTopControls",
+  "source": "recorded",
+  "data": [
+    {
+      "controlId": "d9d1969b-3111-50f8-8a4e-b491f2a7ec3b",
+      "name": "Data Loss Prevention",
+      "externalId": "DLP",
+      "suggestedDimension": "coverage",
+      "scenarioCount": 6,
+      "totalAleReduction": 4655896.122801902
+    },
+    {
+      "controlId": "d133d559-9c5d-555a-b8af-1d133fb49425",
+      "name": "Privileged Access Management",
+      "externalId": "PAM",
+      "suggestedDimension": "strength",
+      "scenarioCount": 6,
+      "totalAleReduction": 4589156.465666537
+    }
+  ]
+}

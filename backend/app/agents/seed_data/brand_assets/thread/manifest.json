@@ -1,0 +1,60 @@
+{
+  "container": "thread-brand",
+  "source": "Figma 'Thread - Design Assets' (Filigran marketing, exported Oct 2026): the official lockup (white, and the same paths in dark ink for light slides), the mosaic 't' emblem, the 't' glyph, the gradient app icon and two mosaic artworks (re-encoded as WebP for size, pixels unchanged). The Filigran figures, product logos and logo libraries are included from their packs, never copied.",
+  "include": [
+    {"pack": "filigran", "except_roles": ["logo", "logo_light", "logo_mark"]},
+    {"pack": "filigran-badges"},
+    {"pack": "filigran-partner-logos"},
+    {"pack": "filigran-integration-logos"},
+    {"pack": "filigran-customer-logos"}
+  ],
+  "assets": [
+    {
+      "file": "thread-logo.svg",
+      "role": "logo",
+      "description": "Official THREAD lockup, white: the thread- wordmark with its 'powered by Filigran' baseline - drawn by the deck chrome on every dark slide."
+    },
+    {
+      "file": "thread-logo-dark.svg",
+      "role": "logo_light",
+      "description": "Official THREAD lockup in dark ink (#0a0a0a): the same thread- wordmark and 'powered by Filigran' baseline for a light page - drawn by the deck chrome on every light slide."
+    },
+    {
+      "file": "thread-emblem.png",
+      "role": "logo_mark",
+      "description": "THREAD emblem: the 't' glyph filled with the grained pixel mosaic in the THREAD colours, on transparent - drawn by the chrome in the top-right corner of the content and section slides."
+    },
+    {
+      "file": "thread-glyph.svg",
+      "role": "icon",
+      "description": "The THREAD 't' glyph alone, near-white on transparent - a sign-off mark next to a call to action, never a replacement for the lockup."
+    },
+    {
+      "file": "thread-app-icon.svg",
+      "role": "icon",
+      "description": "THREAD app icon: the white 't' on a rounded square in the THREAD gradient (blue to cyan to lime) - for a small badge next to a QR code or an app mention."
+    },
+    {
+      "file": "thread-mosaic-cluster.webp",
+      "role": "illustration",
+      "description": "THREAD mosaic cluster, transparent background: grained tiles of mixed sizes in the THREAD colours (lilac, coral, lime, cyan, pink, blue, orange) - a design element for a statement or quote slide, in an image block beside the text."
+    },
+    {
+      "file": "thread-mosaic-scatter.webp",
+      "role": "illustration",
+      "description": "THREAD mosaic, scattered: a loose spread of grained tiles in the THREAD colours, transparent background - a wide design element under or beside a headline."
+    },
+    {
+      "file": "filigran-logo.svg",
+      "pack": "filigran",
+      "role": "product_logo",
+      "description": "Filigran wordmark (cyan mark + white wordmark), light-on-dark - for an 'About Filigran' or 'powered by Filigran' slide of a THREAD deck."
+    },
+    {
+      "file": "filigran-mark.svg",
+      "pack": "filigran",
+      "role": "product_logo",
+      "description": "Filigran symbol alone, near-white - next to a Filigran product or a company fact on a THREAD slide."
+    }
+  ]
+}

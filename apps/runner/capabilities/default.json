@@ -1,0 +1,24 @@
+{
+  "identifier": "default",
+  "description": "The XTM One Desktop connection panel (a local page): every app IPC command, plus the status / navigate events it listens for. The chat window hosts the enrolled instance's web app - a REMOTE origin known only at enrollment time - and is granted its own, read-only capability at runtime (see `instance_bridge_capability` in gui.rs); it is deliberately NOT listed here.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "allow-get-state",
+    "allow-enroll",
+    "allow-unenroll",
+    "allow-set-auto-update",
+    "allow-set-cdp-url",
+    "allow-set-autostart",
+    "allow-open-instance",
+    "allow-open-chat",
+    "allow-check-for-update",
+    "allow-install-update",
+    "allow-quit",
+    "allow-desktop-bridge-state",
+    "allow-open-panel",
+    "opener:allow-open-url",
+    "opener:allow-default-urls"
+  ]
+}

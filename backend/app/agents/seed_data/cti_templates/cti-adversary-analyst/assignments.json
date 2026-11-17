@@ -1,0 +1,132 @@
+[
+  {
+    "file": "01-threat-actor-profile.md",
+    "source": "R1-12",
+    "name": "Threat actor profile",
+    "description": "Builds a full actor profile: overview, targeting, TTPs with ATT&CK mapping, attribution, IoCs, risk to the organization and recommendations. Use it to understand an actor relevant to your sector, geography or technology stack.",
+    "manual_trigger_parameters": [
+      {
+        "key": "threat_actor_name",
+        "label": "Threat actor name",
+        "type": "text",
+        "description": "Name or alias of the actor to profile, e.g. APT29.",
+        "required": true
+      },
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste reports about the actor. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "02-map-actors-to-ttps.md",
+    "source": "R1-05",
+    "name": "Map threat actors to TTPs",
+    "description": "Produces one ATT&CK-linked TTP table per threat actor in the material, an analysis of emerging and shared techniques, and detection priorities. Use it to focus defenses on observed adversary behavior.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "03-attack-navigator-layer.md",
+    "source": "R3-02",
+    "name": "ATT&CK Navigator layer from a report",
+    "description": "Maps the adversary behavior in a report to ATT&CK Enterprise v19 and returns a single Navigator layer file (format v4.5), each technique carrying a verbatim supporting quote and a confidence score. Use it to overlay a report against your detection-coverage layer.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "layer_name",
+        "label": "Layer name",
+        "type": "text",
+        "description": "Name shown on the Navigator layer.",
+        "required": false,
+        "default": "Vendor Report TTP Mapping"
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "ATT&CK Navigator layer for vendor report"
+      }
+    ]
+  },
+  {
+    "file": "04-mitre-atlas-mapping.md",
+    "source": "R2-03",
+    "name": "MITRE ATLAS mapping of AI-related threats",
+    "description": "Maps AI-related threat activity in the material to MITRE ATLAS in a table with mapping basis, evidence and per-row confidence, flagging rows that need review. Use it to track how AI shows up in adversary activity.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "MITRE ATLAS mapping report"
+      }
+    ]
+  },
+  {
+    "file": "05-red-team-emulation-plan.md",
+    "source": "R1-02",
+    "name": "Red team adversary emulation plan",
+    "description": "Turns observed tradecraft into an adversary emulation report: emulation steps with tools and commands, detection opportunities, purple team tests and KPIs, and M-code mitigations. Use it to plan red or purple team exercises.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  }
+]

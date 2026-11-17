@@ -1,0 +1,82 @@
+{
+  "procedure": "budgetReviews.getBudgetReviews",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-003a-7000-8000-000000000001",
+      "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Exercice 2025-2026",
+      "ownerId": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "periodStart": "2025-11-01",
+      "context": "Security budget of the payment platform, presented to the management review.",
+      "status": "open",
+      "version": 1,
+      "closedAt": null,
+      "createdAt": "2026-06-21T20:32:22.122Z",
+      "updatedAt": "2026-06-21T20:32:22.122Z",
+      "periodEnd": "2026-10-31",
+      "organization": {
+        "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "name": "Acme Bank"
+      },
+      "owner": {
+        "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+        "name": "Alice Martin"
+      },
+      "spent": 4000000,
+      "aleReductionMean": 14970226.252224721,
+      "aleReductionP10": 6922302.548150856,
+      "aleReductionP90": 24444374.04471342,
+      "returnPercent": 274.25565630561806,
+      "state": "priced",
+      "lineCount": 3,
+      "pricedAt": "2026-10-14T10:14:00.400Z",
+      "build": {
+        "spent": 1400000,
+        "aleReductionMean": 2752811.3877495504,
+        "aleReductionP10": 1179916.5774961137,
+        "aleReductionP90": 4519859.51283784,
+        "returnPercent": 96.62938483925359,
+        "state": "priced"
+      }
+    },
+    {
+      "id": "019edb28-003a-7000-8000-000000000004",
+      "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Exercice 2024-2025",
+      "ownerId": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "periodStart": "2024-11-01",
+      "context": "Security budget of the payment platform, presented to the management review.",
+      "status": "closed",
+      "version": 1,
+      "closedAt": "2025-11-19T10:00:00.000Z",
+      "createdAt": "2025-09-01T00:00:00.000Z",
+      "updatedAt": "2025-09-01T00:00:00.000Z",
+      "periodEnd": "2025-10-31",
+      "organization": {
+        "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "name": "Acme Bank"
+      },
+      "owner": {
+        "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+        "name": "Alice Martin"
+      },
+      "spent": 3200000,
+      "aleReductionMean": 27663059.32604628,
+      "aleReductionP10": 15076367.332695223,
+      "aleReductionP90": 44399210.218304284,
+      "returnPercent": 764.4706039389463,
+      "state": "priced",
+      "lineCount": 2,
+      "pricedAt": "2025-10-29T09:49:00.000Z",
+      "build": {
+        "spent": 900000,
+        "aleReductionMean": 4240682.296462961,
+        "aleReductionP10": 2311171.8515723133,
+        "aleReductionP90": 6806295.0858230535,
+        "returnPercent": 371.1869218292178,
+        "state": "priced"
+      }
+    }
+  ]
+}

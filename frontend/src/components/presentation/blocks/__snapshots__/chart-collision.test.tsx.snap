@@ -1,0 +1,22 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a line point inside a bar > writes its value next to its point, on the bar with its halo, clear of the bar's own - the figure as drawn 1`] = `
+[
+  "s0 c0 22px @142,288 €10.0M",
+  "s0 c1 22px @231,260 €13.0M",
+  "s0 c2 22px @321,232 €16.0M",
+  "s0 c3 22px @411,195 €20.0M",
+  "s0 c4 22px @501,158 €24.0M",
+  "s0 c5 22px @591,130 €27.0M",
+  "s0 c6 22px @681,103 €30.0M",
+  "s0 c7 22px @771,75 €33.0M",
+  "s1 c0 22px @142,213 €2.2M",
+  "s1 c1 22px @232,198 €2.4M",
+  "s1 c2 22px @322,154 €3.0M",
+  "s1 c3 22px @412,110 €3.6M",
+  "s1 c4 22px @501,102 €3.7M",
+  "s1 c5 22px @591,87 €3.9M",
+  "s1 c6 22px @681,36 €4.6M",
+  "s1 c7 22px below @771,107 €3.9M",
+]
+`;

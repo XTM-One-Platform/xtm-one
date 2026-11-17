@@ -1,0 +1,1822 @@
+{
+  "name": "Iranian Threats",
+  "description": "Geopolitical threat landscape dashboard focused on Iranian threats, showing threat actors, campaigns, malware, attack patterns, targeted countries, vulnerabilities, indicators, and reports with dynamic regarding-of filters.",
+  "openCTI_version": "7.260306.1",
+  "type": "dashboard",
+  "manifest": {
+    "widgets": {
+      "13bd738a-ca95-4acb-b117-cd12456173a7": {
+        "id": "13bd738a-ca95-4acb-b117-cd12456173a7",
+        "type": "number",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Intrusion-Set",
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 0,
+          "y": 0,
+          "i": "13bd738a-ca95-4acb-b117-cd12456173a7",
+          "moved": false,
+          "static": false
+        }
+      },
+      "b4b95c75-56ec-4715-875a-e1a10ed7fe2d": {
+        "id": "b4b95c75-56ec-4715-875a-e1a10ed7fe2d",
+        "type": "number",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Campaigns"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Campaign"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "attributed-to"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 3,
+          "y": 0,
+          "i": "b4b95c75-56ec-4715-875a-e1a10ed7fe2d",
+          "moved": false,
+          "static": false
+        }
+      },
+      "524ba674-1c2f-4151-bbdd-c53dcee4e886": {
+        "id": "524ba674-1c2f-4151-bbdd-c53dcee4e886",
+        "type": "timeline",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Campaigns Attributed To Threats Originating from Iran"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Campaign"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "attributed-to"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 4,
+          "h": 8,
+          "x": 0,
+          "y": 2,
+          "i": "524ba674-1c2f-4151-bbdd-c53dcee4e886",
+          "moved": false,
+          "static": false
+        }
+      },
+      "ec601351-5a5a-42ad-8768-5c6d2c5deafe": {
+        "id": "ec601351-5a5a-42ad-8768-5c6d2c5deafe",
+        "type": "number",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Reports"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Report"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 6,
+          "y": 0,
+          "i": "ec601351-5a5a-42ad-8768-5c6d2c5deafe",
+          "moved": false,
+          "static": false
+        }
+      },
+      "8b71ecb5-5f50-4ac7-93be-27c28c2d1689": {
+        "id": "8b71ecb5-5f50-4ac7-93be-27c28c2d1689",
+        "type": "number",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Indicators"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Indicator"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "indicates"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 9,
+          "y": 0,
+          "i": "8b71ecb5-5f50-4ac7-93be-27c28c2d1689",
+          "moved": false,
+          "static": false
+        }
+      },
+      "cacd33ac-5576-4cb4-95c1-637f07c657cf": {
+        "id": "cacd33ac-5576-4cb4-95c1-637f07c657cf",
+        "type": "list",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Reports"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Report"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "object"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "df5c7291-3bb6-41d7-82f7-8bd94b35e6cb",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "objectLabel"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 6,
+          "h": 8,
+          "x": 0,
+          "y": 10,
+          "i": "cacd33ac-5576-4cb4-95c1-637f07c657cf",
+          "moved": false,
+          "static": false
+        }
+      },
+      "78efab4a-6f51-497c-be02-549116009540": {
+        "id": "78efab4a-6f51-497c-be02-549116009540",
+        "type": "map",
+        "perspective": "relationships",
+        "parameters": {
+          "title": "Top Countries Targeted by Iranian Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "targets"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Country"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 5,
+          "h": 8,
+          "x": 7,
+          "y": 2,
+          "i": "78efab4a-6f51-497c-be02-549116009540",
+          "moved": false,
+          "static": false
+        }
+      },
+      "32c5d255-489d-4edf-8e74-9e32513460ce": {
+        "id": "32c5d255-489d-4edf-8e74-9e32513460ce",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "parameters": {
+          "title": "Top Attack Patterns Used by Iranian Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "uses"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Attack-Pattern"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 8,
+          "x": 9,
+          "y": 10,
+          "i": "32c5d255-489d-4edf-8e74-9e32513460ce",
+          "moved": false,
+          "static": false
+        }
+      },
+      "8a40d365-706f-42aa-b1f0-3b7803cd681d": {
+        "id": "8a40d365-706f-42aa-b1f0-3b7803cd681d",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "parameters": {
+          "title": "Top Malware Used by Iranian Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "uses"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Malware"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 8,
+          "x": 6,
+          "y": 10,
+          "i": "8a40d365-706f-42aa-b1f0-3b7803cd681d",
+          "moved": false,
+          "static": false
+        }
+      },
+      "799e4631-4d7c-47f5-820b-dfd5155575c4": {
+        "id": "799e4631-4d7c-47f5-820b-dfd5155575c4",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "parameters": {
+          "title": "Top Iranian Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": false,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 8,
+          "x": 4,
+          "y": 2,
+          "i": "799e4631-4d7c-47f5-820b-dfd5155575c4",
+          "moved": false,
+          "static": false
+        }
+      },
+      "cd7e2b26-a70b-4bc5-bde9-92b32165c2c2": {
+        "id": "cd7e2b26-a70b-4bc5-bde9-92b32165c2c2",
+        "type": "list",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Latest Indicators"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Indicator"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "indicates"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "pattern_type",
+                "label": "Pattern type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 6,
+          "h": 8,
+          "x": 0,
+          "y": 18,
+          "i": "cd7e2b26-a70b-4bc5-bde9-92b32165c2c2",
+          "moved": false,
+          "static": false
+        }
+      },
+      "a2061f9b-0dc3-4d7b-a47a-8e40741d4484": {
+        "id": "a2061f9b-0dc3-4d7b-a47a-8e40741d4484",
+        "type": "polar-area",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Top Labels on Indicators"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "object-label.internal_id",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Indicator"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "indicates"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "pattern_type",
+                "label": "Pattern type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 4,
+          "x": 6,
+          "y": 18,
+          "i": "a2061f9b-0dc3-4d7b-a47a-8e40741d4484",
+          "moved": false,
+          "static": false
+        }
+      },
+      "4e8a06a8-b4b2-4436-85a3-edc809b131f8": {
+        "id": "4e8a06a8-b4b2-4436-85a3-edc809b131f8",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "parameters": {
+          "title": "Top Vulnerabilities Targeted by Iranian Threats"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "targets"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Vulnerability"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "originates-from"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "from_entity_type",
+                "label": "Source type"
+              },
+              {
+                "attribute": "from_relationship_type",
+                "label": "Source name"
+              },
+              {
+                "attribute": "to_entity_type",
+                "label": "Target type"
+              },
+              {
+                "attribute": "to_relationship_type",
+                "label": "Target name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 8,
+          "x": 9,
+          "y": 18,
+          "i": "4e8a06a8-b4b2-4436-85a3-edc809b131f8",
+          "moved": false,
+          "static": false
+        }
+      },
+      "e31bb774-e0aa-4995-a646-1c314234c2b1": {
+        "id": "e31bb774-e0aa-4995-a646-1c314234c2b1",
+        "type": "polar-area",
+        "perspective": "entities",
+        "parameters": {
+          "title": "Top Labels on Reports"
+        },
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 20,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "object-label.internal_id",
+            "date_attribute": "created",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Report"
+                  ],
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "dynamicRegardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "object"
+                      ]
+                    },
+                    {
+                      "key": "dynamic",
+                      "values": [
+                        {
+                          "mode": "and",
+                          "filters": [
+                            {
+                              "id": "78e812d6-dc3b-4122-aabe-d7f968898d4d",
+                              "key": "regardingOf",
+                              "operator": "eq",
+                              "values": [
+                                {
+                                  "key": "id",
+                                  "values": [
+                                    "location--4df21ea4-82e1-55d0-b8e0-5090c773aad1"
+                                  ]
+                                },
+                                {
+                                  "key": "relationship_type",
+                                  "values": [
+                                    "originates-from"
+                                  ]
+                                }
+                              ],
+                              "mode": "or"
+                            }
+                          ],
+                          "filterGroups": []
+                        }
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "pattern_type",
+                "label": "Pattern type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "layout": {
+          "w": 3,
+          "h": 4,
+          "x": 6,
+          "y": 22,
+          "i": "e31bb774-e0aa-4995-a646-1c314234c2b1",
+          "moved": false,
+          "static": false
+        }
+      }
+    },
+    "config": {}
+  }
+}

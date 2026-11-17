@@ -1,0 +1,156 @@
+name: Video Studio ultra render
+
+# A real 2160p60 render of a 30 s mixed video - a figure, a recording with a
+# screen insert, a statement over a clip - under a 60 s lease; one page
+# drawing a 60 s mixed video at 2160p, its peak memory held to the measured
+# peak the render's pages are laid out by; a render's estimate held
+# to the time it took; and two screen-insert scenes at the ultra preset
+# (1080p) shared out across the pages the runner holds (two to four), none idle
+# more than 60 s while frames remain; and a 10 s clip with one static
+# screen insert previewed at 1080p on two CPUs under 2 s a frame, its next
+# preview reading at least 90% of its insert frames back.
+# Each test frees its working directory and its caches as it ends (tests/conftest.py): the runner's disk
+# quota holds one 2160p render's files at a time, never the session's.
+# Tens of minutes on a hosted runner: too long for
+# the Browser tool (Chromium) job of ci.yml, so it runs nightly, on demand, and
+# on the pull requests that change the render pipeline.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - backend/app/services/video_studio/compositor.py
+      - backend/app/services/video_studio/compositor_page.py
+      - backend/app/services/video_studio/encoder.py
+      - backend/app/services/video_studio/figure_cache.py
+      - backend/app/services/video_studio/figures.py
+      - backend/app/services/video_studio/frame_freeze.py
+      - backend/app/services/video_studio/insert_frames.py
+      - backend/app/services/video_studio/lease.py
+      - backend/app/services/video_studio/page_schedule.py
+      - backend/app/services/video_studio/render.py
+      - backend/app/services/video_studio/render_preflight.py
+      - backend/app/services/video_studio/render_process.py
+      - backend/app/services/video_studio/resources.py
+      - backend/app/services/video_studio/screen_insert.py
+      - backend/app/services/video_studio/data/render_page_peak.json
+      - backend/tests/test_video_studio_ultra_render_chromium.py
+      - backend/tests/test_video_studio_page_peak_chromium.py
+      - backend/tests/test_video_studio_estimate_chromium.py
+      - backend/tests/test_video_studio_render_tail_chromium.py
+      - backend/tests/test_video_studio_insert_preview_chromium.py
+      - backend/tests/video_studio_render_fixture.py
+      - backend/tests/video_studio_memory.py
+      - .github/workflows/video-studio-ultra.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-studio-ultra-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ultra:
+    name: Video Studio ultra render (2160p60)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          save-cache: false
+
+      - name: Install dependencies
+        uses: ./.github/actions/uv-sync
+        with:
+          directory: backend
+
+      # Same install as the Browser tool job of ci.yml: apt retries every
+      # fetch, and a failed apt does not stop a run whose runner image already
+      # carries what it needs (Ubuntu mirror DNS outages, 11 Nov 2026).
+      - name: Make apt retry transient network failures
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+
+      - name: Install Chromium
+        working-directory: backend
+        run: |
+          for attempt in 1 2 3; do
+            python -m playwright install --only-shell chromium && exit 0
+            echo "::warning::playwright install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      - name: Install Chromium's system libraries
+        working-directory: backend
+        run: |
+          python -m playwright install-deps chromium && exit 0
+          echo "::warning::playwright install-deps failed; checking the libraries Chromium links"
+          missing=$(find ~/.cache/ms-playwright -type f \( -name chrome -o -name headless_shell \) -exec ldd {} \; 2>/dev/null | awk '/not found/ {print $1}' | sort -u)
+          if [ -z "$missing" ]; then
+            echo "The runner image carries every library Chromium links: going on without apt."
+            exit 0
+          fi
+          echo "Missing libraries: $(echo "$missing" | tr '\n' ' ')"
+          for attempt in 2 3; do
+            sleep 60
+            python -m playwright install-deps chromium && exit 0
+            echo "::warning::playwright install-deps failed (attempt $attempt of 3)"
+          done
+          exit 1
+
+      - name: Install ffmpeg
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
+            echo "::warning::apt install of ffmpeg failed (attempt $attempt of 3)"
+            if command -v ffmpeg > /dev/null; then
+              echo "The runner image carries ffmpeg: going on without apt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      # The figure scene is drawn from the built frontend's figure page, served on loopback by the test.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      # An explicit heap, as in ci.yml (#9754, #9798).
+      - name: Build the frontend
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: corepack enable && yarn install --immutable && yarn build
+
+      - name: Disk before the renders
+        run: df -h / /tmp "$RUNNER_TEMP" || true
+
+      - name: Render 30 s at ultra, measure a 2160p page, hold an estimate to its render, share insert scenes out, preview an insert scene twice
+        working-directory: backend
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          REQUIRE_CHROMIUM: "1"
+          VIDEO_STUDIO_ULTRA_RENDER: "1"
+          # What a render process runs with (render_process.RENDER_ENVIRONMENT): the page peak is measured so.
+          MALLOC_ARENA_MAX: "2"
+        # The tests log what they measured (frames/s, lease gaps, silences, memory, a page's peak and the record a
+        # re-measure commits, an estimate against its render) at warning level.
+        run: python -m pytest -m video_ultra -v --tb=short -o log_cli=true --log-cli-level=WARNING
+
+      - name: Disk after the renders
+        if: always()
+        run: df -h / /tmp "$RUNNER_TEMP" || true

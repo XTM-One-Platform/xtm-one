@@ -1,0 +1,34 @@
+{
+  "procedure": "mitreAttack.getMitigationByExternalId",
+  "source": "recorded",
+  "data": {
+    "id": "0c47db65-3a58-5200-832c-411ff156e649",
+    "externalId": "M1013",
+    "name": "Application Developer Guidance",
+    "description": "Application Developer Guidance focuses on providing developers with the knowledge, tools, and best practices needed to write secure code, reduce vulnerabilities, and implement secure design principles. By integrating security throughout the software development lifecycle (SDLC), this mitigation aims to prevent the introduction of exploitable weaknesses in applications, systems, and APIs. This miti",
+    "url": "https://attack.mitre.org/mitigations/M1013",
+    "techniques": [
+      {
+        "id": "cb5f8c8e-9322-5ba8-ad95-98408a44a747",
+        "externalId": "T1078",
+        "name": "Valid Accounts",
+        "revoked": false,
+        "isSubtechnique": false
+      },
+      {
+        "id": "1d09a288-008c-553d-ac92-3298ea8094d0",
+        "externalId": "T1195",
+        "name": "Supply Chain Compromise",
+        "revoked": false,
+        "isSubtechnique": false
+      },
+      {
+        "id": "6a01929a-372e-5063-aaba-f0745745ed8f",
+        "externalId": "T1195.001",
+        "name": "Compromise Software Dependencies and Development Tools",
+        "revoked": false,
+        "isSubtechnique": true
+      }
+    ]
+  }
+}

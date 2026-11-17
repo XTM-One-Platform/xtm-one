@@ -1,0 +1,205 @@
+{
+  "procedure": "complianceAssessments.getAssessment",
+  "source": "recorded",
+  "data": {
+    "id": "019edb28-0034-7000-8000-000000000001",
+    "name": "NIST CSF 2.0 · T2 2026",
+    "status": "published",
+    "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+    "frameworkTitle": "NIST CSF 2.0",
+    "createdAt": "2026-06-16T09:00:00.459Z",
+    "updatedAt": "2026-07-16T09:00:00.459Z",
+    "publishedAt": "2026-07-16T09:00:00.459Z",
+    "createdBy": {
+      "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "name": "Alice Martin",
+      "email": "alice@example.com"
+    },
+    "publishedBy": {
+      "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "name": "Alice Martin",
+      "email": "alice@example.com"
+    },
+    "createdByServiceAccount": null,
+    "publishedByServiceAccount": null,
+    "nodes": [
+      {
+        "id": "c38822bd-498b-5725-9ca6-17793ddc22c6",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": null,
+        "oscalId": "GV",
+        "code": "GV",
+        "title": "GOVERN",
+        "statement": "The organization's cybersecurity risk management strategy, expectations, and policy are established, communicated, and monitored",
+        "kind": "function",
+        "isRequirement": false,
+        "position": 0
+      },
+      {
+        "id": "66bc8f24-db74-5b03-9490-f6c57efad234",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "c38822bd-498b-5725-9ca6-17793ddc22c6",
+        "oscalId": "GV.OC",
+        "code": "GV.OC",
+        "title": "Organizational Context",
+        "statement": "The circumstances - mission, stakeholder expectations, dependencies, and legal, regulatory, and contractual requirements - surrounding the organization's cybersecurity risk management decisions are understood",
+        "kind": "category",
+        "isRequirement": false,
+        "position": 1
+      },
+      {
+        "id": "771c4c23-c370-536a-ad1a-0126ed3d6188",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "66bc8f24-db74-5b03-9490-f6c57efad234",
+        "oscalId": "GV.OC-01",
+        "code": "GV.OC-01",
+        "title": "The organizational mission is understood and informs cybersecurity risk management",
+        "statement": "The organizational mission is understood and informs cybersecurity risk management",
+        "kind": "subcategory",
+        "isRequirement": true,
+        "position": 2
+      },
+      {
+        "id": "eb5a02cb-8c26-5b4c-b5a2-8f2290f88219",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "66bc8f24-db74-5b03-9490-f6c57efad234",
+        "oscalId": "GV.OC-02",
+        "code": "GV.OC-02",
+        "title": "Internal and external stakeholders are understood, and their needs and expectations regarding cybersecurity risk management are understood and considered",
+        "statement": "Internal and external stakeholders are understood, and their needs and expectations regarding cybersecurity risk management are understood and considered",
+        "kind": "subcategory",
+        "isRequirement": true,
+        "position": 3
+      },
+      {
+        "id": "da67653c-b724-51ff-9031-eef8bb818a18",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "66bc8f24-db74-5b03-9490-f6c57efad234",
+        "oscalId": "GV.OC-03",
+        "code": "GV.OC-03",
+        "title": "Legal, regulatory, and contractual requirements regarding cybersecurity - including privacy and civil liberties obligations - are understood and managed",
+        "statement": "Legal, regulatory, and contractual requirements regarding cybersecurity - including privacy and civil liberties obligations - are understood and managed",
+        "kind": "subcategory",
+        "isRequirement": true,
+        "position": 4
+      },
+      {
+        "id": "d62c5839-01fa-5f10-b922-432cc3ab2a9f",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": null,
+        "oscalId": "PR",
+        "code": "PR",
+        "title": "PROTECT",
+        "statement": "Safeguards to manage the organization's cybersecurity risks are used",
+        "kind": "function",
+        "isRequirement": false,
+        "position": 63
+      },
+      {
+        "id": "ec2ee53a-a8fd-5412-8c23-4e808aaf834d",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "d62c5839-01fa-5f10-b922-432cc3ab2a9f",
+        "oscalId": "PR.DS",
+        "code": "PR.DS",
+        "title": "Data Security",
+        "statement": "Data are managed consistent with the organization's risk strategy to protect the confidentiality, integrity, and availability of information",
+        "kind": "category",
+        "isRequirement": false,
+        "position": 74
+      },
+      {
+        "id": "ee94cdb9-6020-5df0-9dcc-e54d0f4172c4",
+        "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+        "parentId": "ec2ee53a-a8fd-5412-8c23-4e808aaf834d",
+        "oscalId": "PR.DS-10",
+        "code": "PR.DS-10",
+        "title": "The confidentiality, integrity, and availability of data-in-use are protected",
+        "statement": "The confidentiality, integrity, and availability of data-in-use are protected",
+        "kind": "subcategory",
+        "isRequirement": true,
+        "position": 77
+      }
+    ],
+    "controlLinks": [
+      {
+        "requirementId": "ee94cdb9-6020-5df0-9dcc-e54d0f4172c4",
+        "capabilityId": "64e7879a-8b0c-5d14-9551-74d50b68dca1",
+        "externalId": "API",
+        "name": "API Security",
+        "axis": "capability"
+      },
+      {
+        "requirementId": "ee94cdb9-6020-5df0-9dcc-e54d0f4172c4",
+        "capabilityId": "23c2d8f6-fe50-51ab-8b72-c527dd60be67",
+        "externalId": "CSPM",
+        "name": "Cloud Security Posture Management",
+        "axis": "capability"
+      },
+      {
+        "requirementId": "ee94cdb9-6020-5df0-9dcc-e54d0f4172c4",
+        "capabilityId": "d9d1969b-3111-50f8-8a4e-b491f2a7ec3b",
+        "externalId": "DLP",
+        "name": "Data Loss Prevention",
+        "axis": "capability"
+      }
+    ],
+    "answers": [
+      {
+        "id": "019edb28-0035-7000-8000-000000000000",
+        "requirementId": "771c4c23-c370-536a-ad1a-0126ed3d6188",
+        "owner": {
+          "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+          "name": "Bob Johnson",
+          "email": "bob@example.com"
+        },
+        "dueDate": "2026-07-17",
+        "level": 3,
+        "notApplicable": false,
+        "comment": null,
+        "updatedAt": "2026-07-16T09:00:00.459Z"
+      },
+      {
+        "id": "019edb28-0035-7000-8000-000000000001",
+        "requirementId": "eb5a02cb-8c26-5b4c-b5a2-8f2290f88219",
+        "owner": {
+          "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+          "name": "Bob Johnson",
+          "email": "bob@example.com"
+        },
+        "dueDate": "2026-07-25",
+        "level": 2,
+        "notApplicable": false,
+        "comment": null,
+        "updatedAt": "2026-07-16T09:00:00.459Z"
+      },
+      {
+        "id": "019edb28-0035-7000-8000-000000000002",
+        "requirementId": "da67653c-b724-51ff-9031-eef8bb818a18",
+        "owner": {
+          "id": "6e5cbd56-9923-4f7e-a972-d48be649ca3d",
+          "name": "Charlie Dupont",
+          "email": "charlie@example.com"
+        },
+        "dueDate": "2026-08-30",
+        "level": null,
+        "notApplicable": true,
+        "comment": null,
+        "updatedAt": "2026-07-16T09:00:00.459Z"
+      },
+      {
+        "id": "019edb28-0035-7000-8000-000000000062",
+        "requirementId": "ee94cdb9-6020-5df0-9dcc-e54d0f4172c4",
+        "owner": {
+          "id": "6e5cbd56-9923-4f7e-a972-d48be649ca3d",
+          "name": "Charlie Dupont",
+          "email": "charlie@example.com"
+        },
+        "dueDate": "2026-07-24",
+        "level": 4,
+        "notApplicable": false,
+        "comment": null,
+        "updatedAt": "2026-07-16T09:00:00.459Z"
+      }
+    ]
+  }
+}

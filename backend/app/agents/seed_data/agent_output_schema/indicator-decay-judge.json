@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "indicator_id": {
+            "type": "string",
+            "description": "The OpenCTI id of the indicator, as received"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["still_malicious", "not_confirmed", "insufficient_evidence"]
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "proposed_score": {
+            "type": ["integer", "null"],
+            "minimum": 50,
+            "maximum": 100,
+            "description": "Only for still_malicious; null otherwise"
+          },
+          "reason": {
+            "type": "string",
+            "description": "One sentence naming the sources the verdict rests on"
+          }
+        },
+        "required": ["indicator_id", "verdict", "confidence", "proposed_score", "reason"]
+      }
+    }
+  },
+  "required": ["verdicts"]
+}

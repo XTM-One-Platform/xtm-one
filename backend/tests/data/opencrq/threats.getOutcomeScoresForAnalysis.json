@@ -1,0 +1,60 @@
+{
+  "procedure": "threats.getOutcomeScoresForAnalysis",
+  "source": "recorded",
+  "data": [
+    {
+      "attackOutcomeId": "bef48728-e980-534b-97fb-07c5323ddf9e",
+      "outcomeName": "Destructive Attack",
+      "score": 0.9728461700337445,
+      "matchCount": 5,
+      "matchedTechniques": [
+        {
+          "externalId": "T1485",
+          "name": "Data Destruction",
+          "category": "signature"
+        },
+        {
+          "externalId": "T1490",
+          "name": "Inhibit System Recovery",
+          "category": "signature"
+        },
+        {
+          "externalId": "T1495",
+          "name": "Firmware Corruption",
+          "category": "signature"
+        }
+      ]
+    },
+    {
+      "attackOutcomeId": "1b75a102-139a-5fe3-b83c-1d35e69b7e1e",
+      "outcomeName": "Service Disruption",
+      "score": 0.6548246409375,
+      "matchCount": 2,
+      "matchedTechniques": [
+        {
+          "externalId": "T1529",
+          "name": "System Shutdown/Reboot",
+          "category": "signature"
+        },
+        {
+          "externalId": "T1490",
+          "name": "Inhibit System Recovery",
+          "category": "related"
+        }
+      ]
+    },
+    {
+      "attackOutcomeId": "d1a1dbbe-de60-51d6-b7c2-53c0b213dbd7",
+      "outcomeName": "Ransomware",
+      "score": 0.4950000000000001,
+      "matchCount": 1,
+      "matchedTechniques": [
+        {
+          "externalId": "T1490",
+          "name": "Inhibit System Recovery",
+          "category": "signature"
+        }
+      ]
+    }
+  ]
+}

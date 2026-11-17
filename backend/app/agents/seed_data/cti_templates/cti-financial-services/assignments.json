@@ -1,0 +1,250 @@
+[
+  {
+    "file": "01-threat-triage.md",
+    "source": "R4-01",
+    "name": "BFSI threat data triage",
+    "description": "Applies a BFSI relevance filter to incoming threat data and returns a priority, immediate actions and, for escalated items, an audit record written for compliance review. Use it for each new alert, indicator or report.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the threat data or information to triage (a single indicator is fine), sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "02-multi-feed-triage.md",
+    "source": "R4-02",
+    "name": "Multi-feed triage consolidation",
+    "description": "Consolidates threat data from open source, commercial, OSINT and internal sources into one prioritized triage, flagging cross-source correlations first. Use it for a daily or shift triage across feeds.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the threat data from several sources, each item labelled with its source (e.g. CISA, a vendor, Telegram, Internal), sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "03-third-party-risk.md",
+    "source": "R4-03",
+    "name": "Third-party and ecosystem risk assessment",
+    "description": "Assesses a third-party provider incident for downstream service exposure, customer-facing impact, concentration risk and your own regulatory notification flags. Use it when a core banking vendor, payment processor or cloud provider reports an incident.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the incident report, vendor notification, public URL or industry alert, sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "provider_name",
+        "label": "Provider name",
+        "type": "text",
+        "description": "Provider or vendor affected; used to collect reporting when no material is pasted.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "04-fraud-cyber-assessment.md",
+    "source": "R4-04",
+    "name": "Fraud-cyber impact assessment",
+    "description": "Maps enriched threat intelligence to fraud types (BEC, payment redirection, ATO, SIM swap), payment and identity risk, mule network indicators and monitoring gaps, in fraud language. Use it before intelligence reaches the fraud team.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the enriched threat intelligence, sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_focus",
+        "label": "Threat focus",
+        "type": "text",
+        "description": "Threat, actor, campaign or CVE to cover when no source material is pasted; used to collect intelligence from your integrations.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "05-multi-stakeholder-impact-brief.md",
+    "source": "R4-05",
+    "name": "Multi-stakeholder impact brief",
+    "description": "Produces one brief with separate fraud, SOC and risk sections, each in that team's language, from the same enriched intelligence. Use it to brief all three teams without separate meetings.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the enriched intelligence (for example a third-party or fraud impact assessment), sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "incident_reference",
+        "label": "Incident reference",
+        "type": "text",
+        "description": "Case, incident or OpenCTI container reference (name or id) the agent uses to pull the record when no material is pasted.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "06-cross-functional-course-of-action.md",
+    "source": "R4-06",
+    "name": "Cross-functional course of action",
+    "description": "Maps what the SOC, fraud, risk and CTI teams must do, in what order and what each is waiting on, plus shared indicators and open items. Use it to coordinate response without a joint call.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the intelligence or impact brief, sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "incident_reference",
+        "label": "Incident reference",
+        "type": "text",
+        "description": "Case, incident or OpenCTI container reference (name or id) the agent uses to pull the record when no material is pasted.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "07-incident-sitrep.md",
+    "source": "R4-07",
+    "name": "CTI incident SITREP",
+    "description": "Updates the CTI incident situation report at each investigation milestone: changes since the last iteration, new IOCs for the SOC, TTP revisions, gaps closed and remaining, and the threat level. Run it repeatedly during active response.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the investigation update or analyst notes (forensics, SOC, IR or new intelligence), sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "incident_reference",
+        "label": "Incident reference",
+        "type": "text",
+        "description": "Case, incident or OpenCTI container reference (name or id) the agent uses to pull the record when no material is pasted.",
+        "required": false
+      },
+      {
+        "key": "previous_sitrep",
+        "label": "Previous SITREP",
+        "type": "textarea",
+        "description": "Paste the previous SITREP iteration or the initial triage assessment to compare against. Leave empty to let the agent use the iteration it stored for this incident, or start at iteration 1.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "08-executive-intelligence-brief.md",
+    "source": "R4-08",
+    "name": "Executive intelligence brief",
+    "description": "Translates incident intelligence into a one-page business brief for executive leadership and the board: impact, situation, actions taken, decisions required and next steps with owners. Use it for executive notification.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the incident record or intelligence, sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "incident_reference",
+        "label": "Incident reference",
+        "type": "text",
+        "description": "Case, incident or OpenCTI container reference (name or id) the agent uses to pull the record when no material is pasted.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "09-tabletop-exercise.md",
+    "source": "R4-09",
+    "name": "Threat-informed tabletop exercise",
+    "description": "Builds a BFSI tabletop exercise grounded in the TTPs, targets and fraud dimensions of current intelligence, with a narrative, inject timeline, team decision points, stress-test questions and flagged assumptions. Use it for readiness exercises.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the threat intelligence to base the exercise on, sanitized under your data handling and TLP rules. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_focus",
+        "label": "Threat focus",
+        "type": "text",
+        "description": "Threat, actor, campaign or CVE to cover when no source material is pasted; if empty too, the agent picks the most active threat to financial institutions.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "10-resilience-gap-assessment.md",
+    "source": "R4-10",
+    "name": "Resilience gap assessment",
+    "description": "Maps the threat landscape against your controls and recovery plans to find gaps, with the ATT&CK technique, D3FEND countermeasure, impact, likelihood, controlling framework and a remediation roadmap. Use it for resilience planning before an incident exposes the gaps.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Threat landscape summary",
+        "type": "textarea",
+        "description": "Paste the threat landscape summary. Leave empty to let the agent collect current threats to financial institutions from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "control_inventory",
+        "label": "Control inventory or recovery plan",
+        "type": "textarea",
+        "description": "Paste the sanitized control inventory or recovery plan. Leave empty to let the agent use the Company Context knowledge base and connected control-posture tools.",
+        "required": false
+      },
+      {
+        "key": "applicable_frameworks",
+        "label": "Applicable frameworks",
+        "type": "textarea",
+        "description": "Frameworks that drive remediation priority, e.g. FFIEC CAT, NIST CSF, DORA, NY DFS Part 500, CA CCPA / breach notification, PCI DSS, MITRE ATT&CK / D3FEND. Required unless the Regulatory profile line of the Organization context lists them.",
+        "required": false
+      },
+      {
+        "key": "primary_regulator",
+        "label": "Primary regulator",
+        "type": "text",
+        "description": "E.g. OCC, FDIC, Federal Reserve, State DFI. Leave empty to use the Organization context.",
+        "required": false
+      },
+      {
+        "key": "applicable_states",
+        "label": "Applicable state(s)",
+        "type": "text",
+        "description": "States or jurisdictions for breach notification, e.g. NY, CA. Leave empty to use the Organization context.",
+        "required": false
+      },
+      {
+        "key": "eu_operations_in_scope",
+        "label": "EU operations in scope",
+        "type": "select",
+        "options": [
+          "From Organization context",
+          "Yes",
+          "No",
+          "Under assessment"
+        ],
+        "default": "From Organization context",
+        "description": "Whether EU operations (DORA) are in scope.",
+        "required": false
+      }
+    ]
+  }
+]

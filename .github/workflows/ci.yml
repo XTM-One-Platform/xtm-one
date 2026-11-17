@@ -1,0 +1,949 @@
+name: CI
+
+# A pull request runs the static checks (lint, types, dead code, catalog
+# validators, migration history, secret scan, the frontend ratchet gates)
+# and, when it changes what they read, the database checks (Bootstrap,
+# Migrations). The suites and the builds skip there (`if:
+# github.event_name != 'pull_request'`): the merge queue runs them with the
+# static checks again, since two pull requests each green on their own can
+# still land a failure together. A manual run runs every job: with no merge
+# queue on main, merge_github_pr dispatches one on the pull request's head and
+# merges only once it is green there ([merge] in .xtm-one/checks.toml, #11985).
+on:
+  workflow_dispatch:
+  pull_request:
+  # The merge queue tests the exact commit main moves to, so a merge does not
+  # run the suites again. main runs them to refresh the caches the queue
+  # restores, which only main can save (an entry a merge group saves is
+  # readable by that ref alone): when a file their keys follow changes, and
+  # nightly for the apt packages, whose key follows the runner image. The
+  # nightly run is also a full pass on main.
+  push:
+    branches: [main]
+    paths:
+      - backend/pyproject.toml
+      - backend/uv.lock
+      - .github/actions/backend-venv/**
+      - .github/actions/uv-sync/**
+      - .github/workflows/ci.yml
+  schedule:
+    - cron: "17 3 * * *"
+  # Required checks have to report on `merge_group` or the queue stalls.
+  merge_group:
+
+permissions:
+  contents: read
+
+# pypi.org can stop answering for several minutes: each download retries 5 times
+# at 30 s, and every install step runs up to 3 times, a minute apart. A docker
+# build does not see this env: the Dockerfiles give uv the same values, and so
+# does scripts/ci-local.sh - change them together.
+env:
+  UV_HTTP_TIMEOUT: "30"
+  UV_HTTP_RETRIES: "5"
+  # Test processes per job: `logical` is the runner's vCPU count. Every suite
+  # runs under pytest-xdist and is split between several jobs (PYTEST_SHARD,
+  # backend/tests/sharding.py): a unit test must not depend on another's side
+  # effects, and a PostgreSQL test works in a database of its own
+  # (tests/scratch_database.py), so the only requirement this adds is that
+  # every worker collects the same test ids - see "Running tests in parallel"
+  # in docs/docs/development.md.
+  PYTEST_WORKERS: logical
+
+# A pull request or a manual run replaces its branch's previous run. Any other
+# run is one per commit: grouping main's pushes by ref would cancel the middle
+# commit of a burst - exactly the merge that forks the history.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'workflow_dispatch' && github.ref) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  backend-lint:
+    name: Backend lint
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          python-version: "3.14"
+
+      # The dev group only (ruff, mypy, pytest): not the backend itself.
+      - name: Install dependencies
+        id: deps
+        run: uv sync --locked --only-group dev && echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      # One step per check, each run whatever the check before it concluded,
+      # as in frontend-lint.
+      - name: Ruff
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: ruff check .
+
+      # Scoped to app/services/evaluation/extraction by [tool.mypy].
+      - name: Type-check extraction package (mypy)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: mypy
+
+      # On a pull request the checkout is GitHub's merge of the pull request
+      # into its base, so this checks the history as it stands once merged: a
+      # migration that landed on main after the branch was cut is in it. The
+      # merge queue checks it again on the exact commit that becomes main.
+      # --noconftest: the suite's fixtures need the backend, this file does not.
+      - name: Migration history
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pytest tests/test_migration_integrity.py --noconftest -v --tb=short
+
+  # The ROI ledger's invariants (#12077, design 12.7 of dev-docs/roi-outcomes.md):
+  # every figure a person or an agent reads comes from one ledger, so a change
+  # that breaks one is refused on the pull request rather than in the merge
+  # queue. Unit tests on a seeded fixture, no external service: about a minute.
+  roi-invariants:
+    name: ROI ledger invariants
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/backend-venv
+
+      - name: Run the invariant suites
+        working-directory: backend
+        timeout-minutes: 10
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        run: >-
+          python -m pytest -m "not integration" -n "$PYTEST_WORKERS" -q --tb=short
+          tests/test_roi_ledger_invariants.py
+          tests/test_roi_ledger_anonymity.py
+          tests/test_roi_export_ledger.py
+          tests/test_roi_ledger_end_state.py
+
+  # tsc, oxlint, knip and the i18n validator resolve the project's own
+  # packages: these two jobs need their installs.
+  frontend-lint:
+    name: Frontend lint
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        id: deps
+        run: corepack enable && yarn install --immutable
+      # One step per check, each run whatever the check before it concluded:
+      # one run reports every failure, and each check shows its own time.
+      - name: TypeScript (app)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn typecheck
+      - name: TypeScript (e2e specs)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn typecheck -p tests_e2e
+      - name: Lint (oxlint)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn lint
+      - name: Dead code (knip)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn knip
+      - name: Command manifests
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn validate:commands
+      - name: i18n catalogs
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: yarn validate:i18n
+
+  office-addin-lint:
+    name: Office add-in lint
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/microsoft-office
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - run: npm ci
+      - run: npm run check
+
+  secrets:
+    name: Secret scan (betterleaks)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/betterleaks/betterleaks:v1.9.0 dir /repo --redact -v
+
+  # Every job collects the whole suite before its first test (about two
+  # minutes on CI), so each job added pays that again. A shard's tests run on
+  # the runner's two vCPUs: past about 15 minutes on a quiet runner, a busy one
+  # reaches the timeout, and the suite takes one more shard. Four shards ran
+  # 11 to 20 minutes on main and one was cancelled at 25 (2 Nov 2026):
+  # six keep a shard near 13 minutes, collection included.
+  # The 25-minute cap sits on the test step, not the job: a job killed by its
+  # own timeout ends `cancelled` and GitHub then concludes the whole run
+  # `cancelled` (whatever else failed), so no red-check wakes; a step past its
+  # timeout fails the job and the run concludes `failure`. The job cap only
+  # bounds a stuck setup (a slow runner spent 13 minutes in checkout).
+  backend:
+    name: Backend (Python) ${{ matrix.shard }}
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/6, 2/6, 3/6, 4/6, 5/6, 6/6]
+    steps:
+      - uses: actions/checkout@v6
+
+      # The install-script tests (tests/test_runner_install_scripts.py) start
+      # PowerShell 7, whose first start on a fresh runner reads the .NET runtime
+      # and the C# compiler from a cold disk and JIT-compiles them. Paid inside
+      # pytest, next to a worker running the CPU-heavy video tests on the same
+      # two vCPUs, that one-time cost ran past the test's 300 s warm-up bound
+      # (about 460 s on run 42052674198, then 3 s per install). It is paid here
+      # in the background while the job only installs dependencies, and its
+      # duration is printed at the end of the job.
+      - name: Warm up PowerShell in the background
+        run: |
+          if command -v pwsh >/dev/null; then
+            ( start=$(date +%s)
+              find "$(dirname "$(readlink -f "$(command -v pwsh)")")" -type f -exec cat {} + >/dev/null 2>&1
+              POWERSHELL_UPDATECHECK=Off POWERSHELL_TELEMETRY_OPTOUT=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
+                timeout 600 pwsh -NoProfile -NonInteractive -Command \
+                "Add-Type -TypeDefinition 'public static class XtmOneCiWarmUp { public static int One() { return 1; } }'; exit ([XtmOneCiWarmUp]::One() - 1)"
+              echo "exit $? after $(( $(date +%s) - start )) s" ) > "$RUNNER_TEMP/pwsh-warm-up.log" 2>&1 &
+          fi
+
+      - uses: ./.github/actions/backend-venv
+
+      # The presentation editor's schema tripwires (tests/test_presentation_editor.py)
+      # run the frontend catalog through Node (`scripts/dump-presentation-schema.mts`,
+      # type stripping, no node_modules) and validate every default against the
+      # Pydantic models. Pinned like the Frontend job rather than left to whatever
+      # the runner image ships: on CI the test FAILS when Node cannot run the
+      # dump, instead of skipping - a skipped tripwire is a green build that
+      # checked nothing.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Run unit tests
+        working-directory: backend
+        timeout-minutes: 25
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          PYTEST_SHARD: ${{ matrix.shard }}
+          # Each job imports only its sixth of the test files (tests/sharding.py):
+          # collecting the whole suite held about 1.6 GB per xdist worker, and the
+          # runner sampler below read under 250 MB available and 3 GB of swap (#10437).
+          PYTEST_SHARD_SPLIT: files
+          # A test past this bound ends its worker with its stacks (tests/stall_guard.py)
+          # instead of eating the step's 25 minutes and naming nothing.
+          PYTEST_STALL_SECONDS: "300"
+          PYTEST_STALL_DIR: ${{ runner.temp }}/pytest-stall
+          # Each worker ranks the test files by the resident memory they added
+          # (tests/memory_report.py): the sampler says memory ran out, this says
+          # which modules kept it (#10437).
+          PYTEST_MEMORY_REPORT: ${{ runner.temp }}/pytest-memory
+          # A runner 3-6x slower than usual collects for 7-18 minutes instead of
+          # about 1.5 and then hits the step timeout with no FAILED line. Past 3x
+          # this median (84-102 s on green main 42767506994) the watcher prints
+          # one `::error::runner degraded` annotation (tests/runner_speed.py).
+          PYTEST_COLLECTION_MEDIAN_SECONDS: "90"
+          PYTEST_COLLECTED_MARKER: ${{ runner.temp }}/pytest-collected
+        # A runner that loses its host ("The runner has received a shutdown
+        # signal") leaves a log that just stops: no timeout fires and no stall
+        # report is written, and GitHub stamps the cancellation up to 40 minutes
+        # later. Every 30 s the step prints the runner's memory, swap, load and
+        # its three largest processes. The step's stdout streams live, so the
+        # last sample before a kill says whether memory ran out (#10437).
+        run: |
+          ( while sleep 30; do
+              echo "[runner] $(date -u +%H:%M:%S) $(free -m | awk '/^Mem:/ {print "mem used " $3 " MB, available " $7 " MB"} /^Swap:/ {print "swap used " $3 " MB"}' | paste -sd ' ') load $(cut -d' ' -f1-3 /proc/loadavg) top $(ps -eo rss=,comm= --sort=-rss | head -3 | awk '{printf "%s:%d MB ", $2, $1/1024}')"
+            done ) &
+          python -m tests.runner_speed &
+          watcher=$!
+          trap 'kill "$watcher" 2>/dev/null || true' EXIT
+          python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25
+
+      - name: Stall report
+        if: failure()
+        run: |
+          for report in "$RUNNER_TEMP"/pytest-stall/stall-*.log; do
+            [ -s "$report" ] && { echo "::group::$report"; cat "$report"; echo "::endgroup::"; }
+          done
+          true
+
+      - name: Memory report
+        if: always()
+        run: |
+          for report in "$RUNNER_TEMP"/pytest-memory/memory-*.txt; do
+            [ -s "$report" ] && cat "$report"
+          done
+          true
+
+      - name: PowerShell warm-up report
+        if: always()
+        run: cat "$RUNNER_TEMP/pwsh-warm-up.log" 2>/dev/null || echo "no PowerShell on this runner"
+
+  # Tests marked `chromium` drive a real headless Chromium against loopback
+  # servers: the browser tool holds every redirect hop to the outbound URL
+  # policy in Chromium's own request interception, which a double
+  # cannot vouch for. The unit shards have no browser and skip them; here a
+  # missing browser fails the job (REQUIRE_CHROMIUM), so a Playwright or
+  # Chromium upgrade that changes the interception is caught. The Video Studio
+  # render's memory ceiling is proven here too, with ffmpeg, and a
+  # figure scene's build-in drawn from the built frontend. The tests
+  # run one at a time - the render's memory ceiling and the sign-in timeouts
+  # are measured on a quiet machine - so the suite is split between jobs
+  # (PYTEST_SHARD) instead of between workers.
+  # About 12 minutes with the apt packages cached; the timeout leaves room for
+  # a cache the repository's quota evicted, fetched again from a throttled
+  # mirror: 37 minutes of installs on their own, at 50 kB/s.
+  browser-tool:
+    name: Browser tool (Chromium) ${{ matrix.shard }}
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/3, 2/3, 3/3]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/backend-venv
+
+      # The Ubuntu mirror of the runners is throttled at times (50 kB/s: over
+      # ten minutes for the browser's system libraries and ffmpeg), so the
+      # packages apt downloads are cached and only a newer version is fetched.
+      # The key follows the runner image and the lock, which pins Playwright
+      # and so the libraries it installs.
+      - name: Name the apt package cache
+        id: apt-cache
+        run: |
+          prefix="browser-tool-apt-$ImageOS-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-${{ hashFiles('backend/uv.lock') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the apt packages
+        id: apt-restore
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/apt-archives
+          key: ${{ steps.apt-cache.outputs.key }}
+          restore-keys: |
+            ${{ steps.apt-cache.outputs.prefix }}
+
+      - name: Hand the cached packages to apt
+        run: |
+          echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded-packages
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          if compgen -G "$HOME/apt-archives/*.deb" > /dev/null; then
+            sudo cp "$HOME"/apt-archives/*.deb /var/cache/apt/archives/
+          fi
+
+      # apt retries every fetch, and a failed apt no longer stops a shard whose
+      # runner image already carries what it needs: a runner that cannot
+      # resolve the Ubuntu mirrors ("Temporary failure resolving", exit 100,
+      # for minutes on end) used to fail all three shards in `--with-deps`
+      # before any test ran, retries or not (11 Nov 2026; e2e.yml has gated
+      # apt on ldd since #11155).
+      - name: Make apt retry transient network failures
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+
+      # The headless shell is the browser the tool launches (headless=True).
+      # It comes from Playwright's CDN, not from Ubuntu.
+      - name: Install Chromium
+        working-directory: backend
+        run: |
+          for attempt in 1 2 3; do
+            python -m playwright install --only-shell chromium && exit 0
+            echo "::warning::playwright install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      # The system libraries and fonts still come from apt when the mirrors
+      # answer, so a rendered label looks the same as before. When apt fails,
+      # the libraries are checked with ldd, as Playwright checks them at
+      # launch: the shard goes on when the image carries them all, and retries
+      # apt only for a library it lacks.
+      - name: Install Chromium's system libraries
+        working-directory: backend
+        run: |
+          python -m playwright install-deps chromium && exit 0
+          echo "::warning::playwright install-deps failed; checking the libraries Chromium links"
+          missing=$(find ~/.cache/ms-playwright -type f \( -name chrome -o -name headless_shell \) -exec ldd {} \; 2>/dev/null | awk '/not found/ {print $1}' | sort -u)
+          if [ -z "$missing" ]; then
+            echo "The runner image carries every library Chromium links: going on without apt."
+            exit 0
+          fi
+          echo "Missing libraries: $(echo "$missing" | tr '\n' ' ')"
+          for attempt in 2 3; do
+            sleep 60
+            python -m playwright install-deps chromium && exit 0
+            echo "::warning::playwright install-deps failed (attempt $attempt of 3)"
+          done
+          exit 1
+
+      # The Video Studio render test draws and encodes a real timeline;
+      # a recording reads the labels a graph paints on its canvas.
+      - name: Install ffmpeg and Tesseract
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg tesseract-ocr && exit 0
+            echo "::warning::apt install of ffmpeg and Tesseract failed (attempt $attempt of 3)"
+            if command -v ffmpeg > /dev/null && command -v tesseract > /dev/null; then
+              echo "The runner image carries ffmpeg and Tesseract: going on without apt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 60; fi
+          done
+          exit 1
+
+      # Saved before the tests so a red run still keeps them. autoclean drops
+      # the versions the mirror no longer serves, so the cache does not grow.
+      - name: Collect the apt packages
+        if: github.ref == 'refs/heads/main' && steps.apt-restore.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get autoclean
+          rm -rf "$HOME/apt-archives" && mkdir -p "$HOME/apt-archives"
+          if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then
+            cp /var/cache/apt/archives/*.deb "$HOME/apt-archives/"
+          fi
+          du -sh "$HOME/apt-archives"
+
+      - name: Save the apt packages
+        if: github.ref == 'refs/heads/main' && steps.apt-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/apt-archives
+          key: ${{ steps.apt-cache.outputs.key }}
+
+      # A figure scene is drawn from the built frontend's figure page, served
+      # on loopback by its test (test_video_studio_figure_chromium.py).
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      # tsc -b and vite build together sit at Node's default ~2 GB heap and
+      # died on it (#9754): an explicit heap, well inside the runner's memory.
+      - name: Build the frontend
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: corepack enable && yarn install --immutable && yarn build
+
+      - name: Run the real-browser tests
+        working-directory: backend
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          REQUIRE_CHROMIUM: "1"
+          PYTEST_SHARD: ${{ matrix.shard }}
+          # Collect only the files that spell mark.chromium (tests/marked_files.py).
+          PYTEST_MARKED_FILES: chromium
+        run: python -m pytest -m chromium -v --tb=short --durations=10
+
+  # The frontend group of scripts/ci-local.sh runs every `run:` of
+  # frontend-lint, of this job and of office-addin-lint, in order, plus the
+  # tests of frontend-unit unsharded (`yarn test:unit`, before the build):
+  # change them together.
+  # The unit tests have a job of their own (frontend-unit below): run
+  # here they were 714 s of a 1100 s job on main and pushed it past its
+  # 20-minute cap five times on 5 Nov 2026 (run 42085515447: 793 s of tests,
+  # cancelled at 1199 s).
+  frontend:
+    name: Frontend (TypeScript)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    # The build runs with an explicit heap: at Node's default ~2 GB it died
+    # (#9754).
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: corepack enable && yarn install --immutable
+
+      # The design-system guards. A class the library does not emit, or one
+      # Tailwind never generated, fails silently - layout intact, colour and
+      # type gone - so the build is checked against the library bundle
+      # (verify-classes), and no styling that bypasses the design system may
+      # come back past its baseline (count-legacy, a merge from main included).
+      - name: Design-system guards
+        working-directory: frontend
+        run: |
+          yarn build
+          node scripts/fds-migration/verify-classes.mjs
+          node scripts/fds-migration/count-legacy.mjs --check
+
+  # `yarn test:unit` split between jobs: vitest's own --shard divides its 414
+  # files (679 s on main, 5 Nov 2026, run 42090500694) by file, and the first
+  # shard also runs the node:test half (about 35 s). Three shards keep each
+  # near 5 minutes, install included. The cap sits on the test step, not the
+  # job, for the reason given above the backend job.
+  frontend-unit:
+    name: Frontend unit tests ${{ matrix.shard }}
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/3, 2/3, 3/3]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: corepack enable && yarn install --immutable
+
+      # The half of `yarn test:unit` written against Node's own runner.
+      - name: Node unit tests
+        if: strategy.job-index == 0
+        working-directory: frontend
+        timeout-minutes: 10
+        run: node scripts/node-test-files.mjs
+
+      - name: Vitest unit and component tests
+        working-directory: frontend
+        timeout-minutes: 20
+        run: yarn vitest run --shard=${{ matrix.shard }}
+
+  # The frontend ratchet gates, on every pull request. They scan the whole
+  # tree (tests_unit/ and the top-level src/*.test.ts guards, the settings
+  # form kit's), so the change that breaks one names no file of theirs; with
+  # frontend-unit skipped on a pull request and no merge queue on main, main
+  # stayed green over a gate it failed (16 Nov 2026). About a minute of tests;
+  # frontend-unit runs them again with the rest of the suite.
+  frontend-gates:
+    name: Frontend gates
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: corepack enable && yarn install --immutable
+
+      - name: Whole-tree gates
+        working-directory: frontend
+        timeout-minutes: 10
+        run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/pages/settings/settings-form-kit.test.ts
+
+  # The integration suite (2365 tests) ran 630 to 1127 s a shard on two shards
+  # (green main runs 43242449940, 43236991020, 43236147709, 12 Nov 2026):
+  # a pull request that changes the database waits on it, so four shards keep
+  # each near 7 minutes of tests, collection (about 70 s) aside.
+  bootstrap:
+    name: Bootstrap (fresh DB) ${{ matrix.shard }}
+    needs: migration-changes
+    if: needs.migration-changes.outputs.run == 'true'
+    runs-on: ubuntu-26.04
+    # Capped on the test step, as the backend shards are: a step timeout
+    # fails the run, a job timeout leaves it `cancelled`.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: copilot
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Start Silo (S3 object storage)
+        run: |
+          # Pulled first, three attempts 10 s then 20 s apart, so a transient
+          # Docker Hub reset on a blob download is retried, not a red job.
+          for attempt in 1 2 3; do
+            docker pull --quiet pgsty/silo:latest && break
+            [ "$attempt" -eq 3 ] && { echo "::error::docker pull pgsty/silo failed after 3 attempts"; exit 1; }
+            echo "::warning::docker pull failed (attempt $attempt of 3), retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=copilot \
+            -e MINIO_ROOT_PASSWORD=copilot_dev_secret \
+            pgsty/silo:latest server /data
+          # A storage that never came up must fail here, not minutes later in
+          # whichever test first touches S3.
+          ready=0
+          start=$SECONDS
+          # Each probe is bounded too: a connection that never answers must not
+          # hold the step past the deadline.
+          while [ $((SECONDS - start)) -lt 30 ]; do
+            if curl -sf --max-time 2 http://localhost:9000/minio/health/live > /dev/null; then
+              echo "Silo is ready after $((SECONDS - start))s"
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::Silo did not become healthy within 30s"
+            docker logs --tail 100 minio || true
+            exit 1
+          fi
+
+      - uses: ./.github/actions/backend-venv
+
+      - name: Enable pgvector extension
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      # The database lives as long as the job, so PostgreSQL need not wait for
+      # every commit to reach the disk: the suite runs about 14% faster. All
+      # three settings apply on a reload, without a restart.
+      - name: Run PostgreSQL without durability
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "SELECT pg_reload_conf()"
+
+      - name: Run integration tests
+        working-directory: backend
+        timeout-minutes: 25
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          REDIS_URL: "redis://localhost:6379"
+          S3_ENDPOINT: "localhost:9000"
+          S3_ACCESS_KEY: "copilot"
+          S3_SECRET_KEY: "copilot_dev_secret"
+          S3_USE_SSL: "false"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          APP_VERSION: "0.0.0-ci"
+          ADMIN_EMAIL: "admin@test.filigran.io"
+          ADMIN_PASSWORD: "test-admin-password-123"
+          PYTEST_SHARD: ${{ matrix.shard }}
+          # Collect only the files that spell mark.integration (tests/marked_files.py).
+          PYTEST_MARKED_FILES: integration
+          # A test past this bound ends its worker with its stacks (tests/stall_guard.py).
+          PYTEST_STALL_SECONDS: "300"
+          PYTEST_STALL_DIR: ${{ runner.temp }}/pytest-stall
+          # Collection past 3x this median (62-74 s on green main 42767506994)
+          # names a degraded runner (tests/runner_speed.py).
+          PYTEST_COLLECTION_MEDIAN_SECONDS: "70"
+          PYTEST_COLLECTED_MARKER: ${{ runner.temp }}/pytest-collected
+        run: |
+          python -m tests.runner_speed &
+          watcher=$!
+          trap 'kill "$watcher" 2>/dev/null || true' EXIT
+          python -m pytest -m integration -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=long --durations=25
+
+      - name: Stall report
+        if: failure()
+        run: |
+          for report in "$RUNNER_TEMP"/pytest-stall/stall-*.log; do
+            [ -s "$report" ] && { echo "::group::$report"; cat "$report"; echo "::endgroup::"; }
+          done
+          true
+
+  # A pull request that touches none of what the database checks (Bootstrap
+  # and Migrations) read skips them; every other run runs them. The checkout is the pull request's merge
+  # commit, whose first parent is the base, so that diff is its change.
+  migration-changes:
+    name: Migration-related changes
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.changed.outputs.run }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ] && git diff --quiet HEAD^1 HEAD -- \
+            backend/alembic/ backend/app/models/ backend/app/core/config.py \
+            backend/app/core/migrations.py backend/app/core/database.py \
+            backend/tests/test_migration_integrity.py backend/tests/test_fresh_install.py \
+            backend/pyproject.toml backend/uv.lock .github/workflows/ci.yml; then
+            run=false
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  migrations:
+    name: Migrations (Alembic)
+    needs: migration-changes
+    if: needs.migration-changes.outputs.run == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: copilot
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/backend-venv
+
+      - name: Enable pgvector extension
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Fresh install — create tables + stamp head + verify schema
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        # ``test_fresh_install.py`` runs inside its own ``copilot_fresh_install_*``
+        # temporary database (created → asserted → dropped), so the shared
+        # ``copilot`` DB stays empty after this step. The downgrade round-trip
+        # below needs an Alembic-stamped DB, so the next step provisions it
+        # explicitly via the production startup path.
+        run: python -m pytest tests/test_fresh_install.py -v --tb=long
+
+      - name: Prepare shared DB for downgrade round-trip (production startup path)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        # Drive ``app.core.migrations.run_migrations`` against the shared DB
+        # so the next step has a head-stamped schema to walk backwards from.
+        # Using the production wrapper directly (rather than re-implementing
+        # ``create_all + stamp head`` inline) means a regression in that
+        # wrapper is also caught by this step.
+        run: |
+          python -c "import asyncio; from app.core.migrations import run_migrations; asyncio.run(run_migrations())"
+
+      - name: Idempotent re-run (already-migrated DB)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        # Re-run the production startup migration path against the now-head-stamped
+        # DB. A second pass MUST be a clean no-op: the advisory lock is acquired,
+        # Alembic is already at head (``upgrade head`` does nothing), and
+        # ``create_all`` + the column/artifact convergence safety nets are all
+        # idempotent. This locks in that migrations AND the convergence passes are
+        # safely re-runnable when multiple backend replicas boot concurrently
+        # against an already-migrated database.
+        run: |
+          python -c "import asyncio; from app.core.migrations import run_migrations; asyncio.run(run_migrations())"
+          echo "Idempotent re-run completed (no-op)"
+
+      - name: Sequential upgrade (upgrade +1 from empty DB to head)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot_seq_upgrade"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        # Walk the whole migration chain ONE revision at a time from a truly
+        # empty database, so every individual upgrade() body is executed and
+        # must succeed in order. This was impossible before the
+        # squash: the old chain was not standalone (its base revision was an
+        # ALTER TABLE), so any upgrade-from-empty died immediately. The
+        # squashed baseline replays standalone, and every post-squash
+        # migration added on top gets exercised here stepwise — unlike the
+        # one-shot `upgrade head`, a failure pinpoints the exact revision.
+        # Runs in its own throwaway database so it never perturbs the shared
+        # `copilot` DB the surrounding steps build up and downgrade.
+        #
+        # The walk targets each revision by ID, in topological order, rather
+        # than stepping with `upgrade +1`. A relative +1 step is undefined at a
+        # **branchpoint** (a revision with two children, which is what two
+        # features cut from the same parent produce) and Alembic answers
+        # "Ambiguous walk" — the forward-direction twin of the merge-revision
+        # limitation the downgrade round-trip below documents. Absolute targets
+        # are unambiguous in a branched history while keeping this step's whole
+        # point: every upgrade() body runs on its own, so a failure names the
+        # exact revision.
+        run: |
+          set -eo pipefail
+          PSQL="psql -h localhost -U copilot -v ON_ERROR_STOP=1"
+          PGPASSWORD=copilot_ci $PSQL -d copilot -c 'DROP DATABASE IF EXISTS copilot_seq_upgrade;' -c 'CREATE DATABASE copilot_seq_upgrade;'
+          PGPASSWORD=copilot_ci $PSQL -d copilot_seq_upgrade -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          HEAD=$(python -m alembic -c alembic/alembic.ini heads | awk '{print $1}')
+          if [ "$(echo "$HEAD" | wc -l)" -ne 1 ] || [ -z "$HEAD" ]; then
+            echo "Expected exactly one Alembic head, got: $HEAD"
+            exit 1
+          fi
+          # Parents always precede their children, so upgrading to each ID in
+          # turn runs exactly one new revision per step.
+          REVISIONS=$(python -c "
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          script = ScriptDirectory.from_config(Config('alembic/alembic.ini'))
+          pending = {r.revision: set(r._all_down_revisions) for r in script.walk_revisions()}
+          done_revs: set[str] = set()
+          order = []
+          while pending:
+              ready = sorted(rev for rev, deps in pending.items() if deps <= done_revs)
+              if not ready:
+                  raise SystemExit(f'unreachable revisions: {sorted(pending)}')
+              for rev in ready:
+                  order.append(rev)
+                  done_revs.add(rev)
+                  del pending[rev]
+          print('\n'.join(order))
+          ")
+          STEPS=0
+          for REV in $REVISIONS; do
+            STEPS=$((STEPS+1))
+            echo "--- Upgrade step $STEPS (to '$REV') ---"
+            python -m alembic -c alembic/alembic.ini upgrade "$REV"
+          done
+          CURRENT=$(python -m alembic -c alembic/alembic.ini current | grep -oE '^[a-zA-Z0-9_]+' | head -1)
+          if [ "$CURRENT" != "$HEAD" ]; then
+            echo "Sequential upgrade never reached head '$HEAD' (stopped at '${CURRENT:-<empty>}' after $STEPS steps)."
+            exit 1
+          fi
+          PGPASSWORD=copilot_ci $PSQL -d copilot -c 'DROP DATABASE copilot_seq_upgrade;'
+          echo "Sequential upgrade complete: $STEPS step(s) from empty DB to head '$HEAD'"
+
+      - name: Downgrade round-trip (last 5 migrations)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        # Walks the last 5 migrations with `downgrade -1`, then re-upgrades.
+        # EVERY migration must have a real, working downgrade() - there is
+        # NO "irreversible migration" concept and no allowlist: a failed
+        # downgrade fails the job, period. The single tolerated stop is a
+        # mechanical Alembic limitation, not an exemption: `downgrade -1`
+        # FROM a merge revision raises "Ambiguous walk" because a linear -1
+        # step is undefined at a merge point (two parents, no canonical one
+        # to walk back to). Merge migrations have empty bodies - there is
+        # nothing to revert - so the walk simply stops there.
+        run: |
+          # ``pipefail`` + ``ON_ERROR_STOP=1`` make ``CURRENT_BEFORE=$(psql …)``
+          # actually fail the step when psql itself fails (auth error,
+          # missing ``alembic_version`` table, server hiccup) — without
+          # these, a failed psql silently produces an empty string and
+          # the loop would incorrectly treat that as "already at base".
+          set -eo pipefail
+          for i in $(seq 1 5); do
+            echo "--- Downgrade step $i ---"
+            # Capture psql's exit status explicitly: command substitution
+            # under ``set -e`` does not reliably abort on inner failure
+            # in every shell, so we branch on the return code directly.
+            if ! CURRENT_BEFORE=$(PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -v ON_ERROR_STOP=1 -tAc "SELECT version_num FROM alembic_version LIMIT 1"); then
+              echo "psql query for current revision failed - aborting the round-trip."
+              echo "  (auth, network, or missing alembic_version are all real failures, not 'already at base')."
+              exit 1
+            fi
+            # Trim whitespace/newlines that ``-tA`` should already strip
+            # but leave in some psql builds.
+            CURRENT_BEFORE=$(echo "$CURRENT_BEFORE" | tr -d '[:space:]')
+            if [ -z "$CURRENT_BEFORE" ]; then
+              echo "No current revision found (already at base) - stopping."
+              break
+            fi
+            if ! echo "$CURRENT_BEFORE" | grep -qE '^[a-zA-Z0-9_]+$'; then
+              echo "Unexpected revision format: '$CURRENT_BEFORE'"
+              exit 1
+            fi
+            if python -m alembic -c alembic/alembic.ini downgrade -1 2>&1 | tee /tmp/downgrade.log; then
+              continue
+            fi
+            # Mechanical stop, not an exemption: a linear -1 walk is
+            # undefined at a merge revision (empty body, nothing to revert).
+            if grep -qi "ambiguous walk" /tmp/downgrade.log; then
+              echo "Stopped at merge revision '$CURRENT_BEFORE' (linear -1 walk is undefined at a merge point)."
+              break
+            fi
+            echo "Downgrade FAILED at '$CURRENT_BEFORE'."
+            echo "  Every migration MUST have a real, working downgrade() - fix the migration."
+            echo "  There is no irreversible-migration allowlist."
+            exit 1
+          done
+          echo "--- Re-upgrading to head ---"
+          python -m alembic -c alembic/alembic.ini upgrade head
+          echo "Downgrade round-trip complete"
+
+  # One failed check naming every job that ended failure or cancelled.
+  # It cannot turn a cancelled run into a failed one: GitHub concludes a run
+  # `cancelled` as soon as one job ended cancelled, whatever else failed
+  # (runs 42048638725 and 42042438531, 5 Nov 2026), which is why the long
+  # jobs cap their test step rather than the job. The required check, so it
+  # runs even when the run is cancelled (`always()`): skipped, it would count
+  # as passed and let a pull request merge with no suite run. A job its event
+  # skips counts as passed.
+  verdict:
+    name: CI verdict
+    if: always()
+    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, backend, browser-tool, frontend, frontend-unit, bootstrap, migration-changes, migrations]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | "\(.key)=\(.value.result)"')
+          if [ -n "$bad" ]; then
+            for job in $bad; do
+              echo "::error::Job ${job%%=*} ended ${job#*=} (a cancelled job hit its timeout-minutes) - its log above has the cause."
+            done
+            exit 1
+          fi
+          echo "Every job passed or was skipped."

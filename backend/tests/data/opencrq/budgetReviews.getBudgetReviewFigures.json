@@ -1,0 +1,97 @@
+{
+  "procedure": "budgetReviews.getBudgetReviewFigures",
+  "source": "recorded",
+  "data": {
+    "status": "open",
+    "closedAt": null,
+    "figures": [
+      {
+        "basket": "line",
+        "lineId": "019edb28-003a-7000-8000-000000000002",
+        "state": "priced",
+        "aleReductionMean": 2256048.4122439534,
+        "aleReductionP10": 958486.3590496078,
+        "aleReductionP90": 3740986.8563298956,
+        "spent": 900000,
+        "returnPercent": 150.6720458048837,
+        "annualSpent": 300000,
+        "amortizedReturnPercent": 652.0161374146512,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      },
+      {
+        "basket": "line",
+        "lineId": "019edb28-003a-7000-8000-000000000003",
+        "state": "priced",
+        "aleReductionMean": 11604419.86879109,
+        "aleReductionP10": 5343005.074063266,
+        "aleReductionP90": 18993244.342348382,
+        "spent": 2600000,
+        "returnPercent": 346.3238411073496,
+        "annualSpent": 2600000,
+        "amortizedReturnPercent": 346.3238411073496,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      },
+      {
+        "basket": "line",
+        "lineId": "019edb28-003a-7000-8000-000000000007",
+        "state": "priced",
+        "aleReductionMean": 446715.36810314324,
+        "aleReductionP10": 176584.65092689323,
+        "aleReductionP90": 757342.057072839,
+        "spent": 500000,
+        "returnPercent": -10.656926379371352,
+        "annualSpent": 166666.66666666666,
+        "amortizedReturnPercent": 168.02922086188593,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      },
+      {
+        "basket": "build",
+        "lineId": null,
+        "state": "priced",
+        "aleReductionMean": 2752811.3877495504,
+        "aleReductionP10": 1179916.5774961137,
+        "aleReductionP90": 4519859.51283784,
+        "spent": 1400000,
+        "returnPercent": 96.62938483925359,
+        "annualSpent": 466666.6666666666,
+        "amortizedReturnPercent": 489.8881545177609,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      },
+      {
+        "basket": "run",
+        "lineId": null,
+        "state": "priced",
+        "aleReductionMean": 11604419.86879109,
+        "aleReductionP10": 5343005.074063266,
+        "aleReductionP90": 18993244.342348382,
+        "spent": 2600000,
+        "returnPercent": 346.3238411073496,
+        "annualSpent": 2600000,
+        "amortizedReturnPercent": 346.3238411073496,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      },
+      {
+        "basket": "ensemble",
+        "lineId": null,
+        "state": "priced",
+        "aleReductionMean": 14970226.252224721,
+        "aleReductionP10": 6922302.548150856,
+        "aleReductionP90": 24444374.04471342,
+        "spent": 4000000,
+        "returnPercent": 274.25565630561806,
+        "annualSpent": 3066666.6666666665,
+        "amortizedReturnPercent": 388.1595517029801,
+        "pricedScenarioCount": 2,
+        "pricedAt": "2026-10-14T10:14:00.400Z"
+      }
+    ],
+    "scopeScenarioCount": 2,
+    "toRepriceCount": 0,
+    "olderThanHeadlineNames": []
+  }
+}

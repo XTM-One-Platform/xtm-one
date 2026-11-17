@@ -1,0 +1,173 @@
+site_name: XTM One Documentation
+site_description: Documentation for XTM One, Filigran's AI-native threat-informed defense platform.
+site_author: Filigran
+site_url: https://xtm-one-platform.github.io/xtm-one/
+copyright: © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+repo_name: GitHub
+repo_url: https://github.com/XTM-One-Platform/xtm-one
+edit_uri: https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/
+
+# Theming
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.png
+  features:
+    - navigation.tabs
+    - navigation.path
+    - navigation.footer
+    - navigation.expand
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - search.highlight
+  palette:
+    scheme: filigran
+  font:
+    text: IBM Plex Sans
+    code: Roboto Mono
+
+# CSS
+extra_css:
+  - assets/css/custom.css
+
+# Extra
+extra:
+  version:
+    provider: mike
+  analytics:
+    provider: google
+    property: G-P8K1S4VSXR
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/XTM-One-Platform
+    - icon: fontawesome/brands/slack
+      link: https://community.filigran.io
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/company/filigran
+    - icon: fontawesome/brands/x-twitter
+      link: https://twitter.com/FiligranHQ
+
+# Plugins
+plugins:
+  - search
+  - glightbox
+
+# Extensions
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - tables
+  - admonition
+  - def_list
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.smartsymbols
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.betterem
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      use_pygments: true
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: false
+      auto_title: false
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.snippets:
+      url_download: true
+
+# Unpublished pages (built neither into the site nor into the search index).
+# The *visual flow builder* sits behind the `FLOW_BUILDER` feature flag while it
+# is not announced externally, so its pages must not be reachable by URL either
+# — dropping them from `nav` alone leaves them built and indexed. The files stay
+# in the repository: they are the documentation to republish (add the two nav
+# entries back under `Work with agents`, after `Agentic flow`) the day the
+# feature ships. See `dev-docs/flow-builder-feature-flag.md`.
+#
+# `usage/agentic-flow.md` is deliberately NOT here: it documents the global
+# handover graph and its focus field — the Agent-to-Agent Live Map, which
+# predates the builder and stays live.
+exclude_docs: |
+  usage/flows.md
+  usage/flows-api.md
+
+# Page tree
+nav:
+  - Home: 'index.md'
+  - Deployment & Setup:
+    - Platform:
+      - Overview: deployment/overview.md
+      - Installation: deployment/installation.md
+      - Configuration: deployment/configuration.md
+      - Authentication: deployment/authentication.md
+      - Monitoring: deployment/monitoring.md
+      - Usage telemetry: deployment/telemetry.md
+      - Troubleshooting: deployment/troubleshooting.md
+      - Data flow: deployment/data-flow.md
+      - XTM Suite integration: deployment/xtm-suite-integration.md
+      - Upgrade: deployment/upgrade.md
+  - User Guide:
+    - Getting started: usage/getting-started.md
+    - Foundations:
+      - Overview: usage/foundations/index.md
+      - Data model: usage/foundations/data-model.md
+      - Containers and scopes: usage/foundations/containers-and-scopes.md
+      - Relationships and nesting: usage/foundations/relationships-and-nesting.md
+      - Reuse and deduplication: usage/foundations/deduplication.md
+      - Meaning of dates and status: usage/foundations/dates-and-status.md
+      - Trust, review, and confidence: usage/foundations/trust-and-confidence.md
+    - Work with agents:
+      - Chat: usage/chat.md
+      - Agents: usage/agents.md
+      - Agentic flow: usage/agentic-flow.md
+      - AI catalog: usage/ai-catalog.md
+    - Manage resources:
+      - Overview: usage/resources/index.md
+      - Integrations: usage/resources/integrations.md
+      - Knowledge bases: usage/resources/knowledge-bases.md
+      - MCP servers: usage/resources/mcp-servers.md
+      - Platform MCP servers: usage/resources/platform-mcp-servers.md
+      - Prompts: usage/resources/prompts.md
+      - Skills: usage/resources/skills.md
+      - Tools: usage/resources/tools.md
+      - Variables: usage/resources/variables.md
+    - Monitor activity:
+      - Home dashboard: usage/home-dashboard.md
+      - Work history: usage/work-history.md
+    - XTM Suite:
+      - Overview: usage/xtm-suite/index.md
+      - Common experience: usage/xtm-suite/common-experience.md
+      - XTM One in OpenCTI: usage/xtm-suite/opencti.md
+      - XTM One in OpenAEV: usage/xtm-suite/openaev.md
+    - My profile: usage/my-profile.md
+  - Administration:
+    - Introduction: administration/introduction.md
+    - Intents: administration/intents.md
+    - Settings: administration/settings.md
+    - Channels and bots:
+      - Overview: administration/channels/index.md
+      - Slack: administration/channels/slack.md
+      - Microsoft Teams: administration/channels/microsoft-teams.md
+      - WhatsApp: administration/channels/whatsapp.md
+      - "WhatsApp: two backends": administration/channels/whatsapp-backends.md
+      - Telegram: administration/channels/telegram.md
+      - Discord: administration/channels/discord.md
+      - Google Chat: administration/channels/google-chat.md
+    - AI governance: administration/ai-governance.md
+  - Development: 'development.md'

@@ -1,0 +1,122 @@
+[
+  {
+    "file": "01-structured-mitigation-plan.md",
+    "source": "R2-13",
+    "name": "Structured risk mitigation plan",
+    "description": "Turns threat reporting into a risk mitigation plan tailored to your technology stack: threat summary, attack vectors, impact, indicators, prioritized mitigations, detection opportunities and gaps. Use it when a threat needs a sourced, stack-specific action plan for control owners.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_focus",
+        "label": "Threat focus",
+        "type": "text",
+        "description": "Threat, actor, campaign or CVE to cover when no source material is pasted; if empty too, the agent picks the most significant current threat to your sector.",
+        "required": false
+      },
+      {
+        "key": "stack_summary",
+        "label": "Stack summary",
+        "type": "textarea",
+        "description": "Logging sources, detection tooling and key controls. Leave empty to use the Security stack line of the agent's Organization context.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product",
+        "type": "text",
+        "description": "Name of the deliverable.",
+        "required": false,
+        "default": "risk mitigation plan"
+      },
+      {
+        "key": "test_in_siem",
+        "label": "Test queries in the SIEM",
+        "type": "boolean",
+        "description": "Run the generated detection queries read-only in Microsoft Sentinel or Splunk and report the outcome.",
+        "required": false,
+        "default": false
+      }
+    ]
+  },
+  {
+    "file": "02-controls-gap-recommendations.md",
+    "source": "R3-04",
+    "name": "Prioritized control-gap recommendations",
+    "description": "Drafts first-pass, prioritized recommendations to close control gaps for products you confirmed you run, with the in-scope technique, countermeasure (D3FEND, NIST CSF or CIS), priority and owning team, skipping controls already implemented. Use it after scoping a threat to your assets.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Exposed products and gap list",
+        "type": "textarea",
+        "description": "Paste the exposed-products and control-gap list (for example from a CMDB scoping step). Leave empty to let the agent build a first list from your connected integrations for the threat focus.",
+        "required": false
+      },
+      {
+        "key": "threat_focus",
+        "label": "Threat focus",
+        "type": "text",
+        "description": "Threat, actor, campaign or CVE to cover when no source material is pasted; used to build the gap list from your integrations.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "03-stakeholder-awareness-brief.md",
+    "source": "R3-08",
+    "name": "Stakeholder awareness brief",
+    "description": "Writes a plain-language awareness note of under 150 words for senior leadership: what the threat is, whether you appear exposed (for the analyst to confirm), the likely business impact and what you are doing. Use it once the analysis has been validated.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Validated analysis",
+        "type": "textarea",
+        "description": "Paste the validated analysis to summarize. Leave empty to let the agent retrieve the existing analysis of the threat focus from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_focus",
+        "label": "Threat focus",
+        "type": "text",
+        "description": "Threat, actor, campaign or CVE to cover when no source material is pasted; used to find the existing analysis.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "04-phishing-awareness-newsletter.md",
+    "source": "R2-12",
+    "name": "Phishing awareness newsletter",
+    "description": "Writes a phishing awareness newsletter for non-technical staff covering the phishing themes observed in the period, practical tips and an education topic of the week. Use it for the regular security awareness bulletin.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the phishing reporting to summarize. Leave empty to let the agent collect this period's phishing reporting from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "reporting_period",
+        "label": "Reporting period",
+        "type": "text",
+        "description": "Period the newsletter covers.",
+        "required": false,
+        "default": "the past week"
+      },
+      {
+        "key": "product",
+        "label": "Product",
+        "type": "text",
+        "description": "Name of the deliverable.",
+        "required": false,
+        "default": "Phishing Awareness Newsletter"
+      }
+    ]
+  }
+]

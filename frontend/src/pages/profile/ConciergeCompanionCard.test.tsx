@@ -1,0 +1,74 @@
+// Profile > Concierge companion (#8261): off by default, turned on and pointed
+// at a pet through the user's own route; gone while the flag is off.
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+
+import { renderWithProviders } from "@/testing/providers";
+
+const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
+const flags = vi.hoisted(() => ({ concierge: true }));
+vi.mock("@/lib/api", () => ({ api }));
+vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => flags.concierge }));
+
+import { petUploadErrorKey } from "@/lib/concierge-pet";
+import { ConciergeCompanionCard } from "./ConciergeCompanionCard";
+
+const PETS = [
+  { slug: "alfred", display_name: "Alfred", description: null, sprite_version: 1, builtin: true, sha256: "a" },
+  { slug: "owl", display_name: "Owl", description: "A night owl.", sprite_version: 2, builtin: false, sha256: "b" },
+];
+
+describe("ConciergeCompanionCard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    flags.concierge = true;
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    api.get.mockImplementation((path: string) => {
+      if (path === "/concierge/me/companion") return Promise.resolve({ enabled: false, pet: "alfred", default_pet: "alfred" });
+      if (path === "/concierge/pets") return Promise.resolve(PETS);
+      if (path === "/concierge/name") return Promise.resolve({ name: "Alfred", default_name: "Alfred" });
+      return Promise.reject(new Error(path));
+    });
+    api.download.mockResolvedValue({ blob: new Blob(["x"]), filename: null });
+    api.put.mockImplementation((_path: string, body: { enabled: boolean; pet: string }) =>
+      Promise.resolve({ ...body, default_pet: "alfred" }),
+    );
+  });
+
+  it("is off by default and turns on with the pet shown", async () => {
+    renderWithProviders(<ConciergeCompanionCard />);
+    const toggle = await screen.findByRole("switch", { name: "Show the companion" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: true, pet: "alfred" }));
+    expect(api.put).toHaveBeenCalledTimes(1);
+  });
+
+  it("picks a pet of the library", async () => {
+    renderWithProviders(<ConciergeCompanionCard />);
+    expect(await screen.findByRole("radio", { name: /Alfred/ })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(await screen.findByRole("radio", { name: /Owl/ }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: false, pet: "owl" }));
+  });
+
+  it("is gone while the flag is off", () => {
+    flags.concierge = false;
+    renderWithProviders(<ConciergeCompanionCard />);
+    expect(screen.queryByTestId("profile.concierge-companion")).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("petUploadErrorKey", () => {
+  it("names the rule of a known code and nothing for any other failure", () => {
+    expect(petUploadErrorKey({ detail: { code: "image_size" } })).toBe(
+      "The spritesheet must be 1536x1872 (version 1) or 1536x2288 (version 2).",
+    );
+    expect(petUploadErrorKey({ detail: { code: "constructor" } })).toBeNull();
+    expect(petUploadErrorKey({ detail: "A pet with this id" })).toBeNull();
+    expect(petUploadErrorKey(new Error("boom"))).toBeNull();
+    expect(petUploadErrorKey(null)).toBeNull();
+  });
+});

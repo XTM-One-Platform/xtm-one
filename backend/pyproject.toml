@@ -1,0 +1,308 @@
+# The backend is a uv project (https://docs.astral.sh/uv/): this file declares
+# the dependencies, uv.lock pins every one of them, transitive ones included.
+# `uv add <package>==<version>` adds one and relocks; `uv sync` installs the
+# locked set into backend/.venv. The Docker images install it without the dev
+# group, so that never ships. A `>=` bound (boto3, discord.py, Pillow) only
+# limits what a relock may pick: every install gets the locked version, which
+# moves with `uv lock --upgrade-package <name>` or a Dependabot pull request.
+[project]
+name = "xtm-one-backend"
+version = "0.0.0"
+description = "XTM One backend (FastAPI API + SAQ worker)"
+license = "Apache-2.0 AND LicenseRef-XTM-One-Enterprise-Edition"
+requires-python = ">=3.14"
+dependencies = [
+  # Web framework
+  "fastapi==0.136.1",
+  "uvicorn[standard]==0.47.0",
+  "python-multipart==0.0.31",
+
+  # Database
+  "sqlalchemy[asyncio]==2.0.49",
+  "asyncpg==0.31.0",
+  "alembic==1.18.4",
+  "pgvector==0.4.2",
+
+  # Redis / background tasks
+  "redis[hiredis]==7.4.0",
+  "saq==0.26.4",
+
+  # LLM providers
+  "anthropic==0.104.0",
+  "openai==2.38.0",
+  "google-genai==1.75.0",
+  # Direct, for ONE job: resolving the platform's own Google identity when an
+  # outbound A2A registration impersonates a partner's service account
+  # (app/a2a/client/credentials.py). Already present transitively; pinned here
+  # because it is now depended on by name.
+  "google-auth==2.56.3",
+  "boto3>=1.35.0",  # AWS Bedrock (optional — only needed for bedrock provider)
+
+  # MCP (Model Context Protocol) – tool calling support
+  "mcp==1.30.0",
+
+  # Auth & security
+  "pyjwt==2.14.0",
+  "cryptography==50.0.0",
+  # Web Push payload encryption (RFC 8188 / 8291) for linked phones
+  # (services/mobile_push.py); VAPID is signed with pyjwt above.
+  "http-ece==1.2.1",
+  "bcrypt==5.0.0",
+  "authlib==1.9.1",
+  "defusedxml==0.7.1",  # untrusted XML parsing (template asset SVG sanitizer)
+  "httpx==0.28.1",
+  "python3-saml==1.16.0",
+  # TOTP two-factor authentication (RFC 6238) — authenticator apps such as
+  # Google Authenticator, Microsoft Authenticator, KeePassXC (see services/mfa.py).
+  "pyotp==2.9.0",
+  # QR rendering for TOTP enrollment. Used with `qrcode.image.svg.SvgPathImage`,
+  # which is pure Python and needs NO Pillow/system libraries — the QR is built
+  # server-side so the frontend gains no new dependency and enrollment works on
+  # air-gapped deployments (no external QR service).
+  "qrcode==8.2",
+
+  # Scheduling
+  "croniter==6.2.2",
+
+  # Document processing + web crawling
+  "tiktoken==0.13.0",
+  "pypdf==6.21.4",
+  # PDF -> PNG rasterization for the ``document_vision`` tools: an agent studying
+  # a source deck needs to SEE the page, not read its extracted words. pypdfium2
+  # bundles Google's PDFium as a self-contained wheel (manylinux/musllinux/macOS/
+  # Windows) and needs NO system libraries — the same constraint that picked
+  # resvg-py over the Cairo-backed renderers. PyMuPDF was avoided on purpose (AGPL)
+  # and pdf2image too (it shells out to a poppler binary this image does not ship).
+  "pypdfium2==5.13.0",
+  "python-docx==1.2.0",
+  "python-pptx==1.0.2",
+  "openpyxl==3.1.5",
+  "xlrd==2.0.2",
+  "beautifulsoup4==4.14.3",
+  "trafilatura==2.0.0",
+  "markdown==3.10.2",  # Markdown → HTML rendering for agent PDF/HTML file generation
+  "nh3==0.3.5",  # HTML sanitizer (Rust ammonia bindings) — email body normalization (services/email_html.py)
+
+  # Observability
+  "langfuse==4.6.1",
+  "prometheus_client==0.25.0",
+  # Usage telemetry — anonymous adoption metrics exported via OTLP/HTTP to the
+  # Filigran telemetry collector (see services/telemetry.py). Already pulled in
+  # transitively by langfuse; pinned explicitly so telemetry is a first-class
+  # dependency and the OTLP HTTP exporter is guaranteed present.
+  "opentelemetry-sdk==1.35.0",
+  "opentelemetry-exporter-otlp-proto-http==1.35.0",
+
+  # Logging
+  "structlog==25.5.0",
+
+  # Channel adapters (optional — only needed if the channel is used)
+  "discord.py>=2.4.0",  # Discord Gateway bot
+
+  # News / RSS feed parsing
+  "feedparser==6.0.12",
+
+  # MITRE ATLAS data parsing (integrations/providers/mitre_atlas.py) — the
+  # provider imports yaml directly; pinned explicitly instead of relying on
+  # the transitive dependency other packages happen to pull in.
+  "PyYAML==6.0.3",
+
+  # Image processing (LLM vision optimization — resize before sending to providers)
+  "Pillow>=11.0.0",
+  # SVG rasterization — convert image/svg+xml uploads to PNG before sending to
+  # vision providers (none of Anthropic/OpenAI/Gemini accept SVG).
+  # resvg-py bundles the Rust `resvg` renderer as a self-contained wheel
+  # (manylinux/musllinux/macOS/Windows, including cp314) — NO system libraries
+  # (Cairo/freetype) required. svglib+reportlab were avoided on purpose: their
+  # renderPM PNG path pulls rlPyCairo -> pycairo -> system Cairo, which has no
+  # Linux wheel and fails to build in CI with `Dependency "cairo" not found`.
+  "resvg-py==0.3.2",
+
+  # Code interpreter (sandboxed Python execution in chat)
+  "matplotlib==3.10.9",
+  "numpy==2.4.6",
+  "pandas==3.0.3",
+  "scipy==1.17.1",  # also the evaluation metrics: pairing JSON list entries
+  "tabulate==0.10.0",
+  # Wheel tags, requirements and versions of the sandbox workspace's package
+  # installs (services/sandbox_workspace/packages.py), depended on by name.
+  "packaging==26.3",
+
+  # OpenSandbox — container-based custom tool / code interpreter sandbox
+  "opensandbox==0.1.12",
+
+  # S3-compatible file storage (MinIO / AWS S3)
+  "minio==7.2.20",
+
+  # API documentation
+  "scalar-fastapi==1.8.2",
+
+  # Utilities
+  "pydantic[email]==2.13.4",
+  "pydantic-settings==2.14.2",
+  "python-dotenv==1.2.2",
+  "json-repair==0.60.1",
+  "jsonschema==4.26.0",
+
+  # Filigran
+  "pycti==7.260529.0",
+
+  # Evaluation metric suite (vendored). The suite itself lives at
+  # app/evaluation_metrics/; these are the third-party packages it imports.
+  "stix2==3.0.2",  # OASIS reference implementation: deterministic STIX 2.1 SCO ids
+
+  # Automation
+  "playwright==1.64.1",
+
+  # Agent interoperability (A2A inbound server)
+  # Imported only from app/a2a/protocol.py and app/a2a/client/sdk.py - see
+  # tests/test_a2a_client_sdk_containment.py.
+  "a2a-sdk==1.1.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.0.3",
+  "pytest-asyncio==1.3.0",
+  "pytest-cov==7.1.0",
+  "pytest-randomly==4.1.0",
+  "pytest-xdist==3.8.0",
+  # Linting (dev/CI only — not shipped in production images)
+  "ruff==0.15.14",
+  "vulture==2.16",
+  # Type checking (dev/CI only). Scoped strictly to app/services/evaluation/extraction
+  # by [tool.mypy] below; the legacy backend is deliberately not checked.
+  "mypy==1.19.1",
+  # Parses the chat commands' Markdown in their tests, as a CommonMark
+  # renderer would (dev/CI only).
+  "markdown-it-py==4.0.0",
+  # What mypy reads from app.core.config, so the Backend lint job types the
+  # settings the extraction package uses with the dev group alone. Unpinned:
+  # the lock resolves them with the project's own pins, so a bump of those
+  # keeps both in step.
+  "pydantic",
+  "pydantic-settings",
+]
+# The native OpenSandbox server the dev scripts start (OPENSANDBOX_SERVER_MODE=
+# native): `uv sync --group opensandbox-server`. Never in the images. A plain
+# `uv sync` removes it again (`uv run` and the dev scripts leave it).
+opensandbox-server = [
+  "opensandbox-server==0.2.0",
+]
+
+[tool.uv]
+# An application, not a library: uv installs its dependencies, never the
+# backend itself (the code runs from the checkout, or from /app in the images).
+package = false
+
+[tool.ruff]
+# py313, not the 3.14 that requires-python sets: under py314 ruff strips
+# forward-reference quotes (UP037, PEP 649 deferred annotations), and the
+# unquoted annotations then fail on any older interpreter. Not everything here
+# runs in the 3.14 venv: scripts/refresh_agentschema_vendor.py is stdlib-only so
+# it runs on whatever python3 a bare checkout has, and scripts/license_headers.py
+# (which scripts/refresh_lucide_icons.py imports) runs in the pre-commit hook's
+# own environment: Python 3.13+ with PyYAML. Bump it only once nothing does.
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "F",     # pyflakes
+  "I",     # isort
+  "N",     # pep8-naming
+  "UP",    # pyupgrade
+  "B",     # flake8-bugbear
+  "SIM",   # flake8-simplify
+  "T20",   # flake8-print
+  # flake8-bandit
+  "S101", "S102", "S103", "S104", "S105", "S106", "S107", "S108",
+  "S110", "S112", "S113", "S202",
+  "S301", "S302", "S303", "S304", "S305", "S306", "S307", "S308",
+  "S310", "S311", "S312", "S313", "S314", "S315", "S316", "S317",
+  "S318", "S319", "S321", "S323", "S324",
+  "S501", "S502", "S503", "S504", "S505", "S506", "S507", "S508",
+  "S509",
+  "S601", "S602", "S603", "S604", "S605", "S606", "S607", "S608",
+  "S609", "S612",
+  "S701", "S704",
+  "RUF",   # ruff-specific rules
+  "TID251",  # banned-api: the metric suite is reachable only through its adapter
+]
+ignore = [
+  "E501",    # line too long (handled by formatter)
+  "E402",    # module-level import not at top (used for lazy imports in API helpers)
+  "B008",    # function call in default argument (FastAPI Depends)
+  "B027",    # empty method in ABC without @abstractmethod (intentional default impl)
+  "RUF001",  # ambiguous unicode in strings (intentional en-dash in prose)
+  "RUF002",  # ambiguous unicode in docstrings (intentional en-dash in prose)
+  "RUF003",  # ambiguous unicode in comments (intentional en-dash in prose)
+  "RUF006",  # asyncio.create_task without reference (fire-and-forget pattern in webhooks)
+  "RUF012",  # mutable class variables (SQLAlchemy mapped_column)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Side-effect imports that register SQLAlchemy models with Base.metadata.
+"app/models/__init__.py" = ["F401"]
+# Assertions and hardcoded passwords are acceptable in tests.
+# TID251 guards platform code; tests import the metric suite to exercise it.
+"tests/**/*.py" = ["S101", "S105", "S106", "TID251"]
+# Standalone operational CLIs: printing to stdout, ad-hoc file opens, and
+# invoking trusted local tools (git, dropdb) via subprocess are the point.
+"scripts/**/*.py" = ["T201", "SIM115", "S603", "S607"]
+# The actions-lint check's script, run inside the sandbox on a checkout: it
+# prints its findings and calls bash -n and actionlint on the files it read.
+"app/services/sandbox_workspace/actions_lint.py" = ["T201", "S603", "S607"]
+"tests/test_sandbox_actions_lint.py" = ["S603"]
+# Prompt builders embed SQL-like keywords (UPDATE/FROM/SELECT) inside natural-
+# language instructions; this module constructs no string SQL (all DB access is
+# through SQLAlchemy ORM helpers), so S608 only fires as a false positive here.
+"app/services/autonomous_pentest.py" = ["S608"]
+# Both sides of the metric suite seam: the adapter is the sanctioned bridge to the
+# suite, and the suite's own imports are self-references.
+"app/services/evaluation/metric_package/**/*.py" = ["TID251"]
+"app/evaluation_metrics/**/*.py" = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"app.evaluation_metrics".msg = "Import the metric suite only through app/services/evaluation/metric_package/ (the adapter seam)."
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "integration: requires external services (DB, Redis, MinIO)",
+  "live_llm: calls the real LLM provider APIs (real cost); skipped unless LIVE_LLM_SMOKE=1 and the provider key are set, see tests/live/README.md",
+  "live_google_docs: runs the Google Docs review tools on a real scratch Doc; skipped unless LIVE_GOOGLE_DOCS=1, GOOGLE_DOCS_LIVE_ACCESS_TOKEN and GOOGLE_DOCS_LIVE_DOC_ID are set, see tests/live/README.md",
+  "chromium: drives a real headless Chromium (Playwright) against loopback servers; skipped where it is not installed, required by the Browser tool (Chromium) CI job (REQUIRE_CHROMIUM=1)",
+  "video_ultra: renders a real 2160p60 video for minutes; skipped unless VIDEO_STUDIO_ULTRA_RENDER=1, run by the Video Studio ultra render workflow",
+]
+
+# Scoped strictly to the extraction package. `files` pins the roots and
+# `follow_imports = "silent"` keeps the legacy backend out: imports are still
+# resolved for types, but errors found in them are not reported, because
+# type-checking the rest of the backend is a separate undertaking.
+#
+# Deliberately no [[tool.mypy.overrides]] block: an override pattern loose enough
+# to exclude the legacy backend would also be able to suppress findings inside the
+# one package this gate exists to protect.
+[tool.mypy]
+files = ["app/services/evaluation/extraction"]
+strict = true
+follow_imports = "silent"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/static/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

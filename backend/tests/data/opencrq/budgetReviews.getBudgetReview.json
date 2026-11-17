@@ -1,0 +1,79 @@
+{
+  "procedure": "budgetReviews.getBudgetReview",
+  "source": "recorded",
+  "data": {
+    "id": "019edb28-003a-7000-8000-000000000001",
+    "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+    "name": "Exercice 2025-2026",
+    "ownerId": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+    "periodStart": "2025-11-01",
+    "context": "Security budget of the payment platform, presented to the management review.",
+    "status": "open",
+    "version": 1,
+    "closedAt": null,
+    "createdAt": "2026-06-21T20:32:22.122Z",
+    "updatedAt": "2026-06-21T20:32:22.122Z",
+    "periodEnd": "2026-10-31",
+    "organization": {
+      "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Acme Bank"
+    },
+    "owner": {
+      "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "name": "Alice Martin"
+    },
+    "lines": [
+      {
+        "id": "019edb28-003a-7000-8000-000000000002",
+        "reviewId": "019edb28-003a-7000-8000-000000000001",
+        "name": "Identity hardening project",
+        "nature": "build",
+        "amountSpent": 900000,
+        "amortizationYears": 3,
+        "createdAt": "2026-10-14T10:13:54.068Z",
+        "capabilityIds": [
+          "4c5d8d76-763f-5b20-8b5c-fe80d72682eb",
+          "af502b7b-93e9-5ff7-86d8-4cf2f1f9a0d0"
+        ],
+        "csfFunctions": [
+          "PR",
+          "DE"
+        ]
+      },
+      {
+        "id": "019edb28-003a-7000-8000-000000000003",
+        "reviewId": "019edb28-003a-7000-8000-000000000001",
+        "name": "SOC and endpoint licences",
+        "nature": "run",
+        "amountSpent": 2600000,
+        "amortizationYears": null,
+        "createdAt": "2026-10-14T10:13:54.068Z",
+        "capabilityIds": [
+          "4ba8d96e-77f1-5ac3-8823-24163bf40065",
+          "4c5d8d76-763f-5b20-8b5c-fe80d72682eb",
+          "c5e07115-2587-56f3-b00d-f5a8e2410634"
+        ],
+        "csfFunctions": [
+          "ID",
+          "PR",
+          "DE"
+        ]
+      },
+      {
+        "id": "019edb28-003a-7000-8000-000000000007",
+        "reviewId": "019edb28-003a-7000-8000-000000000001",
+        "name": "Privileged access rollout",
+        "nature": "build",
+        "amountSpent": 500000,
+        "amortizationYears": 3,
+        "createdAt": "2026-10-14T10:13:54.068Z",
+        "capabilityIds": [
+          "d133d559-9c5d-555a-b8af-1d133fb49425"
+        ],
+        "csfFunctions": [
+          "PR"
+        ]
+      }
+    ]
+  }
+}

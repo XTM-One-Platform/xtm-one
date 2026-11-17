@@ -1,0 +1,6 @@
+{
+  "_doc": "Minutes before now of each source of the CTEM deterministic activity feed under LAB_CTEM_ACTIVITY=on. Read by lab_asgi.py (product_sync), seed_ctem_activity.py (heartbeat, registered) and frontend/src/pages/xtm-one/ctem/activity-feed.test.tsx, which asserts every kind of event is in the newest 6. dev-docs/reference/agentic-labs.md, 'The xtm-one lab'.",
+  "product_sync": {"opencti": 3, "openaev": 7, "opencrq": 1440},
+  "heartbeat": {"opencrq": 20},
+  "registered": {"opencti": 30, "openaev": 2880, "opencrq": 4320}
+}

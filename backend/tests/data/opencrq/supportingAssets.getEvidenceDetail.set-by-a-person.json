@@ -1,0 +1,68 @@
+{
+  "procedure": "supportingAssets.getEvidenceDetail",
+  "source": "rebuilt: the recorded getEvidenceDetail holds a single history row; this one is that finding after a person set it aside, its history rows in the shape and order of findEvidenceHistoryByEvidenceId (stateChangedAt then id, ascending) in OpenCRQ's supporting-assets repository at e963a006c672915236bd52efa34bb24a18fb6dc3",
+  "data": {
+    "id": "01a13a4d-dca8-757a-84e9-c1216c518973",
+    "supportingAssetId": "01a13a4d-db9e-7183-9dc1-ebee96b0ffd8",
+    "cveId": "CVE-2026-9999",
+    "mitreTechniqueId": null,
+    "mitreTechniqueExternalId": null,
+    "mitreTechniqueName": null,
+    "expectationType": null,
+    "securityPlatformType": null,
+    "evaluatedAt": "2026-10-14T10:47:58.622Z",
+    "sourceScenarioId": null,
+    "sourceScenarioName": null,
+    "sourceSimulationId": null,
+    "sourceInjectId": null,
+    "userId": null,
+    "createdAt": "2026-10-14T12:05:40.835Z",
+    "updatedAt": "2026-10-14T12:05:40.835Z",
+    "cveDescription": null,
+    "userName": null,
+    "assetName": "workstation-01",
+    "assetDerivedName": "workstation-01",
+    "currentState": "dismissed",
+    "history": [
+      {
+        "id": "01a13a4d-f29f-7721-aca9-aaa472caad2c",
+        "state": "applicable",
+        "stateChangedAt": "2026-10-14T10:47:58.622Z",
+        "observedAt": "2026-10-14T10:47:58.622Z",
+        "enteredAt": "2026-10-14T10:47:58.622Z",
+        "reason": "Reported by Microsoft Defender",
+        "dismissalType": null,
+        "dismissalReasonCode": null,
+        "changedByUserId": null,
+        "origin": "exposed",
+        "changedByUserName": null
+      },
+      {
+        "id": "01a13a52-0c4e-7b31-9d2a-5e8f1c3b7a90",
+        "state": "dismissed",
+        "stateChangedAt": "2026-10-14T13:12:04.118Z",
+        "observedAt": null,
+        "enteredAt": "2026-10-14T13:12:04.118Z",
+        "reason": "Compensating control in place",
+        "dismissalType": "risk_accepted",
+        "dismissalReasonCode": "wont_fix",
+        "changedByUserId": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+        "origin": "user",
+        "changedByUserName": "Jane Doe"
+      }
+    ],
+    "sources": [
+      {
+        "assetEvidenceId": "01a13a4d-dca8-757a-84e9-c1216c518973",
+        "connectorId": "019edb28-0004-7000-8000-000000000004",
+        "source": "microsoft_graph",
+        "sourceFindingId": "01a13a4d-db9e-7183-9dc1-ebee96b0ffd8:CVE-2026-9999",
+        "externalReference": "52d4d517507cdbababc40d082623b7eb16b8fcb6",
+        "reportedSeverity": "Medium",
+        "firstSeenAt": "2026-10-14T10:47:58.622Z",
+        "lastSeenAt": "2026-10-14T10:47:58.622Z",
+        "evaluatedAt": "2026-10-14T10:47:58.622Z"
+      }
+    ]
+  }
+}

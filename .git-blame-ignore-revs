@@ -1,0 +1,7 @@
+# Commits `git blame` skips: rewrites that change no line's meaning. GitHub
+# reads this file; locally, run once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Every text file stored as LF (#5974, #5984): 2,433 files, line endings only,
+# plus BOM and mojibake repairs in comments.
+f63bf2baa351fc05df79b121d17c46a6a3273597

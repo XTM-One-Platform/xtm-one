@@ -1,0 +1,1710 @@
+{
+  "create_opencrq_asset_evidence": [
+    {
+      "procedures": [
+        "supportingAssets.createAssetEvidence"
+      ],
+      "fields": [
+        "cveId",
+        "supportingAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "create_opencrq_compliance_assessment": [
+    {
+      "procedures": [
+        "complianceAssessments.createAssessment"
+      ],
+      "fields": [
+        "frameworkId",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "create_opencrq_group": [
+    {
+      "procedures": [
+        "groups.createGroup"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "create_opencrq_primary_asset": [
+    {
+      "procedures": [
+        "primaryAssets.createPrimaryAsset"
+      ],
+      "fields": [
+        "businessValueCategoryIds",
+        "description",
+        "id",
+        "name",
+        "organizationId",
+        "ownerId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "create_opencrq_risk_scenario": [
+    {
+      "procedures": [
+        "riskScenarios.createRiskScenario"
+      ],
+      "fields": [
+        "attackOutcomeId",
+        "description",
+        "id",
+        "name",
+        "organizationId",
+        "ownerId",
+        "primaryAssetIds"
+      ],
+      "conditional": [
+        "ownerId"
+      ],
+      "closed": false
+    }
+  ],
+  "create_opencrq_role": [
+    {
+      "procedures": [
+        "roles.createRole"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "create_opencrq_supporting_asset": [
+    {
+      "procedures": [
+        "supportingAssets.createSupportingAsset"
+      ],
+      "fields": [
+        "categoryId",
+        "criticality",
+        "description",
+        "exposure",
+        "groups",
+        "id",
+        "linkedPerson",
+        "name",
+        "organizationId",
+        "ownerId",
+        "ownerName",
+        "properties",
+        "subcategoryId",
+        "tagNames",
+        "url"
+      ],
+      "conditional": [
+        "criticality",
+        "groups",
+        "linkedPerson",
+        "organizationId",
+        "ownerName",
+        "properties",
+        "subcategoryId",
+        "tagNames",
+        "url"
+      ],
+      "closed": true
+    }
+  ],
+  "create_opencrq_tenant": [
+    {
+      "procedures": [
+        "tenants.createTenantsTransaction"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "delete_opencrq_asset_evidence": [
+    {
+      "procedures": [
+        "supportingAssets.deleteAssetEvidence"
+      ],
+      "fields": [
+        "evidenceId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "delete_opencrq_group": [
+    {
+      "procedures": [
+        "groups.deleteGroup"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "delete_opencrq_role": [
+    {
+      "procedures": [
+        "roles.deleteRole"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_asset_posture": [
+    {
+      "procedures": [
+        "findingScore.getAssetPosture"
+      ],
+      "fields": [
+        "supportingAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "findingScore.listAssetFindings"
+      ],
+      "fields": [
+        "limit",
+        "page",
+        "sortBy",
+        "supportingAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_attack_outcome": [
+    {
+      "procedures": [
+        "attackOutcomes.getAttackOutcome"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "attackOutcomes.getCuratedMitreTechniquesForOutcome"
+      ],
+      "fields": [
+        "attackOutcomeId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "attackOutcomes.getMitreTechniquesForOutcome"
+      ],
+      "fields": [
+        "attackOutcomeId",
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_budget_review": [
+    {
+      "procedures": [
+        "budgetReviews.getBudgetReview"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "budgetReviews.getBudgetReviewFigures"
+      ],
+      "fields": [
+        "reviewId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_compliance_assessment": [
+    {
+      "procedures": [
+        "complianceAssessments.getAssessment"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_control_capability": [
+    {
+      "procedures": [
+        "controlCapabilities.getControlCapability"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "controlCapabilities.getControlCapabilityRiskScenarios"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "controlCapabilities.getResolvedControlPosture"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_control_capability_history": [
+    {
+      "procedures": [
+        "controlCapabilities.getCapabilityEvents"
+      ],
+      "fields": [
+        "capabilityId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_control_validation": [
+    {
+      "procedures": [
+        "controlCapabilities.getControlCapability"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_crq_run": [
+    {
+      "procedures": [
+        "crqIndicators.getLatestRun"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "crqIndicators.getRunWithScores"
+      ],
+      "fields": [
+        "runId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_crq_what_if": [
+    {
+      "procedures": [
+        "crqIndicators.getWhatIfResults"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_cve": [
+    {
+      "procedures": [
+        "cve.getInfo"
+      ],
+      "fields": [
+        "cveId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_cve_finding": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_evidence": [
+    {
+      "procedures": [
+        "supportingAssets.getEvidenceDetail"
+      ],
+      "fields": [
+        "evidenceId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_financial_profile": [
+    {
+      "procedures": [
+        "financialProfiles.getFinancialProfile"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_financial_summary": [
+    {
+      "procedures": [
+        "scenarioLossEstimates.getFinancialSummary"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "scenarioLossEstimates.getScenarioLossEstimates"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_findings_summary": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_framework": [
+    {
+      "procedures": [
+        "drata.getFramework"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_group": [
+    {
+      "procedures": [
+        "groups.getGroup"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "groups.getGroupRoles"
+      ],
+      "fields": [
+        "groupId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "groups.getGroupUsers"
+      ],
+      "fields": [
+        "groupId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_job": [
+    {
+      "procedures": [
+        "jobs.getJob"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_loss_driver": [
+    {
+      "procedures": [
+        "lossDrivers.getLossDriver"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_mitre_technique": [
+    {
+      "procedures": [
+        "mitreAttack.getTechniqueByExternalId"
+      ],
+      "fields": [
+        "externalId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_risk_dashboard": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_risk_scenario": [
+    {
+      "procedures": [
+        "riskScenarios.getControlCapabilitiesForRiskScenario"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "riskScenarios.getRiskScenario"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_role": [
+    {
+      "procedures": [
+        "roles.getRole"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "roles.getRoleCapabilities"
+      ],
+      "fields": [
+        "roleId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "roles.getRoleGroups"
+      ],
+      "fields": [
+        "roleId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_scenario_exposure": [
+    {
+      "procedures": [
+        "riskScenarios.listDerivedSupportingAssets"
+      ],
+      "fields": [
+        "limit",
+        "page",
+        "riskScenarioId",
+        "sortBy",
+        "sortDesc"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_supporting_asset": [
+    {
+      "procedures": [
+        "supportingAssets.getSupportingAsset"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_technique_test_posture": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_tef_input": [
+    {
+      "procedures": [
+        "crqIndicators.getAutoTefEstimate",
+        "crqIndicators.getTefInput"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "crqIndicators.getTefMode"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_threat": [
+    {
+      "procedures": [
+        "threats.getDetail"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "threats.getOutcomeScoresForAnalysis"
+      ],
+      "fields": [
+        "analysisId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_top_vulnerabilities": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_treatment_plan": [
+    {
+      "procedures": [
+        "treatmentPlans.getTreatmentPlan"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "treatmentPlans.getTreatmentPlanCandidates"
+      ],
+      "fields": [
+        "planId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "treatmentPlans.getTreatmentPlanProjection"
+      ],
+      "fields": [
+        "planId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_user": [
+    {
+      "procedures": [
+        "groups.getUserGroups"
+      ],
+      "fields": [
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "roles.getUserRoles"
+      ],
+      "fields": [
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "users.getUser"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_user_permissions": [
+    {
+      "procedures": [
+        "capabilities.getUserEffectivePermissions"
+      ],
+      "fields": [
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "platformCapabilities.getUserPlatformEffectivePermissions"
+      ],
+      "fields": [
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_asset_dependencies": [
+    {
+      "procedures": [
+        "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId"
+      ],
+      "fields": [
+        "primaryAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "assetDependencies.getSupportToPrimaryLinksBySupportingAssetId"
+      ],
+      "fields": [
+        "supportingAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "assetDependencies.getSupportToSupportLinks"
+      ],
+      "fields": [
+        "assetId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_budget_reviews": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_connector_syncs": [
+    {
+      "procedures": [
+        "connectors.getStreamState"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.listRuns"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_crq_run_history": [
+    {
+      "procedures": [
+        "crqIndicators.getRunHistory"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_cve_evidences": [
+    {
+      "procedures": [
+        "supportingAssets.getEvidencesForCve"
+      ],
+      "fields": [
+        "cveId",
+        "limit",
+        "page",
+        "sortDesc"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_cve_threats": [
+    {
+      "procedures": [
+        "threats.getByCveId"
+      ],
+      "fields": [
+        "cveId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_cves": [
+    {
+      "procedures": [
+        "cve.list"
+      ],
+      "fields": [
+        "limit",
+        "page"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_findings": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_framework_requirements": [
+    {
+      "procedures": [
+        "drata.getRequirements"
+      ],
+      "fields": [
+        "frameworkId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_jobs": [
+    {
+      "procedures": [
+        "jobs.listAllRuns"
+      ],
+      "fields": [
+        "kinds",
+        "limit",
+        "offset",
+        "statuses"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_mitre_mitigations": [
+    {
+      "procedures": [
+        "mitreAttack.getMitigationByExternalId"
+      ],
+      "fields": [
+        "externalId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_primary_assets": [
+    {
+      "procedures": [
+        "primaryAssets.getPrimaryAssets"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_risk_scenarios": [
+    {
+      "procedures": [
+        "riskScenarios.getRiskScenariosOverview"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [
+        "organizationId"
+      ],
+      "closed": true
+    }
+  ],
+  "list_opencrq_scenario_threats": [
+    {
+      "procedures": [
+        "threats.getRelevantForScenario"
+      ],
+      "fields": [
+        "scenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_service_accounts": [
+    {
+      "procedures": [
+        "capabilities.getServiceAccountEffectivePermissions"
+      ],
+      "fields": [
+        "serviceAccountId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "serviceAccounts.getServiceAccount"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "serviceAccounts.getServiceAccountGroups"
+      ],
+      "fields": [
+        "serviceAccountId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_supporting_assets": [
+    {
+      "procedures": [
+        "supportingAssets.listSupportingAssets"
+      ],
+      "fields": [
+        "limit",
+        "page",
+        "search",
+        "sortDesc"
+      ],
+      "conditional": [
+        "search"
+      ],
+      "closed": true
+    }
+  ],
+  "list_opencrq_tenant_users": [
+    {
+      "procedures": [
+        "tenants.getTenantUsers"
+      ],
+      "fields": [
+        "tenantId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_threats": [
+    {
+      "procedures": [
+        "threats.list"
+      ],
+      "fields": [
+        "entityType",
+        "limit",
+        "outcomeId",
+        "page",
+        "search",
+        "sortBy",
+        "sortDesc"
+      ],
+      "conditional": [
+        "entityType",
+        "outcomeId",
+        "search"
+      ],
+      "closed": true
+    }
+  ],
+  "list_opencrq_treatment_plans": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_unique_findings": [
+    {
+      "procedures": [
+        "findingScore.listUniqueFindings"
+      ],
+      "fields": [
+        "limit",
+        "page",
+        "sortBy",
+        "sortDesc",
+        "source"
+      ],
+      "conditional": [
+        "source"
+      ],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_capability_techniques": [
+    {
+      "procedures": [
+        "controlCapabilities.addTechniqueOverride",
+        "controlCapabilities.removeTechnique",
+        "controlCapabilities.restoreTechnique"
+      ],
+      "fields": [
+        "capabilityId",
+        "function",
+        "techniqueId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "controlCapabilities.getControlCapability"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "controlCapabilities.resetTechniqueOverrides"
+      ],
+      "fields": [
+        "capabilityId",
+        "function"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "mitreAttack.getTechniqueByExternalId"
+      ],
+      "fields": [
+        "externalId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_compliance_assessment": [
+    {
+      "procedures": [
+        "complianceAssessments.publishAssessment",
+        "complianceAssessments.reopenAssessment"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "complianceAssessments.renameAssessment"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_group_membership": [
+    {
+      "procedures": [
+        "groups.addUserToGroup",
+        "groups.removeUserFromGroup"
+      ],
+      "fields": [
+        "groupId",
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_group_roles": [
+    {
+      "procedures": [
+        "groups.addRoleToGroup",
+        "groups.removeRoleFromGroup"
+      ],
+      "fields": [
+        "groupId",
+        "roleId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_job": [
+    {
+      "procedures": [
+        "jobs.cancelJob",
+        "jobs.retryFromDlq"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_role_capabilities": [
+    {
+      "procedures": [
+        "roles.addCapabilityToRole",
+        "roles.removeCapabilityFromRole"
+      ],
+      "fields": [
+        "capabilityId",
+        "roleId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "manage_opencrq_scope_control_posture": [
+    {
+      "procedures": [
+        "controlCapabilities.getResolvedControlPosture"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "remove_opencrq_tenant_user": [
+    {
+      "procedures": [
+        "tenants.removeTenantUser"
+      ],
+      "fields": [
+        "tenantId",
+        "userId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "reset_opencrq_evidence_state": [
+    {
+      "procedures": [
+        "supportingAssets.getEvidenceDetail"
+      ],
+      "fields": [
+        "evidenceId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "supportingAssets.resetEvidenceState"
+      ],
+      "fields": [
+        "evidenceId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "reset_opencrq_supporting_asset_to_connectors": [
+    {
+      "procedures": [
+        "supportingAssets.getSupportingAsset"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "supportingAssets.resyncSupportingAssetWithConnectors"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "run_opencrq_crq_simulation": [
+    {
+      "procedures": [
+        "crqIndicators.enqueueSimulation"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "search_opencrq_cves": [
+    {
+      "procedures": [
+        "cve.search"
+      ],
+      "fields": [
+        "query"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_control_capability_assessment": [
+    {
+      "procedures": [
+        "controlCapabilities.upsertAssessment"
+      ],
+      "fields": [
+        "capabilityId",
+        "comment",
+        "coverageBucket",
+        "reattach",
+        "strengthRung"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_crq_settings": [
+    {
+      "procedures": [
+        "crqIndicatorSettings.updateCrqIndicatorSettings"
+      ],
+      "fields": [
+        "exposureWeightInternal",
+        "exposureWeightInternetFacing",
+        "iterations",
+        "measuredValidityDays",
+        "susceptibilityGamma",
+        "unknownCriticalityCountsAs",
+        "unknownExposureCountsAs"
+      ],
+      "conditional": [
+        "exposureWeightInternal",
+        "exposureWeightInternetFacing",
+        "iterations",
+        "measuredValidityDays",
+        "susceptibilityGamma",
+        "unknownCriticalityCountsAs",
+        "unknownExposureCountsAs"
+      ],
+      "closed": true
+    }
+  ],
+  "update_opencrq_evidence_state": [
+    {
+      "procedures": [
+        "supportingAssets.updateEvidenceState"
+      ],
+      "fields": [
+        "evidenceId",
+        "state"
+      ],
+      "conditional": [],
+      "closed": false
+    }
+  ],
+  "update_opencrq_financial_profile": [
+    {
+      "procedures": [
+        "financialProfiles.getFinancialProfile"
+      ],
+      "fields": [
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "financialProfiles.saveFinancialProfile"
+      ],
+      "fields": [
+        "answers",
+        "answers.annualRevenue",
+        "answers.b2cRevenuePct",
+        "answers.cardTransactionsBand",
+        "answers.contractedRevenueBand",
+        "answers.contractualLiabilityCapBand",
+        "answers.costliestIncidentBand",
+        "answers.customerCountBand",
+        "answers.fullRestoreBand",
+        "answers.grossMarginPct",
+        "answers.individualsBand",
+        "answers.itDependentRevenuePct",
+        "answers.largestRepositoryBand",
+        "answers.loadedDailyLabourCost",
+        "answers.operatingDaysBand",
+        "answers.outOfBandThreshold",
+        "answers.outOfBandVerificationGate",
+        "answers.paymentFlowDailyValueBand",
+        "answers.ransomPaymentCeiling",
+        "answers.ransomPaymentPosture",
+        "answers.rdIpValueBand",
+        "answers.recordsHeldGate",
+        "answers.recurringRevenuePct",
+        "answers.regulatoryRegime",
+        "answers.restoreTestRecency",
+        "answers.revenueRecaptureBand",
+        "answers.seasonalPeakPct",
+        "answers.sensitiveRecordsBand",
+        "answers.timeToRevenueImpactBand",
+        "answers.worstOutageBand",
+        "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_group": [
+    {
+      "procedures": [
+        "groups.updateGroup"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_loss_estimates": [
+    {
+      "procedures": [
+        "scenarioLossEstimates.getScenarioLossEstimates"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "scenarioLossEstimates.upsertScenarioLossEstimates"
+      ],
+      "fields": [
+        "estimates",
+        "revertLossDriverIds",
+        "riskScenarioId",
+        "rowCount",
+        "updatedAt"
+      ],
+      "conditional": [
+        "revertLossDriverIds"
+      ],
+      "closed": false
+    }
+  ],
+  "update_opencrq_organization": [
+    {
+      "procedures": [
+        "organizations.updateOrganization"
+      ],
+      "fields": [
+        "countryId",
+        "description",
+        "domain",
+        "employeeCount",
+        "estateMode",
+        "id",
+        "legalEntityName",
+        "mapping",
+        "name",
+        "revenueBand",
+        "sectorId"
+      ],
+      "conditional": [
+        "countryId",
+        "description",
+        "domain",
+        "employeeCount",
+        "estateMode",
+        "legalEntityName",
+        "mapping",
+        "name",
+        "revenueBand",
+        "sectorId"
+      ],
+      "closed": false
+    }
+  ],
+  "update_opencrq_primary_asset": [
+    {
+      "procedures": [
+        "primaryAssets.updatePrimaryAsset"
+      ],
+      "fields": [
+        "businessValueCategoryIds",
+        "description",
+        "id",
+        "name",
+        "ownerId"
+      ],
+      "conditional": [
+        "businessValueCategoryIds",
+        "description",
+        "name",
+        "ownerId"
+      ],
+      "closed": true
+    }
+  ],
+  "update_opencrq_requirement_answer": [
+    {
+      "procedures": [
+        "complianceAssessments.answerRequirement"
+      ],
+      "fields": [
+        "assessmentId",
+        "comment",
+        "dueDate",
+        "level",
+        "notApplicable",
+        "ownerId",
+        "requirementId",
+        "updatedAt"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "complianceAssessments.getAssessment"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_risk_scenario": [
+    {
+      "procedures": [
+        "riskScenarios.updateRiskScenario"
+      ],
+      "fields": [
+        "description",
+        "id",
+        "name",
+        "ownerId",
+        "primaryAssetIds"
+      ],
+      "conditional": [
+        "description",
+        "name",
+        "ownerId",
+        "primaryAssetIds"
+      ],
+      "closed": true
+    }
+  ],
+  "update_opencrq_role": [
+    {
+      "procedures": [
+        "roles.updateRole"
+      ],
+      "fields": [
+        "id",
+        "name"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_supporting_asset": [
+    {
+      "procedures": [
+        "supportingAssets.getSupportingAsset"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "supportingAssets.updateSupportingAsset"
+      ],
+      "fields": [
+        "categoryId",
+        "criticality",
+        "description",
+        "exposure",
+        "groups",
+        "id",
+        "linkedPerson",
+        "name",
+        "ownerId",
+        "ownerName",
+        "properties",
+        "subcategoryId",
+        "tagNames",
+        "url"
+      ],
+      "conditional": [
+        "categoryId",
+        "criticality",
+        "description",
+        "exposure",
+        "groups",
+        "linkedPerson",
+        "name",
+        "ownerId",
+        "ownerName",
+        "properties",
+        "subcategoryId",
+        "tagNames",
+        "url"
+      ],
+      "closed": true
+    }
+  ],
+  "update_opencrq_tef_input": [
+    {
+      "procedures": [
+        "crqIndicators.setTefMode"
+      ],
+      "fields": [
+        "riskScenarioId",
+        "tefMode"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "crqIndicators.upsertTefInput"
+      ],
+      "fields": [
+        "likely",
+        "max",
+        "min",
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_tenant_user_profile": [
+    {
+      "procedures": [
+        "tenants.updateTenantUserProfile"
+      ],
+      "fields": [
+        "name",
+        "tenantId",
+        "title",
+        "userId"
+      ],
+      "conditional": [
+        "name",
+        "title"
+      ],
+      "closed": true
+    }
+  ],
+  "update_opencrq_threat_relevance_settings": [
+    {
+      "procedures": [
+        "threatRelevanceSettings.updateThreatRelevanceSettings"
+      ],
+      "fields": [
+        "actHalfLifeAuthoredDays",
+        "actHalfLifeObservedDays",
+        "confidenceGate"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ]
+}

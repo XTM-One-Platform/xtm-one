@@ -1,0 +1,29 @@
+name: AGENTS.md hygiene
+
+# Fail a PR that grows an AGENTS.md past its size budget, cites issue numbers
+# in it, or leaves a pointer to a dev-docs/ file that does not exist. See
+# scripts/check-agents-md-hygiene.sh.
+
+on:
+  pull_request:
+    paths:
+      - '**/AGENTS.md'
+      - 'dev-docs/**'
+      - 'scripts/check-agents-md-hygiene.sh'
+      - '.github/workflows/agents-md-hygiene.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  agents-md-hygiene:
+    name: AGENTS.md stays small
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check AGENTS.md hygiene
+        run: bash scripts/check-agents-md-hygiene.sh

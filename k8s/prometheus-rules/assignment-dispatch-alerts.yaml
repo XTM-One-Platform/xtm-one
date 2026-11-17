@@ -1,0 +1,108 @@
+# PrometheusRule - assignment dispatch lag alerts
+#
+# Fires when queued assignment deliveries wait longer than 5 minutes for a
+# run. An assignment receiving integration events faster than its runs finish
+# builds a backlog that can grow to hours without anything else saying so.
+#
+# The gauges are served by the platform's /metrics endpoint (PROMETHEUS_ENABLED,
+# bearer PROMETHEUS_BEARER_TOKEN), computed from the run table at scrape time,
+# so every replica reports the same values - the rules take the max.
+#
+#   xtmone_assignment_queue_oldest_age_max_seconds   oldest queued delivery, all assignments
+#                                                    not waiting for a human
+#   xtmone_assignment_queue_oldest_age_seconds       oldest queued delivery, per assignment
+#   xtmone_assignment_queue_depth                    deliveries queued, per assignment
+#   xtmone_assignment_queue_held                     1 while the queue waits for a human's
+#                                                    answer (ASSIGNMENT_QUEUE_HOLD_ON_AWAITING_HUMAN)
+#   xtmone_assignment_runs_active                    runs holding a slot, per assignment
+#   xtmone_assignment_concurrency_cap                slots, per assignment
+#   xtmone_assignment_dispatch_lag_p95_seconds       created-to-started p95, last 15 min
+#
+# Per-assignment series carry the assignment id, never its name: an
+# assignment's name is its owner's, and it stays in XTM One.
+#
+# The worker logs the same picture once per dispatch cycle ("Assignment
+# dispatch: promoted ...") and a WARNING "Assignment dispatch lag: ..." at
+# most once a minute while the oldest delivery is older than
+# ASSIGNMENT_QUEUE_BACKLOG_SECONDS.
+#
+# Rule discovery
+# --------------
+# The "release: kube-prometheus-stack" label matches the default ruleSelector
+# of a kube-prometheus-stack install; adjust it to your Prometheus CR's
+# ruleSelector. Where a separate ruler evaluates the rules (Mimir, Thanos),
+# load the group there with the labels it selects on.
+#
+# Apply
+# -----
+#   kubectl apply -f k8s/prometheus-rules/assignment-dispatch-alerts.yaml
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: xtm-one-assignment-dispatch-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: xtm-one
+    app.kubernetes.io/component: alerting
+    # Selector used by the kube-prometheus-stack Prometheus operator.
+    # Adjust if your Prometheus CR uses a different ruleSelector label.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: xtm-one-assignment-dispatch
+      interval: 1m
+      rules:
+        # The oldest queued delivery has waited more than 5 minutes.
+        #
+        # Severity: warning - nothing is lost (a queued delivery is a database
+        # row), but automations answer late. The age already covers 5 minutes,
+        # so a short for: only rides out a single scrape.
+        - alert: XtmOneAssignmentDispatchLag
+          expr: |
+            max by (platform_id) (xtmone_assignment_queue_oldest_age_max_seconds) > 300
+          for: 2m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: >-
+              XTM One assignment deliveries have waited
+              {{ $value | humanizeDuration }} for a run
+            description: >-
+              The oldest queued assignment delivery on platform
+              {{ $labels.platform_id }} has waited more than 5 minutes.
+              Per-assignment detail: xtmone_assignment_queue_depth,
+              xtmone_assignment_runs_active and xtmone_assignment_concurrency_cap
+              (an assignment at its cap needs a higher
+              trigger_config.max_concurrent_runs or ASSIGNMENT_MAX_CONCURRENT_RUNS;
+              every assignment short of it points at the worker pool -
+              MAX_CONCURRENT_RUNS, ASSIGNMENT_DISPATCH_MAX_PENDING_RUNS - or at a
+              provider answering 429). The worker logs "Assignment dispatch lag"
+              with the three oldest queues.
+
+        # One assignment's runs start more than 5 minutes after their trigger.
+        #
+        # Covers the wait the queue gauges do not see: a run created in a free
+        # slot that then waits for a worker. Configured waits (an assignment's
+        # own delay, a schedule's spread, a retry, a human's answer) are left
+        # out of the p95.
+        - alert: XtmOneAssignmentRunStartLag
+          expr: |
+            max by (platform_id, assignment_id) (
+              xtmone_assignment_dispatch_lag_p95_seconds
+            ) > 300
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: >-
+              Runs of assignment {{ $labels.assignment_id }} start
+              {{ $value | humanizeDuration }} after their trigger (p95)
+            description: >-
+              Over the last 15 minutes, 95% of the runs of assignment
+              {{ $labels.assignment_id }} started within
+              {{ $value | humanizeDuration }} of their trigger. Compare
+              xtmone_assignment_runs_active with xtmone_assignment_concurrency_cap
+              for that assignment.

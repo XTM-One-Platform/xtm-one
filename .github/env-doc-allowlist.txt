@@ -1,0 +1,12 @@
+# Environment variables intentionally left out of the user-facing docs.
+#
+# The CI check `scripts/check-new-env-vars-documented.sh` fails when a variable
+# newly added to `.env.sample` is not documented under `docs/docs/`. If a new
+# variable is a purely internal tuning knob that must NOT appear in the
+# user-facing documentation, add its exact name here (one per line) to exempt it.
+#
+# Prefer documenting the variable over allow-listing it. Existing undocumented
+# variables do not need to be listed — only *newly added* variables are checked.
+#
+# Example:
+# SOME_INTERNAL_ONLY_VARIABLE

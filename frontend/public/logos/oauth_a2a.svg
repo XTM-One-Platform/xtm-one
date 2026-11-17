@@ -1,0 +1,18 @@
+<!-- OAuth A2A integration mark. Not a third-party brand logo: OAuth is an open
+     standard with no mark we may apply to an integration tile, so this is a
+     generic credential (key) glyph in the house style used for non-brand
+     providers (see rss.svg) — a rounded dark tile with explicit fills, so it
+     renders identically in light and dark themes and inside an <img>, where
+     currentColor would resolve to black and disappear. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="OAuth A2A">
+  <title>OAuth A2A</title>
+  <rect width="48" height="48" rx="10" fill="#1a1a2e"/>
+  <!-- Key bow, with the hole punched in the tile colour so it stays crisp
+       when the tile is scaled down to 16px. -->
+  <circle cx="18" cy="24" r="7.5" fill="#34d399"/>
+  <circle cx="18" cy="24" r="3" fill="#1a1a2e"/>
+  <!-- Shaft + two teeth. -->
+  <rect x="24" y="21.5" width="16" height="5" rx="1.5" fill="#34d399"/>
+  <rect x="30" y="26.5" width="3.5" height="5.5" rx="1.2" fill="#34d399"/>
+  <rect x="36" y="26.5" width="3.5" height="5.5" rx="1.2" fill="#34d399"/>
+</svg>

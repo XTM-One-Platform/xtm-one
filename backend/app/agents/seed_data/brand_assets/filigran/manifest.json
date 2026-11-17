@@ -1,0 +1,322 @@
+{
+  "container": "filigran-brand",
+  "source": "filigran-design-system (docs/public, src/assets/icons/custom) + website (src/endpoints/seed/assets) + live filigran.io product diagrams captured Sep 2026",
+  "include": [
+    {"pack": "filigran-badges"},
+    {"pack": "filigran-partner-logos"},
+    {"pack": "filigran-integration-logos"},
+    {"pack": "filigran-customer-logos"}
+  ],
+  "assets": [
+    {
+      "file": "filigran-logo.svg",
+      "role": "logo",
+      "description": "Filigran wordmark, light-on-dark (drawn by the deck chrome on dark themes)."
+    },
+    {
+      "file": "filigran-logo-light.svg",
+      "role": "logo_light",
+      "description": "Filigran wordmark, dark-on-light (drawn by the deck chrome on the light theme)."
+    },
+    {
+      "file": "filigran-mark.svg",
+      "role": "logo_mark",
+      "description": "Filigran symbol without the wordmark."
+    },
+    {
+      "file": "opencti-logo.svg",
+      "role": "product_logo",
+      "description": "OpenCTI logo (mark + wordmark), light-on-dark."
+    },
+    {
+      "file": "opencti-logo-light.svg",
+      "role": "product_logo",
+      "description": "OpenCTI logo (mark + wordmark), dark-on-light - use on the light theme; opencti-logo.svg is the light-on-dark twin."
+    },
+    {
+      "file": "openaev-logo.svg",
+      "role": "product_logo",
+      "description": "OpenAEV logo (mark + wordmark), light-on-dark."
+    },
+    {
+      "file": "openaev-logo-light.svg",
+      "role": "product_logo",
+      "description": "OpenAEV logo (mark + wordmark), dark-on-light - use on the light theme; openaev-logo.svg is the light-on-dark twin."
+    },
+    {
+      "file": "xtm-one-logo.svg",
+      "role": "product_logo",
+      "description": "XTM One logo (mark + wordmark), light-on-dark."
+    },
+    {
+      "file": "xtm-one-logo-light.svg",
+      "role": "product_logo",
+      "description": "XTM One logo (mark in the brand purple + dark wordmark), dark-on-light - use on the light theme; xtm-one-logo.svg is the light-on-dark twin."
+    },
+    {
+      "file": "xtm-hub-logo.svg",
+      "role": "product_logo",
+      "description": "XTM Hub logo (mark + wordmark), light-on-dark."
+    },
+    {
+      "file": "xtm-hub-logo-light.svg",
+      "role": "product_logo",
+      "description": "XTM Hub logo (mark + wordmark), dark-on-light - use on the light theme; xtm-hub-logo.svg is the light-on-dark twin."
+    },
+    {
+      "file": "opencrq-logo.svg",
+      "role": "product_logo",
+      "description": "OpenCRQ logo (mark + wordmark), light-on-dark - cyber risk quantification, the third XTM product."
+    },
+    {
+      "file": "opencrq-logo-light.svg",
+      "role": "product_logo",
+      "description": "OpenCRQ logo (mark + wordmark), dark-on-light - use on the light theme; opencrq-logo.svg is the light-on-dark twin."
+    },
+    {
+      "file": "opencrq-mark.svg",
+      "role": "product_logo",
+      "description": "OpenCRQ mark (the design-system symbol, formerly named OpenGRC), light-on-dark, mark only - use opencrq-logo.svg for the mark + wordmark."
+    },
+    {
+      "file": "opencrq-mark-light.svg",
+      "role": "product_logo",
+      "description": "OpenCRQ mark, dark-on-light, mark only - the light-theme twin of opencrq-mark.svg; opencrq-logo-light.svg for the mark + wordmark."
+    },
+    {
+      "file": "opencti-mark.svg",
+      "role": "icon",
+      "description": "OpenCTI mark only."
+    },
+    {
+      "file": "opencti-mark-light.svg",
+      "role": "icon",
+      "description": "OpenCTI mark only, dark-on-light (light-theme twin of opencti-mark.svg)."
+    },
+    {
+      "file": "openaev-mark.svg",
+      "role": "icon",
+      "description": "OpenAEV mark only."
+    },
+    {
+      "file": "openaev-mark-light.svg",
+      "role": "icon",
+      "description": "OpenAEV mark only, dark-on-light (light-theme twin of openaev-mark.svg)."
+    },
+    {
+      "file": "xtm-one-mark.svg",
+      "role": "icon",
+      "description": "XTM One mark only."
+    },
+    {
+      "file": "xtm-one-mark-light.svg",
+      "role": "icon",
+      "description": "XTM One mark only, in the brand purple, for light surfaces (light-theme twin of xtm-one-mark.svg)."
+    },
+    {
+      "file": "xtm-hub-mark.svg",
+      "role": "icon",
+      "description": "XTM Hub mark only."
+    },
+    {
+      "file": "xtm-hub-mark-light.svg",
+      "role": "icon",
+      "description": "XTM Hub mark only, dark-on-light (light-theme twin of xtm-hub-mark.svg)."
+    },
+    {
+      "file": "xtm-platform-architecture.webp",
+      "role": "diagram",
+      "description": "XTM Platform architecture (filigran.io, 2026): XTM One as the agentic AI orchestration layer over OpenCTI (cyber threat intelligence), OpenCRQ (cyber risk quantification) and OpenAEV (adversarial exposure validation); threat landscape sources on top, contextual data on the left, detection and response tools on the right, XTM Hub (playbooks, dashboards, feeds, agents, scenarios) at the bottom. Dark background, 2304x1558."
+    },
+    {
+      "file": "xtm-one-agents.jpg",
+      "role": "diagram",
+      "description": "XTM One hero visual: the XTM One core with example agents around it (CTEM Assistant, OpenCTI Threat Hunter, OpenAEV Scenario Creator, Remediation Malware Analyst, FIMI Assistant, OpenCTI Dashboard Creator). Purple glow on dark, 1920x1080, full-bleed friendly."
+    },
+    {
+      "file": "opencti-flow.webp",
+      "role": "diagram",
+      "description": "OpenCTI input / processing / output flow (filigran.io): threat feeds, contextual data, other sources and the XTM Hub CTI library in; aggregation with no-code playbooks, AI-powered analysis, case management and RBAC; out to OpenAEV (MITRE ATT&CK simulation) and to SIEM / SOAR, threat hunting and incident response. Dark background, 2304x1156."
+    },
+    {
+      "file": "openaev-flow.webp",
+      "role": "diagram",
+      "description": "OpenAEV input / processing / output flow (filigran.io): OpenCTI STIX 2.1 intelligence, threat feeds and EDR / XDR in; MITRE ATT&CK-based scenario simulation and readiness assessment; outcomes on the right (scenarios on your assets, customizable simulations, prioritized intelligence, AI-accelerated remediation). Dark background, 2304x986."
+    },
+    {
+      "file": "opencti-openaev-ecosystem-dark.webp",
+      "role": "diagram",
+      "description": "OpenCTI to OpenAEV ecosystem diagram (Oct 2025): OpenCTI threat intelligence feeding OpenAEV adversarial exposure validation, with the surrounding sources and outcomes. Dark background, 1920x1080."
+    },
+    {
+      "file": "opencti-openaev-ecosystem-light.webp",
+      "role": "diagram",
+      "description": "OpenCTI to OpenAEV ecosystem diagram (Oct 2025), transparent background with navy boxes and white text - the same flow as opencti-openaev-ecosystem-dark.webp, made for light-themed decks (also readable on dark). 1920x742."
+    },
+    {
+      "file": "filigran-ecosystem-ctem.webp",
+      "role": "diagram",
+      "description": "Filigran ecosystem for continuous threat exposure management: OpenCTI (threat intelligence) and OpenAEV (exposure validation) side by side over XTM Hub, with their inputs and outputs. Dark background, 1780x916."
+    },
+    {
+      "file": "ctem-lifecycle.svg",
+      "role": "diagram",
+      "description": "Cybersecurity Threat Exposure Management (CTEM) lifecycle wheel - scoping, discovery, prioritization, validation, mobilization - with the OpenCTI and OpenAEV coverage of each stage. White background, use on light decks or in a framed image block. SVG."
+    },
+    {
+      "file": "opencti-integration-chart.svg",
+      "role": "diagram",
+      "description": "OpenCTI integration chart: external import connectors, enrichment connectors, internal import files, stream / export connectors around the OpenCTI core (MISP, TheHive, Splunk, Sentinel, Tanium, Elastic, ...). Dark background. SVG."
+    },
+    {
+      "file": "cti-lifecycle.svg",
+      "role": "diagram",
+      "description": "The intelligence lifecycle in five stages - direction, collection, processing, analysis, dissemination - plus the feedback loop, as a horizontal flow. Dark gradient background baked in, 16:9. SVG."
+    },
+    {
+      "file": "ir-picerl-loop.svg",
+      "role": "diagram",
+      "description": "The incident response PICERL loop - preparation, identification, containment, eradication and recovery, lessons learned - as a horizontal flow. Dark gradient background baked in, 16:9. SVG."
+    },
+    {
+      "file": "xtm-one-agentic-flow-mockup.svg",
+      "role": "screenshot",
+      "description": "XTM One product mockup: the visual flow builder (Agentic Flow) with agents, triggers and handovers on the canvas. Dark UI, 16:9. SVG."
+    },
+    {
+      "file": "xtm-one-exposure-validation.jpg",
+      "role": "screenshot",
+      "description": "XTM One screenshot: the 'exposure validation' use case - OpenAEV and OpenCTI agents chained on the agent flow canvas. Dark UI, sparse layout, 1920x1080."
+    },
+    {
+      "file": "xtm-one-scenario-creator.jpg",
+      "role": "screenshot",
+      "description": "XTM One screenshot: the 'scenario creator' use case - the OpenAEV Scenario Creator agent and its handovers on the agent flow canvas. Dark UI, sparse layout, 1920x1080."
+    },
+    {
+      "file": "xtm-one-threat-hunting.jpg",
+      "role": "screenshot",
+      "description": "XTM One screenshot: the 'threat hunting' use case - OpenCTI threat hunting agents chained on the agent flow canvas. Dark UI, sparse layout, 1920x1052."
+    },
+    {
+      "file": "xtm-one-understand-threats.jpg",
+      "role": "screenshot",
+      "description": "XTM One screenshot: the 'understand threats' use case - OpenCTI and CTEM assistant agents on the agent flow canvas. Dark UI, sparse layout, 1920x1080."
+    },
+    {
+      "file": "opencti-dashboard-finance.webp",
+      "role": "screenshot",
+      "description": "OpenCTI screenshot: a threat monitoring dashboard for the finance sector (high-level indicators, active threats, top targeted sectors). Dark UI, 1024x576."
+    },
+    {
+      "file": "opencti-dashboard-automotive.webp",
+      "role": "screenshot",
+      "description": "OpenCTI screenshot: the Global Automotive Cybersecurity Report custom dashboard (indicators, active threats, world map). Dark UI, 1024x577."
+    },
+    {
+      "file": "opencti-custom-dashboards.webp",
+      "role": "screenshot",
+      "description": "OpenCTI screenshot: custom dashboards with KPIs, treemaps, timelines and a geographic map. Dark UI, 1920x992."
+    },
+    {
+      "file": "opencti-knowledge-graph.webp",
+      "role": "screenshot",
+      "description": "OpenCTI screenshot: the knowledge graph view of a report, entities and relationships laid out as a graph. Dark UI, 1024x576."
+    },
+    {
+      "file": "opencti-automation-playbook.webp",
+      "role": "screenshot",
+      "description": "OpenCTI screenshot: a no-code automation playbook (filter, enrich, share, notify steps). Dark UI, 1024x576."
+    },
+    {
+      "file": "openaev-dashboard.webp",
+      "role": "screenshot",
+      "description": "OpenAEV screenshot (Feb 2026): the home dashboard with prevention / detection / human response scores and exercise statistics. Dark UI, 1024x576."
+    },
+    {
+      "file": "openaev-scenario-injects.webp",
+      "role": "screenshot",
+      "description": "OpenAEV screenshot: the injects tab of a scenario imported from OpenCTI (DragonForce ransomware), one inject per attack technique. Dark UI, 1920x967."
+    },
+    {
+      "file": "openaev-ai-remediation.webp",
+      "role": "screenshot",
+      "description": "OpenAEV screenshot: AI-powered remediation - detection and prevention rules generated for a failed inject. Dark UI, 1024x596."
+    },
+    {
+      "file": "ctem-assess-readiness.webp",
+      "role": "illustration",
+      "description": "Survey stat visual (Filigran CTEM report): a dot grid with '88% agree that as systems and environments change more quickly, periodic assessments alone are no longer enough to manage risk effectively'. Dark background, 16:9."
+    },
+    {
+      "file": "ctem-exposure-gap.webp",
+      "role": "illustration",
+      "description": "Survey stat visual (Filigran CTEM report): '93% of organizations struggle to maintain an accurate, up-to-date view of their attack surface, with only 41% able to have a fully consolidated view of their cyber risk exposure'. Dark background, 16:9."
+    },
+    {
+      "file": "ctem-prioritization-bottleneck.webp",
+      "role": "illustration",
+      "description": "Survey stat visual (Filigran CTEM report): two donut charts - '97% struggle to determine whether exposures are actually exploitable' and '82% say manual processes make it harder to identify which risks require immediate attention'. Dark background, 16:9."
+    },
+    {
+      "file": "ctem-survey-automation-stats.webp",
+      "role": "illustration",
+      "description": "Survey stat visual (Filigran CTEM report): '88% say that without more automation it is difficult to keep up with the volume of risks to assess' and '90% still rely on manual processes across every stage of exposure management'. Dark background, 1920x1080."
+    },
+    {
+      "file": "g2-achievements-2025.svg",
+      "role": "illustration",
+      "description": "Composed visual 'Celebrating our G2 achievements' (Dec 2025): the OpenCTI G2 badges - Leader, Users Love Us, Regional Leader EMEA and Europe - on a blue gradient. 16:9. SVG."
+    },
+    {
+      "file": "opencrq-logo.png",
+      "role": "product_logo",
+      "description": "OpenCRQ logo, light-on-dark, as a raster (PNG 992x208, soft past 1080p) - kept for the slides and videos that already place it; place opencrq-logo.svg instead."
+    },
+    {
+      "file": "opencrq-logo-light.png",
+      "role": "product_logo",
+      "description": "OpenCRQ logo, dark-on-light, as a raster (PNG 992x208, soft past 1080p) - kept for the slides and videos that already place it; place opencrq-logo-light.svg instead."
+    },
+    {
+      "file": "xtm-platform-logo.svg",
+      "role": "product_logo",
+      "description": "XTM Platform logo (cyan mark + white wordmark), light-on-dark - the suite as a whole. SVG."
+    },
+    {
+      "file": "xtm-platform-logo-light.svg",
+      "role": "product_logo",
+      "description": "XTM Platform logo (deep-blue mark + dark wordmark), dark-on-light - use on the light theme; xtm-platform-logo.svg is the light-on-dark twin. SVG."
+    },
+    {
+      "file": "team-global-gathering-2026.jpg",
+      "role": "image",
+      "description": "Photo: the whole Filigran team at the Global Gathering, Barcelona, March 2026 (group photo in the conference room). 1920x1080, full-bleed friendly."
+    },
+    {
+      "file": "team-photo-global-gathering-2026.jpg",
+      "role": "image",
+      "description": "Photo: Filigran team members posing in front of the 'Filigran Global GTG March 2026' banner. 1920x1080."
+    },
+    {
+      "file": "team-outdoors.jpg",
+      "role": "image",
+      "description": "Photo: Filigran team members chatting outdoors on a terrace (casual team-life shot). 1920x1080."
+    },
+    {
+      "file": "community-meetup-audience.jpg",
+      "role": "image",
+      "description": "Photo: audience at a Filigran community meetup, product demo on the screen (community / events slide). 1920x1080."
+    },
+    {
+      "file": "team-samuel-hassine.jpg",
+      "role": "people_photo",
+      "description": "Official portrait of Samuel Hassine, Filigran co-founder and Chief Executive Officer (filigran.io/leadership). Head-and-shoulders, dark suit on a blue background, square 600x600 - the photo_file_id of a profiles block."
+    },
+    {
+      "file": "team-julien-richard.jpg",
+      "role": "people_photo",
+      "description": "Official portrait of Julien Richard, Filigran co-founder and Chief Technology Officer (filigran.io/leadership). Head-and-shoulders, square 600x600 - the photo_file_id of a profiles block."
+    }
+  ]
+}

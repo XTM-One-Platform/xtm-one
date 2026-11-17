@@ -1,0 +1,19 @@
+{
+  "description": "Answer markers as the backend writes them and every reader must read them: the backend's regexes (backend/tests/test_presentations.py, test_reports.py, test_investigation_events.py, test_chat_panel_contracts.py) and the chat panel's grammar (answerMarkers.test.ts). \"rejected\" holds markers neither side may read. Change a shape here and on both sides together.",
+  "markers": [
+    {"marker": "[[PRESENTATION:11111111-2222-4333-8444-555555555555]]", "kind": "PRESENTATION", "id": "11111111-2222-4333-8444-555555555555", "slideRef": null},
+    {"marker": "[[PRESENTATION:11111111-2222-4333-8444-555555555555#/a1B2-c3_d]]", "kind": "PRESENTATION", "id": "11111111-2222-4333-8444-555555555555", "slideRef": "a1B2-c3_d"},
+    {"marker": "[[REPORT:66666666-7777-4888-9999-000000000000]]", "kind": "REPORT", "id": "66666666-7777-4888-9999-000000000000", "slideRef": null},
+    {"marker": "[[INVESTIGATION:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee]]", "kind": "INVESTIGATION", "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "slideRef": null},
+    {"marker": "[[Investigation:AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE]]", "kind": "INVESTIGATION", "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "slideRef": null},
+    {"marker": "[[FILE:12345678-9abc-4def-8012-3456789abcde]]", "kind": "FILE", "id": "12345678-9abc-4def-8012-3456789abcde", "slideRef": null},
+    {"marker": "[[VIDEO:0f1e2d3c-4b5a-4968-8776-655443322110]]", "kind": "VIDEO", "id": "0f1e2d3c-4b5a-4968-8776-655443322110", "slideRef": null},
+    {"marker": "[[WORK_ITEM:fedcba98-7654-4321-8fed-cba987654321]]", "kind": "WORK_ITEM", "id": "fedcba98-7654-4321-8fed-cba987654321", "slideRef": null},
+    {"marker": "[[CHART:0123456789ab]]", "kind": "CHART", "id": "0123456789ab", "slideRef": null}
+  ],
+  "rejected": [
+    "[[PRESENTATION:11111111-2222-4333-8444-555555555555#/]]",
+    "[[PRESENTATION:11111111-2222-4333-8444-555555555555#/a b]]",
+    "[[PRESENTATION:11111111-2222-4333-8444-555555555555#/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]]"
+  ]
+}

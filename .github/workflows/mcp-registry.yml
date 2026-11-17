@@ -1,0 +1,132 @@
+name: MCP Registry
+
+# Publishes XTM One's MCP servers (mcp-registry/*.server.json) in the official
+# MCP Registry on a release. Each entry is an instance-agnostic remote
+# whose URL is a template (https://{xtm_one_host}/mcp/...), so one entry serves
+# every customer instance; its version is the release tag.
+#
+# Nothing is published until an administrator of this repository sets the
+# repository variable MCP_REGISTRY_PUBLISH to "true": merging this workflow
+# must not publish anything by itself. The registry grants the namespace
+# io.github.<repository owner>/* to the GitHub OIDC token of ANY workflow of
+# ANY repository of the owner that may mint one, so this job runs only on a
+# release tag, publishes the tag's own version, and waits for the approval of
+# the protected environment "mcp-registry" (required reviewers, tag-only
+# deployments; created by an administrator). See
+# dev-docs/mcp-registry-publication.md.
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  # Run it ON a release tag to finish a partly failed publish. The version is
+  # always the tag's: there is no free-form input, since registry versions are
+  # immutable and the newest one is what clients see.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One group per ref: one group per workflow keeps at most one PENDING run, so a
+# second tag pushed while a publish runs would cancel the first one's pending
+# run. The registry serialises publishes of one server name itself.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MCP_PUBLISHER_VERSION: v1.8.1
+  MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+  REGISTRY_URL: https://registry.modelcontextprotocol.io
+
+jobs:
+  publish:
+    name: Publish
+    # A release tag only; LTS tags (-lts.N) republish nothing, the entries do
+    # not change with them.
+    if: >-
+      vars.MCP_REGISTRY_PUBLISH == 'true' &&
+      github.ref_type == 'tag' &&
+      !contains(github.ref_name, '-lts')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    environment: mcp-registry
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: mcp-registry
+          persist-credentials: false
+
+      - name: Resolve the version
+        id: version
+        run: |
+          version="$GITHUB_REF_NAME"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]{6}\.[0-9]+$ ]]; then
+            echo "::error::Not a release version: $version (expected MAJOR.YYMMDD.SEQ, e.g. 1.261001.0)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp the version into every entry
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for entry in mcp-registry/*.server.json; do
+            jq --arg version "$VERSION" '.version = $version' "$entry" > "$entry.tmp"
+            mv "$entry.tmp" "$entry"
+          done
+
+      # The checksum is pinned here, independently of the release that ships
+      # the binary: a replaced release asset fails the check.
+      - name: Install mcp-publisher
+        run: |
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 -o "$archive" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${archive}"
+          echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" mcp-publisher
+          ./mcp-publisher --help > /dev/null
+
+      - name: Validate every entry
+        run: |
+          for entry in mcp-registry/*.server.json; do
+            ./mcp-publisher validate "$entry"
+          done
+
+      # Fails fast before anything is published; each entry logs in again
+      # below, since the registry token lives 5 minutes.
+      - name: Log in to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      # The registry refuses a version it already holds: an entry published by
+      # an earlier attempt is skipped, so re-running a partly failed publish
+      # finishes it instead of failing on the first entry. Only a 404 means
+      # "not published": any other answer stops the job rather than publish
+      # on a guess.
+      - name: Publish every entry not published at this version yet
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for entry in mcp-registry/*.server.json; do
+            name="$(jq -r '.name' "$entry")"
+            encoded="$(jq -rn --arg name "$name" '$name | @uri')"
+            status="$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --connect-timeout 10 --max-time 30 \
+              "${REGISTRY_URL}/v0.1/servers/${encoded}/versions/${VERSION}")"
+            case "$status" in
+              200)
+                echo "$name $VERSION is already published"
+                continue
+                ;;
+              404) ;;
+              *)
+                echo "::error::Unexpected HTTP $status probing $name $VERSION"
+                exit 1
+                ;;
+            esac
+            ./mcp-publisher login github-oidc
+            ./mcp-publisher publish "$entry"
+          done

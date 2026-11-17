@@ -1,0 +1,1158 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""Organization profile API (#8987): read for every signed-in user, save for administrators.
+
+``GET /api/v1/organization-context`` answers the current profile, its
+version and the contract fields not filled; ``GET /versions`` lists the
+saved versions; ``PUT`` saves a new version (administrators only);
+``POST /draft`` proposes a profile from the connected platforms without
+saving it; ``POST /ai-draft`` proposes field values with a model from the
+inputs the administrator gives (#9484, nothing saved); ``GET /pirs`` lists
+the connected OpenCTI's PIRs for the PIR picker (administrators);
+``GET /proposals`` and ``POST /proposals/{id}/decide`` review the changes
+proposed from chat (#9484, S-a2); ``GET /readers`` names the fleets that
+read each part of the profile (#9173, S2); ``GET /setup-prompt`` and
+``POST /setup-prompt`` carry the first-login setup proposal, shown once per
+instance (#9173, S3). The
+rules are ``services/organization_context.py``'s; agents read the same
+profile through ``get_organization_context``.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user, get_db, require_admin, require_agentic_ai
+from app.models.organization_context import OrganizationContextVersion
+from app.models.user import User
+from app.services import organization_context as org_context
+
+router = APIRouter()
+
+
+class OrganizationContextResponse(BaseModel):
+    version: int | None
+    source: str | None
+    created_at: datetime | None
+    author_user_id: str | None
+    profile: dict[str, Any]
+    missing_fields: list[str]
+
+
+class OrganizationContextVersionSummary(BaseModel):
+    version: int
+    source: str
+    created_at: datetime
+    author_user_id: str | None
+    missing_fields: list[str]
+    #: An ``ai_draft`` version's accepted proposals: field -> ``{source, basis}``.
+    sources: dict[str, Any] | None = None
+
+
+class SaveOrganizationContextRequest(BaseModel):
+    profile: dict[str, Any]
+    source: Literal["form", "draft", "api", "ai_draft"] = "form"
+    #: With ``ai_draft``: the accepted proposals' provenance, field -> ``{source, basis}``.
+    sources: dict[str, dict[str, str]] | None = None
+
+
+class OpenCrqSyncRequest(BaseModel):
+    #: False (default) answers the plan and writes nothing.
+    apply: bool = False
+    tenant_id: str = ""
+
+
+class OpenCrqSyncResponse(BaseModel):
+    applied: bool
+    plan: dict[str, Any]
+    errors: list[str]
+    version: int | None
+
+
+class DraftOrganizationContextRequest(BaseModel):
+    #: OpenCRQ tenant, when the administrator belongs to several.
+    tenant_id: str = ""
+
+
+class OrganizationPir(BaseModel):
+    id: str
+    name: str
+
+
+class OrganizationPirsResponse(BaseModel):
+    pirs: list[OrganizationPir]
+    #: ``None`` when read; ``not_connected`` or ``unreadable`` otherwise (the page shows the saved names).
+    unavailable: Literal["not_connected", "unreadable"] | None = None
+    #: The connected OpenCTI's base URL, to link each PIR; empty when not connected.
+    opencti_url: str = ""
+
+
+class DraftOrganizationContextResponse(BaseModel):
+    #: The version the draft starts from (``None`` before the first save).
+    based_on_version: int | None
+    #: The proposed profile: the current one with its empty fields filled.
+    profile: dict[str, Any]
+    #: One entry per field the draft filled: ``field``, ``source`` platform, ``detail``.
+    filled: list[dict[str, str]]
+    #: The platforms that could not be read, and why.
+    unavailable: list[str]
+    missing_fields: list[str]
+
+
+def _response(row: OrganizationContextVersion | None) -> OrganizationContextResponse:
+    profile = org_context.parse_profile(row.profile if row else {})
+    return OrganizationContextResponse(
+        version=row.version if row else None,
+        source=row.source if row else None,
+        created_at=row.created_at if row else None,
+        author_user_id=str(row.author_user_id) if row and row.author_user_id else None,
+        profile=profile.model_dump(mode="json"),
+        missing_fields=org_context.missing_fields(profile),
+    )
+
+
+@router.get("", response_model=OrganizationContextResponse)
+async def get_organization_context(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> OrganizationContextResponse:
+    """The current profile (empty with every field missing before the first save)."""
+    return _response(await org_context.current_version(db))
+
+
+class OrganizationContextInjection(BaseModel):
+    #: Whether every agent's system prompt starts with the organization summary
+    #: (#11533); an agent or an assignment may override it (inherit | always | off).
+    enabled: bool
+    #: The categories every inheriting agent preloads after the basic block
+    #: (none by default); an agent or an assignment may set its own list.
+    #: Omitted on a write: unchanged.
+    categories: list[str] | None = None
+    #: Every category the model has, in order (read-only, for the selector).
+    available_categories: list[str] = []
+
+
+async def _injection(db: AsyncSession) -> OrganizationContextInjection:
+    from app.services.organization_context_categories import CATEGORY_NAMES
+    from app.services.organization_context_injection import platform_categories, platform_enabled
+
+    return OrganizationContextInjection(
+        enabled=await platform_enabled(db),
+        categories=await platform_categories(db),
+        available_categories=list(CATEGORY_NAMES),
+    )
+
+
+@router.get("/injection", response_model=OrganizationContextInjection)
+async def get_organization_context_injection(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> OrganizationContextInjection:
+    """The platform default of the cascade assignment > agent > platform."""
+    return await _injection(db)
+
+
+@router.put("/injection", response_model=OrganizationContextInjection)
+async def save_organization_context_injection(
+    body: OrganizationContextInjection,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationContextInjection:
+    """Turn the organization summary on or off for every agent that inherits (administrators, audited)."""
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.services.audit import log_audit
+    from app.services.organization_context_categories import checked_for_api, normalize_categories
+
+    settings_row = await get_platform_settings(db)
+    categories = checked_for_api(body.categories) if body.categories is not None else None
+    if categories is not None and categories != normalize_categories(settings_row.organization_context_categories):
+        settings_row.organization_context_categories = categories
+        await log_audit(
+            db,
+            user=admin,
+            action="configure",
+            entity_type="organization_context",
+            entity_name="injection",
+            summary="Organization context preloaded categories: " + (", ".join(categories) or "none"),
+            details={"categories": categories},
+        )
+    if bool(settings_row.organization_context_enabled) != body.enabled:
+        settings_row.organization_context_enabled = body.enabled
+        await log_audit(
+            db,
+            user=admin,
+            action="configure",
+            entity_type="organization_context",
+            entity_name="injection",
+            summary=f"Organization summary in every agent: {'on' if body.enabled else 'off'}",
+            details={"enabled": body.enabled},
+        )
+    await db.commit()
+    return await _injection(db)
+
+
+@router.get("/versions", response_model=list[OrganizationContextVersionSummary])
+async def list_organization_context_versions(
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> list[OrganizationContextVersionSummary]:
+    """The saved versions, newest first (administrators)."""
+    rows = await org_context.list_versions(db, limit=limit)
+    return [
+        OrganizationContextVersionSummary(
+            version=row.version,
+            source=row.source,
+            created_at=row.created_at,
+            author_user_id=str(row.author_user_id) if row.author_user_id else None,
+            missing_fields=org_context.missing_fields(org_context.parse_profile(row.profile)),
+            sources=row.sources,
+        )
+        for row in rows
+    ]
+
+
+@router.put("", response_model=OrganizationContextResponse)
+async def save_organization_context(
+    body: SaveOrganizationContextRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationContextResponse:
+    """Save *body.profile* as the next version (administrators); 422 names the bad field."""
+    from app.services.organization_assets_import import check_links
+    from app.services.organization_context_draft import name_saved_pirs
+
+    try:
+        profile = org_context.parse_profile(body.profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    problems = check_links(profile)
+    if problems:
+        raise HTTPException(status_code=422, detail=problems[0])
+    # Every save stores each PIR with its OpenCTI name, whoever sent the ids (form, drafts, API; #11589).
+    profile = await name_saved_pirs(db, user_id=admin.id, profile=profile)
+    try:
+        row = await org_context.save_version(
+            db,
+            profile,
+            source=body.source,
+            author_user_id=admin.id,
+            sources=org_context.accepted_sources(body.sources) if body.source == "ai_draft" else None,
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and save again."
+        ) from None
+    await db.refresh(row)
+    return _response(row)
+
+
+class EnterpriseKnowledgeLink(BaseModel):
+    knowledge_base_id: str
+    label: str
+    kind: str
+    #: Whether the caller can read (and so an agent acting for them can search) it.
+    readable: bool
+
+
+@router.get("/enterprise-knowledge", response_model=list[EnterpriseKnowledgeLink])
+async def list_enterprise_knowledge(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[EnterpriseKnowledgeLink]:
+    """The knowledge bases the profile links as enterprise knowledge (#11543), each readable or not for the caller.
+
+    A knowledge base the caller cannot read is named by the label saved with
+    the link, never by its own name.
+    """
+    from app.services.organization_enterprise_knowledge import linked_knowledge_bases
+
+    row = await org_context.current_version(db)
+    profile = org_context.parse_profile(row.profile if row else {})
+    links = await linked_knowledge_bases(db, profile, user_id=user.id, is_admin=bool(user.is_admin))
+    return [EnterpriseKnowledgeLink(**vars(link)) for link in links]
+
+
+class AssetImportRowError(BaseModel):
+    line: int
+    name: str
+    message: str
+
+
+class AssetsImportResponse(BaseModel):
+    #: False: a preview, nothing saved. True: the rows were saved as ``version``.
+    applied: bool
+    #: The rows the file holds, parsed (``source`` is ``csv``).
+    assets: list[dict[str, Any]]
+    #: The asset groups the file declares (rows typed ``asset_group``, #11781).
+    groups: list[dict[str, Any]] = []
+    #: crown jewel name -> asset names the file links to it.
+    links: dict[str, list[str]]
+    errors: list[AssetImportRowError]
+    unknown_crown_jewels: list[str]
+    #: Asset names already in the profile that the file replaces.
+    replaced: list[str]
+    version: int | None = None
+
+
+@router.post("/assets/import", response_model=AssetsImportResponse)
+async def import_organization_assets(
+    file: UploadFile = File(...),
+    apply: bool = Form(default=False),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> AssetsImportResponse:
+    """Assets and exposure from a CSV (administrators, #11543): a preview, then ``apply=true`` saves.
+
+    The preview lists every row parsed or refused with its line and reason;
+    ``apply=true`` with a row refused is 422 (fix the file, preview again).
+    Rows are upserted by name, rows the file does not name are kept, and the
+    crown jewel links the file names are added. 422 names a bad file.
+    """
+    from app.services import organization_assets_import as assets_import
+
+    content = await file.read(assets_import.MAX_BYTES + 1)
+    row = await org_context.current_version(db)
+    profile = org_context.parse_profile(row.profile if row else {})
+    try:
+        preview = assets_import.parse_assets_csv(content, profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    response = AssetsImportResponse(
+        applied=False,
+        assets=[asset.model_dump(mode="json") for asset in preview.assets],
+        groups=[group.model_dump(mode="json") for group in preview.groups],
+        links=preview.links,
+        errors=[AssetImportRowError(line=e.line, name=e.name, message=e.message) for e in preview.errors],
+        unknown_crown_jewels=preview.unknown_crown_jewels,
+        replaced=preview.replaced,
+    )
+    if not apply:
+        return response
+    if preview.errors:
+        raise HTTPException(
+            status_code=422, detail=f"{len(preview.errors)} row(s) refused; fix the file and preview again."
+        )
+    try:
+        merged = assets_import.merge_assets(profile, preview)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    try:
+        saved = await org_context.save_version(db, merged, source="api", author_user_id=admin.id)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and import again."
+        ) from None
+    response.applied = True
+    response.version = saved.version
+    return response
+
+
+@router.post("/opencrq-sync", response_model=OpenCrqSyncResponse)
+async def sync_organization_context_with_opencrq(
+    body: OpenCrqSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OpenCrqSyncResponse:
+    """Reconcile the crown jewels with OpenCRQ's supporting assets both ways (administrators).
+
+    A dry run answers the plan; ``apply`` saves the next profile version and
+    writes the criticalities to OpenCRQ. 409 when OpenCRQ cannot be read.
+    """
+    from app.services.organization_context_opencrq import run_sync
+
+    try:
+        plan, errors = await run_sync(db, user_id=admin.id, apply=body.apply, tenant_id=body.tenant_id)
+        if plan is None:
+            raise HTTPException(status_code=409, detail="; ".join(errors))
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Run the sync again."
+        ) from None
+    current = await org_context.current_version(db)
+    return OpenCrqSyncResponse(
+        applied=body.apply,
+        plan=plan.summary(),
+        errors=errors,
+        version=current.version if current else None,
+    )
+
+
+class OrganizationFieldReader(BaseModel):
+    fleet_id: str
+    name: str
+
+
+class OrganizationAgentReader(BaseModel):
+    agent_id: str
+    name: str
+
+
+class OrganizationReadersResponse(BaseModel):
+    #: Profile field -> the fleets the caller can see whose documentation needs it.
+    readers: dict[str, list[OrganizationFieldReader]]
+    #: Profile field -> the seeded agents the caller can see whose persona reads it (#10063 r1 A3).
+    agents: dict[str, list[OrganizationAgentReader]] = {}
+
+
+@router.get("/readers", response_model=OrganizationReadersResponse)
+async def list_organization_context_readers(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> OrganizationReadersResponse:
+    """The fleets and seeded agents that read each part of the profile.
+
+    Fleets from their documented prerequisites, agents from what their persona
+    reads. Rows only (no run, no model call); only what the caller can see.
+    """
+    from app.services.organization_context_readers import profile_field_readers
+
+    readers, agents = await profile_field_readers(db, user)
+    return OrganizationReadersResponse(
+        readers={field: [OrganizationFieldReader(**row) for row in rows] for field, rows in readers.items()},
+        agents={field: [OrganizationAgentReader(**row) for row in rows] for field, rows in agents.items()},
+    )
+
+
+@router.get("/pirs", response_model=OrganizationPirsResponse)
+async def list_organization_pirs(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationPirsResponse:
+    """The connected OpenCTI's PIRs, by name, for the PIR picker (administrators).
+
+    Read with the administrator's own OpenCTI token; never fails: an OpenCTI
+    not connected or without PIRs answers an empty list and the reason, and
+    the form keeps the ids typed by hand.
+    """
+    from app.services.organization_context_draft import backfill_pir_names, list_pirs
+
+    pirs, unavailable, opencti_url = await list_pirs(db, user_id=admin.id)
+    if pirs:
+        # The lazy backfill (#11589): a profile saved with ids alone gains the names OpenCTI just gave.
+        await backfill_pir_names(db, pirs)
+    return OrganizationPirsResponse(
+        pirs=[OrganizationPir(**row) for row in pirs],
+        unavailable=unavailable,  # type: ignore[arg-type]
+        opencti_url=opencti_url,
+    )
+
+
+class AiDraftProposal(BaseModel):
+    field: str
+    value: Any
+    source: str
+    confidence: Literal["high", "medium", "low"]
+    basis: str
+    #: An inferred amount: shown "Check this", never pre-accepted.
+    check: bool
+    #: The current value; equal to ``value`` for an unchanged field (shown under "Unchanged (n)", never offered).
+    current: Any
+    #: The current version already holds a different value: never pre-accepted.
+    conflict: bool
+
+
+class AiDraftOrganizationContextResponse(BaseModel):
+    based_on_version: int | None
+    proposals: list[AiDraftProposal]
+    #: Contract fields the profile misses and no input supports (never guessed).
+    not_supported: list[str]
+    #: PIRs the model suggests creating: suggestions only, never created.
+    suggested_pirs: list[str]
+    unavailable: list[str]
+    notes: list[str]
+    usage: dict[str, int]
+
+
+@router.post("/ai-draft", response_model=AiDraftOrganizationContextResponse)
+async def ai_draft_organization_context(
+    description: str = Form(default=""),
+    website: str = Form(default=""),
+    use_platforms: bool = Form(default=True),
+    tenant_id: str = Form(default=""),
+    documents: list[UploadFile] | None = File(default=None),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+    # A model call on the administrator's click: refused when AI is off or unlicensed.
+    _gate: None = Depends(require_agentic_ai),
+) -> AiDraftOrganizationContextResponse:
+    """Per-field proposals from a model over the inputs given (administrators); nothing is saved.
+
+    One metered agentic request on the administrator's quota, refused (429)
+    before anything is read. Documents are read in memory for this request
+    only; the website is fetched only when given. 422 names a bad input or an
+    unusable model answer. Save the accepted fields with ``PUT`` and source
+    ``ai_draft``.
+    """
+    from app.services import organization_context_ai_draft as ai
+    from app.services.agent_chat import enforce_agentic_quota
+    from app.services.agentic_executions import SOURCE_ORGANIZATION_AI_DRAFT
+
+    documents = documents or []
+    if len(documents) > ai.MAX_DOCUMENTS:
+        raise HTTPException(status_code=422, detail=f"At most {ai.MAX_DOCUMENTS} documents can be read by one draft.")
+    held: list[ai.DraftDocument] = []
+    for upload in documents:
+        content = await upload.read(ai.DOCUMENT_MAX_BYTES + 1)
+        held.append(ai.DraftDocument(name=(upload.filename or "document")[:200], content=content))
+    inputs = ai.AiDraftInputs(
+        description=description, documents=held, website=website, use_platforms=use_platforms, tenant_id=tenant_id
+    )
+    try:
+        inputs.validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    refusal = await enforce_agentic_quota(db, str(admin.id), source=SOURCE_ORGANIZATION_AI_DRAFT)
+    if refusal:
+        raise HTTPException(status_code=429, detail=refusal)
+    current = await org_context.current_version(db)
+    try:
+        draft = await ai.draft_with_ai(
+            db,
+            user_id=admin.id,
+            inputs=inputs,
+            current=org_context.parse_profile(current.profile if current else {}),
+            based_on_version=current.version if current else None,
+        )
+    except (ai.AiDraftError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    await db.rollback()
+    return AiDraftOrganizationContextResponse(
+        based_on_version=draft.based_on_version,
+        proposals=[AiDraftProposal(**p.as_dict()) for p in draft.proposals],
+        not_supported=draft.not_supported,
+        suggested_pirs=draft.suggested_pirs,
+        unavailable=draft.unavailable,
+        notes=draft.notes,
+        usage=draft.usage,
+    )
+
+
+class OrganizationContextProposalResponse(BaseModel):
+    id: str
+    organization_id: str | None
+    kind: Literal["fields", "new_tracked"]
+    #: ``fields``: ``{field, value, basis, current, conflict}``; ``new_tracked``: ``{name, relationship, criticality, basis}``.
+    proposals: list[dict[str, Any]]
+    based_on_version: int | None
+    status: str
+    author_user_id: str | None
+    conversation_id: str | None
+    created_at: datetime
+
+
+class DecideOrganizationContextProposalRequest(BaseModel):
+    #: The fields (or organization names) accepted; empty rejects the proposal.
+    accept: list[str] = []
+    #: ``new_tracked``: accepted name -> the OpenCTI Organization picked (over the draft's own match).
+    opencti_ids: dict[str, str] = {}
+
+
+class DecideOrganizationContextProposalResponse(BaseModel):
+    status: Literal["accepted", "rejected"]
+    #: The profile version an accepted ``fields`` proposal saved.
+    version: int | None
+    #: The tracked organizations an accepted ``new_tracked`` proposal created (monitoring off).
+    created: list[str]
+
+
+@router.get("/proposals", response_model=list[OrganizationContextProposalResponse])
+async def list_organization_context_proposals(
+    status: Literal["pending", "accepted", "rejected"] = Query(default="pending"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> list[OrganizationContextProposalResponse]:
+    """The changes proposed from chat, newest first (administrators; #9484, S-a2)."""
+    from app.services.organization_context_proposals import list_proposals
+
+    return [
+        OrganizationContextProposalResponse(
+            id=str(row.id),
+            organization_id=str(row.organization_id) if row.organization_id else None,
+            kind=row.kind,  # type: ignore[arg-type]
+            proposals=list(row.proposals or []),
+            based_on_version=row.based_on_version,
+            status=row.status,
+            author_user_id=str(row.author_user_id) if row.author_user_id else None,
+            conversation_id=str(row.conversation_id) if row.conversation_id else None,
+            created_at=row.created_at,
+        )
+        for row in await list_proposals(db, status=status, limit=limit)
+    ]
+
+
+@router.post("/proposals/{proposal_id}/decide", response_model=DecideOrganizationContextProposalResponse)
+async def decide_organization_context_proposal(
+    proposal_id: uuid.UUID,
+    body: DecideOrganizationContextProposalRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> DecideOrganizationContextProposalResponse:
+    """Accept the named entries of a pending proposal, or reject it with none (administrators).
+
+    Accepting fields saves the next profile version with source ``ai_draft``;
+    accepting organizations creates them tracked, monitoring off. 404 for an
+    unknown proposal, 409 for one already decided or a version saved at the
+    same time, 422 naming an entry that is not in the proposal.
+    """
+    from app.models.organization_context import OrganizationContextProposal
+    from app.services import organization_context_proposals as proposals
+
+    row = await db.get(OrganizationContextProposal, proposal_id, with_for_update=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such proposal.")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail=f"This proposal is already {row.status}.")
+    try:
+        outcome = await proposals.decide(
+            db, row, admin_user_id=admin.id, accept=body.accept, opencti_ids=body.opencti_ids
+        )
+        await db.commit()
+    except proposals.ProposalError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and decide again."
+        ) from None
+    return DecideOrganizationContextProposalResponse(**outcome)
+
+
+@router.post("/draft", response_model=DraftOrganizationContextResponse)
+async def draft_organization_context(
+    body: DraftOrganizationContextRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> DraftOrganizationContextResponse:
+    """Propose a profile from what OpenCTI, OpenAEV and OpenCRQ hold (administrators).
+
+    Only the empty fields of the current profile are filled; nothing is
+    saved: the administrator reviews the draft and saves it with ``PUT``
+    and source ``draft``.
+    """
+    from app.services.organization_context_draft import draft_profile
+
+    draft, version = await draft_profile(db, user_id=admin.id, tenant_id=body.tenant_id)
+    return DraftOrganizationContextResponse(
+        based_on_version=version,
+        profile=draft.profile.model_dump(mode="json"),
+        filled=draft.filled,
+        unavailable=draft.unavailable,
+        missing_fields=org_context.missing_fields(draft.profile),
+    )
+
+
+class ImportSourceStatus(BaseModel):
+    source: str
+    available: bool
+    #: Why the platform cannot feed the section (empty when it can).
+    reason: str = ""
+    #: The filters this source supports for the section.
+    filters: list[str]
+
+
+class ImportSection(BaseModel):
+    section: str
+    #: The profile field the section writes.
+    field: str
+    sources: list[ImportSourceStatus]
+
+
+class ImportSourcesResponse(BaseModel):
+    sections: list[ImportSection]
+
+
+class ImportRequest(BaseModel):
+    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
+    source: Literal["openaev", "opencti", "opencrq"]
+    filters: dict[str, Any] = {}
+    #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
+    batch_type: str = ""
+    #: With apply: the version the preview was computed on; another save since is 409.
+    based_on_version: int | None = None
+    #: Remove the rows this source wrote before that it no longer returns (default: kept).
+    remove_gone: bool = False
+
+
+class ImportPreviewResponse(BaseModel):
+    based_on_version: int | None
+    plan: dict[str, Any]
+    applied: bool = False
+    version: int | None = None
+
+
+@router.get("/import/sources", response_model=ImportSourcesResponse)
+async def list_organization_import_sources(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ImportSourcesResponse:
+    """Which platform can feed each profile section for this administrator, and why not (#11780)."""
+    from app.services import organization_context_import as imp
+
+    statuses = await imp.source_statuses(db, user_id=admin.id)
+    sections = [
+        ImportSection(
+            section=section,
+            field=imp.SECTION_FIELD[section],
+            sources=[
+                ImportSourceStatus(
+                    source=source,
+                    available=statuses[source].available,
+                    reason=statuses[source].reason,
+                    filters=list(imp.SOURCE_FILTERS.get((section, source), ())),
+                )
+                for source in imp.SECTION_SOURCES[section]
+            ],
+        )
+        for section in imp.SECTION_SOURCES
+    ]
+    return ImportSourcesResponse(sections=sections)
+
+
+class ImportFilterOption(BaseModel):
+    value: str
+    label: str
+    #: One line about the value, as the source words it (empty when it has none).
+    description: str = ""
+    #: The category of a subcategory (empty otherwise).
+    parent: str = ""
+
+
+class ImportFilterOptionsResponse(BaseModel):
+    #: filter key -> the values the source offers for it, read live.
+    options: dict[str, list[ImportFilterOption]]
+    #: filter key -> why the source offers none: not_connected, unreadable or no_system_taxonomy (an older OpenCTI).
+    unavailable: dict[str, Literal["not_connected", "unreadable", "no_system_taxonomy"]]
+
+
+@router.get("/import/options", response_model=ImportFilterOptionsResponse)
+async def list_organization_import_options(
+    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
+    source: Literal["openaev", "opencti", "opencrq"],
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ImportFilterOptionsResponse:
+    """The values each import filter offers in that platform, so the dialog picks instead of typing (#11886)."""
+    from app.services import organization_context_import as imp
+
+    found = await imp.filter_options(db, user_id=admin.id, section=section, source=source)
+    return ImportFilterOptionsResponse(
+        options={k: [ImportFilterOption(**o) for o in v] for k, v in found.options.items()},
+        unavailable=found.unavailable,
+    )
+
+
+@router.post("/import/preview", response_model=ImportPreviewResponse)
+async def preview_organization_import(
+    body: ImportRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ImportPreviewResponse:
+    """What importing one section from one platform would do, before anything is written (#11780).
+
+    No model call: the source's own count of matching entities, then new,
+    updated, unchanged and skipped rows, and a sample.
+    """
+    from app.services import organization_context_import as imp
+
+    plan, version = await imp.preview_import(
+        db,
+        user_id=admin.id,
+        section=body.section,
+        source=body.source,
+        filters=body.filters,
+        batch_type=body.batch_type,
+        remove_gone=body.remove_gone,
+    )
+    return ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
+
+
+@router.post("/import/apply", response_model=ImportPreviewResponse)
+async def apply_organization_import(
+    body: ImportRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ImportPreviewResponse:
+    """Import one section from one platform and save the next profile version (#11780).
+
+    The source is read again: what is saved is what the preview counted
+    unless the platform changed in between. A platform that cannot be read is
+    422 with its reason, nothing saved; another save since the preview is 409.
+    """
+    from app.services import organization_context_import as imp
+
+    plan, version = await imp.preview_import(
+        db,
+        user_id=admin.id,
+        section=body.section,
+        source=body.source,
+        filters=body.filters,
+        batch_type=body.batch_type,
+        remove_gone=body.remove_gone,
+    )
+    if plan.error:
+        raise HTTPException(status_code=422, detail=plan.error)
+    if body.based_on_version is not None and body.based_on_version != version:
+        raise HTTPException(status_code=409, detail="The profile changed since the preview. Preview again.")
+    response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
+    removes = plan.remove_gone and bool(plan.gone)
+    if not (plan.new or plan.updated or removes) or plan.profile is None:
+        return response
+    try:
+        saved = await org_context.save_version(
+            db, plan.profile, source="draft", author_user_id=admin.id, sources=imp.provenance(plan, body.filters)
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and import again."
+        ) from None
+    response.applied = True
+    response.version = saved.version
+    return response
+
+
+class OrganizationSyncRequest(BaseModel):
+    #: A section of the import, or ``all`` for the global schedule that runs every section sync.
+    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
+    source: Literal["openaev", "opencti", "opencrq", ""] = ""
+    filters: dict[str, Any] = {}
+    batch_type: str = ""
+    remove_gone: bool = False
+    frequency: Literal["hourly", "daily", "weekly"] = "daily"
+    hour: int = 6
+    minute: int = 0
+    #: 0 Monday ... 6 Sunday (weekly).
+    weekday: int = 0
+    timezone: str = "UTC"
+    enabled: bool = True
+
+
+class OrganizationSyncResponse(BaseModel):
+    id: str
+    section: str
+    source: str
+    filters: dict[str, Any]
+    batch_type: str
+    remove_gone: bool
+    frequency: str
+    hour: int
+    minute: int
+    weekday: int
+    timezone: str
+    enabled: bool
+    #: Why the sync stopped by itself (a missing or revoked token); empty while it runs.
+    paused_reason: str
+    owner_email: str | None = None
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    #: ``{added, updated, removed, version, error}`` of the last run.
+    last_result: dict[str, Any] | None = None
+
+
+async def _sync_response(db: AsyncSession, row: Any) -> OrganizationSyncResponse:
+    owner = await db.get(User, row.owner_user_id) if row.owner_user_id else None
+    return OrganizationSyncResponse(
+        id=str(row.id),
+        section=row.section,
+        source=row.source,
+        filters=row.filters or {},
+        batch_type=row.batch_type,
+        remove_gone=row.remove_gone,
+        frequency=row.frequency,
+        hour=row.hour,
+        minute=row.minute,
+        weekday=row.weekday,
+        timezone=row.timezone,
+        enabled=row.enabled,
+        paused_reason=row.paused_reason,
+        owner_email=owner.email if owner else None,
+        next_run_at=row.next_run_at,
+        last_run_at=row.last_run_at,
+        last_result=row.last_result,
+    )
+
+
+def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> None:
+    """Write *body* on *row*, refused with 422 when the scheduler could not run it."""
+    from app.services import organization_context_sync as osync
+
+    try:
+        # Saving again is how a paused sync resumes: it now reads with this administrator's token.
+        osync.define(row, owner_id=admin.id, **body.model_dump())
+    except osync.SyncRefusedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.get("/syncs", response_model=list[OrganizationSyncResponse])
+async def list_organization_syncs(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[OrganizationSyncResponse]:
+    """The scheduled syncs of the profile sections, global first (#11913)."""
+    from app.services import organization_context_sync as osync
+
+    return [await _sync_response(db, row) for row in await osync.all_syncs(db)]
+
+
+@router.post("/syncs", response_model=OrganizationSyncResponse, status_code=201)
+async def create_organization_sync(
+    body: OrganizationSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationSyncResponse:
+    """Keep one section in sync with one platform on a schedule, or schedule them all (#11913)."""
+    from app.models.organization_context import OrganizationContextSync
+    from app.services import organization_context_sync as osync
+    from app.services.audit import log_audit
+
+    if body.section == osync.ALL_SECTIONS and await osync.global_sync_exists(db):
+        raise HTTPException(status_code=409, detail="A Sync all schedule exists already: edit it.")
+    row = OrganizationContextSync()
+    _apply_sync_body(row, body, admin)
+    db.add(row)
+    await db.flush()
+    await log_audit(
+        db,
+        user=admin,
+        action="create",
+        entity_type="organization_context_sync",
+        entity_id=row.id,
+        entity_name=f"{row.section} from {row.source or 'every source'}",
+        summary=f"Organization sync of {row.section} scheduled {row.frequency}",
+        details=body.model_dump(),
+    )
+    await db.commit()
+    return await _sync_response(db, row)
+
+
+async def _sync_or_404(db: AsyncSession, sync_id: uuid.UUID) -> Any:
+    from app.models.organization_context import OrganizationContextSync
+
+    row = await db.get(OrganizationContextSync, sync_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Sync not found")
+    return row
+
+
+@router.put("/syncs/{sync_id}", response_model=OrganizationSyncResponse)
+async def update_organization_sync(
+    sync_id: uuid.UUID,
+    body: OrganizationSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationSyncResponse:
+    """Change a sync; saving it again also resumes a paused one with this administrator's token (#11913)."""
+    from app.services.audit import log_audit
+
+    row = await _sync_or_404(db, sync_id)
+    if (row.section == "all") != (body.section == "all"):
+        raise HTTPException(status_code=422, detail="A section sync cannot become Sync all, nor the reverse.")
+    _apply_sync_body(row, body, admin)
+    await log_audit(
+        db,
+        user=admin,
+        action="update",
+        entity_type="organization_context_sync",
+        entity_id=row.id,
+        entity_name=f"{row.section} from {row.source or 'every source'}",
+        summary=f"Organization sync of {row.section} changed ({'enabled' if row.enabled else 'disabled'})",
+        details=body.model_dump(),
+    )
+    await db.commit()
+    return await _sync_response(db, row)
+
+
+@router.delete("/syncs/{sync_id}", status_code=204)
+async def delete_organization_sync(
+    sync_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> None:
+    """Stop and remove a sync; the profile rows it wrote stay (#11913)."""
+    from app.services.audit import log_audit
+
+    row = await _sync_or_404(db, sync_id)
+    await log_audit(
+        db,
+        user=admin,
+        action="delete",
+        entity_type="organization_context_sync",
+        entity_id=row.id,
+        entity_name=f"{row.section} from {row.source or 'every source'}",
+        summary=f"Organization sync of {row.section} deleted",
+    )
+    await db.delete(row)
+    await db.commit()
+
+
+@router.post("/syncs/{sync_id}/run", response_model=OrganizationSyncResponse)
+async def run_organization_sync(
+    sync_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationSyncResponse:
+    """Run a sync now, outside its schedule; its next scheduled run is unchanged (#11913)."""
+    from app.services import organization_context_sync as osync
+
+    row = await _sync_or_404(db, sync_id)
+    try:
+        await osync.run_now(db, row, trigger=f"run now by {admin.email}")
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Run it again."
+        ) from None
+    return await _sync_response(db, row)
+
+
+class FillAgentRequest(BaseModel):
+    integration_id: str
+    #: True: also create the scheduled assignment that keeps the assets in sync.
+    schedule: bool = False
+    cron: str = "0 6 * * *"
+    timezone: str | None = None
+
+
+class FillAgentResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    created: bool
+    assignment_id: str | None = None
+    #: The preview instruction the chat starts with.
+    prompt: str
+
+
+@router.post("/fill-agent", response_model=FillAgentResponse)
+async def create_organization_fill_agent(
+    body: FillAgentRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+    # It creates an agent (and a scheduled assignment): refused when AI is off or unlicensed.
+    _gate: None = Depends(require_agentic_ai),
+) -> FillAgentResponse:
+    """An agent that fills the assets from one connected integration, and its optional sync (#11888).
+
+    Bound to the integration read-only and to the ``organization_context``
+    group, reused when the administrator already has one for that integration.
+    No model call here: the chat or the scheduled run does the reading.
+    """
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import get_user_group_ids, parse_uuid, user_visible_filter
+    from app.core.utils import validate_cron_expression
+    from app.models.integration import Integration
+    from app.services import organization_context_fill_agent as fill
+
+    integration_id = parse_uuid(body.integration_id, label="integration_id")
+    groups = await get_user_group_ids(db, admin.id)
+    integration = (
+        await db.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                user_visible_filter(Integration, admin.id, groups, is_admin=True),
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+    try:
+        cron = validate_cron_expression(body.cron)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    made = await fill.ensure_fill_agent(
+        db, admin_id=admin.id, integration=integration, schedule=body.schedule, cron=cron, timezone=body.timezone
+    )
+    await db.commit()
+    return FillAgentResponse(
+        agent_id=str(made.agent.id),
+        agent_name=made.agent.name,
+        created=made.created,
+        assignment_id=str(made.assignment.id) if made.assignment else None,
+        prompt=made.prompt,
+    )
+
+
+class SetupPromptResponse(BaseModel):
+    #: True when the caller must be shown the proposal now.
+    propose: bool
+    #: The instance's recorded answer (``started``, ``later``, ``dismissed``), ``None`` while unanswered.
+    outcome: str | None
+    answered_at: datetime | None
+
+
+class AnswerSetupPromptRequest(BaseModel):
+    outcome: Literal["started", "later", "dismissed"]
+
+
+@router.get("/setup-prompt", response_model=SetupPromptResponse)
+async def get_setup_prompt(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SetupPromptResponse:
+    """Whether the first-login organization setup is proposed to the caller (#9173, S3).
+
+    Every signed-in user may ask; only an administrator of an XTM One
+    platform whose profile was never saved, on an instance that never
+    answered the proposal, gets ``propose: true``. A row read, no write.
+    """
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.core.config import settings
+    from app.services import organization_setup_prompt as prompt
+
+    row = await get_platform_settings(db)
+    eligible = bool(user.is_admin) and settings.is_xtm_one and row.organization_setup_prompted_at is None
+    has_profile = await prompt.has_saved_profile(db) if eligible else True
+    propose = prompt.should_propose(
+        is_admin=bool(user.is_admin), is_xtm_one=settings.is_xtm_one, has_profile=has_profile, row=row
+    )
+    state = prompt.state_of(propose=propose, row=row)
+    return SetupPromptResponse(propose=state.propose, outcome=state.outcome, answered_at=state.answered_at)
+
+
+@router.post("/setup-prompt", response_model=SetupPromptResponse)
+async def answer_setup_prompt(
+    body: AnswerSetupPromptRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SetupPromptResponse:
+    """Record the instance's answer to the setup proposal, once (administrators, audited).
+
+    The first answer wins; a later call answers the recorded state unchanged.
+    """
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.services import organization_setup_prompt as prompt
+    from app.services.audit import log_audit
+
+    row = await get_platform_settings(db)
+    if prompt.record_answer(row, outcome=body.outcome, user_id=admin.id):
+        await log_audit(
+            db,
+            user=admin,
+            action="configure",
+            entity_type="organization_context",
+            entity_name="setup_prompt",
+            summary=f"Answered the organization setup proposal: {body.outcome}",
+            details={"outcome": body.outcome},
+        )
+    await db.commit()
+    state = prompt.state_of(propose=False, row=row)
+    return SetupPromptResponse(propose=False, outcome=state.outcome, answered_at=state.answered_at)

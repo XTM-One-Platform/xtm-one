@@ -1,0 +1,46 @@
+{
+  "procedure": "findingScore.getUniqueCveFinding",
+  "source": "recorded",
+  "data": {
+    "cveId": "CVE-2021-44228",
+    "cveTitle": "Apache Log4j2 JNDI Remote Code Execution (Log4Shell)",
+    "knownExploited": true,
+    "epss": 0.976,
+    "score": 52,
+    "band": "medium",
+    "worstScore": 52,
+    "worstBand": "medium",
+    "pendingVector": false,
+    "affectedAssetCount": 3,
+    "sources": [
+      "microsoft_graph"
+    ],
+    "firstSeenAt": "2025-11-13T10:13:54.939Z",
+    "composition": {
+      "worst": 52,
+      "levels": [
+        {
+          "score": 52,
+          "band": "medium",
+          "assetCount": 1,
+          "equivalent": 1
+        },
+        {
+          "score": 34,
+          "band": "low",
+          "assetCount": 1,
+          "equivalent": 1.522997974471263e-08
+        },
+        {
+          "score": 33,
+          "band": "low",
+          "assetCount": 1,
+          "equivalent": 5.602796437537268e-09
+        }
+      ],
+      "equivalentSum": 1.0000000208327762,
+      "breadth": 2.083277595381819e-08,
+      "unrounded": 52.00000002083278
+    }
+  }
+}

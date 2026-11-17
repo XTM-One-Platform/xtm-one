@@ -1,0 +1,129 @@
+# Sandbox requirements — Data Science, ML & Visualization
+# Covers: scientific computing, machine learning, NLP, visualization, document I/O, geospatial.
+# Install independently; do not mix with other sandbox domain files in one environment.
+#
+# OS deps (beyond base): libgl1, libglib2.0-0, libhdf5-dev, libxml2-dev, libxslt1-dev,
+#   libgdal-dev, libproj-dev, libgeos-dev, libgomp1
+# Build (final-full — GDAL/GEOS/HDF5/etc. runtime shared libs, see
+# apt.sandbox.extended.runtime.txt):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python \
+#     --target final-full \
+#     --build-arg APT_FILE=apt.sandbox.extended.txt \
+#     --build-arg REQ_FILE=requirements.sandbox.data.txt \
+#     --build-arg RUNTIME_APT_FILE=apt.sandbox.extended.runtime.txt \
+#     -t sandbox-python-data:<version> .
+
+# ── Data Analysis & Numeric ───────────────────────────────────────────────────
+numpy                          # Numerical computing (unpinned — resolved with scipy/pandas)
+pandas                         # Data analysis and manipulation
+scipy                          # Scientific computing
+pyarrow                        # Columnar data (Arrow format)
+numexpr==2.14.1                # Fast numerical expression evaluator
+narwhals==2.23.0               # DataFrame compatibility layer
+
+# ── Machine Learning ──────────────────────────────────────────────────────────
+scikit-learn==1.9.0            # Classical ML algorithms
+tensorflow==2.21.0             # Deep learning framework
+keras==3.15.0                  # High-level neural network API
+xgboost==3.3.0                 # Gradient boosting
+# thinc + Cython spaCy internals (cymem, murmurhash, preshed, srsly, wasabi,
+# weasel, catalogue, confection) are pulled automatically as spaCy dependencies.
+
+# ── NLP / Natural Language Processing ────────────────────────────────────────
+nltk==3.10.4                    # Natural language toolkit
+spacy==3.8.14                  # Industrial NLP library (pulls thinc + Cython deps)
+textblob==0.20.0               # Simplified text processing
+
+# ── Statistics / Scientific Computing / Graphs ───────────────────────────────
+mpmath                         # Arbitrary-precision arithmetic (unpinned — sympy 1.14 requires mpmath<1.4)
+sympy==1.14.0                  # Symbolic mathematics
+networkx==3.6.1                # Graph analysis
+statsmodels==0.14.6            # Statistical models
+patsy==1.0.2                   # Statistical formula parsing
+ortools==9.15.6755             # Combinatorial optimization
+
+# ── Performance & Optimization ───────────────────────────────────────────────
+numba==0.66.0                  # JIT compiler for numerical code
+llvmlite==0.48.0               # LLVM bindings for numba
+blis==1.3.3                    # BLAS-like linear algebra
+opt_einsum==3.4.0              # Optimized einsum contraction
+optree==0.19.1                 # PyTree utilities
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+matplotlib==3.11.0             # 2D plotting library
+matplotlib-inline==0.2.2       # Inline matplotlib for notebooks
+matplotlib-venn==1.1.2         # Venn diagrams
+seaborn==0.13.2                # Statistical data visualization
+plotly==6.8.0                  # Interactive charts
+bokeh==3.9.1                   # Interactive web visualizations
+mizani==0.14.4                 # Scales for plotnine
+contourpy==1.3.3               # Contour computation
+cycler==0.12.1                 # Composable cycles
+fonttools==4.63.0              # Font manipulation
+kiwisolver==1.5.0              # Cassowary constraint solver
+
+# ── Image & Video ─────────────────────────────────────────────────────────────
+opencv-python==5.0.0.93        # Computer vision
+pillow==13.0.0                 # Image processing
+imageio==2.37.3                # Image I/O
+scikit-image==0.26.0           # Image processing algorithms
+tifffile==2026.6.1             # TIFF file I/O
+
+# ── Excel ─────────────────────────────────────────────────────────────────────
+openpyxl==3.1.5                # Excel read/write (.xlsx)
+xlrd==2.0.2                    # Excel read (.xls)
+XlsxWriter==3.2.9              # Excel write (.xlsx)
+
+# ── PDF ───────────────────────────────────────────────────────────────────────
+pypdf==6.21.4                  # PDF reading and manipulation (PyPDF2 successor; same pin as backend/pyproject.toml)
+fpdf2==2.8.8                   # PDF generation
+reportlab==5.0.0               # PDF generation toolkit
+PyLaTeX==1.4.2                 # LaTeX document generation
+
+# ── Word & PowerPoint ─────────────────────────────────────────────────────────
+python-docx==1.2.0             # Word document read/write
+python-pptx==1.0.2             # PowerPoint read/write
+
+# ── XML / HTML / Markdown / YAML / RTF ───────────────────────────────────────
+lxml==6.1.1                    # XML and HTML processing
+et_xmlfile==2.0.0              # Incremental XML writing
+Markdown==3.10.2               # Markdown to HTML conversion
+markdown-it-py==4.2.0          # Markdown parser
+mdurl==0.1.2                   # URL utilities for markdown-it
+PyYAML==6.0.3                  # YAML parser and emitter
+striprtf==0.0.32               # RTF to text conversion
+
+# ── Files & I/O ───────────────────────────────────────────────────────────────
+h5py                           # HDF5 file I/O (unpinned — tensorflow 2.21 requires h5py<3.15)
+smart_open==8.0.0              # Streaming I/O for large files
+cloudpathlib==0.24.0           # Cloud storage path abstraction
+
+# ── Geospatial ────────────────────────────────────────────────────────────────
+geopandas==1.1.4               # Geospatial data analysis
+pyogrio==0.13.0                # Fast vector I/O (GDAL)
+pyproj==3.7.2                  # Cartographic projections
+shapely==2.1.2                 # Geometric operations
+xyzservices==2026.3.0          # Tile provider registry
+
+# ── Debug & Profiling ─────────────────────────────────────────────────────────
+tensorboard==2.21.0            # TensorFlow visualization toolkit
+tensorboard-data-server==0.7.2  # TensorBoard data server
+
+# ── Infrastructure (unpinned — resolved across the packages above) ────────────
+requests
+urllib3
+certifi
+click
+packaging
+anyio
+joblib==1.5.3
+threadpoolctl==3.6.0
+pyparsing
+python-dateutil
+pytz
+tzdata==2026.2
+attrs
+six
+wrapt
+typing_extensions
+Pygments

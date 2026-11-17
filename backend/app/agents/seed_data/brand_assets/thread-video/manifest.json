@@ -1,0 +1,38 @@
+{
+  "container": "thread-video",
+  "source": "The THREAD pack (brand_assets/thread) and every Filigran predefined asset the THREAD deck carries - the Filigran pack minus its chrome logos, the partner, integration and customer logos - included and never copied. The marks the cards and the watermark draw, and the mosaic cluster, are listed here under captions of their own.",
+  "include": [
+    {"pack": "thread"},
+    {"pack": "filigran", "except_roles": ["logo", "logo_light", "logo_mark"]},
+    {"pack": "filigran-badges"},
+    {"pack": "filigran-partner-logos"},
+    {"pack": "filigran-integration-logos"},
+    {"pack": "filigran-customer-logos"}
+  ],
+  "assets": [
+    {
+      "file": "thread-logo.svg",
+      "pack": "thread",
+      "role": "logo",
+      "description": "Official THREAD lockup, white: the thread- wordmark with its 'powered by Filigran' baseline - drawn on the title and closing cards."
+    },
+    {
+      "file": "thread-logo-dark.svg",
+      "pack": "thread",
+      "role": "logo_light",
+      "description": "Official THREAD lockup in dark ink, for a light surface."
+    },
+    {
+      "file": "thread-emblem.png",
+      "pack": "thread",
+      "role": "logo_mark",
+      "description": "THREAD emblem: the 't' glyph filled with the grained pixel mosaic, on transparent - the watermark in the corner of every frame."
+    },
+    {
+      "file": "thread-mosaic-cluster.webp",
+      "pack": "thread",
+      "role": "illustration",
+      "description": "THREAD mosaic cluster, transparent background - an image scene or a backdrop beside a statement."
+    }
+  ]
+}

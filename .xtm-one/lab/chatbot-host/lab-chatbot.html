@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" class="dark layer-0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XTM One lab: @filigran/chatbot displays</title>
+    <!-- Lab only (#11319): copied into the lab's frontend copy by .xtm-one/lab/lab.py, never in the product build.
+         The #token=... fragment the lab logs becomes the app's session (copilot_token), then leaves the bar;
+         the query (?mode=...) stays, so a reload keeps the display. -->
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.hash.slice(1));
+        var token = params.get("token");
+        if (token) localStorage.setItem("copilot_token", token);
+        if (localStorage.getItem("copilot-theme") === "light") {
+          var root = document.documentElement;
+          root.dataset.mode = "light";
+          root.classList.remove("dark");
+          root.classList.add("light");
+        }
+        if (window.location.hash) history.replaceState(null, "", window.location.pathname + window.location.search);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/lab-chatbot-host.tsx"></script>
+  </body>
+</html>

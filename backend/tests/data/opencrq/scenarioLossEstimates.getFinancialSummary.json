@@ -1,0 +1,13 @@
+{
+  "procedure": "scenarioLossEstimates.getFinancialSummary",
+  "source": "recorded",
+  "data": {
+    "totalMinDollar": 8282415,
+    "totalLikelyDollar": 29225370,
+    "totalMaxDollar": 131871293,
+    "pertExpectedValue": 42842531.333333336,
+    "updatedAt": "2026-10-14T08:59:57.711Z",
+    "sanityWarnings": [],
+    "recomputePending": false
+  }
+}

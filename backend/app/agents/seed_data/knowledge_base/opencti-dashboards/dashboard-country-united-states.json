@@ -1,0 +1,1406 @@
+{
+  "name": "[Country] United States of America",
+  "description": "Country-focused threat landscape dashboard for the United States of America, showing threat actors, campaigns, techniques, and indicators.",
+  "openCTI_version": "6.9.4",
+  "type": "dashboard",
+  "manifest": {
+    "widgets": {
+      "1c74469f-07fd-4b90-97b1-258ec990e44a": {
+        "id": "1c74469f-07fd-4b90-97b1-258ec990e44a",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "## High Level Indicators\n\nAll KPis related to knowledge about United States of America in this OpenCTI platform."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 0,
+          "y": 0,
+          "i": "1c74469f-07fd-4b90-97b1-258ec990e44a",
+          "moved": false,
+          "static": false
+        }
+      },
+      "5339d8b7-cd3a-4d1a-8329-91d921bcbc24": {
+        "id": "5339d8b7-cd3a-4d1a-8329-91d921bcbc24",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "## Active Threats\n\nAll threats targeting the United States of America with associated malware."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 6,
+          "y": 0,
+          "i": "5339d8b7-cd3a-4d1a-8329-91d921bcbc24",
+          "moved": false,
+          "static": false
+        }
+      },
+      "ace4968a-1622-41fd-9e7a-170f49b70251": {
+        "id": "ace4968a-1622-41fd-9e7a-170f49b70251",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Reports about United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 0,
+          "y": 2,
+          "i": "ace4968a-1622-41fd-9e7a-170f49b70251",
+          "moved": false,
+          "static": false
+        }
+      },
+      "de231ba3-1ee9-41d5-9931-70a01e041491": {
+        "id": "de231ba3-1ee9-41d5-9931-70a01e041491",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Threat Actors & Intrusion Sets targeting United States of America"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 0,
+          "y": 4,
+          "i": "de231ba3-1ee9-41d5-9931-70a01e041491",
+          "moved": false,
+          "static": false
+        }
+      },
+      "5c4c0882-09d5-4ff7-bb13-4dca232b5f35": {
+        "id": "5c4c0882-09d5-4ff7-bb13-4dca232b5f35",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Campaign"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Campaigns targeting United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 3,
+          "y": 2,
+          "i": "5c4c0882-09d5-4ff7-bb13-4dca232b5f35",
+          "moved": false,
+          "static": false
+        }
+      },
+      "cb63da7a-080d-4101-95e8-be5d249136f4": {
+        "id": "cb63da7a-080d-4101-95e8-be5d249136f4",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": false,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "fromTypes"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toId"
+                  ],
+                  "values": [
+                    "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 threats targeting United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 6,
+          "y": 2,
+          "i": "cb63da7a-080d-4101-95e8-be5d249136f4",
+          "moved": false,
+          "static": false
+        }
+      },
+      "0ca142e3-87ea-4de7-9741-341bee8989fa": {
+        "id": "0ca142e3-87ea-4de7-9741-341bee8989fa",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "uses"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "number": 20
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 malware used by threats targeting United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 9,
+          "y": 2,
+          "i": "0ca142e3-87ea-4de7-9741-341bee8989fa",
+          "moved": false,
+          "static": false
+        }
+      },
+      "76f778af-9308-42de-846b-2c9f1d98d6aa": {
+        "id": "76f778af-9308-42de-846b-2c9f1d98d6aa",
+        "type": "radar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "uses"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Attack-Pattern"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 15,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top techniques used by threats targeting United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 6,
+          "y": 8,
+          "i": "76f778af-9308-42de-846b-2c9f1d98d6aa",
+          "moved": false,
+          "static": false
+        }
+      },
+      "df3755f2-5caf-493e-afa3-03963076dbf6": {
+        "id": "df3755f2-5caf-493e-afa3-03963076dbf6",
+        "type": "distribution-list",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Vulnerability"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Campaign",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top vulnerabilities targeted by threats targeting United States of America"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 9,
+          "y": 8,
+          "i": "df3755f2-5caf-493e-afa3-03963076dbf6",
+          "moved": false,
+          "static": false
+        }
+      },
+      "35b78d48-5501-4358-92f6-a0bf23e87f29": {
+        "id": "35b78d48-5501-4358-92f6-a0bf23e87f29",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "## Recent Activities\n\nCampaigns targeting United States of America."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 0,
+          "y": 14,
+          "i": "35b78d48-5501-4358-92f6-a0bf23e87f29",
+          "moved": false,
+          "static": false
+        }
+      },
+      "17d692a9-801c-4fa3-b4b7-90cc920b82fc": {
+        "id": "17d692a9-801c-4fa3-b4b7-90cc920b82fc",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "## Technical information\n\nSignatures and sightings related to United States of America."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 6,
+          "y": 14,
+          "i": "17d692a9-801c-4fa3-b4b7-90cc920b82fc",
+          "moved": false,
+          "static": false
+        }
+      },
+      "d9ef931b-741a-4de5-978d-c0be9edd5800": {
+        "id": "d9ef931b-741a-4de5-978d-c0be9edd5800",
+        "type": "timeline",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Campaign"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Most recent campaigns targeting United States of America"
+        },
+        "layout": {
+          "w": 4,
+          "h": 11,
+          "x": 0,
+          "y": 20,
+          "i": "d9ef931b-741a-4de5-978d-c0be9edd5800",
+          "moved": false,
+          "static": false
+        }
+      },
+      "0793fea3-4961-497b-b9d7-638232449e4f": {
+        "id": "0793fea3-4961-497b-b9d7-638232449e4f",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "creator_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Reports containing United States of America"
+        },
+        "layout": {
+          "w": 2,
+          "h": 5,
+          "x": 4,
+          "y": 20,
+          "i": "0793fea3-4961-497b-b9d7-638232449e4f",
+          "moved": false,
+          "static": false
+        }
+      },
+      "6fb74dad-7e17-4671-a729-a0f7967e0895": {
+        "id": "6fb74dad-7e17-4671-a729-a0f7967e0895",
+        "type": "line",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "indicates"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Indicators related to threats targeting United States of America",
+          "legend": true,
+          "interval": "day"
+        },
+        "layout": {
+          "w": 6,
+          "h": 7,
+          "x": 6,
+          "y": 16,
+          "i": "6fb74dad-7e17-4671-a729-a0f7967e0895",
+          "moved": false,
+          "static": false
+        }
+      },
+      "5b46840a-8dec-4876-86e3-2f9e4f0c6edb": {
+        "id": "5b46840a-8dec-4876-86e3-2f9e4f0c6edb",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "fromTypes"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Sector"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    },
+                    {
+                      "key": "relationship_type",
+                      "values": [
+                        "targets"
+                      ]
+                    }
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top sectors targeted by threats targeting United States of America"
+        },
+        "layout": {
+          "w": 6,
+          "h": 8,
+          "x": 0,
+          "y": 6,
+          "i": "5b46840a-8dec-4876-86e3-2f9e4f0c6edb",
+          "moved": false,
+          "static": false
+        }
+      },
+      "ca7f0eb8-e34f-439f-9e23-9faab0959ffb": {
+        "id": "ca7f0eb8-e34f-439f-9e23-9faab0959ffb",
+        "type": "horizontal-bar",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "object-marking.internal_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Reports about United States of America"
+        },
+        "layout": {
+          "w": 2,
+          "h": 6,
+          "x": 4,
+          "y": 25,
+          "i": "ca7f0eb8-e34f-439f-9e23-9faab0959ffb",
+          "moved": false,
+          "static": false
+        }
+      },
+      "909f62c2-d6a8-42c4-be73-73199e50614a": {
+        "id": "909f62c2-d6a8-42c4-be73-73199e50614a",
+        "type": "wordcloud",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "object-label.internal_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top labels in Reports about United States of America"
+        },
+        "layout": {
+          "w": 6,
+          "h": 4,
+          "x": 0,
+          "y": 16,
+          "i": "909f62c2-d6a8-42c4-be73-73199e50614a",
+          "moved": false,
+          "static": false
+        }
+      },
+      "96e79900-1729-4314-8855-7a8ae054c690": {
+        "id": "96e79900-1729-4314-8855-7a8ae054c690",
+        "type": "distribution-list",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": false,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "indicates"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "operator": "eq",
+                  "values": [
+                    "Indicator"
+                  ],
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Most correlated Indicators related to threats targeting United States of America",
+          "legend": true,
+          "interval": "day"
+        },
+        "layout": {
+          "w": 6,
+          "h": 8,
+          "x": 6,
+          "y": 23,
+          "i": "96e79900-1729-4314-8855-7a8ae054c690",
+          "moved": false,
+          "static": false
+        }
+      },
+      "b37f76d5-c4d2-4b20-9349-471729631294": {
+        "id": "b37f76d5-c4d2-4b20-9349-471729631294",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Malwares targeting United States of America"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 2,
+          "y": 4,
+          "i": "b37f76d5-c4d2-4b20-9349-471729631294",
+          "moved": false,
+          "static": false
+        }
+      },
+      "4bbcb4dd-0286-472f-b09c-d0a3e06dfb92": {
+        "id": "4bbcb4dd-0286-472f-b09c-d0a3e06dfb92",
+        "type": "number",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "indicates"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "location--e79b4cf1-a256-5efa-bc74-c94c7c7ffde0"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Indicators related to threats targeting United States of America",
+          "legend": true,
+          "interval": "day"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 4,
+          "y": 4,
+          "i": "4bbcb4dd-0286-472f-b09c-d0a3e06dfb92",
+          "moved": false,
+          "static": false
+        }
+      }
+    },
+    "config": {
+      "relativeDate": null,
+      "startDate": null,
+      "endDate": null
+    }
+  }
+}

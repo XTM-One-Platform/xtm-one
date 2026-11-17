@@ -1,0 +1,4 @@
+gcc
+libfreetype6
+libpng16-16
+libbrotli1

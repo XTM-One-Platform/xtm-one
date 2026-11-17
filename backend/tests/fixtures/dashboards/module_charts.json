@@ -1,0 +1,2921 @@
+{
+  "base_url": "https://cti.example.test",
+  "cases": [
+    {
+      "name": "opencti-line",
+      "source": "opencti",
+      "native": {
+        "type": "line",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "Reports",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          },
+          {
+            "label": "Malware",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "interval": "month",
+          "legend": true
+        }
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsMultiTimeSeries": [
+            {
+              "data": [
+                {
+                  "date": "2026-05-01T00:00:00.000Z",
+                  "value": 12
+                },
+                {
+                  "date": "2026-06-01T00:00:00.000Z",
+                  "value": 30
+                },
+                {
+                  "date": "2026-07-01T00:00:00.000Z",
+                  "value": 22
+                },
+                {
+                  "date": "2026-08-01T00:00:00.000Z",
+                  "value": 41
+                },
+                {
+                  "date": "2026-09-01T00:00:00.000Z",
+                  "value": 38
+                },
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 1520
+                }
+              ]
+            },
+            {
+              "data": [
+                {
+                  "date": "2026-05-01T00:00:00.000Z",
+                  "value": 4
+                },
+                {
+                  "date": "2026-06-01T00:00:00.000Z",
+                  "value": 9
+                },
+                {
+                  "date": "2026-07-01T00:00:00.000Z",
+                  "value": 6
+                },
+                {
+                  "date": "2026-08-01T00:00:00.000Z",
+                  "value": 12
+                },
+                {
+                  "date": "2026-09-01T00:00:00.000Z",
+                  "value": 15
+                },
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 11
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "shape": "series",
+      "view": "line",
+      "data": {
+        "series": [
+          {
+            "name": "Reports",
+            "points": [
+              {
+                "x": "2026-05-01",
+                "y": 12.0
+              },
+              {
+                "x": "2026-06-01",
+                "y": 30.0
+              },
+              {
+                "x": "2026-07-01",
+                "y": 22.0
+              },
+              {
+                "x": "2026-08-01",
+                "y": 41.0
+              },
+              {
+                "x": "2026-09-01",
+                "y": 38.0
+              },
+              {
+                "x": "2026-10-01",
+                "y": 1520.0
+              }
+            ]
+          },
+          {
+            "name": "Malware",
+            "points": [
+              {
+                "x": "2026-05-01",
+                "y": 4.0
+              },
+              {
+                "x": "2026-06-01",
+                "y": 9.0
+              },
+              {
+                "x": "2026-07-01",
+                "y": 6.0
+              },
+              {
+                "x": "2026-08-01",
+                "y": 12.0
+              },
+              {
+                "x": "2026-09-01",
+                "y": 15.0
+              },
+              {
+                "x": "2026-10-01",
+                "y": 11.0
+              }
+            ]
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.line",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "paletteLead": "accent",
+          "numberFormat": "siSpaced",
+          "dateFormat": "monthYear",
+          "xAxisType": "category",
+          "gridLines": "horizontal",
+          "gridOpacity": 0.1,
+          "xAxisFontSize": 12.0,
+          "yAxisFontSize": 14.0,
+          "axisLabelColor": "text",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendLabelColor": "text",
+          "legendDisplay": "bottom",
+          "markerDisplay": "off",
+          "lineWidth": 2.0
+        }
+      }
+    },
+    {
+      "name": "opencti-area",
+      "source": "opencti",
+      "native": {
+        "type": "area",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "Indicators",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "interval": "day",
+          "stacked": true
+        }
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsMultiTimeSeries": [
+            {
+              "data": [
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 3
+                },
+                {
+                  "date": "2026-10-02T00:00:00.000Z",
+                  "value": 5
+                },
+                {
+                  "date": "2026-10-03T00:00:00.000Z",
+                  "value": 2
+                },
+                {
+                  "date": "2026-10-04T00:00:00.000Z",
+                  "value": 8
+                },
+                {
+                  "date": "2026-10-05T00:00:00.000Z",
+                  "value": 13
+                },
+                {
+                  "date": "2026-10-06T00:00:00.000Z",
+                  "value": 9
+                },
+                {
+                  "date": "2026-10-07T00:00:00.000Z",
+                  "value": 4
+                },
+                {
+                  "date": "2026-10-08T00:00:00.000Z",
+                  "value": 0
+                },
+                {
+                  "date": "2026-10-09T00:00:00.000Z",
+                  "value": 6
+                },
+                {
+                  "date": "2026-10-10T00:00:00.000Z",
+                  "value": 11
+                },
+                {
+                  "date": "2026-10-11T00:00:00.000Z",
+                  "value": 7
+                },
+                {
+                  "date": "2026-10-12T00:00:00.000Z",
+                  "value": 5
+                },
+                {
+                  "date": "2026-10-13T00:00:00.000Z",
+                  "value": 9
+                },
+                {
+                  "date": "2026-10-14T00:00:00.000Z",
+                  "value": 12
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "shape": "series",
+      "view": "area",
+      "data": {
+        "series": [
+          {
+            "name": "Indicators",
+            "points": [
+              {
+                "x": "2026-10-01",
+                "y": 3.0
+              },
+              {
+                "x": "2026-10-02",
+                "y": 5.0
+              },
+              {
+                "x": "2026-10-03",
+                "y": 2.0
+              },
+              {
+                "x": "2026-10-04",
+                "y": 8.0
+              },
+              {
+                "x": "2026-10-05",
+                "y": 13.0
+              },
+              {
+                "x": "2026-10-06",
+                "y": 9.0
+              },
+              {
+                "x": "2026-10-07",
+                "y": 4.0
+              },
+              {
+                "x": "2026-10-08",
+                "y": 0.0
+              },
+              {
+                "x": "2026-10-09",
+                "y": 6.0
+              },
+              {
+                "x": "2026-10-10",
+                "y": 11.0
+              },
+              {
+                "x": "2026-10-11",
+                "y": 7.0
+              },
+              {
+                "x": "2026-10-12",
+                "y": 5.0
+              },
+              {
+                "x": "2026-10-13",
+                "y": 9.0
+              },
+              {
+                "x": "2026-10-14",
+                "y": 12.0
+              }
+            ]
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.area",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "paletteLead": "accent",
+          "numberFormat": "siSpaced",
+          "fill": "gradient",
+          "fillOpacityFrom": 0.7,
+          "fillOpacityTo": 0.1,
+          "dateFormat": "date",
+          "xAxisType": "time",
+          "gridLines": "horizontal",
+          "gridOpacity": 0.1,
+          "xAxisFontSize": 12.0,
+          "yAxisFontSize": 14.0,
+          "axisLabelColor": "text",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendLabelColor": "text",
+          "stackMode": "stacked",
+          "legendDisplay": "off",
+          "markerDisplay": "off",
+          "lineWidth": 2.0
+        }
+      }
+    },
+    {
+      "name": "opencti-vertical-bar",
+      "source": "opencti",
+      "native": {
+        "type": "vertical-bar",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "Incidents",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "interval": "week"
+        }
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsMultiTimeSeries": [
+            {
+              "data": [
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 7
+                },
+                {
+                  "date": "2026-10-08T00:00:00.000Z",
+                  "value": 12
+                },
+                {
+                  "date": "2026-10-15T00:00:00.000Z",
+                  "value": 4
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "shape": "series",
+      "view": "bar",
+      "data": {
+        "series": [
+          {
+            "name": "Incidents",
+            "points": [
+              {
+                "x": "2026-10-01",
+                "y": 7.0
+              },
+              {
+                "x": "2026-10-08",
+                "y": 12.0
+              },
+              {
+                "x": "2026-10-15",
+                "y": 4.0
+              }
+            ]
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.column",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "paletteLead": "accent",
+          "numberFormat": "siSpaced",
+          "barRadius": 4.0,
+          "barSize": 70.0,
+          "dateFormat": "date",
+          "crowdedLabels": "rotate",
+          "gridLines": "horizontal",
+          "gridOpacity": 0.1,
+          "xAxisFontSize": 12.0,
+          "axisLabelColor": "text",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendLabelColor": "text",
+          "legendDisplay": "off"
+        }
+      }
+    },
+    {
+      "name": "opencti-horizontal-bar",
+      "source": "opencti",
+      "native": {
+        "type": "horizontal-bar",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "created-by.internal_id",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "id-1",
+              "value": 48,
+              "entity": {
+                "id": "4c0d9e7a-1111-4f51-9f3e-000000000001",
+                "entity_type": "Organization",
+                "representative": {
+                  "main": "Northwind CERT"
+                }
+              }
+            },
+            {
+              "label": "id-2",
+              "value": 31,
+              "entity": {
+                "id": "4c0d9e7a-1111-4f51-9f3e-000000000002",
+                "entity_type": "Individual",
+                "representative": {
+                  "main": "Jane Analyst"
+                }
+              }
+            },
+            {
+              "label": "id-3",
+              "value": 9,
+              "entity": {
+                "id": "4c0d9e7a-1111-4f51-9f3e-000000000003",
+                "entity_type": "Restricted",
+                "representative": {
+                  "main": "Restricted"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "hbar",
+      "data": {
+        "items": [
+          {
+            "label": "Northwind CERT",
+            "value": 48.0,
+            "color": "#BA88FF",
+            "entityType": "Organization",
+            "link": "https://cti.example.test/dashboard/id/4c0d9e7a-1111-4f51-9f3e-000000000001"
+          },
+          {
+            "label": "Jane Analyst",
+            "value": 31.0,
+            "color": "#BA88FF",
+            "entityType": "Individual",
+            "link": "https://cti.example.test/dashboard/id/4c0d9e7a-1111-4f51-9f3e-000000000002"
+          },
+          {
+            "label": "Restricted",
+            "value": 9.0,
+            "color": "#424242",
+            "entityType": "Restricted"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.bar",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "paletteLead": "accent",
+          "numberFormat": "siSpaced",
+          "openLinks": true,
+          "barRadius": 4.0,
+          "barSize": 30.0,
+          "gridLines": "horizontal",
+          "gridOpacity": 0.1,
+          "axisLabelColor": "text",
+          "hideAxisLines": true,
+          "valueTickCount": 1,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendLabelColor": "text",
+          "legendDisplay": "off"
+        }
+      }
+    },
+    {
+      "name": "opencti-donut-labels",
+      "source": "opencti",
+      "native": {
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "objectLabel",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "phishing",
+              "value": 25,
+              "entity": {
+                "id": "label-1",
+                "entity_type": "Label",
+                "color": "#ff0000"
+              }
+            },
+            {
+              "label": "tlp-clear",
+              "value": 14,
+              "entity": {
+                "id": "label-2",
+                "entity_type": "Label",
+                "color": "#ffffff"
+              }
+            },
+            {
+              "label": "apt",
+              "value": 6,
+              "entity": {
+                "id": "label-3",
+                "entity_type": "Label"
+              }
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "donut",
+      "data": {
+        "items": [
+          {
+            "label": "phishing",
+            "value": 25.0,
+            "color": "#ff0000",
+            "entityType": "Label",
+            "link": "https://cti.example.test/dashboard/id/label-1"
+          },
+          {
+            "label": "tlp-clear",
+            "value": 14.0,
+            "color": "#ffffff",
+            "entityType": "Label",
+            "link": "https://cti.example.test/dashboard/id/label-2"
+          },
+          {
+            "label": "apt",
+            "value": 6.0,
+            "entityType": "Label",
+            "link": "https://cti.example.test/dashboard/id/label-3"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.pie",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "tooltipContent": "label",
+          "separatorWidth": 3.0,
+          "donutHoleSize": 70.0,
+          "legendMarker": "circle",
+          "legendLabelColor": "text",
+          "pieAlign": "top",
+          "collapseThreshold": 0.0,
+          "showDonutHole": true,
+          "labelDisplay": "percentage",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "opencti-donut-boolean",
+      "source": "opencti",
+      "native": {
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "revoked",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "true",
+              "value": 7,
+              "entity": null
+            },
+            {
+              "label": "false",
+              "value": 93,
+              "entity": null
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "donut",
+      "data": {
+        "items": [
+          {
+            "label": "true",
+            "value": 7.0,
+            "color": "#66bb6a"
+          },
+          {
+            "label": "false",
+            "value": 93.0,
+            "color": "#ef5350"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.pie",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "tooltipContent": "label",
+          "separatorWidth": 3.0,
+          "donutHoleSize": 70.0,
+          "legendMarker": "circle",
+          "legendLabelColor": "text",
+          "pieAlign": "top",
+          "collapseThreshold": 0.0,
+          "showDonutHole": true,
+          "labelDisplay": "percentage",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "opencti-radar",
+      "source": "opencti",
+      "native": {
+        "type": "radar",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "Malware",
+              "value": 40,
+              "entity": null
+            },
+            {
+              "label": "Intrusion-Set",
+              "value": 22,
+              "entity": null
+            },
+            {
+              "label": "Attack-Pattern",
+              "value": 31,
+              "entity": null
+            },
+            {
+              "label": "Vulnerability-With-A-Very-Long-Name",
+              "value": 12,
+              "entity": null
+            },
+            {
+              "label": "Indicator",
+              "value": 18,
+              "entity": null
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "radar",
+      "data": {
+        "items": [
+          {
+            "label": "Malware",
+            "value": 40.0
+          },
+          {
+            "label": "Intrusion Set",
+            "value": 22.0,
+            "key": "Intrusion-Set"
+          },
+          {
+            "label": "Attack Pattern",
+            "value": 31.0,
+            "key": "Attack-Pattern"
+          },
+          {
+            "label": "Vulnerability With A Very Long Name",
+            "value": 12.0,
+            "key": "Vulnerability-With-A-Very-Long-Name"
+          },
+          {
+            "label": "Indicator",
+            "value": 18.0
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.radar",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "paletteLead": "accent",
+          "numberFormat": "siSpaced",
+          "markerSize": 5.0,
+          "labelMaxLength": 25,
+          "labelCut": "words",
+          "gridOpacity": 0.1,
+          "axisLabelColor": "text",
+          "niceTicks": true,
+          "areaOpacity": 0.2,
+          "lineWidth": 1.0,
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "opencti-polar-area",
+      "source": "opencti",
+      "native": {
+        "type": "polar-area",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "Malware",
+              "value": 40,
+              "entity": null
+            },
+            {
+              "label": "Intrusion-Set",
+              "value": 22,
+              "entity": null
+            },
+            {
+              "label": "Attack-Pattern",
+              "value": 31,
+              "entity": null
+            },
+            {
+              "label": "Indicator",
+              "value": 18,
+              "entity": null
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "polar",
+      "data": {
+        "items": [
+          {
+            "label": "Malware",
+            "value": 40.0
+          },
+          {
+            "label": "Intrusion Set",
+            "value": 22.0,
+            "key": "Intrusion-Set"
+          },
+          {
+            "label": "Attack Pattern",
+            "value": 31.0,
+            "key": "Attack-Pattern"
+          },
+          {
+            "label": "Indicator",
+            "value": 18.0
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.polararea",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "tooltipContent": "label",
+          "separatorWidth": 2.0,
+          "gridOpacity": 0.1,
+          "axisLabelColor": "text",
+          "collapseThreshold": 0.0,
+          "labelDisplay": "off",
+          "legendDisplay": "bottom",
+          "areaOpacity": 0.5
+        }
+      }
+    },
+    {
+      "name": "opencti-tree",
+      "source": "opencti",
+      "native": {
+        "type": "tree",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "distributed": true
+        }
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "Report",
+              "value": 120,
+              "entity": null
+            },
+            {
+              "label": "Note",
+              "value": 45,
+              "entity": null
+            },
+            {
+              "label": "Grouping",
+              "value": 30,
+              "entity": null
+            },
+            {
+              "label": "Opinion",
+              "value": 8,
+              "entity": null
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "treemap",
+      "data": {
+        "items": [
+          {
+            "label": "Report",
+            "value": 120.0
+          },
+          {
+            "label": "Note",
+            "value": 45.0
+          },
+          {
+            "label": "Grouping",
+            "value": 30.0
+          },
+          {
+            "label": "Opinion",
+            "value": 8.0
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.treemap",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "colorByPoint": true,
+          "palette": "materialMixed",
+          "paletteNoPale": true,
+          "separatorWidth": 3,
+          "numberFormat": "siSpaced"
+        }
+      }
+    },
+    {
+      "name": "opencti-wordcloud",
+      "source": "opencti",
+      "native": {
+        "type": "wordcloud",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsDistribution": [
+            {
+              "label": "phishing",
+              "value": 90,
+              "entity": null
+            },
+            {
+              "label": "ransomware",
+              "value": 60,
+              "entity": null
+            },
+            {
+              "label": "apt",
+              "value": 30,
+              "entity": null
+            },
+            {
+              "label": "botnet",
+              "value": 12,
+              "entity": null
+            },
+            {
+              "label": "cve",
+              "value": 5,
+              "entity": null
+            },
+            {
+              "label": "none",
+              "value": 0,
+              "entity": null
+            }
+          ]
+        }
+      },
+      "shape": "distribution",
+      "view": "wordcloud",
+      "data": {
+        "items": [
+          {
+            "label": "phishing",
+            "value": 90.0
+          },
+          {
+            "label": "ransomware",
+            "value": 60.0
+          },
+          {
+            "label": "apt",
+            "value": 30.0
+          },
+          {
+            "label": "botnet",
+            "value": 12.0
+          },
+          {
+            "label": "cve",
+            "value": 5.0
+          },
+          {
+            "label": "none",
+            "value": 0.0
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.wordcloud",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "palette": "materialMixed",
+          "fontSizeMin": 20,
+          "fontSizeMax": 50
+        }
+      }
+    },
+    {
+      "name": "opencti-heatmap",
+      "source": "opencti",
+      "native": {
+        "type": "heatmap",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "Reports",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          },
+          {
+            "label": "Notes",
+            "number": 10,
+            "sort_by": "created_at",
+            "sort_mode": "desc",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "columns": [
+              {
+                "attribute": "entity_type",
+                "label": "Type"
+              },
+              {
+                "attribute": "name",
+                "label": "Name"
+              },
+              {
+                "attribute": "created",
+                "label": "Original creation date"
+              },
+              {
+                "attribute": "created_at",
+                "label": "Platform creation date"
+              },
+              {
+                "attribute": "modified",
+                "label": "Modification date"
+              },
+              {
+                "attribute": "createdBy"
+              },
+              {
+                "attribute": "creators",
+                "label": "Creators"
+              },
+              {
+                "attribute": "x_opencti_workflow_id",
+                "label": "Processing status"
+              },
+              {
+                "attribute": "objectLabel"
+              },
+              {
+                "attribute": "objectMarking"
+              }
+            ]
+          }
+        ],
+        "parameters": {}
+      },
+      "answer": {
+        "data": {
+          "stixCoreObjectsMultiTimeSeries": [
+            {
+              "data": [
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 0
+                },
+                {
+                  "date": "2026-10-02T00:00:00.000Z",
+                  "value": 3
+                },
+                {
+                  "date": "2026-10-03T00:00:00.000Z",
+                  "value": 8
+                },
+                {
+                  "date": "2026-10-04T00:00:00.000Z",
+                  "value": 21
+                },
+                {
+                  "date": "2026-10-05T00:00:00.000Z",
+                  "value": 14
+                },
+                {
+                  "date": "2026-10-06T00:00:00.000Z",
+                  "value": 5
+                },
+                {
+                  "date": "2026-10-07T00:00:00.000Z",
+                  "value": 40
+                }
+              ]
+            },
+            {
+              "data": [
+                {
+                  "date": "2026-10-01T00:00:00.000Z",
+                  "value": 1
+                },
+                {
+                  "date": "2026-10-02T00:00:00.000Z",
+                  "value": 0
+                },
+                {
+                  "date": "2026-10-03T00:00:00.000Z",
+                  "value": 2
+                },
+                {
+                  "date": "2026-10-04T00:00:00.000Z",
+                  "value": 4
+                },
+                {
+                  "date": "2026-10-05T00:00:00.000Z",
+                  "value": 9
+                },
+                {
+                  "date": "2026-10-06T00:00:00.000Z",
+                  "value": 18
+                },
+                {
+                  "date": "2026-10-07T00:00:00.000Z",
+                  "value": 27
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "shape": "series",
+      "view": "heatmap",
+      "data": {
+        "series": [
+          {
+            "name": "Reports",
+            "points": [
+              {
+                "x": "2026-10-01",
+                "y": 0.0
+              },
+              {
+                "x": "2026-10-02",
+                "y": 3.0
+              },
+              {
+                "x": "2026-10-03",
+                "y": 8.0
+              },
+              {
+                "x": "2026-10-04",
+                "y": 21.0
+              },
+              {
+                "x": "2026-10-05",
+                "y": 14.0
+              },
+              {
+                "x": "2026-10-06",
+                "y": 5.0
+              },
+              {
+                "x": "2026-10-07",
+                "y": 40.0
+              }
+            ]
+          },
+          {
+            "name": "Notes",
+            "points": [
+              {
+                "x": "2026-10-01",
+                "y": 1.0
+              },
+              {
+                "x": "2026-10-02",
+                "y": 0.0
+              },
+              {
+                "x": "2026-10-03",
+                "y": 2.0
+              },
+              {
+                "x": "2026-10-04",
+                "y": 4.0
+              },
+              {
+                "x": "2026-10-05",
+                "y": 9.0
+              },
+              {
+                "x": "2026-10-06",
+                "y": 18.0
+              },
+              {
+                "x": "2026-10-07",
+                "y": 27.0
+              }
+            ]
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.heatmap",
+        "options": {
+          "titleStyle": "capitalize",
+          "accentColor": "brand",
+          "emptyMessage": "found",
+          "separatorWidth": 1.0,
+          "dateFormat": "date",
+          "xAxisFontSize": 12.0,
+          "yAxisFontSize": 14.0,
+          "axisLabelColor": "text",
+          "colorRanges": "heat",
+          "dataValuesDisplay": "off",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "openaev-line",
+      "source": "openaev",
+      "native": {
+        "widget_type": "line",
+        "widget_config": {
+          "widget_configuration_type": "temporal-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "series": [
+            {
+              "name": "Findings",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": "ID",
+                    "key": "base_entity",
+                    "mode": "and",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Injects",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": "ID",
+                    "key": "base_entity",
+                    "mode": "and",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "temporal",
+          "interval": "week"
+        }
+      },
+      "answer": [
+        {
+          "label": "Findings",
+          "data": [
+            {
+              "key": "2026-09-07T00:00:00Z",
+              "label": "2026-09-07T00:00:00Z",
+              "value": 4
+            },
+            {
+              "key": "2026-09-14T00:00:00Z",
+              "label": "2026-09-14T00:00:00Z",
+              "value": 7
+            },
+            {
+              "key": "2026-09-21T00:00:00Z",
+              "label": "2026-09-21T00:00:00Z",
+              "value": 5
+            },
+            {
+              "key": "2026-09-28T00:00:00Z",
+              "label": "2026-09-28T00:00:00Z",
+              "value": 9
+            },
+            {
+              "key": "2026-10-05T00:00:00Z",
+              "label": "2026-10-05T00:00:00Z",
+              "value": 12
+            }
+          ]
+        },
+        {
+          "label": "Injects",
+          "data": [
+            {
+              "key": "2026-09-07T00:00:00Z",
+              "label": "2026-09-07T00:00:00Z",
+              "value": 2
+            },
+            {
+              "key": "2026-09-14T00:00:00Z",
+              "label": "2026-09-14T00:00:00Z",
+              "value": 5
+            },
+            {
+              "key": "2026-09-21T00:00:00Z",
+              "label": "2026-09-21T00:00:00Z",
+              "value": 3
+            },
+            {
+              "key": "2026-09-28T00:00:00Z",
+              "label": "2026-09-28T00:00:00Z",
+              "value": 7
+            },
+            {
+              "key": "2026-10-05T00:00:00Z",
+              "label": "2026-10-05T00:00:00Z",
+              "value": 9
+            }
+          ]
+        }
+      ],
+      "shape": "series",
+      "view": "line",
+      "data": {
+        "series": [
+          {
+            "name": "Findings",
+            "points": [
+              {
+                "x": "2026-09-07",
+                "y": 4.0,
+                "key": "2026-09-07T00:00:00Z"
+              },
+              {
+                "x": "2026-09-14",
+                "y": 7.0,
+                "key": "2026-09-14T00:00:00Z"
+              },
+              {
+                "x": "2026-09-21",
+                "y": 5.0,
+                "key": "2026-09-21T00:00:00Z"
+              },
+              {
+                "x": "2026-09-28",
+                "y": 9.0,
+                "key": "2026-09-28T00:00:00Z"
+              },
+              {
+                "x": "2026-10-05",
+                "y": 12.0,
+                "key": "2026-10-05T00:00:00Z"
+              }
+            ]
+          },
+          {
+            "name": "Injects",
+            "points": [
+              {
+                "x": "2026-09-07",
+                "y": 2.0,
+                "key": "2026-09-07T00:00:00Z"
+              },
+              {
+                "x": "2026-09-14",
+                "y": 5.0,
+                "key": "2026-09-14T00:00:00Z"
+              },
+              {
+                "x": "2026-09-21",
+                "y": 3.0,
+                "key": "2026-09-21T00:00:00Z"
+              },
+              {
+                "x": "2026-09-28",
+                "y": 7.0,
+                "key": "2026-09-28T00:00:00Z"
+              },
+              {
+                "x": "2026-10-05",
+                "y": 9.0,
+                "key": "2026-10-05T00:00:00Z"
+              }
+            ]
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.line",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "palette": "material",
+          "emptySample": "temporal",
+          "fill": "gradient",
+          "fillOpacityFrom": 0.35,
+          "fillOpacityTo": 0.02,
+          "dateFormat": "longDate",
+          "xAxisType": "time",
+          "markerSize": 4.0,
+          "gridLines": "horizontal",
+          "xAxisFontSize": 12.0,
+          "yAxisFontSize": 14.0,
+          "axisLabelColor": "muted",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendDisplay": "bottom",
+          "lineWidth": 2.0
+        }
+      }
+    },
+    {
+      "name": "openaev-vertical-bar-temporal",
+      "source": "openaev",
+      "native": {
+        "widget_type": "vertical-barchart",
+        "widget_config": {
+          "widget_configuration_type": "temporal-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "mode": "temporal",
+          "interval": "week",
+          "series": [
+            {
+              "name": "Not Detected",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            },
+            {
+              "name": "Prevented",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            }
+          ]
+        }
+      },
+      "answer": [
+        {
+          "label": "Not Detected",
+          "data": [
+            {
+              "key": "2026-09-07T00:00:00Z",
+              "label": "2026-09-07T00:00:00Z",
+              "value": 3
+            },
+            {
+              "key": "2026-09-14T00:00:00Z",
+              "label": "2026-09-14T00:00:00Z",
+              "value": 1
+            },
+            {
+              "key": "2026-09-21T00:00:00Z",
+              "label": "2026-09-21T00:00:00Z",
+              "value": 4
+            },
+            {
+              "key": "2026-09-28T00:00:00Z",
+              "label": "2026-09-28T00:00:00Z",
+              "value": 1
+            },
+            {
+              "key": "2026-10-05T00:00:00Z",
+              "label": "2026-10-05T00:00:00Z",
+              "value": 5
+            }
+          ]
+        },
+        {
+          "label": "Prevented",
+          "data": [
+            {
+              "key": "2026-09-07T00:00:00Z",
+              "label": "2026-09-07T00:00:00Z",
+              "value": 9
+            },
+            {
+              "key": "2026-09-14T00:00:00Z",
+              "label": "2026-09-14T00:00:00Z",
+              "value": 2
+            },
+            {
+              "key": "2026-09-21T00:00:00Z",
+              "label": "2026-09-21T00:00:00Z",
+              "value": 6
+            },
+            {
+              "key": "2026-09-28T00:00:00Z",
+              "label": "2026-09-28T00:00:00Z",
+              "value": 5
+            },
+            {
+              "key": "2026-10-05T00:00:00Z",
+              "label": "2026-10-05T00:00:00Z",
+              "value": 3
+            }
+          ]
+        }
+      ],
+      "shape": "series",
+      "view": "bar",
+      "data": {
+        "series": [
+          {
+            "name": "Not Detected",
+            "points": [
+              {
+                "x": "2026-09-07",
+                "y": 3.0,
+                "key": "2026-09-07T00:00:00Z"
+              },
+              {
+                "x": "2026-09-14",
+                "y": 1.0,
+                "key": "2026-09-14T00:00:00Z"
+              },
+              {
+                "x": "2026-09-21",
+                "y": 4.0,
+                "key": "2026-09-21T00:00:00Z"
+              },
+              {
+                "x": "2026-09-28",
+                "y": 1.0,
+                "key": "2026-09-28T00:00:00Z"
+              },
+              {
+                "x": "2026-10-05",
+                "y": 5.0,
+                "key": "2026-10-05T00:00:00Z"
+              }
+            ],
+            "color": "#f14337"
+          },
+          {
+            "name": "Prevented",
+            "points": [
+              {
+                "x": "2026-09-07",
+                "y": 9.0,
+                "key": "2026-09-07T00:00:00Z"
+              },
+              {
+                "x": "2026-09-14",
+                "y": 2.0,
+                "key": "2026-09-14T00:00:00Z"
+              },
+              {
+                "x": "2026-09-21",
+                "y": 6.0,
+                "key": "2026-09-21T00:00:00Z"
+              },
+              {
+                "x": "2026-09-28",
+                "y": 5.0,
+                "key": "2026-09-28T00:00:00Z"
+              },
+              {
+                "x": "2026-10-05",
+                "y": 3.0,
+                "key": "2026-10-05T00:00:00Z"
+              }
+            ],
+            "color": "success"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.column",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "palette": "results",
+          "numberFormat": "locale",
+          "emptySample": "temporal",
+          "fill": "gradient",
+          "fillOpacityFrom": 0.95,
+          "fillOpacityTo": 0.65,
+          "barRadius": 4.0,
+          "barSize": 55.0,
+          "barGap": 4.0,
+          "dateFormat": "longDate",
+          "gridLines": "horizontal",
+          "xAxisFontSize": 12.0,
+          "axisLabelColor": "muted",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "openaev-vertical-bar-structural",
+      "source": "openaev",
+      "native": {
+        "widget_type": "vertical-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "mode": "structural",
+          "field": "base_security_platforms_side",
+          "limit": 10,
+          "series": [
+            {
+              "name": "Not Detected",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            }
+          ]
+        }
+      },
+      "answer": [
+        {
+          "label": "Not Detected",
+          "data": [
+            {
+              "key": "sp-1",
+              "label": "EDR",
+              "value": 14
+            },
+            {
+              "key": "sp-2",
+              "label": "SIEM",
+              "value": 22
+            },
+            {
+              "key": "sp-3",
+              "label": "Firewall",
+              "value": 9
+            }
+          ]
+        }
+      ],
+      "shape": "distribution",
+      "view": "bar",
+      "data": {
+        "items": [
+          {
+            "label": "EDR",
+            "value": 14.0,
+            "color": "#f14337",
+            "key": "sp-1"
+          },
+          {
+            "label": "SIEM",
+            "value": 22.0,
+            "color": "#f14337",
+            "key": "sp-2"
+          },
+          {
+            "label": "Firewall",
+            "value": 9.0,
+            "color": "#f14337",
+            "key": "sp-3"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.column",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "palette": "results",
+          "numberFormat": "locale",
+          "emptySample": "platforms",
+          "fill": "gradient",
+          "fillOpacityFrom": 0.95,
+          "fillOpacityTo": 0.65,
+          "barRadius": 4.0,
+          "barSize": 55.0,
+          "barGap": 4.0,
+          "gridLines": "horizontal",
+          "xAxisFontSize": 12.0,
+          "axisLabelColor": "muted",
+          "hideAxisLines": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "openaev-horizontal-bar",
+      "source": "openaev",
+      "native": {
+        "widget_type": "horizontal-barchart",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": "ID",
+                    "key": "base_entity",
+                    "mode": "and",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "finding_type",
+          "limit": 10
+        }
+      },
+      "answer": [
+        {
+          "label": "Detected TTPs",
+          "data": [
+            {
+              "key": "ap-1",
+              "label": "T1059 Command and Scripting Interpreter",
+              "value": 1532
+            },
+            {
+              "key": "ap-2",
+              "label": "T1055 Process Injection",
+              "value": 26
+            },
+            {
+              "key": "ap-3",
+              "label": "T1003 OS Credential Dumping",
+              "value": 21
+            }
+          ]
+        }
+      ],
+      "shape": "distribution",
+      "view": "hbar",
+      "data": {
+        "items": [
+          {
+            "label": "T1059 Command and Scripting Interpreter",
+            "value": 1532.0,
+            "key": "ap-1"
+          },
+          {
+            "label": "T1055 Process Injection",
+            "value": 26.0,
+            "key": "ap-2"
+          },
+          {
+            "label": "T1003 OS Credential Dumping",
+            "value": 21.0,
+            "key": "ap-3"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.bar",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "palette": "material",
+          "paletteLead": "accent",
+          "numberFormat": "locale",
+          "emptySample": "ttp",
+          "fill": "gradient",
+          "fillOpacityFrom": 1.0,
+          "fillOpacityTo": 0.75,
+          "barRadius": 5.0,
+          "barSize": 38.0,
+          "barGap": 3.0,
+          "colorByPoint": true,
+          "labelMaxLength": 28,
+          "labelCut": "chars",
+          "gridLines": "vertical",
+          "gridOpacity": 0.08,
+          "xAxisFontSize": 12.0,
+          "yAxisFontSize": 11.0,
+          "axisLabelColor": "muted",
+          "hideAxisLines": true,
+          "dataValuesStrong": true,
+          "niceTicks": true,
+          "legendMarker": "square",
+          "dataValuesDisplay": "all",
+          "legendDisplay": "off"
+        }
+      }
+    },
+    {
+      "name": "openaev-donut-status",
+      "source": "openaev",
+      "native": {
+        "widget_type": "donut",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "series": [
+            {
+              "name": "",
+              "filter": {
+                "mode": "and",
+                "filters": [
+                  {
+                    "id": "ID",
+                    "key": "base_entity",
+                    "mode": "and",
+                    "values": [
+                      "finding"
+                    ],
+                    "operator": "eq"
+                  }
+                ]
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "inject_expectation_status",
+          "limit": 10
+        }
+      },
+      "answer": [
+        {
+          "label": "",
+          "data": [
+            {
+              "key": "SUCCESS",
+              "label": "SUCCESS",
+              "value": 64
+            },
+            {
+              "key": "FAILED",
+              "label": "FAILED",
+              "value": 27
+            },
+            {
+              "key": "PENDING",
+              "label": "PENDING",
+              "value": 9
+            }
+          ]
+        }
+      ],
+      "shape": "distribution",
+      "view": "donut",
+      "data": {
+        "items": [
+          {
+            "label": "SUCCESS",
+            "value": 64.0,
+            "color": "success",
+            "key": "SUCCESS"
+          },
+          {
+            "label": "FAILED",
+            "value": 27.0,
+            "color": "#f14337",
+            "key": "FAILED"
+          },
+          {
+            "label": "PENDING",
+            "value": 9.0,
+            "color": "#9e9e9e",
+            "key": "PENDING"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.pie",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "palette": "material",
+          "tooltipContent": "label",
+          "separatorWidth": 3.0,
+          "emptySample": "status",
+          "donutHoleSize": 70.0,
+          "legendMarker": "circle",
+          "collapseThreshold": 0.0,
+          "showDonutHole": true,
+          "labelDisplay": "percentage",
+          "legendDisplay": "bottom"
+        }
+      }
+    },
+    {
+      "name": "openaev-posture-radar",
+      "source": "openaev",
+      "native": {
+        "widget_type": "posture-radar",
+        "widget_config": {
+          "widget_configuration_type": "structural-histogram",
+          "title": "",
+          "date_attribute": "base_created_at",
+          "time_range": "DEFAULT",
+          "series": [
+            {
+              "name": "SUCCESS",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            },
+            {
+              "name": "FAILED",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            },
+            {
+              "name": "NOT DETECTED",
+              "filter": {
+                "mode": "and",
+                "filters": []
+              }
+            }
+          ],
+          "mode": "structural",
+          "field": "finding_type",
+          "limit": 10
+        }
+      },
+      "answer": [
+        {
+          "label": "SUCCESS",
+          "data": [
+            {
+              "key": "sp-1",
+              "label": "EDR",
+              "value": 42
+            },
+            {
+              "key": "sp-2",
+              "label": "SIEM",
+              "value": 31
+            },
+            {
+              "key": "sp-3",
+              "label": "Firewall",
+              "value": 47
+            },
+            {
+              "key": "sp-4",
+              "label": "Cloud",
+              "value": 22
+            }
+          ]
+        },
+        {
+          "label": "FAILED",
+          "data": [
+            {
+              "key": "sp-1",
+              "label": "EDR",
+              "value": 12
+            },
+            {
+              "key": "sp-2",
+              "label": "SIEM",
+              "value": 25
+            },
+            {
+              "key": "sp-3",
+              "label": "Firewall",
+              "value": 8
+            },
+            {
+              "key": "sp-4",
+              "label": "Cloud",
+              "value": 24
+            }
+          ]
+        },
+        {
+          "label": "NOT DETECTED",
+          "data": [
+            {
+              "key": "sp-1",
+              "label": "EDR",
+              "value": 5
+            },
+            {
+              "key": "sp-2",
+              "label": "SIEM",
+              "value": 9
+            },
+            {
+              "key": "sp-3",
+              "label": "Firewall",
+              "value": 3
+            },
+            {
+              "key": "sp-4",
+              "label": "Cloud",
+              "value": 11
+            }
+          ]
+        }
+      ],
+      "shape": "series",
+      "view": "radar",
+      "data": {
+        "series": [
+          {
+            "name": "Success",
+            "points": [
+              {
+                "x": "EDR",
+                "y": 42.0,
+                "key": "sp-1"
+              },
+              {
+                "x": "SIEM",
+                "y": 31.0,
+                "key": "sp-2"
+              },
+              {
+                "x": "Firewall",
+                "y": 47.0,
+                "key": "sp-3"
+              },
+              {
+                "x": "Cloud",
+                "y": 22.0,
+                "key": "sp-4"
+              }
+            ],
+            "color": "success"
+          },
+          {
+            "name": "Failed",
+            "points": [
+              {
+                "x": "EDR",
+                "y": 12.0,
+                "key": "sp-1"
+              },
+              {
+                "x": "SIEM",
+                "y": 25.0,
+                "key": "sp-2"
+              },
+              {
+                "x": "Firewall",
+                "y": 8.0,
+                "key": "sp-3"
+              },
+              {
+                "x": "Cloud",
+                "y": 24.0,
+                "key": "sp-4"
+              }
+            ],
+            "color": "#f14337"
+          },
+          {
+            "name": "NOT DETECTED",
+            "points": [
+              {
+                "x": "EDR",
+                "y": 5.0,
+                "key": "sp-1"
+              },
+              {
+                "x": "SIEM",
+                "y": 9.0,
+                "key": "sp-2"
+              },
+              {
+                "x": "Firewall",
+                "y": 3.0,
+                "key": "sp-3"
+              },
+              {
+                "x": "Cloud",
+                "y": 11.0,
+                "key": "sp-4"
+              }
+            ],
+            "color": "#f14337"
+          }
+        ]
+      },
+      "presentation": {
+        "view": "xtm.radar",
+        "options": {
+          "titleStyle": "caps",
+          "accentColor": "brand",
+          "emptyMessage": "display",
+          "emptySample": "radar",
+          "markerSize": 3.0,
+          "labelMaxLength": 100,
+          "gridOpacity": 0.08,
+          "xAxisFontSize": 10.0,
+          "axisLabelColor": "muted",
+          "radius": 108.0,
+          "legendMarker": "circle",
+          "areaOpacity": 0.18,
+          "lineWidth": 2.0,
+          "legendDisplay": "bottom"
+        }
+      }
+    }
+  ]
+}

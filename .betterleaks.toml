@@ -1,0 +1,84 @@
+# betterleaks (gitleaks fork) configuration for the CI secret scan.
+# Auto-loaded when scanning the repository root (`betterleaks dir /repo`).
+
+[extend]
+# Keep all of betterleaks' built-in secret detection rules.
+useDefault = true
+
+[[allowlists]]
+description = "XTM One global allowlist"
+
+paths = [
+  # Dependencies, build output and tool caches (defensive: normally gitignored
+  # and absent from a clean CI checkout, but excluded explicitly so a local or
+  # dirty scan doesn't waste time or raise noise on third-party code).
+  '''(^|/)node_modules/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)venv/''',
+  '''(^|/)dist/''',
+  '''(^|/)build/''',
+  '''(^|/)__pycache__/''',
+  '''\.pyc$''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)\.mypy_cache/''',
+  '''(^|/)\.ruff_cache/''',
+  '''(^|/)coverage/''',
+  # Lockfiles (hashes only, no secrets).
+  '''(^|/)yarn\.lock$''',
+  '''(^|/)package-lock\.json$''',
+  # Playwright e2e stored auth state (local only, gitignored).
+  '''(^|/)tests_e2e/\.auth/''',
+  # Test fixtures that intentionally embed fake secrets to exercise the PII
+  # redactor — the fake secrets are the whole point of these files.
+  '''backend/tests/test_pii_redactor\.py$''',
+  '''backend/tests/test_conversation_memory_compaction\.py$''',
+]
+
+regexes = [
+  # Public client-side widget embed token in the docs header (not a secret).
+  '''jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn''',
+  # Microsoft Entra "password rule" template GUID — a public template id.
+  '''5cf42378-d67d-4f36-ba46-e8b86229381d''',
+  # Microsoft Graph `$skiptoken` paging cursor in the shared-folder tests —
+  # base64 of "Paged=TRUE&p_ID=2", not a secret.
+  '''UGFnZWQ9VFJVRSZwX0lEPTI''',
+]
+
+# The two generic rules (betterleaks 1.9) flag any value next to a "password"
+# key and any user:password@ in a URL. The allowlists below only silence those
+# two rules: every provider rule (AWS, GitHub, Slack, private keys...) still
+# scans the same files.
+
+[[allowlists]]
+description = "Generic rules: test fixtures, UI translations and the lab, whose passwords are fake by design"
+targetRules = ["generic-password", "generic-credential-uri"]
+paths = [
+  '''(^|/)backend/tests/''',
+  '''(^|/)frontend/tests_e2e/''',
+  '''\.(test|spec)\.tsx?$''',
+  # The translated "Password" labels.
+  '''(^|/)frontend/src/i18n/lang/[^/]+\.json$''',
+  # The local lab and sandbox checks: lab-only accounts, valid nowhere else.
+  '''(^|/)\.xtm-one/''',
+]
+
+[[allowlists]]
+description = "Generic rules: dev and CI defaults, and field names or labels read as a password"
+targetRules = ["generic-password", "generic-credential-uri"]
+regexes = [
+  # The local and CI database, admin and placeholder values (.env.sample,
+  # docker-compose.yml, ci.yml, deploy.yml): throwaway containers only. The
+  # last one is docker-compose.yml's `${DB_PASSWORD:-copilot_dev}` default.
+  '''^(copilot_(dev|ci)|-copilot_dev\}@postgres:5432/copilot)$''',
+  '''^test-admin-password-123$''',
+  '''^change-me-in-production$''',
+  '''^redis://:yourpassword@host:6379$''',
+  # Field names, autocomplete hints and enum values, not secrets. `infected`
+  # is the customary password of malware sample archives.
+  '''^(password|Password|1Password|current-password|oauth2?_password|\[PASSWORD\]|credentials|connect_token|infected|pass|pw|secret)$''',
+  '''/logos/onepassword\.svg$''',
+  '''^OAuth 2\.0 password grant$''',
+  '''^Item fields read through a 1Password Connect server''',
+  # The integration catalog's label of the Supabase `db_password` field.
+  '''^The database role's password$''',
+]

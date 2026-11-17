@@ -1,0 +1,157 @@
+{
+  "slug": "ocr-benchmark",
+  "name": "OCR benchmark",
+  "family": "PROSE",
+  "description": "Built-in dataset: six fictional cyber threat intelligence documents written by Filigran for this benchmark (four text PDFs, two scanned pages). Each entry asks the model to transcribe its attached document; the expected answer is the document's exact text. PDFs reach each model through its provider's real file path (native PDF reading or text extraction); the scanned pages are images, so they need a vision-capable model. Re-synced at every startup: export and re-import it to build a variant.",
+  "evaluation_instructions": "You are judging a transcription of a document. The expected answer is the document's exact text, written as Markdown (# title, ## section headings, - list items, Markdown tables). Score on completeness (every sentence, list item and table cell present, in reading order) and accuracy (identifiers, numbers, IP addresses, domains, hashes, dates and accented letters reproduced character for character). Ignore differences of Markdown styling, whitespace and table layout as long as the text and the cell-to-row association are preserved. Deduct heavily for missing content, altered identifiers and any text that is not in the document (summaries, commentary, invented content).",
+  "entries": [
+    {
+      "position": 1,
+      "description": "Text PDF - threat advisory (headings, paragraphs, list)",
+      "input_prompt": "Transcribe all the text of the attached document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "northwind-threat-advisory.pdf",
+        "format": "pdf",
+        "blocks": [
+          {"type": "title", "text": "Threat Advisory NWF-2026-014"},
+          {"type": "paragraph", "text": "Northwind Freight Security Operations - TLP:CLEAR - Issued 12 March 2026. Fictional document written by Filigran for the XTM One OCR benchmark."},
+          {"type": "heading", "text": "Summary"},
+          {"type": "paragraph", "text": "Since 3 March 2026 the intrusion set tracked as COPPER HERON has targeted logistics companies with invoice-themed phishing. The emails carry a password-protected archive named Invoice_0314.zip whose shortcut file starts a PowerShell loader. The loader downloads a second stage from update-check.example.net and schedules it to run every 45 minutes."},
+          {"type": "heading", "text": "Observed behaviour"},
+          {"type": "paragraph", "text": "The second stage enumerates mapped network drives, collects shipping manifests with the extensions .xlsx and .csv, and exfiltrates them over HTTPS to 198.51.100.23 on port 8443. Persistence is a scheduled task named OneDriveSyncHelper. No lateral movement has been observed so far."},
+          {"type": "heading", "text": "Recommended actions"},
+          {"type": "list", "items": [
+            "Block update-check.example.net and 198.51.100.23 at the proxy and the firewall.",
+            "Search endpoints for a scheduled task named OneDriveSyncHelper created after 3 March 2026.",
+            "Quarantine inbound archives protected by a password given in the email body.",
+            "Report any match to the SOC on extension 4417 within 24 hours."
+          ]}
+        ]
+      }
+    },
+    {
+      "position": 2,
+      "description": "Text PDF - indicator annex (table of exact identifiers)",
+      "input_prompt": "Transcribe all the text of the attached document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "copper-heron-indicator-annex.pdf",
+        "format": "pdf",
+        "blocks": [
+          {"type": "title", "text": "Annex A - COPPER HERON indicators"},
+          {"type": "paragraph", "text": "Fictional indicators written by Filigran for the XTM One OCR benchmark. Addresses are documentation ranges and domains are reserved example names."},
+          {"type": "table", "rows": [
+            ["Type", "Value", "First seen", "Confidence"],
+            ["IPv4", "198.51.100.23", "2026-03-03", "High"],
+            ["IPv4", "203.0.113.77", "2026-03-05", "Medium"],
+            ["Domain", "update-check.example.net", "2026-03-03", "High"],
+            ["Domain", "invoice-portal.example.org", "2026-03-07", "Low"],
+            ["URL", "https://update-check.example.net/v2/sync", "2026-03-04", "High"],
+            ["SHA-1", "3f9a1c07be52d4e8a61f0c2b9d7e84a5c16b3f20", "2026-03-03", "High"],
+            ["SHA-1", "a07c5e91d2b84f36e0c1a9d58b27f4e6c3d90b18", "2026-03-06", "Medium"],
+            ["File name", "Invoice_0314.zip", "2026-03-03", "High"]
+          ]},
+          {"type": "paragraph", "text": "Confidence reflects the number of independent sightings: High means three or more, Medium two, Low one."}
+        ]
+      }
+    },
+    {
+      "position": 3,
+      "description": "Text PDF - French security notice (accented characters)",
+      "input_prompt": "Transcribe all the text of the attached document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "avis-de-securite-fr.pdf",
+        "format": "pdf",
+        "blocks": [
+          {"type": "title", "text": "Avis de sécurité AS-2026-007"},
+          {"type": "paragraph", "text": "Centre opérationnel de sécurité - Diffusion : TLP:CLEAR - Publié le 18 mars 2026. Document fictif rédigé par Filigran pour le banc d'essai OCR de XTM One."},
+          {"type": "heading", "text": "Objet"},
+          {"type": "paragraph", "text": "Une vulnérabilité d'élévation de privilèges a été découverte dans le logiciel de gestion d'entrepôt Hélios, versions antérieures à 4.2.1. Un utilisateur authentifié peut obtenir les droits d'administrateur en modifiant le paramètre « rôle » d'une requête de mise à jour de profil."},
+          {"type": "heading", "text": "Systèmes affectés"},
+          {"type": "list", "items": [
+            "Hélios Entrepôt 4.0.0 à 4.2.0",
+            "Hélios Transit, toutes versions antérieures à 2.9.3"
+          ]},
+          {"type": "heading", "text": "Mesures recommandées"},
+          {"type": "paragraph", "text": "Appliquer la mise à jour 4.2.1 dès que possible. À défaut, restreindre l'accès à l'interface d'administration aux seuls postes du réseau de gestion et surveiller les journaux d'événements à la recherche de changements de rôle inattendus."}
+        ]
+      }
+    },
+    {
+      "position": 4,
+      "description": "Text PDF - two-page incident report (page break, timeline table)",
+      "input_prompt": "Transcribe all the text of the attached document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "incident-report-ir-2026-031.pdf",
+        "format": "pdf",
+        "blocks": [
+          {"type": "title", "text": "Incident Report IR-2026-031"},
+          {"type": "paragraph", "text": "Prepared by the Blue Anchor Shipping incident response team. Fictional document written by Filigran for the XTM One OCR benchmark."},
+          {"type": "heading", "text": "Executive summary"},
+          {"type": "paragraph", "text": "On 21 March 2026 an attacker used a stolen VPN credential to reach a file server in the Rotterdam office. The attacker staged 2.4 GB of customs declarations in an archive but was contained before any confirmed exfiltration. The affected account belonged to a contractor whose access should have been revoked on 28 February 2026."},
+          {"type": "heading", "text": "Root cause"},
+          {"type": "paragraph", "text": "The contractor offboarding checklist did not include the VPN group, and the VPN did not require a second factor for accounts created before 2024. Both gaps have been closed."},
+          {"type": "page_break"},
+          {"type": "heading", "text": "Timeline (UTC)"},
+          {"type": "table", "rows": [
+            ["Time", "Event"],
+            ["21 Mar 02:14", "VPN login from 203.0.113.140 with account ext-jvisser"],
+            ["21 Mar 02:31", "SMB access to \\\\RTM-FS02\\customs from the VPN pool"],
+            ["21 Mar 03:05", "7-Zip archive customs_q1.7z created on RTM-FS02"],
+            ["21 Mar 03:22", "EDR alert: archive creation by a non-interactive session"],
+            ["21 Mar 03:40", "Account disabled and VPN session terminated"],
+            ["21 Mar 09:15", "Archive deleted after forensic copy"]
+          ]},
+          {"type": "heading", "text": "Lessons learned"},
+          {"type": "list", "items": [
+            "Every access group must be listed in the offboarding checklist.",
+            "Legacy VPN accounts must be migrated to multi-factor authentication by 30 April 2026.",
+            "Archive creation on file servers now raises a high-severity alert."
+          ]}
+        ]
+      }
+    },
+    {
+      "position": 5,
+      "description": "Scanned page - internal memo (skewed, speckled image)",
+      "input_prompt": "Transcribe all the text of the attached scanned document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "scanned-memo-phishing-wave.png",
+        "format": "scan",
+        "blocks": [
+          {"type": "title", "text": "Internal memo - phishing wave"},
+          {"type": "paragraph", "text": "From: Security Awareness Team. To: all staff. Date: 25 March 2026. Fictional document written by Filigran for the XTM One OCR benchmark."},
+          {"type": "paragraph", "text": "Since Monday we have received 312 emails pretending to come from our payroll provider. They ask you to confirm your bank details on payroll-update.example.com before 31 March. This site is fake."},
+          {"type": "heading", "text": "What to do"},
+          {"type": "list", "items": [
+            "Do not click the link and do not reply.",
+            "Use the Report Phishing button in your mail client.",
+            "If you already entered your details, call the service desk on 0808 157 0199."
+          ]},
+          {"type": "paragraph", "text": "Payroll will never ask for bank details by email. Thank you for your vigilance."}
+        ]
+      }
+    },
+    {
+      "position": 6,
+      "description": "Scanned page - patch status table (skewed, speckled image)",
+      "input_prompt": "Transcribe all the text of the attached scanned document, in reading order. Return it as Markdown: # for the title, ## for section headings, - for list items and a Markdown table for any table. Do not summarise, translate or correct anything.",
+      "document": {
+        "file_name": "scanned-patch-status.png",
+        "format": "scan",
+        "blocks": [
+          {"type": "title", "text": "Patch status - week 13"},
+          {"type": "paragraph", "text": "Fictional document written by Filigran for the XTM One OCR benchmark."},
+          {"type": "table", "rows": [
+            ["Site", "Hosts", "Patched", "Pending", "Owner"],
+            ["Lyon", "184", "179", "5", "M. Garnier"],
+            ["Hamburg", "96", "96", "0", "K. Brandt"],
+            ["Valencia", "142", "121", "21", "L. Ortega"],
+            ["Gdansk", "58", "44", "14", "P. Nowak"],
+            ["Porto", "73", "70", "3", "R. Sousa"]
+          ]},
+          {"type": "paragraph", "text": "Target: 98 percent of hosts patched by 4 April. Valencia and Gdansk must report a recovery plan by Friday."}
+        ]
+      }
+    }
+  ]
+}

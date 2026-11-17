@@ -1,0 +1,103 @@
+version: 2
+updates:
+  # npm/uv must point at the directories that actually hold the manifests
+  # (package.json lives in /frontend and /apps/microsoft-office, the uv
+  # projects - pyproject.toml + uv.lock - in /backend and /docs) — entries at
+  # "/" match nothing.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+  - package-ecosystem: "npm"
+    directory: "/apps/microsoft-office"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+  - package-ecosystem: "uv"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    ignore:
+      # MkDocs 2.0 removes the plugin system and rewrites theming, which the
+      # docs site relies on: stay on 1.x until Material for MkDocs supports the
+      # transition. A `versions` range because security updates (the only ones
+      # the zero limit above lets through) ignore `update-types`.
+      - dependency-name: "mkdocs"
+        versions: [">=2"]
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+  # The sandbox images' base digests (python, node, distroless, busybox):
+  # nothing else moves them, and a stale one kept the eMudhra CA bundle.
+  # One weekly pull request, built and checked by Sandbox Images.
+  # python stays on 3.14 (the venv's wheels are cp314), node and busybox on
+  # their major, and uv has its own pin.
+  - package-ecosystem: "docker"
+    directory: "/backend/sandbox"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      sandbox-bases:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "docker.io/library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "docker.io/library/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "busybox"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "docker.io/library/busybox"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ghcr.io/astral-sh/uv"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+  # Third-party actions are pinned by commit SHA with their release in a trailing
+  # comment (`@<sha> # v4.4.1`), and a pin only moves through this entry:
+  # one grouped pull request for the minor and patch releases, taken once they
+  # are a week old. Major versions stay a deliberate change.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"

@@ -1,0 +1,65 @@
+name: CI license
+description: >-
+  Puts the Enterprise Edition license the end-to-end suites run with into
+  ENTERPRISE_LICENSE for the job's later steps. With a URL in
+  .github/ci-license-url, it is the public `ci`-type certificate published
+  there: it is not a secret (the platform ends it 45 minutes after its own
+  creation, backend/app/enterprise/licensing.py), and a fork's pull request,
+  which gets no repository secret and no repository variable, runs the same
+  suite. Without one, it is `fallback`, the repository secret kept until the
+  certificate is published (dev-docs/ci-license.md). A URL that cannot be
+  fetched fails the step: it never falls back silently. The job needs the
+  repository checked out.
+inputs:
+  fallback:
+    description: The license PEM to use while `url` is empty (the secret E2E_ENTERPRISE_LICENSE). Empty on a fork's pull request.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Export ENTERPRISE_LICENSE
+      shell: bash
+      env:
+        CI_LICENSE_FALLBACK: ${{ inputs.fallback }}
+      run: |
+        set -euo pipefail
+        url="$(bash "$GITHUB_ACTION_PATH/../../scripts/ci-license-url.sh")"
+        if [ -n "$url" ]; then
+          pem="$(curl --fail --silent --show-error --location --proto '=https' \
+            --retry 3 --retry-delay 5 --max-time 30 "$url")"
+          case "$pem" in
+            "-----BEGIN CERTIFICATE-----"*) ;;
+            *) echo "::error::$url did not return a PEM certificate"; exit 1 ;;
+          esac
+          # An expired certificate fails here, with its date, rather than as
+          # every Enterprise Edition check of the suite.
+          cert_file="$RUNNER_TEMP/ci-license.pem"
+          printf '%s\n' "$pem" > "$cert_file"
+          dates="$(bash "$GITHUB_ACTION_PATH/../../scripts/ci-license-deadline.sh" "$cert_file")"
+          rm -f "$cert_file"
+          deadline="$(sed -n 's/^deadline=//p' <<< "$dates")"
+          days_left="$(sed -n 's/^days_left=//p' <<< "$dates")"
+          # The deadline day counts as expired: the platform ends the license
+          # at notBefore's time of day, partway through it.
+          if [ "$days_left" -le 0 ]; then
+            echo "::error::The CI license expires on $deadline: renew the certificate at $url (dev-docs/ci-license.md)"
+            exit 1
+          elif [ "$days_left" -lt 30 ]; then
+            echo "::warning::The CI license expires on $deadline ($days_left days): renew the certificate at $url (dev-docs/ci-license.md)"
+          fi
+          echo "CI license: the public certificate at $url, valid until $deadline"
+        else
+          pem="$CI_LICENSE_FALLBACK"
+          if [ -n "$pem" ]; then
+            echo "CI license: the repository secret (.github/ci-license-url holds no URL)"
+          else
+            echo "::warning::No CI license: the suite runs as Community Edition and its Enterprise Edition checks fail or skip"
+          fi
+        fi
+        delimiter="EOF_$(openssl rand -hex 16)"
+        {
+          echo "ENTERPRISE_LICENSE<<$delimiter"
+          echo "$pem"
+          echo "$delimiter"
+        } >> "$GITHUB_ENV"

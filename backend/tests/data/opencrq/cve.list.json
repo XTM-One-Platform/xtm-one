@@ -1,0 +1,57 @@
+{
+  "procedure": "cve.list",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "id": "01a13a4b-1fce-7d6d-ad0b-839ee508f30f",
+        "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+        "cveId": "CVE-2026-9999",
+        "cvss": 6.5,
+        "cvssVector": null,
+        "cvssV2UserInteractionRequired": null,
+        "cvssUpdatedAt": null,
+        "epss": null,
+        "epssUpdatedAt": null,
+        "kev": false,
+        "kevUpdatedAt": null,
+        "kevRequiredAction": null,
+        "kevDueDate": null,
+        "kevNotes": null,
+        "kevRansomwareUse": null,
+        "vendorSolution": null,
+        "cveTitle": null,
+        "cveDescription": null,
+        "cwe": null,
+        "createdAt": "2026-10-14T12:02:44.269Z",
+        "updatedAt": "2026-10-14T12:02:44.269Z"
+      },
+      {
+        "id": "01a13a4b-1fce-7d6d-ad0b-839dcc998907",
+        "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+        "cveId": "CVE-2026-9998",
+        "cvss": 9.8,
+        "cvssVector": null,
+        "cvssV2UserInteractionRequired": null,
+        "cvssUpdatedAt": null,
+        "epss": null,
+        "epssUpdatedAt": null,
+        "kev": false,
+        "kevUpdatedAt": null,
+        "kevRequiredAction": null,
+        "kevDueDate": null,
+        "kevNotes": null,
+        "kevRansomwareUse": null,
+        "vendorSolution": null,
+        "cveTitle": null,
+        "cveDescription": null,
+        "cwe": null,
+        "createdAt": "2026-10-14T12:02:44.269Z",
+        "updatedAt": "2026-10-14T12:02:44.269Z"
+      }
+    ],
+    "total": 16977,
+    "page": 1,
+    "limit": 5
+  }
+}

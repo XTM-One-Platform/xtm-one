@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "description": "One entry per CVE assessed, in the order received",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cve": {"type": "string", "description": "The CVE id, e.g. CVE-2026-1234"},
+          "opencti_id": {"type": ["string", "null"], "description": "The OpenCTI id of the Vulnerability"},
+          "match": {"type": "string", "enum": ["matched", "not_applicable", "unknown"]},
+          "matched_assets": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Tech stack products or OpenCRQ assets running the affected software"
+          },
+          "score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100, "description": "Finding score; null when not matched"},
+          "score_terms": {
+            "type": "object",
+            "properties": {
+              "epss": {"type": ["number", "null"]},
+              "kev": {"type": ["boolean", "null"]},
+              "threat_citation": {"type": ["string", "null"]},
+              "sighted": {"type": ["boolean", "null"]},
+              "asset_criticality": {"type": ["string", "null"]},
+              "measured_resistance": {"type": ["string", "null"]}
+            }
+          },
+          "reason": {"type": "string", "description": "One sentence: why matched, or why closed not applicable"},
+          "context_fields_used": {"type": "array", "items": {"type": "string"}},
+          "context_fields_missing": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["cve", "match", "matched_assets", "score", "reason"]
+      }
+    }
+  },
+  "required": ["findings"]
+}

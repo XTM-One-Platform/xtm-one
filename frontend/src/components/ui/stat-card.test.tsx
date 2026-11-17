@@ -1,0 +1,57 @@
+// A clickable StatCard is a button for the keyboard and assistive technology:
+// Tab reaches it, Enter and Space
+// activate it. Without `onClick` it stays inert.
+
+import { describe, expect, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Inbox } from "lucide-react";
+
+import { renderWithProviders } from "@/testing/providers";
+import { StatCard } from "./stat-card";
+
+describe("StatCard", () => {
+  it("is a button reached by Tab and activated by Enter and Space when clickable", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    renderWithProviders(<StatCard icon={Inbox} label="Heard" value={12} subtitle="for the agent" onClick={onClick} />);
+
+    const card = screen.getByRole("button", { name: /Heard/ });
+    expect(card.textContent).toContain("12");
+
+    await user.tab();
+    expect(card).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+    expect(onClick).toHaveBeenCalledTimes(1);
+    await user.keyboard(" ");
+    expect(onClick).toHaveBeenCalledTimes(2);
+
+    await user.click(card);
+    expect(onClick).toHaveBeenCalledTimes(3);
+  });
+
+  it("has no button role and is not focusable without onClick", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<StatCard icon={Inbox} label="Heard" value={12} subtitle="for the agent" />);
+
+    expect(screen.queryByRole("button")).toBeNull();
+    await user.tab();
+    expect(document.body).toHaveFocus();
+  });
+
+  it("shows the exact figure on hover, never the compact text again (UX B4 on #10529)", () => {
+    renderWithProviders(
+      <>
+        <StatCard icon={Inbox} label="Runs" value={25_912} subtitle="7 days" />
+        <StatCard icon={Inbox} label="Cost" value="$5.5K" exact="$5,512.30" subtitle="7 days" />
+        <StatCard icon={Inbox} label="Small" value={12} subtitle="7 days" />
+      </>,
+    );
+    const [runs, cost, small] = screen.getAllByTestId("stat-card-value");
+    expect(runs.textContent).toBe("25.9K");
+    expect(runs.getAttribute("title")).toBe("25,912");
+    expect(cost.getAttribute("title")).toBe("$5,512.30");
+    expect(small.getAttribute("title")).toBeNull();
+  });
+});

@@ -1,0 +1,30 @@
+{
+  "procedure": "mitreAttack.getTechniques",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "2974044c-d7ea-56d8-9b73-57b1fc294b7c",
+      "externalId": "T1001",
+      "name": "Data Obfuscation",
+      "isSubtechnique": false
+    },
+    {
+      "id": "d73e649e-94f2-51dc-9526-1996f3c8e9ef",
+      "externalId": "T1001.001",
+      "name": "Junk Data",
+      "isSubtechnique": true
+    },
+    {
+      "id": "1c75cd63-b80b-58a3-98c4-1f66b3ab6ad7",
+      "externalId": "T1566",
+      "name": "Phishing",
+      "isSubtechnique": false
+    },
+    {
+      "id": "7f90782d-cbf7-5326-b7bd-bc2e3defbf86",
+      "externalId": "T1566.001",
+      "name": "Spearphishing Attachment",
+      "isSubtechnique": true
+    }
+  ]
+}

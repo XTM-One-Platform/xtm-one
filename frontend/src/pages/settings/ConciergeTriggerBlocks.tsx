@@ -1,0 +1,366 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/**
+ * Settings > Agents and automations > Concierge, the blocks level 8 adds (#8261) to level 1's page:
+ * when each specialist's fleet-wide cycle runs, the signal thresholds
+ * (decision B18's defaults), the watch and shadow durations, and dry-run
+ * (level 2's switch). Same draft, same Edit / Save as the page's other blocks;
+ * the server validates every bound (422).
+ */
+import { useId } from "react";
+import { CalendarClock, FlaskConical, Hourglass, Radio } from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { SettingsReadField } from "@/components/ui/settings-read-view";
+import { useConciergeScheduleMarks } from "@/hooks/api/useConciergeApi";
+import { useFormatter } from "@/i18n";
+import { useConciergeName } from "@/hooks/api/useConciergeApi";
+import { conciergeRefusalKey } from "@/lib/concierge";
+import { COMMON_TIMEZONES } from "@/lib/constants";
+import { formatShortDateTime } from "@/lib/utils";
+import type { ConciergeSchedules, ConciergeSettings, ConciergeSignalSettings } from "@/types";
+import { BlockTitle, type BlockProps } from "./concierge-block";
+
+const SCHEDULE_KEYS = ["memory", "quality", "flows", "digest"] as const;
+
+/** @i18n-keys */
+const SCHEDULE_LABELS = {
+  memory: "Memory consolidation",
+  quality: "Quality review",
+  flows: "Flow review",
+  digest: "Weekly digest",
+} as const;
+
+/** @i18n-keys */
+const SCHEDULE_HINTS = {
+  memory: "Memory Steward, every lane the Concierge may consolidate.",
+  quality: "Quality Analyst, every supervised agent.",
+  flows: "Flow Lab, every supervised flow and assignment.",
+  digest: "Concierge, a summary of the cycles closed since the last one.",
+} as const;
+
+/** @i18n-keys */
+const SCHEDULE_INFO = {
+  memory: "On: the Memory Steward consolidates the memories of every lane the Concierge may touch, on the cron expression below. Off: it never runs on a schedule.",
+  quality: "On: the Quality Analyst reviews every supervised agent on the cron expression below. Off: it never runs on a schedule.",
+  flows: "On: the Flow Lab reviews every supervised flow and assignment on the cron expression below. Off: it never runs on a schedule.",
+  digest: "On: the Concierge writes a summary of the cycles closed since the last one, on the cron expression below. Off: no digest is written.",
+} as const;
+
+function NumberField({
+  label,
+  info,
+  unit,
+  value,
+  min,
+  max,
+  step = 1,
+  editing,
+  onChange,
+}: {
+  label: string;
+  info: string;
+  unit: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  editing: boolean;
+  onChange: (value: number) => void;
+}) {
+  const { t_i18n } = useFormatter();
+  const id = useId();
+  // At rest (#10855): the number and its unit as text, never a disabled input.
+  if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${value} ${unit}` : ""} />;
+  return (
+    <SettingsField id={id} label={label} info={info} helper={t_i18n("From {min} to {max} {unit}.", { min, max, unit })}>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          aria-labelledby={settingsFieldLabelId(id)}
+          aria-describedby={settingsFieldHintId(id)}
+          type="number"
+          inputMode="decimal"
+          min={min}
+          max={max}
+          step={step}
+          value={Number.isFinite(value) ? value : ""}
+          onChange={(event) => onChange(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+          className="w-28"
+        />
+        <span className="content-compact text-default-secondary">{unit}</span>
+      </div>
+    </SettingsField>
+  );
+}
+
+function SwitchRow({
+  title,
+  description,
+  info,
+  checked,
+  editing,
+  onToggle,
+  children,
+}: {
+  title: string;
+  description: string;
+  info: string;
+  checked: boolean;
+  editing: boolean;
+  onToggle: (value: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  const id = useId();
+  const { t_i18n } = useFormatter();
+  if (!editing) {
+    // At rest (#10855): the switch reads as On or Off, its settings below it as tiles.
+    return (
+      <div className="space-y-3 rounded-sm bg-elevation-default p-3.5">
+        <SettingsReadField label={title} info={info} value={checked ? t_i18n("On") : t_i18n("Off")} />
+        {checked && children && <div className="flex flex-wrap items-start gap-4">{children}</div>}
+      </div>
+    );
+  }
+  return (
+    <SettingsSwitchField
+      className="rounded-sm bg-elevation-default p-3.5"
+      id={id}
+      label={title}
+      helper={description}
+      info={info}
+      checked={checked}
+      onCheckedChange={onToggle}
+    >
+      {checked && children && <div className="flex flex-wrap items-start gap-4">{children}</div>}
+    </SettingsSwitchField>
+  );
+}
+
+export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
+  const { t_i18n } = useFormatter();
+  const conciergeName = useConciergeName();
+  const { data: marks = [] } = useConciergeScheduleMarks();
+  const timezoneId = useId();
+  const set = (patch: Partial<ConciergeSchedules>) => onChange({ ...draft, schedules: { ...draft.schedules, ...patch } });
+  return (
+    <div>
+      <BlockTitle
+        icon={CalendarClock}
+        title={t_i18n("Schedule")}
+        hint={t_i18n("When each specialist's fleet-wide cycle starts. Each run opens a budget cycle first.")}
+      />
+      <div className="space-y-2">
+        {SCHEDULE_KEYS.map((key) => {
+          const last = marks.find((mark) => mark.schedule === key);
+          const label = t_i18n(SCHEDULE_LABELS[key]);
+          return (
+            <SwitchRow
+              key={key}
+              title={label}
+              description={t_i18n(SCHEDULE_HINTS[key])}
+              info={t_i18n(SCHEDULE_INFO[key])}
+              checked={draft.schedules[`${key}_enabled`]}
+              editing={editing}
+              onToggle={(on) => set({ [`${key}_enabled`]: on } as Partial<ConciergeSchedules>)}
+            >
+              <CronField
+                schedule={label}
+                value={draft.schedules[key]}
+                editing={editing}
+                onChange={(value) => set({ [key]: value } as Partial<ConciergeSchedules>)}
+              />
+              {last && (
+                <p className="self-end content-compact text-default-secondary">
+                  {t_i18n("Last fired {when}", { when: formatShortDateTime(last.fired_at) })}
+                  {last.refusal && ` · ${t_i18n(conciergeRefusalKey({ detail: { code: last.refusal } }), { name: conciergeName })}`}
+                </p>
+              )}
+            </SwitchRow>
+          );
+        })}
+        {!editing ? (
+          <SettingsReadField
+            className="max-w-xs"
+            label={t_i18n("Timezone")}
+            info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of the Concierge uses it. UTC unless chosen.")}
+            value={draft.schedules.timezone.replace(/_/g, " ")}
+          />
+        ) : (
+        <SettingsField
+          id={timezoneId}
+          className="max-w-xs"
+          label={t_i18n("Timezone")}
+          info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of the Concierge uses it. UTC unless chosen.")}
+          helper={t_i18n("The cron expressions above run in this timezone.")}
+        >
+          <SearchableSelect
+            id={timezoneId}
+            aria-labelledby={settingsFieldLabelId(timezoneId)}
+            aria-describedby={settingsFieldHintId(timezoneId)}
+            options={["UTC", ...COMMON_TIMEZONES].map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
+            value={draft.schedules.timezone}
+            onValueChange={(timezone) => set({ timezone })}
+            className="h-9"
+          />
+        </SettingsField>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The cron expression of one schedule. */
+function CronField({ schedule, value, editing, onChange }: { schedule: string; value: string; editing: boolean; onChange: (value: string) => void }) {
+  const { t_i18n } = useFormatter();
+  const id = useId();
+  const info = t_i18n("Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone below. The scheduler reads it at each tick.");
+  if (!editing) return <SettingsReadField label={t_i18n("Cron expression")} info={info} mono value={value.trim()} />;
+  return (
+    <SettingsField
+      id={id}
+      label={t_i18n("Cron expression")}
+      info={t_i18n("Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone below. The scheduler reads it at each tick.")}
+      helper={t_i18n("When {schedule} starts.", { schedule })}
+    >
+      <Input
+        id={id}
+        aria-labelledby={settingsFieldLabelId(id)}
+        aria-describedby={settingsFieldHintId(id)}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-44 font-mono-plex"
+      />
+    </SettingsField>
+  );
+}
+
+export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
+  const { t_i18n } = useFormatter();
+  const s = draft.signals;
+  const set = (patch: Partial<ConciergeSignalSettings>) => onChange({ ...draft, signals: { ...s, ...patch } });
+  const field = (label: string, info: string, unit: string, key: keyof ConciergeSignalSettings, min: number, max: number, step = 1) => (
+    <NumberField
+      label={label}
+      info={info}
+      unit={unit}
+      value={s[key] as number}
+      min={min}
+      max={max}
+      step={step}
+      editing={editing}
+      onChange={(value) => set({ [key]: value } as Partial<ConciergeSignalSettings>)}
+    />
+  );
+  return (
+    <div>
+      <BlockTitle
+        icon={Radio}
+        title={t_i18n("Signals")}
+        hint={t_i18n("Thresholds read without any model call. A crossing starts one investigation on its target; it does not start another while one is open there.")}
+      />
+      <div className="space-y-2">
+        <SwitchRow
+          title={t_i18n("Feedback drop")}
+          description={t_i18n("An agent's weighted feedback score falls over a window, against the window before.")}
+          info={t_i18n("On: the Concierge opens an investigation on an agent whose feedback score falls by the drop below. Off: feedback is not watched.")}
+          checked={s.feedback_enabled}
+          editing={editing}
+          onToggle={(on) => set({ feedback_enabled: on })}
+        >
+          {field(t_i18n("Score drop"), t_i18n("How far the score must fall, in points out of 100, e.g. 15. Read at each signal sweep."), t_i18n("points"), "feedback_drop_points", 1, 100)}
+          {field(t_i18n("Window"), t_i18n("The days each score is computed over, compared with the same number of days before, e.g. 7."), t_i18n("days"), "feedback_window_days", 1, 90)}
+          {field(t_i18n("At least"), t_i18n("The fewest ratings in the window for the score to count, e.g. 10. Fewer ratings: no signal."), t_i18n("ratings"), "feedback_min_ratings", 1, 10000)}
+        </SwitchRow>
+        <SwitchRow
+          title={t_i18n("Failure spike")}
+          description={t_i18n("A flow's or an assignment's failure rate over its last runs.")}
+          info={t_i18n("On: the Concierge opens an investigation on a flow or an assignment whose failure rate rises above the threshold below. Off: failures are not watched.")}
+          checked={s.failure_enabled}
+          editing={editing}
+          onToggle={(on) => set({ failure_enabled: on })}
+        >
+          {field(t_i18n("Above"), t_i18n("The failure rate, in percent of runs, that raises the signal, e.g. 20."), "%", "failure_rate_pct", 0.1, 99, 0.1)}
+          {field(t_i18n("Over the last"), t_i18n("How many of the latest runs the rate is computed over, e.g. 20."), t_i18n("runs"), "failure_last_runs", 5, 500)}
+        </SwitchRow>
+        <SwitchRow
+          title={t_i18n("Cost drift")}
+          description={t_i18n("An agent's cost per assignment run over a window, against the window before.")}
+          info={t_i18n("On: the Concierge opens an investigation on an agent whose cost per assignment run rises by the threshold below. Off: cost is not watched.")}
+          checked={s.cost_enabled}
+          editing={editing}
+          onToggle={(on) => set({ cost_enabled: on })}
+        >
+          {field(t_i18n("Up by"), t_i18n("The rise of the cost per run, in percent of the window before, that raises the signal, e.g. 50."), "%", "cost_increase_pct", 1, 10000)}
+          {field(t_i18n("Window"), t_i18n("The days each average is computed over, compared with the same number of days before, e.g. 7."), t_i18n("days"), "cost_window_days", 1, 90)}
+          {field(t_i18n("At least"), t_i18n("The fewest runs in the window for the average to count, e.g. 5. Fewer runs: no signal."), t_i18n("runs"), "cost_min_runs", 1, 10000)}
+        </SwitchRow>
+        <SwitchRow
+          title={t_i18n("Model change")}
+          description={t_i18n("The model a supervised agent resolves to changes.")}
+          info={t_i18n("On: the Concierge opens an investigation when the model a supervised agent resolves to changes. Off: model changes are not watched.")}
+          checked={s.model_change_enabled}
+          editing={editing}
+          onToggle={(on) => set({ model_change_enabled: on })}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function DurationsBlock({ draft, editing, onChange }: BlockProps) {
+  const { t_i18n } = useFormatter();
+  const set = (key: keyof ConciergeSettings) => (value: number) => onChange({ ...draft, [key]: value });
+  return (
+    <div>
+      <BlockTitle
+        icon={Hourglass}
+        title={t_i18n("Durations")}
+        hint={t_i18n("How long an applied change is watched for a regression, and how long a flow replacing an assignment runs in shadow first.")}
+      />
+      <div className="flex flex-wrap items-start gap-6 rounded-sm bg-elevation-default p-3.5">
+        <NumberField label={t_i18n("Watch an applied proposal")} info={t_i18n("How many days an applied improvement is watched for a regression, e.g. 7. A regression in that time proposes the rollback.")} unit={t_i18n("days")} value={draft.proposal_watch_days} min={1} max={90} editing={editing} onChange={set("proposal_watch_days")} />
+        <NumberField label={t_i18n("Flow shadow")} info={t_i18n("How many days a flow that replaces an assignment runs beside it without acting, e.g. 7.")} unit={t_i18n("days")} value={draft.flow_shadow_days} min={1} max={90} editing={editing} onChange={set("flow_shadow_days")} />
+        <NumberField label={t_i18n("Watch a switched-over flow")} info={t_i18n("How many days a flow is watched for a regression after it replaced its assignment, e.g. 14.")} unit={t_i18n("days")} value={draft.flow_watch_days} min={1} max={90} editing={editing} onChange={set("flow_watch_days")} />
+        <NumberField label={t_i18n("Shadow pairs needed")} info={t_i18n("How many runs of the flow and its assignment side by side are needed before the switch is proposed, e.g. 10.")} unit={t_i18n("runs")} value={draft.flow_shadow_min_pairs} min={1} max={1000} editing={editing} onChange={set("flow_shadow_min_pairs")} />
+      </div>
+    </div>
+  );
+}
+
+/** Level 2's switch (#8255). */
+export function DryRunBlock({ draft, editing, onChange }: BlockProps) {
+  const { t_i18n } = useFormatter();
+  return (
+    <div>
+      <BlockTitle
+        icon={FlaskConical}
+        title={t_i18n("Dry-run")}
+        hint={t_i18n("Every write of every Concierge agent - memory, proposals, sandbox copies - is logged, not executed. Digests count what was logged.")}
+      />
+      <SwitchRow
+        title={t_i18n("Log every write instead of executing it")}
+        description={t_i18n("Use it to see what the Concierge would do before letting it act.")}
+        info={t_i18n("On: every write of every Concierge agent is logged and not executed; digests count them. Off: the Concierge acts within its scope and budget.")}
+        checked={draft.dry_run}
+        editing={editing}
+        onToggle={(on) => onChange({ ...draft, dry_run: on })}
+      />
+    </div>
+  );
+}

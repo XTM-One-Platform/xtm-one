@@ -1,0 +1,17 @@
+{
+  "about": "What one render page held at most, measured: read by render_preflight.page_peak, held to a fresh measurement by tests/test_video_studio_page_peak_chromium.py (Video Studio ultra render workflow), whose failure logs the record to commit here. Bytes are the render supervisor's measure: each process's proportional share (PSS), the page's Chromium renderer, its encoder and decoders, and what the render process and the Playwright driver grew by for it.",
+  "peaks": [
+    {
+      "size": [3840, 2160],
+      "x264_preset": "slow",
+      "frame_format": "png",
+      "threads": 8,
+      "inserts": {"videos": 2, "pictures": 1},
+      "peak_bytes": 4574473885,
+      "plain_bytes": 3942208764,
+      "measured": "13 Nov 2026",
+      "on": "GitHub-hosted runner ubuntu-26.04 (Video Studio ultra render workflow), CPUs counted as 8 (its encoder on 8 threads), Playwright's Chromium headless shell, MALLOC_ARENA_MAX=2: the geometric mean of two runs on that runner, scheduled run 43351702768 on main 7511b6ba (peak 4079547392, plain 3718306816; encoder 2.6 GiB, render process 1.9 GiB, renderer 870 MiB, driver 486 MiB; 4489 samples) and PR run 43365987207 on 8cd8d9ba (peak 5129444352, plain 4179593216; encoder 2.6 GiB, render 2.5 GiB, renderer 826 MiB, driver 373 MiB; 5244 samples), 25.7 % apart on the peak, so the record sits within the margin of both. Replaces the 21 Oct 2026 WSL2 record (peak 4956570624, plain 3937380352), more than the margin above what the runner the check runs on holds",
+      "fixture": "the 60 s mixed video of tests/video_studio_render_fixture.py"
+    }
+  ]
+}

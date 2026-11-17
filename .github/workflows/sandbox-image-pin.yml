@@ -1,0 +1,104 @@
+name: Sandbox Image Pin
+
+# The custom-tools sandbox images (sandbox-python, sandbox-nodejs) and the
+# toolchain images (sandbox-toolchain-python, -node, -jvm, -rust, -dbt) and the
+# dev images of sandbox_run_command (sandbox-python-dev, sandbox-nodejs-dev) are
+# published by XTM-One-Platform/release (build-push-sandbox.yml) under the
+# versions of backend/sandbox/published-images.json (version,
+# toolchain.version and dev.version); the app default (_OPENSANDBOX_DEFAULT_IMAGES) names the
+# custom-tools one. Before a merge, the pin check fails when a family's build
+# inputs changed without a new version, so main never moves ahead of what the
+# sandboxes run. After a merge to main that changes a version, the publish job
+# dispatches the build of each family whose tag is missing: no hand step.
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+    paths:
+      - "backend/sandbox/published-images.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pin:
+    name: Published image pin
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Inputs, version and app default agree
+        run: |
+          base_args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] || [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            # The merge commit's first parent is the base.
+            if git show HEAD^1:backend/sandbox/published-images.json > /tmp/base-published-images.json 2>/dev/null; then
+              base_args=(--base-manifest /tmp/base-published-images.json)
+            fi
+          fi
+          python3 backend/sandbox/check-published-images.py "${base_args[@]}"
+
+  publish:
+    name: Publish the pinned version
+    needs: pin
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    environment: deploy-trigger
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Versions to publish
+        id: version
+        run: |
+          manifest=backend/sandbox/published-images.json
+          # A version already on Docker Hub is never rebuilt over; each family
+          # is probed on one of its images.
+          missing=0
+          while read -r family image version; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/xtmone/$image/tags/$version") || code=000
+            echo "$image:$version on Docker Hub: HTTP $code"
+            if [ "$code" != 200 ]; then
+              echo "$family $version" >> /tmp/to-publish
+              missing=1
+            fi
+          done < <(python3 -c '
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          print("custom-tools sandbox-python", m["version"])
+          print("toolchain sandbox-toolchain-python", m["toolchain"]["version"])
+          print("dev sandbox-python-dev", m["dev"]["version"])
+          ' "$manifest")
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+      - name: Token of the release App
+        if: steps.version.outputs.missing == '1'
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: XTM-One-Platform
+          repositories: release
+          permission-actions: write
+      - name: Dispatch the builds
+        if: steps.version.outputs.missing == '1'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          while read -r family version; do
+            gh workflow run build-push-sandbox.yml --repo XTM-One-Platform/release --ref main \
+              -f version="$version" -f ref=main -f images="$family"
+            echo "::notice title=Sandbox images::build-push-sandbox.yml dispatched for $version ($family)"
+            echo "$family images $version dispatched to XTM-One-Platform/release" >> "$GITHUB_STEP_SUMMARY"
+          done < /tmp/to-publish

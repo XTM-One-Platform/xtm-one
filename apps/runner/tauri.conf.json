@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "XTM One Desktop",
+  "version": "0.0.0-dev",
+  "identifier": "io.filigran.xtm-one-runner",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "XTM One Desktop - Connection",
+        "width": 460,
+        "height": 680,
+        "minWidth": 460,
+        "minHeight": 680,
+        "resizable": false,
+        "maximizable": false,
+        "fullscreen": false,
+        "visible": false,
+        "center": true,
+        "decorations": true,
+        "backgroundColor": "#070d19"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "app", "dmg", "deb", "rpm", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "Filigran",
+    "category": "Productivity",
+    "shortDescription": "XTM One Desktop",
+    "longDescription": "The native XTM One client: your chat, agents and conversation history in a real window, and an assistant that can act on the machine you are sitting at - run commands, read and write files, take genuine full-desktop screenshots, drive your authenticated browser - within a per-machine permission model, with inline approvals and a full audit trail. Connects outbound and pulls its work, so the platform never opens an inbound port on your machine.",
+    "homepage": "https://filigran.io",
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1"
+        ],
+        "conflicts": ["xtm-one-runner"],
+        "replaces": ["xtm-one-runner"]
+      },
+      "rpm": {
+        "conflicts": ["xtm-one-runner"],
+        "obsoletes": ["xtm-one-runner"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI3M0FBNzE5NkM3RUI5MwpSV1NUNjhlV2NhcHpDOExSdEZpN2JPU1BzSllCQmVhdjNmMEdMNUFZdmRyWUtsS2pEUTlzSVNBcQo=",
+      "endpoints": [
+        "https://one.filigran.io/api/v1/runners/updater/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
+  }
+}

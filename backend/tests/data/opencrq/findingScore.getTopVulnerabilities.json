@@ -1,0 +1,45 @@
+{
+  "procedure": "findingScore.getTopVulnerabilities",
+  "source": "recorded",
+  "data": [
+    {
+      "cveId": "CVE-2021-44228",
+      "cveTitle": "Apache Log4j2 JNDI Remote Code Execution (Log4Shell)",
+      "mitreTechniqueExternalId": null,
+      "mitreTechniqueName": null,
+      "expectationType": null,
+      "score": 52,
+      "impactedAssetCount": 3,
+      "worstEvidenceId": "019edb28-000b-7000-8000-000000000023",
+      "sources": [
+        "microsoft_graph"
+      ]
+    },
+    {
+      "cveId": "CVE-2022-26134",
+      "cveTitle": "Atlassian Confluence OGNL Injection Remote Code Execution",
+      "mitreTechniqueExternalId": null,
+      "mitreTechniqueName": null,
+      "expectationType": null,
+      "score": 50,
+      "impactedAssetCount": 1,
+      "worstEvidenceId": "019edb28-000b-7000-8000-000000000021",
+      "sources": [
+        "microsoft_graph"
+      ]
+    },
+    {
+      "cveId": "CVE-2023-4966",
+      "cveTitle": "Citrix NetScaler ADC/Gateway Session Token Leakage (Citrix Bleed)",
+      "mitreTechniqueExternalId": null,
+      "mitreTechniqueName": null,
+      "expectationType": null,
+      "score": 43,
+      "impactedAssetCount": 2,
+      "worstEvidenceId": "019edb28-000b-7000-8000-000000000001",
+      "sources": [
+        "microsoft_graph"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+# Copyright (c) 2025-2026 Filigran SAS
+#
+# This file is part of the XTM One Enterprise Edition ("EE") and is
+# licensed under the XTM One Enterprise Edition License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+"""An evaluation's settings: the one list create, copy, export and import carry.
+
+A setting is a column that decides what an evaluation runs and how it scores.
+Each path reads this list, so a new setting cannot be forgotten by one of them:
+``tests/test_evaluation_settings.py`` fails when a column of the model is in
+neither list here.
+"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+from app.models.evaluation import Evaluation, EvaluationAgent
+
+EVALUATION_SETTINGS: tuple[str, ...] = (
+    "description",
+    "family",
+    "trigger_config",
+    "use_agent_default_model",
+    "model_ids",
+    "disabled_model_ids",
+    "execution_mode",
+    "apply_prompt_guards",
+    "require_tool_approval",
+    "run_mode",
+    "evaluator_model",
+    "evaluator_prompt",
+    "evaluation_instructions",
+    "judge_max_tokens",
+    "performance_tolerance",
+    "sub_score_weights",
+    "quality_source",
+    "penalty_factor",
+    "timeout_seconds",
+    "custom_params",
+    "tags",
+    "field_scoring_overrides",
+    "scorer_selection",
+    "reuse_default",
+    "overall_quality_metrics",
+    "overall_performance_metrics",
+    # The placebo-controlled method: an import drops its ``skill``
+    # targets, whose ids name skills of the exporting instance.
+    "placebo_config",
+)
+
+# Not settings: identity, ownership and sharing, state each path sets itself
+# (``enabled``: a copy has no trigger to pause, an import arrives paused),
+# and ``quality_weight``, retired: a column nothing reads, kept as data.
+EVALUATION_NOT_SETTINGS: tuple[str, ...] = (
+    "id",
+    "user_id",
+    "is_company_managed",
+    "shared_group_ids",
+    "shared_group_permissions",
+    "shared_user_ids",
+    "shared_user_permissions",
+    "access_restricted",
+    "name",
+    "slug",
+    "enabled",
+    "last_triggered_at",
+    "created_at",
+    "updated_at",
+    "quality_weight",
+    # The Concierge's mark (#8257): only its own tools set it.
+    "concierge_built",
+)
+
+# What an agent's link to an evaluation carries besides the link itself.
+EVALUATION_AGENT_SETTINGS: tuple[str, ...] = ("tags", "is_baseline", "output_extractor")
+
+# ``flow_id`` names a flow subject (#8257): the subject itself, like ``agent_id``.
+EVALUATION_AGENT_NOT_SETTINGS: tuple[str, ...] = ("id", "evaluation_id", "agent_id", "flow_id", "created_at")
+
+# The settings an update clears with an explicit ``null``: the nullable ones,
+# whose null means "none" or "the default" (no description, the platform's judge
+# model, inherit every headline metric). Omitted means unchanged for every
+# setting, and ``null`` too on a non-nullable one and on the two whose null is
+# not a reset anyone would mean: ``family`` (an evaluation with none cannot run)
+# and ``scorer_selection`` (null runs every scorer, the judge included).
+NULL_KEEPS: frozenset[str] = frozenset({"family", "scorer_selection"})
+CLEARED_BY_NULL: frozenset[str] = frozenset(
+    field
+    for field in EVALUATION_SETTINGS
+    if Evaluation.__table__.c[field].nullable and field not in NULL_KEEPS
+)
+
+
+def evaluation_settings(evaluation: Evaluation) -> dict[str, Any]:
+    """Every setting of *evaluation*, copied: what a copy or an export starts from."""
+    return {field: copy.deepcopy(getattr(evaluation, field)) for field in EVALUATION_SETTINGS}
+
+
+def evaluation_agent_settings(link: EvaluationAgent) -> dict[str, Any]:
+    """Every setting of an agent's link to an evaluation, copied."""
+    return {field: copy.deepcopy(getattr(link, field)) for field in EVALUATION_AGENT_SETTINGS}

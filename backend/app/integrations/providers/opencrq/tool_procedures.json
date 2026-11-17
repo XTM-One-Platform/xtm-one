@@ -1,0 +1,561 @@
+{
+  "create_opencrq_asset_dependency": [
+    "assetDependencies.createSupportToPrimaryLinks",
+    "assetDependencies.createSupportToSupportLinks",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_asset_evidence": [
+    "supportingAssets.createAssetEvidence",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_compliance_assessment": [
+    "complianceAssessments.createAssessment",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_group": [
+    "groups.createGroup",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_organization": [
+    "organizations.createOrganizationsTransaction",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_primary_asset": [
+    "primaryAssets.createPrimaryAsset",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_risk_scenario": [
+    "riskScenarios.createRiskScenario",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_role": [
+    "roles.createRole",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_supporting_asset": [
+    "supportingAssets.createSupportingAsset",
+    "tenants.getTenants"
+  ],
+  "create_opencrq_tenant": [
+    "tenants.createTenantsTransaction"
+  ],
+  "delete_opencrq_asset_dependencies": [
+    "assetDependencies.deleteSupportToPrimaryLinks",
+    "assetDependencies.deleteSupportToSupportLinks",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_asset_evidence": [
+    "supportingAssets.deleteAssetEvidence",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_group": [
+    "groups.deleteGroup",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_organizations": [
+    "organizations.deleteOrganizations",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_primary_assets": [
+    "primaryAssets.deletePrimaryAssets",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_risk_scenarios": [
+    "riskScenarios.deleteRiskScenarios",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_role": [
+    "roles.deleteRole",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_supporting_assets": [
+    "supportingAssets.deleteSupportingAssets",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_tenants": [
+    "tenants.deleteTenantsTransaction"
+  ],
+  "get_opencrq_asset_posture": [
+    "findingScore.getAssetPosture",
+    "findingScore.listAssetFindings",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_attack_outcome": [
+    "attackOutcomes.getAttackOutcome",
+    "attackOutcomes.getCuratedMitreTechniquesForOutcome",
+    "attackOutcomes.getMitreTechniquesForOutcome",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_budget_review": [
+    "budgetReviews.getBudgetReview",
+    "budgetReviews.getBudgetReviewFigures",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_compliance_assessment": [
+    "complianceAssessments.getAssessment",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_control_capability": [
+    "controlCapabilities.getControlCapability",
+    "controlCapabilities.getControlCapabilityRiskScenarios",
+    "controlCapabilities.getResolvedControlPosture",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_control_capability_history": [
+    "controlCapabilities.getCapabilityEvents",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_control_validation": [
+    "controlCapabilities.getControlCapability",
+    "controlValidation.getControlValidation",
+    "controlValidation.getControlValidationEvidence",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_crq_run": [
+    "crqIndicators.getLatestRun",
+    "crqIndicators.getRunWithScores",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_crq_settings": [
+    "crqIndicatorSettings.getCrqIndicatorSettings",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_crq_what_if": [
+    "controlCapabilities.getControlCapabilities",
+    "crqIndicators.getWhatIfResults",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_cve": [
+    "cve.getInfo",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_cve_finding": [
+    "findingScore.getUniqueCveFinding",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_evidence": [
+    "supportingAssets.getEvidenceDetail",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_financial_profile": [
+    "financialProfiles.getFinancialProfile",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_financial_summary": [
+    "scenarioLossEstimates.getFinancialSummary",
+    "scenarioLossEstimates.getScenarioLossEstimates",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_findings_summary": [
+    "findingScore.getFindingsPanelCounts",
+    "findingScore.getOpenFindingFigures",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_framework": [
+    "complianceAssessments.getFrameworks",
+    "drata.getFramework",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_group": [
+    "groups.getGroup",
+    "groups.getGroupRoles",
+    "groups.getGroupUsers",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_job": [
+    "jobs.getJob",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_loss_driver": [
+    "lossDrivers.getLossDriver",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_mitre_technique": [
+    "mitreAttack.getTechniqueByExternalId",
+    "mitreAttack.getTechniques",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_platform_rbac": [
+    "platformCapabilities.getPlatformCapabilities",
+    "platformGroups.getPlatformGroups",
+    "platformRoles.getPlatformRoles",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_risk_dashboard": [
+    "dashboard.getMostActiveThreats",
+    "dashboard.getScenarioSummaries",
+    "dashboard.getToleranceGaps",
+    "dashboard.getTopControls",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_risk_scenario": [
+    "riskScenarios.getControlCapabilitiesForRiskScenario",
+    "riskScenarios.getRiskScenario",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_role": [
+    "roles.getRole",
+    "roles.getRoleCapabilities",
+    "roles.getRoleGroups",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_scenario_exposure": [
+    "riskScenarios.listDerivedSupportingAssets",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_supporting_asset": [
+    "supportingAssets.getSupportingAsset",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_technique_test_posture": [
+    "findingScore.getTechniqueTestPosture",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_tef_input": [
+    "crqIndicators.getAutoTefEstimate",
+    "crqIndicators.getTefInput",
+    "crqIndicators.getTefMode",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_threat": [
+    "tenants.getTenants",
+    "threats.getDetail",
+    "threats.getOutcomeScoresForAnalysis"
+  ],
+  "get_opencrq_threat_relevance_settings": [
+    "tenants.getTenants",
+    "threatRelevanceSettings.getThreatRelevanceSettings"
+  ],
+  "get_opencrq_top_vulnerabilities": [
+    "findingScore.getTopVulnerabilities",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_treatment_plan": [
+    "tenants.getTenants",
+    "treatmentPlans.getTreatmentPlan",
+    "treatmentPlans.getTreatmentPlanCandidates",
+    "treatmentPlans.getTreatmentPlanProjection"
+  ],
+  "get_opencrq_user": [
+    "groups.getUserGroups",
+    "roles.getUserRoles",
+    "tenants.getTenants",
+    "users.getUser"
+  ],
+  "get_opencrq_user_permissions": [
+    "capabilities.getUserEffectivePermissions",
+    "platformCapabilities.getUserPlatformEffectivePermissions",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_asset_dependencies": [
+    "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId",
+    "assetDependencies.getSupportToPrimaryLinksBySupportingAssetId",
+    "assetDependencies.getSupportToSupportLinks",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_attack_outcomes": [
+    "attackOutcomes.getAttackOutcomes",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_budget_reviews": [
+    "budgetReviews.getBudgetReviews",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_business_value_categories": [
+    "businessValueCategories.getBusinessValueCategories",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_capabilities": [
+    "capabilities.getCapabilities",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_compliance_assessments": [
+    "complianceAssessments.getAssessments",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_connector_syncs": [
+    "connectors.getStreamState",
+    "connectors.listRuns",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_connectors": [
+    "connectors.listConnectors",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_control_capabilities": [
+    "controlCapabilities.getControlCapabilities",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_countries": [
+    "countries.getCountries",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_crq_run_history": [
+    "crqIndicators.getRunHistory",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_cve_evidences": [
+    "supportingAssets.getEvidencesForCve",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_cve_threats": [
+    "tenants.getTenants",
+    "threats.getByCveId"
+  ],
+  "list_opencrq_cves": [
+    "cve.list",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_drata_controls": [
+    "drata.getControlsForFramework",
+    "drata.getControlsForRequirement",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_findings": [
+    "findingScore.listScoredFindings",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_framework_requirements": [
+    "drata.getRequirements",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_frameworks": [
+    "complianceAssessments.getFrameworks",
+    "drata.getFrameworks",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_groups": [
+    "groups.getGroups",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_jobs": [
+    "jobs.listAllRuns",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_loss_drivers": [
+    "lossDrivers.getLossDrivers",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_mitre_mitigations": [
+    "mitreAttack.getMitigationByExternalId",
+    "mitreAttack.getMitigations",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_mitre_tactics": [
+    "mitreAttack.getMatrix",
+    "mitreAttack.getTactics",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_organizations": [
+    "organizations.getOrganizations",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_primary_assets": [
+    "primaryAssets.getPrimaryAssets",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_risk_scenarios": [
+    "riskScenarios.getRiskScenariosOverview",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_roles": [
+    "roles.getRoles",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_scenario_threats": [
+    "tenants.getTenants",
+    "threats.getRelevantForScenario"
+  ],
+  "list_opencrq_sectors": [
+    "sectors.getSectors",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_service_accounts": [
+    "capabilities.getServiceAccountEffectivePermissions",
+    "serviceAccounts.getServiceAccount",
+    "serviceAccounts.getServiceAccountGroups",
+    "serviceAccounts.getServiceAccounts",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_supporting_assets": [
+    "supportingAssets.listSupportingAssets",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_tenant_users": [
+    "tenants.getTenantUsers",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_tenants": [
+    "tenants.getTenants"
+  ],
+  "list_opencrq_threats": [
+    "tenants.getTenants",
+    "threats.list"
+  ],
+  "list_opencrq_treatment_plans": [
+    "organizations.getOrganization",
+    "tenants.getTenants",
+    "treatmentPlans.getTreatmentPlans"
+  ],
+  "list_opencrq_unique_findings": [
+    "findingScore.listUniqueFindings",
+    "tenants.getTenants"
+  ],
+  "list_opencrq_users": [
+    "tenants.getTenants",
+    "users.getUsers"
+  ],
+  "manage_opencrq_capability_techniques": [
+    "controlCapabilities.addTechniqueOverride",
+    "controlCapabilities.getControlCapability",
+    "controlCapabilities.removeTechnique",
+    "controlCapabilities.resetTechniqueOverrides",
+    "controlCapabilities.restoreTechnique",
+    "mitreAttack.getTechniqueByExternalId",
+    "mitreAttack.getTechniques",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_compliance_assessment": [
+    "complianceAssessments.publishAssessment",
+    "complianceAssessments.renameAssessment",
+    "complianceAssessments.reopenAssessment",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_group_membership": [
+    "groups.addUserToGroup",
+    "groups.removeUserFromGroup",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_group_roles": [
+    "groups.addRoleToGroup",
+    "groups.removeRoleFromGroup",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_job": [
+    "jobs.cancelJob",
+    "jobs.retryFromDlq",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_role_capabilities": [
+    "roles.addCapabilityToRole",
+    "roles.removeCapabilityFromRole",
+    "tenants.getTenants"
+  ],
+  "manage_opencrq_scope_control_posture": [
+    "controlCapabilities.clearScopeControlPosture",
+    "controlCapabilities.declareScopeControlPosture",
+    "controlCapabilities.getResolvedControlPosture",
+    "tenants.getTenants"
+  ],
+  "remove_opencrq_tenant_user": [
+    "tenants.getTenants",
+    "tenants.removeTenantUser"
+  ],
+  "reset_opencrq_evidence_state": [
+    "supportingAssets.getEvidenceDetail",
+    "supportingAssets.resetEvidenceState",
+    "tenants.getTenants"
+  ],
+  "reset_opencrq_supporting_asset_to_connectors": [
+    "supportingAssets.getSupportingAsset",
+    "supportingAssets.resyncSupportingAssetWithConnectors",
+    "tenants.getTenants"
+  ],
+  "run_opencrq_crq_simulation": [
+    "crqIndicators.enqueueSimulation",
+    "tenants.getTenants"
+  ],
+  "search_opencrq_cves": [
+    "cve.search",
+    "tenants.getTenants"
+  ],
+  "search_opencrq_mitre_techniques": [
+    "mitreAttack.getTechniques",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_asset_dependency_roles": [
+    "assetDependencies.updateSupportToPrimaryLinks",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_control_capability_assessment": [
+    "controlCapabilities.upsertAssessment",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_crq_settings": [
+    "crqIndicatorSettings.updateCrqIndicatorSettings",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_evidence_state": [
+    "supportingAssets.updateEvidenceState",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_financial_profile": [
+    "financialProfiles.getFinancialProfile",
+    "financialProfiles.saveFinancialProfile",
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_group": [
+    "groups.updateGroup",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_loss_estimates": [
+    "scenarioLossEstimates.getScenarioLossEstimates",
+    "scenarioLossEstimates.upsertScenarioLossEstimates",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_organization": [
+    "organizations.updateOrganization",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_primary_asset": [
+    "primaryAssets.updatePrimaryAsset",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_requirement_answer": [
+    "complianceAssessments.answerRequirement",
+    "complianceAssessments.getAssessment",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_risk_scenario": [
+    "riskScenarios.updateRiskScenario",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_risk_tolerance": [
+    "organizations.setRiskTolerance",
+    "riskScenarios.setRiskTolerance",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_role": [
+    "roles.updateRole",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_supporting_asset": [
+    "supportingAssets.getSupportingAsset",
+    "supportingAssets.updateSupportingAsset",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_tef_input": [
+    "crqIndicators.setTefMode",
+    "crqIndicators.upsertTefInput",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_tenant_user_profile": [
+    "tenants.getTenants",
+    "tenants.updateTenantUserProfile"
+  ],
+  "update_opencrq_threat_relevance_settings": [
+    "tenants.getTenants",
+    "threatRelevanceSettings.getThreatRelevanceSettings",
+    "threatRelevanceSettings.updateThreatRelevanceSettings"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "procedure": "findingScore.getAssetPosture",
+  "source": "recorded",
+  "data": {
+    "score": 11,
+    "worstFinding": {
+      "evidenceId": "019edb28-000b-7000-8000-000000000023",
+      "name": "CVE-2021-44228",
+      "exploitability": 89,
+      "impact": 31,
+      "score": 52
+    },
+    "countsByBand": {
+      "critical": 0,
+      "high": 1,
+      "medium": 0,
+      "low": 0
+    },
+    "composition": {
+      "tail": [
+        {
+          "band": "high",
+          "count": 1,
+          "pointsPerFinding": 0.02
+        }
+      ],
+      "tailPoints": 0.02,
+      "removedPoints": 89.02,
+      "capped": false,
+      "unrounded": 10.980000000000004
+    }
+  }
+}

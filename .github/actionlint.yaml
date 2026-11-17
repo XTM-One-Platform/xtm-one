@@ -1,0 +1,6 @@
+# actionlint configuration, read by the sandbox actions-lint check (and a local actionlint run).
+# ubuntu-26.04 is a GitHub-hosted runner image newer than the label list
+# actionlint ships, so it is declared here to avoid a false runner-label error.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

@@ -1,0 +1,315 @@
+# XTM One – Development override of docker-compose.yml
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# (or COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml in .env, then
+# `docker compose up --build`)
+#
+# The production stack, with the platform (http://localhost:8100) and the
+# worker running the checkout's backend sources with hot reload, a Vite dev
+# server (http://localhost:3100) in place of the built frontend, and
+# PostgreSQL, Redis and Silo published on the host for the tests. The
+# platform migrates the database on startup. Rebuild (`--build`) after a
+# change to backend/pyproject.toml or backend/uv.lock; frontend dependencies
+# install on every start.
+#
+# No container name is pinned, so each checkout or git worktree is a compose
+# project of its own, with its own database, Redis and bucket. To run two at
+# once, give the second its own host ports in .env: DEV_FRONTEND_PORT (3100),
+# DEV_PLATFORM_PORT (8100), DEV_POSTGRES_PORT (5432), DEV_REDIS_PORT (6380),
+# DEV_SILO_PORT (9002), DEV_SILO_CONSOLE_PORT (9003), DEV_REDISINSIGHT_PORT
+# (5540). BASE_URL and FRONTEND_URL follow the platform and frontend ports.
+#
+# Every .env setting reaches the platform and the worker. REDIS_URL and
+# S3_ENDPOINT are this stack's own services and override .env (a Redis
+# password in .env is not used: the dev Redis runs without one);
+# OPENSANDBOX_DOMAIN defaults to the opensandbox service.
+#
+# Host ports are published on 127.0.0.1. Set DEV_BIND_ADDRESS=0.0.0.0 to
+# reach the stack from another device: PostgreSQL, Redis, Silo and the admin
+# account then answer the network with their dev credentials.
+#
+# File watching: set WATCHFILES_FORCE_POLLING=true (platform, worker) and
+# CHOKIDAR_USEPOLLING=true (frontend) where bind mounts deliver no change
+# events: `podman machine`, or a Windows checkout under Docker Desktop.
+#
+# Podman: `podman compose` runs these files unchanged, with either provider
+# (docker-compose, or podman-compose 1.6+); see docs/docs/development.md.
+#
+# Opt-in profiles:
+#   tools  RedisInsight on http://localhost:5540
+#   ha     Redis Sentinel topology (see the "ha" section below)
+# Enable one with `--profile <name>`, or COMPOSE_PROFILES=<name> in .env.
+
+x-dev-backend: &dev-backend
+  build:
+    dockerfile: Dockerfile.worker
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    REDIS_URL: redis://redis:6379
+    S3_ENDPOINT: minio:9000
+    OPENSANDBOX_DOMAIN: ${OPENSANDBOX_DOMAIN:-opensandbox:8090}
+    # The opensandbox service's key (same default as the service below): never
+    # unauthenticated, even in dev.
+    OPENSANDBOX_API_KEY: ${OPENSANDBOX_API_KEY:-copilot-dev-opensandbox}
+    BASE_URL: ${BASE_URL:-http://localhost:${DEV_PLATFORM_PORT:-8100}}
+    FRONTEND_URL: ${FRONTEND_URL:-http://localhost:${DEV_FRONTEND_PORT:-3100}}
+    # The headless browser exporting decks and reports loads the render page
+    # from the Vite dev server, which FRONTEND_URL names as seen from the host.
+    PRESENTATION_RENDER_BASE_URL: ${PRESENTATION_RENDER_BASE_URL:-http://frontend:3100}
+    LOG_FORMAT: ${LOG_FORMAT:-console}
+    WATCHFILES_FORCE_POLLING: ${WATCHFILES_FORCE_POLLING:-}
+    # Bytecode stays in the container: no root-owned __pycache__ in the
+    # checkout on a native Linux engine.
+    PYTHONPYCACHEPREFIX: /tmp/pycache
+    # A reload stops the worker within watchfiles' --sigint-timeout (below): it
+    # hands its renders over at once rather than wait for them.
+    WORKER_TERMINATION_GRACE_SECONDS: "25"
+  volumes:
+    - ./backend:/app:z
+  # Sandboxes started by the opensandbox service publish their ports
+  # on the host and are advertised as host.docker.internal.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  platform:
+    <<: *dev-backend
+    # opensandbox: with the worker, the only services that reach the
+    # OpenSandbox server.
+    networks:
+      - default
+      - opensandbox
+    container_name: !reset null
+    command:
+      - uvicorn
+      - app.main:application
+      - --reload
+      - --reload-dir
+      - app
+      - --reload-dir
+      - alembic
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8100"
+      - --timeout-graceful-shutdown
+      - "3"
+    ports: !override
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_PLATFORM_PORT:-8100}:8100"
+    healthcheck: !override
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/api/health/ready')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+
+  # Restarted on every change under backend/app.
+  worker: &dev-worker
+    <<: *dev-backend
+    networks:
+      - default
+      - opensandbox
+    command:
+      - watchfiles
+      - --filter
+      - python
+      - --target-type
+      - command
+      # Room for the SAQ shutdown grace (WORKER_SHUTDOWN_GRACE_PERIOD, 20 s)
+      # before a reload kills the previous worker.
+      - --sigint-timeout
+      - "25"
+      - saq app.worker.settings
+      - app
+    depends_on:
+      # Started once the platform has migrated the database.
+      platform:
+        condition: service_healthy
+
+  # The scene-preview worker, run like the worker (its role,
+  # VIDEO_STUDIO_RENDER_CONCURRENCY=0, comes from docker-compose.yml).
+  worker-preview:
+    <<: *dev-worker
+
+  # Vite dev server with HMR, proxying the API to the platform.
+  frontend:
+    image: docker.io/library/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-c", "corepack enable && yarn install --immutable && exec yarn dev"]
+    environment:
+      VITE_API_URL: http://platform:8100
+      VITE_GIT_SHA: ${VITE_GIT_SHA:-dev}
+      VITE_LOG_LEVEL: ${VITE_LOG_LEVEL:-info}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-}
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      COREPACK_HOME: /cache/corepack
+      YARN_GLOBAL_FOLDER: /cache/yarn
+      YARN_INSTALL_STATE_PATH: /cache/yarn/install-state.gz
+    ports:
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_FRONTEND_PORT:-3100}:3100"
+    volumes:
+      - ./frontend:/app:z
+      # Linux packages, kept apart from a node_modules installed on the host.
+      - frontend-node-modules:/app/node_modules
+      - frontend-cache:/cache
+
+  postgres:
+    container_name: !reset null
+    ports:
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+
+  redis:
+    container_name: !reset null
+    # The platform and the workers connect with the forced REDIS_URL above,
+    # which carries no password: a REDIS_PASSWORD in .env must not turn on
+    # --requirepass here, or they get NOAUTH and never report ready.
+    environment:
+      REDIS_PASSWORD: ""
+    ports:
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_REDIS_PORT:-6380}:6379"
+
+  minio:
+    container_name: !reset null
+    ports:
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_SILO_PORT:-9002}:9000"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_SILO_CONSOLE_PORT:-9003}:9001"
+    volumes:
+      - minio-dev:/data
+
+  # It holds the container engine's socket: on a network of its own with the
+  # platform and the worker, so no other container (the frontend's package
+  # scripts, the data services) reaches it. Opt-in (the "opensandbox"
+  # profile) in docker-compose.yml, always started here, with a default key.
+  opensandbox:
+    container_name: !reset null
+    profiles: !reset []
+    environment:
+      OPENSANDBOX_SERVER_API_KEY: ${OPENSANDBOX_API_KEY:-copilot-dev-opensandbox}
+    networks:
+      - opensandbox
+
+  # ---------------------------------------------------------------------------
+  # RedisInsight – Redis GUI (opt-in via "tools" profile)
+  # ---------------------------------------------------------------------------
+  # Browse the local dev Redis instance from http://localhost:5540 (add a
+  # database connection to redis://redis:6379 — the compose-internal address).
+  # The UI starts with no credentials required for dev: put authentication in
+  # front of any RedisInsight reachable beyond your machine.
+  # ---------------------------------------------------------------------------
+  redisinsight:
+    image: docker.io/redis/redisinsight:3.6
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DEV_REDISINSIGHT_PORT:-5540}:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # The image is node:alpine-based — busybox wget is available, curl is not.
+      # /api/health/ is the documented health endpoint (trailing slash matters).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5540/api/health/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # HA Redis (opt-in via "ha" profile): 1 primary + 2 replicas + 3 Sentinels
+  # ---------------------------------------------------------------------------
+  # For local failover testing. Every node announces its compose service name,
+  # so the master address Sentinel hands out resolves from the platform and
+  # worker containers. Switch them to Sentinel mode in .env:
+  #   COMPOSE_PROFILES=ha
+  #   REDIS_MODE=sentinel
+  #   REDIS_SENTINEL_HOSTS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+  #   REDIS_SENTINEL_SERVICE=copilot-master
+  # then `up -d` again.
+  #
+  # Failover drill:
+  #   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  #     exec sentinel-1 redis-cli -p 26379 SENTINEL FAILOVER copilot-master
+  # Watch the platform logs reconnect to the new master within a few seconds.
+  redis-primary:
+    image: docker.io/library/redis:8-alpine
+    profiles: ["ha"]
+    restart: unless-stopped
+    command: ["redis-server", "--replica-announce-ip", "redis-primary"]
+    healthcheck: &redis-node-healthcheck
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-replica-1:
+    image: docker.io/library/redis:8-alpine
+    profiles: ["ha"]
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    command: ["redis-server", "--replicaof", "redis-primary", "6379", "--replica-announce-ip", "redis-replica-1"]
+    healthcheck: *redis-node-healthcheck
+
+  redis-replica-2:
+    image: docker.io/library/redis:8-alpine
+    profiles: ["ha"]
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    command: ["redis-server", "--replicaof", "redis-primary", "6379", "--replica-announce-ip", "redis-replica-2"]
+    healthcheck: *redis-node-healthcheck
+
+  sentinel-1: &sentinel
+    image: docker.io/library/redis:8-alpine
+    hostname: sentinel-1
+    profiles: ["ha"]
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        cat >/tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel resolve-hostnames yes
+        sentinel announce-hostnames yes
+        sentinel announce-ip $$(hostname)
+        sentinel monitor copilot-master redis-primary 6379 2
+        sentinel down-after-milliseconds copilot-master 5000
+        sentinel failover-timeout copilot-master 10000
+        sentinel parallel-syncs copilot-master 1
+        EOF
+        exec redis-sentinel /tmp/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  sentinel-2:
+    <<: *sentinel
+    hostname: sentinel-2
+
+  sentinel-3:
+    <<: *sentinel
+    hostname: sentinel-3
+
+# default is named because services list it (podman-compose wants it declared).
+networks:
+  default:
+  opensandbox:
+
+volumes:
+  pgdata-dev:
+  minio-dev:
+  frontend-node-modules:
+  frontend-cache:

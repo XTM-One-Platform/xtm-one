@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "threats": {
+      "type": "array",
+      "description": "One entry per threat assessed against the organization.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "stix_id": {"type": "string", "description": "The OpenCTI STIX id of the threat."},
+          "name": {"type": "string"},
+          "relevant": {"type": "boolean"},
+          "score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "factors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string", "description": "sector, region, tech_stack, crown_jewels or pir."},
+                "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                "evidence": {"type": "string"}
+              },
+              "required": ["name", "score", "evidence"],
+              "additionalProperties": false
+            }
+          },
+          "context_fields": {"type": "array", "items": {"type": "string"}, "description": "Organization profile fields used."},
+          "missing_context": {"type": "array", "items": {"type": "string"}, "description": "Organization profile fields that were empty."},
+          "reason": {"type": "string", "description": "One sentence: why relevant or not."}
+        },
+        "required": ["stix_id", "name", "relevant", "score", "factors", "context_fields", "missing_context", "reason"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["threats"],
+  "additionalProperties": false
+}

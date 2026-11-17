@@ -1,0 +1,9 @@
+# Final-stage runtime packages for sandbox-python-rules only.
+#
+# sandbox-python-rules moved from final-minimal to final-full (see
+# dev-docs/sandbox-image-hardening.md) because GitPython (a direct dependency
+# in requirements.sandbox.rules.txt) shells out to the real `git` binary at
+# runtime (`git.refresh()` runs at import time, not just when a repo
+# operation is invoked) — a second documented runtime-CLI exception, same
+# category as tshark/nmap for sandbox-python-network.
+git

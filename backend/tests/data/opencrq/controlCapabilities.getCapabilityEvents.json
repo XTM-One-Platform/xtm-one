@@ -1,0 +1,40 @@
+{
+  "procedure": "controlCapabilities.getCapabilityEvents",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a139a3-d708-7dbd-bc3e-56f3a48fa533",
+      "capabilityId": "64e7879a-8b0c-5d14-9551-74d50b68dca1",
+      "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+      "organizationId": null,
+      "userId": null,
+      "connector": "derivation",
+      "type": "assessment_set",
+      "oldStrength": null,
+      "newStrength": "L2",
+      "oldCoverage": null,
+      "newCoverage": "L1",
+      "strengthMode": null,
+      "coverageMode": null,
+      "comment": null,
+      "createdAt": "2026-10-14T09:00:01.160Z",
+      "userName": null,
+      "sources": [
+        {
+          "axis": "coverage",
+          "source": "nist-csf-2.0",
+          "frameworkTitle": "NIST CSF 2.0",
+          "complianceAssessmentId": "019edb28-0034-7000-8000-000000000001",
+          "complianceAssessmentName": "NIST CSF 2.0 · T2 2026"
+        },
+        {
+          "axis": "strength",
+          "source": "nist-csf-2.0",
+          "frameworkTitle": "NIST CSF 2.0",
+          "complianceAssessmentId": "019edb28-0034-7000-8000-000000000001",
+          "complianceAssessmentName": "NIST CSF 2.0 · T2 2026"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.XTM-One-Platform/xtm-one-openaev",
+  "title": "OpenAEV (via XTM One)",
+  "description": "OpenAEV exposure validation: scenarios, simulations, payloads, injects, findings",
+  "version": "0.0.0",
+  "websiteUrl": "https://docs.xtmone.io/latest/usage/resources/platform-mcp-servers/",
+  "icons": [
+    {
+      "src": "https://docs.xtmone.io/latest/assets/images/favicon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "520x520"
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://{xtm_one_host}/mcp/openaev",
+      "variables": {
+        "xtm_one_host": {
+          "description": "Host name of your XTM One instance, with its path prefix if it is served under one (xtm.example.com, or example.com/xtm-one).",
+          "isRequired": true,
+          "placeholder": "xtm.example.com"
+        }
+      }
+    }
+  ]
+}

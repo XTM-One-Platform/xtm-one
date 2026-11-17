@@ -1,0 +1,339 @@
+/**
+ * The left nav is the product's fixed structure - `yarn test:unit`.
+ *
+ * Every connected integration with a page of its own (an imported OpenAPI
+ * spec, Nova's rules, OpenRouter's console) used to be listed after
+ * "Integrations", named after the integration: each imported Swagger document
+ * added a row to the menu. An integration's pages are tabs of its
+ * detail page; the nav lists the Integrations page and nothing per integration.
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+
+import { NAV_SECTIONS, activeNavPath, navDestinations, navLabel, resolveNav, type NavFlags, type NavGroup } from "./nav-model.ts";
+
+const FLAGS: NavFlags = {
+  chat: true,
+  customVariables: true,
+  relays: true,
+  xtmOne: false,
+  aiAdoption: true,
+  aiEnabled: true,
+  aiLicensed: true,
+  deepInvestigation: true,
+  concierge: true,
+  videoStudio: true,
+  dashboardStudio: true,
+  evaluation: true,
+};
+
+const toolsGroup = (): NavGroup => {
+  const group = resolveNav(FLAGS, true)
+    .flatMap((section) => section.entries)
+    .find((entry): entry is NavGroup => entry.kind === "group" && entry.id === "tools-and-integrations");
+  assert.ok(group, "the Tools & Integrations group is listed");
+  return group;
+};
+
+const group = (id: string, isAdmin = true, flags: NavFlags = FLAGS): NavGroup => {
+  const found = resolveNav(flags, isAdmin)[0].entries
+    .find((entry): entry is NavGroup => entry.kind === "group" && entry.id === id);
+  assert.ok(found, `the ${id} group is in the top block`);
+  return found;
+};
+
+test("the top block reads Home, Chat, the Orchestration group, then Work (#9301)", () => {
+  const [primary] = resolveNav(FLAGS, true);
+  assert.deepEqual(
+    primary.entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id)),
+    ["/", "/chat", "agents", "work"],
+  );
+});
+
+test("the Orchestration group opens its hub, like Agent Studio, and holds Agents, Fleets, Agentic Flow and, for administrators, Intents (N2c, N2d)", () => {
+  const agents = group("agents");
+  assert.equal(agents.label, "Orchestration", "renamed in N2d; the id stays the persistence key");
+  assert.equal(agents.to, "/agents-hub", "the hub path stays, so old links open");
+  assert.equal(agents.locked, undefined, "the hub row carries no lock: each child carries its own");
+  assert.deepEqual(agents.children.map((child) => child.to), ["/agents", "/fleets", "/flows", "/intents"]);
+  assert.deepEqual(group("agents", false).children.map((child) => child.to), ["/agents", "/fleets", "/flows"]);
+  for (const id of ["agents", "work"]) assert.ok(group(id).to, `${id} opens a hub`);
+  // Create an agent is an action, not a row: a palette destination of the group.
+  assert.deepEqual(agents.paletteOnly?.map((child) => child.to), ["/agents/new"]);
+  const all = resolveNav(FLAGS, true).flatMap((section) => section.entries)
+    .flatMap((entry) => (entry.kind === "group" ? entry.children.map((child) => child.to) : [entry.to]));
+  assert.ok(!all.includes("/agents/new"), "no sidebar row creates an agent");
+});
+
+test("every row of a group carries its own lock: Fleets by the licence, Agentic Flow never, Intents by AI", () => {
+  const lock = (flags: NavFlags, to: string) => {
+    const child = group("agents", true, flags).children.find((entry) => entry.to === to);
+    return child?.locked ? child.lockReason : null;
+  };
+  assert.equal(lock(FLAGS, "/fleets"), null);
+  assert.equal(lock({ ...FLAGS, aiEnabled: false }, "/fleets"), null, "fleets stay readable with AI off");
+  assert.equal(lock({ ...FLAGS, aiLicensed: false }, "/fleets"), "unlicensed");
+  assert.equal(lock({ ...FLAGS, aiEnabled: false, aiLicensed: false }, "/flows"), null);
+  assert.equal(lock({ ...FLAGS, aiEnabled: false }, "/intents"), "ai_disabled");
+  assert.equal(lock({ ...FLAGS, aiEnabled: false }, "/agents"), "ai_disabled", "the list row keeps the lock the group row had");
+  assert.equal(lock({ ...FLAGS, aiLicensed: false }, "/agents"), "unlicensed");
+});
+
+test("Value sits in Work right after Operations, both modes, every user; locked on Community Edition only, never by AI off", () => {
+  // Sam, 8 Nov 2026: not a top-level row; reachable in two clicks from Work.
+  const value = (flags: NavFlags, isAdmin: boolean) => group("work", isAdmin, flags).children.find((child) => child.to === "/value");
+  for (const xtmOne of [false, true]) {
+    assert.deepEqual(group("work", false, { ...FLAGS, xtmOne }).children.slice(0, 2).map((child) => child.to), ["/operations", "/value"]);
+    const entry = value({ ...FLAGS, xtmOne }, false);
+    assert.ok(entry && !entry.locked, `listed and open (xtmOne ${xtmOne}, not admin)`);
+  }
+  const aiOff = value({ ...FLAGS, aiEnabled: false }, false);
+  assert.ok(aiOff && !aiOff.locked, "AI off keeps the read surface open");
+  const community = value({ ...FLAGS, aiLicensed: false }, false);
+  assert.ok(community && community.locked && community.lockReason === "unlicensed");
+});
+
+test("the command center pages light the home row; a fleet lights Fleets, a flow Agentic Flow", () => {
+  const sections = resolveNav(FLAGS, true);
+  for (const pathname of ["/", "/dashboard", "/briefing", "/ctem/discovery"]) {
+    assert.equal(activeNavPath(sections, pathname), "/", pathname);
+  }
+  assert.equal(activeNavPath(sections, "/fleets/f-1/members"), "/fleets");
+  assert.equal(activeNavPath(sections, "/flows/map/schedule"), "/flows");
+  assert.equal(activeNavPath(sections, "/agents/new"), "/agents");
+  assert.equal(activeNavPath(sections, "/value/methodology"), "/value");
+  assert.equal(activeNavPath(sections, "/dashboards/d-1"), "/dashboards", "the studio is not the home");
+});
+
+test("the renames of #9301: Home, Administration, Audit logs; the studio keeps Dashboards", () => {
+  const labels = navDestinations(resolveNav(FLAGS, true));
+  const label = (to: string) => labels.find((dest) => dest.to === to)?.label;
+  assert.equal(label("/"), "Home");
+  assert.equal(label("/dashboards"), "Dashboards");
+  assert.equal(label("/logs"), "Audit logs");
+  assert.equal(labels.find((dest) => dest.to === "/logs")?.parent, "Administration");
+  // The section id is the persistence key of its open state: unchanged.
+  assert.ok(NAV_SECTIONS.some((section) => section.id === "admin" && section.label === "Administration"));
+  for (const lang of ["en", "fr", "es", "ja"]) {
+    const catalog = JSON.parse(readFileSync(new URL(`../../i18n/lang/${lang}.json`, import.meta.url), "utf8"));
+    for (const key of ["Home", "Administration", "Audit logs"]) assert.ok(catalog[key], `${lang}: ${key}`);
+  }
+  const page = readFileSync(new URL("../../pages/AuditLogs.tsx", import.meta.url), "utf8");
+  assert.match(page, /t_i18n\("Audit logs"\)/, "the h1 reads like its row");
+});
+
+test("only a collapsible section is named: the other blocks are separated by a rule alone", () => {
+  // OpenCTI and OpenAEV draw no heading between blocks; a label on a plain
+  // block would be the "RESOURCES" subtitle neither product has.
+  for (const section of NAV_SECTIONS) {
+    if (section.label) assert.ok(section.collapsible, `${section.id} is named but not collapsible`);
+  }
+});
+
+test("Evaluations is listed, in the nav and the palette, only while evaluation is on", () => {
+  const routes = (flags: NavFlags) => navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
+  assert.ok(routes(FLAGS).includes("/evaluations"));
+  assert.ok(!routes({ ...FLAGS, evaluation: false }).includes("/evaluations"));
+});
+
+test("AI Adoption is listed in both modes, only while the feature is on", () => {
+  // Generic AI (dev-docs/mode-split.md, S2): the mode never gates it.
+  const routes = (flags: NavFlags) => navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
+  assert.ok(routes(FLAGS).includes("/ai-adoption"));
+  assert.ok(routes({ ...FLAGS, xtmOne: true }).includes("/ai-adoption"));
+  assert.ok(!routes({ ...FLAGS, aiAdoption: false }).includes("/ai-adoption"));
+});
+
+test("Dashboards is listed, in the nav and the palette, only while the Dashboard Studio is on", () => {
+  const routes = (flags: NavFlags) => navDestinations(resolveNav(flags, false)).map((dest) => dest.to);
+  assert.ok(routes(FLAGS).includes("/dashboards"));
+  assert.ok(!routes({ ...FLAGS, dashboardStudio: false }).includes("/dashboards"));
+});
+
+const OBSERVABILITY = ["/analytics", "/analytics/outcomes", "/traces", "/trace-sessions"];
+
+const adminLeaf = (isAdmin: boolean, isGroupManager: boolean, to: string) =>
+  resolveNav(FLAGS, isAdmin, isGroupManager)
+    .find((section) => section.id === "admin")
+    ?.entries.find((entry) => entry.kind === "leaf" && entry.to === to);
+
+test("Observability is one family row: Model usage, Outcomes, Traces, Sessions (#9301 N3)", () => {
+  const row = adminLeaf(true, false, "/analytics");
+  assert.ok(row && row.kind === "leaf");
+  assert.equal(row.label, "Observability");
+  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
+    ["/analytics", "Model usage"],
+    ["/analytics/outcomes", "Outcomes"],
+    ["/traces", "Traces"],
+    ["/trace-sessions", "Sessions"],
+  ]);
+  assert.equal(row.locked, undefined, "a read surface, never AI-locked (SC-011)");
+  const palette = navDestinations(resolveNav(FLAGS, true)).filter((dest) => OBSERVABILITY.includes(dest.to));
+  assert.deepEqual(palette.map((dest) => dest.to), OBSERVABILITY, "one palette destination per member page");
+  assert.ok(palette.every((dest) => dest.parent === "Observability"), "each under the family's name");
+});
+
+test("every member page of Observability lights the family row", () => {
+  const sections = resolveNav(FLAGS, true);
+  for (const path of ["/analytics", "/analytics/outcomes", "/traces", "/traces/abc", "/trace-sessions"]) {
+    assert.equal(activeNavPath(sections, path), "/analytics", path);
+  }
+});
+
+test("a group manager's Administration is the single row Model usage, the page's h1 (r3 A1)", () => {
+  const row = adminLeaf(false, true, "/analytics");
+  assert.ok(row && row.kind === "leaf");
+  assert.equal(row.label, "Model usage");
+  assert.equal(row.family, undefined, "one member: no family, no tab row");
+  const observability = (isAdmin: boolean, isGroupManager: boolean) =>
+    navDestinations(resolveNav(FLAGS, isAdmin, isGroupManager))
+      .map((dest) => dest.to)
+      .filter((to) => OBSERVABILITY.includes(to));
+  assert.deepEqual(observability(true, false), OBSERVABILITY);
+  assert.deepEqual(observability(false, true), ["/analytics"]);
+  assert.deepEqual(observability(false, false), []);
+  assert.deepEqual(
+    resolveNav(FLAGS, false, true).find((section) => section.id === "admin")?.entries.length,
+    1,
+    "a group manager sees no other Administration entry",
+  );
+});
+
+test("Tools & Integrations lists its fixed pages and nothing per integration", () => {
+  const children = toolsGroup().children;
+  assert.deepEqual(children.map((child) => child.to), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles"]);
+  assert.deepEqual(children[3].family?.map((member) => member.to), ["/browser-profiles", "/variables", "/relays"]);
+});
+
+test("Connections is one family row: Browser profiles, Variables, Relays (#9301 N3b)", () => {
+  const row = toolsGroup().children.find((child) => child.to === "/browser-profiles");
+  assert.ok(row);
+  assert.equal(row.label, "Connections");
+  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
+    ["/browser-profiles", "Browser profiles"],
+    ["/variables", "Variables"],
+    ["/relays", "Relays"],
+  ]);
+  assert.equal(row.locked, undefined, "infrastructure, never AI-locked");
+  const sections = resolveNav(FLAGS, false);
+  for (const path of ["/browser-profiles", "/variables", "/variables/v-1", "/relays", "/relays/r-1"]) {
+    assert.equal(activeNavPath(sections, path), "/browser-profiles", path);
+  }
+  const palette = navDestinations(sections).filter((dest) => ["/browser-profiles", "/variables", "/relays"].includes(dest.to));
+  assert.deepEqual(palette.map((dest) => [dest.to, dest.parent]), [
+    ["/browser-profiles", "Connections"], ["/variables", "Connections"], ["/relays", "Connections"],
+  ]);
+  /* Both flags off: one member, a plain row with that page's name. */
+  const alone = resolveNav({ ...FLAGS, customVariables: false, relays: false }, false)
+    .flatMap((section) => section.entries)
+    .find((entry): entry is NavGroup => entry.kind === "group" && entry.id === "tools-and-integrations")
+    ?.children.find((child) => child.to === "/browser-profiles");
+  assert.equal(alone?.label, "Browser profiles");
+  assert.equal(alone?.family, undefined);
+});
+
+test("Users and groups is one family row for administrators only (#9301 N3b)", () => {
+  const row = adminLeaf(true, false, "/users");
+  assert.ok(row && row.kind === "leaf");
+  assert.equal(row.label, "Users and groups");
+  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [["/users", "Users"], ["/groups", "Groups"]]);
+  const sections = resolveNav(FLAGS, true);
+  for (const path of ["/users", "/users/u-1", "/groups", "/groups/g-1", "/groups/new"]) {
+    assert.equal(activeNavPath(sections, path), "/users", path);
+  }
+  assert.equal(adminLeaf(false, true, "/users"), undefined, "a group manager gets no Users and groups row");
+});
+
+test("no nav entry or palette destination opens one integration's page", () => {
+  const routes = [
+    ...NAV_SECTIONS.flatMap((section) => section.entries).flatMap((entry) => (
+      entry.kind === "group" ? [entry.to, ...entry.children.map((child) => child.to)] : [entry.to]
+    )),
+    ...navDestinations(resolveNav(FLAGS, true)).map((dest) => dest.to),
+  ];
+  assert.deepEqual(routes.filter((to) => to?.startsWith("/integrations/")), []);
+});
+
+test("an integration's pages, its own tabs included, highlight the Integrations entry", () => {
+  const sections = resolveNav(FLAGS, true);
+  for (const pathname of ["/integrations", "/integrations/i-1", "/integrations/i-1/api-spec", "/integrations/i-1/rules"]) {
+    assert.equal(activeNavPath(sections, pathname), "/integrations", pathname);
+  }
+});
+
+test("the nav is built without reading the integrations", () => {
+  for (const file of ["./nav-model.ts", "./Sidebar.tsx", "./GlobalSearch.tsx"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /useIntegrations\b|PROVIDER_EXTRA_TABS|useIntegrationApi/, file);
+  }
+});
+
+/* Every row the menu can show, group rows included, whatever the flags or the role. */
+const menuRows = () => NAV_SECTIONS.flatMap((section) => [
+  ...(section.icon ? [{ label: section.label ?? section.id, icon: section.icon }] : []),
+  ...section.entries.flatMap((entry) => (entry.kind === "group" ? [entry, ...entry.children] : [entry])),
+]);
+
+test("no group repeats one of its rows: neither its label nor its icon (#9301 N2d)", () => {
+  for (const entry of NAV_SECTIONS.flatMap((section) => section.entries)) {
+    if (entry.kind !== "group") continue;
+    for (const child of entry.children) {
+      assert.notEqual(child.label, entry.label, `${entry.label} has a row of the same name`);
+      assert.notEqual(child.icon, entry.icon, `${child.label} carries the icon of its group ${entry.label}`);
+    }
+  }
+});
+
+test("no two rows of the menu share an icon (#9301 N2d)", () => {
+  const seen = new Map<unknown, string>();
+  for (const row of menuRows()) {
+    const other = seen.get(row.icon);
+    assert.equal(other, undefined, `${row.label} and ${other} share an icon`);
+    seen.set(row.icon, row.label);
+  }
+});
+
+test("the palette finds the Orchestration group by its former name (#9301 N2d)", () => {
+  const hub = navDestinations(resolveNav(FLAGS, true)).find((dest) => dest.to === "/agents-hub");
+  assert.ok(hub);
+  assert.equal(hub.label, "Orchestration");
+  assert.deepEqual(hub.keywords, ["Agents"]);
+});
+
+/* Every page that renders a nav family header, found by scanning the pages. */
+const familyMemberPages = () => {
+  const root = new URL("../../pages/", import.meta.url);
+  return readdirSync(root, { encoding: "utf8", recursive: true })
+    .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
+    .map((file) => ({ file, source: readFileSync(new URL(file, root), "utf8") }))
+    .filter(({ source }) => /<NavFamilyHeader\b/.test(source));
+};
+
+test("every family member page puts its header at one offset, so switching tabs never moves it (#10409 UX r1 B1)", () => {
+  const pages = familyMemberPages();
+  assert.ok(pages.length >= 3, "the Observability members render the family header");
+  for (const { file, source } of pages) {
+    const roots = [...source.matchAll(/return \(\s*<div className="([^"]*)">\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<NavFamilyHeader\b/g)];
+    assert.ok(roots.length > 0, `${file}: the family header is the first child of the page root`);
+    for (const [, className] of roots) assert.equal(className, "space-y-6", `${file}: page root of a family member`);
+  }
+});
+
+test("the family header spaces its title and tab row as Settings does (#10409 UX r1 B2)", () => {
+  const source = readFileSync(new URL("./NavFamilyHeader.tsx", import.meta.url), "utf8");
+  assert.match(source, /return \(\s*<div className="space-y-6">/);
+});
+
+test("the Concierge entry reads its name as written, never as a message id", () => {
+  const translate = (id: string) => `t(${id})`;
+  const named = navDestinations(resolveNav({ ...FLAGS, conciergeName: "{Jeeves}" }, true)).find((d) => d.to === "/concierge");
+  assert.ok(named);
+  assert.equal(navLabel(named, translate), "{Jeeves}");
+  const unnamed = navDestinations(resolveNav(FLAGS, true)).find((d) => d.to === "/concierge");
+  assert.ok(unnamed);
+  assert.equal(navLabel(unnamed, translate), "t(Concierge)");
+  const chat = navDestinations(resolveNav({ ...FLAGS, conciergeName: "Jeeves" }, true)).find((d) => d.to === "/chat");
+  assert.equal(chat?.text, undefined);
+});

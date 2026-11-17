@@ -1,0 +1,78 @@
+{
+  "procedure": "dashboard.getToleranceGaps",
+  "source": "recorded",
+  "data": {
+    "rows": [
+      {
+        "scenarioId": "019edb28-0011-7000-8000-000000000001",
+        "name": "Data Breach on Retail Lending Platform",
+        "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "organizationName": "Acme Bank",
+        "tolerance": {
+          "annualLoss": 50000000,
+          "maxExceedanceProbability": 0.1
+        },
+        "source": "scenario",
+        "loss": 52797957.57392974,
+        "gap": 2797957.573929742,
+        "ratio": 1.0559591514785949,
+        "outside": true,
+        "scopeTolerance": {
+          "annualLoss": 20000000,
+          "maxExceedanceProbability": 0.05
+        },
+        "ownTolerance": {
+          "annualLoss": 50000000,
+          "maxExceedanceProbability": 0.1
+        }
+      },
+      {
+        "scenarioId": "b4d5e6f7-a8b9-4c0d-9e2f-3a4b5c6d7e8f",
+        "name": "Espionage / Intellectual Property Loss on Proprietary Trading Algorithms",
+        "organizationId": "0c04d416-9b28-4c43-b10d-23db92eb6bb0",
+        "organizationName": "Acme Wealth Management",
+        "tolerance": {
+          "annualLoss": 2500000,
+          "maxExceedanceProbability": 0.05
+        },
+        "source": "scope",
+        "loss": 4801190.832802013,
+        "gap": 2301190.8328020126,
+        "ratio": 1.920476333120805,
+        "outside": true,
+        "scopeTolerance": {
+          "annualLoss": 2500000,
+          "maxExceedanceProbability": 0.05
+        },
+        "ownTolerance": null
+      },
+      {
+        "scenarioId": "019edb28-0007-7000-8000-000000000001",
+        "name": "Ransomware on Trade Finance Platform",
+        "organizationId": "7a5c914c-f152-4701-a727-8b52cd8f293b",
+        "organizationName": "Acme Bank Asia Pacific",
+        "tolerance": {
+          "annualLoss": 1000000,
+          "maxExceedanceProbability": 0.02
+        },
+        "source": "scope",
+        "loss": 1820224.0359120923,
+        "gap": 820224.0359120923,
+        "ratio": 1.8202240359120923,
+        "outside": true,
+        "scopeTolerance": {
+          "annualLoss": 1000000,
+          "maxExceedanceProbability": 0.02
+        },
+        "ownTolerance": null
+      }
+    ],
+    "noToleranceCount": 1,
+    "noToleranceScopes": [
+      {
+        "organizationId": "a4ade4eb-5013-4914-8a20-70c325b2f42c",
+        "organizationName": "FinSecure Partners"
+      }
+    ]
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "procedure": "threats.getRelevantForScenario",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "id": "01a139e7-7dcb-7c37-b3a7-768c95bb6664",
+        "name": "APT29 (Cozy Bear)",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G0016",
+        "activityScore": null,
+        "activityWeight": 0.021048646432059427,
+        "activityStatus": "unknown",
+        "lastActivityAt": "2026-06-06T10:13:54.630Z",
+        "lastObservedAt": null,
+        "anchorProvenance": "authored",
+        "countryMatch": true,
+        "sectorMatch": true,
+        "outcomeMatch": true,
+        "combinedRelevance": 0.89166673925,
+        "resourceLevel": "government",
+        "countries": [
+          "France",
+          "Germany",
+          "United States of America"
+        ],
+        "sectors": [
+          "Finance",
+          "Diplomacy",
+          "Government and administrations"
+        ],
+        "matchedCountry": "France",
+        "matchedSector": "Finance"
+      },
+      {
+        "id": "01a139e7-7e1c-718e-b19b-0dfb01751b86",
+        "name": "APT41",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G0096",
+        "activityScore": null,
+        "activityWeight": 0.021048646432059427,
+        "activityStatus": "unknown",
+        "lastActivityAt": "2025-09-09T10:13:54.630Z",
+        "lastObservedAt": null,
+        "anchorProvenance": "authored",
+        "countryMatch": true,
+        "sectorMatch": true,
+        "outcomeMatch": true,
+        "combinedRelevance": 0.8681992112375,
+        "resourceLevel": "government",
+        "countries": [
+          "France",
+          "Singapore",
+          "United States of America"
+        ],
+        "sectors": [
+          "Finance",
+          "Health",
+          "Technologies"
+        ],
+        "matchedCountry": "France",
+        "matchedSector": "Finance"
+      },
+      {
+        "id": "01a139e7-7d4e-7a24-8962-5894d54f2661",
+        "name": "Salt Typhoon",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G1045",
+        "activityScore": 0.9965301085488131,
+        "activityWeight": 0.9965301085488131,
+        "activityStatus": "active",
+        "lastActivityAt": "2026-10-10T10:13:54.630Z",
+        "lastObservedAt": "2026-10-10T10:13:54.630Z",
+        "anchorProvenance": "observed",
+        "countryMatch": true,
+        "sectorMatch": true,
+        "outcomeMatch": true,
+        "combinedRelevance": 0.8681992112375,
+        "resourceLevel": "government",
+        "countries": [
+          "France",
+          "Singapore",
+          "United States of America"
+        ],
+        "sectors": [
+          "Finance",
+          "Government and administrations",
+          "Telecommunications"
+        ],
+        "matchedCountry": "France",
+        "matchedSector": "Finance"
+      }
+    ],
+    "belowGateClaimCount": 0
+  }
+}

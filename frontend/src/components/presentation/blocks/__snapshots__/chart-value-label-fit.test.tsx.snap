@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`upright lifts a value one row before it leaves it out > a combo in a half-width panel writes all 16 values, its bars where they stood 1`] = `
+[
+  "bar s0 c0 @91,191 26x75",
+  "bar s0 c1 @171.25,166 26x100",
+  "bar s0 c2 @251.5,178.5 26x87.5",
+  "bar s0 c3 @331.75,84.75 26x181.25",
+  "bar s0 c4 @412,172.25 26x93.75",
+  "bar s0 c5 @492.25,141 26x125",
+  "bar s0 c6 @572.5,153.5 26x112.5",
+  "bar s0 c7 @652.75,59.75 26x206.25",
+  "bar s1 c0 @131,228.5 26x37.5",
+  "bar s1 c1 @211.25,172.25 26x93.75",
+  "bar s1 c2 @291.5,209.75 26x56.25",
+  "bar s1 c3 @371.75,91 26x175",
+  "bar s1 c4 @452,203.5 26x62.5",
+  "bar s1 c5 @532.25,147.25 26x118.75",
+  "bar s1 c6 @612.5,191 26x75",
+  "bar s1 c7 @692.75,66 26x200",
+  "value s0 c0 16px lift 0 @104,185 €1.2M",
+  "value s0 c1 16px lift 0 @184.25,160 €1.6M",
+  "value s0 c2 16px lift 0 @264.5,172.5 €1.4M",
+  "value s0 c3 16px lift 0 @344.75,78.75 €2.9M",
+  "value s0 c4 16px lift 0 @425,166.25 €1.5M",
+  "value s0 c5 16px lift 0 @505.25,135 €2.0M",
+  "value s0 c6 16px lift 0 @585.5,147.5 €1.8M",
+  "value s0 c7 16px lift 0 @665.75,53.75 €3.3M",
+  "value s1 c0 16px lift 0 @144,222.5 €0.6M",
+  "value s1 c1 16px lift 28.09 @224.25,138.16 €1.5M",
+  "value s1 c2 16px lift 0 @304.5,203.75 €0.9M",
+  "value s1 c3 16px lift 28.09 @384.75,56.91 €2.8M",
+  "value s1 c4 16px lift 0 @465,197.5 €1.0M",
+  "value s1 c5 16px lift 28.09 @545.25,113.16 €1.9M",
+  "value s1 c6 16px lift 0 @625.5,185 €1.2M",
+  "value s1 c7 16px lift 28.09 @705.75,31.91 €3.2M",
+]
+`;

@@ -1,0 +1,21 @@
+{
+  "container": "threat-briefing-video",
+  "source": "The XTM One pack (brand_assets/xtm-one): the marks the title card and the watermark draw, borrowed file by file, never copied; and the XTM product material of the Filigran brand pack (brand_assets/filigran), included by role as the XTM One deck includes it: the product logos and marks, the architecture and lifecycle diagrams and the product screenshots a briefing shows as evidence.",
+  "include": [
+    {"pack": "filigran", "only_roles": ["product_logo", "icon", "diagram", "screenshot"]}
+  ],
+  "assets": [
+    {
+      "file": "xtm-one-logo.svg",
+      "pack": "xtm-one",
+      "role": "logo",
+      "description": "XTM One logo (mark + wordmark), light-on-dark - drawn on the title and closing cards."
+    },
+    {
+      "file": "xtm-one-mark.svg",
+      "pack": "xtm-one",
+      "role": "logo_mark",
+      "description": "XTM One emblem without the wordmark - the watermark in the corner of every frame."
+    }
+  ]
+}

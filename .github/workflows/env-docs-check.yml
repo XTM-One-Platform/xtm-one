@@ -1,0 +1,33 @@
+name: Env vars documented
+
+# Fail a PR when a variable newly added to .env.sample is not documented in the
+# XTM One docs. Only variables added on the PR branch are checked, so existing
+# undocumented tuning knobs never trip the build. See
+# scripts/check-new-env-vars-documented.sh and .github/env-doc-allowlist.txt.
+
+on:
+  pull_request:
+    paths:
+      - '.env.sample'
+      - 'docs/**'
+      - '.github/env-doc-allowlist.txt'
+      - '.github/workflows/env-docs-check.yml'
+      - 'scripts/check-new-env-vars-documented.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  env-docs:
+    name: New env vars are documented
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          # The checkout is GitHub's merge of the pull request into its base:
+          # its first parent (HEAD^) is the base, which the script diffs against.
+          fetch-depth: 2
+
+      - name: Check new env vars are documented
+        run: bash scripts/check-new-env-vars-documented.sh

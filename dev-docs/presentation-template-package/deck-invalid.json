@@ -1,0 +1,25 @@
+{
+  "title": "Deliberately broken deck",
+  "theme": "dark",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "This slide invents a field",
+      "body": "`body` is not part of the title layout — extras are rejected, never silently dropped"
+    },
+    {
+      "layout": "carousel",
+      "title": "This layout does not exist"
+    },
+    {
+      "layout": "generic",
+      "title": "This rich_text is script-capable",
+      "rich_text": "<p onclick=\"steal()\">click me</p><script>alert(1)</script>"
+    },
+    {
+      "layout": "dashboard",
+      "title": "A dashboard needs at least one metric",
+      "metrics": []
+    }
+  ]
+}

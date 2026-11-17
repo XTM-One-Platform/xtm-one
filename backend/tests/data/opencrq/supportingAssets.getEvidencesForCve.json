@@ -1,0 +1,37 @@
+{
+  "procedure": "supportingAssets.getEvidencesForCve",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "evidenceId": "01a13a4b-2704-73ae-b9f5-0b8a3f24303b",
+        "supportingAssetId": "01a13a4b-265f-759a-bff6-2d653b0ce50f",
+        "assetName": "workstation-01",
+        "assetDerivedName": "workstation-01",
+        "assetCategoryId": "host",
+        "assetCriticality": "unknown",
+        "currentState": "applicable",
+        "stateChangedAt": "2026-09-24T11:00:10.021Z",
+        "stateReason": "Reported by Microsoft Defender",
+        "stateOrigin": "connector",
+        "dismissalType": null
+      },
+      {
+        "evidenceId": "01a13a51-6418-7415-9119-9880e0926cea",
+        "supportingAssetId": "01a13a51-62c3-7149-bfa3-d283d954f9c1",
+        "assetName": "workstation-02",
+        "assetDerivedName": "workstation-02",
+        "assetCategoryId": "host",
+        "assetCriticality": "unknown",
+        "currentState": "applicable",
+        "stateChangedAt": "2026-09-30T16:06:20.083Z",
+        "stateReason": "Reported by Microsoft Defender",
+        "stateOrigin": "connector",
+        "dismissalType": null
+      }
+    ],
+    "total": 6,
+    "page": 1,
+    "limit": 25
+  }
+}

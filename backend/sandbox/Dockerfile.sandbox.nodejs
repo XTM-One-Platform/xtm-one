@@ -1,0 +1,30 @@
+# Custom Node.js sandbox image for OpenSandbox (commands.run() mode)
+#
+# Usage:
+#   docker build -f backend/sandbox/Dockerfile.sandbox.nodejs -t sandbox-nodejs:<version> .
+#
+# Then in your OpenSandbox client:
+#   sandbox = await Sandbox.create(image="sandbox-nodejs:<version>", ...)
+#
+# No Jupyter / code-interpreter.sh entrypoint — designed for
+# sandbox.commands.run() executions only (plain Python subprocess execution).
+
+FROM docker.io/library/node:24-slim@sha256:8cabefbd444809cf0e319b5831c65da1ea202200ca552a5e75fd7938a6f86658
+
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+# Non-root execution (see dev-docs/sandbox-image-hardening.md): node:24-slim
+# already ships a "node" user/group at UID/GID 1000 — reuse it rather than
+# creating a second one (a fresh `useradd -u 1000` collides with it).
+WORKDIR /workspace
+RUN chown node:node /workspace
+
+# ---- Add your local script(s) below ----------------------------------------
+# The file must be present in the Docker build context.
+#
+#COPY --chown=node:node ./nodejswrapper.js /app/nodejswrapper.js
+
+USER node
+
+# Keep the default node:24-slim entrypoint (no shell by default);
+# OpenSandbox's execd injects commands at runtime via sandbox.commands.run().

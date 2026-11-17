@@ -1,0 +1,35 @@
+# Final-stage runtime packages for sandbox-python-data
+# (the apt.sandbox.extended.txt family that stays on the Debian-slim
+# "final-full" target — see research.md §2/§3). Only the *-dev headers and
+# compilers from apt.sandbox.extended.txt are dropped from this list; these
+# are the actual shared libraries the installed wheels dlopen at import time.
+#
+# sandbox-python-malware and sandbox-python-network each need this same
+# shared-library block plus their own tag-specific additions (DFIR libs,
+# tshark/nmap/libkrb5) — there's no build step that composes multiple apt
+# files, so apt.sandbox.malware.runtime.txt and apt.sandbox.network.runtime.txt
+# each carry a full hand-kept-in-sync copy of this block rather than a diff.
+#
+# python-magic (file-type detection)
+libmagic1t64
+# ssdeep-family fuzzy hashing (tlsh's sibling native lib pulled in historically)
+libfuzzy2
+# scapy raw packet capture
+libpcap0.8t64
+# opencv-python / geopandas plotting backends
+libgl1
+libglib2.0-0t64
+# numba/scikit-learn OpenMP parallelism
+libgomp1
+# cryptography/requests-kerberos TLS
+libssl3t64
+# geopandas/pyogrio (GDAL bindings)
+libgdal36
+# geopandas/pyogrio (GEOS bindings)
+libgeos-c1t64
+# pyproj cartographic projections
+libproj25
+proj-data
+# Pillow's FreeType loads the system Brotli (see SANDBOX.md);
+# Pillow is in requirements.sandbox.data.txt.
+libbrotli1

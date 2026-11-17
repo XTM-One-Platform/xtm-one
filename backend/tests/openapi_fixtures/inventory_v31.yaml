@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: Acme Inventory API
+  version: 2024-06-01
+  description: Inventory management with every awkward OpenAPI 3.1 feature.
+servers:
+  - url: https://{region}.inventory.acme.test/v2
+    variables:
+      region:
+        default: eu
+        enum: [eu, us]
+security:
+  - oauth: [items:read]
+paths:
+  /items:
+    parameters:
+      - name: X-Tenant-Id
+        in: header
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listItems
+      summary: List items
+      tags: [items]
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              min_qty:
+                type: integer
+        - name: sku[]
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: locale
+          in: cookie
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: [integer, "null"]
+            exclusiveMinimum: 0
+            maximum: 500
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+    post:
+      operationId: createItem
+      summary: Create an item
+      tags: [items]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PhysicalItem'
+                - $ref: '#/components/schemas/DigitalItem'
+              discriminator:
+                propertyName: kind
+      responses:
+        "201":
+          description: created
+  /items/{item-id}:
+    patch:
+      operationId: patchItem
+      summary: Patch an item
+      tags: [items]
+      parameters:
+        - name: item-id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ItemPatch'
+      responses:
+        "200":
+          description: ok
+    head:
+      operationId: headItem
+      responses:
+        "200":
+          description: ok
+    trace:
+      operationId: traceItem
+      responses:
+        "200":
+          description: ok
+  /categories/tree:
+    get:
+      operationId: getCategoryTree
+      summary: Category tree
+      security:
+        - {}
+        - oauth: [items:read]
+      responses:
+        "200":
+          description: ok
+  /reports:
+    post:
+      operationId: uploadReport
+      summary: Upload a report file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  contentMediaType: application/pdf
+                note:
+                  type: string
+      responses:
+        "202":
+          description: accepted
+  /export:
+    post:
+      operationId: exportCsv
+      summary: Export as CSV
+      servers:
+        - url: https://exports.acme.test
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: ok
+webhooks:
+  itemCreated:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Item:
+      type: object
+      required: [sku]
+      properties:
+        sku:
+          type: string
+        kind:
+          const: physical
+        quantity:
+          type: integer
+          minimum: 0
+        "@odata.type":
+          type: string
+        category:
+          $ref: '#/components/schemas/Category'
+    Category:
+      type: object
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+    PhysicalItem:
+      allOf:
+        - $ref: '#/components/schemas/Item'
+        - type: object
+          properties:
+            weight_kg:
+              type: number
+    DigitalItem:
+      allOf:
+        - $ref: '#/components/schemas/Item'
+        - type: object
+          properties:
+            download_url:
+              type: string
+              format: uri
+    ItemPatch:
+      type: object
+      properties:
+        quantity:
+          type: [integer, "null"]
+        note:
+          $ref: '#/components/schemas/Note'
+          description: A free-text note on the item.
+    Note:
+      type: string
+      maxLength: 500
+  securitySchemes:
+    oauth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.acme.test/authorize
+          tokenUrl: /oauth/token
+          scopes:
+            items:read: Read items
+            items:write: Write items
+        clientCredentials:
+          tokenUrl: https://auth.acme.test/oauth/token
+          scopes:
+            items:read: Read items
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    session:
+      type: apiKey
+      in: cookie
+      name: SESSION
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://auth.acme.test/.well-known/openid-configuration

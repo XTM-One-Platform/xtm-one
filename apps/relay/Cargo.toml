@@ -1,0 +1,92 @@
+[package]
+# XTM One Relay: the pull-based egress proxy a customer runs next to the tools
+# a SaaS platform cannot reach (Splunk, Tanium, an on-prem OpenCTI...). It
+# connects OUT to the platform, pulls the requests routed through its relay
+# group, sends them to the destinations its local allow-list admits and streams
+# the answers back. Nothing connects to it.
+name = "xtm-one-relay"
+version = "0.0.0-dev"
+edition = "2021"
+rust-version = "1.90"
+description = "XTM One Relay - pull-based on-prem egress proxy for XTM One"
+license = "LicenseRef-XTM-One-Enterprise-Edition"
+repository = "https://github.com/XTM-One-Platform/xtm-one"
+publish = false
+
+# Standalone crate: its own workspace (the repo root is not a Cargo workspace).
+[workspace]
+
+[[bin]]
+name = "xtm-one-relay"
+path = "src/main.rs"
+
+[features]
+# `self-update` verifies (agent-core) and applies (self-replace) a newer build
+# the platform offers. Checking for one is always compiled.
+default = ["self-update"]
+self-update = ["agent-core/self-update", "dep:self-replace"]
+
+[dependencies]
+# No `keychain`: the relay keeps its credential as an owner-only file next to
+# relay.toml, so it links no libdbus and runs on a minimal server or image.
+agent-core = { path = "../agent-core", default-features = false }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "net",
+    "sync",
+    "signal",
+    "fs",
+    "io-util",
+    "process",
+] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+# No compression feature on purpose: a relayed answer is passed on byte for
+# byte (Content-Encoding included), never decompressed on the way. No HTTP/2
+# either: destinations are reached over HTTP/1.1. The TLS configuration is
+# built here (`tls.rs`), so reqwest brings no roots of its own.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls-manual-roots",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+rustls-native-certs = "0.8"
+webpki-roots = "0.26"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+toml_edit = "0.22"
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+hostname = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+self-replace = { version = "1", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# The Windows service entry point (the service control dispatcher) and its
+# installation through the Service Control Manager.
+windows-service = "0.7"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

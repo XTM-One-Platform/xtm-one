@@ -1,0 +1,547 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/**
+ * The Dashboard Studio - `/dashboards/:id/studio`: a dashboard and the
+ * assistant building it, side by side, like the Presentation and Video Studios.
+ *
+ * - Left: the studio rail, a chat bound to this dashboard
+ *   (`DashboardStudioRail`): every message says which widget is selected, and
+ *   a save by the dashboard tools refreshes the stage at once.
+ * - Centre: the stage, the dashboard as everyone sees it - live platform
+ *   widgets drawn with the viewer's own access - where a click picks a widget.
+ * - Right: the picked visualization's configuration panel
+ *   (`VisualizationConfig`, Splunk's: general, data source, data display,
+ *   coloring, interactions, visibility, position, source), each field a step
+ *   of the designer's history - for a reader, the inspector
+ *   (`DashboardInspector`), read-only - and the Packs panel (`DashboardPacksPanel`):
+ *   ready-made widgets inserted below the selected one - and the Data panel
+ *   (`DashboardDataSourcesPanel`): the dashboard's data sources - and the
+ *   Inputs panel (`DashboardInputsPanel`): its inputs and token manager.
+ * - The source editor (`DashboardSourceDialog`): the definition as JSON, whole
+ *   or the picked widget's visualization and data source.
+ * - Edit and View modes: in Edit mode (those who may edit) the toolbar
+ *   (`DashboardDesignBar`) adds charts and inputs, elements to a canvas tab,
+ *   layers, aligns, duplicates and deletes them, undoes and redoes, opens the
+ *   data sources and the source editor, switches the theme and says whether
+ *   everything is saved; the tab bar adds, renames,
+ *   moves, retypes and removes tabs; the inspector edits the picked element,
+ *   the canvas and the dashboard's theme and tab bar (`CanvasInspector`). All
+ *   of it is the designer's history (`useDashboardDesigner`), saved as it
+ *   goes. View mode shows the dashboard as its viewers do. Either can be shown
+ *   fullscreen.
+ *
+ * The rail is out unless the URL folds it (`?studio=0`), on the conversation
+ * the URL names (`?c=`). Only those who may edit the dashboard get the rail
+ * and the inspector's controls; others see the stage. Behind `DASHBOARD_STUDIO`.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Braces, History, LayoutGrid, Maximize, Minimize, PanelRightClose, PanelRightOpen, Send } from "lucide-react";
+
+import {
+  CanvasItemInspector,
+  CanvasSelectionSummary,
+  CanvasSettings,
+  DashboardSettings,
+  NothingPicked,
+} from "@/components/custom-dashboard/CanvasInspector";
+import { placeBlocks, removeItems } from "@/components/custom-dashboard/canvas";
+import { DashboardDesignBar } from "@/components/custom-dashboard/DashboardDesignBar";
+import { useDashboardDesigner } from "@/components/custom-dashboard/useDashboardDesigner";
+import { useElementFullscreen } from "@/components/presentation/fullscreen";
+
+import { CustomDashboardView } from "@/components/custom-dashboard/CustomDashboardView";
+import { DashboardDataSourcesPanel } from "@/components/custom-dashboard/DashboardDataSourcesPanel";
+import { DashboardHistoryDialog } from "@/components/custom-dashboard/DashboardHistoryDialog";
+import { DashboardInputsPanel } from "@/components/custom-dashboard/DashboardInputsPanel";
+import { DashboardInspector } from "@/components/custom-dashboard/DashboardInspector";
+import { VisualizationConfig } from "@/components/custom-dashboard/VisualizationConfig";
+import { VisualizationInteractions } from "@/components/custom-dashboard/VisualizationInteractions";
+import { DashboardPacksPanel } from "@/components/custom-dashboard/DashboardPacksPanel";
+import { DashboardExportMenu } from "@/components/custom-dashboard/DashboardExportMenu";
+import { DashboardPublishDialog } from "@/components/custom-dashboard/DashboardPublishDialog";
+import { DashboardShareDialog } from "@/components/custom-dashboard/DashboardShareDialog";
+import { DashboardSourceDialog } from "@/components/custom-dashboard/DashboardSourceDialog";
+import { DashboardStudioHandle, DashboardStudioRail } from "@/components/custom-dashboard/DashboardStudioRail";
+import { DashboardRefresh } from "@/components/custom-dashboard/DashboardRefresh";
+import { useKeepInput } from "@/components/custom-dashboard/keep-input";
+import { normalizeDashboard, type DashboardWidget } from "@/components/custom-dashboard/spec";
+import {
+  STUDIO_BAR_BUTTON,
+  STUDIO_BAR_TITLE,
+  StudioBarLeading,
+  StudioLoading,
+  StudioShareButton,
+  StudioToggle,
+  StudioUnavailable,
+} from "@/components/studio/StudioChrome";
+import { Button } from "@/components/ui/button";
+import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { useToast } from "@/components/ui/toast";
+import { Tip } from "@/components/ui/tooltip";
+import { useCustomDashboard, useQueuedDashboardEdit } from "@/hooks/api/useCustomDashboardApi";
+import { useFormatter } from "@/i18n";
+import { cn } from "@/lib/utils";
+import type { CustomDashboardOperation } from "@/types";
+
+const STUDIO_PARAM = "studio";
+const STUDIO_CONVERSATION_PARAM = "c";
+
+/** The dashboard's visualizations as stored widgets (the response's `widgets`): what an upsert starts from. */
+function storedWidgets(widgets: unknown): Record<string, unknown>[] {
+  return Array.isArray(widgets) ? widgets.filter((w): w is Record<string, unknown> => !!w && typeof w === "object") : [];
+}
+
+export default function DashboardStudio() {
+  const { id = "" } = useParams<{ id: string }>();
+  const { t_i18n } = useFormatter();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { data, isLoading, isError } = useCustomDashboard(id);
+  const update = useQueuedDashboardEdit(id, data?.revision);
+  const refused = useCallback(
+    (error: Error & { status?: number }) => {
+      const conflict = error.status === 409;
+      toast({
+        title: conflict ? t_i18n("This dashboard changed meanwhile") : t_i18n("The dashboard could not be changed"),
+        description: conflict ? t_i18n("Here is its latest version. Make your change again.") : error.message,
+        variant: conflict ? "info" : "error",
+      });
+    },
+    [t_i18n, toast],
+  );
+  const designer = useDashboardDesigner({ dashboard: data, edit: update.edit, replace: update.replace, onRefused: refused });
+  // What the stage shows: the designer's definition (saved or being saved), else the stored one.
+  const definition = designer.definition ?? (data?.spec as Record<string, unknown> | undefined);
+  const dashboard = useMemo(() => (definition ? normalizeDashboard(definition) : null), [definition]);
+  const [mode, setMode] = useState<"edit" | "view">("edit");
+  const [tabId, setTabId] = useState<string | undefined>(undefined);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const stage = useRef<HTMLElement>(null);
+  const fullscreen = useElementFullscreen(stage);
+  const selectedId = designer.selection.length === 1 ? designer.selection[0] : null;
+  const setSelectedId = useCallback(
+    (next: string | null | ((current: string | null) => string | null)) => {
+      const value = typeof next === "function" ? next(selectedId) : next;
+      designer.select(value ? [value] : []);
+    },
+    [designer, selectedId],
+  );
+  const [sharing, setSharing] = useState(false);
+  const [history, setHistory] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [editingSource, setEditingSource] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(() => searchParams.get(STUDIO_PARAM) !== "0");
+  const [studioConvId, setStudioConvId] = useState<string | null>(() => searchParams.get(STUDIO_CONVERSATION_PARAM));
+  const [primed, setPrimed] = useState<string | null>(null);
+  const [panel, setPanel] = useState<"widget" | "data" | "inputs" | "packs">("widget");
+  // The settings panel folds away to give the canvas the whole width; asking for one of its tabs unfolds it.
+  const [panelOpen, setPanelOpen] = useState(true);
+  const showPanel = (next: typeof panel) => {
+    setPanel(next);
+    setPanelOpen(true);
+  };
+  const [stageTokens, setStageTokens] = useState<Record<string, unknown>>({});
+  const [sourceToEdit, setSourceToEdit] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (studioOpen) url.searchParams.delete(STUDIO_PARAM);
+    else url.searchParams.set(STUDIO_PARAM, "0");
+    if (studioConvId) url.searchParams.set(STUDIO_CONVERSATION_PARAM, studioConvId);
+    else url.searchParams.delete(STUDIO_CONVERSATION_PARAM);
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url.href);
+  }, [studioConvId, studioOpen]);
+
+  // Every tab's widgets: the picked one may be on any of them.
+  const widgets = useMemo(() => dashboard?.tabs.flatMap((tab) => tab.widgets) ?? [], [dashboard]);
+  const selected = widgets.find((w) => w.id === selectedId) ?? null;
+  const stored = useMemo(
+    () => storedWidgets(data?.widgets).find((w) => w.id === selectedId) ?? null,
+    [data?.widgets, selectedId],
+  );
+  const focusedWidget = useMemo(
+    () => (selected ? { id: selected.id, label: selected.title || selected.id } : null),
+    [selected],
+  );
+  const onSaved = useCallback(() => undefined, []);
+  const editing = Boolean(data?.can_manage) && mode === "edit";
+  const tab = dashboard?.tabs.find((candidate) => candidate.id === tabId) ?? dashboard?.tabs[0];
+  const canvasLayoutId = editing && tab?.type === "absolute" ? tab.id : null;
+  const canvasItem = canvasLayoutId && selectedId ? tab?.canvas?.items.find((item) => item.id === selectedId) : undefined;
+  // A canvas's shapes, icons, images and markdown have their own inspector; a visualization has the configuration panel.
+  const canvasElement = canvasItem && (canvasItem.type === "line" || canvasItem.element) ? canvasItem : undefined;
+  const configured =
+    editing && selectedId && !canvasElement && (designer.definition?.visualizations as Record<string, unknown> | undefined)?.[selectedId]
+      ? selectedId
+      : null;
+  const openSource = (sid: string | null) => {
+    setSourceToEdit(sid);
+    setEditingSource(true);
+  };
+
+  // Undo and redo wherever the focus is not in a field (the canvas handles its own keys first).
+  const { undo, redo } = designer;
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) undo();
+      else if ((key === "z" && event.shiftKey) || key === "y") redo();
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, redo, undo]);
+
+  const keepInput = useKeepInput(data?.spec, Boolean(data?.can_manage), update.edit);
+  if (isLoading) return <StudioLoading />;
+  if (isError || !data || !dashboard) {
+    return (
+      <StudioUnavailable
+        title={t_i18n("Dashboard not found")}
+        description={t_i18n("It was deleted, or it is not shared with you.")}
+        backLabel={t_i18n("Back to Dashboards")}
+        onBack={() => navigate("/dashboards")}
+      />
+    );
+  }
+
+  const edit = (operations: CustomDashboardOperation[], after?: () => void) =>
+    update.edit(
+      operations,
+      {
+        onSuccess: () => after?.(),
+        onError: (error) => {
+          const conflict = (error as { status?: number }).status === 409;
+          toast({
+            title: conflict ? t_i18n("This dashboard changed meanwhile") : t_i18n("The dashboard could not be changed"),
+            description: conflict ? t_i18n("Here is its latest version. Make your change again.") : error.message,
+            variant: conflict ? "info" : "error",
+          });
+        },
+      },
+    );
+
+  return (
+    <div className="flex h-dvh w-screen overflow-hidden bg-elevation-default text-default-primary" data-testid="dashboard.studio">
+      {data.can_manage &&
+        (studioOpen ? (
+          <DashboardStudioRail
+            dashboard={data}
+            focusedWidget={focusedWidget}
+            onSaved={onSaved}
+            initialConversationId={studioConvId}
+            onConversationChange={setStudioConvId}
+            onCollapse={() => setStudioOpen(false)}
+            primedMessage={primed}
+            onPrimedMessageApplied={() => setPrimed(null)}
+          />
+        ) : (
+          <DashboardStudioHandle onOpen={() => setStudioOpen(true)} />
+        ))}
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-elevation-subtle-soft layer-1 bg-elevation-default px-3 py-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <StudioBarLeading
+              backLabel={t_i18n("Back to the dashboard")}
+              onBack={() => navigate(`/dashboards/${data.id}`)}
+              icon={LayoutGrid}
+            >
+              <h1 className={STUDIO_BAR_TITLE}>{data.title}</h1>
+            </StudioBarLeading>
+            <span className="hidden shrink-0 content-caption text-default-secondary md:inline">
+              {t_i18n("Revision {revision}", { revision: data.revision })}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {data.can_manage && (
+              <SegmentedFilter
+                ariaLabel={t_i18n("Mode")}
+                className="mr-2"
+                value={mode}
+                onChange={(next) => {
+                  setMode(next);
+                  if (next === "view") designer.select([]);
+                }}
+                options={[
+                  { key: "edit", label: t_i18n("Edit") },
+                  { key: "view", label: t_i18n("View") },
+                ]}
+              />
+            )}
+            <DashboardRefresh dashboardId={data.id} className="mr-1" />
+            <Tip content={fullscreen.isFullscreen ? t_i18n("Leave fullscreen") : t_i18n("Fullscreen")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={STUDIO_BAR_BUTTON}
+                aria-label={fullscreen.isFullscreen ? t_i18n("Leave fullscreen") : t_i18n("Fullscreen")}
+                onClick={fullscreen.toggle}
+                data-testid="dashboard.studio.fullscreen"
+              >
+                {fullscreen.isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+              </Button>
+            </Tip>
+            {!dashboard.appProperties.hideExport && (
+              <DashboardExportMenu
+                dashboardId={data.id}
+                title={data.title}
+                tabId={tab?.id ?? null}
+                tabCount={dashboard.tabs.length}
+                schedule={data}
+                className={STUDIO_BAR_BUTTON}
+              />
+            )}
+            <Tip content={t_i18n("Publish or export")}>
+              <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} aria-label={t_i18n("Publish or export")} onClick={() => setPublishing(true)}>
+                <Send className="h-4 w-4" />
+              </Button>
+            </Tip>
+            {/* In Edit mode the toolbar has it. */}
+            {!editing && (
+              <Tip content={t_i18n("Dashboard source")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={STUDIO_BAR_BUTTON}
+                  aria-label={t_i18n("Dashboard source")}
+                  onClick={() => openSource(null)}
+                  data-testid="dashboard.studio.source"
+                >
+                  <Braces className="h-4 w-4" />
+                </Button>
+              </Tip>
+            )}
+            <Tip content={panelOpen ? t_i18n("Hide the settings panel") : t_i18n("Show the settings panel")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(STUDIO_BAR_BUTTON, "hidden lg:inline-flex")}
+                aria-label={panelOpen ? t_i18n("Hide the settings panel") : t_i18n("Show the settings panel")}
+                aria-pressed={panelOpen}
+                onClick={() => setPanelOpen((open) => !open)}
+                data-testid="dashboard.studio.panel"
+              >
+                {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+              </Button>
+            </Tip>
+            <Tip content={t_i18n("History")}>
+              <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} aria-label={t_i18n("Dashboard history")} onClick={() => setHistory(true)}>
+                <History className="h-4 w-4" />
+              </Button>
+            </Tip>
+            {data.can_manage && (
+              <>
+                <StudioToggle open={studioOpen} onToggle={() => setStudioOpen((open) => !open)} testId="dashboard.studio" />
+                <StudioShareButton onClick={() => setSharing(true)} testId="dashboard.studio.share" />
+              </>
+            )}
+          </div>
+        </header>
+
+        {editing && (
+          <DashboardDesignBar
+            designer={designer}
+            layoutId={tab?.id ?? null}
+            canvasLayoutId={canvasLayoutId}
+            zoom={zoom}
+            onZoom={setZoom}
+            theme={dashboard.theme}
+            onAdded={(_, kind) => showPanel(kind === "input" ? "inputs" : "widget")}
+            onOpenData={() => showPanel("data")}
+            onOpenSource={() => openSource(null)}
+          />
+        )}
+
+        <div className="flex min-h-0 flex-1">
+          <section
+            ref={stage}
+            className={cn(
+              "min-w-0 flex-1 overflow-y-auto p-6",
+              fullscreen.isFullscreen && "layer-0 bg-elevation-default",
+              fullscreen.mode === "viewport" && "fixed inset-0 m-0 h-dvh w-screen max-w-none border-0",
+            )}
+            aria-label={t_i18n("Dashboard")}
+          >
+            {dashboard.subtitle && <p className="mb-4 content-base text-default-secondary">{dashboard.subtitle}</p>}
+            <CustomDashboardView
+              dashboard={dashboard}
+              dashboardId={data.id}
+              revision={data.revision}
+              tabId={tab?.id}
+              onTabChange={(next) => {
+                setTabId(next);
+                designer.select([]);
+              }}
+              onTokens={setStageTokens}
+              onKeepInput={keepInput}
+              // A reader picks a widget to read its settings; an editor in View mode sees what viewers see.
+              selection={editing || !data.can_manage ? { selectedId, onSelect: (widget: DashboardWidget) => setSelectedId(widget.id) } : null}
+              editing={
+                editing
+                  ? {
+                      embedded: true,
+                      onLayout: (operation) => {
+                        const layoutId = operation.layoutId ?? dashboard.tabs[0]?.id;
+                        if (!layoutId || !operation.items) return;
+                        designer.change((current) => placeBlocks(current, layoutId, operation.items ?? []));
+                      },
+                      onRemove: (widget) => {
+                        designer.change((current) => removeItems(current, [widget.id]));
+                        setSelectedId((current) => (current === widget.id ? null : current));
+                      },
+                    }
+                  : null
+              }
+              design={
+                editing && designer.definition
+                  ? {
+                      definition: designer.definition,
+                      onChange: designer.change,
+                      selection: designer.selection,
+                      onSelectIds: designer.select,
+                      onShortcut: designer.onShortcut(tab?.id ?? ""),
+                      zoom,
+                    }
+                  : null
+              }
+              expandable={!editing}
+            />
+          </section>
+          <aside
+            className={cn("hidden w-80 shrink-0 flex-col border-l border-elevation-subtle-soft layer-1", panelOpen && "lg:flex")}
+            aria-label={t_i18n("Widget")}
+          >
+            <SegmentedFilter
+              ariaLabel={t_i18n("Panel")}
+              className="m-3 mb-0"
+              value={panel}
+              onChange={setPanel}
+              options={[
+                { key: "widget", label: t_i18n("Widget") },
+                { key: "data", label: t_i18n("Data") },
+                { key: "inputs", label: t_i18n("Inputs") },
+                { key: "packs", label: t_i18n("Packs") },
+              ]}
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {panel === "widget" ? (
+                configured ? (
+                  <VisualizationConfig
+                    key={configured}
+                    dashboard={data}
+                    designer={designer}
+                    vizId={configured}
+                    layoutId={tab?.id ?? null}
+                    onEditSource={openSource}
+                    onOpenDataPanel={() => showPanel("data")}
+                  />
+                ) : canvasLayoutId && tab?.canvas && canvasElement ? (
+                  <CanvasItemInspector designer={designer} layoutId={canvasLayoutId} item={canvasElement} model={tab.canvas} dashboardId={data.id} />
+                ) : canvasLayoutId && designer.selection.length > 1 ? (
+                  <CanvasSelectionSummary count={designer.selection.length} onClear={() => designer.select([])} />
+                ) : canvasLayoutId && tab?.canvas ? (
+                  <>
+                    <NothingPicked />
+                    <CanvasSettings designer={designer} layoutId={canvasLayoutId} model={tab.canvas} dashboardId={data.id} />
+                    <DashboardSettings
+                      designer={designer}
+                      theme={dashboard.theme}
+                      showTabBar={dashboard.showTabBar}
+                      barPosition={dashboard.tabBarPosition ?? "top"}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <DashboardInspector
+                      widget={selected}
+                      stored={stored}
+                      canEdit={data.can_manage}
+                      busy={update.isPending}
+                      onSave={(widget) => edit([{ op: "upsert", widget }])}
+                      onRemove={() => selected && edit([{ op: "remove", id: selected.id }], () => setSelectedId(null))}
+                    />
+                    {selected && (
+                      <VisualizationInteractions
+                        key={`${selected.id}-${data.revision}`}
+                        dashboard={data}
+                        vizId={selected.id}
+                        edit={update.edit}
+                      />
+                    )}
+                    {editing && !selected && (
+                      <DashboardSettings
+                        designer={designer}
+                        theme={dashboard.theme}
+                        showTabBar={dashboard.showTabBar}
+                        barPosition={dashboard.tabBarPosition ?? "top"}
+                      />
+                    )}
+                  </>
+                )
+              ) : panel === "inputs" ? (
+                <DashboardInputsPanel
+                  dashboard={data}
+                  tokens={stageTokens}
+                  edit={update.edit}
+                  onEditInput={openSource}
+                />
+              ) : panel === "data" ? (
+                <DashboardDataSourcesPanel
+                  dashboard={data}
+                  layoutId={tab?.id ?? null}
+                  edit={update.edit}
+                  onEditSource={openSource}
+                  onVisualizationAdded={(vid) => setSelectedId(vid)}
+                />
+              ) : (
+                <DashboardPacksPanel
+                  dashboard={data}
+                  afterWidgetId={selectedId}
+                  onInserted={(ids) => {
+                    setSelectedId(ids[0] ?? null);
+                    setPanel("widget");
+                  }}
+                />
+              )}
+            </div>
+          </aside>
+        </div>
+      </main>
+
+      <DashboardShareDialog dashboard={data} open={sharing} onOpenChange={setSharing} />
+      <DashboardHistoryDialog dashboard={data} open={history} onOpenChange={setHistory} />
+      <DashboardPublishDialog dashboard={data} open={publishing} onOpenChange={setPublishing} />
+      <DashboardSourceDialog
+        dashboard={data}
+        selectedId={selectedId}
+        sourceId={sourceToEdit}
+        open={editingSource}
+        onOpenChange={(open) => {
+          setEditingSource(open);
+          if (!open) setSourceToEdit(null);
+        }}
+      />
+    </div>
+  );
+}

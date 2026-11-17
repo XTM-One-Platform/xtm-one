@@ -1,0 +1,103 @@
+name: Relay E2E
+
+# A relay carrying the platform's requests across networks: the
+# platform on one network, a Splunk stand-in on an internal network it has no
+# route to, the relay between them (docker-compose.relay-e2e.yml). Checks that
+# a routed integration's connectivity test and tool reach the service only
+# through the relay, over an internal CA only the relay trusts, and that the
+# relay's own allow-list refuses the rest. apps/relay/e2e/run.sh runs it
+# locally too.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/relay/**"
+      - "apps/agent-core/**"
+      - "docker-compose.relay-e2e.yml"
+      - "backend/app/core/egress.py"
+      - "backend/app/services/relay_transport.py"
+      - "backend/app/services/relays.py"
+      - "backend/app/api/v1/relays.py"
+      - "backend/app/models/relay.py"
+      - ".github/workflows/relay-e2e.yml"
+      - ".github/actions/ci-license/**"
+      - ".github/scripts/ci-license-*.sh"
+      - ".github/ci-license-url"
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/**"
+      - "apps/agent-core/**"
+      - "docker-compose.relay-e2e.yml"
+      - "backend/app/core/egress.py"
+      - "backend/app/services/relay_transport.py"
+      - "backend/app/services/relays.py"
+      - "backend/app/api/v1/relays.py"
+      - "backend/app/models/relay.py"
+      - ".github/workflows/relay-e2e.yml"
+      - ".github/actions/ci-license/**"
+      - ".github/scripts/ci-license-*.sh"
+      - ".github/ci-license-url"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    name: Two networks, one relay
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      # Compose names the images it would build "<project>-<service>": the
+      # steps below load them under those names.
+      COMPOSE_PROJECT_NAME: relay-e2e
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # The E2E workflow's cache scope, written by the same Dockerfile: read
+      # only, this job writes its own relay scope alone.
+      - name: Build platform image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          tags: relay-e2e-platform:latest
+          load: true
+          cache-from: type=gha,scope=e2e-platform
+
+      - name: Build relay image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps
+          file: apps/relay/Dockerfile
+          tags: relay-e2e-relay:latest
+          load: true
+          build-args: XTM_RELAY_VERSION=0.0.0-e2e
+          cache-from: type=gha,scope=relay-e2e
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,scope=relay-e2e,mode=max,ignore-error=true' || '' }}
+
+      # Integrations are an Enterprise Edition capability: without a licence
+      # the routed-integration checks are skipped and the log says so; the
+      # relay path is checked either way. The public CI certificate reaches a
+      # fork's pull request (dev-docs/ci-license.md); the secret does not.
+      - name: CI license
+        uses: ./.github/actions/ci-license
+        with:
+          fallback: ${{ secrets.E2E_ENTERPRISE_LICENSE }}
+
+      - name: Run the relay end to end
+        env:
+          RELAY_E2E_CERTS: ${{ runner.temp }}/relay-e2e-certs
+        run: |
+          mkdir -p "$RELAY_E2E_CERTS"
+          bash apps/relay/e2e/run.sh

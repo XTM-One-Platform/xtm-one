@@ -1,0 +1,254 @@
+# Custom Python sandbox image for OpenSandbox (commands.run() mode)
+#
+# Multi-stage build (see dev-docs/sandbox-image-hardening.md):
+#   1. `builder`       — installs $APT_FILE + $REQ_FILE into a venv (uv). Never shipped.
+#   2. `final-full`    — Debian-slim, non-root (sandboxuser, 1000). Used by
+#                        every other tag: -data/-malware/-network (real
+#                        runtime shared-library needs — GDAL/GEOS/PROJ,
+#                        libmagic, libpcap, …) AND -cti/-rules, which also use
+#                        apt.sandbox.base.txt but were moved here after
+#                        empirical testing found transitive runtime-CLI needs
+#                        (libmagic via pycti, git via GitPython — see
+#                        research.md §3a) that final-minimal has no package
+#                        manager to satisfy.
+#   3. `final-minimal` — Debian 13 distroless (gcr.io/distroless/cc-debian13)
+#                        plus the builder's own Python 3.14 interpreter (stage
+#                        `python-runtime`), no package manager, non-root
+#                        (65532). Ships a static busybox /bin/sh (from
+#                        upstream busybox:1-musl) purely
+#                        so OpenSandbox's injected bootstrap.sh has an
+#                        interpreter to exec — no other tool is added. Used
+#                        only by sandbox-python (base) and sandbox-python-soar
+#                        — the two apt.sandbox.base.txt-family tags with no
+#                        runtime CLI/shared-library need at all. Deliberately
+#                        the LAST stage: `docker build` with no `--target`
+#                        builds the last stage by default, so a plain
+#                        `docker build -f Dockerfile.sandbox.python -t sandbox-python:<version> .`
+#                        (no flags at all) still produces the intended
+#                        hardened base image, matching this Dockerfile's
+#                        original single-stage "zero-flags = base" ergonomics.
+#
+# The final target is selected per tag with `--target`, NOT a build-arg —
+# see backend/sandbox/sandbox-images.json for the image -> target/apt/req
+# mapping and backend/sandbox/create-register-images.sh for the build loop.
+#
+# Usage (base — default, no flags needed):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python -t sandbox-python:<version> .
+#
+# Usage (a data/malware/network-style domain image, final-full):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python \
+#     --target final-full \
+#     --build-arg APT_FILE=apt.sandbox.extended.txt \
+#     --build-arg REQ_FILE=requirements.sandbox.network.txt \
+#     --build-arg RUNTIME_APT_FILE=apt.sandbox.network.runtime.txt \
+#     -t sandbox-python-network:<version> .
+#
+# Then in your OpenSandbox client:
+#   sandbox = await Sandbox.create(image="sandbox-python:<version>", ...)
+#
+# No Jupyter / code-interpreter.sh entrypoint — designed for
+# sandbox.commands.run() executions only (plain Python subprocess execution).
+
+# ---------------------------------------------------------------------------
+# Stage 1: builder — compiles/installs dependencies. Never shipped: neither
+# final target inherits FROM this stage, only specific files are COPY'd out.
+# ---------------------------------------------------------------------------
+FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS builder
+
+ARG APT_FILE=apt.sandbox.base.txt
+ARG REQ_FILE=requirements.sandbox.base.txt
+
+# Install the FULL apt list (including compilers/*-dev headers) — needed to
+# build wheels that have no prebuilt binary for this Python version, never to
+# run already-installed code. This whole layer is dropped from both final
+# stages; only the /opt/venv it produces is copied out below.
+COPY ${APT_FILE} /tmp/apt-packages.txt
+RUN apt-get update \
+    && grep -v '^\s*#' /tmp/apt-packages.txt | grep -v '^\s*$' \
+       | xargs apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv builds the venv and installs into it; the binary stays in this stage.
+# The venv is on the base image's own interpreter (final-full runs it from the
+# same path), seeded with pip as `python -m venv` did. --compile-bytecode does
+# what pip did by default: the non-root sandbox user cannot write the .pyc.
+COPY --from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5 /uv /usr/local/bin/
+RUN uv venv --seed --python /usr/local/bin/python3 /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY ${REQ_FILE} /tmp/requirements.txt
+# pypi.org can stop answering for several minutes: each download retries 5
+# times at 30 s and the install runs up to 3 times, a minute apart, as in the
+# CI install steps.
+RUN for attempt in 1 2 3; do \
+        UV_HTTP_TIMEOUT=30 UV_HTTP_RETRIES=5 \
+            uv pip install --python /opt/venv/bin/python --no-cache --compile-bytecode \
+            -r /tmp/requirements.txt && exit 0; \
+        echo "uv pip install failed (attempt $attempt of 3)" >&2; \
+        if [ "$attempt" -lt 3 ]; then sleep 60; fi; \
+    done; \
+    exit 1
+
+# The Pillow wheels bundle Brotli 1.2.0 (CVE-2026-111497) for FreeType: replace
+# the bundled libbrotlidec with a link to the system one and remove the bundled
+# libbrotlicommon, which only it loads. The tags without Pillow have no
+# pillow.libs.
+RUN if [ -d /opt/venv/lib/python3*/site-packages/pillow.libs ]; then \
+        cd /opt/venv/lib/python3*/site-packages/pillow.libs \
+        && rm libbrotlicommon-* \
+        && ln -sf "/usr/lib/$(uname -m)-linux-gnu/libbrotlidec.so.1" libbrotlidec-*; \
+    fi
+
+# uv generates console scripts with an absolute `#!/opt/venv/bin/python`
+# shebang. That resolves fine for final-full (a full /opt/venv copy), but
+# final-minimal has no /opt/venv at all (see stage 2b) — it needs a
+# standalone copy of these scripts with the shebang re-pointed at its own
+# interpreter path. NOT `#!/usr/bin/env python3`: the distroless image has no
+# `env` binary either — the shebang interpreter must be an absolute path that
+# actually exists in that image.
+# Excludes the venv's own interpreter symlinks/activation/pip scripts, which
+# would either dangle or shadow the base image's real python3 if copied onto
+# final-minimal's PATH.
+RUN mkdir -p /opt/console-scripts && \
+    for f in /opt/venv/bin/*; do \
+      [ -h "$f" ] && continue; \
+      case "$(basename "$f")" in activate*|Activate*|deactivate*|*.bat|pip|pip3|pip3.*) continue ;; esac; \
+      sed '1s|^#!/opt/venv/bin/python.*|#!/usr/local/bin/python3|' "$f" > "/opt/console-scripts/$(basename "$f")"; \
+      chmod +x "/opt/console-scripts/$(basename "$f")"; \
+    done
+
+# ---------------------------------------------------------------------------
+# Stage 2a: final-full — Debian-slim, for domain images whose packages have
+# native/runtime footprints (GDAL, GEOS, DFIR tools, …) not yet verified
+# against the minimal image (research.md §3 compares it with Wolfi). Still
+# hardened: no compilers/*-dev headers (only $RUNTIME_APT_FILE's shared-lib
+# subset is installed here), non-root by default.
+# ---------------------------------------------------------------------------
+FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS final-full
+
+ARG RUNTIME_APT_FILE=apt.sandbox.extended.runtime.txt
+
+# Only the runtime shared-lib subset (research.md §2) — never the compilers
+# or *-dev headers that built the wheels above. Some RUNTIME_APT_FILE values
+# add a documented runtime-CLI exception, never build tooling: tshark/nmap
+# (apt.sandbox.network.runtime.txt — pyshark/python-libnmap shell out to them,
+# spec.md Clarifications) and git (apt.sandbox.rules.runtime.txt — GitPython
+# calls git.refresh() at import time, found empirically, research.md §3a).
+# Every other final image is free of all three.
+COPY ${RUNTIME_APT_FILE} /tmp/runtime-apt-packages.txt
+RUN apt-get update \
+    && grep -v '^\s*#' /tmp/runtime-apt-packages.txt | grep -v '^\s*$' \
+       | xargs apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1000 sandboxuser && useradd -u 1000 -g sandboxuser -m sandboxuser
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /workspace
+RUN chown sandboxuser:sandboxuser /workspace
+
+# ---- Add your local script(s) below ----------------------------------------
+# The file must be present in the Docker build context.
+#
+# COPY --chown=sandboxuser:sandboxuser ./pythonwrapper.py /app/pythonwrapper.py
+
+USER sandboxuser
+
+# Keep the default python entrypoint (no shell by default);
+# OpenSandbox's execd injects commands at runtime via sandbox.commands.run().
+
+# ---------------------------------------------------------------------------
+# Stage 2b: final-minimal — Debian 13 distroless. No apt/apk,
+# non-root (65532) by default, so there is nothing here to harden further:
+# a compiler or a runtime-CLI tool cannot exist in this image at all, because
+# there is no package manager to install one with. Deliberately the LAST
+# stage in this file — see the file-header comment.
+#
+# One exception to "no shell": OpenSandbox's Docker runtime unconditionally
+# sets the container's entrypoint to /opt/opensandbox/bootstrap.sh (a
+# `#!/bin/sh` script it injects after container create, before start - see
+# runtime.py/_install_bootstrap_script in the opensandbox-server package).
+# Without /bin/sh, the kernel can't resolve that shebang and the container
+# fails to start with `exec /opt/opensandbox/bootstrap.sh: no such file or
+# directory` - confirmed empirically (2026-08-11). Uses upstream `busybox:1-musl`
+# (a real static, musl-libc binary with no shared-library dependencies at
+# all): a dynamically linked busybox would need libraries this image does
+# not ship. bootstrap.sh - and the idle keep-alive
+# command OpenSandbox runs before the first commands.run() call, typically
+# `tail -f /dev/null` - shell out to plain coreutils beyond just sh. Copying
+# the whole busybox /bin (all ~435 applets, including wget/nc/telnet/tftp/
+# nslookup/httpd/ssl_client/su/chroot) would hand an escaped process a better
+# download/exfil/pivot toolkit than final-full's Debian-slim ever ships -
+# the opposite of what this stage is for, and exactly what rule 2 of
+# dev-docs/sandbox-image-hardening.md forbids. So the busybox stage below
+# prunes to only the applets bootstrap.sh and the keep-alive actually exec,
+# copying each in as `sh` with a symlink rather than as `busybox` itself -
+# with no file named `busybox` left in the image, the `busybox <applet>`
+# multicall entry point is gone too, so nothing unlisted is reachable even
+# from inside the shell.
+#
+# The venv is copied directly into the interpreter's OWN site-packages
+# directory (not /opt/venv): there is no venv here, only the interpreter that
+# `python-runtime` copies out of the builder's base image. Verified empirically
+# (2026-08-10): matplotlib's manylinux wheel bundles its own freetype/png and
+# renders correctly with no system libfreetype6/libpng16-16 present.
+#
+# The interpreter comes from the same python:3.14-slim digest as the builder,
+# so the venv's wheels always match it. The `python3.14` in the site-packages
+# path below is that minor version: when the builder moves to a new minor,
+# move the path with it. The `sandbox-image-smoke-test` CI job's import check
+# is the safety net: a mismatch makes every import fail loudly.
+# ---------------------------------------------------------------------------
+FROM docker.io/library/busybox:1-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37 AS busybox
+
+# Only the applets bootstrap.sh and the idle keep-alive actually exec.
+# Everything else busybox can do (wget/nc/telnet/tftp/nslookup/httpd/
+# ssl_client/su/chroot/...) never reaches the sandbox image - rule 2.
+# Copied as `sh` rather than `busybox` on purpose: with no file named
+# `busybox` left, the `busybox <applet>` multicall entry point is gone too.
+RUN mkdir -p /rootfs/bin && cp /bin/busybox /rootfs/bin/sh && \
+    for a in cat chmod cp dirname echo env grep head id ln ls mkdir mv \
+             printf rm sed sleep tail touch tr uname wc; do \
+      ln -s sh /rootfs/bin/$a; \
+    done
+
+# python-runtime: the builder's own interpreter (FROM builder, so the pinned
+# python:3.14-slim digest is not repeated), plus the shared libraries it and
+# its extension modules load that the distroless base does not ship, the venv's
+# included, and the system libraries the venv's links point to. libc,
+# libssl, libcrypto, libz, libzstd, libgcc and libstdc++ stay the base's own,
+# so the base keeps patching them; cc, not base, because numpy and scipy need
+# libstdc++. Without pip, ensurepip, IDLE, tkinter or the turtle demos:
+# nothing in them is needed to run an installed script.
+FROM builder AS python-runtime
+
+RUN set -eux; \
+    mkdir -p /rootfs/usr/local/bin /rootfs/usr/local/lib; \
+    cp -a /usr/local/bin/python3.14 /rootfs/usr/local/bin/; \
+    ln -s python3.14 /rootfs/usr/local/bin/python3; \
+    ln -s python3.14 /rootfs/usr/local/bin/python; \
+    cp -a /usr/local/lib/libpython3.14.so* /rootfs/usr/local/lib/; \
+    cp -a /usr/local/lib/python3.14 /rootfs/usr/local/lib/python3.14; \
+    cd /rootfs/usr/local/lib/python3.14; \
+    rm -rf site-packages/* ensurepip idlelib tkinter turtledemo turtle.py test lib-dynload/_tkinter*.so; \
+    libdir="$(dirname "$(realpath "$(ldd /usr/local/bin/python3.14 | awk '/libc\.so\.6/ {print $3}')")")"; \
+    mkdir -p "/rootfs$libdir"; \
+    { for so in /usr/local/bin/python3.14 /usr/local/lib/libpython3.14.so.1.0 /usr/local/lib/python3.14/lib-dynload/*.so \
+                $(find /opt/venv -type f \( -name '*.so' -o -name '*.so.*' \)); do \
+        ldd "$so" || true; \
+      done | awk '/=> \// {print $3}'; \
+      find /opt/venv -type l \( -name '*.so' -o -name '*.so.*' \) -exec readlink {} \; | grep '^/' || true; \
+    } | grep -v '^/opt/venv/' | sort -u \
+      | grep -vE '/(libc|libm|libdl|libpthread|librt|libutil|libresolv|libgcc_s|libstdc\+\+|libssl|libcrypto|libz|libzstd|libpython3\.14)\.so' \
+      | while read -r lib; do cp -L "$lib" "/rootfs$libdir/$(basename "$lib")"; done
+
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:83b9b50586253821cf63ffcec87d3d94265a093ad30da232039af962dd8f4edf AS final-minimal
+
+COPY --from=busybox /rootfs/bin/ /bin/
+COPY --from=python-runtime /rootfs/ /
+COPY --from=builder /opt/venv/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --from=builder /opt/console-scripts /usr/local/bin
+
+WORKDIR /workspace

@@ -1,0 +1,30 @@
+{
+  "procedure": "dashboard.getMostActiveThreats",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a139e7-7d4e-7a24-8962-5894d54f2661",
+      "name": "Salt Typhoon",
+      "entityType": "intrusion-set",
+      "activityScore": 0.9965301085488131,
+      "activityStatus": "active",
+      "scenarioCount": 7
+    },
+    {
+      "id": "01a139e7-7d90-797b-8c0d-53d636ece3d6",
+      "name": "LockBit",
+      "entityType": "intrusion-set",
+      "activityScore": 0.990647979411683,
+      "activityStatus": "active",
+      "scenarioCount": 7
+    },
+    {
+      "id": "01a139e7-7d68-7e5c-9039-b1099964ff40",
+      "name": "Scattered Spider",
+      "entityType": "intrusion-set",
+      "activityScore": 0.9815079594867109,
+      "activityStatus": "active",
+      "scenarioCount": 7
+    }
+  ]
+}

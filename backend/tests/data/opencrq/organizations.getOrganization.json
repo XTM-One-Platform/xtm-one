@@ -1,0 +1,36 @@
+{
+  "procedure": "organizations.getOrganization",
+  "source": "recorded",
+  "data": {
+    "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+    "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+    "name": "Acme Bank",
+    "description": "Global retail and investment banking group headquartered in the US, serving 3M+ customers.",
+    "legalEntityName": "Acme Bank Inc.",
+    "sectorId": "500f7b59-da95-5f22-add3-0bf9b1e98180",
+    "countryId": "ebc79354-f06b-51b0-a733-ba83878a29e1",
+    "revenueBand": "1b_10b",
+    "employeeCount": 32000,
+    "domain": "acmebank.com",
+    "reactionTimeMin": 0.5,
+    "reactionTimeLikely": 8,
+    "reactionTimeMax": 96,
+    "estateMode": "open",
+    "estateChangedAt": null,
+    "sector": {
+      "id": "500f7b59-da95-5f22-add3-0bf9b1e98180",
+      "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+      "name": "Finance",
+      "description": "Public and private entities involved in the allocation of assets and liabilities over space and time."
+    },
+    "country": {
+      "id": "ebc79354-f06b-51b0-a733-ba83878a29e1",
+      "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+      "name": "United States of America",
+      "isoAlpha2": "US",
+      "isoAlpha3": "USA"
+    },
+    "mappedAssetCount": 0,
+    "noMappedAsset": false
+  }
+}

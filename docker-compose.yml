@@ -1,0 +1,397 @@
+# Settings the platform and the worker both read, merged into each service's
+# environment below (an override file merges its own entries key by key, as
+# docker-compose.dev.yml and docker-compose.e2e.yml do).
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+asyncpg://copilot:${DB_PASSWORD:-copilot_dev}@postgres:5432/copilot
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production-please}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@filigran.io}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-in-production}
+  # The worker builds absolute links too (e-mails, the render page an
+  # assignment-run export loads), so it reads the same public URL and path
+  # prefix as the platform.
+  BASE_URL: ${BASE_URL:-http://localhost:4000}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000}
+  # URL path prefix behind a reverse proxy (e.g. /xtm-one); empty = served at /
+  BASE_PATH: ${BASE_PATH:-}
+  # What the proxy does with the prefix (auto | forwarded | stripped); auto refuses a prefix that is also a page
+  BASE_PATH_MODE: ${BASE_PATH_MODE:-auto}
+  # Platform mode
+  PLATFORM_MODE: ${PLATFORM_MODE:-xtm_one}
+  # Set your own token in .env (see .env.sample). The fallback is a PUBLISHED
+  # value, kept so the platforms of existing deployments stay connected: it
+  # cannot register a new platform or change a registered platform's URL,
+  # XTM One logs a warning at startup and the security audit reports it as
+  # critical.
+  PLATFORM_REGISTRATION_TOKEN: ${PLATFORM_REGISTRATION_TOKEN:-xtm-default-registration-token}
+  ENTERPRISE_LICENSE: ${ENTERPRISE_LICENSE:-}
+  # Feature flags — empty by default (fail closed); see app/core/feature_flags.py
+  ENABLED_FEATURES: ${ENABLED_FEATURES:-}
+  # Subsystem master switches (on by default; false removes them) - see .env.sample.
+  RUNNERS_ENABLED: ${RUNNERS_ENABLED:-true}
+  RELAYS_ENABLED: ${RELAYS_ENABLED:-true}
+  # Every other on/off switch .env.sample documents, so the value set in .env
+  # reaches the containers (a Compose .env only feeds interpolation). The
+  # fallback is the platform's own default; blank (= unset) for a switch that
+  # is also a Settings > Security option, which a value set here would lock,
+  # and for one whose default the platform derives. Deliberately left out:
+  # DEBUG and A2A_ALLOW_INSECURE_LOOPBACK (development and end-to-end stacks
+  # only) and TRUST_PROXY_HEADERS (Settings > Security, or FORWARDED_ALLOW_IPS
+  # below). backend/tests/test_compose_master_switches.py keeps this list whole.
+  REDIS_SSL: ${REDIS_SSL:-false}
+  DISABLE_CODE_INTERPRETER: ${DISABLE_CODE_INTERPRETER:-}
+  DISABLE_CUSTOM_TOOLS: ${DISABLE_CUSTOM_TOOLS:-}
+  DISABLE_CUSTOM_VARIABLES: ${DISABLE_CUSTOM_VARIABLES:-}
+  CREDENTIAL_TRANSPORT_STRICT: ${CREDENTIAL_TRANSPORT_STRICT:-}
+  CLIENT_IP_STRICT: ${CLIENT_IP_STRICT:-}
+  OAUTH_TOKEN_URL_STRICT: ${OAUTH_TOKEN_URL_STRICT:-}
+  CUSTOM_TOOL_NODE_PERMISSION: ${CUSTOM_TOOL_NODE_PERMISSION:-}
+  DISABLE_SANDBOX_QUOTA_USAGE: ${DISABLE_SANDBOX_QUOTA_USAGE:-false}
+  MCP_DCR_ENABLED: ${MCP_DCR_ENABLED:-}
+  MCP_CIMD_ENABLED: ${MCP_CIMD_ENABLED:-}
+  MCP_OUTBOUND_DCR_ENABLED: ${MCP_OUTBOUND_DCR_ENABLED:-}
+  AI_CATALOG_ENABLED: ${AI_CATALOG_ENABLED:-false}
+  AGENT_TOOLS_STRICT_ADMIN_ACCESS: ${AGENT_TOOLS_STRICT_ADMIN_ACCESS:-}
+  PROMPT_GUARD_BLOCK_TOOL_RESULTS: ${PROMPT_GUARD_BLOCK_TOOL_RESULTS:-}
+  PUBLIC_WIDGET_STRICT_RENDERING: ${PUBLIC_WIDGET_STRICT_RENDERING:-}
+  SVG_STRICT_RENDERING: ${SVG_STRICT_RENDERING:-false}
+  PROMPT_GUARD_BLOCK_GENERAL_ASSISTANT: ${PROMPT_GUARD_BLOCK_GENERAL_ASSISTANT:-}
+  PROMPT_GUARD_BLOCK_PUBLIC_WIDGET: ${PROMPT_GUARD_BLOCK_PUBLIC_WIDGET:-}
+  WEBHOOK_REQUIRE_SECRET: ${WEBHOOK_REQUIRE_SECRET:-}
+  INTEGRATION_NOTIFICATIONS_REQUIRE_VERIFICATION: ${INTEGRATION_NOTIFICATIONS_REQUIRE_VERIFICATION:-}
+  ASSIGNMENT_QUEUE_ENABLED: ${ASSIGNMENT_QUEUE_ENABLED:-true}
+  INTEGRATION_EVENT_QUEUE_ENABLED: ${INTEGRATION_EVENT_QUEUE_ENABLED:-false}
+  TOOL_APPROVALS_ENABLED: ${TOOL_APPROVALS_ENABLED:-}
+  ASSIGNMENT_QUEUE_HOLD_ON_AWAITING_HUMAN: ${ASSIGNMENT_QUEUE_HOLD_ON_AWAITING_HUMAN:-true}
+  WEBHOOK_EXACT_EVENT_MATCHING: ${WEBHOOK_EXACT_EVENT_MATCHING:-}
+  AGENT_FAILURE_QUOTA_REFUND_ENABLED: ${AGENT_FAILURE_QUOTA_REFUND_ENABLED:-true}
+  OBSERVABILITY_COST_DATA_ENABLED: ${OBSERVABILITY_COST_DATA_ENABLED:-true}
+  BYOLLM_ACTIVATED: ${BYOLLM_ACTIVATED:-false}
+  MODELS_ENV_PROVIDING_ONLY: ${MODELS_ENV_PROVIDING_ONLY:-false}
+  LLM_PROVIDER_MODELS_EDITABLE: ${LLM_PROVIDER_MODELS_EDITABLE:-false}
+  PROMPT_CACHING_ENABLED: ${PROMPT_CACHING_ENABLED:-true}
+  ANTHROPIC_THINKING_REPLAY_ENABLED: ${ANTHROPIC_THINKING_REPLAY_ENABLED:-false}
+  CLICKHOUSE_SECURE: ${CLICKHOUSE_SECURE:-false}
+  TRACE_MEDIA_OFFLOAD_ENABLED: ${TRACE_MEDIA_OFFLOAD_ENABLED:-true}
+  PROMETHEUS_ENABLED: ${PROMETHEUS_ENABLED:-false}
+  SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  MODEL_ANNOUNCEMENT_EMAILS_DISABLED: ${MODEL_ANNOUNCEMENT_EMAILS_DISABLED:-false}
+  MODEL_CATALOG_EMAILS_ENABLED: ${MODEL_CATALOG_EMAILS_ENABLED:-false}
+  PRESENTATION_LAYOUT_CHECK_ENABLED: ${PRESENTATION_LAYOUT_CHECK_ENABLED:-true}
+  PRESENTATION_PUBLIC_LINKS_ENABLED: ${PRESENTATION_PUBLIC_LINKS_ENABLED:-}
+  VIDEO_PUBLIC_LINKS_ENABLED: ${VIDEO_PUBLIC_LINKS_ENABLED:-}
+  DASHBOARD_PUBLIC_LINKS_ENABLED: ${DASHBOARD_PUBLIC_LINKS_ENABLED:-}
+  SCHEDULED_WORK_ITEMS_ENABLED: ${SCHEDULED_WORK_ITEMS_ENABLED:-}
+  COMPANION_PIN_REQUIRED: ${COMPANION_PIN_REQUIRED:-}
+  ARCADE_ENABLED: ${ARCADE_ENABLED:-true}
+  REDIS_RETRY_ON_TIMEOUT: ${REDIS_RETRY_ON_TIMEOUT:-true}
+  EVENT_LOOP_WATCHDOG_ENABLED: ${EVENT_LOOP_WATCHDOG_ENABLED:-true}
+  STRICT_BINARY_TEXT_EXTRACTION: ${STRICT_BINARY_TEXT_EXTRACTION:-false}
+  MODEL_PRICES_GIT_SYNC_ENABLED: ${MODEL_PRICES_GIT_SYNC_ENABLED:-false}
+  EMBEDDING_AUTO_RETRY_ENABLED: ${EMBEDDING_AUTO_RETRY_ENABLED:-true}
+  EMBEDDING_STALE_AUTO_REMEDIATION_ENABLED: ${EMBEDDING_STALE_AUTO_REMEDIATION_ENABLED:-true}
+  CHANNEL_AGENT_MENTIONS_ENABLED: ${CHANNEL_AGENT_MENTIONS_ENABLED:-false}
+  AGENT_SELF_FANOUT_ENABLED: ${AGENT_SELF_FANOUT_ENABLED:-true}
+  SELF_VERIFICATION_LOOP: ${SELF_VERIFICATION_LOOP:-true}
+  CODE_INTERPRETER_COMMAND_ALLOW_ARGV: ${CODE_INTERPRETER_COMMAND_ALLOW_ARGV:-false}
+  PROGRESSIVE_TOOLS_ENABLED: ${PROGRESSIVE_TOOLS_ENABLED:-true}
+  AGENT_LOOP_MAX_TOOL_CALLS_STRICT: ${AGENT_LOOP_MAX_TOOL_CALLS_STRICT:-false}
+  AGENT_LOOP_BUDGET_FALLBACK_ENABLED: ${AGENT_LOOP_BUDGET_FALLBACK_ENABLED:-false}
+  CODE_INTERPRETER_WORKSPACE_ENABLED: ${CODE_INTERPRETER_WORKSPACE_ENABLED:-true}
+  URL_GUARD_ENABLED: ${URL_GUARD_ENABLED:-true}
+  TERMS_OF_USE_ENABLED: ${TERMS_OF_USE_ENABLED:-true}
+  RUNNER_STRICT_PATH_CONFINEMENT: ${RUNNER_STRICT_PATH_CONFINEMENT:-}
+  # Anonymous usage telemetry (docs/docs/deployment/telemetry.md): false sends
+  # nothing; the endpoint and tags are optional.
+  TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+  TELEMETRY_ENDPOINT: ${TELEMETRY_ENDPOINT:-}
+  TELEMETRY_TAGS: ${TELEMETRY_TAGS:-}
+  # S3 (Silo) file storage
+  S3_ENDPOINT: ${S3_ENDPOINT:-minio:9000}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-copilot}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-copilot_dev_secret}
+  S3_BUCKET: ${S3_BUCKET:-copilot-files}
+  S3_USE_SSL: ${S3_USE_SSL:-false}
+  S3_REGION: ${S3_REGION:-}
+  S3_USE_AWS_ROLE: ${S3_USE_AWS_ROLE:-false}
+  # Logging
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  # Performance tuning (see .env.sample for docs)
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-15}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-50}
+  MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-10}
+  MAX_CONCURRENT_SUB_AGENT_TASKS: ${MAX_CONCURRENT_SUB_AGENT_TASKS:-5}
+  SCHEDULED_ASSIGNMENT_SPREAD_SECONDS: ${SCHEDULED_ASSIGNMENT_SPREAD_SECONDS:-0}
+  # MCP server URL policy (permissive | private_networks | public_only) and
+  # its trusted origins - see .env.sample. Blank leaves Settings > Security
+  # in charge; a value wins and locks the field there. The worker opens MCP
+  # connections too.
+  MCP_SERVER_URL_POLICY: ${MCP_SERVER_URL_POLICY:-}
+  MCP_SERVER_TRUSTED_ORIGINS: ${MCP_SERVER_TRUSTED_ORIGINS:-}
+  # Custom tool and code interpreter sandbox - see .env.sample. With the
+  # opensandbox profile, CUSTOM_TOOL_SANDBOX=opensandbox and
+  # OPENSANDBOX_API_KEY in .env are enough: the domain defaults to the
+  # opensandbox service below.
+  CUSTOM_TOOL_SANDBOX: ${CUSTOM_TOOL_SANDBOX:-auto}
+  OPENSANDBOX_DOMAIN: ${OPENSANDBOX_DOMAIN:-opensandbox:8090}
+  OPENSANDBOX_PROTOCOL: ${OPENSANDBOX_PROTOCOL:-http}
+  OPENSANDBOX_API_KEY: ${OPENSANDBOX_API_KEY:-}
+  OPENSANDBOX_USE_SERVER_PROXY: ${OPENSANDBOX_USE_SERVER_PROXY:-false}
+  OPENSANDBOX_NETWORK_ALLOW: ${OPENSANDBOX_NETWORK_ALLOW:-}
+
+# Sandboxes the opensandbox service starts publish their ports on the host
+# and are advertised as host.docker.internal (backend/sandbox/sandbox.docker.toml).
+x-app-extra-hosts: &app-extra-hosts
+  - "host.docker.internal:host-gateway"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Silo (MinIO fork) – S3-compatible object storage for file attachments
+  # ---------------------------------------------------------------------------
+  minio:
+    # Silo (pgsty/silo) is the community-maintained fork of the MinIO server:
+    # the upstream minio/minio repository was archived and removed from Docker
+    # Hub. Same S3 API, MINIO_* variables, command, healthcheck and on-disk
+    # format; the whole Filigran ecosystem tracks the latest tag.
+    image: docker.io/pgsty/silo:latest
+    container_name: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-copilot}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-copilot_dev_secret}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 17 with pgvector extension
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: docker.io/pgvector/pgvector:pg17
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: copilot
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-copilot_dev}
+    # Production tuning: increase max_connections for multi-worker setups.
+    # Formula: (DB_POOL_SIZE + DB_MAX_OVERFLOW) * (WEB_WORKERS + num_saq_workers) + overhead
+    # Example: (15 + 10) * (4 + 1) + 20 = 145
+    command: >
+      postgres
+      -c max_connections=${PG_MAX_CONNECTIONS:-200}
+      -c shared_buffers=${PG_SHARED_BUFFERS:-256MB}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE:-768MB}
+      -c work_mem=${PG_WORK_MEM:-4MB}
+      -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-64MB}
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c random_page_cost=1.1
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Redis 8
+  # ---------------------------------------------------------------------------
+  redis:
+    image: docker.io/library/redis:8-alpine
+    container_name: redis
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        ARGS="--maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy allkeys-lru --tcp-backlog 511"
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          redis-server --requirepass "$$REDIS_PASSWORD" $$ARGS
+        else
+          redis-server $$ARGS
+        fi
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # OpenSandbox server - used only if CUSTOM_TOOL_SANDBOX=opensandbox is set.
+  # Opt-in: enable it with `--profile opensandbox`, or
+  # COMPOSE_PROFILES=opensandbox in .env, and set OPENSANDBOX_API_KEY.
+  # docker-compose.dev.yml always starts it.
+  # ---------------------------------------------------------------------------
+  opensandbox:
+    image: docker.io/opensandbox/server:${OPENSANDBOX_SERVER_IMAGE_TAG:-v0.2.1}
+    container_name: opensandbox
+    profiles: ["opensandbox"]
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Not `:?` (required): Compose interpolates the variables of every
+      # service, profile or not, so a required variable would stop
+      # `docker compose up` for anyone not using OpenSandbox. The server
+      # (v0.2.1 and later) refuses to start with an empty key, so the
+      # profile without OPENSANDBOX_API_KEY fails at container start.
+      OPENSANDBOX_SERVER_API_KEY: ${OPENSANDBOX_API_KEY:-}
+    # The container engine's API socket (CONTAINER_ENGINE_SOCKET, e.g.
+    # $XDG_RUNTIME_DIR/podman/podman.sock under rootless Podman). Unlabeled,
+    # so the server may use it on an SELinux host: there the container is not
+    # confined by SELinux; without SELinux the option does nothing.
+    security_opt:
+      - label=disable
+    volumes:
+      - ${CONTAINER_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - ./backend/sandbox/sandbox.docker.toml:/etc/opensandbox/config.toml:ro,z
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Platform (Backend API + Frontend static files)
+  # ---------------------------------------------------------------------------
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: platform
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    extra_hosts: *app-extra-hosts
+    environment:
+      <<: *app-environment
+      # Content-Security-Policy on the HTML pages (report-only | enforce | off) and
+      # the extra origins allowed to frame them - see .env.sample
+      CONTENT_SECURITY_POLICY_MODE: ${CONTENT_SECURITY_POLICY_MODE:-report-only}
+      CONTENT_SECURITY_POLICY_FRAME_ANCESTORS: ${CONTENT_SECURITY_POLICY_FRAME_ANCESTORS:-}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      # Default 2 (matches start-uvicorn.sh) so a single wedged event loop
+      # cannot make the whole container fail health checks at once.
+      WEB_WORKERS: ${WEB_WORKERS:-2}
+      MAX_REQUESTS: ${MAX_REQUESTS:-10000}
+      # Worker-recycle safety — see .env.sample. Jitter staggers per-worker
+      # recycles (default MAX_REQUESTS / 2); a worker past its quota waits up
+      # to MAX_REQUESTS_DEFER_SECONDS for its agent turns; GRACEFUL_TIMEOUT
+      # bounds the drain so a recycling worker can never wedge on long-lived
+      # SSE connections and stop accepting forever (probe-failure restarts).
+      MAX_REQUESTS_JITTER: ${MAX_REQUESTS_JITTER:-}
+      MAX_REQUESTS_DEFER_SECONDS: ${MAX_REQUESTS_DEFER_SECONDS:-}
+      GRACEFUL_TIMEOUT: ${GRACEFUL_TIMEOUT:-120}
+      # Uvicorn protocol-level backstop (503 once hit). Kept high; the real,
+      # health-exempt admission control with 429 backpressure is APP_MAX_CONCURRENCY.
+      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-1000}
+      # In-app per-worker concurrency limit (health-exempt, sheds overflow with 429).
+      APP_MAX_CONCURRENCY: ${APP_MAX_CONCURRENCY:-200}
+      # WebSocket keepalive — see .env.sample. Wired here so the values set
+      # in .env reach start-uvicorn.sh on a standard `docker compose up -d`.
+      WS_PING_INTERVAL: ${WS_PING_INTERVAL:-30}
+      WS_PING_TIMEOUT: ${WS_PING_TIMEOUT:-120}
+      # Which proxy peers may speak for the client — see .env.sample. Wired
+      # here so the value set in .env reaches start-uvicorn.sh. Defaulted to
+      # uvicorn's own default rather than empty: uvicorn reads this variable
+      # natively, and an empty value trusts nobody, not even loopback.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    ports:
+      - "4000:4000"
+    healthcheck:
+      # Probe READINESS, not liveness: since the startup-gate fix
+      # /api/health returns 200 as soon as uvicorn accepts connections while
+      # migrations/seeding still run in a background task; /api/health/ready
+      # flips to 200 only once startup has fully completed, preserving the
+      # pre-gate meaning of "healthy" for depends_on consumers.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/api/health/ready')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Background worker (SAQ) — scale with: docker compose up --scale worker=N
+  # ---------------------------------------------------------------------------
+  worker: &worker-service
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    # No container_name: Compose refuses to scale a service with a fixed
+    # container name, which would break the documented --scale worker=N.
+    restart: unless-stopped
+    # Compose's default SIGTERM->SIGKILL window is 10s — shorter than the SAQ
+    # shutdown grace (WORKER_SHUTDOWN_GRACE_PERIOD, default 20s), after which
+    # the worker still needs a few seconds to run its shutdown hook (close the
+    # Redis queue, flush traces). Keep this comfortably above grace + ~10s.
+    # A stopping worker also lets the Video Studio renders it draws past half
+    # their frames end (VIDEO_STUDIO_RENDER_DRAIN_SECONDS, 20 min) before it
+    # hands them over: given as WORKER_TERMINATION_GRACE_SECONDS below, which
+    # bounds that wait. An idle worker stops within the SAQ grace.
+    stop_grace_period: 1260s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    extra_hosts: *app-extra-hosts
+    environment:
+      <<: *app-environment
+      # Worker tuning
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
+      WORKER_JOB_TIMEOUT: ${WORKER_JOB_TIMEOUT:-600}
+      WORKER_SHUTDOWN_GRACE_PERIOD: ${WORKER_SHUTDOWN_GRACE_PERIOD:-20}
+      # Its stop_grace_period, above.
+      WORKER_TERMINATION_GRACE_SECONDS: ${WORKER_TERMINATION_GRACE_SECONDS:-1260}
+    healthcheck:
+      # Verifies the orchestration reconciler heartbeat (app/healthcheck.py).
+      test: ["CMD", "python", "-m", "app.healthcheck", "reconciler"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Preview workers: the same worker, drawing Video Studio scene previews and
+  # no whole render, so a 4K render on `worker` never leaves the previews short
+  # of memory. Two of them, so one video's sweep of scene previews never holds
+  # every preview slot while another video waits. They run every other job
+  # too. Sizing (preview reserve, pages, ceilings):
+  # docs/docs/deployment/configuration.md, "Sizing the workers".
+  # ---------------------------------------------------------------------------
+  worker-preview:
+    <<: *worker-service
+    deploy:
+      replicas: 2
+    environment:
+      <<: *app-environment
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
+      WORKER_JOB_TIMEOUT: ${WORKER_JOB_TIMEOUT:-600}
+      WORKER_SHUTDOWN_GRACE_PERIOD: ${WORKER_SHUTDOWN_GRACE_PERIOD:-20}
+      WORKER_TERMINATION_GRACE_SECONDS: ${WORKER_TERMINATION_GRACE_SECONDS:-1260}
+      # Scene previews only: no whole render, no scene range of one.
+      VIDEO_STUDIO_RENDER_CONCURRENCY: "0"
+
+volumes:
+  pgdata:
+  minio-data:

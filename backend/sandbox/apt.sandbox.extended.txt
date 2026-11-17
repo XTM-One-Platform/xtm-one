@@ -1,0 +1,65 @@
+# Build tools (C/C++ extensions without pre-built wheels)
+gcc
+g++
+make
+cmake
+python3-dev
+pkg-config
+
+# The system Brotli Pillow's FreeType loads (see SANDBOX.md)
+libbrotli1
+
+# Crypto / SSL (cryptography, impacket, requests-kerberos, sigstore …)
+libssl-dev
+libffi-dev
+libkrb5-dev
+
+# File-type detection — python-magic (runtime + build)
+libmagic1
+libmagic-dev
+
+# Fuzzy hashing — ssdeep (runtime + build)
+libfuzzy2
+libfuzzy-dev
+
+# Network capture — scapy (runtime + build)
+libpcap0.8
+libpcap-dev
+
+# External network tools
+tshark
+nmap
+openssh-client
+
+# DFIR — pytsk3, plaso, dfvfs
+libtsk-dev
+libewf-dev
+libafflib-dev
+libvhdi-dev
+libvmdk-dev
+
+# Geospatial — geopandas, pyogrio, pyproj
+libgdal-dev
+gdal-bin
+libproj-dev
+proj-data
+libgeos-dev
+
+# Image / OpenCV runtime
+libgl1
+libglib2.0-0
+libjpeg-dev
+libtiff-dev
+
+# HDF5 — h5py
+libhdf5-dev
+
+# XML / XSLT — lxml
+libxml2-dev
+libxslt1-dev
+
+# Parallelism / OpenMP — numba, scikit-learn
+libgomp1
+
+# VCS — GitPython, pre-commit
+git

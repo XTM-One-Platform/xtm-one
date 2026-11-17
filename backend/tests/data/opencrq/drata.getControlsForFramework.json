@@ -1,0 +1,39 @@
+{
+  "procedure": "drata.getControlsForFramework",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a13a7c-198d-7cf9-afdf-bbc68dce17a6",
+      "code": "DCF-1001",
+      "name": "MFA enforced for every account",
+      "isReady": true,
+      "isMonitored": true,
+      "hasEvidence": true,
+      "hasPolicy": false,
+      "archivedAt": null,
+      "requirementCount": 2
+    },
+    {
+      "id": "01a13a7c-198d-7cf9-afdf-bbc750b2c55c",
+      "code": "DCF-1002",
+      "name": "Information security policy approved",
+      "isReady": true,
+      "isMonitored": false,
+      "hasEvidence": false,
+      "hasPolicy": true,
+      "archivedAt": null,
+      "requirementCount": 2
+    },
+    {
+      "id": "01a13a7c-198d-7cf9-afdf-bbc86d85e8ef",
+      "code": "DCF-1003",
+      "name": "Security awareness training completed",
+      "isReady": false,
+      "isMonitored": false,
+      "hasEvidence": false,
+      "hasPolicy": true,
+      "archivedAt": null,
+      "requirementCount": 1
+    }
+  ]
+}

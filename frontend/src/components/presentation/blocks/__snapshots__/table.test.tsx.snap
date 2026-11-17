@@ -1,0 +1,52 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`table size > draws its cells at size lg 1`] = `
+{
+  "attributes": {
+    "density": "normal",
+    "fill": null,
+    "size": "lg",
+  },
+  "cell": 28,
+  "footnote": 24,
+  "header": 28,
+  "padding": [
+    22.5,
+    35,
+  ],
+}
+`;
+
+exports[`table size > draws its cells at size md 1`] = `
+{
+  "attributes": {
+    "density": "normal",
+    "fill": null,
+    "size": "md",
+  },
+  "cell": 24,
+  "footnote": 20,
+  "header": 24,
+  "padding": [
+    18,
+    28,
+  ],
+}
+`;
+
+exports[`table size > draws its cells at size sm 1`] = `
+{
+  "attributes": {
+    "density": "normal",
+    "fill": null,
+    "size": "sm",
+  },
+  "cell": 20,
+  "footnote": 20,
+  "header": 20,
+  "padding": [
+    14.4,
+    22.4,
+  ],
+}
+`;

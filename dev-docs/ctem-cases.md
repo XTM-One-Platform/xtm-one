@@ -1,0 +1,511 @@
+# CTEM Cases: open exposures grouped by shared remediation
+
+Issue #11545 (work item dev:ctem-cases, proposal C of the exposure
+prioritization program). Read on main `9ee057f3`. This document is slice S0:
+the design the UX Director reviews before any code. Proposal A (the
+prioritization funnel, Prioritization stage) and proposal B (#11543, assets,
+exposure and prioritization policy in the organization profile) are built in
+parallel; this design consumes their fields and never invents them.
+
+## 1. Why
+
+The Remediation stage (`/ctem/remediation`, labelled "Mobilization" in the
+cyber vertical, `ctem_verticals.py`) shows facts (case closure, playbooks,
+blocked simulations) and an AI assessment. Nothing turns the open exposures
+into units of work: a team that patches one product version closes dozens of
+findings at once, but the page counts findings, not fixes. Act now ranks what
+to do first; no object follows a fix to closure with an owner, a due date and
+a state.
+
+Reference behaviour (exposure-management products, 2026): 17,000 open issues
+sharing the same fix become 479 cases with four states (needs attention, in
+progress, resolved, accepted risk).
+
+## 2. Principles
+
+1. **One case = one fix.** A case groups every open issue that one remediation
+   closes. Two fixed versions of the same product are two cases.
+2. **Nothing invented.** A case exists only when a source issue exists and the
+   remediation key is read from the data (section 4). An issue whose fix is not
+   known is never forced into a case: it is counted in "No known fix" on the
+   list, with a link to the issue in its product.
+3. **The user's work is never lost.** Recompute adds and removes member issues;
+   state, owner, due date, notes, manual merges and splits and history stay.
+4. **Every number traceable.** Each case lists its member issues with source
+   (OpenCTI, OpenAEV), the id and a link to the object in its product.
+5. **Additive.** Act now, Recommended actions and Done for you keep their
+   behaviour; a case links to them and they link to cases, nothing is replaced.
+   Existing widgets, saved layouts and agent tool contracts are unchanged.
+6. No new drawer (Sam, 7 Nov 2026): a case opens a page with its own URL; bulk
+   actions and the accepted-risk form are centred dialogs.
+7. XTM One mode only. Light and dark, en / fr / es / ja, 1080 to 1728 wide,
+   text >= 12 px, controls 36 px, keyboard reachable, exact counts (no "99+").
+8. **Shared cases, per-viewer content: the source products are the only judge
+   (#11613).** Cases (the fix and the workflow: state, owner, due date,
+   history) are shared by the organization; their content is not. The
+   database stores ids and workflow only: no name, CVE, score, KEV, asset,
+   crown jewel, priority or count. Every read renders the case for the viewer
+   from the viewer's OWN source read (their JWT, the same reads recompute
+   makes; `services/ctem_cases_view.py`), cached per user and vertical for
+   5 minutes. XTM One mirrors no group, role, marking, organization or scope.
+   - A case with no issue the viewer sees is absent from their list and their
+     counts (a count is data) and answers 404 (`No case` for a tool).
+   - A member issue the viewer cannot see is a row `{"restricted": true}`,
+     nothing else: no id, source, name, score, asset or link (OpenCTI's
+     "Restricted" pattern). The member count shows the total and the
+     restricted count; priority, scores, assets and crown jewels are
+     computed on the visible issues only and may differ from one viewer to
+     the next. A history line about an issue they cannot see shows
+     "Restricted".
+   - A product that does not answer: the viewer sees the cases they were
+     shown before (ids kept 7 days, ids only) with their details marked
+     unavailable, never empty and never someone else's.
+   - An owner must see at least one issue of the case, checked with the
+     owner's own read; an issue the actor cannot see cannot be split out.
+   Audit of every CTEM surface: `ctem-data-segregation-audit.md`.
+
+## 3. Information architecture
+
+```
+/ctem/remediation            Mobilization stage page
+  └─ Cases board (signature viz, top of the page, above the AI assessment)
+       needs attention -> in progress -> resolved | accepted risk
+       each column: count, ageing bands, owners; "View all cases"
+/ctem/cases                  Cases list (filters, bulk actions, export CSV)
+/ctem/cases/:id              Case page (fix, issues, assets, history)
+Command center               widget "cases" (counts by state, overdue, expiring)
+/ctem/prioritization         funnel last layer "Cases" (proposal A) -> /ctem/cases
+```
+
+The board is the Mobilization entry of the per-stage signature viz system
+(dev:ctem-stage-viz): one viz per stage, its own shape, the same tokens,
+legends, tooltips (source and period) and click-through rule. The command
+center widget is not the board in small: it answers "how many fixes are stuck"
+in one line (section 7.3).
+
+## 4. Grouping rule
+
+### 4.1 Source issues (open only)
+
+| Source | What counts as an open issue | Read |
+|---|---|---|
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
+
+Without a tech stack in the profile, OpenCTI contributes nothing (no case from
+the whole vulnerability base: that would be a pass-through); the list says
+"Add your tech stack in Settings > Organization to build cases from OpenCTI".
+
+### 4.2 Remediation key
+
+The key is computed per issue, first rule that answers wins:
+
+| # | Rule | Key | Case title |
+|---|---|---|---|
+| R1 | The vulnerability has a Course of Action related by `remediates` or `mitigates` | `coa:<course-of-action standard id>` | the course of action name |
+| R2 | The matched Software observable carries a version and the vulnerability states a fixed version for that product (CPE range end, `versionEndExcluding`, read from the vulnerability's external data when OpenCTI has it) | `upgrade:<vendor>/<product>@<fixed version>` | "Upgrade <vendor product> to <fixed version>" |
+| R3 | An OpenAEV CVE finding whose CVE is an OpenCTI vulnerability keyed by R1 or R2 | the same key | joins that case |
+| R4 | Nothing above | none | counted in "No known fix" |
+
+Not verified yet (checked live in S1 before any grouping code): OpenCTI's
+Vulnerability schema has no fixed-version attribute (`vulnerability.ts` on
+master: CVSS, EPSS, KEV, SSVC, CWE, first seen active); R2 depends on the
+connector data reaching OpenCTI (external references, CPE ranges in the
+description, or a Software `version` with a `has` relation). If S1 finds no
+reliable fixed version, R2 falls back to `upgrade:<vendor>/<product>@latest`
+("Upgrade <vendor product> to a fixed version") and the case page says the
+target version is not known.
+
+Keys are normalized (lower case, trimmed, vendor folded to the stack entry).
+The same vulnerability on two products yields two memberships, one per key.
+A configuration change is R1 only (a course of action); it is never guessed.
+
+### 4.3 Recompute
+
+- Runs on demand: `POST /api/v1/ctem-cases/recompute` (the list's "Recompute"),
+  any user, one per minute per user, no model call, no run, no quota
+  (`services/ctem_cases_source.py`). It reads OpenCTI and OpenAEV with the
+  caller's own credentials and MERGES into the shared cases (#11613): what the
+  caller sees open is added or reopened; a member is closed only when the
+  caller can still read it by id and it is no longer open; a member the
+  caller cannot see is left as it is, so a narrower view never closes or
+  shrinks a case. A read that hit its cap closes nothing. A product
+  that cannot answer makes it write nothing (`applied: false`, the product in
+  `missing`): an outage never resolves a case.
+- Accepted risk expiry runs on the scheduler tick (`expire_acceptances`),
+  no model call, not gated on AI.
+- For each key: an existing case gets the new members the caller sees (history
+  `issue_added`, the member id only); a new key creates a case in "needs
+  attention"; a case whose members are all closed is moved to "resolved" with
+  the system evidence "every member issue closed at source" (history line),
+  unless it is in "accepted risk", which keeps its state until expiry.
+- A resolved case whose issues return is reopened ("needs attention") with a
+  history line "reopened: issues open again at source".
+- State, owner, due date, notes and history are never written by recompute.
+- Manual merge: the surviving case lists the merged keys; recompute maps all
+  of them to it. Manual split: the user picks member issues; the new case
+  carries a pinned key `split:<uuid>` that owns those issue ids; recompute
+  keeps them there while they stay open.
+
+## 5. Model (additive, reversible migration)
+
+| Table | Columns |
+|---|---|
+| `ctem_cases` | id, organization_id, vertical, title, remediation_kind (`upgrade` / `patch` / `config` / `course_of_action` / `manual`), remediation_label, product_label, fixed_version, keys (list), pinned_issues, state, owner_user_id, due_at, accepted_reason, accepted_until, state_since, created_at, updated_at |
+| `ctem_case_issues` | case_id, source (`opencti` / `openaev`), external_id, open |
+| `ctem_case_events` | case_id, at, actor (user id or agent id, or `system`), kind (`created`, `state`, `owner`, `due`, `issue_added`, `issue_closed`, `issue_reopened`, `merge`, `split`, `note`), issue (member id, else null), from, to, reason, evidence |
+
+No source content is stored (#11613): priority, counts, scores, assets, crown
+jewels and names are computed per viewer at read time (principle 8).
+
+The downgrade drops the three tables; nothing else changes.
+
+Migration `ctemscope11613` (#11613) deletes the cases written before it
+(built from one user's view and readable by all; the next recompute rebuilds
+them), drops the content columns and adds `ctem_case_events.issue`. Its
+downgrade deletes the shared rows and restores the columns.
+
+## 6. States
+
+```
+           +--------------------+
+  new ---> |  needs attention   | <--------------------------+
+           +--------------------+                            |
+              |  start (owner set)          expiry passed /  |
+              v                             issues reappear  |
+           +--------------------+                            |
+           |    in progress     |                            |
+           +--------------------+                            |
+              |  resolve (evidence)        |  accept risk    |
+              v                            v                 |
+           +----------+          +-----------------------+   |
+           | resolved |          |     accepted risk     |---+
+           +----------+          +-----------------------+
+```
+
+| Transition | Requires | Who |
+|---|---|---|
+| any -> in progress | an owner | user, agent |
+| any -> resolved | evidence: every member closed at source (system) or a reason with a reference (ticket, change, validation run) | system, user; an agent only with a reference |
+| any -> accepted risk | owner, reason, expiry date (max from the policy of #11543, default 90 days) | user only |
+| accepted risk -> needs attention | expiry passed (system) or a user | system, user |
+| resolved -> needs attention | member issues open again (system) or a user | system, user |
+
+Priority comes from the prioritization policy of #11543 (KEV always in, CVSS and
+EPSS thresholds, internet exposure, crown jewel criticality). Without a policy
+the priority is computed from KEV, max CVSS and max EPSS with the platform
+defaults, labelled "default policy" in the case.
+
+Due date: set by the user, or suggested from the priority SLA of the policy
+(critical 7 d, high 30 d, medium 90 d, low none when no policy says otherwise).
+"Overdue" and "Accepted risk expiring in 14 days" are computed, never stored.
+
+## 7. Screens
+
+### 7.0 Shared visual language (UX round 1 B4, B5, B7; round 2 B1)
+
+- **One colour per state, everywhere** (board, list badge, case page, widget),
+  through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
+  needs attention `medium` (alert), in progress `info`, resolved `low`
+  (success), accepted risk `neutral`. AI purple is never used on Cases (it is
+  the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
+- **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
+  reads "Unassigned" in secondary text, never a warning colour.
+- **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
+  period per page: the board's switch drives every period figure of the page.
+- **Ageing bar** carries age bands only, one blue ramp from the DS palette,
+  each band >= 3:1 against the surface it is drawn on, the board column, in
+  both themes, 2 px surface gaps between bands so neighbours need no
+  contrast with each other. The column surface is fixed per theme (round 2
+  B1): dark, the column is layer 2 `#13213e` inside the layer 1 card; light,
+  the column is `#ffffff` (layer 1) with the `border-subtle` outline, never
+  the `#f4f4f6` layer 2 tint, on which the lightest band fell to 2.77:1.
+  Ratios measured on those surfaces:
+
+  | Band | Dark token (ratio on column #13213e) | Light token (ratio on column #ffffff) |
+  |---|---|---|
+  | 0-7 d | `--blue-700` #0079a8 (3.27:1) | `--blue-600` #009edb (3.04:1) |
+  | 8-30 d | `--blue-600` #009edb (5.26:1) | `--blue-700` #0079a8 (4.88:1) |
+  | 31-90 d | `--blue-400` #42caff (8.46:1) | `--blue-800` #005575 (8.22:1) |
+  | > 90 d | `--blue-200` #a8e7ff (11.82:1) | `--darkblue-700` #0015a8 (12.55:1) |
+
+  Older reads stronger in both themes. **Overdue is not a band**: it is a
+  separate line under the bar (error icon in `feedback-error-primary` +
+  "<n> overdue" in `text-feedback-error-tertiary`, which holds 4.5:1 on the
+  dark column where the error primary measures 4.26:1, LIBRARY-FEEDBACK F48),
+  because an overdue case can sit in any age band. The column surface and both
+  line colours are held by `frontend/tests_unit/ctem-cases-board-contrast.test.ts`.
+- **Counts**: compact in prose and headers (`formatCompactNumber`: "1.3K open
+  issues in 61 cases"), the exact figure in the tooltip and in table cells;
+  state counts under 10,000 are exact.
+- **Focus**: every row, card and link takes the DS focus ring (`ring-focus`),
+  never a coloured left bar.
+- **Control heights (round 2 B2)**: one height per toolbar row. Table
+  toolbars (search, Filters, clear, TotalChip, Columns, page size, CSV) and
+  the bulk action row are all 32 px (DS `size="sm"`); page header actions
+  (list and case page) are the DS `Button` default, 36 px, `IconButton`
+  default for More.
+- **Sorting (round 2 B3)**: every data table here is sortable on its value
+  columns through the `DataTable` header (`aria-sort`, arrow on the active
+  column, a neutral sort glyph on the others); the sort is kept in the URL
+  (`?sort=priority&dir=desc`) with the filters, so a shared link and Back
+  restore it. Default sorts are named per table in 7.2 and 7.3.
+- **Locale (round 2 B6)**: every string of these screens, table headers,
+  Chips, dates (`Intl.DateTimeFormat`, day and short month), totals, page
+  size and pager included, comes from the i18n catalogs; the width proofs of
+  7.2 are rendered fully translated in fr and ja, not over English labels.
+- **Actors**: a person is the DS `Avatar` (initials); the system and the
+  agents are an icon in the same 24 px circle (system: monitor, agent: robot)
+  with their name in the tooltip, never initials such as "SY" (round 2 A4).
+  Notices carry the DS info `Icon`, never a typed "i" (round 2 A3).
+
+### 7.1 Mobilization stage page: the Cases board (signature viz)
+
+Built in S5c of #11545 (`frontend/src/pages/xtm-one/ctem/CasesBoard.tsx`,
+figures in `ctem/cases-board.ts`). As built: the inflow line counts the cases
+now in a state that entered it in the period (`state_since`), since the API
+returns no transition counts yet; the resolved-column median and the footer
+links wait for that read. Bulk actions go through `POST /ctem-cases/bulk`
+(each case checked alone, refused ones named with their rule), Merge through
+`POST /ctem-cases/merge` (survivor keeps state, owner and due date, takes the
+keys, members and history), Split from the case page's issue selection
+through `POST /ctem-cases/split`.
+
+Placed inside the real `CtemStageDetail` page (B8): `EntityPageHeader`
+(back link, posture gauge, "Mobilization", methodology, badges, owner
+agent), `ScorePair`, `CompanyContextNotice`, then the Cases board full width,
+then the existing AI assessment and facts grid unchanged.
+
+- **Flow strip** (UX decision Q2: a flow strip, not a Kanban; a Kanban
+  duplicates the list and drag would bypass the owner, evidence and expiry
+  rules): four state columns, each a header with the state Chip, the exact
+  count and, for the two open states, the ageing bar with its legend and the
+  overdue line.
+- **Transitions** of the period ("+14 started", "+22 resolved", "+3 risk
+  accepted", "+2 reopened") are never lost (B6, round 3 B1): at every width
+  each transition is the first line of the column it flows into ("+14 started
+  in 30 d" heads In progress, "+3 risk accepted in 30 d" heads Accepted
+  risk); at >= 1440 the arrows between the open columns repeat the two flows
+  of the main path, and at 1080 to 1439 the strip is 2 x 2 with no arrows.
+  Every column carries that inflow line, Needs
+  attention included ("+18 new in 30 d, +2 reopened"), at a fixed one-line
+  height, so the four state Chips sit on the same baseline in each row of
+  the 2 x 2 (round 2 B7); a period with no inflow reads "No new case in
+  30 d", never an empty gap.
+- **Top cases** under each open column: the three highest-priority cases
+  (title on one line with ellipsis and its full text in the tooltip, priority
+  Chip, issue count, crown jewel Chip, owner Avatar or "Unassigned", age),
+  each a link to its page.
+- **Resolved** column: cases resolved in the period, the median time to
+  resolve, and the issues they closed ("22 cases, 412 issues closed"; the
+  list's Resolved tab says "All time" next to its count, so the two figures
+  never read as one, A1). The column header carries no period label: the
+  inflow line already names it (round 2 A5).
+- **Accepted risk** column: the next expiries with their date; one expiring
+  within 14 days carries the `medium` "Expires in 6 d" Chip, and the column
+  header says "<n> expire in 14 days" (A2).
+- Card header: "Cases", "1.3K open issues in 61 cases" (exact in tooltip),
+  period `SegmentedFilter` 7 / 30 / 90 d, "View all cases" (filled primary,
+  right end). Footer: last grouping time and sources, "No known fix: 96
+  issues" link, "Recommended actions" link.
+- States of the card: loading (skeleton of the strip at its final height),
+  section read error (inline error with Retry, the rest of the page loads),
+  no source configured (setup row: "Add your tech stack" to Settings >
+  Organization and "Connect OpenAEV" to Integrations, A9), data but no open
+  issue (positive state "No open exposure on your stack", last grouping
+  time). The positive state is an all-clear only when every product
+  answered: when the list carries `details_unavailable`, the line names the
+  products instead ("OpenAEV could not be read, so open exposures there may
+  be missing.") with a warning icon (#12139). The API sends product ids
+  ("openaev"); the line shows their display names (CTEM_PRODUCT_INFO) and
+  agrees the verb through an ICU plural on the product count.
+
+### 7.2 Cases list `/ctem/cases`
+
+- Page header (`EntityPageHeader` list form): back link "Back to
+  Mobilization", title "Cases"; actions in the platform order (secondary
+  first, filled primary last), DS `Button` default height: Recompute,
+  Export CSV. The totals live in the
+  table toolbar's `TotalChip`, not in the title row.
+- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
+  exact counts: Needs attention, In progress, Resolved ("All time" in its
+  tooltip, A1), Accepted risk, All.
+- **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
+  and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
+  `FiltersPill` holding the facets (owner: me / unassigned / a person,
+  priority, crown jewel, source, product, overdue, accepted risk expiring in
+  14 days) with its count badge, "Clear all filters" (an icon with its
+  tooltip in compact mode), then right: `TotalChip`, Columns, page size, CSV
+  export. Active filters show as the pill's count and the panel's checked
+  options, never as a second row of pills. Pagination in the footer.
+- **Columns at 1080 (B1)**, no horizontal scroll (table scrollWidth =
+  clientWidth, measured in the four locales with the longest fix title):
+  selection, Priority (Chip), Fix (one line, `max-w` + ellipsis, full title
+  and "14 CVEs from OpenCTI and OpenAEV" in its tooltip; the sub line is
+  gone, so every row is one line), Issues, Owner (Avatar + name, truncate),
+  Due ("6 Nov" with the error-tone "Overdue" Chip), State (Chip). Hidden below
+  `xl` and offered in Columns: Crown jewels, Assets, KEV, In state. At 1728
+  every column shows.
+- **Sort (round 2 B3)**: Priority, Fix, Issues, Crown jewels, Assets, KEV,
+  Owner, Due and In state are sortable. Default: Priority descending, then
+  Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
+  the URL; a click on the active column flips the direction, another column
+  takes over the sort.
+- **Selection**: `SelectionBox` rows and header (indeterminate when part of
+  the page is selected, A4), "N selected" and "Select all 34 matching" in the
+  toolbar, bulk actions as the shared `ListBulkAction` buttons (32 px, the
+  height of the toolbar row): Start (filled primary, last), Assign owner, Set
+  due date, Accept risk, Merge (2 or more, disabled with its reason
+  otherwise), Export selection. Below 1440 only Assign owner and Start stay
+  visible; the others move into a More `IconButton` menu, so the row never
+  wraps or overflows in fr or ja. Escape clears.
+- **Bulk dialogs** (centred, shared `Dialog`, fields per section 2 of the
+  form rules: label above, required mark, helper line, error under the
+  field; DS `Dialog` size `md`, 640 px, labels at body size 14 px, fields
+  36 px, round 2 B5): Assign owner (person `Combobox`, required); Set due
+  date (DS `DatePicker`, the policy SLA suggested as helper text); Accept
+  risk (owner `Combobox`, required; reason, required, 500 characters with
+  counter; expiry DS `DatePicker`, required, max from the policy, default
+  today + 90 d, round 2 A1; "Applies to 2 cases" summary; primary
+  "Accept risk"); Merge (target case radio list, the merged keys listed,
+  primary "Merge 2 cases").
+- **Keyboard**: the table's row focus uses the DS focus ring (A5); Up and Down
+  move it, Space selects, Enter opens; the `a` shortcut assigns only while
+  the table has focus and a selection exists, and is announced in the Assign
+  button's tooltip (A7). Every action is reachable by Tab.
+- States: loading (table skeleton, toolbar mounted), read error (table error
+  with Retry), empty (no source: the setup row of 7.1; sources but no case:
+  "No open exposure on your stack", or the products that could not be read
+  when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
+  "Clear all filters").
+
+### 7.3 Case page `/ctem/cases/:id`
+
+- Header: `EntityPageHeader` with back link "Back to Cases", the fix as
+  title, badges (state Chip, priority Chip, owner Avatar, due date), actions
+  in the platform order: More (`IconButton` + `Menu`: Split, Merge, Open in
+  Act now, A6), Accept risk, Assign, then the next state as the filled
+  primary ("Start", "Resolve", "Reopen").
+- Summary: the shared `StatCard` row (issues, KEV, max CVSS, max EPSS, assets,
+  crown jewels, first seen), wrapping to two rows at 1080; each value's
+  tooltip names its source and read time.
+- "Why this case" sentence: the key rule that grouped it (R1 / R2 / R3) and
+  the policy rules that set its priority.
+- Layout (UX decision Q3: issues first, always): at >= 1440 two columns,
+  Issues (2/3) and Assets + History (1/3); at 1080 to 1439 one column,
+  Issues, then Assets, then History, so no column overlaps another (B3).
+- Issues: the shared `DataTable` with the same anatomy as the list (round 2
+  B4): search ("Search CVE"), ONE `FiltersPill` (Source, KEV, CVSS band),
+  clear-all icon, then right `TotalChip`, Columns, page size (10 / 25 / 50,
+  default 10), CSV, all 32 px; pagination in the footer, no "Show 10 more";
+  columns CVE (link), Source (Chip), CVSS, EPSS, KEV, Assets, Open since, and
+  the external link `IconButton` to OpenCTI or OpenAEV with its accessible
+  name "Open in OpenCTI". Sortable on every value column; default CVSS
+  descending, then EPSS descending, kept in the URL (round 2 B3); the rows
+  are drawn in that order (round 3 B2). Column hiding (round 3 B3): a column
+  hides only when the table would otherwise overflow its card (scrollWidth >
+  clientWidth), lowest value first (Open since, then Assets); the columns of
+  the active and default sort (CVSS, EPSS) never hide. At 1080 one column the
+  table fits, so every column shows.
+- Restricted members (#11613): a member issue the viewer cannot see is a row
+  of the same Issues table, at the same height, its first cell the lock icon
+  and "Restricted", every other cell empty (no id, source, score, asset or
+  link); the Source filter offers "Restricted". A case the viewer sees
+  nothing of is the not-found page, never an empty case.
+- Assets and crown jewels (from #11543 when present; otherwise "Link assets
+  in Settings > Organization").
+- History: vertical event list with actor (person Avatar, or the system or
+  agent icon of 7.0), time
+  (relative with the locale date in its tooltip), reason, evidence link.
+- Accepted risk state: a `DashboardNotice` (neutral) with owner, reason and
+  expiry at the top; "Expires in 6 d" Chip when within 14 days. Resolved
+  state: a success notice with the evidence (system: "every member issue
+  closed at source", or the user's reference) and "Reopen".
+
+### 7.4 Command center widget `cases`
+
+UX decision Q1: in the default layout right after Act now, as a compact
+full-width row (one line at 1440, two at 1080): the four state Chips with
+their exact counts on one segmented bar (the state colours of 7.0), then
+"5 overdue" and "2 accepted risks expire in 14 days", each a link to the
+filtered list. Not configured (no tech stack and no OpenAEV): one dismissible
+setup row ("Build cases from your tech stack", actions "Add tech stack" and
+"Connect OpenAEV"), per the dashboard notice rule. The id `cases` is added to
+`CTEM_WIDGETS`, `CTEM_DASHBOARD_WIDGETS` and the backend allowlist
+(`dashboard_layouts.py`) in the same PR; the default layout gains it, saved
+layouts load unchanged (test).
+
+Shipped in S5a (#11545): `frontend/src/pages/xtm-one/ctem/CasesCountsCard.tsx`
+(the row; counts from `GET /ctem-cases`), `ctem/cases-due.ts` (overdue: an
+open case past its due date; expiring: an accepted risk ending within 14
+days; one definition for the row and the list's "Due" filter). The Cases list
+reads its tab from `?state=` and its Due filter from `c_f_due`. Not configured
+= no case, no organization context and no OpenAEV. The setup row closes for
+the session. Tests: `ctem/cases-counts-card.test.tsx`,
+`ctem/command-center-v2-default.test.ts`, `tests/test_ctem_dashboard_layout.py`.
+
+### 7.5 Funnel last layer (proposal A)
+
+The last layer of the funnel is "Cases" (layer key `open_issues`, source
+`ctem_cases`, #11545 S5b): the exact count of the open cases the viewer sees
+(needs attention plus in progress), read from `GET /ctem-cases` counts, so it
+never counts a case the list would hide. It links to `/ctem/cases`. Cases are
+another unit than the vulnerability layers above: the layer keeps the width
+above it, names no drop and is left out of the monotonic check. It is "not
+configured" (call to action: Settings > Organization) when no case exists and
+none can be built (no tech stack and no OpenAEV), never an invented 0; until
+the Cases API answers, the layer shows no count. The sample funnel keeps it
+"not available yet". The open issue count and the grouping ratio need a
+viewer-scoped total of open member issues the Cases API does not answer yet;
+they are not drawn rather than estimated from one page of the list.
+
+## 8. Agent tools (new, no existing contract changed)
+
+| Tool | Does |
+|---|---|
+| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state |
+| `get_ctem_case` | one case with members (source, id), the latest 20 history events |
+| `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
+| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk) |
+
+Granted to the built-in CTEM Remediation Coordinator and Mobilization Analyst
+(their tool lists only), RBAC of the posture (the caller's integrations).
+Every write is an event with the agent as actor.
+
+Shipped in S2 (#11545): `backend/app/services/builtin_tools/ctem_cases.py`,
+offered by `offers_ctem_case_tools` (built-in agent, slug above, XTM One
+mode) in `agent_chat` and `assignment_engine` next to the organization
+profile tool, acting for the person the turn or run acts for. Tests:
+`tests/test_ctem_case_tools.py`, `tests/test_ctem_cases_postgres.py`
+(manual split survives a recompute).
+
+## 9. UX decisions (round 1, 13 Nov 2026)
+
+1. Command center widget: in the default layout right after Act now, as a
+   compact full-width row; saved layouts unchanged; not configured = one
+   dismissible setup row.
+2. Board shape: a flow strip with ageing bars, not a Kanban (a Kanban
+   duplicates the list; drag would bypass owner, evidence and expiry).
+3. Case page: Issues first, always; assets and history in the right column
+   at >= 1440, under the issues below it.
+
+## 10. Slices
+
+| Slice | Content | Gate |
+|---|---|---|
+| S0 | this document and the mockups | UX Director design APPROVE |
+| S1 | model, migration, grouping, state machine, API, tests | CI |
+| S2 | agent tools, grants, tests | CI |
+| S3 | board, list, case page, widget, i18n x4 | CI + UX APPROVE, before/after captures |
+
+## 11. Tests owed
+
+- Grouping fixtures: same product and fixed version -> one case; two fixed
+  versions -> two cases; course of action wins over version; no fix -> "No
+  known fix", no case.
+- Recompute keeps state, owner, due date and history; resolved when every
+  member closed; reopened when they come back; merges and splits survive.
+- State machine: accepted risk needs owner, reason, expiry; expiry returns to
+  needs attention; an agent cannot accept risk; resolve needs evidence.
+- API and tool round-trip; existing CTEM tools unchanged (contract test).
+- Layout: saved layouts without `cases` load unchanged.

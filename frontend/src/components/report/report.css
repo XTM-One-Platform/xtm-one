@@ -1,0 +1,1069 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/**
+ * Report theming for agent-generated executive reports.
+ *
+ * This file is the report's design. The agent supplies typed values only — every
+ * gradient, grid, arrow, badge, rule and page break below was authored by a human
+ * and is out of reach of any generated content. That is the whole security model
+ * of the feature: a brief that *looks* like bespoke CSS is structurally a dozen
+ * repeated components with data in them, so the data comes from the agent and the
+ * design comes from here.
+ *
+ * Themes are keyed off `data-report-theme` on the report container:
+ *   light    – paper-white, the default (a report is meant to be printed)
+ *   dark     – the platform's own dark surface, for on-screen reading
+ *   filigran – brand: cyan accents on near-black
+ *
+ * A `TemplateContainer` can override the palette by setting the
+ * `--report-*` custom properties inline; the backend whitelists those keys
+ * (`REPORT_THEME_CONFIG_KEYS`) and rejects any value that could escape its
+ * declaration, and the renderer only ever maps whitelisted keys, so a template
+ * can restyle a report but never inject CSS.
+ *
+ * Every rule is scoped under `.report-root` so nothing here can leak into the app
+ * shell — and the print block at the bottom is what makes PDF export the
+ * browser's own job rather than a server-side render.
+ */
+
+.report-root {
+  /* Defaults are the light theme; the [data-report-theme] blocks below override. */
+  --report-bg: hsl(215 62% 10%);
+  --report-fg: hsl(220 34% 15%);
+  --report-accent: hsl(17 100% 50%);
+  --report-muted: hsl(217 14% 42%);
+  --report-paper: hsl(210 20% 96%);
+  --report-card: hsl(0 0% 100%);
+  --report-line: hsl(212 20% 89%);
+  --report-critical: hsl(0 65% 46%);
+  --report-elevated: hsl(32 81% 37%);
+  --report-moderate: hsl(207 65% 40%);
+  --report-controlled: hsl(158 65% 28%);
+  --report-heading-font: "Geologica", system-ui, sans-serif;
+  --report-body-font: "IBM Plex Sans", system-ui, sans-serif;
+
+  --report-radius: 18px;
+  --report-shadow: 0 18px 45px hsl(215 57% 10% / 0.1);
+
+  background: var(--report-paper);
+  color: var(--report-fg);
+  font-family: var(--report-body-font);
+  font-size: 15.5px;
+  line-height: 1.58;
+  -webkit-font-smoothing: antialiased;
+}
+
+.report-root[data-report-theme="dark"] {
+  --report-bg: hsl(220 56% 6%);
+  --report-fg: hsl(210 20% 96%);
+  --report-accent: var(--color-accent);
+  --report-muted: hsl(230 4% 70%);
+  --report-paper: hsl(220 40% 8%);
+  --report-card: hsl(220 40% 11%);
+  --report-line: hsl(220 24% 22%);
+  --report-critical: var(--color-feedback-error-primary);
+  --report-elevated: var(--color-feedback-alert-primary);
+  --report-moderate: hsl(207 90% 68%);
+  --report-controlled: var(--color-feedback-success-primary);
+  --report-shadow: 0 18px 45px hsl(0 0% 0% / 0.4);
+}
+
+.report-root[data-report-theme="filigran"] {
+  --report-bg: hsl(220 54% 8%);
+  --report-fg: hsl(210 20% 96%);
+  --report-accent: var(--color-accent);
+  --report-muted: hsl(230 4% 70%);
+  --report-paper: hsl(220 46% 6%);
+  --report-card: hsl(220 44% 10%);
+  --report-line: hsl(220 26% 20%);
+  --report-critical: var(--color-feedback-error-primary);
+  --report-elevated: var(--color-feedback-alert-primary);
+  --report-moderate: var(--color-accent);
+  --report-controlled: var(--color-feedback-success-primary);
+  --report-shadow: 0 18px 45px hsl(0 0% 0% / 0.45);
+}
+
+.report-root *,
+.report-root *::before,
+.report-root *::after {
+  box-sizing: border-box;
+}
+
+/* Tailwind's preflight sets `list-style: none` on every `ul`/`ol` in the app
+   shell. A report is a prose document, not UI chrome: its action plans,
+   checklists, annexes and bibliographies are all real lists and read as
+   unstyled runs of text without markers. Restored explicitly here, the same way
+   `presentation.css` restores them inside reveal's reset. */
+.report-root :where(ul, ol) {
+  list-style-position: outside;
+}
+
+.report-root :where(ul) {
+  list-style-type: disc;
+}
+
+.report-root :where(ol) {
+  list-style-type: decimal;
+}
+
+.report-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.report-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 42px 24px 48px;
+  color: hsl(0 0% 100%);
+  background:
+    radial-gradient(
+      circle at 87% 15%,
+      color-mix(in srgb, var(--report-accent) 24%, transparent),
+      transparent 28%
+    ),
+    linear-gradient(
+      135deg,
+      var(--report-bg),
+      color-mix(in srgb, var(--report-bg) 82%, white)
+    );
+}
+
+/* The off-centre ring behind the masthead. Decorative, so it is a pseudo-element
+   rather than anything the spec could describe. */
+.report-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -7% -180px 35%;
+  height: 310px;
+  border: 1px solid hsl(0 0% 100% / 0.12);
+  border-radius: 50%;
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+
+.report-hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.55fr 0.75fr;
+  gap: 40px;
+  align-items: end;
+}
+
+.report-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--report-accent) 55%, white);
+}
+
+.report-hero h1 {
+  font-family: var(--report-heading-font);
+  font-size: clamp(42px, 7vw, 78px);
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  margin: 18px 0 16px;
+}
+
+.report-hero-subtitle {
+  max-width: 760px;
+  margin: 0;
+  font-size: 20px;
+  color: hsl(215 45% 91%);
+}
+
+.report-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.report-tag {
+  padding: 7px 11px;
+  border: 1px solid hsl(0 0% 100% / 0.25);
+  border-radius: 999px;
+  background: hsl(0 0% 100% / 0.06);
+  font-size: 12px;
+  color: hsl(215 50% 96%);
+}
+
+.report-verdict {
+  padding: 22px;
+  border: 1px solid hsl(0 0% 100% / 0.17);
+  border-radius: 18px;
+  background: hsl(0 0% 100% / 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.report-verdict-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--report-accent) 55%, white);
+}
+
+.report-verdict-grade {
+  font-family: var(--report-heading-font);
+  font-size: 34px;
+  font-weight: 900;
+  margin: 5px 0 4px;
+}
+
+.report-verdict .report-rich-text {
+  font-size: 14px;
+  color: hsl(215 40% 90%);
+}
+
+/* ── Body shell ──────────────────────────────────────────────────────────── */
+
+.report-main {
+  padding: 28px 24px 70px;
+}
+
+.report-section {
+  margin-top: 18px;
+}
+
+.report-card {
+  padding: 24px;
+  border: 1px solid var(--report-line);
+  border-radius: var(--report-radius);
+  background: var(--report-card);
+  box-shadow: var(--report-shadow);
+}
+
+.report-root h2 {
+  font-family: var(--report-heading-font);
+  font-size: 27px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  margin: 0 0 16px;
+}
+
+.report-root h3 {
+  font-family: var(--report-heading-font);
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.report-root a {
+  color: var(--report-moderate);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.report-root a:hover {
+  color: var(--report-accent);
+}
+
+.report-note {
+  font-size: 12.5px;
+  color: var(--report-muted);
+}
+
+/* ── Section heading + number ────────────────────────────────────────────── */
+
+/* `scroll-margin-top` is what makes the derived table of contents usable: without
+   it an anchor jump parks the heading flush against the viewport edge (or under a
+   sticky app header) and the reader cannot tell they arrived. */
+.report-section-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: baseline;
+  margin-bottom: 16px;
+  scroll-margin-top: 24px;
+}
+
+.report-section-head:not(:has(.report-secno)) {
+  display: block;
+}
+
+.report-section-head h2 {
+  margin: 0;
+}
+
+.report-secno {
+  font-family: var(--report-heading-font);
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 0.8;
+  letter-spacing: -0.05em;
+  color: var(--report-accent);
+}
+
+/* ── Table of contents ───────────────────────────────────────────────────── */
+
+.report-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--report-line);
+  border-radius: 14px;
+  background: var(--report-card);
+}
+
+.report-toc-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--report-fg) 4%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--report-fg);
+  text-decoration: none;
+}
+
+.report-toc-link:hover {
+  background: color-mix(in srgb, var(--report-accent) 12%, transparent);
+  color: var(--report-fg);
+}
+
+.report-toc-number {
+  font-family: var(--report-heading-font);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--report-accent);
+}
+
+/* ── KPI strip ───────────────────────────────────────────────────────────── */
+
+.report-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.report-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+}
+
+.report-kpi::after {
+  content: "";
+  position: absolute;
+  right: -24px;
+  bottom: -30px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--report-accent) 9%, transparent);
+}
+
+.report-kpi-value {
+  font-family: var(--report-heading-font);
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.report-kpi-label {
+  margin-top: 2px;
+  font-weight: 700;
+}
+
+.report-kpi-note {
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--report-muted);
+}
+
+/* ── Prose + alert ───────────────────────────────────────────────────────── */
+
+.report-lead {
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.report-alert {
+  margin: 18px 0;
+  padding: 17px 18px;
+  border-left: 5px solid var(--report-accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--report-accent) 8%, var(--report-card));
+}
+
+.report-alert-label {
+  font-weight: 700;
+  color: color-mix(in srgb, var(--report-accent) 80%, black);
+}
+
+.report-root[data-report-theme="dark"] .report-alert-label,
+.report-root[data-report-theme="filigran"] .report-alert-label {
+  color: var(--report-accent);
+}
+
+/* ── Decisions ───────────────────────────────────────────────────────────── */
+
+.report-decisions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.report-decision {
+  padding-top: 18px;
+  border-top: 4px solid var(--report-accent);
+}
+
+.report-decision-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: var(--report-accent);
+}
+
+.report-decision h3 {
+  margin: 8px 0 6px;
+}
+
+.report-decision p {
+  margin: 0;
+  color: var(--report-muted);
+}
+
+/* ── Chain ───────────────────────────────────────────────────────────────── */
+
+.report-chain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.report-step {
+  position: relative;
+  min-height: 150px;
+  padding: 15px;
+  border: 1px solid var(--report-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--report-fg) 2%, var(--report-card));
+}
+
+/* The connector between steps. `aria-hidden` on the element itself would not
+   help — this is CSS content, never in the accessibility tree. */
+.report-step:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  top: 54px;
+  right: -16px;
+  z-index: 2;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--report-accent);
+}
+
+.report-step-num {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  border-radius: 9px;
+  background: var(--report-bg);
+  color: hsl(0 0% 100%);
+  font-weight: 900;
+}
+
+.report-step-title {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.report-step p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--report-muted);
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.report-table th,
+.report-table td {
+  padding: 13px 10px;
+  border-bottom: 1px solid var(--report-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-table th {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--report-muted);
+}
+
+.report-confidence {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.report-confidence[data-confidence="high"] {
+  color: var(--report-controlled);
+}
+
+.report-confidence[data-confidence="medium"] {
+  color: var(--report-elevated);
+}
+
+.report-confidence[data-confidence="low"] {
+  color: var(--report-critical);
+}
+
+.report-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  /* One rule for four levels: the level drives `color`, and both the tint and
+     the dot inherit from it via color-mix / currentColor. */
+  background: color-mix(in srgb, currentColor 14%, var(--report-card));
+}
+
+.report-risk-badge[data-level="critical"] {
+  color: var(--report-critical);
+}
+
+.report-risk-badge[data-level="elevated"] {
+  color: var(--report-elevated);
+}
+
+.report-risk-badge[data-level="moderate"] {
+  color: var(--report-moderate);
+}
+
+.report-risk-badge[data-level="controlled"] {
+  color: var(--report-controlled);
+}
+
+.report-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.report-nature {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--report-muted);
+}
+
+/* ── Matrix ──────────────────────────────────────────────────────────────── */
+
+/* A matrix is the one block that may legitimately be wider than a phone: its
+   width is set by the number of columns the analyst needs, not by the design. It
+   scrolls inside its own container so the page body never scrolls sideways. */
+.report-matrix-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  /* Below this the cell text wraps to unreadable slivers; scrolling is kinder. */
+  min-width: 560px;
+}
+
+.report-matrix th,
+.report-matrix td {
+  padding: 12px;
+  border: 1px solid var(--report-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-matrix-axis {
+  background: color-mix(in srgb, var(--report-fg) 5%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--report-muted);
+}
+
+.report-matrix-cell {
+  min-width: 110px;
+  font-size: 12.5px;
+  font-weight: 700;
+  /* Same single-rule trick as the risk badges: the level drives `color`, and the
+     fill derives from it, so four grades need one declaration each. */
+  background: color-mix(in srgb, currentColor 16%, var(--report-card));
+}
+
+.report-matrix-cell[data-level="critical"] {
+  color: var(--report-critical);
+}
+
+.report-matrix-cell[data-level="elevated"] {
+  color: var(--report-elevated);
+}
+
+.report-matrix-cell[data-level="moderate"] {
+  color: var(--report-moderate);
+}
+
+.report-matrix-cell[data-level="controlled"] {
+  color: var(--report-controlled);
+}
+
+/* The grade name. Hidden on screen, where the colour already carries it, and
+   revealed in print, where the fills degrade to a single grey. */
+.report-matrix-level {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.report-source-ref {
+  margin-right: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--report-accent);
+}
+
+.report-decision-confidence {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--report-line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--report-muted);
+}
+
+.report-decision-confidence[data-confidence="high"] {
+  color: var(--report-controlled);
+}
+
+.report-decision-confidence[data-confidence="medium"] {
+  color: var(--report-elevated);
+}
+
+.report-decision-confidence[data-confidence="low"] {
+  color: var(--report-critical);
+}
+
+/* ── Scenarios ───────────────────────────────────────────────────────────── */
+
+.report-scenarios {
+  display: grid;
+  gap: 18px;
+}
+
+.report-scenario {
+  padding: 18px;
+  border: 1px solid var(--report-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--report-fg) 2%, var(--report-card));
+}
+
+.report-scenario h3 {
+  margin: 0 0 7px;
+}
+
+.report-scenario p {
+  margin: 0;
+  color: var(--report-muted);
+}
+
+.report-scenario-impact {
+  margin-top: 13px;
+  font-weight: 800;
+  color: var(--report-fg);
+}
+
+/* ── Callout ─────────────────────────────────────────────────────────────── */
+
+.report-callout {
+  display: grid;
+  grid-template-columns: 1.5fr 0.7fr;
+  gap: 25px;
+  align-items: center;
+  padding: 26px;
+  border-radius: var(--report-radius);
+  background: var(--report-bg);
+  color: hsl(0 0% 100%);
+}
+
+.report-callout h2 {
+  margin: 0 0 8px;
+}
+
+.report-callout .report-rich-text {
+  color: hsl(215 45% 90%);
+}
+
+.report-score {
+  font-family: var(--report-heading-font);
+  font-size: 54px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: right;
+  color: color-mix(in srgb, var(--report-accent) 70%, white);
+}
+
+.report-score-label {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(215 35% 85%);
+}
+
+/* ── Timeline ────────────────────────────────────────────────────────────── */
+
+.report-timeline {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 0 20px;
+}
+
+.report-phase-label {
+  padding: 17px 0;
+  border-top: 1px solid var(--report-line);
+  font-weight: 900;
+  color: var(--report-accent);
+}
+
+.report-phase-body {
+  padding: 17px 0;
+  border-top: 1px solid var(--report-line);
+}
+
+.report-phase-headline {
+  font-weight: 700;
+}
+
+.report-phase-body ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.report-phase-body li {
+  margin: 5px 0;
+}
+
+/* ── Checklist ───────────────────────────────────────────────────────────── */
+
+.report-checklist {
+  margin: 0;
+  padding-left: 20px;
+  column-gap: 32px;
+}
+
+.report-checklist[data-columns="2"] {
+  columns: 2;
+}
+
+.report-checklist li {
+  margin: 0 0 9px;
+  break-inside: avoid;
+}
+
+/* ── Fill-in box ─────────────────────────────────────────────────────────── */
+
+.report-fill-in {
+  padding: 18px;
+  border: 2px dashed color-mix(in srgb, var(--report-muted) 45%, transparent);
+  border-radius: 14px;
+  background: var(--report-card);
+}
+
+.report-fill-in h3 {
+  margin-top: 0;
+}
+
+.report-fill-in p {
+  margin: 0 0 8px;
+}
+
+/* The blank rule the reader writes on — the point of the block, so it is a real
+   element with a minimum width rather than a run of underscores. */
+.report-blank {
+  display: inline-block;
+  min-width: 150px;
+  border-bottom: 1px dotted color-mix(in srgb, var(--report-muted) 70%, transparent);
+}
+
+.report-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.report-status-strip span {
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--report-fg) 7%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ── Annexes + sources ───────────────────────────────────────────────────── */
+
+.report-details {
+  margin-top: 12px;
+  border: 1px solid var(--report-line);
+  border-radius: 14px;
+  background: var(--report-card);
+}
+
+.report-details > summary {
+  padding: 16px 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.report-details-inside {
+  padding: 0 18px 18px;
+}
+
+.report-details-inside ul,
+.report-details-inside ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.report-details-inside li {
+  margin: 9px 0;
+}
+
+.report-sources {
+  font-size: 13px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.report-footer {
+  margin-top: 24px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--report-muted);
+}
+
+/* ── Sanitized rich_text ─────────────────────────────────────────────────── */
+
+/* The markup has already been through DOMPurify (`sanitizeRichText`); this only
+   gives it safe spacing inside a block. */
+.report-rich-text :where(p, ul, ol, blockquote, table) {
+  margin: 0 0 0.7em;
+}
+
+.report-rich-text :where(p:last-child, ul:last-child, ol:last-child) {
+  margin-bottom: 0;
+}
+
+.report-rich-text :where(ul, ol) {
+  padding-left: 1.2em;
+}
+
+.report-rich-text :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.report-rich-text :where(th, td) {
+  padding: 0.4em 0.6em;
+  border: 1px solid var(--report-line);
+  text-align: left;
+}
+
+.report-rich-text :where(code) {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--report-fg) 8%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* ── Narrow viewports ────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .report-hero-grid,
+  .report-callout {
+    grid-template-columns: 1fr;
+  }
+
+  .report-chain {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked: the connector turns from a right arrow into a down arrow. */
+  .report-step:not(:last-child)::after {
+    content: "↓";
+    top: auto;
+    right: auto;
+    bottom: -22px;
+    left: 50%;
+  }
+
+  .report-score {
+    text-align: left;
+  }
+
+  .report-checklist[data-columns="2"] {
+    columns: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .report-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .report-phase-label {
+    padding-bottom: 0;
+  }
+
+  .report-phase-body {
+    border-top: 0;
+  }
+}
+
+/* ── Print / PDF export ──────────────────────────────────────────────────── */
+
+/* This block is why report export needs no server-side renderer: the browser's
+   own print pipeline produces the PDF, so the exported document is exactly the
+   one on screen. `print-color-adjust` keeps the hero and callout surfaces from
+   being dropped as "background graphics". */
+@media print {
+  .report-root {
+    background: white;
+    font-size: 12px;
+    color: black;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-hero {
+    padding: 25px 18px;
+  }
+
+  .report-main {
+    padding: 14px;
+  }
+
+  .report-card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .report-root a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Restore the wide layouts the narrow-viewport rules above may have collapsed:
+     an A4 page is wide enough for them even when the window is not. */
+  .report-hero-grid {
+    grid-template-columns: 1.5fr 0.7fr;
+  }
+
+  .report-callout {
+    grid-template-columns: 1.5fr 0.7fr;
+  }
+
+  .report-timeline {
+    grid-template-columns: 150px 1fr;
+  }
+
+  /* A collapsed <details> prints as its summary line only, which silently drops
+     annex content from the PDF. CSS cannot reliably reopen one — browsers hide
+     the content through shadow-DOM slotting, not a `display` rule a descendant
+     selector could override — so the `open` attribute is forced in the DOM
+     instead (see `useForcedOpenOnPrint` in `ReportView.tsx`). This only keeps a
+     long annex from being pushed whole onto the next page. */
+  .report-details {
+    break-inside: auto;
+  }
+
+  /* The table of contents is a screen affordance: its anchors do nothing on
+     paper, where the section numbers beside each heading do the same job. */
+  .report-toc {
+    display: none;
+  }
+
+  /* Coloured matrix fills cost toner and, printed in mono, four grades collapse
+     into four indistinguishable greys. So the fills go to one light grey and the
+     grade NAME — hidden on screen, where colour carries it — becomes visible. */
+  .report-matrix-cell {
+    background: #eee !important;
+    color: black !important;
+  }
+
+  .report-matrix-level {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    margin-bottom: 3px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .report-matrix-scroll {
+    overflow-x: visible;
+  }
+
+  .report-matrix {
+    min-width: 0;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

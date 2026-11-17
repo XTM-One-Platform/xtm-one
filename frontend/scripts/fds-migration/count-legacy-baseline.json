@@ -1,0 +1,11 @@
+{
+  "alert token used for text": 0,
+  "legacy semantic tokens": 0,
+  "Tailwind palette colours": 0,
+  "black / white colours": 0,
+  "hardcoded colour literals": 110,
+  "legacy CSS variables": 0,
+  "Tailwind shadow scale overridden by FDS depth tokens": 0,
+  "radius outside the migrated scale": 0,
+  "identical rest and hover surface": 0
+}

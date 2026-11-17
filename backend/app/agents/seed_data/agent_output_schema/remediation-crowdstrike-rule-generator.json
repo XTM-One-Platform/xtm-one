@@ -1,0 +1,136 @@
+{
+  "type": "object",
+  "properties": {
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_type": {
+            "type": "string",
+            "enum": [
+              "Process Creation",
+              "File Creation",
+              "Network Connection",
+              "Domain Name"
+            ],
+            "description": "CrowdStrike IOA rule type"
+          },
+          "action_to_take": {
+            "type": "string",
+            "enum": [
+              "Detect",
+              "Monitor",
+              "Kill Process"
+            ],
+            "description": "Action when rule triggers"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low",
+              "Informational"
+            ]
+          },
+          "rule_name": {
+            "type": "string",
+            "description": "Human-readable rule name"
+          },
+          "rule_description": {
+            "type": "string",
+            "description": "What this rule detects"
+          },
+          "tactic_technique": {
+            "type": "string",
+            "description": "MITRE tactic/technique label (e.g. Custom Intelligence via Indicator of Attack)"
+          },
+          "field_configuration": {
+            "type": "object",
+            "properties": {
+              "grandparent_image_filename": {
+                "type": "string"
+              },
+              "grandparent_command_line": {
+                "type": "string"
+              },
+              "parent_image_filename": {
+                "type": "string"
+              },
+              "parent_command_line": {
+                "type": "string"
+              },
+              "image_filename": {
+                "type": "string"
+              },
+              "command_line": {
+                "type": "string"
+              },
+              "file_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote_ip_address": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote_port": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "connection_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "domain_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "grandparent_image_filename",
+              "grandparent_command_line",
+              "parent_image_filename",
+              "parent_command_line",
+              "image_filename",
+              "command_line"
+            ],
+            "description": "Regex patterns for process tree fields. Use '.*' for unused core fields."
+          },
+          "detection_strategy": {
+            "type": "string",
+            "description": "How this rule detects the threat"
+          }
+        },
+        "required": [
+          "rule_type",
+          "action_to_take",
+          "severity",
+          "rule_name",
+          "rule_description",
+          "tactic_technique",
+          "field_configuration",
+          "detection_strategy"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "rules"
+  ],
+  "additionalProperties": false
+}

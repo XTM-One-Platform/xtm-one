@@ -1,0 +1,13 @@
+# Editors write what .gitattributes stores: UTF-8 without BOM, LF.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.{ps1,bat,cmd,nsh,nsi}]
+end_of_line = crlf
+
+[{Makefile,*.mk}]
+indent_style = tab

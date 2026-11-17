@@ -1,0 +1,40 @@
+{
+  "_comment": "FR-017 discriminating corpus. Each entry carries an input that a prohibited transformation would alter, plus the substring that must survive normalization unchanged. Text is lower case so the corpus behaves identically under every case setting. See spec.md FR-017 and SC-014.",
+  "entries": [
+    {
+      "detects": "stemming",
+      "text": "the analyst was running the detections",
+      "must_survive": "running"
+    },
+    {
+      "detects": "lemmatization",
+      "text": "multiple adversaries deployed implants",
+      "must_survive": "adversaries"
+    },
+    {
+      "detects": "stop_word_removal",
+      "text": "the actor used a tool and then the payload",
+      "must_survive": "the"
+    },
+    {
+      "detects": "spelling_correction",
+      "text": "the adversry acheived persistance",
+      "must_survive": "adversry"
+    },
+    {
+      "detects": "transliteration",
+      "text": "group named лазарус observed",
+      "must_survive": "лазарус"
+    },
+    {
+      "detects": "number_canonicalization",
+      "text": "seventeen hosts were compromised",
+      "must_survive": "seventeen"
+    },
+    {
+      "detects": "date_canonicalization",
+      "text": "activity began on march 3rd 2024",
+      "must_survive": "march"
+    }
+  ]
+}

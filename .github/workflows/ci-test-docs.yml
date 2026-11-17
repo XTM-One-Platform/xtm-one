@@ -1,0 +1,116 @@
+name: Docs build check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/ci-test-docs.yml'
+      - '.github/actions/uv-sync/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/ci-test-docs.yml'
+      - '.github/actions/uv-sync/**'
+
+# git-committers reads the repository's commit history through the GitHub API
+# with this workflow's GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# pypi.org can stop answering for several minutes: each download retries 5 times
+# at 30 s, and the install runs up to 3 times, a minute apart, as in CI and
+# Deploy.
+env:
+  UV_HTTP_TIMEOUT: "30"
+  UV_HTTP_RETRIES: "5"
+
+jobs:
+  docs-build:
+    name: Build MkDocs documentation
+    runs-on: ubuntu-26.04
+    # git-committers calls the GitHub API with no request timeout: a stalled
+    # connection must not hold the check for the default six hours. The
+    # install may take about ten minutes to ride out a pypi.org outage.
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # git-revision-date-localized >= 1.6.0 detects a shallow clone and
+          # warns on every page, which `--strict` turns into a failed build.
+          # The Pages deploy already fetches the full history for the same
+          # plugin; the check must build under the same conditions. It is a
+          # correctness fix as well as a green-CI one: that plugin runs with
+          # `enable_creation_date` and `git-committers` reads the log too, so
+          # a depth-1 clone left every published "last updated" date wrong.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: false
+
+      # docs/.venv, then first on the PATH for mkdocs and mike.
+      - name: Install documentation dependencies
+        uses: ./.github/actions/uv-sync
+        with:
+          directory: docs
+
+      # git-committers (cache_dir in docs/mkdocs.yml) reuses the contributors
+      # of every page not changed since the day its cache was written and asks
+      # the GitHub API about the rest, so a restored cache turns one call per
+      # page into one per changed page. A saved entry cannot be updated: each
+      # run saves its own and restores the latest one; the Pages deploy only
+      # restores. The key starts afresh when the plugin settings or version
+      # change, and every month, so a list the date rule never refetches (an
+      # account renamed or deleted, a commit merged with an older author date)
+      # is fetched again within a month.
+      - name: Page contributors cache key
+        id: contributors-cache
+        run: echo "prefix=docs-git-committers-${{ hashFiles('docs/mkdocs.yml', 'docs/uv.lock') }}-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore page contributors cache
+        uses: actions/cache/restore@v5
+        with:
+          path: docs/.cache/plugin/git-committers
+          key: ${{ steps.contributors-cache.outputs.prefix }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ steps.contributors-cache.outputs.prefix }}-
+
+      # The contributors come from the GitHub API: a rate limit, an outage or a
+      # stalled connection must not fail the check. When the build with them
+      # fails, build again without them, still --strict: a documentation error
+      # fails that build too, a git-committers failure only warns.
+      - name: Build documentation
+        id: build
+        working-directory: docs
+        env:
+          MKDOCS_GIT_COMMITTERS_APIKEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if timeout 5m mkdocs build --strict; then
+            if [ -n "$MKDOCS_GIT_COMMITTERS_APIKEY" ] && [ -f .cache/plugin/git-committers/page-authors.json ]; then
+              echo "contributors=complete" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          echo "The build with the page contributors failed; building again without them."
+          MKDOCS_GIT_COMMITTERS_ENABLED=false mkdocs build --strict
+          echo "::warning title=Page contributors::Checked without the page contributors: the documentation builds, so the failure above came from git-committers (GitHub API rate limit, outage, network, or its settings in docs/mkdocs.yml)."
+
+      # Only a build that loaded every page's contributors saves the cache: the
+      # plugin writes it before --strict aborts, partial lists included.
+      - name: Save page contributors cache
+        if: steps.build.outputs.contributors == 'complete'
+        uses: actions/cache/save@v5
+        with:
+          path: docs/.cache/plugin/git-committers
+          key: ${{ steps.contributors-cache.outputs.prefix }}-${{ github.run_id }}

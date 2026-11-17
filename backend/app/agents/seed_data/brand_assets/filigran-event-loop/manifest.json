@@ -1,0 +1,31 @@
+{
+  "container": "filigran-event-loop",
+  "source": "The Filigran brand pack (brand_assets/filigran) and the partner, integration and customer logos, included whole and never copied: every predefined asset of the Filigran deck - the product screenshots, diagrams and event pictures a booth loop alternates with its statements, the logo walls its figures animate. The marks the closing card draws are listed here under captions of their own.",
+  "include": [
+    {"pack": "filigran"},
+    {"pack": "filigran-badges"},
+    {"pack": "filigran-partner-logos"},
+    {"pack": "filigran-integration-logos"},
+    {"pack": "filigran-customer-logos"}
+  ],
+  "assets": [
+    {
+      "file": "filigran-logo.svg",
+      "pack": "filigran",
+      "role": "logo",
+      "description": "Filigran wordmark (cyan mark + white wordmark), light-on-dark - drawn on the closing card of the loop."
+    },
+    {
+      "file": "filigran-logo-light.svg",
+      "pack": "filigran",
+      "role": "logo_light",
+      "description": "Filigran wordmark in dark ink, for a light surface - a picture overlay or a composed backwall."
+    },
+    {
+      "file": "filigran-mark.svg",
+      "pack": "filigran",
+      "role": "logo_mark",
+      "description": "Filigran symbol alone - a corner mark on a scene; the loop draws no watermark by default."
+    }
+  ]
+}

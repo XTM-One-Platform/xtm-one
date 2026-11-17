@@ -1,0 +1,112 @@
+{
+  "procedure": "treatmentPlans.getTreatmentPlans",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-0022-7000-8000-000000000002",
+      "organizationId": "2938b146-a565-4468-baa4-568acd4c92af",
+      "name": "Widen endpoint coverage",
+      "status": "draft",
+      "ownerId": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+      "startDate": "2026-09-14",
+      "endDate": "2027-03-13",
+      "rationale": "The endpoint controls hold on the servers and cover less than half the workstation fleet, which is where the ransomware scenarios land.",
+      "costOneOff": 95000,
+      "costRecurringAnnual": 140000,
+      "promisedAleReduction": null,
+      "promisedAt": null,
+      "scopeVersion": 1,
+      "createdAt": "2026-08-16T10:13:56.862Z",
+      "updatedAt": "2026-08-16T10:13:56.862Z",
+      "moves": [
+        {
+          "id": "01a139e7-8604-73db-b981-fb7aa168554a",
+          "planId": "019edb28-0022-7000-8000-000000000002",
+          "capabilityId": "5972a172-5856-59d7-aa74-49c9ba62a7ff",
+          "targetStrengthRung": null,
+          "targetCoverageBucket": "L2"
+        },
+        {
+          "id": "01a139e7-8604-73db-b981-fb7b124372e3",
+          "planId": "019edb28-0022-7000-8000-000000000002",
+          "capabilityId": "7558247f-4bdc-5f5e-b911-cad0720aa5dd",
+          "targetStrengthRung": null,
+          "targetCoverageBucket": "L3"
+        },
+        {
+          "id": "01a139e7-8604-73db-b981-fb7c644b7644",
+          "planId": "019edb28-0022-7000-8000-000000000002",
+          "capabilityId": "7924f5d0-3449-5bc5-8eee-5877de2bea49",
+          "targetStrengthRung": null,
+          "targetCoverageBucket": "L3"
+        }
+      ],
+      "organization": {
+        "id": "2938b146-a565-4468-baa4-568acd4c92af",
+        "name": "Acme Bank Europe"
+      },
+      "owner": {
+        "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+        "name": "Bob Johnson"
+      },
+      "totalAleReduction": 9050.863635499412,
+      "expired": false,
+      "pricedAt": "2026-10-14T10:13:55.071Z",
+      "costYear1": 235000,
+      "returnPercent": -96.14856866574493
+    },
+    {
+      "id": "019edb28-0022-7000-8000-000000000001",
+      "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Harden identity controls",
+      "status": "active",
+      "ownerId": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+      "startDate": "2026-09-14",
+      "endDate": "2027-03-13",
+      "rationale": "The identity path carries the two scenarios with the largest exposure, and the controls on it are declared one rung below the rest of the estate.",
+      "costOneOff": 180000,
+      "costRecurringAnnual": 60000,
+      "promisedAleReduction": 2020003.9726167568,
+      "promisedAt": "2026-09-14T10:13:56.862Z",
+      "scopeVersion": 1,
+      "createdAt": "2026-08-15T10:13:56.862Z",
+      "updatedAt": "2026-08-15T10:13:56.862Z",
+      "moves": [
+        {
+          "id": "01a139e7-85ff-7406-94be-8e2e3f2819d9",
+          "planId": "019edb28-0022-7000-8000-000000000001",
+          "capabilityId": "2237b190-876e-56dc-b16a-6d379d93793d",
+          "targetStrengthRung": "L2",
+          "targetCoverageBucket": null
+        },
+        {
+          "id": "01a139e7-85ff-7406-94be-8e2f87b6ed05",
+          "planId": "019edb28-0022-7000-8000-000000000001",
+          "capabilityId": "4ba8d96e-77f1-5ac3-8823-24163bf40065",
+          "targetStrengthRung": "L3",
+          "targetCoverageBucket": null
+        },
+        {
+          "id": "01a139e7-85ff-7406-94be-8e30feebc720",
+          "planId": "019edb28-0022-7000-8000-000000000001",
+          "capabilityId": "4c5d8d76-763f-5b20-8b5c-fe80d72682eb",
+          "targetStrengthRung": "L3",
+          "targetCoverageBucket": null
+        }
+      ],
+      "organization": {
+        "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+        "name": "Acme Bank"
+      },
+      "owner": {
+        "id": "2458d396-3e4e-45b6-aea6-ff92b1b54154",
+        "name": "Alice Martin"
+      },
+      "totalAleReduction": 2020003.9726167568,
+      "expired": false,
+      "pricedAt": "2026-10-14T10:13:55.071Z",
+      "costYear1": 240000,
+      "returnPercent": 741.6683219236487
+    }
+  ]
+}

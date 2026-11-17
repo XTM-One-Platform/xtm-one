@@ -1,0 +1,293 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the deck theme on a Mermaid flowchart > draws flowchart LR A-->|x|B-->|y|C-->|z|D in the dark scheme 1`] = `
+{
+  "nodes": [
+    {
+      "id": "A-0",
+      "label": "A",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "B-1",
+      "label": "B",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "C-2",
+      "label": "C",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "D-3",
+      "label": "D",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+  ],
+  "pills": [
+    {
+      "height": "12",
+      "label": "x",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+    {
+      "height": "12",
+      "label": "y",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+    {
+      "height": "12",
+      "label": "z",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+  ],
+  "theme": {
+    "geometry": {
+      "pillPaddingX": 14,
+      "pillPaddingY": 4,
+      "radius": 12,
+    },
+    "themeCSS": ".node .label, .cluster-label { font-family: "Geologica", system-ui, sans-serif; }
+.node .label tspan[font-weight="normal"], .cluster-label tspan[font-weight="normal"] { font-weight: 600; }
+.node rect, .node circle, .node ellipse, .node polygon, .node path { stroke-width: 2px; }
+.flowchart-link { stroke-width: 2px; }
+.edgeLabel .label text { font-size: 20px; }
+.edgeLabel tspan[font-weight="normal"] { font-weight: 500; }
+.edgeLabel rect { opacity: 1; fill: #070d18; stroke: #afb0b6; stroke-width: 2px; }
+.marker { fill: #0fbcff; stroke: #0fbcff; }
+.marker.cross { stroke: #0fbcff; }",
+    "themeVariables": {
+      "actorBkg": "#070d18",
+      "actorBorder": "#0fbcff",
+      "actorTextColor": "#f2f2f3",
+      "arrowheadColor": "#0fbcff",
+      "background": "#070d18",
+      "clusterBkg": "#070d18",
+      "clusterBorder": "#afb0b6",
+      "darkMode": true,
+      "edgeLabelBackground": "#070d18",
+      "fontFamily": ""IBM Plex Sans", system-ui, sans-serif",
+      "fontSize": "26px",
+      "labelBoxBkgColor": "#070d18",
+      "labelBoxBorderColor": "#0fbcff",
+      "labelTextColor": "#f2f2f3",
+      "lineColor": "#afb0b6",
+      "mainBkg": "#070d18",
+      "nodeBorder": "#afb0b6",
+      "noteBkgColor": "#070d18",
+      "noteBorderColor": "#afb0b6",
+      "noteTextColor": "#f2f2f3",
+      "pie1": "#0fbcff",
+      "pie2": "#42caff",
+      "pie3": "#17ab1f",
+      "pie4": "#e6700f",
+      "pie5": "#f14337",
+      "pie6": "#afb0b6",
+      "pieLegendTextColor": "#f2f2f3",
+      "pieOuterStrokeColor": "#070d18",
+      "pieSectionTextColor": "#f2f2f3",
+      "pieStrokeColor": "#070d18",
+      "pieTitleTextColor": "#f2f2f3",
+      "primaryBorderColor": "#0fbcff",
+      "primaryColor": "#070d18",
+      "primaryTextColor": "#f2f2f3",
+      "secondaryBorderColor": "#afb0b6",
+      "secondaryColor": "#070d18",
+      "secondaryTextColor": "#f2f2f3",
+      "signalColor": "#f2f2f3",
+      "signalTextColor": "#f2f2f3",
+      "tertiaryBorderColor": "#afb0b6",
+      "tertiaryColor": "#070d18",
+      "tertiaryTextColor": "#f2f2f3",
+      "textColor": "#f2f2f3",
+      "titleColor": "#f2f2f3",
+    },
+  },
+}
+`;
+
+exports[`the deck theme on a Mermaid flowchart > draws flowchart LR A-->|x|B-->|y|C-->|z|D in the light scheme 1`] = `
+{
+  "nodes": [
+    {
+      "id": "A-0",
+      "label": "A",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "B-1",
+      "label": "B",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "C-2",
+      "label": "C",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+    {
+      "id": "D-3",
+      "label": "D",
+      "rect": {
+        "height": "30",
+        "rx": "12",
+        "ry": "12",
+        "width": "60",
+        "x": "-30",
+        "y": "-15",
+      },
+    },
+  ],
+  "pills": [
+    {
+      "height": "12",
+      "label": "x",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+    {
+      "height": "12",
+      "label": "y",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+    {
+      "height": "12",
+      "label": "z",
+      "rx": "6",
+      "ry": "6",
+      "width": "32",
+      "x": "-16",
+      "y": "-6",
+    },
+  ],
+  "theme": {
+    "geometry": {
+      "pillPaddingX": 14,
+      "pillPaddingY": 4,
+      "radius": 12,
+    },
+    "themeCSS": ".node .label, .cluster-label { font-family: "Geologica", system-ui, sans-serif; }
+.node .label tspan[font-weight="normal"], .cluster-label tspan[font-weight="normal"] { font-weight: 600; }
+.node rect, .node circle, .node ellipse, .node polygon, .node path { stroke-width: 2px; }
+.flowchart-link { stroke-width: 2px; }
+.edgeLabel .label text { font-size: 20px; }
+.edgeLabel tspan[font-weight="normal"] { font-weight: 500; }
+.edgeLabel rect { opacity: 1; fill: #f4f4f6; stroke: #494a50; stroke-width: 2px; }
+.marker { fill: #0015a8; stroke: #0015a8; }
+.marker.cross { stroke: #0015a8; }",
+    "themeVariables": {
+      "actorBkg": "#f4f4f6",
+      "actorBorder": "#0015a8",
+      "actorTextColor": "#18191b",
+      "arrowheadColor": "#0015a8",
+      "background": "#ffffff",
+      "clusterBkg": "#f4f4f6",
+      "clusterBorder": "#494a50",
+      "darkMode": false,
+      "edgeLabelBackground": "#f4f4f6",
+      "fontFamily": ""IBM Plex Sans", system-ui, sans-serif",
+      "fontSize": "26px",
+      "labelBoxBkgColor": "#f4f4f6",
+      "labelBoxBorderColor": "#0015a8",
+      "labelTextColor": "#18191b",
+      "lineColor": "#494a50",
+      "mainBkg": "#f4f4f6",
+      "nodeBorder": "#494a50",
+      "noteBkgColor": "#f4f4f6",
+      "noteBorderColor": "#494a50",
+      "noteTextColor": "#18191b",
+      "pie1": "#0015a8",
+      "pie2": "#0015a8",
+      "pie3": "#117916",
+      "pie4": "#b8550a",
+      "pie5": "#b8180a",
+      "pie6": "#494a50",
+      "pieLegendTextColor": "#18191b",
+      "pieOuterStrokeColor": "#ffffff",
+      "pieSectionTextColor": "#18191b",
+      "pieStrokeColor": "#ffffff",
+      "pieTitleTextColor": "#18191b",
+      "primaryBorderColor": "#0015a8",
+      "primaryColor": "#f4f4f6",
+      "primaryTextColor": "#18191b",
+      "secondaryBorderColor": "#494a50",
+      "secondaryColor": "#f4f4f6",
+      "secondaryTextColor": "#18191b",
+      "signalColor": "#18191b",
+      "signalTextColor": "#18191b",
+      "tertiaryBorderColor": "#494a50",
+      "tertiaryColor": "#f4f4f6",
+      "tertiaryTextColor": "#18191b",
+      "textColor": "#18191b",
+      "titleColor": "#18191b",
+    },
+  },
+}
+`;

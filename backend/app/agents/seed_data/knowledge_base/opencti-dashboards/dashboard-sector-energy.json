@@ -1,0 +1,1818 @@
+{
+  "name": "[Sector] Energy",
+  "description": "Sector-focused dashboard for the Energy industry, showing threat actors, malware, attack patterns, vulnerabilities, and geographic threat origins.",
+  "openCTI_version": "6.4.11",
+  "type": "dashboard",
+  "manifest": {
+    "widgets": {
+      "1c74469f-07fd-4b90-97b1-258ec990e44a": {
+        "id": "1c74469f-07fd-4b90-97b1-258ec990e44a",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "## Please note that for this dashboard to populate correctly, it is HIGHLY recommended that you enable the \"OpenCTI Dataset\" connector.\n### This dashboard and its widgets can be reconfigured to track threats targeting a different sector by replacing *Energy* with any other sector available in your instance.\n**NOTE:** The *Relative time*, *Start date* and *End date* drop menus at the top of the screen can be used to adjust the time filters for all following widgets."
+        },
+        "layout": {
+          "w": 12,
+          "h": 3,
+          "x": 0,
+          "y": 0,
+          "i": "1c74469f-07fd-4b90-97b1-258ec990e44a",
+          "moved": false,
+          "static": false
+        }
+      },
+      "ace4968a-1622-41fd-9e7a-170f49b70251": {
+        "id": "ace4968a-1622-41fd-9e7a-170f49b70251",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Threat Reports"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 0,
+          "y": 5,
+          "i": "ace4968a-1622-41fd-9e7a-170f49b70251",
+          "moved": false,
+          "static": false
+        }
+      },
+      "de231ba3-1ee9-41d5-9931-70a01e041491": {
+        "id": "de231ba3-1ee9-41d5-9931-70a01e041491",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Threat Actors & Intrusion Sets"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 2,
+          "y": 5,
+          "i": "de231ba3-1ee9-41d5-9931-70a01e041491",
+          "moved": false,
+          "static": false
+        }
+      },
+      "5c4c0882-09d5-4ff7-bb13-4dca232b5f35": {
+        "id": "5c4c0882-09d5-4ff7-bb13-4dca232b5f35",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Campaign"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Campaigns"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 4,
+          "y": 5,
+          "i": "5c4c0882-09d5-4ff7-bb13-4dca232b5f35",
+          "moved": false,
+          "static": false
+        }
+      },
+      "cb63da7a-080d-4101-95e8-be5d249136f4": {
+        "id": "cb63da7a-080d-4101-95e8-be5d249136f4",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": false,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "fromTypes"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toId"
+                  ],
+                  "values": [
+                    "identity--283d4ea0-b6f1-5421-bdab-117a33fdb2b7"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 Threat Actors & Intrusion Sets"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 0,
+          "y": 17,
+          "i": "cb63da7a-080d-4101-95e8-be5d249136f4",
+          "moved": false,
+          "static": false
+        }
+      },
+      "0ca142e3-87ea-4de7-9741-341bee8989fa": {
+        "id": "0ca142e3-87ea-4de7-9741-341bee8989fa",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "uses"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--283d4ea0-b6f1-5421-bdab-117a33fdb2b7"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "number": 20
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 malware"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 3,
+          "y": 17,
+          "i": "0ca142e3-87ea-4de7-9741-341bee8989fa",
+          "moved": false,
+          "static": false
+        }
+      },
+      "a70137b9-24ad-4d92-affb-44561c7bebc5": {
+        "id": "a70137b9-24ad-4d92-affb-44561c7bebc5",
+        "type": "map",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "originates-from",
+                    "located-at"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "elementWithTargetTypes"
+                  ],
+                  "values": [
+                    "Country"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 100,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "zoom": "2"
+          }
+        ],
+        "parameters": {
+          "title": "locations and origins of threats"
+        },
+        "layout": {
+          "w": 6,
+          "h": 6,
+          "x": 0,
+          "y": 9,
+          "i": "a70137b9-24ad-4d92-affb-44561c7bebc5",
+          "moved": false,
+          "static": false
+        }
+      },
+      "76f778af-9308-42de-846b-2c9f1d98d6aa": {
+        "id": "76f778af-9308-42de-846b-2c9f1d98d6aa",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "uses"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Attack-Pattern"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--283d4ea0-b6f1-5421-bdab-117a33fdb2b7"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 Attack Patterns"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 6,
+          "y": 17,
+          "i": "76f778af-9308-42de-846b-2c9f1d98d6aa",
+          "moved": false,
+          "static": false
+        }
+      },
+      "df3755f2-5caf-493e-afa3-03963076dbf6": {
+        "id": "df3755f2-5caf-493e-afa3-03963076dbf6",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Vulnerability"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Campaign",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--283d4ea0-b6f1-5421-bdab-117a33fdb2b7"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 20 vulnerabilities"
+        },
+        "layout": {
+          "w": 3,
+          "h": 6,
+          "x": 9,
+          "y": 17,
+          "i": "df3755f2-5caf-493e-afa3-03963076dbf6",
+          "moved": false,
+          "static": false
+        }
+      },
+      "0793fea3-4961-497b-b9d7-638232449e4f": {
+        "id": "0793fea3-4961-497b-b9d7-638232449e4f",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "creator_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "objects"
+                  ],
+                  "values": [
+                    "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Reports per creator"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 0,
+          "y": 25,
+          "i": "0793fea3-4961-497b-b9d7-638232449e4f",
+          "moved": false,
+          "static": false
+        }
+      },
+      "6fb74dad-7e17-4671-a729-a0f7967e0895": {
+        "id": "6fb74dad-7e17-4671-a729-a0f7967e0895",
+        "type": "line",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "indicates"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Timeline of indicator imports",
+          "legend": true,
+          "interval": "week"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 0,
+          "y": 32,
+          "i": "6fb74dad-7e17-4671-a729-a0f7967e0895",
+          "moved": false,
+          "static": false
+        }
+      },
+      "147afa42-1a4a-44db-a58c-de6bfc0d9508": {
+        "id": "147afa42-1a4a-44db-a58c-de6bfc0d9508",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Malware"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 6,
+          "y": 5,
+          "i": "147afa42-1a4a-44db-a58c-de6bfc0d9508",
+          "moved": false,
+          "static": false
+        }
+      },
+      "df6c44c2-4155-49e6-aeae-1160abdfb8ca": {
+        "id": "df6c44c2-4155-49e6-aeae-1160abdfb8ca",
+        "type": "number",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "fromTypes"
+                  ],
+                  "values": [
+                    "Indicator"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Indicators of Compromise"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 8,
+          "y": 5,
+          "i": "df6c44c2-4155-49e6-aeae-1160abdfb8ca",
+          "moved": false,
+          "static": false
+        }
+      },
+      "d26b75bd-0a2d-498b-b36a-6b76a426a2eb": {
+        "id": "d26b75bd-0a2d-498b-b36a-6b76a426a2eb",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Map* widgets illustrate the countries where Threat Actors targeting the Energy sector are *located at* and where Intrusion Sets targeting the Energy sector *originate from*."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 0,
+          "y": 7,
+          "i": "d26b75bd-0a2d-498b-b36a-6b76a426a2eb",
+          "moved": false,
+          "static": false
+        }
+      },
+      "53852872-f839-4755-bd51-22a2800312d6": {
+        "id": "53852872-f839-4755-bd51-22a2800312d6",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Number* widgets illustrate the amount of relationships that exist between the Energy sector entity and all other entities that exist in your OpenCTI instance."
+        },
+        "layout": {
+          "w": 12,
+          "h": 2,
+          "x": 0,
+          "y": 3,
+          "i": "53852872-f839-4755-bd51-22a2800312d6",
+          "moved": false,
+          "static": false
+        }
+      },
+      "b2382e5e-f01f-47b7-a5da-4338d6369ad7": {
+        "id": "b2382e5e-f01f-47b7-a5da-4338d6369ad7",
+        "type": "map",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "elementWithTargetTypes"
+                  ],
+                  "values": [
+                    "Country"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Individual",
+                    "Threat-Actor-Group",
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 100,
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "zoom": "2"
+          }
+        ],
+        "parameters": {
+          "title": "Targets of threats"
+        },
+        "layout": {
+          "w": 6,
+          "h": 6,
+          "x": 6,
+          "y": 9,
+          "i": "b2382e5e-f01f-47b7-a5da-4338d6369ad7",
+          "moved": false,
+          "static": false
+        }
+      },
+      "a8096e53-6a96-49c6-8a61-98e5f7f09bde": {
+        "id": "a8096e53-6a96-49c6-8a61-98e5f7f09bde",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Map* widget illustrates the countries that Threat Actors targeting the Energy sector are *targeting* and that Intrusion Sets targeting the Energy sector are *targeting*."
+        },
+        "layout": {
+          "w": 6,
+          "h": 2,
+          "x": 6,
+          "y": 7,
+          "i": "a8096e53-6a96-49c6-8a61-98e5f7f09bde",
+          "moved": false,
+          "static": false
+        }
+      },
+      "aa0f053e-67e2-4e47-9e0e-e7e870329f81": {
+        "id": "aa0f053e-67e2-4e47-9e0e-e7e870329f81",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Horizontal bar* widgets illustrate the specific entities that have the most relationships with the Energy sector. Each widget represents a category of entity type.\n#### Horizontal bar widgets are interactive - clicking on an entity will take you to its details page."
+        },
+        "layout": {
+          "w": 12,
+          "h": 2,
+          "x": 0,
+          "y": 15,
+          "i": "aa0f053e-67e2-4e47-9e0e-e7e870329f81",
+          "moved": false,
+          "static": false
+        }
+      },
+      "dc1916a9-60f3-4153-a387-de83ff9e9caa": {
+        "id": "dc1916a9-60f3-4153-a387-de83ff9e9caa",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Line* widgets illustrate over time the volume of entities created or updated that have a relationship with the Energy sector."
+        },
+        "layout": {
+          "w": 12,
+          "h": 2,
+          "x": 0,
+          "y": 30,
+          "i": "dc1916a9-60f3-4153-a387-de83ff9e9caa",
+          "moved": false,
+          "static": false
+        }
+      },
+      "4f34a0c0-21c9-4575-be9c-bd484ba3056a": {
+        "id": "4f34a0c0-21c9-4575-be9c-bd484ba3056a",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "creator_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Malware per creator"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 3,
+          "y": 25,
+          "i": "4f34a0c0-21c9-4575-be9c-bd484ba3056a",
+          "moved": false,
+          "static": false
+        }
+      },
+      "4528b8e9-6c83-48ae-b02e-b7554a289887": {
+        "id": "4528b8e9-6c83-48ae-b02e-b7554a289887",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "creator_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Threat Actors per creator"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 6,
+          "y": 25,
+          "i": "4528b8e9-6c83-48ae-b02e-b7554a289887",
+          "moved": false,
+          "static": false
+        }
+      },
+      "169b8948-62a8-40b5-a1ef-37a892a6e60e": {
+        "id": "169b8948-62a8-40b5-a1ef-37a892a6e60e",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "creator_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "number": 20,
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Intrusion Sets per creator"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 9,
+          "y": 25,
+          "i": "169b8948-62a8-40b5-a1ef-37a892a6e60e",
+          "moved": false,
+          "static": false
+        }
+      },
+      "b1f7e329-b30e-4e1e-a3b4-900c1f57aca7": {
+        "id": "b1f7e329-b30e-4e1e-a3b4-900c1f57aca7",
+        "type": "number",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "toTypes"
+                  ],
+                  "values": [
+                    "Vulnerability"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Vulnerabilities"
+        },
+        "layout": {
+          "w": 2,
+          "h": 2,
+          "x": 10,
+          "y": 5,
+          "i": "b1f7e329-b30e-4e1e-a3b4-900c1f57aca7",
+          "moved": false,
+          "static": false
+        }
+      },
+      "33d2a3f2-7d57-4a7d-8300-e31bc3d37c93": {
+        "id": "33d2a3f2-7d57-4a7d-8300-e31bc3d37c93",
+        "type": "text",
+        "perspective": null,
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": null,
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "content": "### The below *Donut* widgets illustrate the specific Creators that have imported entities related to the Energy sector along with their percentage of contribution."
+        },
+        "layout": {
+          "w": 12,
+          "h": 2,
+          "x": 0,
+          "y": 23,
+          "i": "33d2a3f2-7d57-4a7d-8300-e31bc3d37c93",
+          "moved": false,
+          "static": false
+        }
+      },
+      "abf24665-2e5e-4c65-99d9-b54e8e145f9f": {
+        "id": "abf24665-2e5e-4c65-99d9-b54e8e145f9f",
+        "type": "line",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "updated_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "sort_by": "modified",
+            "number": 20
+          }
+        ],
+        "parameters": {
+          "title": "Timeline of malware updates",
+          "legend": true,
+          "interval": "week"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 3,
+          "y": 32,
+          "i": "abf24665-2e5e-4c65-99d9-b54e8e145f9f",
+          "moved": false,
+          "static": false
+        }
+      },
+      "89dd7953-a5ad-43e7-a1e0-0942a8d47c7b": {
+        "id": "89dd7953-a5ad-43e7-a1e0-0942a8d47c7b",
+        "type": "line",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Timeline of Threat Actor Updates",
+          "legend": true,
+          "interval": "week"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 6,
+          "y": 32,
+          "i": "89dd7953-a5ad-43e7-a1e0-0942a8d47c7b",
+          "moved": false,
+          "static": false
+        }
+      },
+      "396f65e2-9740-48c5-8d74-346a94f6aeb4": {
+        "id": "396f65e2-9740-48c5-8d74-346a94f6aeb4",
+        "type": "line",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Intrusion-Set"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                },
+                {
+                  "key": [
+                    "regardingOf"
+                  ],
+                  "values": [
+                    {
+                      "key": "id",
+                      "values": [
+                        "identity--166544e2-ba1f-5a6c-89cf-a63d0c01e91c"
+                      ]
+                    }
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Timeline of Intrusion Set Updates",
+          "legend": true,
+          "interval": "week"
+        },
+        "layout": {
+          "w": 3,
+          "h": 5,
+          "x": 9,
+          "y": 32,
+          "i": "396f65e2-9740-48c5-8d74-346a94f6aeb4",
+          "moved": false,
+          "static": false
+        }
+      }
+    },
+    "config": {
+      "relativeDate": null,
+      "startDate": null,
+      "endDate": null
+    }
+  }
+}

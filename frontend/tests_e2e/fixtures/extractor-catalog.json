@@ -1,0 +1,76 @@
+{
+  "failure_reasons": [
+    "family_incompatible",
+    "label_invalid",
+    "limit_exceeded",
+    "payload_unparseable",
+    "selection_empty",
+    "source_not_present",
+    "type_mismatch"
+  ],
+  "operations": [
+    {
+      "accepts": "text",
+      "op": "find_json",
+      "produces": "text"
+    },
+    {
+      "accepts": "text",
+      "op": "parse_json",
+      "produces": null
+    },
+    {
+      "accepts": "object",
+      "op": "select_path",
+      "produces": null
+    },
+    {
+      "accepts": "object",
+      "op": "object_keys",
+      "produces": "array"
+    },
+    {
+      "accepts": "object",
+      "op": "object_values",
+      "produces": "array"
+    },
+    {
+      "accepts": "array",
+      "op": "collect_keys",
+      "produces": "array"
+    },
+    {
+      "accepts": "array",
+      "op": "flatten",
+      "produces": "array"
+    },
+    {
+      "accepts": "array",
+      "op": "dedupe_sort",
+      "produces": "label_set"
+    }
+  ],
+  "output_kinds": [
+    "object",
+    "array",
+    "label_set"
+  ],
+  "path_operations": [
+    "collect_keys",
+    "select_path"
+  ],
+  "source_kinds": [
+    "agent_output",
+    "tool_output",
+    "tool_input"
+  ],
+  "supported_output_kinds": {
+    "CLASSIFICATION": [
+      "label_set"
+    ],
+    "STRUCTURED_JSON": [
+      "array",
+      "object"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+# Build context of the relay image (apps/relay/Dockerfile): the relay and the
+# crate it links, nothing else.
+*
+!agent-core/
+!relay/
+agent-core/target
+relay/target
+relay/dist

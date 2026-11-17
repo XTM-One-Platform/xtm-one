@@ -1,0 +1,447 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/* ── Speaker view + notes handout ─────────────────────────────────────
+
+   The presenter's surfaces: the speaker WINDOW (`/presentations/:id/speaker`),
+   read at arm's length on a laptop while the deck is on the room's screen, and
+   the notes HANDOUT (`/presentations/:id/notes`), read on paper. Both draw the
+   slides through `SlidePreview` — the export's own `StaticSlide` canvas scaled
+   onto a box — so the preview is the slide, not a screenshot of it.
+
+   Loaded alongside `presentation.css` (which the previews need); nothing here
+   styles the deck itself. Colours come from the app tokens (dark shell) so the
+   speaker window matches the product, with the type sizes of a screen that is
+   glanced at, not read: large notes, a large clock, quiet everything else. */
+
+/* ── Slide preview (shared) ─────────────────────────────────────────────────── */
+
+/* The frame is what gets measured: the width of its column (`fit="width"`,
+   the box's height follows the format) or its whole box (`fit="contain"`, the
+   slide letterboxed and centred inside). */
+.slide-preview-frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.slide-preview-frame[data-fit="contain"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* The box is the scaled size (set inline from the measurement) and the 1920px
+   canvas inside is transformed onto it. The `.deck-root` on-screen sizing
+   (fill + clip) is overridden: the theme tokens are all this root borrows. */
+.deck-root.slide-preview {
+  flex: none;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--deck-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--deck-fg) 12%, transparent);
+}
+
+.deck-root.slide-preview > .deck-static-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--preview-scale, 0));
+  transform-origin: top left;
+  /* A preview is read, not paged: the print break rules of the export canvas
+     would otherwise start a new sheet after every thumbnail in the handout. */
+  break-after: auto;
+}
+
+/* ── Speaker window ─────────────────────────────────────────────────────────── */
+
+.speaker-root {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  overflow: hidden;
+  /* Slightly deeper than the app shell: a presenter's second screen is often
+     the brightest thing in a dark room. */
+  background: color-mix(in srgb, var(--bg-elevation-default) 92%, black);
+  color: var(--text-default-primary);
+}
+
+.speaker-main {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(300px, 3fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 20px;
+  min-height: 0;
+  padding: 0 20px 16px;
+}
+
+/* Narrow window (a floating panel next to the deck): one column, the current
+   slide and the notes first, the clock and the next slide under them. */
+@media (max-width: 820px) {
+  .speaker-main {
+    grid-template-columns: minmax(0, 1fr);
+    /* Rows take their content's height and stack from the top. The container
+       has a definite height (the shell's middle row), so `auto` rows would be
+       STRETCHED to equal shares of it and the two columns, taller than their
+       share, would overflow into each other. */
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  /* The side column becomes a row under the notes: the clock first (glanced
+     at far more often than the next slide), the next slide beside it, small
+     enough that the notes keep the floor. */
+  .speaker-column.speaker-side {
+    display: grid;
+    grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);
+    align-items: start;
+  }
+
+  .speaker-timer {
+    order: 1;
+  }
+
+  .speaker-next {
+    order: 2;
+  }
+}
+
+/* Very narrow (a phone, or a sliver of a screen): everything in one column. */
+@media (max-width: 560px) {
+  .speaker-column.speaker-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.speaker-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The current slide is capped so the notes keep the floor: at 5/8 of the
+   window width a 16:9 box would otherwise eat the height. The preview fits
+   INSIDE this box (`fit="contain"`), letterboxed when the column is narrow. */
+.speaker-current {
+  flex: none;
+  height: 46vh;
+  min-height: 160px;
+}
+
+@media (max-width: 820px) {
+  /* One column: the current slide keeps a fixed, smaller box (contain-fit
+     needs a height to fit into) and the notes scroll under it. */
+  .speaker-current {
+    height: 36vh;
+  }
+
+  .speaker-notes-well {
+    flex: none;
+    max-height: 50vh;
+  }
+}
+
+/* The next slide sits at the top of the side column, its box the column width. */
+.speaker-next {
+  flex: none;
+}
+
+/* Notes: the reason the window exists. A scrolling well that takes every pixel
+   the current slide leaves, in large type the presenter sets once (`+` / `-`),
+   with the deck's own inline markup rendered rather than shown. */
+.speaker-notes-well {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 18px 22px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevation-default) 60%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-elevation-subtle) calc(0.6 * 100%), transparent);
+  /* Keeps the wheel and the arrows apart: scrolling the notes never turns a
+     slide, turning a slide never scrolls the notes. */
+  overscroll-behavior: contain;
+}
+
+/* `--notes-scale` is set on the well by the window (the presenter's `+` / `-`)
+   and inherited here, so the whole block re-flows at once. */
+.speaker-notes {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: calc(22px * var(--notes-scale, 1));
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text-default-primary) calc(0.94 * 100%), transparent);
+  word-break: break-word;
+}
+
+.speaker-notes > * + * {
+  margin-top: 0.75em;
+}
+
+.speaker-notes p {
+  margin: 0;
+}
+
+.speaker-notes ul,
+.speaker-notes ol {
+  margin: 0;
+  padding-left: 1.3em;
+}
+
+.speaker-notes ul {
+  list-style: disc;
+}
+
+.speaker-notes ol {
+  list-style: decimal;
+}
+
+.speaker-notes li + li {
+  margin-top: 0.3em;
+}
+
+.speaker-notes li::marker {
+  color: var(--color-accent);
+}
+
+.speaker-notes strong {
+  font-weight: 600;
+  color: var(--text-default-primary);
+}
+
+.speaker-notes code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.88em;
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-elevation-highlight) calc(0.6 * 100%), transparent);
+}
+
+.speaker-notes-empty {
+  color: var(--text-default-secondary);
+  font-style: italic;
+}
+
+/* The clock and the stopwatch: tabular so the digits do not jitter, the
+   stopwatch the biggest number on the screen. */
+.speaker-clock,
+.speaker-stopwatch {
+  font-family: "Geologica", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.speaker-stopwatch {
+  font-size: clamp(36px, 5.2vw, 56px);
+  font-weight: 300;
+}
+
+.speaker-stopwatch[data-paused="true"] {
+  color: var(--text-default-secondary);
+}
+
+.speaker-clock {
+  font-size: 22px;
+  font-weight: 300;
+}
+
+/* Pace bar: elapsed against the plan, the plan's slide boundaries ticked. */
+.speaker-pace-track {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevation-highlight) calc(0.5 * 100%), transparent);
+}
+
+.speaker-pace-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+  transition: width 0.4s linear;
+}
+
+.speaker-pace-fill[data-state="behind"] {
+  background: hsl(var(--warning));
+}
+
+.speaker-pace-fill[data-state="over"] {
+  background: var(--color-feedback-error-primary);
+}
+
+/* Where the presenter SHOULD be: the current slide's planned window on the
+   same track — on pace while the fill's edge sits inside it. */
+.speaker-pace-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  background: color-mix(in srgb, var(--text-default-primary) calc(0.22 * 100%), transparent);
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--text-default-primary) calc(0.7 * 100%), transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--text-default-primary) calc(0.7 * 100%), transparent);
+}
+
+/* Blackout: the room sees nothing; the presenter is told so, over the slide.
+   Literal black and white on purpose: the overlay shows what the room's screen
+   shows, and a black screen is black under every theme. */
+.speaker-blackout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.86);
+  color: white;
+  font-family: "Geologica", system-ui, sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Notes handout ──────────────────────────────────────────────────────────── */
+
+/* One row per slide: the thumbnail on the left, the notes on the right, the
+   slide number and title above. Paper-first (the page is opened to be printed),
+   so the type is print type and the surface is white in print. The paper
+   palette is literal on purpose — paper is white whatever the app theme, so
+   the `@media print` block below cannot use the theme's tokens — and it is
+   declared once, here, as the only hardcoded colours of this file. */
+.handout-root {
+  --handout-ink: #18191b;
+  --handout-muted: #5a5c63;
+  --handout-line: #d9dbe1;
+  --handout-code-bg: #f0f1f4;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 40px 64px;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.handout-title {
+  font-family: "Geologica", system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.handout-meta {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-default-secondary);
+}
+
+.handout-list {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+/* The thumbnail column is the SAME width on screen and on paper: the preview
+   scales from its measured width, and a print pass is not guaranteed to run
+   the resize observer again before the page is rasterised. */
+.handout-row {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border-elevation-subtle);
+  break-inside: avoid;
+}
+
+.handout-row-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-default-secondary);
+}
+
+.handout-row-head strong {
+  font-family: "Geologica", system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-default-primary);
+}
+
+.handout-row .speaker-notes {
+  font-size: 15px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--text-default-primary) calc(0.92 * 100%), transparent);
+}
+
+.handout-row .speaker-notes-empty {
+  font-size: 14px;
+}
+
+@media print {
+  .handout-root {
+    max-width: none;
+    padding: 0;
+    color: var(--handout-ink);
+  }
+
+  .handout-toolbar {
+    display: none;
+  }
+
+  .handout-meta,
+  .handout-row-head {
+    color: var(--handout-muted);
+  }
+
+  .handout-row-head strong,
+  .handout-row .speaker-notes,
+  .handout-row .speaker-notes strong {
+    color: var(--handout-ink);
+  }
+
+  .handout-row .speaker-notes-empty {
+    color: var(--handout-muted);
+  }
+
+  .handout-row {
+    border-top-color: var(--handout-line);
+    gap: 20px;
+    padding: 16px 0;
+  }
+
+  .handout-row .speaker-notes li::marker {
+    color: var(--handout-ink);
+  }
+
+  .handout-row .speaker-notes code {
+    background: var(--handout-code-bg);
+  }
+
+  .deck-root.slide-preview {
+    box-shadow: 0 0 0 1px var(--handout-line);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* No `@page` rule here on purpose: it cannot be scoped, this stylesheet stays
+   loaded once a speaker or handout page has been visited, and the deck's own
+   print paths (`PresentationStaticRender`, `?print-pdf`) set theirs. The
+   browser's default margins print the handout fine. */

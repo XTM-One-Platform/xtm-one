@@ -1,0 +1,76 @@
+{
+  "entries": [
+    {
+      "text": "Filigran",
+      "say": "Fil-i-gran",
+      "ipa": "ˈfɪlɪɡræn",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: English reading with even stress, no accented syllable; the last syllable rhymes with 'ran'. Never 'Philly Grand', 'Filigree', 'Filigrain' or 'Filigron'."
+    },
+    {
+      "text": "CTEM",
+      "say": "see-tem",
+      "ipa": "siːtɛm",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: two syllables, no stress. Never letter by letter, never 'stem', never 'kem'."
+    },
+    {
+      "text": "XTM",
+      "say": "X-T-M",
+      "ipa": "ˌɛksˌtiːˈɛm",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: letter by letter, said as one word with no pause between the letters."
+    },
+    {
+      "text": "XTM One",
+      "say": "X-T-M One",
+      "ipa": "ˌɛksˌtiːˈɛm ˈwʌn",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: the compound reads as XTM alone does, then 'One'; heard as one word, no pause."
+    },
+    {
+      "text": "XTM Hub",
+      "say": "X-T-M Hub",
+      "ipa": "ˌɛksˌtiːˈɛm ˈhʌb",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: the compound reads as XTM alone does."
+    },
+    {
+      "text": "OpenCTI",
+      "say": "Open C-T-I",
+      "ipa": "ˈoʊpən ˌsiːˌtiːˈaɪ",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner."
+    },
+    {
+      "text": "OpenAEV",
+      "say": "Open A-E-V",
+      "ipa": "ˈoʊpən ˌeɪˌiːˈviː",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner."
+    },
+    {
+      "text": "OpenCRQ",
+      "say": "Open C-R-Q",
+      "ipa": "ˈoʊpən ˌsiːˌɑːrˈkjuː",
+      "match": "word",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner."
+    },
+    {
+      "text": "THREAD",
+      "say": "thread",
+      "ipa": "θrɛd",
+      "match": "case_insensitive",
+      "apply_to": "voice",
+      "note": "Confirmed by the brand owner: the English word 'thread'; it only changes the reading where it is written in capitals."
+    }
+  ]
+}

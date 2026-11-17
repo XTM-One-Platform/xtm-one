@@ -1,0 +1,631 @@
+[
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a Horizontal Bar chart that displaying Incident Response Case (Case-Incident entity in OpenCTI) breakdown per type of responses (attribute response_types)",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44a",
+            "type": "horizontal-bar",
+            "perspective": "entities",
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "attribute": "response_types",
+                    "date_attribute": "created_at",
+                    "perspective": "entities",
+                    "isTo": true,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "values":
+                                [
+                                    "Case-Incident"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    }
+                }
+            ],
+            "parameters":
+            {
+                "title": "New Incidents by type"
+            },
+            "layout":
+            {
+                "w": 4,
+                "h": 4,
+                "x": 8,
+                "y": 5,
+                "i": "9a2cba85-03fc-49b3-a2c3-e11c8893c384",
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a Donut chart that displaying Incident Response Case (Case-Incident entity in OpenCTI) breakdown per severity (attribute severity)",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44b",
+            "type": "donut",
+            "perspective": "entities",
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "attribute": "severity",
+                    "date_attribute": "created_at",
+                    "perspective": "entities",
+                    "isTo": true,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "values":
+                                [
+                                    "Case-Incident"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "number": 100
+                }
+            ],
+            "parameters":
+            {
+                "title": "New Incidents by Severity"
+            },
+            "layout":
+            {
+                "w": 4,
+                "h": 4,
+                "x": 0,
+                "y": 5,
+                "i": "ba52090a-199f-48b3-ae70-2b08ba94ddc6",
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a Tree chart that displaying Labels (object-label.internal_id) associated to Reports (Report entity in OpenCTI)",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44c",
+            "type": "tree",
+            "perspective": "entities",
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "attribute": "object-label.internal_id",
+                    "date_attribute": "created_at",
+                    "perspective": "entities",
+                    "isTo": false,
+                    "number": 15,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "operator": "eq",
+                                "values":
+                                [
+                                    "Report"
+                                ],
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    }
+                }
+            ],
+            "parameters":
+            {
+                "title": "Rapports par label",
+                "distributed": true
+            },
+            "layout":
+            {
+                "w": 6,
+                "h": 4,
+                "x": 0,
+                "y": 6,
+                "i": "b1a2c3d4-0005-4000-b000-000000000005",
+                "minW": 2,
+                "minH": 2,
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a List chart widget that displaying lastest/recent reports. The widget list reports with the following columns: Name, Report Type, Original creation date, Platform creation date, Modification date, Created By, Creators, Worfkow Status, Labels, Marking",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44d",
+            "type": "list",
+            "perspective": "entities",
+            "parameters":
+            {
+                "title": "Latest Reports"
+            },
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "number": 25,
+                    "sort_by": "created_at",
+                    "sort_mode": "desc",
+                    "attribute": "entity_type",
+                    "date_attribute": "created_at",
+                    "perspective": "entities",
+                    "isTo": true,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "operator": "eq",
+                                "values":
+                                [
+                                    "Report"
+                                ],
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "columns":
+                    [
+                        {
+                            "attribute": "name",
+                            "label": "Name"
+                        },
+                        {
+                            "attribute": "report_types",
+                            "label": "Report type"
+                        },
+                        {
+                            "attribute": "created",
+                            "label": "Original creation date"
+                        },
+                        {
+                            "attribute": "created_at",
+                            "label": "Platform creation date"
+                        },
+                        {
+                            "attribute": "modified",
+                            "label": "Modification date"
+                        },
+                        {
+                            "attribute": "createdBy"
+                        },
+                        {
+                            "attribute": "creators",
+                            "label": "Creators"
+                        },
+                        {
+                            "attribute": "x_opencti_workflow_id"
+                        },
+                        {
+                            "attribute": "objectLabel"
+                        },
+                        {
+                            "attribute": "objectMarking"
+                        }
+                    ]
+                }
+            ],
+            "layout":
+            {
+                "w": 6,
+                "h": 8,
+                "x": 0,
+                "y": 16,
+                "i": "f74cc301-5a95-4e39-93f0-f204e1251c66",
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a Horizontal Bar chart that displaying sectors targeted by APT43 IntrusionSet.",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44e",
+            "type": "horizontal-bar",
+            "perspective": "relationships",
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "attribute": "internal_id",
+                    "date_attribute": "created_at",
+                    "perspective": "relationships",
+                    "isTo": true,
+                    "number": 10,
+                    "centerLat": null,
+                    "centerLng": null,
+                    "zoom": null,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "relationship_type"
+                                ],
+                                "values":
+                                [
+                                    "targets"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "values":
+                                [
+                                    "Intrusion-Set"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            },
+                            {
+                                "key":
+                                [
+                                    "name"
+                                ],
+                                "values":
+                                [
+                                    "APT43"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "entity_type"
+                                ],
+                                "values":
+                                [
+                                    "Sector"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    }
+                }
+            ],
+            "parameters":
+            {
+                "title": "Targeted Sectors by APT43",
+                "interval": "year",
+                "stacked": false,
+                "legend": false,
+                "distributed": true
+            },
+            "layout":
+            {
+                "w": 6,
+                "h": 4,
+                "x": 0,
+                "y": 0,
+                "i": "d4e5f6a7-1b2c-4d3e-8f9a-5b6c7d8e9f01",
+                "minW": 2,
+                "minH": 2,
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a distribution list graph displaying the software most affected by vulnerabilities (software 'has' vulnerabilities)",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44h",
+            "type": "distribution-list",
+            "perspective": "relationships",
+            "parameters":
+            {
+                "title": "Affected software "
+            },
+            "dataSelection":
+            [
+                {
+                    "label": "",
+                    "number": 10,
+                    "sort_by": "created_at",
+                    "sort_mode": "asc",
+                    "attribute": "internal_id",
+                    "date_attribute": "created_at",
+                    "perspective": "relationships",
+                    "isTo": false,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "fromTypes"
+                                ],
+                                "operator": "eq",
+                                "values":
+                                [
+                                    "Software"
+                                ],
+                                "mode": "or"
+                            },
+                            {
+                                "key":
+                                [
+                                    "relationship_type"
+                                ],
+                                "operator": "eq",
+                                "values":
+                                [
+                                    "has"
+                                ],
+                                "mode": "or"
+                            },
+                            {
+                                "key":
+                                [
+                                    "toTypes"
+                                ],
+                                "operator": "eq",
+                                "values":
+                                [
+                                    "Vulnerability"
+                                ],
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "columns":
+                    []
+                }
+            ],
+            "layout":
+            {
+                "w": 4,
+                "h": 4,
+                "x": 8,
+                "y": 12,
+                "i": "e10fa540-ea8a-4ef1-ae38-2541c79d0ff9",
+                "moved": false,
+                "static": false
+            }
+        }
+    },
+    {
+        "openCTI_version": "7.260227.0",
+        "type": "widget",
+        "description": "This widget is a horizontal bar chart displaying the top 20 exploited vulnerabilities",
+        "raw_configuration":
+        {
+            "id": "1c74469f-07fd-4b90-97b1-258ec990e44i",
+            "type": "horizontal-bar",
+            "perspective": "relationships",
+            "dataSelection":
+            [
+                {
+                    "label": "Vulnerability",
+                    "attribute": "internal_id",
+                    "date_attribute": "created_at",
+                    "perspective": "relationships",
+                    "isTo": true,
+                    "filters":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [
+                            {
+                                "key":
+                                [
+                                    "toTypes"
+                                ],
+                                "values":
+                                [
+                                    "Vulnerability"
+                                ],
+                                "operator": "eq",
+                                "mode": "or"
+                            }
+                        ],
+                        "filterGroups":
+                        []
+                    },
+                    "number": 20,
+                    "dynamicFrom":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    },
+                    "dynamicTo":
+                    {
+                        "mode": "and",
+                        "filters":
+                        [],
+                        "filterGroups":
+                        []
+                    }
+                }
+            ],
+            "parameters":
+            {
+                "title": "The top 20 exploited vulnerabilities"
+            },
+            "layout":
+            {
+                "w": 3,
+                "h": 6,
+                "x": 6,
+                "y": 2,
+                "i": "18b6bb77-75c1-4bd2-bb28-bd57080fe4c6",
+                "moved": false,
+                "static": false
+            }
+        }
+    }
+]

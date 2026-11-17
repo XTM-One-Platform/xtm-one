@@ -1,0 +1,516 @@
+{
+  "name": "Global - Default Dashboard",
+  "description": "Global default dashboard with overall platform statistics: total entities, relationships, reports, observables, top labels, active entities, and targeted countries.",
+  "openCTI_version": "6.5.2",
+  "type": "dashboard",
+  "manifest": {
+    "widgets": {
+      "0689182f-3c14-4dc9-8cf7-3baa6fb0af0b": {
+        "id": "0689182f-3c14-4dc9-8cf7-3baa6fb0af0b",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total entities"
+        },
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 0,
+          "y": 0,
+          "i": "0689182f-3c14-4dc9-8cf7-3baa6fb0af0b",
+          "moved": false,
+          "static": false
+        }
+      },
+      "8aa9a2be-e895-40f7-b3c4-89cf31b624d3": {
+        "id": "8aa9a2be-e895-40f7-b3c4-89cf31b624d3",
+        "type": "number",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total relationships"
+        },
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 3,
+          "y": 0,
+          "i": "8aa9a2be-e895-40f7-b3c4-89cf31b624d3",
+          "moved": false,
+          "static": false
+        }
+      },
+      "4e8cf606-4441-4be7-b9b1-ca41f4d1aec5": {
+        "id": "4e8cf606-4441-4be7-b9b1-ca41f4d1aec5",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total reports"
+        },
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 6,
+          "y": 0,
+          "i": "4e8cf606-4441-4be7-b9b1-ca41f4d1aec5",
+          "moved": false,
+          "static": false
+        }
+      },
+      "1c72dcb9-05ac-47e1-9890-5dccc4487859": {
+        "id": "1c72dcb9-05ac-47e1-9890-5dccc4487859",
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Cyber-Observable"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {},
+        "layout": {
+          "w": 3,
+          "h": 2,
+          "x": 9,
+          "y": 0,
+          "i": "1c72dcb9-05ac-47e1-9890-5dccc4487859",
+          "moved": false,
+          "static": false
+        }
+      },
+      "86f0e0a4-9089-4bc4-98cc-e6cdf6bc9490": {
+        "id": "86f0e0a4-9089-4bc4-98cc-e6cdf6bc9490",
+        "type": "area",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Ingested entities",
+          "interval": "week",
+          "stacked": true
+        },
+        "layout": {
+          "w": 8,
+          "h": 6,
+          "x": 4,
+          "y": 2,
+          "i": "86f0e0a4-9089-4bc4-98cc-e6cdf6bc9490",
+          "moved": false,
+          "static": false
+        }
+      },
+      "9c2c19cc-dfd8-47a4-b762-21f6f84a3696": {
+        "id": "9c2c19cc-dfd8-47a4-b762-21f6f84a3696",
+        "type": "tree",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "object-label.internal_id",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Domain-Object",
+                    "Language"
+                  ],
+                  "operator": "not_eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "number": 9
+          }
+        ],
+        "parameters": {
+          "distributed": true,
+          "title": "Top labels"
+        },
+        "layout": {
+          "w": 4,
+          "h": 6,
+          "x": 0,
+          "y": 2,
+          "i": "9c2c19cc-dfd8-47a4-b762-21f6f84a3696",
+          "moved": false,
+          "static": false
+        }
+      },
+      "e8a096f8-fe91-4d74-bc46-5be7c3545b3f": {
+        "id": "e8a096f8-fe91-4d74-bc46-5be7c3545b3f",
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": false,
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 10 active entities"
+        },
+        "layout": {
+          "w": 6,
+          "h": 7,
+          "x": 0,
+          "y": 8,
+          "i": "e8a096f8-fe91-4d74-bc46-5be7c3545b3f",
+          "moved": false,
+          "static": false
+        }
+      },
+      "bc11b958-d6ff-4dac-a5e0-dd5adfdbbb41": {
+        "id": "bc11b958-d6ff-4dac-a5e0-dd5adfdbbb41",
+        "type": "map",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "perspective": "relationships",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Country"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Targeted countries"
+        },
+        "layout": {
+          "w": 6,
+          "h": 7,
+          "x": 6,
+          "y": 8,
+          "i": "bc11b958-d6ff-4dac-a5e0-dd5adfdbbb41",
+          "moved": false,
+          "static": false
+        }
+      },
+      "f3695cc8-762f-47fe-9a79-406dfd33fd2e": {
+        "id": "f3695cc8-762f-47fe-9a79-406dfd33fd2e",
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Cyber-Observable"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Obsrvables distribution"
+        },
+        "layout": {
+          "w": 4,
+          "h": 7,
+          "x": 8,
+          "y": 15,
+          "i": "f3695cc8-762f-47fe-9a79-406dfd33fd2e",
+          "moved": false,
+          "static": false
+        }
+      },
+      "ee8b4f93-7d0e-4eeb-aa74-72ec8a8f1bcb": {
+        "id": "ee8b4f93-7d0e-4eeb-aa74-72ec8a8f1bcb",
+        "type": "list",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "perspective": "entities",
+            "isTo": true,
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "number": 8
+          }
+        ],
+        "parameters": {
+          "title": "Last ingested reports"
+        },
+        "layout": {
+          "w": 8,
+          "h": 7,
+          "x": 0,
+          "y": 15,
+          "i": "ee8b4f93-7d0e-4eeb-aa74-72ec8a8f1bcb",
+          "moved": false,
+          "static": false
+        }
+      }
+    },
+    "config": {}
+  }
+}

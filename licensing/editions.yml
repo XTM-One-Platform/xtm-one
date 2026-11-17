@@ -1,0 +1,769 @@
+# Which source files belong to the XTM One Enterprise Edition (EE).
+#
+# The rule (#5493): everything agentic is EE, Knowledge Bases included; the
+# modules of the Platform MCP Servers (/mcp/opencti, /mcp/openaev, /mcp/opencrq)
+# stay Community Edition (CE), although they import EE files at run time. A file matched by no `ee` glob is CE,
+# as LICENSE states ("If no such header is provided, this means that the file
+# is belonging to the Community Edition").
+#
+# Globs are relative to the repository root, `**` spans directories. A file is
+# EE when an `ee` glob matches it and no `except` glob does. Each EE source file
+# (.py, .ts, .tsx, .js, .mjs, .rs, .css, .sh, .ps1) not matched by `no_header` carries the header that
+# `backend/scripts/license_headers.py` builds from the "XTM One Enterprise
+# Edition License" section of LICENSE; a `<dir>/**` glob with no `except` entry
+# under it also gets `<dir>/copyright.md`, which covers the files a comment
+# cannot mark (manifests, data, assets). A `third_party` file is
+# neither EE nor CE: it keeps the license of its owner, and the `copyright.md`
+# of its directory names it. A package manifest under an `ee` glob declares the
+# EE license (`LicenseRef-XTM-One-Enterprise-Edition`).
+#
+# Contract: dev-docs/reference/editions.md.
+
+ee:
+  # --- Backend: agentic packages ---------------------------------------------
+  - backend/app/a2a/**
+  - backend/app/agents/**
+  - backend/app/channels/**
+  - backend/app/evaluation_metrics/**
+  - backend/app/evaluations/**
+  - backend/app/services/browser_profiles/**
+  - backend/app/services/evaluation/**
+  - backend/app/services/platform_insights/**
+  - backend/app/services/sandbox_workspace/**
+  - backend/app/services/video_studio/**
+  - backend/app/tools/**
+
+  # --- Backend: agentic services ---------------------------------------------
+  - backend/app/services/agent_*.py
+  - backend/app/services/agent_accounts/**
+  - backend/app/services/agentschema/**
+  - backend/app/services/ai_hold.py
+  - backend/app/services/ai_metrics_collector.py
+  - backend/app/services/annotations.py
+  - backend/app/services/assignment_*.py
+  - backend/app/services/autonomous.py
+  - backend/app/services/autonomous_pentest.py
+  - backend/app/services/browser_tool.py
+  - backend/app/services/builtin_tools/**
+  - backend/app/services/channel_continuation.py
+  - backend/app/services/channel_notices.py
+  - backend/app/services/chat_*.py
+  - backend/app/services/chat_commands/**
+  - backend/app/services/code_interpreter.py
+  - backend/app/services/concierge/**
+  - backend/app/services/content_safety.py
+  - backend/app/services/context_usage.py
+  - backend/app/services/custom_tool_*.py
+  - backend/app/services/dashboard_interop/**
+  - backend/app/services/dashboard_live/**
+  - backend/app/services/dashboard_platform/**
+  - backend/app/services/deep_investigation_chat.py
+  - backend/app/services/default_model_routes.py
+  - backend/app/services/delegation.py
+  - backend/app/services/document_processor.py
+  - backend/app/services/evaluation_*.py
+  - backend/app/services/feedback_criteria.py
+  - backend/app/services/flow_*.py
+  - backend/app/services/general_assistant_link.py
+  - backend/app/services/general_chat.py
+  - backend/app/services/handover_types.py
+  - backend/app/services/hitl_*.py
+  - backend/app/services/improvement_proposals/**
+  - backend/app/services/in_process_runs.py
+  - backend/app/services/investigation*.py
+  - backend/app/services/kb_*.py
+  - backend/app/services/langfuse_tracing.py
+  - backend/app/services/leaked_reasoning.py
+  - backend/app/services/learning.py
+  - backend/app/services/mcp_config_import.py
+  - backend/app/services/mcp_packages/**
+  - backend/app/services/memory_*.py
+  - backend/app/services/mention_dispatch.py
+  - backend/app/services/nova_*.py
+  - backend/app/services/orchestration_*.py
+  - backend/app/services/orchestration_adapters/**
+  - backend/app/services/output_format.py
+  - backend/app/services/output_schema_validation.py
+  - backend/app/services/panic.py
+  - backend/app/services/parent_wake.py
+  - backend/app/services/persistent_memory.py
+  - backend/app/services/persona_improvement.py
+  - backend/app/services/platform_chat_extras.py
+  - backend/app/services/pptx_writer.py
+  - backend/app/services/presentation*.py
+  - backend/app/services/prompt_budget.py
+  - backend/app/services/prompt_guard.py
+  - backend/app/services/prompt_guards.py
+  - backend/app/services/prompt_versioning.py
+  - backend/app/services/reaction_feedback.py
+  - backend/app/services/relay_transport.py
+  - backend/app/services/relays.py
+  - backend/app/services/report_*.py
+  - backend/app/services/reports.py
+  - backend/app/services/resource_exposure.py
+  - backend/app/services/routing_evaluator.py
+  - backend/app/services/runner_*.py
+  - backend/app/services/runners.py
+  - backend/app/services/scheduled_work_item*.py
+  - backend/app/services/roi*.py
+  - backend/app/services/shared_state*.py
+  - backend/app/services/skill_*.py
+  - backend/app/services/structured_output.py
+  - backend/app/services/sub_agent*.py
+  - backend/app/services/template_*.py
+  - backend/app/services/tool_*.py
+  - backend/app/services/trace_*.py
+  - backend/app/services/tracing/**
+  - backend/app/services/user_memory*.py
+  - backend/app/services/variable_resolver.py
+  - backend/app/services/web_search.py
+  - backend/app/services/widget_*.py
+  - backend/app/services/work_item.py
+  - backend/app/services/workset*.py
+
+  # Agent runs, their triggers and their delivery.
+  - backend/app/services/action_register.py
+  - backend/app/services/budget_policy.py
+  - backend/app/services/desktop_*.py
+  - backend/app/services/element_scope.py
+  - backend/app/services/event_poller.py
+  - backend/app/services/failure_causes.py
+  - backend/app/services/github_echo.py
+  - backend/app/services/message_context.py
+  - backend/app/services/notify.py
+  - backend/app/services/segment_finalize.py
+  - backend/app/services/slack_events.py
+  - backend/app/services/trigger_integration_access.py
+
+  # --- Backend: agentic API routers and schemas -------------------------------
+  - backend/app/api/v1/a2a_*.py
+  - backend/app/api/v1/agent_*.py
+  - backend/app/api/v1/agents.py
+  - backend/app/api/v1/ai_adoption.py
+  - backend/app/api/v1/annotations.py
+  - backend/app/api/v1/assignments.py
+  - backend/app/api/v1/browser_profiles.py
+  - backend/app/api/v1/channel_bots.py
+  - backend/app/api/v1/custom_tool_sources.py
+  - backend/app/api/v1/custom_tools.py
+  - backend/app/api/v1/datasets.py
+  - backend/app/api/v1/desktop_login.py
+  - backend/app/api/v1/feedback_criteria.py
+  - backend/app/api/v1/flow_*.py
+  - backend/app/api/v1/flows.py
+  - backend/app/api/v1/hitl_whitelist.py
+  - backend/app/api/v1/investigation*.py
+  - backend/app/api/v1/knowledge_bases.py
+  - backend/app/api/v1/learning.py
+  - backend/app/api/v1/mcp_endpoint.py
+  - backend/app/api/v1/mcp_servers.py
+  - backend/app/api/v1/mcp_xtm.py
+  - backend/app/api/v1/nova_rules.py
+  - backend/app/api/v1/panic.py
+  - backend/app/api/v1/improvement_proposals.py
+  - backend/app/api/v1/platform_chat_workspaces.py
+  - backend/app/api/v1/presentation*.py
+  - backend/app/api/v1/prompts.py
+  - backend/app/api/v1/public_catalog.py
+  - backend/app/api/v1/public_chat.py
+  - backend/app/api/v1/relays.py
+  - backend/app/api/v1/reports.py
+  - backend/app/api/v1/resource_exposure.py
+  - backend/app/api/v1/runners.py
+  - backend/app/api/v1/shared_state.py
+  - backend/app/api/v1/tasks.py
+  - backend/app/api/v1/template_containers.py
+  - backend/app/api/v1/tool_approvals.py
+  - backend/app/api/v1/traces.py
+  - backend/app/api/v1/variables.py
+  - backend/app/api/v1/work_items.py
+  - backend/app/api/v1/worksets.py
+  - backend/app/api/v1/ai.py
+  - backend/app/api/v1/binding_access.py
+  - backend/app/api/v1/extension.py
+  - backend/app/api/v1/webhooks.py
+  - backend/app/api/v1/schemas/agent*.py
+  - backend/app/api/v1/schemas/assignment.py
+  - backend/app/api/v1/schemas/browser_profiles.py
+  - backend/app/api/v1/schemas/channel_bot.py
+  - backend/app/api/v1/schemas/custom_tool.py
+  - backend/app/api/v1/schemas/dataset.py
+  - backend/app/api/v1/schemas/evaluation.py
+  - backend/app/api/v1/schemas/exposure.py
+  - backend/app/api/v1/schemas/flow.py
+  - backend/app/api/v1/schemas/investigation*.py
+  - backend/app/api/v1/schemas/knowledge_base.py
+  - backend/app/api/v1/schemas/mcp_server.py
+  - backend/app/api/v1/schemas/nova_rule.py
+  - backend/app/api/v1/schemas/presentation.py
+  - backend/app/api/v1/schemas/prompt.py
+  - backend/app/api/v1/schemas/report.py
+  - backend/app/api/v1/schemas/template_container.py
+  - backend/app/api/v1/schemas/traces.py
+  - backend/app/api/v1/schemas/video_studio.py
+  - backend/app/api/v1/video_public.py
+  - backend/app/api/v1/video_studio.py
+
+  # --- Frontend: agentic pages --------------------------------------------------
+  - frontend/src/pages/Agent*.tsx
+  - frontend/src/pages/Agent*.commands.ts
+  - frontend/src/pages/Agents.*
+  - frontend/src/pages/AiAdoption.tsx
+  - frontend/src/pages/ApproveByToolDialog.tsx
+  - frontend/src/pages/AssignmentDetail.tsx
+  - frontend/src/pages/BackgroundTasks.tsx
+  - frontend/src/pages/BrowserProfiles.*
+  - frontend/src/pages/Chat.*
+  - frontend/src/pages/CustomTool*
+  - frontend/src/pages/Dataset*
+  - frontend/src/pages/Desktop.tsx
+  - frontend/src/pages/Evaluation*
+  - frontend/src/pages/Fleets.tsx
+  - frontend/src/pages/Flows.*
+  - frontend/src/pages/InvestigationPack*
+  - frontend/src/pages/KnowledgeBase*
+  - frontend/src/pages/KnowledgeDocuments.tsx
+  - frontend/src/pages/MCPServer*
+  - frontend/src/pages/NewAgent*.tsx
+  - frontend/src/pages/NewEvaluation.tsx
+  - frontend/src/pages/NewKnowledgeBase.tsx
+  - frontend/src/pages/NewTemplate.tsx
+  - frontend/src/pages/Presentation*.tsx
+  - frontend/src/pages/Prompt*
+  - frontend/src/pages/Relay*
+  - frontend/src/pages/Report*.tsx
+  - frontend/src/pages/RunDetail.tsx
+  - frontend/src/pages/RunnerDetail.tsx
+  - frontend/src/pages/Skill*
+  - frontend/src/pages/TaskHistory.tsx
+  - frontend/src/pages/Template*
+  - frontend/src/pages/Trace*
+  - frontend/src/pages/Variables.*
+  - frontend/src/pages/VideoEditor.tsx
+  - frontend/src/pages/VideoFigureStaticRender.tsx
+  - frontend/src/pages/VideoPublic.tsx
+  - frontend/src/pages/VideoStudio.tsx
+  - frontend/src/pages/Work.tsx
+  - frontend/src/pages/agent-detail/**
+  - frontend/src/pages/ai-adoption/**
+  - frontend/src/pages/assignment-detail/**
+  - frontend/src/pages/background-tasks/**
+  - frontend/src/pages/chat/**
+  - frontend/src/pages/custom-tool-detail/**
+  - frontend/src/pages/desktop/**
+  - frontend/src/pages/flow-builder/**
+  - frontend/src/pages/flows/**
+  - frontend/src/pages/knowledge-base-detail/**
+  - frontend/src/pages/mcp-server-detail/**
+  - frontend/src/pages/new-agent-wizard/**
+  - frontend/src/pages/prompt-detail/**
+  - frontend/src/pages/relay-group-detail/**
+  - frontend/src/pages/skill-detail/**
+  - frontend/src/pages/template-detail/**
+
+  # --- Frontend: agentic components and hooks -----------------------------------
+  - frontend/src/components/browser-profiles/**
+  - frontend/src/components/budget/**
+  - frontend/src/components/chat/**
+  - frontend/src/components/companion/**  # to confirm (product)
+  - frontend/src/components/concierge/**
+  - frontend/src/components/custom-dashboard/**
+  - frontend/src/components/desktop/**
+  - frontend/src/components/evaluation/**
+  - frontend/src/components/fleets/**
+  - frontend/src/components/investigation/**
+  - frontend/src/components/memory/**
+  - frontend/src/components/presentation/**
+  - frontend/src/components/report/**
+  - frontend/src/components/roi/**
+  - frontend/src/components/runs/**
+  - frontend/src/components/studio/**
+  - frontend/src/components/traces/**
+  - frontend/src/components/video-studio/**
+  - frontend/src/components/work-items/**
+  - frontend/src/hooks/api/useA2A*.ts
+  - frontend/src/hooks/api/useAgent*.ts
+  - frontend/src/hooks/api/useAiAdoptionApi.ts
+  - frontend/src/hooks/api/useAnnotationApi.ts
+  - frontend/src/hooks/api/useAssignmentApi.ts
+  - frontend/src/hooks/api/useBrowserProfilesApi.ts
+  - frontend/src/hooks/api/useChannelBotApi.ts
+  - frontend/src/hooks/api/useChat*.ts
+  - frontend/src/hooks/api/useCustomToolApi.ts
+  - frontend/src/hooks/api/useCustomToolSourceApi.ts
+  - frontend/src/hooks/api/useDatasetApi.ts
+  - frontend/src/hooks/api/useDesktopLoginApi.ts
+  - frontend/src/hooks/api/useEvaluationApi.ts
+  - frontend/src/hooks/api/useFeedbackCriteriaApi.ts
+  - frontend/src/hooks/api/useFlowApi.ts
+  - frontend/src/hooks/api/useHitlWhitelist.ts
+  - frontend/src/hooks/api/useInvestigation*.ts
+  - frontend/src/hooks/api/useKnowledgeBaseApi.ts
+  - frontend/src/hooks/api/useMCPServerApi.ts
+  - frontend/src/hooks/api/useNovaRuleApi.ts
+  - frontend/src/hooks/api/usePanicApi.ts
+  - frontend/src/hooks/api/usePersonaImprovementApi.ts
+  - frontend/src/hooks/api/usePresentationApi.ts
+  - frontend/src/hooks/api/usePromptApi.ts
+  - frontend/src/hooks/api/usePublicCatalogApi.ts
+  - frontend/src/hooks/api/useRelayApi.ts
+  - frontend/src/hooks/api/useReportApi.ts
+  - frontend/src/hooks/api/useRoi*.ts
+  - frontend/src/hooks/api/useRunnerApi.ts
+  - frontend/src/hooks/api/useSharedStateApi.ts
+  - frontend/src/hooks/api/useSkillApi.ts
+  - frontend/src/hooks/api/useTemplateContainerApi.ts
+  - frontend/src/hooks/api/useToolApprovals.ts
+  - frontend/src/hooks/api/useTraceApi.ts
+  - frontend/src/hooks/api/useVariableApi.ts
+  - frontend/src/hooks/api/useVideoStudioApi.ts
+  - frontend/src/hooks/api/useWorkItemApi.ts
+  - frontend/src/hooks/api/useWorksetApi.ts
+
+  # --- Frontend: agentic parts of shared screens, components, hooks and lib ------
+  - frontend/src/pages/public/**
+  - frontend/src/pages/tools/**
+  - frontend/src/pages/profile/agent-accounts/**
+  - frontend/src/pages/profile/ToolApprovalsRow.tsx
+  - frontend/src/pages/settings/ChannelManagement.tsx
+  - frontend/src/pages/settings/EmergencyStopTokenSection.tsx
+  - frontend/src/pages/settings/FeedbackCriteriaSection.tsx
+  - frontend/src/pages/settings/GAHandoverPicker.tsx
+  - frontend/src/pages/settings/GeneralAssistantSection.tsx
+  - frontend/src/pages/settings/MemoryPurgeSection.tsx
+  - frontend/src/pages/settings/PlatformApprovalSection.tsx
+  - frontend/src/pages/settings/ToolApprovalsSection.tsx
+  - frontend/src/pages/integration-detail/A2A*.tsx
+  - frontend/src/pages/integration-detail/a2a-card-rows*.ts
+  - frontend/src/pages/integration-detail/EventTriggersCard.tsx
+  - frontend/src/pages/integration-detail/KBsUsingCard.tsx
+  - frontend/src/pages/integration-detail/NovaRulesTab.tsx
+  - frontend/src/pages/xtm-one/KBHealthWarnings.tsx
+  - frontend/src/components/auth/DesktopSignIn.tsx
+  - frontend/src/components/feedback/ReactionFeedbackSettings.tsx
+  - frontend/src/components/layout/Emergency*.tsx
+  - frontend/src/components/layout/ManualTriggerButton.tsx
+  - frontend/src/components/ui/agent-*.tsx
+  - frontend/src/components/ui/agents-using-card.tsx
+  - frontend/src/components/ui/delegation-flow-dialog.tsx
+  - frontend/src/components/ui/flow-*.tsx
+  - frontend/src/components/ui/hitl-icon.tsx
+  - frontend/src/components/ui/manual-trigger-dialog.tsx
+  - frontend/src/components/ui/mcp-import-dialog.tsx
+  - frontend/src/components/ui/missing-variables-banner.tsx
+  - frontend/src/components/ui/prompt-generator.tsx
+  - frontend/src/components/ui/relay-route-*.tsx
+  - frontend/src/components/ui/skill-bulk-import-dialog.tsx
+  - frontend/src/components/ui/template-gallery.tsx
+  - frontend/src/components/ui/tool-scope-dialog.tsx
+  - frontend/src/components/ui/tool-test-dialog.tsx
+  - frontend/src/components/ui/variable-insert-button.tsx
+  - frontend/src/components/ui/xtm-mcp-package-download.tsx
+  - frontend/src/hooks/api/useIntentApi.ts
+  - frontend/src/hooks/useBuiltinTools.ts
+  - frontend/src/hooks/useDesktop.ts
+  - frontend/src/hooks/useFavoriteAgents.ts
+  - frontend/src/hooks/useHitlWords.ts
+  - frontend/src/hooks/useTraceListPaging.ts
+  - frontend/src/lib/agent-flow-focus.ts
+  - frontend/src/lib/agent-summary.ts
+  - frontend/src/lib/channel-bindings.ts
+  - frontend/src/lib/coordination-access.ts
+  - frontend/src/lib/deck-revision.ts
+  - frontend/src/lib/desktop.ts
+  - frontend/src/lib/element-scope.ts
+  - frontend/src/lib/emergency-procedure.ts
+  - frontend/src/lib/emergency-stop.ts
+  - frontend/src/lib/event-matching.ts
+  - frontend/src/lib/failure-causes.ts
+  - frontend/src/lib/feedback-criteria.ts
+  - frontend/src/lib/flow-node-catalog.ts
+  - frontend/src/lib/general-assistant-stand-in.ts
+  - frontend/src/lib/held.ts
+  - frontend/src/lib/hitl.ts
+  - frontend/src/lib/hitl-approval.ts
+  - frontend/src/lib/manual-triggers.ts
+  - frontend/src/lib/persona-improvements.ts
+  - frontend/src/lib/public-deck.ts
+  - frontend/src/lib/public-video.ts
+  - frontend/src/lib/reaction-feedback.ts
+  - frontend/src/lib/relay-destinations.ts
+  - frontend/src/lib/relays.ts
+  - frontend/src/lib/roi-*.ts
+  - frontend/src/lib/scheduled-work-items.ts
+  - frontend/src/lib/skillPackage.ts
+  - frontend/src/lib/slack-events.ts
+  - frontend/src/lib/template-asset-preview.ts
+  - frontend/src/lib/trace-links.ts
+  - frontend/src/lib/trace-list-paging.ts
+  - frontend/src/lib/trace-utils.ts
+  - frontend/src/lib/trigger-context.ts
+  - frontend/src/pages/agent-detail/config/BrowserProfileSelectorCard.tsx
+  - frontend/src/pages/settings/VideoGenerationSection.tsx
+
+  # --- Agentic families found CE by the audit of 2026-11-12 (#5493) -----------
+  # Each prefix covers a whole family, so its next file is EE without a new entry.
+  # Backend: fleets, work items, runs and triggers
+  - backend/app/services/fleet*.py
+  - backend/app/services/work_item_*.py
+  - backend/app/services/run_*.py
+  - backend/app/services/handed_back_sweep.py
+  - backend/app/services/schedule_overlap.py
+  - backend/app/services/attempt_charges.py
+  - backend/app/services/wait_settings.py
+  - backend/app/services/frictions.py
+  - backend/app/services/background_checkpoint.py
+  - backend/app/services/consult_watchdog.py
+  - backend/app/services/company_managed_writes.py
+  - backend/app/services/coordination_scope.py
+  - backend/app/services/platform_event*.py
+  - backend/app/services/platform_timers.py
+  - backend/app/services/integration_event_filters.py
+  - backend/app/services/event_enrichment*.py
+  - backend/app/services/event_run_dedup.py
+  - backend/app/services/inbound_claims.py
+  - backend/app/services/ci_red_claims.py
+  - backend/app/services/mail_send_guard.py
+  - backend/app/services/organization_events.py
+  - backend/app/services/organization_run_cap.py
+  - backend/app/services/*trigger_provisioning.py
+  - backend/app/services/opencrq_job_events.py
+  - backend/app/services/graph_event_subscriptions.py
+  - backend/app/services/docusign_connect.py
+  - backend/app/services/access_requests.py
+  - backend/app/services/push_action_tokens.py
+  - backend/app/services/teams_chat_posts.py
+  - backend/app/services/slack_conversations.py
+  - backend/app/core/turn_writer.py
+  - backend/app/core/scopes.py
+  # Backend: chat turns and conversations
+  - backend/app/services/turn_checkpoint.py
+  - backend/app/services/interrupted_turn.py
+  - backend/app/services/cut_turn_resume.py
+  - backend/app/services/conversation_*.py
+  - backend/app/services/platform_chat_artifacts.py
+  - backend/app/api/v1/chat*.py
+  # Backend: tools, sandbox, knowledge, skills, evaluations, concierge
+  - backend/app/services/builtin_*.py
+  - backend/app/services/_sandbox_*.py
+  - backend/app/services/sandbox_*.py
+  - backend/app/services/check_files.py
+  - backend/app/services/general_assistant_skills.py
+  - backend/app/services/hybrid_search.py
+  - backend/app/services/vector.py
+  - backend/app/services/chunking.py
+  - backend/app/services/workspace_*.py
+  - backend/app/api/v1/workspace_knowledge.py
+  - backend/app/api/v1/fleet*.py
+  - backend/app/api/v1/schemas/fleet.py
+  - backend/app/api/v1/concierge*.py
+  - backend/app/api/v1/memory_consolidations.py
+  - backend/app/api/v1/evaluation*.py
+  - backend/app/api/v1/schemas/extension.py
+  - backend/app/llm/agent_model.py
+  - backend/app/integrations/node_registry.py
+  # Frontend: fleets, work items, concierge, agent graph
+  - frontend/src/hooks/api/useFleetApi.ts
+  - frontend/src/hooks/api/useConcierge*.ts
+  - frontend/src/hooks/api/useMemory*.ts
+  - frontend/src/hooks/useFleet*.ts
+  - frontend/src/hooks/useAgentDetailsDrawer.tsx
+  - frontend/src/hooks/useHandoverEdgeEditing.tsx
+  - frontend/src/hooks/usePersistedGraphView.ts
+  - frontend/src/hooks/useAnimatedLayout.ts
+  - frontend/src/hooks/useAutoResumeRecheck.ts
+  - frontend/src/hooks/useSpeechToText.ts
+  - frontend/src/hooks/useToolAgents.ts
+  - frontend/src/hooks/useRoutingModelLabel.ts
+  - frontend/src/hooks/useLibraryParams.ts
+  - frontend/src/lib/fleet-*.ts
+  - frontend/src/lib/agent-graph-*.ts
+  - frontend/src/lib/concierge*.ts
+  - frontend/src/lib/companion-chat-activity.ts
+  - frontend/src/lib/handover-*.ts
+  - frontend/src/lib/live-handovers.ts
+  - frontend/src/lib/map-view.ts
+  - frontend/src/lib/schedule-scope.ts
+  - frontend/src/lib/graph-utils.ts
+  - frontend/src/lib/markdown-summary.ts
+  # Frontend: chat, runs, triggers, tools, evaluations, skills
+  - frontend/src/lib/chat-*.ts
+  - frontend/src/lib/resumed-turn.ts
+  - frontend/src/lib/wait-items.ts
+  - frontend/src/lib/agentic-usage.ts
+  - frontend/src/lib/channel-text.ts
+  - frontend/src/lib/cut-turn-group.ts
+  - frontend/src/lib/session-tool-selection.ts
+  - frontend/src/lib/run-*.ts
+  - frontend/src/lib/runner-*.ts
+  - frontend/src/lib/local-paths.ts
+  - frontend/src/lib/platform-events.ts
+  - frontend/src/lib/event-filters.ts
+  - frontend/src/lib/builtin-*.ts
+  - frontend/src/lib/tool-*.ts
+  - frontend/src/lib/evaluation-*.ts
+  - frontend/src/lib/placebo.ts
+  - frontend/src/lib/extracted-prediction.ts
+  - frontend/src/lib/skill-content.ts
+  - frontend/src/components/ui/run-*.tsx
+  - frontend/src/components/ui/action-proposal.tsx
+  - frontend/src/components/ui/entity-activity-tab.tsx
+  - frontend/src/components/ui/schedule-*.tsx
+  - frontend/src/components/ui/upcoming-timeline.tsx
+  - frontend/src/components/ui/handover-type-popover.tsx
+  - frontend/src/components/ui/agent-flow-tooltip.ts
+  - frontend/src/components/ui/delegation-indent.tsx
+  - frontend/src/components/ui/emergency-stop-badge.tsx
+  - frontend/src/components/ui/held-badge.tsx
+  - frontend/src/components/ui/annotation-*.tsx
+  - frontend/src/components/ui/*family-badge.tsx
+  - frontend/src/components/ui/scope-enforcement-badge.tsx
+  - frontend/src/components/workspaces/knowledge/**
+  - frontend/src/components/workspaces/FleetWorkspaceChip.tsx
+  - frontend/src/components/workspaces/ManagedByWorkspaceBadge.tsx
+  - frontend/src/components/workspaces/WorkspaceHostedFleets.tsx
+  - frontend/src/components/workspaces/WorkspaceKnowledge*.tsx
+  - frontend/src/components/workspaces/WorkspaceOperations.tsx
+  - frontend/src/components/workspaces/WorkspaceTeam.tsx
+  # ROI of agentic work (product, 2026-11-12): EE as a whole, its tables stay CE with every model
+  - backend/app/api/v1/roi.py
+  - frontend/src/components/ui/outcome-review.tsx
+  - frontend/src/pages/settings/Roi*.tsx
+  - frontend/src/pages/settings/roi-*.ts
+  - frontend/src/pages/Value*.tsx
+  - frontend/src/pages/analytics/OutcomesTab.tsx
+  # Langfuse export of the traces (EE) beside the audit log retention: EE by precaution.
+  - frontend/src/pages/settings/ObservabilitySection.tsx
+  # Agent-built dashboards and "Draft with AI" (product, 2026-11-12). The home
+  # dashboards (CTEM command center, Copilot) stay CE: dashboard_layouts.py is in `except`.
+  - backend/app/services/custom_dashboard*.py
+  - backend/app/services/dashboard_*.py
+  - backend/app/api/v1/custom_dashboards.py
+  - backend/app/api/v1/dashboard_*.py
+  - backend/app/api/v1/schemas/custom_dashboard.py
+  - backend/app/services/organization_*_ai_draft.py
+  - backend/app/services/organization_context_proposals.py
+  - backend/app/services/organization_context_categories.py  # the organization context in each agent's prompt
+  - backend/app/services/organization_context_injection.py
+  - frontend/src/components/organization-context-*-select.tsx
+  - frontend/src/pages/settings/OrganizationContextInjectionCard.tsx
+  # Assets and exposure, prioritization policy and enterprise knowledge (#11543): the CTEM
+  # agents preload them and enterprise knowledge searches knowledge bases for agents.
+  - backend/app/services/organization_assets_import.py
+  - backend/app/services/organization_enterprise_knowledge.py
+  - frontend/src/pages/settings/OrganizationAssetsImportDialog.tsx
+  - frontend/src/pages/settings/OrganizationFillAgentDialog.tsx  # creates an agent and its schedule (#11888)
+  - frontend/src/pages/settings/OrganizationExposureCards.tsx
+  - frontend/src/hooks/api/useCustomDashboardApi.ts
+  - frontend/src/hooks/api/useWidgetPackApi.ts
+  - frontend/src/hooks/api/dashboard-access.ts
+  - frontend/src/lib/public-dashboard.ts
+  - frontend/src/lib/*ai-draft.ts
+  - frontend/src/pages/CustomDashboard*.tsx
+  - frontend/src/pages/DashboardPublic.tsx
+  - frontend/src/pages/DashboardStaticRender.tsx
+  - frontend/src/pages/DashboardStudio.tsx
+  - frontend/src/pages/WidgetPacks.tsx
+  - frontend/src/pages/settings/*AiDraft*.tsx
+  # Second review of the CE files, 2026-11-12: agentic files left CE by the first pass
+  - backend/app/api/v1/integration_github_webhooks.py
+  - backend/app/api/v1/integration_notifications.py
+  - backend/app/api/v1/intents.py
+  - backend/app/api/v1/llm_proxy.py
+  - backend/app/integrations/providers/openaev/autonomous.py
+  - backend/app/models/agent_copy.py
+  - backend/app/services/agentic_executions.py
+  - backend/app/services/integration_tools.py
+  - backend/app/services/mcp_oauth_tokens.py
+  - backend/app/services/openapi_import/builder_tools.py
+  - backend/app/services/provisioning.py
+  - backend/app/services/quota_exhausted_notice.py
+  - backend/app/services/rollout_counters.py
+  - backend/app/services/storage_purge.py
+  - backend/app/services/teams_link_cards.py
+  - frontend/src/components/ui/a2a-unavailable-notice.tsx
+  - frontend/src/components/ui/activity-empty-state.tsx
+  - frontend/src/components/ui/operations-list.tsx
+  - frontend/src/components/ui/owner-deactivated-notice.tsx
+  - frontend/src/hooks/api/useCtemFleetActivity.ts
+  - frontend/src/lib/ask-assistant.ts
+  - frontend/src/lib/ctem-fleet-*.ts
+  - frontend/src/lib/work-item-*.ts
+  - frontend/src/lib/workspace-hosted-fleets.ts
+  - frontend/src/lib/workset-collection*.ts
+  - frontend/src/lib/workspace-tabs.ts
+  - frontend/src/pages/ToolsAndIntegrations.tsx
+  - frontend/src/pages/analytics/top-agents.tsx
+  - frontend/src/pages/integration-detail/ToolsCard.tsx
+  - frontend/src/pages/profile/WaitingWorkItemsNotifyCard.tsx
+  - frontend/src/pages/settings/ScannedToolsField.tsx
+  - frontend/src/pages/settings/scanned-tools.ts
+  - frontend/src/pages/xtm-one/ModelConfigWarnings.tsx
+  - frontend/src/pages/xtm-one/ctem/BriefingCard.tsx
+  - frontend/src/types/traces.ts
+  # By precaution (EE can still become CE, never the other way): the channel bots agents
+  # speak through, and the post-processing of what an agent sends.
+  - backend/app/integrations/providers/*_bot.py
+  - backend/app/services/outbound_markers.py
+  - backend/app/services/integration_invalid_notice.py
+  # Added on main since the audit (2026-11-12)
+  - backend/app/services/jira_events.py
+  - backend/app/services/jira_webhooks.py
+  - backend/app/services/teams_late_reply.py
+  - backend/app/services/organization_onboarding.py
+  - frontend/src/components/chat-panel/**
+  - frontend/src/pages/chat-panel/**
+  - frontend/src/pages/ChatPanelPage.tsx
+  - frontend/src/hooks/api/usePresentationClicker.ts
+  - frontend/src/lib/organization-onboarding.ts
+  # Frontend: pages and settings
+  - frontend/src/pages/Concierge.tsx
+  - frontend/src/pages/Intents.tsx
+  - frontend/src/pages/PollVote.tsx
+  - frontend/src/pages/Operations.*
+  - frontend/src/pages/operations/**
+  - frontend/src/pages/WorkspaceProject.tsx
+  - frontend/src/pages/integration-detail/ActivityTab.tsx
+  - frontend/src/pages/profile/Concierge*.tsx
+  - frontend/src/pages/profile/MemoryConsolidations.tsx
+  - frontend/src/pages/settings/Concierge*.tsx
+  - frontend/src/pages/settings/concierge-block.tsx
+  - frontend/src/pages/settings/GeneralAssistantSkills.tsx
+  - frontend/src/pages/settings/ga-skills.ts
+  - frontend/src/pages/settings/ResourceToggleCard.tsx
+  - frontend/src/pages/settings/Fleet*.tsx
+  - frontend/src/pages/settings/MCPEndpointSection.tsx
+  - frontend/src/pages/settings/PronunciationLexiconSection.tsx
+  - frontend/src/pages/settings/RenderRetentionSection.tsx
+  - frontend/src/pages/settings/MusicGenerationSection.tsx
+  - frontend/src/pages/settings/AgentRunsSettings.tsx
+  - frontend/src/pages/settings/WorkspaceKnowledgeSettingsCard.tsx
+  - frontend/src/pages/xtm-one/ExposureBriefing.tsx
+  - frontend/src/pages/xtm-one/ctem/Ctem*Agents*.tsx
+  - frontend/src/pages/xtm-one/ctem/*Fleet*.tsx  # the fleet cards, the invite and the fleet chooser
+  - frontend/src/pages/xtm-one/ctem/ImplementWithAgent.tsx
+
+  # --- Apps: XTM One Desktop runner, Relay, Office add-in -----------------------
+  - apps/agent-core/**
+  - apps/microsoft-office/**
+  - apps/relay/**
+  - apps/runner/**
+  # Generates the Office add-in manifests.
+  - apps/generate-manifests.sh
+
+# Nothing becomes CE without a decision (#5493): a file matched by no `ee` glob
+# is CE, and CE cannot become EE once a version holds it under Apache. So each
+# directory is decided once: wholly EE (a `<dir>/**` glob above), wholly CE
+# (`ce`: every file under it, in its child directories too) or mixed (`mixed`).
+# In a mixed directory each source file is classified (an `ee` glob, or the CE
+# marker `SPDX-License-Identifier: Apache-2.0` on its first line) and each child
+# directory too (`ee`, `ce` or `mixed`). The trees the list covers are mixed. The tripwire fails on a new
+# directory or file that is not classified, on an entry that names nothing, and
+# on a `ce` directory that holds an EE file.
+mixed:
+  - apps
+  - backend/app
+  - backend/app/api
+  - backend/app/api/v1
+  - backend/app/api/v1/schemas
+  - backend/app/core
+  - backend/app/integrations  # to confirm (product): "to decide" in #5493
+  - backend/app/integrations/providers  # to confirm (product): "to decide" in #5493
+  - backend/app/integrations/providers/openaev
+  - backend/app/llm  # to confirm (product): "to decide" in #5493
+  - backend/app/models
+  - backend/app/services
+  - backend/app/services/openapi_import
+  - frontend/src
+  - frontend/src/components
+  - frontend/src/components/auth
+  - frontend/src/components/feedback
+  - frontend/src/components/layout
+  - frontend/src/components/ui
+  - frontend/src/components/workspaces
+  - frontend/src/hooks
+  - frontend/src/hooks/api
+  - frontend/src/lib
+  - frontend/src/pages
+  - frontend/src/pages/analytics
+  - frontend/src/pages/integration-detail
+  - frontend/src/pages/profile
+  - frontend/src/pages/settings
+  - frontend/src/pages/xtm-one
+  - frontend/src/pages/xtm-one/ctem
+  - frontend/src/types
+ce:
+  - backend/app/data
+  - backend/app/enterprise
+  - backend/app/integrations/providers/ashby  # a connector
+  - backend/app/integrations/providers/crowdsec  # a connector
+  - backend/app/integrations/providers/drata  # a connector
+  - backend/app/integrations/providers/entra  # a connector
+  - backend/app/integrations/providers/github  # a connector
+  - backend/app/integrations/providers/gti  # a connector
+  - backend/app/integrations/providers/intel471  # a connector
+  - backend/app/integrations/providers/jira  # a connector
+  - backend/app/integrations/providers/microsoft  # a connector
+  - backend/app/integrations/providers/notion  # a connector
+  - backend/app/integrations/providers/opencrq  # a connector
+  - backend/app/integrations/providers/opencti  # a connector
+  - backend/app/integrations/providers/ovhcloud  # a connector
+  - backend/app/integrations/providers/purview  # a connector
+  - backend/app/integrations/providers/recorded_future  # a connector
+  - backend/app/integrations/providers/servicenow  # a connector
+  - backend/app/integrations/providers/splunk  # a connector
+  - backend/app/integrations/providers/virustotal  # a connector
+  - backend/app/services/vault
+  - backend/app/static
+  - frontend/src/assets
+  - frontend/src/components/api-keys
+  - frontend/src/components/arcade
+  - frontend/src/components/audit-logs
+  - frontend/src/components/dashboard-grid
+  - frontend/src/components/integrations
+  - frontend/src/components/ui/charts
+  - frontend/src/dev
+  - frontend/src/i18n
+  - frontend/src/lib/commands
+  - frontend/src/pages/dashboard
+  - frontend/src/pages/integration-detail/lmstudio
+  - frontend/src/pages/integration-detail/opencrq
+  - frontend/src/pages/integration-detail/openrouter
+  - frontend/src/pages/integration-detail/supabase
+  - frontend/src/pages/integrations
+  - frontend/src/testing
+except:
+  # The tool contract, provider-agnostic: every integration provider and the
+  # Platform MCP Servers build their tools on it.
+  - backend/app/tools/base.py
+  # The read/write classifier of tool names: the integration catalog's "Read"
+  # badge and the Platform MCP Servers' tool annotations read it.
+  - backend/app/services/tool_classification.py
+  # The home dashboards' grid (CTEM command center, Copilot), not an agent-built dashboard.
+  - backend/app/services/dashboard_layouts.py
+
+# Third-party content inside EE directories: it keeps its own license, given
+# in the notice next to it, and the directory's copyright.md names it.
+third_party:
+  # Feedly CTI Prompt Library, adapted (seed_data/NOTICE-cti-pack.md).
+  - backend/app/agents/seed_data/cti_templates/**
+  # Liberty91 cti-skills, MIT (seed_data/NOTICE-cti-pack.md).
+  - backend/app/agents/seed_data/skill_content/cti-*.md
+  - backend/app/agents/seed_data/skill_resources/cti-*/**
+  - backend/app/agents/seed_data/licenses/**
+  # LiteLLM model prices and context windows, MIT (seed_data/NOTICE-model-prices.md).
+  - backend/app/agents/seed_data/model_prices_and_context_window.json
+  # Microsoft AgentSchema v1.0 schemas, MIT (schemas/NOTICE.md).
+  - backend/app/services/agentschema/schemas/*.yaml
+  # SGDSN / VIGINUM publications reused with the SGDSN's agreement, and the
+  # DISARM-FR translation, CC-BY-4.0 (seed_data/NOTICE-viginum-fimi.md). The
+  # methodology summary written for XTM One beside them is EE.
+  - backend/app/agents/seed_data/knowledge_base/viginum-fimi-publications/**
+  - backend/app/agents/seed_data/knowledge_base/viginum-fimi-doctrine/viginum-*.md
+  # lottie-web light build, MIT (vendor/lottie-web-LICENSE.md).
+  - backend/app/services/video_studio/vendor/**
+
+# Never carry the header, wherever they are: tests follow no edition.
+no_header:
+  - "**/e2e/**"
+  - "**/*.test.*"

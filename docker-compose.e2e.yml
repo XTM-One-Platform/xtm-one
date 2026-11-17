@@ -1,0 +1,81 @@
+# What an end-to-end run needs the stack to be, and nothing a deployment does.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
+#     up -d minio postgres redis scripted-llm platform worker
+#
+# A separate file because a bare-name entry in the shipped descriptor is
+# resolved from the operator's own `.env`, so a stray value there would reach a
+# production container. Here it reaches only a stack that asked for this file.
+#
+# Values live in the `e2e` job in .github/workflows/e2e.yml;
+# dev-docs/a2a-e2e-test-design.md says why each is needed. Three decide whether
+# A2A works at all rather than answering 403: A2A_ALLOW_INSECURE_LOOPBACK (the
+# partner-facing surface is HTTPS-only, and a deployment federated with itself
+# reaches its own card over plain http from 127.0.0.1),
+# TEST_ONLY_INSECURE_TRANSPORT_PEERS (a suite on the host arrives from the
+# bridge gateway) and A2A_CLIENT_DEV_TRUSTED_ORIGINS (the destination guard
+# refuses loopback). FORWARDED_ALLOW_IPS keeps the shipped default: an address
+# exemption is lost as soon as a request carries X-Forwarded-For.
+#
+# Each entry is a NAME with no value: passed through when set, absent when not,
+# so nothing here invents a default that could drift from the shipped one.
+x-e2e-environment: &e2e-environment
+  A2A_ALLOW_INSECURE_LOOPBACK:
+  TEST_ONLY_INSECURE_TRANSPORT_PEERS:
+  A2A_CLIENT_DEV_TRUSTED_ORIGINS:
+  A2A_CLIENT_CALLBACK_BASE_URL:
+  A2A_CLIENT_FLOOR_INTERVAL_SECONDS:
+  A2A_CLIENT_DELEGATION_CEILING_SECONDS:
+  A2A_CLIENT_GRACE_SECONDS:
+  A2A_CLIENT_BREAKER_THRESHOLD:
+  A2A_CLIENT_BREAKER_COOLDOWN_SECONDS:
+  A2A_REAP_INTERVAL_SECONDS:
+  A2A_RUN_LEASE_SECONDS:
+  A2A_DEDUP_WINDOW_SECONDS:
+  A2A_TASK_CREATE_RATE_LIMIT:
+  A2A_TASK_READ_RATE_LIMIT:
+  A2A_UNAUTHENTICATED_RATE_LIMIT:
+  LLM_PROVIDER_CUSTOM_OPENAI_API_KEY:
+  LLM_PROVIDER_CUSTOM_OPENAI_MODELS:
+
+services:
+  platform:
+    # So a machine running ollama on the host can serve a real model at
+    # http://host.docker.internal:11434. Inert when nothing points there.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *e2e-environment
+
+  worker:
+    # A `delegate` handover runs its child here
+    # (orchestration_adapters/sub_agent.py), so a child that delegates over A2A
+    # calls from this process — and the A2A origin is pinned to one string
+    # (client/destinations.py::assert_same_origin) that must mean "the
+    # platform" from both. Measured on this stack:
+    #
+    #                    localhost:4000            platform:4000
+    #   from platform    404 — past the gate       403 "HTTPS only"
+    #   from worker      connection refused        reachable
+    #
+    # Measured with loopback as the only transport exemption; the bridge
+    # network is now exempt too (TEST_ONLY_INSECURE_TRANSPORT_PEERS), but the
+    # pinned origin is still `localhost:4000`, which a separate worker cannot
+    # reach because there that address is the worker. A shared namespace
+    # makes the one string mean the platform from both.
+    network_mode: service:platform
+    # The shipped worker maps host.docker.internal; Docker refuses a
+    # host mapping on a container that joins another one's network namespace.
+    # The platform's namespace already carries the mapping.
+    extra_hosts: !reset []
+    environment:
+      <<: *e2e-environment
+
+  # A fresh database has no provider, and a real model answers differently
+  # tomorrow. This one answers from scripts a spec arms:
+  # https://github.com/XTM-One-Platform/e2e-tests/tree/main/scripted-llm
+  scripted-llm:
+    image: docker.io/xtmone/scripted-llm:1.0.0@sha256:9bdc5a1c9e7e0781a81faa962cc26b0793083c7b7812b1af0ae628a1006d733a
+    container_name: scripted-llm
+    ports:
+      - "127.0.0.1:9099:9099"

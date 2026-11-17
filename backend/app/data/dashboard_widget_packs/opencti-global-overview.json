@@ -1,0 +1,508 @@
+{
+  "format": "xtm-one-widget-pack",
+  "version": 1,
+  "name": "OpenCTI - Global overview",
+  "widgets": [
+    {
+      "id": "total-entities",
+      "title": "Total entities",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total entities"
+        }
+      }
+    },
+    {
+      "id": "total-relationships",
+      "title": "Total relationships",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "type": "number",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "relationships",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total relationships"
+        }
+      }
+    },
+    {
+      "id": "total-reports",
+      "title": "Total reports",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Total reports"
+        }
+      }
+    },
+    {
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "type": "number",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Cyber-Observable"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {}
+      },
+      "id": "platform"
+    },
+    {
+      "id": "top-labels",
+      "title": "Top labels",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "size": "m",
+      "native": {
+        "type": "tree",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 9,
+            "attribute": "object-label.internal_id",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Domain-Object",
+                    "Language"
+                  ],
+                  "operator": "not_eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top labels",
+          "distributed": true
+        }
+      }
+    },
+    {
+      "id": "ingested-entities",
+      "title": "Ingested entities",
+      "width": "full",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "area",
+      "size": "m",
+      "native": {
+        "type": "area",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Ingested entities",
+          "interval": "week",
+          "stacked": true
+        }
+      }
+    },
+    {
+      "id": "top-10-active-entities",
+      "title": "Top 10 active entities",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "hbar",
+      "size": "m",
+      "native": {
+        "type": "horizontal-bar",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "isTo": false,
+            "perspective": "relationships",
+            "filters": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Malware",
+                    "Intrusion-Set",
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Top 10 active entities"
+        }
+      }
+    },
+    {
+      "id": "targeted-countries",
+      "title": "Targeted countries",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencti",
+      "size": "m",
+      "native": {
+        "type": "map",
+        "perspective": "relationships",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "internal_id",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "relationships",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "relationship_type"
+                  ],
+                  "values": [
+                    "targets"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Country"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Targeted countries"
+        }
+      }
+    },
+    {
+      "id": "last-ingested-reports",
+      "title": "Last ingested reports",
+      "width": "full",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "list",
+      "size": "m",
+      "native": {
+        "type": "list",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 8,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Report"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Last ingested reports"
+        }
+      }
+    },
+    {
+      "id": "obsrvables-distribution",
+      "title": "Obsrvables distribution",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencti",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "type": "donut",
+        "perspective": "entities",
+        "dataSelection": [
+          {
+            "label": "",
+            "number": 10,
+            "attribute": "entity_type",
+            "date_attribute": "created_at",
+            "isTo": true,
+            "perspective": "entities",
+            "filters": {
+              "mode": "and",
+              "filters": [
+                {
+                  "key": [
+                    "entity_type"
+                  ],
+                  "values": [
+                    "Stix-Cyber-Observable"
+                  ],
+                  "operator": "eq",
+                  "mode": "or"
+                }
+              ],
+              "filterGroups": []
+            },
+            "dynamicFrom": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            },
+            "dynamicTo": {
+              "mode": "and",
+              "filters": [],
+              "filterGroups": []
+            }
+          }
+        ],
+        "parameters": {
+          "title": "Obsrvables distribution"
+        }
+      }
+    }
+  ],
+  "description": "Platform-wide threat intelligence figures from OpenCTI: entities, relationships, reports, observables, top labels and targeted countries."
+}

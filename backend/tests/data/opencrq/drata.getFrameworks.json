@@ -1,0 +1,38 @@
+{
+  "procedure": "drata.getFrameworks",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a13a7c-19a9-7fb7-850c-e3fd65612f22",
+      "drataId": 41,
+      "slug": "iso27001-2022",
+      "tag": "ISO270012022",
+      "name": "ISO 27001:2022",
+      "description": "Information security management systems requirements.",
+      "isReady": false,
+      "numInScopeRequirements": 11,
+      "numReadyInScopeRequirements": 6,
+      "numInScopeControls": 9,
+      "lastReportedAt": "2026-10-14T12:56:13.932Z",
+      "derivedTotalRequirements": 12,
+      "derivedInScopeRequirements": 11,
+      "derivedReadyInScopeRequirements": 6
+    },
+    {
+      "id": "01a13a7c-19a9-7fb7-850c-e3fee2539014",
+      "drataId": 52,
+      "slug": "soc2",
+      "tag": "SOC2",
+      "name": "SOC 2",
+      "description": "Trust Services Criteria for security, availability and confidentiality.",
+      "isReady": false,
+      "numInScopeRequirements": 7,
+      "numReadyInScopeRequirements": 4,
+      "numInScopeControls": 8,
+      "lastReportedAt": "2026-10-14T12:56:13.932Z",
+      "derivedTotalRequirements": 8,
+      "derivedInScopeRequirements": 7,
+      "derivedReadyInScopeRequirements": 4
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+# The relay end-to-end topology, run by apps/relay/e2e/run.sh:
+#
+#   default ("saas")    minio, postgres, redis, platform, relay-net
+#   onprem (internal)   onprem-splunk, relay-net
+#
+# The platform has no route to the on-prem network, exactly as at a customer:
+# the only way its requests reach onprem-splunk is the relay, which runs in
+# relay-net's network namespace (attached to both) and dials the platform out.
+# onprem-splunk serves a certificate from an internal CA only the relay trusts.
+#
+# A separate file, like docker-compose.e2e.yml: nothing here belongs in the
+# shipped descriptor.
+
+networks:
+  # Declared so podman-compose accepts relay-net naming it; Docker creates it
+  # either way.
+  default:
+  onprem:
+    internal: true
+
+services:
+  onprem-splunk:
+    image: docker.io/library/python:3.14-slim
+    networks: [onprem]
+    volumes:
+      - ./apps/relay/e2e/onprem_splunk.py:/e2e/onprem_splunk.py:ro,z
+      - ${RELAY_E2E_CERTS:?set RELAY_E2E_CERTS (apps/relay/e2e/run.sh does)}:/certs:ro,z
+    command: ["python", "/e2e/onprem_splunk.py"]
+
+  # Holds the relay's network namespace: on both networks, and forwarding
+  # 127.0.0.1:4000 to the platform (forward.py says why).
+  relay-net:
+    image: docker.io/library/python:3.14-slim
+    networks: [default, onprem]
+    volumes:
+      - ./apps/relay/e2e/forward.py:/e2e/forward.py:ro,z
+    command: ["python", "/e2e/forward.py"]
+
+  relay:
+    build:
+      context: ./apps
+      dockerfile: relay/Dockerfile
+    network_mode: service:relay-net
+    depends_on: [relay-net]
+    environment:
+      XTM_RELAY_SERVER_URL: http://127.0.0.1:4000
+      XTM_RELAY_ENROLLMENT_KEY: ${RELAY_E2E_ENROLLMENT_KEY:-}
+      XTM_RELAY_NAME: e2e-relay
+      XTM_RELAY_ALLOWED_DESTINATIONS: onprem-splunk:8089
+      XTM_RELAY_CA_BUNDLE: /certs/ca.pem
+      XTM_RELAY_LOG_LEVEL: debug
+    volumes:
+      - ${RELAY_E2E_CERTS:?set RELAY_E2E_CERTS (apps/relay/e2e/run.sh does)}:/certs:ro,z

@@ -1,0 +1,86 @@
+[
+  {
+    "file": "01-diamond-model.md",
+    "source": "R1-01",
+    "name": "Diamond Model intrusion analysis",
+    "description": "Structures intrusion reporting into the four Diamond Model vertices with meta-features, confidence and gaps, IOCs, a diamond diagram and recommendations. Use it to brief stakeholders on an attack without them reading the full reports.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "02-diamond-model-business-risk.md",
+    "source": "R3-03",
+    "name": "Diamond Model from a validated extraction",
+    "description": "Populates adversary, capabilities, infrastructure and victim strictly from a validated extraction or report, plus a confidence and gaps section, as input for a business-risk rating that stays with the analyst. Use it after IOC extraction and ATT&CK mapping.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the validated extraction and ATT&CK mapping, or the report itself. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "03-visual-attack-flow.md",
+    "source": "R1-03",
+    "name": "Visual attack flow",
+    "description": "Produces a stage-by-stage attack chain aligned to ATT&CK T-codes with IOCs per stage, a summary table and a one-page diagram. Use it to show technical teams or executives how an attack unfolded and where detection is needed.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "04-ioc-extract-enrich.md",
+    "source": "R3-01",
+    "name": "IOC extraction and enrichment (STIX 2.1)",
+    "description": "Extracts every indicator from a report with its verbatim context, source and associated malware or TTPs, enriches it with your connected tools, and returns a strict STIX 2.1 bundle plus a validation table. Use it to prepare indicators for import into a TIP.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report text (or its URL) to extract indicators from. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "write_to_opencti",
+        "label": "Write to an OpenCTI draft",
+        "type": "boolean",
+        "description": "Put the extracted observables and indicators in a new OpenCTI draft for analyst review, and report the draft id. When off, nothing is written.",
+        "required": false,
+        "default": false
+      }
+    ]
+  }
+]

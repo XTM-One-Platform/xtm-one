@@ -1,0 +1,270 @@
+site_name: XTM One Documentation
+site_description: Documentation for XTM One, Filigran's AI-native threat-informed defense platform.
+site_author: Filigran
+site_url: https://xtm-one-platform.github.io/xtm-one/
+copyright: © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+repo_name: GitHub
+repo_url: https://github.com/XTM-One-Platform/xtm-one
+edit_uri: https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/
+
+# Theming
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.png
+  features:
+    - navigation.tabs
+    - navigation.path
+    - navigation.footer
+    - navigation.expand
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - search.highlight
+  palette:
+    scheme: filigran
+  font:
+    text: IBM Plex Sans
+    code: Roboto Mono
+
+# CSS
+extra_css:
+  - assets/css/custom.css
+
+# Extra
+extra:
+  version:
+    provider: mike
+  analytics:
+    provider: google
+    property: G-P8K1S4VSXR
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/XTM-One-Platform
+    - icon: fontawesome/brands/slack
+      link: https://community.filigran.io
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/company/filigran
+    - icon: fontawesome/brands/x-twitter
+      link: https://twitter.com/FiligranHQ
+
+# Plugins
+plugins:
+  - mike:
+      alias_type: symlink
+      canonical_version: latest
+  - search
+  - git-committers:
+      # Reads page contributors from the GitHub API with the token in
+      # MKDOCS_GIT_COMMITTERS_APIKEY (CI passes GITHUB_TOKEN). Without one,
+      # hooks/git_committers.py switches the plugin off; so does
+      # MKDOCS_GIT_COMMITTERS_ENABLED=false. A failed REST call is logged as an
+      # error and a GraphQL error as a warning, both failing `--strict`; a
+      # connection error aborts the build. The docs workflows then build again
+      # without the contributors (see README.md).
+      enabled: !ENV [MKDOCS_GIT_COMMITTERS_ENABLED, true]
+      repository: XTM-One-Platform/xtm-one
+      branch: main
+      # docs_dir seen from the repository root: the plugin prefixes each page
+      # with it for its `git log` and its GitHub API query.
+      docs_path: docs/docs/
+      # People only. web-flow is GitHub's merge identity, the committer of
+      # every pull request merged on github.com; claude and Copilot are the AI
+      # co-authors GitHub resolves from `Co-authored-by` trailers. To hide
+      # another bot, add its login as GitHub spells it (the avatar tooltip
+      # without the @, e.g. dependabot[bot]): the match is exact, case
+      # included. Editing this file changes the docs workflows' cache key, so
+      # their next builds fetch every page again with the new list.
+      exclude_committers:
+        - web-flow
+        - claude
+        - Copilot
+      # Relative to docs/ (where mkdocs runs), git-ignored and outside the
+      # built site. The docs workflows keep it between runs; their cache key
+      # hashes this file and uv.lock because a cached page keeps the
+      # list it was fetched with, whatever the settings above say now.
+      cache_dir: .cache/plugin/git-committers
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+  - glightbox
+
+# Build hooks, relative to this file. git_committers.py: no GitHub token, no
+# contributors section; logins only in the contributors list.
+hooks:
+  - hooks/git_committers.py
+
+# Extensions
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - tables
+  - admonition
+  - def_list
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.smartsymbols
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.betterem
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      use_pygments: true
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: false
+      auto_title: false
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.snippets:
+      url_download: true
+
+# Unpublished pages (built neither into the site nor into the search index).
+# The *visual flow builder* sits behind the `FLOW_BUILDER` feature flag while it
+# is not announced externally, so its pages must not be reachable by URL either
+# — dropping them from `nav` alone leaves them built and indexed. The files stay
+# in the repository: they are the documentation to republish (add the two nav
+# entries back under `Work with agents`, after `Agentic flow`) the day the
+# feature ships. See `dev-docs/flow-builder-feature-flag.md`.
+#
+# `usage/agentic-flow.md` is deliberately NOT here: it documents the global
+# handover graph and its focus field — the Agent-to-Agent Live Map, which
+# predates the builder and stays live.
+#
+# *Evaluation* sits behind the `EVALUATION` feature flag and is never offered in
+# XTM One mode, so its page is unpublished the same way; republish it
+# (add `Evaluations: administration/evaluations.md` back to `Administration`,
+# after `Prompt safety (Nova)`) when the flag is removed. See
+# `dev-docs/evaluation-feature-flag.md`.
+#
+# *Concierge* sits behind the `CONCIERGE` feature flag (#8261), off by default,
+# so its two pages are unpublished the same way; republish them (add
+# `Concierge: administration/concierge.md` to `Administration`, after `AI
+# governance`, and `Improvements: usage/improvements.md` to `Work with agents`,
+# after `Run budgets`) when the flag is removed. See
+# `dev-docs/concierge-feature-flag.md`.
+exclude_docs: |
+  usage/flows.md
+  usage/flows-api.md
+  administration/evaluations.md
+  administration/concierge.md
+  usage/improvements.md
+
+# Page tree
+nav:
+  - Home: 'index.md'
+  - Deployment & Setup:
+    - Platform:
+      - Overview: deployment/overview.md
+      - Installation: deployment/installation.md
+      - Configuration: deployment/configuration.md
+      - Authentication: deployment/authentication.md
+      - Security headers: deployment/security-headers.md
+      - Secret vaults: deployment/secret-vaults.md
+      - Monitoring: deployment/monitoring.md
+      - Usage telemetry: deployment/telemetry.md
+      - Troubleshooting: deployment/troubleshooting.md
+      - Data flow: deployment/data-flow.md
+      - XTM Suite integration: deployment/xtm-suite-integration.md
+      - Chat approvals in client apps: deployment/chat-approvals-in-clients.md
+      - Upgrade: deployment/upgrade.md
+      - Backup and restore: deployment/backup-and-restore.md
+  - User Guide:
+    - Getting started: usage/getting-started.md
+    - Foundations:
+      - Overview: usage/foundations/index.md
+      - Data model: usage/foundations/data-model.md
+      - Containers and scopes: usage/foundations/containers-and-scopes.md
+      - Relationships and nesting: usage/foundations/relationships-and-nesting.md
+      - Reuse and deduplication: usage/foundations/deduplication.md
+      - Meaning of dates and status: usage/foundations/dates-and-status.md
+      - Trust, review, and confidence: usage/foundations/trust-and-confidence.md
+    - Work with agents:
+      - Chat: usage/chat.md
+      - Chat API: usage/chat-api.md
+      - Office add-in: usage/office-add-in.md
+      - Scheduled work items: usage/scheduled-work-items.md
+      - Workspaces: usage/workspaces.md
+      - Presentations: usage/presentations.md
+      - Reports: usage/reports.md
+      - Custom dashboards: usage/custom-dashboards.md
+      - Mobile companion: usage/mobile-companion.md
+      - Video Studio: usage/video-studio.md
+      - Files: usage/files.md
+      - Sandbox workspace: usage/sandbox-workspace.md
+      - Agents: usage/agents.md
+      - Create an agent: usage/create-agent.md
+      - Assignments and triggers: usage/assignments.md
+      - Webhook triggers: usage/webhook-triggers.md
+      - Publish an agent on a website: usage/web-widget.md
+      - Run budgets: usage/agent-budgets.md
+      - Agentic flow: usage/agentic-flow.md
+      - AI catalog: usage/ai-catalog.md
+    - Manage resources:
+      - Overview: usage/resources/index.md
+      - Agent-to-agent (A2A): usage/resources/agent-to-agent.md
+      - Integrations: usage/resources/integrations.md
+      - Browser profiles: usage/resources/browser-profiles.md
+      - Knowledge bases: usage/resources/knowledge-bases.md
+      - MCP servers: usage/resources/mcp-servers.md
+      - Connect an external MCP server: usage/resources/connect-mcp-server.md
+      - Platform MCP servers: usage/resources/platform-mcp-servers.md
+      - Platform tools MCP server: usage/resources/platform-tools-mcp-server.md
+      - MCP catalogs: usage/resources/mcp-catalogs.md
+      - Prompts: usage/resources/prompts.md
+      - Relays: usage/resources/relays.md
+      - Sharing and access: usage/resources/sharing-and-access.md
+      - Skills: usage/resources/skills.md
+      - Templates: usage/resources/templates.md
+      - Tools: usage/resources/tools.md
+      - Variables: usage/resources/variables.md
+      - XTM One Desktop and runners: usage/resources/runners.md
+    - Monitor activity:
+      - Home dashboard: usage/home-dashboard.md
+      - Operations: usage/work-history.md
+      - Platform insights: usage/platform-insights.md
+    - XTM Suite:
+      - Overview: usage/xtm-suite/index.md
+      - Common experience: usage/xtm-suite/common-experience.md
+      - XTM One in OpenCTI: usage/xtm-suite/opencti.md
+      - Indicator decay re-check: usage/xtm-suite/indicator-decay.md
+      - XTM One in OpenAEV: usage/xtm-suite/openaev.md
+      - XTM One in OpenCRQ: usage/xtm-suite/opencrq.md
+    - My profile: usage/my-profile.md
+  - Administration:
+    - Introduction: administration/introduction.md
+    - Users and groups: administration/users-and-groups.md
+    - Intents: administration/intents.md
+    - Settings: administration/settings.md
+    - Organization profile: administration/organization.md
+    - Channels and bots:
+      - Overview: administration/channels/index.md
+      - Slack: administration/channels/slack.md
+      - Microsoft Teams: administration/channels/microsoft-teams.md
+      - WhatsApp: administration/channels/whatsapp.md
+      - "WhatsApp: two backends": administration/channels/whatsapp-backends.md
+      - Telegram: administration/channels/telegram.md
+      - Discord: administration/channels/discord.md
+      - Google Chat: administration/channels/google-chat.md
+      - Agent accounts: administration/channels/agent-accounts.md
+    - AI governance: administration/ai-governance.md
+    - Prompt safety (Nova): administration/prompt-safety.md
+    - Editions and licensing: administration/editions-and-licensing.md
+    - Running without AI: administration/running-without-ai.md
+    - Emergency stop: administration/emergency-stop.md
+    - Emergency stop API: administration/emergency-stop-api.md
+  - Development: 'development.md'

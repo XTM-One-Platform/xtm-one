@@ -1,0 +1,57 @@
+{
+  "name": "Synthetic Deck (dev fixture)",
+  "description": "Synthetic presentation template for local testing of the generate_presentation built-in tool. Not brand material — every colour and asset here is made up.",
+  "kind": "presentation",
+  "tags": ["synthetic", "dev-fixture", "quarterly-review"],
+  "theme_config": {
+    "background": "hsl(220 54% 8%)",
+    "foreground": "hsl(0 0% 100%)",
+    "accent": "hsl(197 100% 53%)",
+    "muted": "hsl(230 4% 70%)",
+    "heading_font": "'Geologica', system-ui, sans-serif",
+    "body_font": "'IBM Plex Sans', system-ui, sans-serif"
+  },
+  "aspect_ratio": "16:9",
+  "layouts": [
+    {
+      "id": "title",
+      "name": "Title",
+      "fields": ["title", "subtitle", "footer"],
+      "use_for": "Opening slide, section dividers."
+    },
+    {
+      "id": "two_columns",
+      "name": "Two columns",
+      "fields": ["title", "left", "right"],
+      "side_shape": ["heading", "bullets", "rich_text", "image_file_id"],
+      "use_for": "Before/after, improved/regressed, two related lists."
+    },
+    {
+      "id": "comparison",
+      "name": "Comparison",
+      "fields": ["title", "left", "right", "verdict"],
+      "side_shape": ["label", "points"],
+      "use_for": "Two options weighed against each other, with a conclusion."
+    },
+    {
+      "id": "dashboard",
+      "name": "KPI dashboard",
+      "fields": ["title", "metrics", "rich_text"],
+      "metric_shape": ["label", "value", "delta", "trend"],
+      "use_for": "Numbers at a glance (1 to 6 tiles)."
+    },
+    {
+      "id": "generic",
+      "name": "Generic",
+      "fields": ["title", "bullets", "rich_text", "image_file_id"],
+      "use_for": "Anything the other layouts do not cover."
+    }
+  ],
+  "extra_metadata": {
+    "fixture": true,
+    "issue": "2637",
+    "note": "The AUTHORITY on accepted slide fields is backend/app/services/presentation_spec.py. This block is descriptive metadata an agent reads through search_templates / get_template; it can drift, the validator cannot.",
+    "suggested_slide_order": ["title", "dashboard", "two_columns", "comparison", "generic"]
+  },
+  "is_company_managed": false
+}

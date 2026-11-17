@@ -1,0 +1,24 @@
+{
+  "$comment": "Handover type maps: the ONE table both halves of the rules are checked against. backend/tests/test_handover_types.py feeds it to app/services/handover_types.py (the runtime reading and the writes of the settings API, the agents API and the agent clean-ups); frontend/src/lib/handover-types.test.ts feeds it to lib/handover-types.ts (the settings screen, the agent configuration and the flow map). An empty map is the legacy mode, every target running every type; a map that holds a type is explicit, an untyped target running as delegate. 'legacy' is when targets run every type; 'added' the map once a target is added next to 'targets' (a stored target that runs every type is never narrowed, any other added target is recorded as delegate); 'removed' how the targets left run once one is removed ('all' is every type): a map that holds a type never turns into the legacy mode. Add a case here, never on one side only.",
+  "legacy": [
+    { "targets": ["a", "b"], "types": {}, "runs_every_type": true },
+    { "targets": ["a"], "types": null, "runs_every_type": true },
+    { "targets": [], "types": {}, "runs_every_type": false },
+    { "targets": ["a", "b"], "types": { "a": "consult" }, "runs_every_type": false },
+    { "targets": ["a"], "types": { "gone": "transfer" }, "runs_every_type": false }
+  ],
+  "added": [
+    { "targets": ["a", "b"], "types": {}, "add": "c", "expected": {} },
+    { "targets": [], "types": {}, "add": "a", "expected": { "a": "delegate" } },
+    { "targets": [], "types": null, "add": "a", "expected": { "a": "delegate" } },
+    { "targets": ["a"], "types": { "a": "consult" }, "add": "b", "expected": { "a": "consult", "b": "delegate" } },
+    { "targets": ["a"], "types": { "gone": "transfer" }, "add": "b", "expected": { "gone": "transfer", "b": "delegate" } }
+  ],
+  "removed": [
+    { "targets": ["a", "b"], "types": { "a": "consult" }, "remove": "a", "runs": { "b": "delegate" } },
+    { "targets": ["a", "b"], "types": {}, "remove": "a", "runs": { "b": "all" } },
+    { "targets": ["a", "b", "c"], "types": { "a": "consult", "b": "transfer" }, "remove": "a", "runs": { "b": "transfer", "c": "delegate" } },
+    { "targets": ["a", "b"], "types": { "gone": "transfer" }, "remove": "a", "runs": { "b": "delegate" } },
+    { "targets": ["a"], "types": { "a": "consult" }, "remove": "a", "runs": {} }
+  ]
+}

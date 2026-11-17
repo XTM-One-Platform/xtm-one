@@ -1,0 +1,65 @@
+{
+  "procedure": "findingScore.listAssetFindings",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "evidenceId": "019edb28-000b-7000-8000-000000000023",
+        "supportingAssetId": "08b8c9d0-e1f2-4a3b-9c5d-6e7f8a9b0c1d",
+        "score": 52,
+        "band": "medium",
+        "pendingVector": false,
+        "currentState": "applicable",
+        "stateOrigin": "connector",
+        "dismissalType": null,
+        "cveId": "CVE-2021-44228",
+        "cveTitle": "Apache Log4j2 JNDI Remote Code Execution (Log4Shell)",
+        "mitreTechniqueExternalId": null,
+        "mitreTechniqueName": null,
+        "expectationType": null,
+        "assetName": "Trading Platform (Murex)",
+        "assetDerivedName": null,
+        "assetCategoryId": "saas_application",
+        "assetCriticality": "unknown",
+        "assetPlatforms": [],
+        "assetExposure": "unknown",
+        "sources": [
+          "microsoft_graph"
+        ],
+        "sourceCount": 1,
+        "lastEvaluatedAt": "2026-10-13T10:13:54.939Z",
+        "firstSeenAt": "2025-11-13T10:13:54.939Z"
+      },
+      {
+        "evidenceId": "019edb28-000b-7000-8000-000000000024",
+        "supportingAssetId": "08b8c9d0-e1f2-4a3b-9c5d-6e7f8a9b0c1d",
+        "score": null,
+        "band": null,
+        "pendingVector": true,
+        "currentState": "applicable",
+        "stateOrigin": "connector",
+        "dismissalType": null,
+        "cveId": "CVE-2024-6387",
+        "cveTitle": "OpenSSH Signal Handler Race Condition (regreSSHion)",
+        "mitreTechniqueExternalId": null,
+        "mitreTechniqueName": null,
+        "expectationType": null,
+        "assetName": "Trading Platform (Murex)",
+        "assetDerivedName": null,
+        "assetCategoryId": "saas_application",
+        "assetCriticality": "unknown",
+        "assetPlatforms": [],
+        "assetExposure": "unknown",
+        "sources": [
+          "microsoft_graph"
+        ],
+        "sourceCount": 1,
+        "lastEvaluatedAt": "2026-10-13T10:13:54.939Z",
+        "firstSeenAt": "2026-09-14T10:13:54.939Z"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "limit": 10
+  }
+}

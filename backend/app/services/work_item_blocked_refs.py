@@ -1,0 +1,1946 @@
+# Copyright (c) 2025-2026 Filigran SAS
+#
+# This file is part of the XTM One Enterprise Edition ("EE") and is
+# licensed under the XTM One Enterprise Edition License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+"""A blocked work item always says why, and a pull request or issue releases it.
+
+``blocked`` used to be free text: the only native release was ``blocked_on``
+(other work items), so an item waiting on a pull request or an issue
+stayed blocked after it merged or closed until somebody noticed. Two things
+change that:
+
+* **Why** - a ``blocked`` status needs at least one of ``blocked_on`` (work
+  items), ``blocked_on_refs`` (code-host references), ``blocked_reason``
+  (free text: what it waits for, who releases it, since when) or
+  ``needs_human``; :func:`refuse_blocked_without_why` refuses the write
+  otherwise, and :func:`blocked_why` is what every view shows of a blocked
+  item, ``missing`` for a legacy one that says nothing.
+* **Release** - ``blocked_on_refs`` lists references::
+
+      [{"repo": "owner/name", "kind": "pull_request" | "issue", "number": 12,
+        "release_on": "merged" | "closed" | "merged_or_closed"}]
+
+  The code-host deliveries the platform already receives
+  (:class:`~app.integrations.pull_request_events.PullRequestEvent`: a pull
+  request closed, merged or not, and an issue closed) mark the matching
+  references satisfied; once every reference of an item is satisfied and it
+  waits for no work item, :func:`release_blocked_on_refs` puts it back in
+  the queue: ``open``, unclaimed, the dated note ``released: <repo>#<n>
+  <merged|closed> at <when it merged or closed>; released at <UTC>`` (the
+  code host's time, :func:`release_note`) on top of its description, then
+  ``work_item.status_changed`` and ``work_item.released``. The inbox takes it
+  after a short grace (:func:`release_not_before`), so the run that merged
+  the pull request completes the item instead of racing a second run. A pull request
+  closed unmerged that a reference wanted merged (a superseded pull request) can
+  never release the item: it is surfaced instead, back to ``open`` and
+  unclaimed with the note ``surfaced: <ref> closed unmerged ...`` on top of its
+  description (:func:`unmet_note`), so its owner re-points it to the successor
+  or completes it, rather than leaving it blocked on a wait that cannot hold.
+  ``closed`` means closed without a merge for a pull request;
+  ``merged_or_closed`` takes either.
+
+The matcher is pure (:func:`apply_reference_event`); the release is a system
+write, like the dependency sweep: no writer, best-effort, never raises. The
+note dates the closing as the code host does (``merged_at`` / ``closed_at``,
+:func:`closing_stamp`), not the moment the platform learnt of it.
+
+**Unsigned deliveries** - a provider whose OAuth default holds no webhook
+secret still delivers, but such a delivery is never trusted with a work
+item's state. A closing it announces is read back instead
+(:func:`release_from_unverified_delivery`): each reference an item waits for
+is read from the provider with its owner's credential, and only a closing the
+read confirms is applied, so the release lands within seconds of the merge.
+
+**Polling fallback** - a repository whose webhook is not installed sends no
+delivery, and a reference that merged before the item was blocked on it
+sends none any more, so :func:`poll_blocked_on_refs` (the scheduler, every
+:data:`POLL_EVERY_TICKS` ticks) reads the open references of the items
+blocked and quiet for :data:`POLL_MIN_AGE_SECONDS` through the provider's
+reader (``integrations/reference_state.py``), with the credential the item's
+owner reads that provider with, and applies a closing it finds exactly as
+the delivery would have. An item is read again at most once per
+:data:`POLL_QUIET_SECONDS` per process; an unreadable reference keeps it
+blocked.
+
+**Deployments** - a reference of kind ``deployment``::
+
+      {"repo": "owner/name", "kind": "deployment", "number": 12 | "sha": "1a2b3c4",
+       "release_on": "deployed"}
+
+  waits until the change is live: two stages, one item. A pull request not
+  merged yet is first matched by the same deliveries, read-backs and polling
+  fallback as a ``pull_request`` reference, which record its ``merge_sha``
+  (a pull request closed unmerged surfaces the item, as above); then the reference
+  waits for a build whose ``git_sha`` contains that commit. The check runs on
+  ``platform.release.deployed`` (:func:`on_release_deployed`) and once at the
+  write (:func:`schedule_deployment_check`), never on a poll: each provider
+  registers a :data:`~app.integrations.reference_state.CommitContainmentReader`
+  (GitHub: the compare of the merge commit and the build), answered once per
+  ``(repo, merge_sha, build_sha)`` per process.
+
+**Workflow runs** - a reference of kind ``workflow_run``::
+
+      {"repo": "owner/name", "kind": "workflow_run", "workflow": "release.yml",
+       "after": "2026-11-06T00:40:00Z", "branch": "main", "release_on": "succeeded"}
+
+  waits for the first successful run of a workflow created at or after
+  ``after`` (the time of the write when omitted): a change merged in another
+  repository (an infrastructure chart) that reaches production only through
+  the next run of a release workflow. The polling fallback reads it through
+  the provider's :data:`~app.integrations.reference_state.WorkflowRunReader`
+  (:func:`_poll_workflow_run`); the release note names the run.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import time
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy import Text, cast, select
+
+from app.core.utils import format_exception_message
+from app.integrations.pull_request_events import PullRequestEvent
+from app.models.work_item import WorkItem
+
+logger = logging.getLogger(__name__)
+
+REF_KINDS = ("pull_request", "issue", "deployment", "workflow_run")
+RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded")
+#: A workflow a ``workflow_run`` reference may name: its file name or its id.
+_WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
+_BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+#: What the workflow run stage remembers of a reference (with ``state`` and ``at``).
+_WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at")
+#: A commit a deployment reference may name.
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+#: What the deploy stage remembers of a reference (with ``state`` and ``at``);
+#: ``carried_by`` names the work item whose pull request the platform carried
+#: the reference from (:func:`carried_deployment_ref`).
+_DEPLOYMENT_KEPT = ("merge_sha", "merged_at", "build", "carried_by")
+#: References one item may name.
+MAX_REFS = 20
+#: Free-text reason kept per item.
+MAX_REASON_CHARS = 2000
+#: Items one delivery may release.
+_MAX_ITEMS_PER_EVENT = 50
+#: Polling fallback: an item blocked and quiet this long has its references read
+#: (the race of a reference merged before the item was blocked on it included).
+POLL_MIN_AGE_SECONDS = 2 * 60
+#: Polling fallback: an item's references are read again after this long.
+POLL_QUIET_SECONDS = 30 * 60
+#: Polling fallback: scheduler ticks between two passes (60 s ticks).
+POLL_EVERY_TICKS = 5
+#: Polling fallback: items, and provider reads, one pass may make.
+POLL_MAX_ITEMS = 25
+POLL_MAX_READS = 50
+#: A release by a pull request or issue closing waits this long before the inbox
+#: may take the item, so the run that merged it completes it instead of racing a
+#: second run dispatched on the same delivery (:func:`release_not_before`).
+RELEASE_GRACE_SECONDS = 45
+
+WHY_FIELDS_MESSAGE = (
+    "a blocked work item must say why: give blocked_on (the work items it waits for), "
+    "blocked_on_refs (the pull requests or issues it waits for: "
+    '[{"repo": "owner/name", "kind": "pull_request" | "issue", "number": N, '
+    '"release_on": "merged" | "closed" | "merged_or_closed"}], or the deployment of a change: '
+    '{"repo": "owner/name", "kind": "deployment", "number": N | "sha": "1a2b3c4", '
+    '"release_on": "deployed"}, or the first successful run of a workflow after a time: '
+    '{"repo": "owner/name", "kind": "workflow_run", "workflow": "release.yml", '
+    '"after": "2026-11-06T00:40:00Z", "branch": "main"}), '
+    "blocked_reason (what it waits for, who releases it, since when) or needs_human: true"
+)
+
+
+class BlockedRefError(ValueError):
+    """A ``blocked_on_refs`` entry the platform cannot match."""
+
+
+# -- The references --------------------------------------------------------------
+
+
+def _normalize_ref(entry: object) -> dict:
+    if not isinstance(entry, dict):
+        raise BlockedRefError("each blocked_on_refs entry must be an object {repo, kind, number, release_on}")
+    repo = entry.get("repo")
+    if not isinstance(repo, str) or repo.strip().count("/") != 1 or " " in repo.strip():
+        raise BlockedRefError(f"blocked_on_refs: repo must read owner/name, got {repo!r}")
+    kind = entry.get("kind") or "pull_request"
+    if kind not in REF_KINDS:
+        raise BlockedRefError(f"blocked_on_refs: kind must be one of {', '.join(REF_KINDS)}, got {kind!r}")
+    if kind == "deployment":
+        return _normalize_deployment_ref(entry, repo.strip().lower())
+    if kind == "workflow_run":
+        return _normalize_workflow_run_ref(entry, repo.strip().lower())
+    number = _number(entry.get("number"))
+    default = "merged_or_closed" if kind == "pull_request" else "closed"
+    release_on = entry.get("release_on") or default
+    if release_on not in RELEASE_ON:
+        raise BlockedRefError(
+            f"blocked_on_refs: release_on must be one of {', '.join(RELEASE_ON)}, got {release_on!r}"
+        )
+    if release_on == "deployed":
+        raise BlockedRefError('blocked_on_refs: release_on deployed needs kind "deployment"')
+    if release_on == "succeeded":
+        raise BlockedRefError('blocked_on_refs: release_on succeeded needs kind "workflow_run"')
+    if kind == "issue" and release_on == "merged":
+        raise BlockedRefError("blocked_on_refs: an issue is never merged; use release_on closed")
+    out: dict[str, Any] = {
+        "repo": repo.strip().lower(),
+        "kind": kind,
+        "number": number,
+        "release_on": release_on,
+    }
+    # ``branch`` is the tool's word for it (the field a workflow_run already takes).
+    branch = entry.get("head_branch") or (entry.get("branch") if kind == "pull_request" else None)
+    if branch is not None and branch != "":
+        if kind != "pull_request":
+            raise BlockedRefError("blocked_on_refs: head_branch is followed on a pull_request reference only")
+        if not isinstance(branch, str) or not _BRANCH_RE.match(branch.strip()):
+            raise BlockedRefError(f"blocked_on_refs: head_branch must be a branch name, got {branch!r}")
+        out["head_branch"] = branch.strip()
+        # The pull requests of that branch seen closed unmerged, kept on a rewrite.
+        superseded = entry.get("superseded")
+        if isinstance(superseded, list):
+            kept = sorted({n for n in superseded if isinstance(n, int) and not isinstance(n, bool) and n > 0})
+            if kept:
+                out["superseded"] = kept
+        if isinstance(entry.get("merged_number"), int) and not isinstance(entry.get("merged_number"), bool):
+            out["merged_number"] = entry["merged_number"]
+    # The satisfied state the platform recorded, kept on a rewrite of the same reference.
+    for key in ("state", "at"):
+        if isinstance(entry.get(key), str):
+            out[key] = entry[key]
+    return out
+
+
+def _number(number: object) -> int:
+    if isinstance(number, str) and number.strip().lstrip("#").isdigit():
+        number = int(number.strip().lstrip("#"))
+    if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+        raise BlockedRefError(f"blocked_on_refs: number must be a positive integer, got {number!r}")
+    return number
+
+
+def _normalize_deployment_ref(entry: dict, repo: str) -> dict:
+    release_on = entry.get("release_on") or "deployed"
+    if release_on != "deployed":
+        raise BlockedRefError(f"blocked_on_refs: a deployment is released on deployed only, got {release_on!r}")
+    out: dict[str, Any] = {"repo": repo, "kind": "deployment", "release_on": "deployed"}
+    sha = entry.get("sha")
+    if entry.get("number") is not None:
+        out["number"] = _number(entry.get("number"))
+    elif isinstance(sha, str) and _SHA_RE.match(sha.strip().lower()):
+        out["sha"] = sha.strip().lower()
+        out["merge_sha"] = out["sha"]
+    else:
+        raise BlockedRefError(
+            "blocked_on_refs: a deployment names its pull request (number) or its commit "
+            f"(sha, 7 to 40 hexadecimal characters), got number={entry.get('number')!r} sha={sha!r}"
+        )
+    for key in ("state", "at", *_DEPLOYMENT_KEPT):
+        if key not in out and isinstance(entry.get(key), str):
+            out[key] = entry[key]
+    return out
+
+
+def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
+    release_on = entry.get("release_on") or "succeeded"
+    if release_on != "succeeded":
+        raise BlockedRefError(f"blocked_on_refs: a workflow_run is released on succeeded only, got {release_on!r}")
+    workflow = entry.get("workflow")
+    if isinstance(workflow, int) and not isinstance(workflow, bool):
+        workflow = str(workflow)
+    if not isinstance(workflow, str) or not _WORKFLOW_RE.match(workflow.strip()):
+        raise BlockedRefError(
+            f"blocked_on_refs: a workflow_run names its workflow (file name such as release.yml, or id), got {workflow!r}"
+        )
+    after_raw = entry.get("after")
+    if after_raw is None or after_raw == "":
+        # Omitted: the first successful run from the write on.
+        after = _stamp(datetime.now(UTC))
+    else:
+        parsed = _host_stamp(after_raw) if isinstance(after_raw, str) else None
+        if parsed is None:
+            raise BlockedRefError(f"blocked_on_refs: after must be an ISO 8601 time, got {after_raw!r}")
+        after = parsed
+    out: dict[str, Any] = {
+        "repo": repo,
+        "kind": "workflow_run",
+        "workflow": workflow.strip(),
+        "after": after,
+        "release_on": "succeeded",
+    }
+    branch = entry.get("branch")
+    if branch is not None and branch != "":
+        if not isinstance(branch, str) or not _BRANCH_RE.match(branch.strip()):
+            raise BlockedRefError(f"blocked_on_refs: branch must be a branch name, got {branch!r}")
+        out["branch"] = branch.strip()
+    for key in ("state", "at", *_WORKFLOW_RUN_KEPT):
+        if isinstance(entry.get(key), str | int) and not isinstance(entry.get(key), bool):
+            out[key] = entry[key]
+    return out
+
+
+def _ref_key(ref: dict) -> tuple:
+    if ref.get("kind") == "workflow_run":
+        return (ref.get("repo"), "workflow_run", ref.get("workflow"), ref.get("branch"), ref.get("after"))
+    return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
+
+
+def normalize_blocked_on_refs(entries: object) -> list[dict]:
+    """*entries* as references, deduplicated in order. Raises :class:`BlockedRefError`."""
+    if entries is None:
+        return []
+    if isinstance(entries, dict):
+        entries = [entries]
+    if not isinstance(entries, list | tuple):
+        raise BlockedRefError("blocked_on_refs must be a list of {repo, kind, number, release_on}")
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for entry in entries:
+        ref = _normalize_ref(entry)
+        key = _ref_key(ref)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
+    if len(out) > MAX_REFS:
+        raise BlockedRefError(f"blocked_on_refs names at most {MAX_REFS} references")
+    return out
+
+
+def observed_deployment_repositories() -> frozenset[str]:
+    """The repositories whose deployments the platform observes (``owner/name``, lower case)."""
+    from app.core.config import settings
+
+    raw = str(getattr(settings, "work_item_deployment_repositories", "") or "")
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+
+
+def unobserved_deployment_message(repo: str) -> str:
+    """Why a deployment reference on *repo* is refused, with the alternatives. Pure."""
+    return (
+        f"blocked_on_refs: the platform does not observe the deployments of {repo}, so a "
+        f"deployment reference on it would never release the item. Wait instead on a "
+        f'workflow_run reference ({{"repo": "{repo}", "kind": "workflow_run", '
+        f'"workflow": "release.yml", "branch": "main"}}, with the file name of its release '
+        f"workflow), or set blocked_reason "
+        f"(what to check, who releases it) with a dated not_before for the re-check"
+    )
+
+
+def refuse_unobserved_deployment_refs(refs: list[dict] | None) -> None:
+    """Raise :class:`BlockedRefError` on a deployment reference the platform cannot release.
+
+    A deployment reference is released when a running build carries its merge
+    (:func:`on_release_deployed`): only the repositories the platform's builds
+    come from (``work_item_deployment_repositories``) can ever satisfy it. One
+    already satisfied (``state`` deployed) is history and kept as is.
+    """
+    observed = observed_deployment_repositories()
+    for ref in refs or []:
+        if ref.get("kind") != "deployment" or _satisfied(ref):
+            continue
+        if str(ref.get("repo") or "").lower() not in observed:
+            raise BlockedRefError(unobserved_deployment_message(str(ref.get("repo"))))
+
+
+def carried_deployment_ref(repo: str, number: int, carried_by: str) -> dict | None:
+    """The deployment reference an item blocked on work item *carried_by* gets
+    when that item names pull request *repo*#*number*, ``None`` when the platform
+    does not observe the deployments of *repo* (the dependency then releases it
+    at the completion, as before). Pure but for the settings read.
+
+    A work item completes at its pull request's merge, before any build carries
+    it: an item waiting for the fix waits for its deployment instead (#9943).
+    """
+    repo = (repo or "").strip().lower()
+    if repo not in observed_deployment_repositories():
+        return None
+    return {
+        "repo": repo,
+        "kind": "deployment",
+        "number": _number(number),
+        "release_on": "deployed",
+        "carried_by": str(carried_by),
+    }
+
+
+def carried_note(ref: dict, now: datetime) -> str:
+    """The note of an item whose wait was carried to *ref*. Pure."""
+    return (
+        f"carried: waits for the {ref_label(ref)}, the pull request of work item {ref.get('carried_by')}; "
+        f"released by the first build that carries its merge, not by that item's completion; "
+        f"carried at {_stamp(now)}"
+    )
+
+
+def normalize_blocked_reason(reason: object) -> str | None:
+    """The trimmed reason, ``None`` when empty."""
+    if reason is None:
+        return None
+    text = " ".join(str(reason).split())
+    return text[:MAX_REASON_CHARS] or None
+
+
+def ref_label(ref: dict) -> str:
+    """``owner/name#12`` (a pull request) or ``owner/name issue #12``."""
+    if ref.get("kind") == "issue":
+        return f"{ref['repo']} issue #{ref['number']}"
+    if ref.get("kind") == "workflow_run":
+        on = f" on {ref['branch']}" if ref.get("branch") else ""
+        return f"a successful {ref['repo']} {ref.get('workflow')} run{on} after {ref.get('after')}"
+    if ref.get("kind") == "deployment":
+        if ref.get("number"):
+            return f"deployment of {ref['repo']}#{ref['number']}"
+        return f"deployment of {ref['repo']}@{str(ref.get('sha') or '')[:7]}"
+    if ref.get("head_branch"):
+        return f"{ref['repo']}#{ref['number']} (or its successor on {ref['head_branch']})"
+    return f"{ref['repo']}#{ref['number']}"
+
+
+def _satisfied(ref: dict) -> bool:
+    if ref.get("kind") == "deployment":
+        return ref.get("state") == "deployed"
+    if ref.get("kind") == "workflow_run":
+        return ref.get("state") == "succeeded"
+    return ref.get("state") in ("merged", "closed")
+
+
+def _running_version() -> str:
+    from app.services.platform_builds import running_build
+
+    return running_build()[0]
+
+
+def waiting_label(ref: dict) -> str:
+    """What the Waits for line says of one open reference. Pure but for the running version."""
+    if ref.get("kind") == "workflow_run":
+        return ref_label(ref)
+    if ref.get("kind") != "deployment":
+        return f"{ref_label(ref)} ({ref.get('release_on')})"
+    merge_sha = str(ref.get("merge_sha") or "")
+    if not merge_sha:
+        return f"{ref_label(ref)} (not merged yet)"
+    merged = f"merged {merge_sha[:7]}, " if ref.get("number") else ""
+    if ref.get("build"):
+        return f"{ref_label(ref)} ({merged}not in build {ref['build']})"
+    # Never read against a build (its commit was unknown or unreadable): say so.
+    return f"{ref_label(ref)} ({merged}not checked yet against build {_running_version()})"
+
+
+def has_why(
+    *,
+    blocked_on: object = None,
+    blocked_on_refs: object = None,
+    blocked_reason: object = None,
+    needs_human: object = None,
+) -> bool:
+    """Whether a blocked item with these fields says what it waits for."""
+    return bool(blocked_on) or bool(blocked_on_refs) or bool(normalize_blocked_reason(blocked_reason)) or bool(
+        needs_human
+    )
+
+
+def refuse_blocked_without_why(status: str | None, **fields: object) -> None:
+    """Raise ``ValueError`` naming the fields when *status* is ``blocked`` with no why."""
+    if status == "blocked" and not has_why(**fields):
+        raise ValueError(WHY_FIELDS_MESSAGE)
+
+
+#: An item blocked on its own red pull request is released after this long.
+RED_SELF_BLOCK_SECONDS = 30 * 60
+
+
+def _own_red_refs(refs: object, payload: object) -> list[dict]:
+    """The references of *refs* that wait on the merge of a pull request *payload* names red. Pure.
+
+    A ``pull_request`` reference, or a ``deployment`` one not merged yet, naming
+    an open pull request the item is bound to whose CI on the current head
+    failed (``work_item_pull_requests.red_pull_requests``).
+    """
+    from app.services.work_item_pull_requests import red_pull_requests
+
+    red = {(b["repo"], b["number"]): b for b in red_pull_requests(payload)}
+    if not red:
+        return []
+    out: list[dict] = []
+    for ref in refs if isinstance(refs, list) else []:
+        if not isinstance(ref, dict) or _satisfied(ref):
+            continue
+        if ref.get("kind") == "deployment" and ref.get("merge_sha"):
+            continue  # merged already: it waits for a build, not for the red head
+        if ref.get("kind") not in ("pull_request", "deployment"):
+            continue
+        binding = red.get((str(ref.get("repo") or "").lower(), ref.get("number")))
+        if binding is not None:
+            out.append({**ref, "failed_at": binding.get("failed_at")})
+    return out
+
+
+def refuse_blocked_on_red_pull_request(
+    status: str | None, *, blocked_on_refs: object, payload: object, blocked_on: object = None
+) -> None:
+    """Raise ``ValueError`` when a ``blocked`` item would wait on the merge of its own red pull request.
+
+    A red head merges only once its owner pushes a fix, and that owner is the
+    item: parked on the merge, nothing would ever wake it. Allowed when the item
+    also waits for work items (``blocked_on``): those are its waker.
+    """
+    if status != "blocked" or blocked_on:
+        return
+    stuck = _own_red_refs(blocked_on_refs, payload)
+    if stuck:
+        names = ", ".join(ref_label(r) for r in stuck)
+        raise ValueError(
+            f"{names} is red on its head: the item would wait forever on its merge. Fix the head and push "
+            "(the CI completion dispatches the item again), or block on the work item that fixes it (blocked_on)"
+        )
+
+
+#: A pull request named in a reason: ``owner/name#12``, a hyphenated repository name
+#: (``filigran-ui #516``), ``PR 12`` or ``pull request #12``.
+_REASON_REFERENCE_RE = re.compile(
+    r"(?:\b[\w.-]+/[\w.-]+\s?#\d+)"
+    r"|(?:\b(?:PR|pull[ -]request)\s?#?\d+)"
+    r"|(?:\b[a-z0-9]+(?:[-.][a-z0-9]+)+\s?#\d+)",
+    re.IGNORECASE,
+)
+
+
+def reason_names_reference(reason: object) -> str | None:
+    """The first pull request or issue *reason* names, as written; ``None`` when it names none. Pure."""
+    if not isinstance(reason, str) or not reason:
+        return None
+    match = _REASON_REFERENCE_RE.search(reason)
+    return match.group(0) if match else None
+
+
+def refuse_unbound_reference_reason(
+    status: str | None,
+    *,
+    blocked_reason: object,
+    blocked_on: object = None,
+    blocked_on_refs: object = None,
+    needs_human: object = None,
+    payload: object = None,
+) -> None:
+    """Raise ``ValueError`` when a ``blocked`` item waits on a pull request it only names in its reason.
+
+    A reason is text: no event reads it. With no work item to wait for, no open
+    reference, no person to answer and no open pull request bound to the item,
+    nothing would ever release it (#11045). The fix is a reference the platform
+    watches (``blocked_on_refs``), or the item that carries the change (``blocked_on``).
+    """
+    from app.services.work_item_pull_requests import pull_request_bindings
+
+    if status != "blocked" or blocked_on or needs_human or open_refs(blocked_on_refs):
+        return
+    if any(b.get("state", "open") == "open" for b in pull_request_bindings(payload)):
+        return  # parked on a bound pull request: its CI or its closing releases it
+    named = reason_names_reference(blocked_reason)
+    if named is None:
+        return
+    raise ValueError(
+        f"the reason names '{named}', which nothing watches: the item would stay blocked after it merges or "
+        'closes. Give blocked_on_refs, e.g. [{"repo": "owner/name", "kind": "pull_request", "number": 12, '
+        '"release_on": "merged_or_closed"}] or {"kind": "deployment", "release_on": "deployed"} for a '
+        "build, or blocked_on (the work item that carries it), or needs_human: true"
+    )
+
+
+#: The keys of the items that are about one pull request: a UX verdict to post on it
+#: (``dev:ux-verdict-12-comment``) or a UX review of it (``ux:xtm-one-12``, ``ux:gate:xtm-one-12``).
+_OWN_PULL_REQUEST_KEY_RES = (
+    re.compile(r"^dev:ux-verdict-(?P<number>\d+)-comment$"),
+    re.compile(r"^ux:(?:gate:)?(?P<name>[a-z0-9][a-z0-9._-]*?)-(?P<number>\d+)$"),
+)
+#: ``owner/name#12`` as an item title names its pull request.
+_TITLE_PULL_REQUEST_RE = re.compile(r"\b(?P<repo>[\w.-]+/[\w.-]+)\s?#(?P<number>\d+)\b")
+
+
+def own_pull_request(correlation_key: object, title: object) -> dict | None:
+    """``{repo, number}`` of the pull request an item is about, ``None`` when it is about none. Pure.
+
+    Read from its key (the number) and its title (``owner/name#12``, the repository);
+    *repo* is ``None`` when neither names it, *name* the repository's short name the
+    key gives (``ux:xtm-one-12``). A title naming another number is ignored.
+    """
+    if not isinstance(correlation_key, str):
+        return None
+    key = correlation_key.strip().lower()
+    for pattern in _OWN_PULL_REQUEST_KEY_RES:
+        match = pattern.match(key)
+        if match is None:
+            continue
+        number = int(match.group("number"))
+        name = match.groupdict().get("name")
+        repo = None
+        if isinstance(title, str):
+            for named in _TITLE_PULL_REQUEST_RE.finditer(title):
+                candidate = named.group("repo").lower()
+                if int(named.group("number")) == number and (name is None or candidate.split("/")[1] == name):
+                    repo = candidate
+                    break
+        return {"repo": repo, "name": name, "number": number}
+    return None
+
+
+def _foreign_pull_request_refs(refs: object, own: dict) -> list[dict]:
+    """The open references of *refs* naming another pull request of *own*'s repository. Pure."""
+    out: list[dict] = []
+    for ref in refs if isinstance(refs, list) else []:
+        if not isinstance(ref, dict) or _satisfied(ref):
+            continue
+        if ref.get("kind") not in ("pull_request", "deployment") or not ref.get("number"):
+            continue
+        repo = str(ref.get("repo") or "").lower()
+        same_repo = (
+            repo == own["repo"]
+            if own.get("repo")
+            else (own.get("name") is not None and repo.split("/")[-1] == own["name"])
+        )
+        if same_repo and ref["number"] != own["number"]:
+            out.append(ref)
+    return out
+
+
+def refuse_foreign_pull_request_ref(
+    status: str | None, *, correlation_key: object, title: object, blocked_on_refs: object
+) -> None:
+    """Raise ``ValueError`` when an item about pull request N waits on another pull request of its repository.
+
+    A UX verdict or review item belongs to one pull request: parked on a sibling's
+    (a stale number, a superseded or neighbouring PR of the same program), it wakes
+    on that sibling's event or never (gap family verdict-item-pr-ref, #11507).
+    The refusal names the reference expected.
+    """
+    if status != "blocked":
+        return
+    own = own_pull_request(correlation_key, title)
+    if own is None:
+        return
+    foreign = _foreign_pull_request_refs(blocked_on_refs, own)
+    if not foreign:
+        return
+    repo = own.get("repo") or str(foreign[0].get("repo") or "").lower()
+    names = ", ".join(ref_label(r) for r in foreign)
+    expected = f"{repo}#{own['number']}"
+    raise ValueError(
+        f"{names} is not this item's pull request: {correlation_key} is about {expected}. Block on "
+        f'{{"repo": "{repo}", "kind": "pull_request", "number": {own["number"]}, "release_on": '
+        '"merged_or_closed"}, or on the work item that carries the other change (blocked_on)'
+    )
+
+
+def red_self_block_note(stuck: list[dict], now: datetime) -> str:
+    """The note of an item released from a wait on its own red pull request."""
+    names = ", ".join(ref_label(r) for r in stuck)
+    return (
+        f"released: {names} red on its head for more than {RED_SELF_BLOCK_SECONDS // 60} minutes, so it cannot "
+        f"merge and the item would wait forever; back in the queue to fix the head ({_stamp(now)})"
+    )
+
+
+def red_self_block_due(stuck: list[dict], last_activity_at: datetime | None, now: datetime) -> bool:
+    """Whether every reference of *stuck* has been red for :data:`RED_SELF_BLOCK_SECONDS`. Pure.
+
+    A failure recorded before ``failed_at`` existed counts from the item's last activity.
+    """
+    if not stuck:
+        return False
+    limit = now - timedelta(seconds=RED_SELF_BLOCK_SECONDS)
+    for ref in stuck:
+        since = _parse_stamp(ref.get("failed_at")) or last_activity_at
+        if since is None or since > limit:
+            return False
+    return True
+
+
+def _parse_stamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def blocked_why(item: Any) -> dict | None:
+    """What the views show of a blocked item: ``{"text", "missing"}``; ``None`` when not blocked.
+
+    ``text`` reads ``Waits for: ...`` (the items, the references, the reason,
+    or a person); ``missing`` is true for a legacy blocked item that says
+    nothing, shown with a "No reason" chip until edited.
+    """
+    get = item.get if isinstance(item, dict) else (lambda key, default=None: getattr(item, key, default))
+    # A scheduled item's blocked state is its own view (``scheduled_work_items``).
+    if get("status") != "blocked" or get("action_mode"):
+        return None
+    parts: list[str] = []
+    items = list(get("blocked_on") or [])
+    if items:
+        parts.append(f"{len(items)} work item(s)")
+    pending = [r for r in get("blocked_on_refs") or [] if isinstance(r, dict) and not _satisfied(r)]
+    if pending:
+        parts.append(", ".join(waiting_label(r) for r in pending))
+    reason = normalize_blocked_reason(get("blocked_reason"))
+    if reason:
+        parts.append(reason)
+    if get("needs_human"):
+        parts.append("a person (needs_human)")
+    if not parts:
+        return {"text": "No reason given", "missing": True}
+    return {"text": "Waits for: " + "; ".join(parts), "missing": False}
+
+
+# -- The matcher -----------------------------------------------------------------
+
+
+def _stamp(now: datetime) -> str:
+    return now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def closing_stamp(event: PullRequestEvent, now: datetime) -> str:
+    """When the reference merged or closed, as the code host dates it; *now* when it does not.
+
+    A release found by the polling fallback minutes after the merge still
+    dates the merge, not its reading.
+    """
+    if event.closed_at:
+        try:
+            when = datetime.fromisoformat(event.closed_at.replace("Z", "+00:00"))
+        except ValueError:
+            when = None
+        if when is not None:
+            return _stamp(when if when.tzinfo else when.replace(tzinfo=UTC))
+    return _stamp(now)
+
+
+def _host_stamp(value: str | None) -> str | None:
+    """*value* (the code host's ISO 8601 time) as ``YYYY-MM-DDTHH:MM:SSZ``; ``None`` when unreadable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return _stamp(parsed)
+
+
+def release_note(released: list[str], closed_at: str | None, now: datetime) -> str:
+    """The note of an item released by *released*. Pure.
+
+    ``released: <ref> merged at <when the host says it merged>`` and, when it
+    differs, ``; released at <now>``; a host that states no closing time
+    gives ``released: <ref> merged; released at <now>``: the release time is
+    never shown as the merge time.
+    """
+    refs = ", ".join(released)
+    stamp = _stamp(now)
+    when = _host_stamp(closed_at)
+    if when is None:
+        return f"released: {refs}; released at {stamp}"
+    if when == stamp:
+        return f"released: {refs} at {when}"
+    return f"released: {refs} at {when}; released at {stamp}"
+
+
+def due_deferral(not_before: datetime | None, now: datetime) -> str:
+    """The suffix of a release note when a future *not_before* defers the pickup. Pure.
+
+    An inbox takes an item only from its ``not_before`` on
+    (``list_dispatchable_work_items``; the ``due_at`` deadline defers nothing):
+    a released item whose ``not_before`` is still ahead stays open and unclaimed
+    until then, which the note says so nobody reads it as a stuck inbox.
+    """
+    if not_before is None:
+        return ""
+    at = not_before if not_before.tzinfo else not_before.replace(tzinfo=UTC)
+    if at <= now:
+        return ""
+    return f"; the inbox takes it from its not_before ({_stamp(at)})"
+
+
+def release_not_before(not_before: datetime | None, now: datetime) -> datetime:
+    """The ``not_before`` of an item a closing releases. Pure.
+
+    The run that merged a pull request usually completes the item waiting on it
+    seconds later; an item released with no deferral was dispatched to a second
+    run on the same delivery, which claimed it, so the merging run's completion
+    was refused as a non-holder and the second run found nothing left to do.
+    The release keeps the later of the item's own ``not_before`` and *now* plus
+    :data:`RELEASE_GRACE_SECONDS`; nobody completing it, the inbox takes it then.
+    """
+    grace = now + timedelta(seconds=RELEASE_GRACE_SECONDS)
+    if not_before is None:
+        return grace
+    at = not_before if not_before.tzinfo else not_before.replace(tzinfo=UTC)
+    return max(at, grace)
+
+
+def still_waiting_note(released: list[str], closed_at: str | None, now: datetime) -> str:
+    """The note of an item some of whose references *released* satisfied. Pure."""
+    refs = ", ".join(released)
+    stamp = _stamp(now)
+    when = _host_stamp(closed_at)
+    if when is None:
+        return f"{refs} (seen {stamp}); still waiting"
+    return f"{refs} at {when} (seen {stamp}); still waiting"
+
+
+def unmet_note(refused: list[str], pending: list[str], closed_at: str | None, now: datetime) -> str:
+    """The note of an item a closing surfaced: a reference it can never satisfy. Pure.
+
+    *refused* names the references closed the wrong way, *pending* the ones
+    still open; the owner re-points ``blocked_on_refs`` (the successor pull
+    request) or completes the item.
+    """
+    stamp = _stamp(now)
+    when = _host_stamp(closed_at)
+    at = f" at {when}" if when else ""
+    still = f"; still pending: {', '.join(pending)}" if pending else ""
+    return (
+        f"surfaced: {'; '.join(refused)}{at}, so it can never release this item{still}; "
+        f"re-point blocked_on_refs (the successor pull request) or complete it; surfaced at {stamp}"
+    )
+
+
+def _event_kind(event: PullRequestEvent) -> str | None:
+    if event.kind == "closed":
+        return "pull_request"
+    if event.kind == "issue_closed":
+        return "issue"
+    return None
+
+
+def followed_number(ref: dict, event: PullRequestEvent) -> int | None:
+    """The pull request of *event* that *ref* waits for, ``None`` when none. Pure.
+
+    Its own number, unless already seen closed unmerged; or, for a reference
+    that carries ``head_branch``, a later pull request of the same repository
+    whose head is that branch (a release pull request a workflow closes and
+    opens again under a new number), not seen closed unmerged yet.
+    """
+    superseded = set(ref.get("superseded") or [])
+    number = ref.get("number")
+    if number in event.pr_numbers:
+        return None if number in superseded else number
+    branch = ref.get("head_branch")
+    if not branch or event.kind != "closed" or event.head_branch != branch or not isinstance(number, int):
+        return None
+    for candidate in event.pr_numbers:
+        if candidate > number and candidate not in superseded:
+            return candidate
+    return None
+
+
+def apply_reference_event(
+    refs: list[dict], event: PullRequestEvent, now: datetime
+) -> tuple[list[dict], list[str], list[str]]:
+    """*refs* after *event*: ``(refs, released, refused)``.
+
+    *released* names each reference the event satisfied
+    (``owner/name#12 merged``); *refused* each one it closed the wrong way (a
+    pull request closed unmerged that a reference wanted merged). Pure.
+    """
+    kind = _event_kind(event)
+    if kind is None:
+        return refs, [], []
+    outcome = "merged" if kind == "pull_request" and event.merged else "closed"
+    released: list[str] = []
+    refused: list[str] = []
+    out: list[dict] = []
+    for ref in refs:
+        ref = dict(ref)
+        if (
+            ref.get("kind") == "deployment"
+            and kind == "pull_request"
+            and ref.get("repo") == event.repo
+            and ref.get("number") in event.pr_numbers
+            and not ref.get("merge_sha")
+        ):
+            if ref.get("carried_by") and not event.merged:
+                # Carried from a work item's pull request (#9943): the item may
+                # open a successor, and the dependency on it still holds; drop it.
+                released.append(
+                    f"{ref_label(ref)}: closed unmerged, dropped (carried from work item {ref['carried_by']})"
+                )
+                continue
+            # The merge stage of a deployment: the deploy stage needs the merge commit.
+            if event.merged and event.merge_sha:
+                ref["merge_sha"] = event.merge_sha.lower()
+                ref["state"] = "merged"
+                ref["at"] = now.isoformat()
+                if event.closed_at:
+                    ref["merged_at"] = event.closed_at
+                released.append(f"{ref_label(ref)}: merged {event.merge_sha[:7]}")
+            else:
+                refused.append(f"{ref_label(ref)}: {ref_label({**ref, 'kind': 'pull_request'})} closed unmerged")
+            out.append(ref)
+            continue
+        number = followed_number(ref, event) if ref.get("kind") == kind else None
+        if ref.get("repo") == event.repo and number is not None and not _satisfied(ref):
+            wanted = ref.get("release_on")
+            successor = f": successor #{number}" if number != ref.get("number") else ""
+            if wanted == "merged_or_closed" or wanted == outcome:
+                ref["state"] = outcome
+                ref["at"] = now.isoformat()
+                if successor:
+                    ref["merged_number"] = number
+                released.append(f"{ref_label(ref)}{successor} {outcome}")
+            elif kind == "pull_request" and ref.get("head_branch"):
+                # Superseded on its branch: wait for the successor instead of surfacing.
+                ref["superseded"] = sorted({*(ref.get("superseded") or []), number})
+                released.append(
+                    f"{event.repo}#{number} closed unmerged, waiting for its successor on {ref['head_branch']}"
+                )
+            else:
+                refused.append(f"{ref_label(ref)} {outcome}, release_on {wanted}")
+        out.append(ref)
+    return out, released, refused
+
+
+def all_satisfied(refs: list[dict]) -> bool:
+    return bool(refs) and all(_satisfied(r) for r in refs)
+
+
+def record_closing_on_payload(payload: dict | None, event: PullRequestEvent, now: datetime) -> dict | None:
+    """*payload* with the pull request *event* closed marked merged or closed, ``None`` when unchanged.
+
+    A release read by the polling fallback or an unsigned delivery's read-back
+    reaches only this module, not the payload bindings the webhook path
+    updates; a binding left ``open`` made the inbox run's end park the item on
+    the same merged pull request again, and the next poll released it again,
+    once per pass. The binding now records the closing the release applied. Pure.
+    """
+    if event.kind != "closed":
+        return None
+    from app.services.work_item_pull_requests import apply_pull_request_event
+
+    out, _ = apply_pull_request_event(payload, event, now)
+    return out if out != (payload or {}) else None
+
+
+# -- The release -----------------------------------------------------------------
+
+
+def _like_literal(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def _candidate_ids(db, event: PullRequestEvent) -> list[uuid.UUID]:
+    rows = await db.execute(
+        select(WorkItem.id)
+        .where(
+            WorkItem.status == "blocked",
+            WorkItem.blocked_on_refs.is_not(None),
+            WorkItem.action_mode.is_(None),
+            cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
+        )
+        .order_by(WorkItem.last_activity_at.asc())
+        .limit(_MAX_ITEMS_PER_EVENT)
+    )
+    return [row[0] for row in rows.all()]
+
+
+async def _apply_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datetime) -> str | None:
+    """Apply *event* to one item, on its locked row. ``released`` / ``surfaced`` / ``noted`` / ``None``.
+
+    ``surfaced``: a reference the closing can never satisfy any more (a pull
+    request closed unmerged that it wanted merged) put the item back to
+    ``open`` with :func:`unmet_note`, instead of a claim note on an item left
+    blocked on a wait that cannot hold.
+    """
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+        ).scalar_one_or_none()
+        if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        refs, released, refused = apply_reference_event(list(item.blocked_on_refs), event, now)
+        if not released and not refused:
+            return None
+        item.blocked_on_refs = refs or None
+        payload = record_closing_on_payload(item.payload, event, now)
+        if payload is not None:
+            item.payload = payload
+        notes = list(item.claim_notes or [])
+        outcome = "noted"
+        note: str | None = None
+        if refused:
+            pending = [
+                waiting_label(r)
+                for r in open_refs(refs)
+                if not (r.get("repo") == event.repo and r.get("number") in event.pr_numbers)
+            ]
+            note = unmet_note(refused, pending, event.closed_at, now)
+            previous = item.description or ""
+            item.description = f"{note}\n\n{previous}" if previous else note
+            notes.append({"at": now.isoformat(), "text": note})
+            item.status = "open"
+            item.claimed_by_agent_id = None
+            item.claimed_by_run_id = None
+            item.claimed_at = None
+            item.blocked_on_refs = None
+            item.blocked_reason = None
+            item.needs_human = None
+            item.last_activity_at = now
+            outcome = "surfaced"
+        elif released and (all_satisfied(refs) or not refs) and not item.blocked_on:
+            # ``not refs``: a carried reference dropped was its last wait.
+            item.not_before = release_not_before(item.not_before, now)
+            note = release_note(released, event.closed_at, now) + due_deferral(item.not_before, now)
+            previous = item.description or ""
+            item.description = f"{note}\n\n{previous}" if previous else note
+            notes.append({"at": now.isoformat(), "text": note})
+            item.status = "open"
+            item.claimed_by_agent_id = None
+            item.claimed_by_run_id = None
+            item.claimed_at = None
+            item.blocked_on_refs = None
+            item.blocked_reason = None
+            item.needs_human = None
+            item.last_activity_at = now
+            outcome = "released"
+        elif released:
+            notes.append({"at": now.isoformat(), "text": still_waiting_note(released, event.closed_at, now)})
+        item.claim_notes = notes
+        await db.commit()
+    if outcome == "released":
+        await _publish_release(item_id, note or "", event, released)
+    elif outcome == "surfaced":
+        await _publish_surfaced(item_id, note or "")
+    elif any(r.get("kind") == "deployment" and r.get("merge_sha") and not _satisfied(r) for r in refs):
+        # Merged: the running build may already carry it (a late delivery).
+        schedule_deployment_check(item_id)
+    return outcome
+
+
+async def _publish_surfaced(item_id: uuid.UUID, note: str) -> None:
+    """``work_item.status_changed`` (blocked to open) of an item a closing surfaced. Best-effort."""
+    from app.services.work_item import publish_transition
+
+    try:
+        await publish_transition(item_id, previous_status="blocked", note=note)
+    except Exception as exc:  # best-effort: the surfacing already landed
+        logger.warning("Surfaced work item %s not published: %s", item_id, format_exception_message(exc))
+
+
+async def _publish_release(item_id: uuid.UUID, note: str, event: PullRequestEvent, released: list[str]) -> None:
+    from app.core.database import async_session
+    from app.services.platform_events import publish, work_item_data
+    from app.services.work_item import publish_transition
+
+    await publish_transition(item_id, previous_status="blocked", note=note)
+    try:
+        async with async_session() as db:
+            item = await db.get(WorkItem, item_id)
+        if item is None:
+            return
+        data = work_item_data(item, previous_status="blocked", note=note)
+        data["released_by"] = {
+            "repo": event.repo,
+            "kind": _event_kind(event),
+            "numbers": list(event.pr_numbers),
+            "merged": bool(event.merged),
+            "references": released,
+        }
+        await publish("work_item.released", data)
+    except Exception as exc:  # best-effort: the release already landed
+        logger.warning("work_item.released for %s not published: %s", item_id, format_exception_message(exc))
+
+
+async def release_blocked_on_refs(event: PullRequestEvent) -> dict:
+    """Release the blocked items whose references *event* satisfies.
+
+    ``{"released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+
+    if _event_kind(event) is None:
+        return {"released": 0, "noted": 0}
+    now = datetime.now(UTC)
+    try:
+        async with async_session() as db:
+            ids = await _candidate_ids(db, event)
+    except Exception as exc:
+        logger.warning("Blocked references on %s unreadable: %s", event.repo, format_exception_message(exc))
+        return {"released": 0, "noted": 0}
+    counts = {"released": 0, "noted": 0}
+    for item_id in ids:
+        try:
+            outcome = await _apply_to_item(item_id, event, now)
+        except Exception as exc:
+            logger.warning(
+                "Reference event on %s could not move work item %s: %s",
+                event.repo,
+                item_id,
+                format_exception_message(exc),
+            )
+            continue
+        if outcome:
+            # ``surfaced`` appears only when an item was surfaced.
+            counts[outcome] = counts.get(outcome, 0) + 1
+    if any(counts.values()):
+        logger.info("Reference event %s on %s: %s", event.kind, event.repo, counts)
+    return counts
+
+
+# -- An unsigned delivery, read back -------------------------------------------
+
+#: (repo, kind, number) -> monotonic time of its last read-back, per process: an
+#: unsigned delivery storm reads one reference at most once per window.
+_hint_reads: dict[tuple, float] = {}
+HINT_QUIET_SECONDS = 20.0
+#: Provider reads one unsigned delivery may make: it is read inline, in the
+#: webhook request, so a closing named by many owners stays bounded.
+HINT_MAX_READS = 5
+
+
+async def _hint_candidates(db, event: PullRequestEvent) -> list[tuple[uuid.UUID, Any, list]]:
+    rows = await db.execute(
+        select(WorkItem.id, WorkItem.user_id, WorkItem.blocked_on_refs)
+        .where(
+            WorkItem.status == "blocked",
+            WorkItem.blocked_on_refs.is_not(None),
+            WorkItem.action_mode.is_(None),
+            WorkItem.user_id.is_not(None),
+            cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
+        )
+        .order_by(WorkItem.last_activity_at.asc())
+        .limit(_MAX_ITEMS_PER_EVENT)
+    )
+    return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
+
+
+def _named_by(refs: list, event: PullRequestEvent) -> list[dict]:
+    kind = _event_kind(event)
+    return [
+        r
+        for r in open_refs(refs)
+        if r.get("repo") == event.repo and read_kind(r) == kind and _read_number(r, event) is not None
+    ]
+
+
+def _read_number(ref: dict, event: PullRequestEvent) -> int | None:
+    """The number of *event* to read back for *ref*: its own, or a successor on its head branch. Pure."""
+    if ref.get("number") in event.pr_numbers:
+        return int(ref["number"])
+    if ref.get("kind") == "pull_request":
+        return followed_number(ref, event)
+    return None
+
+
+def read_kind(ref: dict) -> str | None:
+    """The kind the code host's reader reads *ref* as; ``None`` when it reads nothing.
+
+    A deployment reference reads as its pull request until the merge is known;
+    its deploy stage is never polled. Pure.
+    """
+    if ref.get("kind") == "deployment":
+        return "pull_request" if ref.get("number") and not ref.get("merge_sha") else None
+    if ref.get("kind") == "workflow_run":
+        # Read by the workflow run reader (:func:`_poll_workflow_run`), never as a pull request.
+        return None
+    return ref.get("kind")
+
+
+async def release_from_unverified_delivery(event: PullRequestEvent) -> dict:
+    """Release the items an UNSIGNED closing delivery names, once the code host confirms it.
+
+    A delivery accepted without a webhook secret is not trusted with a work
+    item's state, but it says which reference changed: each one an
+    item waits for is read back from the provider with the credential its
+    owner reads that provider with (the polling fallback's reader), and only
+    the closing that read returns is applied. The release then lands within
+    seconds of the merge instead of the next polling pass. Each reference is
+    read at most once per :data:`HINT_QUIET_SECONDS` per process.
+
+    ``{"read": r, "released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import reference_state_readers
+
+    counts = {"read": 0, "released": 0, "noted": 0}
+    if _event_kind(event) is None:
+        return counts
+    readers = reference_state_readers()
+    if not readers:
+        return counts
+    now_mono = time.monotonic()
+    try:
+        async with async_session() as db:
+            candidates = [c for c in await _hint_candidates(db, event) if _named_by(c[2], event)]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for _, user_id, _ in candidates:
+                for provider in readers:
+                    key = (provider, str(user_id))
+                    if key not in tokens:
+                        tokens[key] = await reference_token(db, provider, user_id)
+    except Exception as exc:
+        logger.warning("Unsigned reference event on %s not read back: %s", event.repo, format_exception_message(exc))
+        return counts
+    seen: dict[tuple, PullRequestEvent | None] = {}
+    read_now: set[tuple] = set()
+    for item_id, user_id, refs in candidates:
+        for ref in _named_by(refs, event):
+            for provider, reader in readers.items():
+                token = tokens.get((provider, str(user_id)))
+                if not token:
+                    continue
+                number = _read_number(ref, event) or int(ref["number"])
+                ref_key = (ref.get("repo"), read_kind(ref), number)
+                key = (provider, str(user_id), *ref_key)
+                if key not in seen:
+                    last = _hint_reads.get(ref_key)
+                    if ref_key not in read_now and last is not None and now_mono - last < HINT_QUIET_SECONDS:
+                        # A duplicate delivery of the same closing: already read back.
+                        seen[key] = None
+                    elif counts["read"] >= HINT_MAX_READS:
+                        break
+                    else:
+                        counts["read"] += 1
+                        read_now.add(ref_key)
+                        _hint_reads[ref_key] = now_mono
+                        try:
+                            seen[key] = await reader(str(ref["repo"]), str(read_kind(ref)), number, token)
+                        except Exception as exc:
+                            logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                            seen[key] = None
+                verified = seen[key]
+                if verified is None:
+                    continue
+                try:
+                    outcome = await _apply_to_item(item_id, verified, datetime.now(UTC))
+                except Exception as exc:
+                    logger.warning(
+                        "Read-back reference %s could not move work item %s: %s",
+                        ref_label(ref),
+                        item_id,
+                        format_exception_message(exc),
+                    )
+                    continue
+                if outcome:
+                    counts[outcome] = counts.get(outcome, 0) + 1
+                break
+    if len(_hint_reads) > POLL_MAX_ITEMS * 40:
+        for stale in [k for k, t in _hint_reads.items() if now_mono - t >= HINT_QUIET_SECONDS]:
+            _hint_reads.pop(stale, None)
+    if counts["read"]:
+        logger.info("Unsigned reference event %s on %s read back: %s", event.kind, event.repo, counts)
+    return counts
+
+
+# -- The deploy stage ------------------------------------------------------
+
+#: (provider, repo, merge_sha, build_sha) -> contained, per process: a build never changes.
+_containment: dict[tuple[str, str, str, str], bool] = {}
+_CONTAINMENT_MAX = 2000
+#: Items one release event may check.
+_MAX_ITEMS_PER_RELEASE = 200
+#: Running checks, kept so the loop does not drop them.
+_checks: set[asyncio.Task] = set()
+
+
+def deployed_note(ref: dict, version: str, first_seen_at: str | None, now: datetime) -> str:
+    """The note of an item released by the deployment of *ref*. Pure."""
+    merged = f" (merged {str(ref.get('merge_sha') or '')[:7]})" if ref.get("number") else ""
+    seen = _host_stamp(first_seen_at)
+    in_build = f"in build {version}" + (f" at {seen}" if seen else "")
+    return f"released: {ref_label(ref)}{merged} {in_build}; released at {_stamp(now)}"
+
+
+def pending_deployments(refs: Any) -> list[dict]:
+    """The deployment references of *refs* merged and not yet deployed. Pure."""
+    return [
+        r
+        for r in (refs or [])
+        if isinstance(r, dict) and r.get("kind") == "deployment" and r.get("merge_sha") and not _satisfied(r)
+    ]
+
+
+def same_commit(a: str, b: str) -> bool:
+    """Whether *a* and *b* name the same commit: equal, or one a prefix of the other, 7 characters at least. Pure."""
+    a, b = (a or "").strip().lower(), (b or "").strip().lower()
+    if len(a) < 7 or len(b) < 7:
+        return False
+    return a.startswith(b) or b.startswith(a)
+
+
+async def _contained(
+    db, user_id: Any, ref: dict, build_sha: str, tokens: dict[tuple[str, str], str | None]
+) -> bool | None:
+    """Whether the build *build_sha* carries *ref*'s merge commit; ``None`` when unreadable."""
+    from app.integrations.reference_state import commit_containment_readers
+
+    merge_sha = str(ref.get("merge_sha") or "")
+    repo = str(ref.get("repo") or "")
+    if same_commit(merge_sha, build_sha):
+        # The build is the merge commit itself: contained, nothing to read.
+        return True
+    for provider, reader in commit_containment_readers().items():
+        key = (provider, repo, merge_sha, build_sha)
+        if key in _containment:
+            return _containment[key]
+        token_key = (provider, str(user_id))
+        if token_key not in tokens:
+            tokens[token_key] = await reference_token(db, provider, user_id)
+        token = tokens[token_key]
+        if not token:
+            continue
+        try:
+            answer = await reader(repo, merge_sha, build_sha, token)
+        except Exception as exc:
+            logger.info("Deployment of %s not read: %s", ref_label(ref), format_exception_message(exc))
+            answer = None
+        if answer is None:
+            continue
+        if len(_containment) >= _CONTAINMENT_MAX:
+            _containment.clear()
+        _containment[key] = answer
+        return answer
+    return None
+
+
+async def _apply_deployment(item_id: uuid.UUID, release: dict, now: datetime) -> str | None:
+    """Check the deployment references of one item against *release*. ``released`` / ``noted`` / ``None``."""
+    from app.core.database import async_session
+
+    build_sha = str(release.get("git_sha") or "").lower()
+    version = str(release.get("version") or "")
+    if not build_sha:
+        return None
+    tokens: dict[tuple[str, str], str | None] = {}
+    async with async_session() as db:
+        row = (
+            await db.execute(select(WorkItem.user_id, WorkItem.blocked_on_refs).where(WorkItem.id == item_id))
+        ).one_or_none()
+        if row is None or row[0] is None:
+            return None
+        verdicts: dict[tuple, bool | None] = {}
+        for ref in pending_deployments(row[1]):
+            verdicts[_ref_key(ref)] = await _contained(db, row[0], ref, build_sha, tokens)
+    if not verdicts:
+        return None
+    async with async_session() as db:
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+        ).scalar_one_or_none()
+        if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        refs: list[dict] = []
+        deployed: list[dict] = []
+        changed = False
+        for ref in item.blocked_on_refs:
+            ref = dict(ref)
+            if ref.get("kind") == "deployment" and ref.get("merge_sha") and not _satisfied(ref):
+                verdict = verdicts.get(_ref_key(ref))
+                if verdict:
+                    ref["state"] = "deployed"
+                    ref["at"] = now.isoformat()
+                    ref["build"] = version
+                    deployed.append(ref)
+                    changed = True
+                elif verdict is False and ref.get("build") != version:
+                    # Read and not in this build: the Waits for line names it.
+                    ref["build"] = version
+                    changed = True
+            refs.append(ref)
+        if not changed:
+            return None
+        item.blocked_on_refs = refs
+        outcome = "noted"
+        note: str | None = None
+        if deployed:
+            notes = list(item.claim_notes or [])
+            texts = [deployed_note(r, version, release.get("first_seen_at"), now) for r in deployed]
+            if all_satisfied(refs) and not item.blocked_on:
+                note = "\n".join(texts) + due_deferral(item.not_before, now)
+                previous = item.description or ""
+                item.description = f"{note}\n\n{previous}" if previous else note
+                notes.append({"at": now.isoformat(), "text": note})
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+                item.blocked_on_refs = None
+                item.blocked_reason = None
+                item.needs_human = None
+                item.last_activity_at = now
+                outcome = "released"
+            else:
+                notes.extend({"at": now.isoformat(), "text": f"{t}; still waiting"} for t in texts)
+            item.claim_notes = notes
+        await db.commit()
+    if outcome == "released":
+        await _publish_deployed(item_id, note or "", release, deployed)
+    return outcome
+
+
+async def _publish_deployed(item_id: uuid.UUID, note: str, release: dict, deployed: list[dict]) -> None:
+    from app.core.database import async_session
+    from app.services.platform_events import publish, work_item_data
+    from app.services.work_item import publish_transition
+
+    await publish_transition(item_id, previous_status="blocked", note=note)
+    try:
+        async with async_session() as db:
+            item = await db.get(WorkItem, item_id)
+        if item is None:
+            return
+        data = work_item_data(item, previous_status="blocked", note=note)
+        data["released_by"] = {
+            "kind": "deployment",
+            "version": release.get("version"),
+            "git_sha": release.get("git_sha"),
+            "references": [ref_label(r) for r in deployed],
+            "merge_shas": [r.get("merge_sha") for r in deployed],
+        }
+        await publish("work_item.released", data)
+    except Exception as exc:  # best-effort: the release already landed
+        logger.warning("work_item.released for %s not published: %s", item_id, format_exception_message(exc))
+
+
+async def _deployment_candidates(db) -> list[uuid.UUID]:
+    rows = await db.execute(
+        select(WorkItem.id, WorkItem.blocked_on_refs)
+        .where(
+            WorkItem.status == "blocked",
+            WorkItem.blocked_on_refs.is_not(None),
+            WorkItem.action_mode.is_(None),
+            WorkItem.user_id.is_not(None),
+            cast(WorkItem.blocked_on_refs, Text).ilike('%"deployment"%'),
+        )
+        .order_by(WorkItem.last_activity_at.asc())
+        .limit(_MAX_ITEMS_PER_RELEASE)
+    )
+    return [row[0] for row in rows.all() if pending_deployments(row[1])]
+
+
+async def on_release_deployed(release: dict) -> dict:
+    """Release the items whose merged change the new build *release* carries.
+
+    *release* is the ``platform.release.deployed`` payload (``version``,
+    ``git_sha``, ``first_seen_at``). ``{"released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.services.platform_builds import resolve_build_sha
+
+    counts = {"released": 0, "noted": 0}
+    # A pod started without GIT_SHA raises the event with git_sha null: the build's
+    # commit is then read from its recorded row or its version.
+    git_sha = await resolve_build_sha(str(release.get("version") or ""), release.get("git_sha"))
+    if not git_sha:
+        return counts
+    release = {**release, "git_sha": git_sha}
+    try:
+        async with async_session() as db:
+            ids = await _deployment_candidates(db)
+    except Exception as exc:
+        logger.warning("Deployment references not read: %s", format_exception_message(exc))
+        return counts
+    now = datetime.now(UTC)
+    for item_id in ids:
+        try:
+            outcome = await _apply_deployment(item_id, release, now)
+        except Exception as exc:
+            logger.warning("Deployment check could not move work item %s: %s", item_id, format_exception_message(exc))
+            continue
+        if outcome:
+            counts[outcome] += 1
+    if counts["released"] or counts["noted"]:
+        logger.info("Release %s: deployment references %s", release.get("version"), counts)
+    return counts
+
+
+async def running_release() -> dict:
+    """The running build as the release event names it (``version``, ``git_sha``).
+
+    The commit falls back to the one recorded for the running version, then to
+    the one a ``-dev.<sha>`` version names, when the process has no ``GIT_SHA``.
+    """
+    from app.services.platform_builds import resolve_build_sha, running_build
+
+    version, git_sha = running_build()
+    resolved = await resolve_build_sha(version, git_sha)
+    return {"version": version, "git_sha": resolved or None, "first_seen_at": None}
+
+
+async def _read_merge_stage(item_id: uuid.UUID) -> None:
+    """Read the pull requests of the item's deployment references not known merged (a merge before the write)."""
+    from app.core.database import async_session
+    from app.integrations.reference_state import reference_state_readers
+
+    readers = reference_state_readers()
+    async with async_session() as db:
+        row = (
+            await db.execute(select(WorkItem.user_id, WorkItem.blocked_on_refs).where(WorkItem.id == item_id))
+        ).one_or_none()
+        if row is None or row[0] is None:
+            return
+        waiting = [r for r in open_refs(row[1]) if r.get("kind") == "deployment" and read_kind(r)]
+        tokens = {p: await reference_token(db, p, row[0]) for p in readers} if waiting else {}
+    for ref in waiting[:POLL_MAX_ITEMS]:
+        for provider, reader in readers.items():
+            if not tokens.get(provider):
+                continue
+            event = await reader(str(ref["repo"]), "pull_request", int(ref["number"]), str(tokens[provider]))
+            if event is not None:
+                await _apply_to_item(item_id, event, datetime.now(UTC))
+            break
+
+
+async def check_item_deployment(item_id: uuid.UUID | str) -> str | None:
+    """The check made once at the write: the pull request may have merged and the running
+    build may already carry it. Never raises."""
+    try:
+        await _read_merge_stage(uuid.UUID(str(item_id)))
+        return await _apply_deployment(uuid.UUID(str(item_id)), await running_release(), datetime.now(UTC))
+    except Exception as exc:
+        logger.warning("Deployment check of work item %s failed: %s", item_id, format_exception_message(exc))
+        return None
+
+
+def _spawn(coro: Any) -> None:
+    try:
+        task = asyncio.get_running_loop().create_task(coro)
+    except RuntimeError:  # no loop: nothing to schedule on
+        coro.close()
+        return
+    _checks.add(task)
+    task.add_done_callback(_checks.discard)
+
+
+def schedule_deployment_check(item_id: uuid.UUID | str) -> None:
+    """Check *item_id*'s deployment references against the running build, in the background."""
+    _spawn(check_item_deployment(item_id))
+
+
+def schedule_release_check(release: dict) -> None:
+    """Run :func:`on_release_deployed` in the background (a startup step must not wait on GitHub)."""
+    _spawn(on_release_deployed(dict(release)))
+
+
+# -- The workflow run stage --------------------------------------------------------
+
+
+def workflow_run_note(ref: dict, run: dict, now: datetime) -> str:
+    """The note of an item a successful workflow run released. Pure."""
+    url = f" ({run['url']})" if run.get("url") else ""
+    when = _host_stamp(run.get("updated_at")) or _host_stamp(run.get("created_at"))
+    at = f" at {when}" if when else ""
+    return f"released: {ref_label(ref)}: run {run.get('id')}{url} succeeded{at}; released at {_stamp(now)}"
+
+
+async def _apply_workflow_run(item_id: uuid.UUID, key: tuple, run: dict, now: datetime) -> str | None:
+    """Mark the ``workflow_run`` reference *key* of one item succeeded by *run*. ``released`` / ``noted`` / ``None``."""
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+        ).scalar_one_or_none()
+        if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        refs: list[dict] = []
+        matched: list[dict] = []
+        for ref in item.blocked_on_refs:
+            ref = dict(ref)
+            if ref.get("kind") == "workflow_run" and _ref_key(ref) == key and not _satisfied(ref):
+                ref["state"] = "succeeded"
+                ref["at"] = now.isoformat()
+                for field, value in (
+                    ("run_id", run.get("id")),
+                    ("run_url", run.get("url")),
+                    ("run_at", run.get("created_at")),
+                ):
+                    if value is not None:
+                        ref[field] = value
+                matched.append(ref)
+            refs.append(ref)
+        if not matched:
+            return None
+        item.blocked_on_refs = refs
+        notes = list(item.claim_notes or [])
+        texts = [workflow_run_note(r, run, now) for r in matched]
+        outcome = "noted"
+        note: str | None = None
+        if all_satisfied(refs) and not item.blocked_on:
+            note = "\n".join(texts) + due_deferral(item.not_before, now)
+            previous = item.description or ""
+            item.description = f"{note}\n\n{previous}" if previous else note
+            notes.append({"at": now.isoformat(), "text": note})
+            item.status = "open"
+            item.claimed_by_agent_id = None
+            item.claimed_by_run_id = None
+            item.claimed_at = None
+            item.blocked_on_refs = None
+            item.blocked_reason = None
+            item.needs_human = None
+            item.last_activity_at = now
+            outcome = "released"
+        else:
+            notes.extend({"at": now.isoformat(), "text": f"{t}; still waiting"} for t in texts)
+        item.claim_notes = notes
+        await db.commit()
+    if outcome == "released":
+        await _publish_workflow_run(item_id, note or "", run, matched)
+    return outcome
+
+
+async def _publish_workflow_run(item_id: uuid.UUID, note: str, run: dict, matched: list[dict]) -> None:
+    from app.core.database import async_session
+    from app.services.platform_events import publish, work_item_data
+    from app.services.work_item import publish_transition
+
+    await publish_transition(item_id, previous_status="blocked", note=note)
+    try:
+        async with async_session() as db:
+            item = await db.get(WorkItem, item_id)
+        if item is None:
+            return
+        data = work_item_data(item, previous_status="blocked", note=note)
+        data["released_by"] = {
+            "kind": "workflow_run",
+            "run_id": run.get("id"),
+            "run_url": run.get("url"),
+            "references": [ref_label(r) for r in matched],
+        }
+        await publish("work_item.released", data)
+    except Exception as exc:  # best-effort: the release already landed
+        logger.warning("work_item.released for %s not published: %s", item_id, format_exception_message(exc))
+
+
+async def _poll_workflow_run(
+    item_id: uuid.UUID,
+    user_id: Any,
+    ref: dict,
+    readers: dict,
+    tokens: dict[tuple[str, str], str | None],
+    seen: dict[tuple, dict | None],
+    counts: dict,
+) -> None:
+    """Read one ``workflow_run`` reference through the providers' readers and apply a successful run."""
+    key = _ref_key(ref)
+    for provider, reader in readers.items():
+        token = tokens.get((provider, str(user_id)))
+        if not token:
+            continue
+        read_key = (provider, str(user_id), *key)
+        if read_key not in seen:
+            if counts["read"] >= POLL_MAX_READS:
+                return
+            counts["read"] += 1
+            try:
+                seen[read_key] = await reader(
+                    str(ref["repo"]), str(ref["workflow"]), str(ref["after"]), ref.get("branch"), token
+                )
+            except Exception as exc:
+                logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                seen[read_key] = None
+        run = seen[read_key]
+        if run is None:
+            continue
+        try:
+            outcome = await _apply_workflow_run(item_id, key, run, datetime.now(UTC))
+        except Exception as exc:
+            logger.warning(
+                "Polled reference %s could not move work item %s: %s",
+                ref_label(ref),
+                item_id,
+                format_exception_message(exc),
+            )
+            return
+        if outcome:
+            counts[outcome] = counts.get(outcome, 0) + 1
+        return
+
+
+async def _poll_branch_successors(
+    item_id: uuid.UUID,
+    user_id: Any,
+    ref: dict,
+    readers: dict,
+    tokens: dict[tuple[str, str], str | None],
+    seen: dict[tuple, list[PullRequestEvent]],
+    counts: dict,
+) -> None:
+    """Apply the closings of the later pull requests of *ref*'s head branch, oldest first.
+
+    A reference that carries ``head_branch`` waits for the pull request it names
+    or a successor on that branch; the numbered read misses a successor, so the
+    branch's closed pull requests are read once per pass and each later one is
+    applied as its delivery would have been (:func:`followed_number`).
+    """
+    for provider, reader in readers.items():
+        token = tokens.get((provider, str(user_id)))
+        if not token:
+            continue
+        key = (provider, str(user_id), ref.get("repo"), ref.get("head_branch"))
+        if key not in seen:
+            if counts["read"] >= POLL_MAX_READS:
+                return
+            counts["read"] += 1
+            try:
+                seen[key] = list(await reader(str(ref["repo"]), str(ref["head_branch"]), token))
+            except Exception as exc:
+                logger.info("Branch of %s not read: %s", ref_label(ref), format_exception_message(exc))
+                seen[key] = []
+        for event in seen[key]:
+            if not event.pr_numbers or event.pr_numbers[0] <= int(ref.get("number") or 0):
+                continue
+            try:
+                outcome = await _apply_to_item(item_id, event, datetime.now(UTC))
+            except Exception as exc:
+                logger.warning(
+                    "Polled successor of %s could not move work item %s: %s",
+                    ref_label(ref),
+                    item_id,
+                    format_exception_message(exc),
+                )
+                return
+            if outcome:
+                counts[outcome] = counts.get(outcome, 0) + 1
+            if outcome in ("released", "surfaced"):
+                return
+        return
+
+
+# -- The polling fallback --------------------------------------------------------
+
+#: Item id -> monotonic time of its last read, per process.
+_last_polled: dict[uuid.UUID, float] = {}
+
+
+def open_refs(refs: Any) -> list[dict]:
+    """The references of *refs* not satisfied yet. Pure."""
+    return [r for r in (refs or []) if isinstance(r, dict) and not _satisfied(r)]
+
+
+def _due(item_id: uuid.UUID, now_mono: float) -> bool:
+    last = _last_polled.get(item_id)
+    return last is None or now_mono - last >= POLL_QUIET_SECONDS
+
+
+async def _poll_candidates(db, now: datetime) -> list[tuple[uuid.UUID, Any, list]]:
+    rows = await db.execute(
+        select(WorkItem.id, WorkItem.user_id, WorkItem.blocked_on_refs)
+        .where(
+            WorkItem.status == "blocked",
+            WorkItem.blocked_on_refs.is_not(None),
+            WorkItem.action_mode.is_(None),
+            WorkItem.user_id.is_not(None),
+            WorkItem.last_activity_at <= now - timedelta(seconds=POLL_MIN_AGE_SECONDS),
+        )
+        .order_by(WorkItem.last_activity_at.asc())
+        .limit(POLL_MAX_ITEMS * 4)
+    )
+    return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
+
+
+async def reference_token(db, provider: str, user_id: Any) -> str | None:
+    """The token *user_id* reads *provider* with: the first of its integrations
+    they see, connected for them, whose credential they may use (the event
+    poller's rule); ``None`` when there is none."""
+    from app.models.integration import Integration
+    from app.services.integration_user_credentials import (
+        _visible_to,
+        connected_for_clause,
+        reader_clause,
+        resolve_token_holder,
+    )
+    from app.services.vault import reveal_field
+
+    integrations = (
+        (
+            await db.execute(
+                select(Integration)
+                .where(
+                    Integration.provider == provider,
+                    connected_for_clause(user_id),
+                    reader_clause(user_id),
+                )
+                .order_by(Integration.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for integration in integrations:
+        if not await _visible_to(db, integration.id, user_id):
+            continue
+        holder = await resolve_token_holder(db, integration, user_id)
+        if holder is None:
+            continue
+        token = await reveal_field(holder, "access_token_enc")
+        if not token and holder is integration:
+            token = await reveal_field(integration, "api_key_enc")
+        if token:
+            return token
+    return None
+
+
+async def release_red_self_blocks(now: datetime | None = None) -> int:
+    """Release the items blocked on the merge of their own pull request red for :data:`RED_SELF_BLOCK_SECONDS`.
+
+    A red head merges only once the item's owner pushes a fix, so such a wait
+    never ends by itself: the item goes back to ``open``, unclaimed, its
+    references cleared, with :func:`red_self_block_note` on top of its
+    description. An item that also waits for work items or for another
+    reference stays blocked (those wake it). Never raises.
+    """
+    from app.core.database import async_session
+
+    now = now or datetime.now(UTC)
+    released: list[tuple[uuid.UUID, str]] = []
+    try:
+        async with async_session() as db:
+            rows = await db.execute(
+                select(WorkItem)
+                .where(
+                    WorkItem.status == "blocked",
+                    WorkItem.blocked_on_refs.is_not(None),
+                    WorkItem.action_mode.is_(None),
+                    WorkItem.last_activity_at <= now - timedelta(seconds=POLL_MIN_AGE_SECONDS),
+                    # Only items whose pull requests have a CI recorded: the rest is decided in Python.
+                    cast(WorkItem.payload, Text).ilike('%"ci"%'),
+                )
+                .order_by(WorkItem.last_activity_at.asc())
+                .limit(POLL_MAX_ITEMS * 4)
+                .with_for_update(skip_locked=True)
+            )
+            for item in rows.scalars().all():
+                if item.blocked_on:
+                    continue
+                stuck = _own_red_refs(list(item.blocked_on_refs or []), item.payload)
+                if len(stuck) != len(open_refs(item.blocked_on_refs)):
+                    continue  # it also waits for something else that may still wake it
+                if not red_self_block_due(stuck, item.last_activity_at, now):
+                    continue
+                note = red_self_block_note(stuck, now)
+                previous = item.description or ""
+                item.description = f"{note}\n\n{previous}" if previous else note
+                item.claim_notes = [*(item.claim_notes or []), {"at": now.isoformat(), "text": note}]
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+                item.blocked_on_refs = None
+                item.blocked_reason = None
+                item.needs_human = None
+                item.last_activity_at = now
+                released.append((item.id, note))
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Items blocked on their own red pull request not released: %s", format_exception_message(exc))
+        return 0
+    for item_id, note in released:
+        await _publish_surfaced(item_id, note)
+    if released:
+        logger.info("Released %d work item(s) blocked on their own red pull request", len(released))
+    return len(released)
+
+
+async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
+    """Read the open references of the blocked items no delivery released.
+
+    ``{"read": r, "released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import (
+        branch_closings_readers,
+        reference_state_readers,
+        workflow_run_readers,
+    )
+
+    counts = {"read": 0, "released": 0, "noted": 0}
+    readers = reference_state_readers()
+    run_readers = workflow_run_readers()
+    branch_readers = branch_closings_readers()
+    if not readers and not run_readers:
+        return counts
+    providers = list(dict.fromkeys([*readers, *run_readers]))
+    now = now or datetime.now(UTC)
+    now_mono = time.monotonic()
+    try:
+        async with async_session() as db:
+            candidates = [c for c in await _poll_candidates(db, now) if _due(c[0], now_mono)][:POLL_MAX_ITEMS]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for _, user_id, _ in candidates:
+                for provider in providers:
+                    key = (provider, str(user_id))
+                    if key not in tokens:
+                        tokens[key] = await reference_token(db, provider, user_id)
+    except Exception as exc:
+        logger.warning("Blocked references not polled: %s", format_exception_message(exc))
+        return counts
+    seen: dict[tuple, PullRequestEvent | None] = {}
+    runs_seen: dict[tuple, dict | None] = {}
+    branches_seen: dict[tuple, list[PullRequestEvent]] = {}
+    for item_id, user_id, refs in candidates:
+        _last_polled[item_id] = now_mono
+        for ref in open_refs(refs):
+            if ref.get("kind") == "workflow_run":
+                await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts)
+                continue
+            kind = read_kind(ref)
+            if kind is None:
+                continue
+            for provider, reader in readers.items():
+                token = tokens.get((provider, str(user_id)))
+                if not token:
+                    continue
+                key = (provider, str(user_id), ref.get("repo"), kind, ref.get("number"))
+                if key not in seen:
+                    if counts["read"] >= POLL_MAX_READS:
+                        break
+                    counts["read"] += 1
+                    try:
+                        seen[key] = await reader(str(ref["repo"]), kind, int(ref["number"]), token)
+                    except Exception as exc:
+                        logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                        seen[key] = None
+                event = seen[key]
+                if event is None:
+                    continue
+                try:
+                    outcome = await _apply_to_item(item_id, event, datetime.now(UTC))
+                except Exception as exc:
+                    logger.warning(
+                        "Polled reference %s could not move work item %s: %s",
+                        ref_label(ref),
+                        item_id,
+                        format_exception_message(exc),
+                    )
+                    continue
+                if outcome:
+                    counts[outcome] = counts.get(outcome, 0) + 1
+                break
+            if ref.get("kind") == "pull_request" and ref.get("head_branch"):
+                await _poll_branch_successors(item_id, user_id, ref, branch_readers, tokens, branches_seen, counts)
+    if len(_last_polled) > POLL_MAX_ITEMS * 40:
+        for stale in [k for k, t in _last_polled.items() if now_mono - t >= POLL_QUIET_SECONDS]:
+            _last_polled.pop(stale, None)
+    if counts["released"] or counts["noted"] or counts.get("surfaced"):
+        logger.info("Blocked references polled: %s", counts)
+    return counts

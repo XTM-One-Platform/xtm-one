@@ -1,0 +1,411 @@
+name: Runner CI
+
+# Compile + lint gate for the native XTM One Runner (apps/runner). Scoped to the
+# runner tree so unrelated PRs are unaffected. The heavy bundling + signing lives
+# in the runner-build job of XTM-One-Platform/release's release.yml (with
+# scripts/release-compile.sh and scripts/release-stage.sh), which embeds the
+# artifacts into the platform image; this proves the app compiles on every
+# OS/architecture we ship and passes fmt + clippy + its unit tests before
+# merge. The ARM legs matter: release.yml's matrix is fail-fast, so an
+# aarch64-only build break would take a whole release down.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/runner/**"
+      - "apps/agent-core/**"
+      - ".github/workflows/runner-ci.yml"
+  # The build caches are saved from main only - an entry a pull request saves is
+  # readable by that pull request alone, and six of them (a few GB) evicted the
+  # caches every other workflow reads - so main has to build them.
+  push:
+    branches: [main]
+    paths:
+      - "apps/runner/**"
+      - "apps/agent-core/**"
+      - ".github/workflows/runner-ci.yml"
+
+permissions:
+  contents: read
+
+# Incremental data is only reused by a rebuild of the same sources, which a CI
+# run never does: off, so the cached debug targets do not carry it.
+env:
+  CARGO_INCREMENTAL: "0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Format + clippy
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: apps/runner
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust (rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: runner-ci-lint-${{ hashFiles('apps/runner/Cargo.lock') }}
+          restore-keys: |
+            runner-ci-lint-
+
+      - name: Build dependencies (Tauri + xcap + enigo)
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf pkg-config libdbus-1-dev \
+            libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      # The release workflow (XTM-One-Platform/release) runs them from the
+      # commit it releases.
+      - name: ShellCheck (release scripts)
+        run: shellcheck scripts/release-compile.sh scripts/release-stage.sh
+
+      - name: clippy (default features - GUI app)
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # The headless flavor exactly as the release ships it (release.yml's
+      # "Build headless daemon"): no `desktop`, so no xcap/enigo and no X11
+      # stack to link, but browser control and self-update still in.
+      - name: clippy (headless flavor)
+        run: cargo clippy --locked --no-default-features --features browser,self-update -- -D warnings
+
+      # The unit tests, the rules of the Desktop local-path bridge
+      # (`local_paths.rs`) and its grant list among them: a security boundary
+      # is kept by running its tests, not only by compiling them. Pure logic
+      # and temp-dir fixtures only - no window, no keychain, no enrollment.
+      - name: Unit tests (GUI app)
+        run: cargo test --locked --bins
+
+      # Bounded, and never the reason this job fails.
+      - name: Save cargo cache
+        if: github.ref == 'refs/heads/main' && steps.cargo-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  build:
+    name: Compile ${{ matrix.os_name }}/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      # Same shape as release.yml's runner-build: the architecture is its OWN
+      # field, never folded into os_name. restore-keys are PREFIX matches, so a
+      # combined "linux-arm64" would also be matched by the x64 leg's
+      # "runner-ci-linux-" and drop aarch64 objects into its target dir - both
+      # legs build without --target, into the same apps/runner/target.
+      matrix:
+        include:
+          - os: windows-latest
+            os_name: windows
+            arch: x64
+          - os: windows-11-arm
+            os_name: windows
+            arch: arm64
+          # macos-14 is retired on 2 November 2026 (actions/runner-images#13518),
+          # as in release.yml.
+          - os: macos-15
+            os_name: macos
+            arch: universal
+          # ubuntu-22.04 like the Linux release legs (release.yml in
+          # XTM-One-Platform/release): the glibc floor.
+          - os: ubuntu-22.04
+            os_name: linux
+            arch: x64
+          - os: ubuntu-22.04-arm
+            os_name: linux
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/runner
+    steps:
+      - uses: actions/checkout@v6
+
+      # install.ps1 compiles its release-signature verifier with Add-Type; the
+      # installer tests run under PowerShell 7 on Linux, so the Windows
+      # compiler paths are exercised here, under both PowerShell versions a
+      # Windows user runs it with (no install, no network: only the verifier
+      # section of the script is loaded).
+      - name: Install-script signature verifier (Windows PowerShell 5.1)
+        if: matrix.os_name == 'windows'
+        shell: powershell
+        working-directory: .
+        run: .\apps\runner\scripts\test-install-verifier.ps1
+
+      - name: Install-script signature verifier (PowerShell 7)
+        if: matrix.os_name == 'windows'
+        shell: pwsh
+        working-directory: .
+        run: .\apps\runner\scripts\test-install-verifier.ps1
+
+      # What release.yml's bundling retries and what it fails at once,
+      # under the bash, grep and sed of each OS it runs on.
+      - name: Bundle retry rules
+        shell: bash
+        run: bash scripts/test-bundle-with-retry.sh
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      # The tool pins release.yml fetches before bundling: an asset gone or
+      # changed upstream fails this pull request rather than a deploy.
+      - name: Prefetch bundler tools (pins)
+        shell: bash
+        run: bash scripts/prefetch-bundler-tools.sh
+
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: runner-ci-${{ matrix.os_name }}-${{ matrix.arch }}-${{ hashFiles('apps/runner/Cargo.lock') }}
+          restore-keys: |
+            runner-ci-${{ matrix.os_name }}-${{ matrix.arch }}-
+
+      - name: Linux build dependencies
+        if: matrix.os_name == 'linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf pkg-config libdbus-1-dev \
+            libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev
+
+      - name: Compile (GUI app, all features)
+        run: cargo build --locked
+
+      # The app must start on a Windows machine without the Visual C++
+      # Redistributable: build.rs links the runtime in, and this refuses
+      # a binary that imports it. Read before the headless compile below
+      # replaces target/debug/xtm-one-runner.exe.
+      - name: No Visual C++ runtime import (GUI app)
+        if: matrix.os_name == 'windows'
+        shell: pwsh
+        run: ./windows/assert-static-vcruntime.ps1 -Binary target/debug/xtm-one-runner.exe
+
+      # One line on purpose: this job also runs on Windows, where the default
+      # shell is pwsh and a trailing "\" is NOT a line continuation - it parsed
+      # "--features ..." as its own statement and failed the leg.
+      - name: Compile (headless flavor)
+        run: cargo build --locked --no-default-features --features browser,self-update
+
+      # The headless flavor runs no tauri-build, so it still imports the
+      # runtime (it ships on Linux only): the check above must see that import,
+      # or its pass proves nothing.
+      - name: The runtime check sees an import (headless flavor)
+        if: matrix.os_name == 'windows'
+        shell: pwsh
+        run: ./windows/assert-static-vcruntime.ps1 -Binary target/debug/xtm-one-runner.exe -ExpectDynamic
+
+      # Bounded, and never the reason this job fails.
+      - name: Save cargo cache
+        if: github.ref == 'refs/heads/main' && steps.cargo-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  # The NSIS installer itself. installer-hooks.nsh only compiles when Tauri
+  # bundles the installer, which otherwise happens in release.yml's fail-fast
+  # release matrix alone, and what it does to an install of the former product
+  # name is only proven by running the result over one - on this throwaway
+  # machine, never a person's (test-legacy-upgrade.ps1). Unsigned debug build,
+  # like release.yml without the signing key.
+  installer:
+    name: Installer upgrade (windows/x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/runner
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      # The build job's windows/x64 cache, restored and never saved: the
+      # repository's cache is already at its size limit.
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: runner-ci-windows-x64-${{ hashFiles('apps/runner/Cargo.lock') }}
+          restore-keys: |
+            runner-ci-windows-x64-
+
+      # The version release.yml pins, and why there.
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@2.12.0
+
+      - name: Configure version + unsigned build
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          jq '.version = "1.0.0" | del(.bundle.createUpdaterArtifacts)' tauri.conf.json > "$tmp"
+          mv "$tmp" tauri.conf.json
+
+      # release.yml's path to the installer: prefetched tools, the compile, then
+      # the bundling from that binary - here with no tool download allowed, so a
+      # prefetch the bundler does not use fails the pull request.
+      - name: Prefetch bundler tools
+        shell: bash
+        run: bash scripts/prefetch-bundler-tools.sh x86_64-pc-windows-msvc
+
+      - name: Build the runner binary
+        run: tauri build --debug --no-bundle
+
+      - name: Build the NSIS installer
+        shell: bash
+        env:
+          BUNDLE_PREFETCH_REQUIRED: "true"
+        run: bash scripts/bundle-with-retry.sh --debug --bundles nsis
+
+      # The binary through the release path: the Tauri CLI once decided the
+      # runtime link, and a CLI release took that decision away.
+      - name: No Visual C++ runtime import (tauri build)
+        shell: pwsh
+        run: ./windows/assert-static-vcruntime.ps1 -Binary target/debug/xtm-one-runner.exe
+
+      - name: Upgrade over an XTM One Runner install
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem target/debug/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw "No NSIS installer under target/debug/bundle/nsis" }
+          ./windows/test-legacy-upgrade.ps1 -Installer $setup.FullName
+
+  # The AppImage, bundled the way release.yml bundles it and with no tool
+  # download allowed: every tool the bundling runs - AppRun, linuxdeploy, the
+  # AppImage plugin and the runtime its appimagetool embeds - comes from the
+  # pins of prefetch-bundler-tools.sh, so a CLI bump that renames one fails
+  # this pull request instead of shipping an unverified tool. Per
+  # architecture: the pins and the names the bundler looks for are.
+  appimage:
+    name: AppImage (linux/${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ubuntu-22.04 like the Linux release legs (release.yml in
+          # XTM-One-Platform/release): the glibc floor.
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/runner
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      # The build job's cache for this architecture, restored and never saved:
+      # the repository's cache is already at its size limit.
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/runner/target
+          key: runner-ci-linux-${{ matrix.arch }}-${{ hashFiles('apps/runner/Cargo.lock') }}
+          restore-keys: |
+            runner-ci-linux-${{ matrix.arch }}-
+
+      # release.yml's list, xdg-utils included (linuxdeploy copies xdg-open).
+      - name: Linux build dependencies
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf pkg-config libdbus-1-dev \
+            libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev \
+            xdg-utils
+
+      # The version release.yml pins, and why there.
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@2.12.0
+
+      - name: Configure version + unsigned build
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          jq '.version = "1.0.0" | del(.bundle.createUpdaterArtifacts)' tauri.conf.json > "$tmp"
+          mv "$tmp" tauri.conf.json
+
+      - name: Prefetch bundler tools
+        run: bash scripts/prefetch-bundler-tools.sh
+
+      - name: Build the runner binary
+        run: tauri build --debug --no-bundle
+
+      - name: Build the AppImage
+        env:
+          BUNDLE_PREFETCH_REQUIRED: "true"
+        run: bash scripts/bundle-with-retry.sh --debug --bundles appimage
+
+      # The AppImage starts: its runtime, the squashfs and the binary inside.
+      # No FUSE on the runner image, hence the extract-and-run path.
+      - name: Start the AppImage
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(target/debug/bundle/appimage/*.AppImage)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected one AppImage, found ${#images[@]}"
+            exit 1
+          fi
+          "${images[0]}" --appimage-extract-and-run --version

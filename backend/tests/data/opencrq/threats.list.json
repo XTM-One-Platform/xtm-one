@@ -1,0 +1,69 @@
+{
+  "procedure": "threats.list",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "id": "01a139e7-7e09-7c47-91b9-b77217c31c8c",
+        "stixId": "intrusion-set--seed-sandworm",
+        "name": "Sandworm Team",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G0034",
+        "stixCreated": "2013-08-23T10:13:54.630Z",
+        "updatedAt": "2026-10-14T10:13:54.825Z",
+        "cveCount": 1,
+        "techniqueCount": 5,
+        "activityScore": 0,
+        "activityStatus": "unknown",
+        "lastActivityAt": "2025-08-20T10:13:54.630Z",
+        "lastObservedAt": null,
+        "anchorProvenance": "authored",
+        "kind": "stix-import",
+        "topOutcomeName": "Destructive Attack",
+        "topOutcomeScore": 0.9728461700337445
+      },
+      {
+        "id": "01a139e7-7d4e-7a24-8962-5894d54f2661",
+        "stixId": "intrusion-set--seed-salt-typhoon",
+        "name": "Salt Typhoon",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G1045",
+        "stixCreated": "2022-09-05T10:13:54.630Z",
+        "updatedAt": "2026-10-14T10:13:54.638Z",
+        "cveCount": 3,
+        "techniqueCount": 7,
+        "activityScore": 0.9965301085488131,
+        "activityStatus": "active",
+        "lastActivityAt": "2026-10-10T10:13:54.630Z",
+        "lastObservedAt": "2026-10-10T10:13:54.630Z",
+        "anchorProvenance": "observed",
+        "kind": "stix-import",
+        "topOutcomeName": "Espionage",
+        "topOutcomeScore": 0.9555456852978185
+      },
+      {
+        "id": "01a139e7-7e1c-718e-b19b-0dfb01751b86",
+        "stixId": "intrusion-set--seed-apt41",
+        "name": "APT41",
+        "entityType": "intrusion-set",
+        "mitreGroupId": "G0096",
+        "stixCreated": "2015-11-01T10:13:54.630Z",
+        "updatedAt": "2026-10-14T10:13:54.844Z",
+        "cveCount": 2,
+        "techniqueCount": 4,
+        "activityScore": 0,
+        "activityStatus": "unknown",
+        "lastActivityAt": "2025-09-09T10:13:54.630Z",
+        "lastObservedAt": null,
+        "anchorProvenance": "authored",
+        "kind": "stix-import",
+        "topOutcomeName": "Espionage",
+        "topOutcomeScore": 0.9462300396707813
+      }
+    ],
+    "total": 16,
+    "page": 1,
+    "limit": 3,
+    "pending": 0
+  }
+}

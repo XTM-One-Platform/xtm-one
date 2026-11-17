@@ -1,0 +1,58 @@
+# Sandbox requirements — Threat Intelligence & Detection
+# Covers: CTI platforms, IOC enrichment, SIEM/hunting tools.
+# Rules Engineering (pysigma, sigma-cli, …) lives in requirements.sandbox.rules.txt —
+# greynoise and sigma-cli have incompatible click constraints and cannot share an env.
+# Install independently; do not mix with other sandbox domain files in one environment.
+#
+# Build (final-full — pycti transitively imports python-magic, which needs
+# libmagic at runtime; see apt.sandbox.cti.runtime.txt):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python \
+#     --target final-full \
+#     --build-arg APT_FILE=apt.sandbox.base.txt \
+#     --build-arg REQ_FILE=requirements.sandbox.cti.txt \
+#     --build-arg RUNTIME_APT_FILE=apt.sandbox.cti.runtime.txt \
+#     -t sandbox-python-cti:<version> .
+
+# ── Threat Intelligence (CTI) ─────────────────────────────────────────────────
+pymisp==2.5.34.1               # MISP threat intelligence platform client
+pycti==7.260701.0              # OpenCTI Python client
+stix2==3.0.2                   # STIX 2.x object model and serialization
+taxii2-client==2.3.0           # TAXII 2.x feed client
+mitreattack-python==6.1.0      # MITRE ATT&CK data access
+attackcti==0.6.4               # ATT&CK client wrapper
+vt-py==0.22.0                  # VirusTotal API client
+OTXv2==1.5.12                  # AlienVault OTX client
+shodan==1.31.0                 # Shodan search API client
+censys==2.2.19                 # Censys search API client
+greynoise==3.0.3               # GreyNoise API client
+
+# ── IOC & Enrichment ──────────────────────────────────────────────────────────
+ioc-finder==9.4.1              # IOC extraction from text
+iocextract==1.16.1             # Defanged IOC extraction
+dnspython==2.9.2               # DNS resolution and queries
+ipwhois==1.3.0                 # IP WHOIS lookups
+python-whois==0.9.6            # Domain WHOIS lookups
+tldextract==5.3.1              # TLD and domain parsing
+publicsuffix2==2.20191221      # Public suffix list
+geoip2==5.2.0                  # MaxMind GeoIP2 client
+maxminddb==3.1.1               # MaxMind DB reader
+validators==0.35.0             # Data validation utilities
+
+# ── Threat Hunting & SIEM ─────────────────────────────────────────────────────
+msticpy==3.0.1                 # Microsoft Threat Intelligence tools
+Kqlmagic==0.1.114.post26       # KQL query execution in notebooks
+azure-kusto-data==6.0.4        # Azure Data Explorer / KQL client
+splunk-sdk==3.0.0              # Splunk REST API client
+elasticsearch==9.4.1           # Elasticsearch Python client
+opensearch-py==3.2.0           # OpenSearch Python client
+pygrok==1.0.0                  # Grok pattern parser
+python-evtx==0.8.1             # Windows EVTX log parser
+
+# ── Infrastructure (unpinned — resolved across the packages above) ────────────
+# click intentionally NOT listed: greynoise pins click<=8.1.8 and pip resolves it.
+requests
+urllib3
+certifi
+packaging
+numpy
+pandas

@@ -1,0 +1,45 @@
+{
+  "procedure": "treatmentPlans.getTreatmentPlanProjection",
+  "source": "recorded",
+  "data": {
+    "scenarios": [
+      {
+        "riskScenarioId": "019edb28-0011-7000-8000-000000000002",
+        "name": "Data Breach on AML/KYC Screening Platform",
+        "readinessStatus": "incomplete",
+        "state": "not-priced",
+        "runId": null,
+        "runCreatedAt": null,
+        "lefMean": null,
+        "aleMean": null,
+        "aleTargetMean": null,
+        "aleReductionMean": null,
+        "aleReductionP10": null,
+        "aleReductionP90": null,
+        "olderThanHeadline": false
+      },
+      {
+        "riskScenarioId": "f2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+        "name": "Business Interruption on Internet Banking Platform",
+        "readinessStatus": "ready",
+        "state": "priced",
+        "runId": "019edb28-000d-7000-8000-000000002000",
+        "runCreatedAt": "2026-10-14T10:13:55.071Z",
+        "lefMean": 0.03092552525800135,
+        "aleMean": 129336.58968893831,
+        "aleTargetMean": 120285.7260534389,
+        "aleReductionMean": 9050.863635499412,
+        "aleReductionP10": 7381.345331556791,
+        "aleReductionP90": 13668.93443375099,
+        "olderThanHeadline": true
+      }
+    ],
+    "totalAleReduction": 9050.863635499412,
+    "pricedScenarioCount": 1,
+    "scopeScenarioCount": 2,
+    "expired": false,
+    "pricedAt": "2026-10-14T10:13:55.071Z",
+    "costYear1": 235000,
+    "returnPercent": -96.14856866574493
+  }
+}

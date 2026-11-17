@@ -1,0 +1,41 @@
+name: Release skill
+
+# release.sh creates the release tag, which triggers deploy.yml and mcp-registry.yml,
+# so its fixture test and shellcheck gate a PR. It targets bash 3.2, hence macOS.
+
+on:
+  pull_request:
+    paths:
+      - '.agents/skills/release/**'
+      - '.claude/skills/release/**'
+      - '.github/workflows/release-skill-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  release-skill:
+    name: Release skill (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 is retired on 2 November 2026 (actions/runner-images#13518);
+        # /bin/bash is still 3.2 on macos-15.
+        os: [ubuntu-26.04, macos-15]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck .agents/skills/release/release.sh .agents/skills/release/test.sh
+
+      # macOS: /bin/bash is 3.2, the version the script must keep working on.
+      - name: Fixture test
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then /bin/bash .agents/skills/release/test.sh
+          else bash .agents/skills/release/test.sh; fi

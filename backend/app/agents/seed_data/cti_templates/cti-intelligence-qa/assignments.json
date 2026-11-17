@@ -1,0 +1,92 @@
+[
+  {
+    "file": "01-critic-qa-audit.md",
+    "source": "R2-01",
+    "name": "Critic QA audit of a draft",
+    "description": "Audits a draft produced by another prompt or agent against its source data and original task: unsupported or fabricated claims, framework ID checks (ATT&CK, ATLAS, CAPEC, CVE), confidence, format and technical issues, ending with a deterministic verdict and what to verify manually. Use it as a separate step before publishing or acting on a draft.",
+    "manual_trigger_parameters": [
+      {
+        "key": "draft_output",
+        "label": "Draft to audit",
+        "type": "textarea",
+        "description": "Paste the draft (or drafts) to audit.",
+        "required": true
+      },
+      {
+        "key": "source_data",
+        "label": "Source data",
+        "type": "textarea",
+        "description": "Paste the source data the draft was produced from. Leave empty to let the agent retrieve the sources the draft cites; anything it cannot retrieve is reported as unverifiable.",
+        "required": false
+      },
+      {
+        "key": "original_task",
+        "label": "Original task",
+        "type": "text",
+        "description": "The prompt or request that produced the draft. Leave empty to use the task described in the draft.",
+        "required": false
+      }
+    ]
+  },
+  {
+    "file": "02-source-reliability-evaluation.md",
+    "source": "R2-02",
+    "name": "Source reliability and credibility evaluation",
+    "description": "Grades every source in the material with the Admiralty Code (reliability A-F, credibility 1-6), flags single-sourcing, circular reporting and vendor bias, and gives an ICD 203 confidence statement on the body of reporting. Use it before intelligence drives a decision.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "topic",
+        "label": "Topic",
+        "type": "text",
+        "description": "The threat, event or claim whose reporting to evaluate when no source material is pasted.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "03-stakeholder-feedback-synthesis.md",
+    "source": "R2-10",
+    "name": "Stakeholder feedback synthesis",
+    "description": "Synthesizes a quarter of structured stakeholder feedback on intelligence products into themes by product type and team, unused sections, wanted gaps and specific proposed changes, each traced to response IDs and counts. Use it as the agenda for the Intelligence Requirements review.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Feedback entries",
+        "type": "textarea",
+        "description": "Paste the structured feedback (response ID, stakeholder team, product type, scores, comments). Leave empty to let the agent look for feedback exports in its knowledge bases.",
+        "required": false
+      },
+      {
+        "key": "reporting_period",
+        "label": "Quarter covered",
+        "type": "text",
+        "description": "The quarter the feedback covers.",
+        "required": false,
+        "default": "the last calendar quarter"
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "quarterly stakeholder feedback synthesis"
+      }
+    ]
+  }
+]

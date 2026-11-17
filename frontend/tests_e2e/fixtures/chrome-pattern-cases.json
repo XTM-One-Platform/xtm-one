@@ -1,0 +1,484 @@
+{
+  "$comment": "Template header / footer: the ONE table both halves of the rule are checked against. backend/tests/test_presentation_chrome.py feeds it to presentation_chrome.py (render_chrome_pattern, normalize_template_chrome, render_chrome); frontend/tests_e2e/chrome-pattern.spec.ts feeds it to chrome-pattern.ts (renderChromePattern, validateTemplateChrome, chromeText). A case that passes on one side and fails on the other is a footer the tool result reads back differently from the screen. Add a case here, never on one side only.",
+  "render": [
+    {
+      "name": "every placeholder filled renders the pattern as written",
+      "pattern": "{{event}} - {{title}} - {{classification}}",
+      "values": { "event": "FIC 2026", "title": "Roadmap", "classification": "Internal" },
+      "expected": "FIC 2026 - Roadmap - Internal"
+    },
+    {
+      "name": "an empty first placeholder takes its separator",
+      "pattern": "{{a}} - {{b}} - {{c}}",
+      "values": { "a": "", "b": "b", "c": "c" },
+      "expected": "b - c"
+    },
+    {
+      "name": "an empty middle placeholder takes its separator",
+      "pattern": "{{a}} - {{b}} - {{c}}",
+      "values": { "a": "a", "b": "", "c": "c" },
+      "expected": "a - c"
+    },
+    {
+      "name": "an empty last placeholder takes its separator",
+      "pattern": "{{a}} - {{b}} - {{c}}",
+      "values": { "a": "a", "b": "b", "c": "" },
+      "expected": "a - b"
+    },
+    {
+      "name": "one value left renders alone",
+      "pattern": "{{a}} - {{b}} - {{c}}",
+      "values": { "a": "", "b": "b", "c": "" },
+      "expected": "b"
+    },
+    {
+      "name": "an inner separator needs a value on both sides",
+      "pattern": "{{a}} - {{b}} - {{c}}",
+      "values": { "a": "a", "b": "", "c": "" },
+      "expected": "a"
+    },
+    {
+      "name": "nothing filled renders nothing, never a bare separator",
+      "pattern": "{{event}} - {{title}}",
+      "values": { "event": "", "title": "" },
+      "expected": ""
+    },
+    {
+      "name": "a leading literal stays when something follows",
+      "pattern": "Filigran - {{event}} - {{title}}",
+      "values": { "event": "", "title": "Roadmap" },
+      "expected": "Filigran - Roadmap"
+    },
+    {
+      "name": "a leading literal goes when nothing follows",
+      "pattern": "Filigran - {{event}}",
+      "values": { "event": "" },
+      "expected": ""
+    },
+    {
+      "name": "a trailing literal stays when something precedes it",
+      "pattern": "{{title}} (draft)",
+      "values": { "title": "Roadmap" },
+      "expected": "Roadmap (draft)"
+    },
+    {
+      "name": "leading and trailing literals frame a single value",
+      "pattern": "[ {{event}} | {{title}} ]",
+      "values": { "event": "", "title": "Roadmap" },
+      "expected": "[ Roadmap ]"
+    },
+    {
+      "name": "mixed separators each follow their own left placeholder",
+      "pattern": "{{a}} | {{b}} \u00b7 {{c}} - {{d}}",
+      "values": { "a": "", "b": "B", "c": "", "d": "D" },
+      "expected": "B \u00b7 D"
+    },
+    {
+      "name": "consecutive placeholders without a separator concatenate",
+      "pattern": "{{a}}{{b}}",
+      "values": { "a": "A", "b": "B" },
+      "expected": "AB"
+    },
+    {
+      "name": "consecutive placeholders with one empty",
+      "pattern": "{{a}}{{b}}",
+      "values": { "a": "", "b": "B" },
+      "expected": "B"
+    },
+    {
+      "name": "a repeated placeholder renders each time",
+      "pattern": "{{title}} / {{title}}",
+      "values": { "title": "T" },
+      "expected": "T / T"
+    },
+    {
+      "name": "a repeated empty placeholder renders nothing",
+      "pattern": "{{title}} / {{title}}",
+      "values": { "title": "" },
+      "expected": ""
+    },
+    {
+      "name": "a pattern with no placeholder renders as written",
+      "pattern": "Confidential",
+      "values": {},
+      "expected": "Confidential"
+    },
+    {
+      "name": "a literal-only pattern is trimmed",
+      "pattern": "  Confidential  ",
+      "values": { "title": "ignored" },
+      "expected": "Confidential"
+    },
+    {
+      "name": "a value is inserted verbatim, never expanded again",
+      "pattern": "{{title}} - {{classification}}",
+      "values": { "title": "Read {{classification}} first", "classification": "Internal" },
+      "expected": "Read {{classification}} first - Internal"
+    },
+    {
+      "name": "spaces inside the braces are tolerated and values are trimmed",
+      "pattern": "{{ title }}|{{event}}",
+      "values": { "title": " T ", "event": "E" },
+      "expected": "T|E"
+    },
+    {
+      "name": "a placeholder with no value counts as empty",
+      "pattern": "{{a}} - {{b}}",
+      "values": { "a": "A" },
+      "expected": "A"
+    },
+    {
+      "name": "a whitespace-only value counts as empty",
+      "pattern": "X {{a}} Y",
+      "values": { "a": "   " },
+      "expected": ""
+    },
+    {
+      "name": "an undeclared placeholder in a stored pattern renders empty, never literally",
+      "pattern": "{{event}} - {{title}} - {{ghost}}",
+      "values": { "event": "E", "title": "T" },
+      "expected": "E - T"
+    },
+    {
+      "name": "a slot that is not a placeholder is literal text",
+      "pattern": "{{title}} {{not a key}}",
+      "values": { "title": "T" },
+      "expected": "T {{not a key}}"
+    },
+    {
+      "name": "a null pattern renders nothing",
+      "pattern": null,
+      "values": { "title": "T" },
+      "expected": ""
+    },
+    {
+      "name": "an empty pattern renders nothing",
+      "pattern": "",
+      "values": { "title": "T" },
+      "expected": ""
+    },
+    {
+      "name": "a blank pattern renders nothing",
+      "pattern": "   ",
+      "values": { "title": "T" },
+      "expected": ""
+    }
+  ],
+  "declarations": [
+    {
+      "name": "the brand declaration is accepted in canonical form",
+      "declaration": {
+        "footer": "{{event}} - {{title}} - {{classification}}",
+        "header": "",
+        "variables": [
+          {
+            "key": "classification",
+            "label": "Classification",
+            "hint": "Who may read this deck: Public, Internal, Confidential..."
+          }
+        ]
+      },
+      "canonical": {
+        "footer": "{{event}} - {{title}} - {{classification}}",
+        "header": null,
+        "variables": [
+          {
+            "key": "classification",
+            "label": "Classification",
+            "hint": "Who may read this deck: Public, Internal, Confidential..."
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "a header-only declaration is accepted and trimmed",
+      "declaration": { "footer": "", "header": "  {{title}}: {{subtitle}}  ", "variables": [] },
+      "canonical": { "footer": null, "header": "{{title}}: {{subtitle}}", "variables": [] },
+      "problems": []
+    },
+    {
+      "name": "a variable is stored with its key lower-cased, its texts trimmed and a blank hint dropped",
+      "declaration": {
+        "footer": "{{client}} / {{title}}",
+        "header": "",
+        "variables": [{ "key": " Client ", "label": " Client name ", "hint": "   ", "default": " ACME " }]
+      },
+      "canonical": {
+        "footer": "{{client}} / {{title}}",
+        "header": null,
+        "variables": [{ "key": "client", "label": "Client name", "default": "ACME" }]
+      },
+      "problems": []
+    },
+    {
+      "name": "an empty declaration says nothing and stores nothing",
+      "declaration": { "footer": "", "header": "", "variables": [] },
+      "canonical": null,
+      "problems": []
+    },
+    {
+      "name": "a literal-only pattern is accepted",
+      "declaration": { "footer": "Confidential", "header": "", "variables": [] },
+      "canonical": { "footer": "Confidential", "header": null, "variables": [] },
+      "problems": []
+    },
+    {
+      "name": "spaces inside the braces are accepted",
+      "declaration": { "footer": "{{ title }} | {{ event }}", "header": "", "variables": [] },
+      "canonical": { "footer": "{{ title }} | {{ event }}", "header": null, "variables": [] },
+      "problems": []
+    },
+    {
+      "name": "a placeholder no variable declares is refused",
+      "declaration": { "footer": "{{event}} - {{classifcation}}", "header": "", "variables": [] },
+      "canonical": null,
+      "problems": ["placeholder_undeclared"]
+    },
+    {
+      "name": "a variable no pattern uses is refused",
+      "declaration": { "footer": "{{title}}", "header": "", "variables": [{ "key": "client", "label": "Client" }] },
+      "canonical": null,
+      "problems": ["variable_unused"]
+    },
+    {
+      "name": "variables with no pattern to fill are refused",
+      "declaration": { "footer": "", "header": "", "variables": [{ "key": "client", "label": "Client" }] },
+      "canonical": null,
+      "problems": ["variables_without_pattern"]
+    },
+    {
+      "name": "a key that is not a lowercase identifier is refused",
+      "declaration": { "footer": "{{title}}", "header": "", "variables": [{ "key": "x-y", "label": "X" }] },
+      "canonical": null,
+      "problems": ["variable_key_invalid"]
+    },
+    {
+      "name": "a built-in placeholder cannot be declared as a variable",
+      "declaration": { "footer": "{{title}}", "header": "", "variables": [{ "key": "Title", "label": "T" }] },
+      "canonical": null,
+      "problems": ["variable_key_builtin"]
+    },
+    {
+      "name": "a key declared twice, in any spelling, is refused",
+      "declaration": {
+        "footer": "{{client}}",
+        "header": "",
+        "variables": [{ "key": "client", "label": "A" }, { "key": "CLIENT", "label": "B" }]
+      },
+      "canonical": null,
+      "problems": ["variable_key_duplicate"]
+    },
+    {
+      "name": "a variable needs a label, and a valid key still declares its placeholder",
+      "declaration": { "footer": "{{client}}", "header": "", "variables": [{ "key": "client", "label": "  " }] },
+      "canonical": null,
+      "problems": ["variable_label_missing"]
+    },
+    {
+      "name": "a label is bounded",
+      "declaration": {
+        "footer": "{{client}}",
+        "header": "",
+        "variables": [{ "key": "client", "label": "0123456789012345678901234567890123456789012345678901234567890" }]
+      },
+      "canonical": null,
+      "problems": ["variable_label_too_long"]
+    },
+    {
+      "name": "a hint is bounded",
+      "declaration": {
+        "footer": "{{client}}",
+        "header": "",
+        "variables": [
+          {
+            "key": "client",
+            "label": "Client",
+            "hint": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+          }
+        ]
+      },
+      "canonical": null,
+      "problems": ["variable_hint_too_long"]
+    },
+    {
+      "name": "a default is bounded like a field value",
+      "declaration": {
+        "footer": "{{client}}",
+        "header": "",
+        "variables": [
+          {
+            "key": "client",
+            "label": "Client",
+            "default": "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+          }
+        ]
+      },
+      "canonical": null,
+      "problems": ["variable_default_too_long"]
+    },
+    {
+      "name": "more than eight variables are refused",
+      "declaration": {
+        "footer": "{{v1}}{{v2}}{{v3}}{{v4}}{{v5}}{{v6}}{{v7}}{{v8}}{{v9}}",
+        "header": "",
+        "variables": [
+          { "key": "v1", "label": "1" },
+          { "key": "v2", "label": "2" },
+          { "key": "v3", "label": "3" },
+          { "key": "v4", "label": "4" },
+          { "key": "v5", "label": "5" },
+          { "key": "v6", "label": "6" },
+          { "key": "v7", "label": "7" },
+          { "key": "v8", "label": "8" },
+          { "key": "v9", "label": "9" }
+        ]
+      },
+      "canonical": null,
+      "problems": ["too_many_variables"]
+    },
+    {
+      "name": "a pattern over two hundred characters is refused",
+      "declaration": {
+        "footer": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "header": "",
+        "variables": []
+      },
+      "canonical": null,
+      "problems": ["pattern_too_long"]
+    },
+    {
+      "name": "an unbalanced placeholder is refused",
+      "declaration": { "footer": "{{title}} - {{event", "header": "", "variables": [] },
+      "canonical": null,
+      "problems": ["pattern_unbalanced"]
+    },
+    {
+      "name": "a slot that is not a placeholder is refused rather than drawn literally",
+      "declaration": { "footer": "{{title}} {{not a key}}", "header": "", "variables": [] },
+      "canonical": null,
+      "problems": ["pattern_malformed_slot"]
+    },
+    {
+      "name": "every problem is reported at once",
+      "declaration": { "footer": "{{ghost}}", "header": "", "variables": [{ "key": "client", "label": "Client" }] },
+      "canonical": null,
+      "problems": ["placeholder_undeclared", "variable_unused"]
+    }
+  ],
+  "decks": [
+    {
+      "name": "the deck settings fill the pattern, the subtitle as plain text",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": { "event_label": "FIC 2026", "fields": { "classification": "Confidential" } },
+        "slides": [{ "layout": "title", "title": "Opening", "subtitle": "**Partner** [[accent:overview]]" }]
+      },
+      "declaration": {
+        "footer": "{{event}} - {{title}} - {{classification}}",
+        "header": "{{title}}: {{subtitle}}",
+        "variables": [{ "key": "classification", "label": "Classification", "default": "Internal" }]
+      },
+      "footer": "FIC 2026 - Roadmap - Confidential",
+      "header": "Roadmap: Partner overview"
+    },
+    {
+      "name": "a plain opening subtitle draws as written (paired with the next case)",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": {},
+        "slides": [{ "layout": "title", "title": "Opening", "subtitle": "Q3 2026" }]
+      },
+      "declaration": { "footer": null, "header": "{{subtitle}}", "variables": [] },
+      "footer": "",
+      "header": "Q3 2026"
+    },
+    {
+      "name": "a markup-only change to the subtitle draws the same header: the redraw decision compares plain text",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": {},
+        "slides": [{ "layout": "title", "title": "Opening", "subtitle": "**Q3** [[accent:2026]]" }]
+      },
+      "declaration": { "footer": null, "header": "{{subtitle}}", "variables": [] },
+      "footer": "",
+      "header": "Q3 2026"
+    },
+    {
+      "name": "no event and no field: the default fills in and the separator goes",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": {},
+        "slides": [{ "layout": "title", "title": "Opening", "subtitle": "Partner overview" }]
+      },
+      "declaration": {
+        "footer": "{{event}} - {{title}} - {{classification}}",
+        "header": null,
+        "variables": [{ "key": "classification", "label": "Classification", "default": "Internal" }]
+      },
+      "footer": "Roadmap - Internal",
+      "header": ""
+    },
+    {
+      "name": "the brand deck with no event and no classification reads its title alone",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": {},
+        "slides": [{ "layout": "title", "title": "Opening", "subtitle": "Partner overview" }]
+      },
+      "declaration": {
+        "footer": "{{event}} - {{title}} - {{classification}}",
+        "header": null,
+        "variables": [{ "key": "classification", "label": "Classification" }]
+      },
+      "footer": "Roadmap",
+      "header": ""
+    },
+    {
+      "name": "a field key is read in its one spelling",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": { "fields": { " Classification ": " Public " } },
+        "slides": []
+      },
+      "declaration": {
+        "footer": "{{title}} - {{classification}}",
+        "header": null,
+        "variables": [{ "key": "classification", "label": "Classification", "default": "Internal" }]
+      },
+      "footer": "Roadmap - Public",
+      "header": ""
+    },
+    {
+      "name": "a legacy declaration with an undeclared placeholder renders it empty, never literally",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": { "event_label": "FIC 2026" },
+        "slides": []
+      },
+      "declaration": { "footer": "{{event}} - {{title}} - {{ghost}}", "header": null, "variables": [] },
+      "footer": "FIC 2026 - Roadmap",
+      "header": ""
+    },
+    {
+      "name": "the subtitle's markers are stripped like the renderer strips them and the line is folded",
+      "spec": {
+        "title": "Roadmap",
+        "chrome": {},
+        "slides": [
+          { "layout": "content", "title": "Body", "subtitle": "**not the opening**" },
+          { "layout": "title", "title": "Opening", "subtitle": "[[nope:kept]]\n  `code`  " }
+        ]
+      },
+      "declaration": { "footer": null, "header": "{{title}}: {{subtitle}}", "variables": [] },
+      "footer": "",
+      "header": "Roadmap: kept code"
+    },
+    {
+      "name": "a declaration with no pattern is no declaration: the reader returns none and the v1 footer stays",
+      "spec": { "title": "Roadmap", "chrome": { "event_label": "FIC 2026", "footer_text": "Filigran" }, "slides": [] },
+      "declaration": { "footer": "", "header": null, "variables": [{ "key": "client", "label": "Client" }] },
+      "reads": false
+    }
+  ]
+}

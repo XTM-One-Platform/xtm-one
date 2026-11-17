@@ -1,0 +1,57 @@
+{
+  "procedure": "threats.getByCveId",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a139e7-7e1c-718e-b19b-0dfb01751b86",
+      "stixId": "intrusion-set--seed-apt41",
+      "name": "APT41",
+      "entityType": "intrusion-set",
+      "mitreGroupId": "G0096",
+      "stixCreated": "2015-11-01T10:13:54.630Z",
+      "updatedAt": "2026-10-14T10:13:54.844Z",
+      "cveCount": 2,
+      "techniqueCount": 4,
+      "activityScore": 0,
+      "activityStatus": "unknown",
+      "lastActivityAt": "2025-09-09T10:13:54.630Z",
+      "lastObservedAt": null,
+      "anchorProvenance": "authored",
+      "vulnerabilityStixId": "vulnerability--seed-cve-2021-44228"
+    },
+    {
+      "id": "01a139e7-7df4-7c39-b0cd-f0b41d458a12",
+      "stixId": "intrusion-set--seed-lazarus",
+      "name": "Lazarus Group",
+      "entityType": "intrusion-set",
+      "mitreGroupId": "G0032",
+      "stixCreated": "2014-06-19T10:13:54.630Z",
+      "updatedAt": "2026-10-14T10:13:54.804Z",
+      "cveCount": 2,
+      "techniqueCount": 4,
+      "activityScore": 0,
+      "activityStatus": "unknown",
+      "lastActivityAt": "2026-07-11T10:13:54.630Z",
+      "lastObservedAt": null,
+      "anchorProvenance": "authored",
+      "vulnerabilityStixId": "vulnerability--seed-cve-2021-44228"
+    },
+    {
+      "id": "01a139e7-7d7c-7dc4-9a9e-574b800db71d",
+      "stixId": "intrusion-set--seed-alphv-blackcat",
+      "name": "ALPHV (BlackCat)",
+      "entityType": "intrusion-set",
+      "mitreGroupId": null,
+      "stixCreated": "2023-07-02T10:13:54.630Z",
+      "updatedAt": "2026-10-14T10:13:54.684Z",
+      "cveCount": 2,
+      "techniqueCount": 5,
+      "activityScore": 0.9686062726722618,
+      "activityStatus": "active",
+      "lastActivityAt": "2026-10-05T10:13:54.630Z",
+      "lastObservedAt": "2026-10-05T10:13:54.630Z",
+      "anchorProvenance": "observed",
+      "vulnerabilityStixId": "vulnerability--seed-cve-2021-44228"
+    }
+  ]
+}

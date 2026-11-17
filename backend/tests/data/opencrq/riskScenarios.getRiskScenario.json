@@ -1,0 +1,43 @@
+{
+  "procedure": "riskScenarios.getRiskScenario",
+  "source": "recorded",
+  "data": {
+    "id": "019edb28-0011-7000-8000-000000000001",
+    "organizationId": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+    "name": "Data Breach on Retail Lending Platform",
+    "description": "Access broker resells a foothold into the retail credit decision process, exposing applicant records gathered for scoring and underwriting.",
+    "ownerId": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+    "attackOutcomeId": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+    "tefMode": "manual",
+    "organization": {
+      "id": "90b57256-32e4-4369-b768-fa6f2bb64fee",
+      "name": "Acme Bank"
+    },
+    "attackOutcome": {
+      "id": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+      "name": "Data Breach & Resale"
+    },
+    "primaryAssets": [
+      {
+        "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+        "name": "Credit Decision Process"
+      }
+    ],
+    "owner": {
+      "id": "612b238d-69ee-4c95-bf0a-f2b012d587e5",
+      "name": "Bob Johnson"
+    },
+    "businessValueCategories": [
+      {
+        "id": "5ed6b543-76b5-546b-88e1-dc713a1a0f7e",
+        "code": "services-under-commitments",
+        "name": "Services delivered to others under commitments"
+      },
+      {
+        "id": "4e8336c9-87a8-5a6b-9089-2f279c89df79",
+        "code": "personal-data",
+        "name": "Personal data"
+      }
+    ]
+  }
+}

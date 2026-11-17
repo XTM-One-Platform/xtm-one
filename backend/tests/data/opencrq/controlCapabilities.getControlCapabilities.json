@@ -1,0 +1,80 @@
+{
+  "procedure": "controlCapabilities.getControlCapabilities",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "23c2d8f6-fe50-51ab-8b72-c527dd60be67",
+      "externalId": "CSPM",
+      "name": "Cloud Security Posture Management",
+      "description": "Cloud Security Posture Management continuously audits the configuration of cloud infrastructure (compute, storage, network, service settings, resource hierarchy) against secure baselines and provider best practices, reading the cloud control plane and its audit telemetry to surface deviations. As a resist function it lowers the conditional probability that an attack step succeeds by removing misco",
+      "assessment": {
+        "strengthRung": "L0",
+        "coverageBucket": "L1",
+        "strengthMode": "auto",
+        "coverageMode": "auto",
+        "coverageBasis": "assumed",
+        "comment": null
+      },
+      "lastAssessedAt": "2026-10-14T12:56:14.653Z",
+      "lastAssessedBy": null,
+      "lastAssessedConnector": "derivation"
+    },
+    {
+      "id": "41e5f738-8943-5fed-8c6a-02740e8adf56",
+      "externalId": "EHB",
+      "name": "Endpoint Hardening / Security Baseline",
+      "description": "Endpoint Hardening / Security Baseline (EHB) is a host-resident configuration posture that lowers susceptibility, the conditional probability that a threat event directed at an endpoint results in the adversary completing a step (execution, persistence, privilege escalation, credential access, defense evasion) on that host, given that the threat event occurs. It does not change how often endpoints",
+      "assessment": {
+        "strengthRung": "L1",
+        "coverageBucket": "L2",
+        "strengthMode": "auto",
+        "coverageMode": "auto",
+        "coverageBasis": "measured",
+        "comment": null
+      },
+      "lastAssessedAt": "2026-10-14T12:56:14.670Z",
+      "lastAssessedBy": null,
+      "lastAssessedConnector": "derivation"
+    },
+    {
+      "id": "4c5d8d76-763f-5b20-8b5c-fe80d72682eb",
+      "externalId": "EDR",
+      "name": "Endpoint Detection and Response",
+      "description": "Endpoint Detection and Response (EDR) is a host-resident capability that lowers susceptibility, the conditional probability that a threat event directed at an endpoint results in the adversary executing code, persisting, escalating, or reaching credentials on that host, given that the threat event occurs. It does not change how often endpoints are attacked (frequency is exogenous) nor the loss tha",
+      "assessment": {
+        "strengthRung": "L2",
+        "coverageBucket": "L2",
+        "strengthMode": "manual",
+        "coverageMode": "manual",
+        "coverageBasis": "declared",
+        "comment": null
+      },
+      "lastAssessedAt": "2026-10-10T08:59:58.407Z",
+      "lastAssessedBy": {
+        "userId": "f4ad0db5-4c66-4e5f-8817-7f4dc3b67162",
+        "name": "Platform Admin"
+      },
+      "lastAssessedConnector": null
+    },
+    {
+      "id": "af502b7b-93e9-5ff7-86d8-4cf2f1f9a0d0",
+      "externalId": "MFA",
+      "name": "Multi-Factor Authentication",
+      "description": "Multi-factor authentication (MFA) is a resistance control. It acts on susceptibility, the probability that a threat event directed at a credential results in an authenticated session, given that such a threat event occurs. It does not change how often credentials are targeted (frequency), nor the loss that follows an account takeover (magnitude). Its function is narrow and exact: to lower the shar",
+      "assessment": {
+        "strengthRung": "L3",
+        "coverageBucket": "L2",
+        "strengthMode": "manual",
+        "coverageMode": "manual",
+        "coverageBasis": "declared",
+        "comment": null
+      },
+      "lastAssessedAt": "2026-05-24T04:29:59.203Z",
+      "lastAssessedBy": {
+        "userId": "f4ad0db5-4c66-4e5f-8817-7f4dc3b67162",
+        "name": "Platform Admin"
+      },
+      "lastAssessedConnector": null
+    }
+  ]
+}

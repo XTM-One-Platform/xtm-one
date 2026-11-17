@@ -1,0 +1,216 @@
+name: Relay CI
+
+# Compile + lint + test gate for the XTM One Relay (apps/relay) and the
+# crate it shares with the runner (apps/agent-core). The release build and
+# signing live in apps/relay/scripts/release-build.sh and release-sign.sh, run
+# by the relay-build job of XTM-One-Platform/release's release.yml, which
+# embeds the archives into the platform image; this proves the relay compiles
+# and passes its tests on every OS / architecture it ships for, that its
+# install scripts parse, and that its container image builds.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/relay/**"
+      - "apps/agent-core/**"
+      - "apps/.dockerignore"
+      - ".github/workflows/relay-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/**"
+      - "apps/agent-core/**"
+      - "apps/.dockerignore"
+      - ".github/workflows/relay-ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Format + clippy
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust (rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/relay/target
+            apps/agent-core/target
+          key: relay-ci-lint-${{ hashFiles('apps/relay/Cargo.lock', 'apps/agent-core/Cargo.toml') }}
+          restore-keys: |
+            relay-ci-lint-
+
+      # agent-core links libdbus through `keychain` (the runner's default).
+      - name: Build dependencies (agent-core keychain)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: rustfmt
+        run: |
+          cargo fmt --manifest-path apps/relay/Cargo.toml --check
+          cargo fmt --manifest-path apps/agent-core/Cargo.toml --check
+
+      - name: clippy (relay, release features)
+        run: cargo clippy --manifest-path apps/relay/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: clippy (relay, container build - no self-update)
+        run: cargo clippy --manifest-path apps/relay/Cargo.toml --locked --all-targets --no-default-features -- -D warnings
+
+      - name: clippy (agent-core, every feature set)
+        run: |
+          cargo clippy --manifest-path apps/agent-core/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo clippy --manifest-path apps/agent-core/Cargo.toml --all-targets --no-default-features -- -D warnings
+
+      - name: Install scripts parse
+        run: |
+          bash -n apps/relay/dist/install.sh
+          shellcheck --severity=error apps/relay/dist/install.sh
+
+      # The release workflow (XTM-One-Platform/release) runs it from the commit
+      # it releases.
+      - name: ShellCheck (release script)
+        run: shellcheck apps/relay/scripts/release-build.sh apps/relay/scripts/release-sign.sh
+
+  test:
+    name: Test ${{ matrix.os_name }}/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ubuntu-22.04 like the Linux release legs (release.yml in
+          # XTM-One-Platform/release): the glibc floor.
+          - os: ubuntu-22.04
+            os_name: linux
+            arch: x64
+          - os: ubuntu-22.04-arm
+            os_name: linux
+            arch: arm64
+          # macos-14 is retired on 2 November 2026 (actions/runner-images#13518).
+          - os: macos-15
+            os_name: macos
+            arch: arm64
+          - os: windows-latest
+            os_name: windows
+            arch: x64
+          - os: windows-11-arm
+            os_name: windows
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/relay/target
+            apps/agent-core/target
+          key: relay-ci-${{ matrix.os_name }}-${{ matrix.arch }}-${{ hashFiles('apps/relay/Cargo.lock') }}
+          restore-keys: |
+            relay-ci-${{ matrix.os_name }}-${{ matrix.arch }}-
+
+      - name: Linux build dependencies
+        if: matrix.os_name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Test agent-core
+        run: cargo test --manifest-path apps/agent-core/Cargo.toml --all-features
+
+      - name: Test the relay
+        run: cargo test --manifest-path apps/relay/Cargo.toml --locked
+
+      - name: The relay links no libdbus (it keeps its credential as a file)
+        if: matrix.os_name == 'linux'
+        shell: bash
+        run: |
+          cargo build --manifest-path apps/relay/Cargo.toml --locked --release
+          if ldd apps/relay/target/release/xtm-one-relay | grep -i dbus; then
+            echo "::error::xtm-one-relay links libdbus"; exit 1
+          fi
+
+      - name: Install script parses (Windows PowerShell 5.1)
+        if: matrix.os_name == 'windows'
+        shell: powershell
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path apps/relay/dist/install.ps1).Path, [ref]$null, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Host $_.Message }; exit 1 }
+
+      - name: Save cargo cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/relay/target
+            apps/agent-core/target
+          key: relay-ci-${{ matrix.os_name }}-${{ matrix.arch }}-${{ hashFiles('apps/relay/Cargo.lock') }}
+
+  image:
+    name: Container image
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The arm64 image is cross-compiled: building it proves the cross
+      # toolchain of the Dockerfile without running anything emulated.
+      - name: Build (linux/arm64, cross-compiled)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps
+          file: apps/relay/Dockerfile
+          platforms: linux/arm64
+          push: false
+          build-args: XTM_RELAY_VERSION=0.0.0-ci
+      - name: Build (linux/amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps
+          file: apps/relay/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: xtm-one-relay:ci
+          build-args: XTM_RELAY_VERSION=0.0.0-ci
+      - name: The image runs as a non-root user and answers --version
+        run: |
+          docker run --rm xtm-one-relay:ci --version
+          test "$(docker image inspect xtm-one-relay:ci --format '{{.Config.User}}')" = "65532:65532"

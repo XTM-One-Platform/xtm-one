@@ -1,0 +1,30 @@
+// Dead-code check (`yarn knip`, part of `yarn check`): unused files,
+// exports, types and dependencies. An export kept on purpose for a reader
+// knip cannot see (a backend test that parses the TS source, a Playwright
+// spec) carries a `@public` JSDoc tag on its declaration.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // The ⌘K manifests, assembled by `import.meta.glob`.
+    "src/**/*.commands.ts",
+    // The design-system primitives gallery, a second Vite page (`gallery.html`).
+    "src/dev/gallery.tsx",
+    // `node --test` and vitest suites.
+    "src/**/*.test.{ts,tsx}",
+    "tests/**/*.{ts,tsx,mjs}",
+    "tests_e2e/**/*.ts",
+    "scripts/**/*.{mjs,mts}"
+  ],
+  "project": ["src/**/*.{ts,tsx,css}", "scripts/**/*.{mjs,mts}", "tests/**/*", "tests_e2e/**/*.ts"],
+  "ignoreIssues": {
+    // The presentation editor's block and layout catalogs, read whole by
+    // backend/tests/test_presentation_editor.py to mirror the Pydantic models.
+    "src/components/presentation/block-schema.ts": ["exports", "types"],
+    "src/components/presentation/slide-schema.ts": ["exports", "types"],
+    // The design-system primitives keep their full shadcn/ui surface.
+    "src/components/ui/**": ["exports", "types"],
+    // Two names for one interval on purpose (see the comment there).
+    "src/lib/session.ts": ["duplicates"]
+  },
+  "treatConfigHintsAsErrors": true
+}

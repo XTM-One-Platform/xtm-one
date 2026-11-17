@@ -1,0 +1,16 @@
+{
+  "procedure": "attackOutcomes.getAttackOutcome",
+  "source": "recorded",
+  "data": {
+    "id": "fbe5a7bf-cb7b-5549-b147-8bd5d451c7b7",
+    "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+    "name": "Data Breach & Resale",
+    "description": "Data copied and monetized away from the victim, learned through disclosure or downstream fraud.",
+    "referenceDwellDays": 21,
+    "terminalTactic": "TA0010",
+    "reachesAvailability": "none",
+    "reachesIntegrity": "none",
+    "reachesConfidentiality": "full",
+    "reachesTraceability": "none"
+  }
+}

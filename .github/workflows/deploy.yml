@@ -1,0 +1,309 @@
+name: Deploy
+
+# Checks one commit (a push to main or a release tag; a feature branch named
+# by hand is checked by its own CI), then hands it to XTM-One-Platform/release,
+# which builds, signs, publishes and deploys it: this repository needs no
+# release secret. The only credential here is the release GitHub App
+# (RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY), in the deploy-trigger
+# environment: main and release tags only, so a workflow on any other branch
+# never gets it. Its token has actions: write on XTM-One-Platform/release,
+# which dispatch needs and which reaches every workflow run there.
+#
+# What the release builds from this repository (the runner and relay archives,
+# their names and signatures) is in apps/runner/scripts/release-*.sh and
+# apps/relay/scripts/release-build.sh, which the backend tests hold to the
+# tables of the files the platform serves.
+on:
+  # A feature branch deploy: run from main, naming the branch, by hand or by
+  # feature-branch-deploy.yml (the box of a pull request). It deploys the
+  # branch to a feature-branch environment on staging, deleted by platform 7
+  # days after its last deployment.
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Feature branch to deploy to staging (run this workflow from main)
+        type: string
+        required: true
+      xtmone_config:
+        description: Extra env for the platform and worker, as a JSON object (no secrets, it is shown in the run and in AWX)
+        type: string
+        required: false
+        default: "{}"
+      chart_ref:
+        description: xtm-suite chart, e.g. "filigran/xtm-suite:0.261009.4" (default the latest release)
+        type: string
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: read
+
+# pypi.org can stop answering for several minutes: each download retries 5 times
+# at 30 s, and every install step runs up to 3 times, a minute apart.
+env:
+  UV_HTTP_TIMEOUT: "30"
+  UV_HTTP_RETRIES: "5"
+
+# A feature branch deploy (a dispatch) has a group of its own, whatever its
+# branch input reads: it never replaces a pending run of main or a tag. A new
+# one cancels the one of its branch in progress, as the release it dispatches
+# cancels the release of that branch in progress (XTM-One-Platform/release,
+# release.yml): a push aborts the deployment of the previous one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('feature-{0}', inputs.branch) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  target:
+    name: Resolve the commit
+    runs-on: ubuntu-26.04
+    timeout-minutes: 2
+    outputs:
+      ref: ${{ steps.target.outputs.ref }}
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      # The release repository checks the inputs again; these checks only fail
+      # early, with a message here.
+      - name: Resolve the ref and commit
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::error::Run this workflow from main and name the branch to deploy in the branch input"
+              exit 1
+            fi
+            # The release repository's rules (resolve-target.sh): main whatever
+            # its case is not a feature branch, nor a name with ".." or a final "/".
+            if [ -z "$BRANCH" ] || [ "$(tr '[:upper:]' '[:lower:]' <<< "$BRANCH")" = main ] || ! [[ "$BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
+              || [[ "$BRANCH" == *..* ]] || [[ "$BRANCH" == */ ]]; then
+              echo "::error::Invalid feature branch: '$BRANCH'"
+              exit 1
+            fi
+            ref="refs/heads/$BRANCH"
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)
+          else
+            if [ "$GITHUB_REF_TYPE" = tag ] && ! [[ "$GITHUB_REF_NAME" =~ ^[0-9]+\.[0-9]{6}\.[0-9]+(-lts\.[0-9]+)?$ ]]; then
+              echo "::error::Invalid release tag: $GITHUB_REF_NAME (expected MAJOR.YYMMDD.SEQ, for example 1.260604.0)"
+              exit 1
+            fi
+            ref="$GITHUB_REF"
+            sha="$GITHUB_SHA"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Releasing $ref at $sha"
+
+  # The checks run on a push only. A feature branch deploy runs on main: the
+  # branch's code (its uv-sync action, yarn install, pytest) could write main's
+  # Actions cache, which every PR restores. Its own CI runs these checks.
+  backend-lint:
+    name: Backend Lint
+    needs: target
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.target.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      # The wheel cache the CI workflow saves from main (see ci.yml).
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          save-cache: false
+      # The dev group holds ruff (kept out of the images, which install
+      # with --no-dev).
+      - name: Install dependencies
+        uses: ./.github/actions/uv-sync
+        with:
+          directory: backend
+      - name: Lint with ruff
+        working-directory: backend
+        run: ruff check .
+
+  frontend-check:
+    name: Frontend Check
+    needs: target
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.target.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        working-directory: frontend
+        run: corepack enable && yarn install --immutable
+      - name: TypeScript + oxlint
+        working-directory: frontend
+        run: yarn typecheck && yarn lint
+
+  bootstrap:
+    name: Bootstrap (fresh DB)
+    needs: target
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: copilot
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.target.outputs.sha }}
+          persist-credentials: false
+      - name: Start Silo (S3 object storage)
+        run: |
+          # Pulled first, three attempts 10 s then 20 s apart, so a transient
+          # Docker Hub reset on a blob download is retried, not a red job.
+          for attempt in 1 2 3; do
+            docker pull --quiet pgsty/silo:latest && break
+            [ "$attempt" -eq 3 ] && { echo "::error::docker pull pgsty/silo failed after 3 attempts"; exit 1; }
+            echo "::warning::docker pull failed (attempt $attempt of 3), retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=copilot \
+            -e MINIO_ROOT_PASSWORD=copilot_dev_secret \
+            pgsty/silo:latest server /data
+          # A storage that never came up must fail here, not later in the
+          # bootstrap tests.
+          ready=0
+          start=$SECONDS
+          # Each probe is bounded too: a connection that never answers must not
+          # hold the step past the deadline.
+          while [ $((SECONDS - start)) -lt 30 ]; do
+            if curl -sf --max-time 2 http://localhost:9000/minio/health/live > /dev/null; then
+              echo "Silo is ready after $((SECONDS - start))s"
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::Silo did not become healthy within 30s"
+            docker logs --tail 100 minio || true
+            exit 1
+          fi
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          save-cache: false
+      # backend/.venv, dev group included, then first on the PATH: the steps
+      # below run its python, ruff and pytest.
+      - name: Install dependencies
+        uses: ./.github/actions/uv-sync
+        with:
+          directory: backend
+      - name: Enable pgvector extension
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      - name: Run bootstrap tests
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot"
+          REDIS_URL: "redis://localhost:6379"
+          S3_ENDPOINT: "localhost:9000"
+          S3_ACCESS_KEY: "copilot"
+          S3_SECRET_KEY: "copilot_dev_secret"
+          S3_USE_SSL: "false"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          APP_VERSION: "0.0.0-ci"
+          ADMIN_EMAIL: "admin@test.filigran.io"
+          ADMIN_PASSWORD: "test-admin-password-123"
+        # -p no:randomly: the dev group also brings pytest-randomly; this job keeps the file order.
+        run: python -m pytest tests/test_bootstrap.py -v --tb=long -p no:randomly
+
+  # The release itself runs in XTM-One-Platform/release: its run is listed
+  # there, under Actions > Release.
+  release:
+    name: Release
+    needs: [target, backend-lint, frontend-check, bootstrap]
+    # The checks are skipped on a feature branch deploy.
+    if: ${{ !cancelled() && needs.target.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    environment: deploy-trigger
+    steps:
+      - name: Token of the release App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: XTM-One-Platform
+          repositories: release
+          permission-actions: write
+
+      - name: Dispatch the release
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REF: ${{ needs.target.outputs.ref }}
+          SHA: ${{ needs.target.outputs.sha }}
+          XTMONE_CONFIG: ${{ inputs.xtmone_config || '{}' }}
+          CHART_REF: ${{ inputs.chart_ref }}
+        run: |
+          # The newest run before the dispatch: run ids grow, and unlike timestamps they
+          # do not depend on this runner's clock agreeing with GitHub's.
+          before=$(gh run list --repo XTM-One-Platform/release --workflow release.yml --limit 1 \
+            --json databaseId --jq '.[0].databaseId // 0') || before=0
+          [[ "$before" =~ ^[0-9]+$ ]] || before=0
+          gh workflow run release.yml --repo XTM-One-Platform/release --ref main \
+            -f ref="$REF" -f sha="$SHA" -f xtmone_config="$XTMONE_CONFIG" -f chart_ref="$CHART_REF"
+          # The dispatch returns no run: found by its run-name above that id, for the link.
+          url=""
+          for _ in 1 2 3 4 5 6; do
+            sleep 5
+            url=$(gh run list --repo XTM-One-Platform/release --workflow release.yml --event workflow_dispatch --limit 20 \
+              --json displayTitle,databaseId,url \
+              --jq "first(.[] | select(.displayTitle == \"Release $REF at $SHA\" and .databaseId > $before) | .url)") || url=""
+            [ -n "$url" ] && break
+          done
+          link=${url:-XTM-One-Platform/release, Actions > Release}
+          echo "::notice title=Release run::$link"
+          echo "Release of $REF at $SHA dispatched: $link" >> "$GITHUB_STEP_SUMMARY"

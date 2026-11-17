@@ -1,0 +1,469 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a frameless band > of emphasis core > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "core",
+  "frame": "false",
+  "hit": [
+    "12",
+    "14",
+    "632",
+    "64",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+    "g.deck-arch-chip",
+  ],
+  "shape": "band",
+  "text": [
+    "Subject",
+    "One",
+  ],
+}
+`;
+
+exports[`a frameless band > of emphasis ghost > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "ghost",
+  "frame": "false",
+  "hit": [
+    "12",
+    "14",
+    "632",
+    "64",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+    "g.deck-arch-chip",
+  ],
+  "shape": "band",
+  "text": [
+    "Subject",
+    "One",
+  ],
+}
+`;
+
+exports[`a frameless band > of emphasis normal > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "normal",
+  "frame": "false",
+  "hit": [
+    "12",
+    "14",
+    "632",
+    "64",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+    "g.deck-arch-chip",
+  ],
+  "shape": "band",
+  "text": [
+    "Subject",
+    "One",
+  ],
+}
+`;
+
+exports[`a frameless card > of emphasis core > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "core",
+  "frame": "false",
+  "hit": [
+    "66.65414399999999",
+    "10",
+    "146.691712",
+    "190",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "rect.deck-arch-node-tile",
+    "svg.lucide lucide-shield deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+    "g.deck-arch-chip",
+    "g.deck-arch-chip",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+    "Context",
+    "One",
+    "Two",
+  ],
+}
+`;
+
+exports[`a frameless card > of emphasis ghost > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "ghost",
+  "frame": "false",
+  "hit": [
+    "66.65414399999999",
+    "10",
+    "146.691712",
+    "190",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "rect.deck-arch-node-tile",
+    "svg.lucide lucide-shield deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+    "g.deck-arch-chip",
+    "g.deck-arch-chip",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+    "Context",
+    "One",
+    "Two",
+  ],
+}
+`;
+
+exports[`a frameless card > of emphasis normal > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "normal",
+  "frame": "false",
+  "hit": [
+    "66.65414399999999",
+    "10",
+    "146.691712",
+    "190",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "rect.deck-arch-node-tile",
+    "svg.lucide lucide-shield deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+    "g.deck-arch-chip",
+    "g.deck-arch-chip",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+    "Context",
+    "One",
+    "Two",
+  ],
+}
+`;
+
+exports[`a frameless card with a logo > of emphasis core > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "core",
+  "frame": "false",
+  "hit": [
+    "64",
+    "10",
+    "152",
+    "109.6",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a frameless card with a logo > of emphasis ghost > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "ghost",
+  "frame": "false",
+  "hit": [
+    "64",
+    "10",
+    "152",
+    "109.6",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a frameless card with a logo > of emphasis normal > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "normal",
+  "frame": "false",
+  "hit": [
+    "64",
+    "10",
+    "152",
+    "109.6",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "image.deck-arch-logo",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "card",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a frameless circle > of emphasis core > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "core",
+  "frame": "false",
+  "hit": [
+    "45.170047999999994",
+    "43",
+    "113.659904",
+    "117.69999999999999",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-sparkles deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+  ],
+  "shape": "circle",
+  "text": [
+    "Subject",
+    "Hub",
+  ],
+}
+`;
+
+exports[`a frameless circle > of emphasis ghost > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "ghost",
+  "frame": "false",
+  "hit": [
+    "29.170047999999994",
+    "27",
+    "113.659904",
+    "117.69999999999999",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-sparkles deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+  ],
+  "shape": "circle",
+  "text": [
+    "Subject",
+    "Hub",
+  ],
+}
+`;
+
+exports[`a frameless circle > of emphasis normal > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "normal",
+  "frame": "false",
+  "hit": [
+    "29.170047999999994",
+    "27",
+    "113.659904",
+    "117.69999999999999",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-sparkles deck-arch-icon",
+    "text.deck-arch-node-label",
+    "text.deck-arch-node-sublabel",
+  ],
+  "shape": "circle",
+  "text": [
+    "Subject",
+    "Hub",
+  ],
+}
+`;
+
+exports[`a frameless pill > of emphasis core > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "core",
+  "frame": "false",
+  "hit": [
+    "20",
+    "7",
+    "155.659904",
+    "50",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-bell deck-arch-icon",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "pill",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a frameless pill > of emphasis ghost > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "ghost",
+  "frame": "false",
+  "hit": [
+    "20",
+    "7",
+    "155.659904",
+    "50",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-bell deck-arch-icon",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "pill",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a frameless pill > of emphasis normal > draws its content and no shape, surface or glow - the same in both schemes 1`] = `
+{
+  "emphasis": "normal",
+  "frame": "false",
+  "hit": [
+    "20",
+    "7",
+    "155.659904",
+    "50",
+  ],
+  "pieces": [
+    "rect.deck-arch-node-hit",
+    "svg.lucide lucide-bell deck-arch-icon",
+    "text.deck-arch-node-label",
+  ],
+  "shape": "pill",
+  "text": [
+    "Subject",
+  ],
+}
+`;
+
+exports[`a zone logo > alone, is drawn as its mark cropped to its ink, with no title 1`] = `
+{
+  "color": "brand_1",
+  "icon": null,
+  "logo": {
+    "aspect": "xMinYMid meet",
+    "box": [
+      "30",
+      "30",
+      "135",
+      "40",
+      "12 8 216 64",
+    ],
+    "image": [
+      null,
+      null,
+      "240",
+      "80",
+      "none",
+    ],
+  },
+  "panel": [
+    "6",
+    "18",
+    "700",
+    "222",
+  ],
+  "title": null,
+}
+`;
+
+exports[`a zone logo > with a label, is drawn as its mark then the title 1`] = `
+{
+  "color": "brand_1",
+  "icon": null,
+  "logo": {
+    "aspect": "xMinYMid meet",
+    "box": [
+      "30",
+      "30",
+      "135",
+      "40",
+      "12 8 216 64",
+    ],
+    "image": [
+      null,
+      null,
+      "240",
+      "80",
+      "none",
+    ],
+  },
+  "panel": [
+    "6",
+    "18",
+    "700",
+    "222",
+  ],
+  "title": {
+    "text": "Platform",
+    "x": "177",
+    "y": "50",
+  },
+}
+`;
+
+exports[`the 5-column grid with frameless nodes and a zone logo > routes every edge from content to content, through no third node 1`] = `
+[
+  {
+    "key": "partner->alpha#0",
+    "points": [
+      [
+        168,
+        325.6,
+      ],
+      [
+        168,
+        511,
+      ],
+      [
+        404,
+        511,
+      ],
+    ],
+  },
+  {
+    "key": "gamma->skills#1",
+    "points": [
+      [
+        1436,
+        511,
+      ],
+      [
+        1672,
+        511,
+      ],
+      [
+        1672,
+        338,
+      ],
+    ],
+  },
+]
+`;

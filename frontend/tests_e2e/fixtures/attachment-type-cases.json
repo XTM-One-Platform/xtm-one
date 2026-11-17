@@ -1,0 +1,77 @@
+{
+  "$comment": "Chat attachment type labels: the ONE table both spellings of the rule are checked against. backend/tests/test_agent_generated_files.py feeds it to _attachment_type_label (backend/app/api/v1/chat.py, the label a persisted chat attachment carries); frontend/src/pages/chat/attachments.test.ts feeds it to fileTypeLabel (frontend/src/pages/chat/attachments.ts, the label the bubble shows until the conversation is refetched). A case that passes on one side only is a file that changes shape when the turn ends. Add a case here, never on one side only.",
+  "cases": [
+    {
+      "name": "the extension wins, lowercased",
+      "filename": "report.PDF",
+      "content_type": "application/pdf",
+      "expected": "pdf"
+    },
+    {
+      "name": "a screenshot pasted in a browser is named image.png",
+      "filename": "image.png",
+      "content_type": "image/png",
+      "expected": "png"
+    },
+    {
+      "name": "an extensionless screenshot takes the MIME subtype",
+      "filename": "image",
+      "content_type": "image/png",
+      "expected": "png"
+    },
+    {
+      "name": "the MIME subtype is lowercased",
+      "filename": "capture",
+      "content_type": "IMAGE/JPEG",
+      "expected": "jpeg"
+    },
+    {
+      "name": "a structured-syntax suffix is stripped, so an SVG previews as a picture",
+      "filename": "logo",
+      "content_type": "image/svg+xml",
+      "expected": "svg"
+    },
+    {
+      "name": "a vendor subtype surfaces its last segment",
+      "filename": "spreadsheet",
+      "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "expected": "sheet"
+    },
+    {
+      "name": "MIME parameters are dropped",
+      "filename": "notes",
+      "content_type": "text/plain; charset=utf-8",
+      "expected": "plain"
+    },
+    {
+      "name": "a trailing dot falls through to the MIME subtype",
+      "filename": "report.",
+      "content_type": "application/pdf",
+      "expected": "pdf"
+    },
+    {
+      "name": "a dotfile's name reads as its extension",
+      "filename": ".env",
+      "content_type": null,
+      "expected": "env"
+    },
+    {
+      "name": "octet-stream says nothing about the file",
+      "filename": "blob",
+      "content_type": "application/octet-stream",
+      "expected": "file"
+    },
+    {
+      "name": "no content type at all",
+      "filename": "blob",
+      "content_type": null,
+      "expected": "file"
+    },
+    {
+      "name": "an empty content type (a browser that could not tell)",
+      "filename": "blob",
+      "content_type": "",
+      "expected": "file"
+    }
+  ]
+}

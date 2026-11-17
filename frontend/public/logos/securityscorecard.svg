@@ -1,0 +1,40 @@
+<!-- SecurityScorecard logo - trademark of SecurityScorecard, Inc. Used to identify the SecurityScorecard integration. Source: https://securityscorecard.com/wp-content/themes/securityscorecard/resources/images/hex-logo.svg (vendor site). -->
+<svg width="120" height="138" viewBox="0 0 120 138" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M84.7282 123.812C76.6875 128.515 68.5805 133.258 60.4736 138H59.8314C51.8375 133.314 43.8435 128.628 35.2718 123.604C51.9237 114.036 68.0735 104.756 84.7282 95.1854V123.812Z" fill="url(#paint0_linear_8351_1862)"/>
+<path d="M0 75.3075C0.891209 75.6322 1.85349 75.8335 2.66321 76.2998C17.5891 84.8954 32.4977 93.5211 47.4039 102.151C48.0355 102.516 48.6076 102.985 49.84 103.851C41.4027 108.721 33.3479 113.372 25.1199 118.122C16.6374 113.215 8.31866 108.402 0 103.589V75.3075Z" fill="url(#paint1_linear_8351_1862)"/>
+<path d="M120 74.5727V103.537C112.097 108.111 104.027 112.783 95.4637 117.739V60.3991C103.875 65.258 111.938 69.9155 120 74.5727Z" fill="url(#paint2_linear_8351_1862)"/>
+<path d="M84.9465 54.3868C85.0106 55.7504 85.1023 56.8094 85.1038 57.8682C85.1156 66.3302 85.1102 74.7923 85.1102 83.5033C76.7252 88.3105 68.4467 93.0568 60.0658 97.8615C51.7488 93.078 43.561 88.3687 35.2718 83.6012V54.4068C43.3036 49.7844 51.5631 45.0305 60.0634 40.1385C68.3298 44.8718 76.5189 49.5611 84.9465 54.3868Z" fill="url(#paint3_linear_8351_1862)"/>
+<path d="M24.92 77.6009C16.3584 72.6022 8.17906 67.8273 0 63.0519V34.1374C6.71605 30.4069 13.4328 26.6776 20.1474 22.9447C21.6123 22.1303 23.0696 21.3019 24.92 20.2606V77.6009Z" fill="url(#paint4_linear_8351_1862)"/>
+<path d="M120 34.4535V63.0751C103.318 53.5337 87.0691 44.2396 70.16 34.5682C78.8368 29.6019 86.8913 24.9915 95.1571 20.2606C103.432 24.9882 111.676 29.6981 120 34.4535Z" fill="url(#paint5_linear_8351_1862)"/>
+<path d="M85.1118 14.4007C68.323 24.1006 52.0978 33.475 35.2718 43.1964V14.3341C43.3949 9.63742 51.6306 4.87528 60.0626 0C68.2072 4.68244 76.2726 9.31888 85.1118 14.4007Z" fill="url(#paint6_linear_8351_1862)"/>
+<defs>
+<linearGradient id="paint0_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint1_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint2_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint3_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint4_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint5_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+<linearGradient id="paint6_linear_8351_1862" x1="-31.6438" y1="-25.875" x2="94.0231" y2="121.235" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F5B7FF"/>
+<stop offset="1" stop-color="#673EF3"/>
+</linearGradient>
+</defs>
+</svg>

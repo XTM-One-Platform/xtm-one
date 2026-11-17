@@ -1,0 +1,1594 @@
+{
+  "pinnedFrom": {
+    "repository": "OpenCRQ-Platform/opencrq",
+    "path": "back/trpc-procedures.json",
+    "commit": "b1036a9876da0166501ea7e0476954b1191996d6"
+  },
+  "formatVersion": 1,
+  "procedures": [
+    {
+      "path": "acceptInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "aleChangeExplain.getRunChangeGroup",
+      "type": "query"
+    },
+    {
+      "path": "aleChangeExplain.getRunChanges",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.createSupportToPrimaryLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.createSupportToSupportLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.deleteSupportToPrimaryLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.deleteSupportToSupportLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.getPrimaryAssetDependencyGraph",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.getSupportToPrimaryLinksBySupportingAssetId",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.getSupportToSupportLinks",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.getSupportingAssetDependencyGraph",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.listSupportingAssetCandidates",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.updateSupportToPrimaryLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "attackOutcomes.getAttackOutcome",
+      "type": "query"
+    },
+    {
+      "path": "attackOutcomes.getAttackOutcomes",
+      "type": "query"
+    },
+    {
+      "path": "attackOutcomes.getAttackPaths",
+      "type": "query"
+    },
+    {
+      "path": "attackOutcomes.getCuratedMitreTechniquesForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "attackOutcomes.getMitreTechniquesForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "attackOutcomes.getRepertoireTechniquesForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "authStatus",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.closeBudgetReview",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.createBudgetReview",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.createBudgetReviewLine",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.deleteBudgetReviewLines",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.deleteBudgetReviews",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.getBudgetReview",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewBuildHistory",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewControlPostures",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewFigures",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewSimulationState",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewTolerance",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviews",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.reopenBudgetReview",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.resimulateBudgetReviewScenarios",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.updateBudgetReview",
+      "type": "mutation"
+    },
+    {
+      "path": "budgetReviews.updateBudgetReviewLine",
+      "type": "mutation"
+    },
+    {
+      "path": "businessValueCategories.getBusinessValueCategories",
+      "type": "query"
+    },
+    {
+      "path": "businessValueCategories.getBusinessValueCategory",
+      "type": "query"
+    },
+    {
+      "path": "capabilities.getCapabilities",
+      "type": "query"
+    },
+    {
+      "path": "capabilities.getServiceAccountEffectivePermissions",
+      "type": "query"
+    },
+    {
+      "path": "capabilities.getUserEffectivePermissions",
+      "type": "query"
+    },
+    {
+      "path": "capabilities.hasManageSecurity",
+      "type": "query"
+    },
+    {
+      "path": "complianceAssessments.answerRequirement",
+      "type": "mutation"
+    },
+    {
+      "path": "complianceAssessments.createAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "complianceAssessments.getAssessment",
+      "type": "query"
+    },
+    {
+      "path": "complianceAssessments.getAssessments",
+      "type": "query"
+    },
+    {
+      "path": "complianceAssessments.getControlEvidence",
+      "type": "query"
+    },
+    {
+      "path": "complianceAssessments.getFrameworks",
+      "type": "query"
+    },
+    {
+      "path": "complianceAssessments.publishAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "complianceAssessments.renameAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "complianceAssessments.reopenAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "connectors.getConnector",
+      "type": "query"
+    },
+    {
+      "path": "connectors.getPipelineSnapshot",
+      "type": "query"
+    },
+    {
+      "path": "connectors.getSchedule",
+      "type": "query"
+    },
+    {
+      "path": "connectors.getStreamState",
+      "type": "query"
+    },
+    {
+      "path": "connectors.listConnectors",
+      "type": "query"
+    },
+    {
+      "path": "connectors.listLogs",
+      "type": "query"
+    },
+    {
+      "path": "connectors.listRuns",
+      "type": "query"
+    },
+    {
+      "path": "connectors.reconnectStream",
+      "type": "mutation"
+    },
+    {
+      "path": "connectors.resetState",
+      "type": "mutation"
+    },
+    {
+      "path": "connectors.setSchedule",
+      "type": "mutation"
+    },
+    {
+      "path": "connectors.syncNow",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.addTechniqueOverride",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.clearScopeControlPosture",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.declareScopeControlPosture",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.getCapabilitiesForTechnique",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getCapabilityEvents",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getControlCapabilities",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getControlCapability",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getControlCapabilityRiskScenarios",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getEffectivenessHistory",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getPooledAssessment",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.getResolvedControlPosture",
+      "type": "query"
+    },
+    {
+      "path": "controlCapabilities.removeTechnique",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.resetTechniqueOverrides",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.restoreTechnique",
+      "type": "mutation"
+    },
+    {
+      "path": "controlCapabilities.upsertAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "controlValidation.getControlValidation",
+      "type": "query"
+    },
+    {
+      "path": "controlValidation.getControlValidationEvidence",
+      "type": "query"
+    },
+    {
+      "path": "controlValidation.getProvenPostureHistory",
+      "type": "query"
+    },
+    {
+      "path": "countries.getCountries",
+      "type": "query"
+    },
+    {
+      "path": "createInitialAdminAccount",
+      "type": "mutation"
+    },
+    {
+      "path": "crqIndicatorSettings.getCrqIndicatorSettings",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicatorSettings.updateCrqIndicatorSettings",
+      "type": "mutation"
+    },
+    {
+      "path": "crqIndicators.enqueueFamilyRecompute",
+      "type": "mutation"
+    },
+    {
+      "path": "crqIndicators.enqueueSimulation",
+      "type": "mutation"
+    },
+    {
+      "path": "crqIndicators.getActiveSimulation",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getAutoTefEstimate",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getCrqSummaryForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getFigureFamilyDates",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getLatestRun",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getRunHistory",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getRunTimeline",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getRunWithScores",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getScopeScenarioTefs",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getTefCatalogGrid",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getTefInput",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getTefMode",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getWhatIfResults",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.setTefMode",
+      "type": "mutation"
+    },
+    {
+      "path": "crqIndicators.upsertTefInput",
+      "type": "mutation"
+    },
+    {
+      "path": "cve.getByIds",
+      "type": "query"
+    },
+    {
+      "path": "cve.getInfo",
+      "type": "query"
+    },
+    {
+      "path": "cve.getRemediation",
+      "type": "query"
+    },
+    {
+      "path": "cve.list",
+      "type": "query"
+    },
+    {
+      "path": "cve.search",
+      "type": "query"
+    },
+    {
+      "path": "cwe.addTechnique",
+      "type": "mutation"
+    },
+    {
+      "path": "cwe.get",
+      "type": "query"
+    },
+    {
+      "path": "cwe.list",
+      "type": "query"
+    },
+    {
+      "path": "cwe.removeTechnique",
+      "type": "mutation"
+    },
+    {
+      "path": "cwe.reset",
+      "type": "mutation"
+    },
+    {
+      "path": "cwe.restoreTechnique",
+      "type": "mutation"
+    },
+    {
+      "path": "dashboard.getAssetsOverview",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getExposureBand",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getExposureFlow",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getExposureTrend",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getFindingsOverview",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getMostActiveThreats",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getRemediationPace",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getRiskScopeFigures",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getRiskTreatment",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getScenarioSummaries",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getTechniqueFindingCounts",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getTechniqueGains",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getTenantHomeDashboard",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getToleranceGaps",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getTopControlMoves",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getTopControls",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.setTenantHomeDashboard",
+      "type": "mutation"
+    },
+    {
+      "path": "declineInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "drata.getCapabilityDerivation",
+      "type": "query"
+    },
+    {
+      "path": "drata.getControlsForFramework",
+      "type": "query"
+    },
+    {
+      "path": "drata.getControlsForRequirement",
+      "type": "query"
+    },
+    {
+      "path": "drata.getFramework",
+      "type": "query"
+    },
+    {
+      "path": "drata.getFrameworks",
+      "type": "query"
+    },
+    {
+      "path": "drata.getRequirement",
+      "type": "query"
+    },
+    {
+      "path": "drata.getRequirements",
+      "type": "query"
+    },
+    {
+      "path": "edition.getStatus",
+      "type": "query"
+    },
+    {
+      "path": "events.onDataChanged",
+      "type": "subscription"
+    },
+    {
+      "path": "fileStorage.getNamesByIds",
+      "type": "query"
+    },
+    {
+      "path": "fileStorage.getSettings",
+      "type": "query"
+    },
+    {
+      "path": "fileStorage.list",
+      "type": "query"
+    },
+    {
+      "path": "financialProfiles.getFinancialProfile",
+      "type": "query"
+    },
+    {
+      "path": "financialProfiles.saveFinancialProfile",
+      "type": "mutation"
+    },
+    {
+      "path": "findingScore.getAssetPosture",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getAssetPostureHistory",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getAssetTechniqueScores",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getAssetTechniqueTestDetail",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getAssetTechniqueTests",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getFindingBaselines",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getFindingCountsBySource",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getFindingScoreBreakdown",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getFindingScoreHistory",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getFindingsPanelCounts",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getOpenFindingFigures",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getTechniqueTestPosture",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getTopVulnerabilities",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getUniqueCveFinding",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getUniqueCveFindingAttack",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getUniqueFindingScoreHistory",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getUniqueFindingsPanelCounts",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.getUniqueTechniqueFinding",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.listAssetFindings",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.listScoredFindings",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.listUniqueFindingEvents",
+      "type": "query"
+    },
+    {
+      "path": "findingScore.listUniqueFindings",
+      "type": "query"
+    },
+    {
+      "path": "getInvitationByToken",
+      "type": "query"
+    },
+    {
+      "path": "getMe",
+      "type": "query"
+    },
+    {
+      "path": "groups.addRoleToGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.addUserToGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.createGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.deleteGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.getGroup",
+      "type": "query"
+    },
+    {
+      "path": "groups.getGroupRoles",
+      "type": "query"
+    },
+    {
+      "path": "groups.getGroupUsers",
+      "type": "query"
+    },
+    {
+      "path": "groups.getGroups",
+      "type": "query"
+    },
+    {
+      "path": "groups.getUserGroups",
+      "type": "query"
+    },
+    {
+      "path": "groups.listGroups",
+      "type": "query"
+    },
+    {
+      "path": "groups.removeRoleFromGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.removeUserFromGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "groups.updateGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "health",
+      "type": "query"
+    },
+    {
+      "path": "integrations.configure",
+      "type": "mutation"
+    },
+    {
+      "path": "integrations.getConnectorsStatus",
+      "type": "query"
+    },
+    {
+      "path": "integrations.getSettings",
+      "type": "query"
+    },
+    {
+      "path": "invitations.cancelInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "invitations.checkEmail",
+      "type": "query"
+    },
+    {
+      "path": "invitations.createInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "invitations.getInvitations",
+      "type": "query"
+    },
+    {
+      "path": "invitations.resendInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "isLoggedIn",
+      "type": "query"
+    },
+    {
+      "path": "jobs.cancelJob",
+      "type": "mutation"
+    },
+    {
+      "path": "jobs.getActiveRunCounts",
+      "type": "query"
+    },
+    {
+      "path": "jobs.getJob",
+      "type": "query"
+    },
+    {
+      "path": "jobs.getJobKind",
+      "type": "query"
+    },
+    {
+      "path": "jobs.getLastJob",
+      "type": "query"
+    },
+    {
+      "path": "jobs.getRun",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listAllRuns",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listJobErrors",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listJobKinds",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listLogs",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listQueue",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listRunLogs",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listRuns",
+      "type": "query"
+    },
+    {
+      "path": "jobs.listSchedules",
+      "type": "query"
+    },
+    {
+      "path": "jobs.retryFromDlq",
+      "type": "mutation"
+    },
+    {
+      "path": "login",
+      "type": "mutation"
+    },
+    {
+      "path": "lossDrivers.getCompatibleBusinessValueCategoryIds",
+      "type": "query"
+    },
+    {
+      "path": "lossDrivers.getLossDriver",
+      "type": "query"
+    },
+    {
+      "path": "lossDrivers.getLossDriverActivations",
+      "type": "query"
+    },
+    {
+      "path": "lossDrivers.getLossDrivers",
+      "type": "query"
+    },
+    {
+      "path": "lossDrivers.getScenarioDriverRecommendation",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getMatrix",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getMitigationByExternalId",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getMitigations",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getTacticByExternalId",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getTactics",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getTechniqueByExternalId",
+      "type": "query"
+    },
+    {
+      "path": "mitreAttack.getTechniques",
+      "type": "query"
+    },
+    {
+      "path": "notifications.deleteMany",
+      "type": "mutation"
+    },
+    {
+      "path": "notifications.getNotifications",
+      "type": "query"
+    },
+    {
+      "path": "notifications.getUnreadCount",
+      "type": "query"
+    },
+    {
+      "path": "notifications.markAllAsRead",
+      "type": "mutation"
+    },
+    {
+      "path": "notifications.markManyAsRead",
+      "type": "mutation"
+    },
+    {
+      "path": "notifications.markManyAsUnread",
+      "type": "mutation"
+    },
+    {
+      "path": "opencti.configure",
+      "type": "mutation"
+    },
+    {
+      "path": "opencti.getBackfillProgress",
+      "type": "query"
+    },
+    {
+      "path": "opencti.getSettings",
+      "type": "query"
+    },
+    {
+      "path": "opencti.listStreams",
+      "type": "query"
+    },
+    {
+      "path": "opencti.setEnabled",
+      "type": "mutation"
+    },
+    {
+      "path": "organizations.createOrganizationsTransaction",
+      "type": "mutation"
+    },
+    {
+      "path": "organizations.deleteOrganizations",
+      "type": "mutation"
+    },
+    {
+      "path": "organizations.getOrganization",
+      "type": "query"
+    },
+    {
+      "path": "organizations.getOrganizations",
+      "type": "query"
+    },
+    {
+      "path": "organizations.getRiskTolerance",
+      "type": "query"
+    },
+    {
+      "path": "organizations.getUnpinnedOrganizationIds",
+      "type": "query"
+    },
+    {
+      "path": "organizations.setOrganizationPinned",
+      "type": "mutation"
+    },
+    {
+      "path": "organizations.setRiskTolerance",
+      "type": "mutation"
+    },
+    {
+      "path": "organizations.updateOrganization",
+      "type": "mutation"
+    },
+    {
+      "path": "platformCapabilities.getPlatformCapabilities",
+      "type": "query"
+    },
+    {
+      "path": "platformCapabilities.getUserPlatformEffectivePermissions",
+      "type": "query"
+    },
+    {
+      "path": "platformCapabilities.hasPlatformAccess",
+      "type": "query"
+    },
+    {
+      "path": "platformCapabilities.hasPlatformCapability",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.addRoleToPlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.addUserToPlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.createPlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.deletePlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.getPlatformGroup",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.getPlatformGroupRoles",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.getPlatformGroupUsers",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.getPlatformGroups",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.getUserPlatformGroups",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.listPlatformGroups",
+      "type": "query"
+    },
+    {
+      "path": "platformGroups.removeRoleFromPlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.removeUserFromPlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformGroups.updatePlatformGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "platformRoles.addCapabilityToPlatformRole",
+      "type": "mutation"
+    },
+    {
+      "path": "platformRoles.createPlatformRole",
+      "type": "mutation"
+    },
+    {
+      "path": "platformRoles.deletePlatformRole",
+      "type": "mutation"
+    },
+    {
+      "path": "platformRoles.getPlatformRole",
+      "type": "query"
+    },
+    {
+      "path": "platformRoles.getPlatformRoleCapabilities",
+      "type": "query"
+    },
+    {
+      "path": "platformRoles.getPlatformRoles",
+      "type": "query"
+    },
+    {
+      "path": "platformRoles.getUserPlatformRoles",
+      "type": "query"
+    },
+    {
+      "path": "platformRoles.listPlatformRoles",
+      "type": "query"
+    },
+    {
+      "path": "platformRoles.removeCapabilityFromPlatformRole",
+      "type": "mutation"
+    },
+    {
+      "path": "platformRoles.updatePlatformRole",
+      "type": "mutation"
+    },
+    {
+      "path": "primaryAssets.createPrimaryAsset",
+      "type": "mutation"
+    },
+    {
+      "path": "primaryAssets.deletePrimaryAssets",
+      "type": "mutation"
+    },
+    {
+      "path": "primaryAssets.getPrimaryAsset",
+      "type": "query"
+    },
+    {
+      "path": "primaryAssets.getPrimaryAssets",
+      "type": "query"
+    },
+    {
+      "path": "primaryAssets.getPrimaryAssetsWithScope",
+      "type": "query"
+    },
+    {
+      "path": "primaryAssets.updatePrimaryAsset",
+      "type": "mutation"
+    },
+    {
+      "path": "procedureManifest",
+      "type": "query"
+    },
+    {
+      "path": "registerAndAcceptInvitation",
+      "type": "mutation"
+    },
+    {
+      "path": "riskScenarios.createRiskScenario",
+      "type": "mutation"
+    },
+    {
+      "path": "riskScenarios.deleteRiskScenarios",
+      "type": "mutation"
+    },
+    {
+      "path": "riskScenarios.getControlCapabilitiesForRiskScenario",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getDependencyGraph",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getDerivedSupportingAssets",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getFindingsSummaryForRiskScenario",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getNamesByIds",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getRiskScenario",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getRiskScenariosOverview",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.listDerivedSupportingAssets",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.listFindingsForRiskScenario",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.setRiskTolerance",
+      "type": "mutation"
+    },
+    {
+      "path": "riskScenarios.updateRiskScenario",
+      "type": "mutation"
+    },
+    {
+      "path": "roles.addCapabilityToRole",
+      "type": "mutation"
+    },
+    {
+      "path": "roles.createRole",
+      "type": "mutation"
+    },
+    {
+      "path": "roles.deleteRole",
+      "type": "mutation"
+    },
+    {
+      "path": "roles.getRole",
+      "type": "query"
+    },
+    {
+      "path": "roles.getRoleCapabilities",
+      "type": "query"
+    },
+    {
+      "path": "roles.getRoleGroups",
+      "type": "query"
+    },
+    {
+      "path": "roles.getRoles",
+      "type": "query"
+    },
+    {
+      "path": "roles.getUserRoles",
+      "type": "query"
+    },
+    {
+      "path": "roles.listRoles",
+      "type": "query"
+    },
+    {
+      "path": "roles.removeCapabilityFromRole",
+      "type": "mutation"
+    },
+    {
+      "path": "roles.updateRole",
+      "type": "mutation"
+    },
+    {
+      "path": "scenarioLossEstimates.getAutomaticEstimates",
+      "type": "query"
+    },
+    {
+      "path": "scenarioLossEstimates.getFinancialSummary",
+      "type": "query"
+    },
+    {
+      "path": "scenarioLossEstimates.getLossDriverSplitForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "scenarioLossEstimates.getScenarioLossEstimates",
+      "type": "query"
+    },
+    {
+      "path": "scenarioLossEstimates.upsertScenarioLossEstimates",
+      "type": "mutation"
+    },
+    {
+      "path": "sectors.getSectors",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.addGroupToServiceAccount",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.createServiceAccount",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.generateToken",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.getGroupServiceAccounts",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.getNamesByIds",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.getServiceAccount",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.getServiceAccountGroups",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.getServiceAccountRoles",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.getServiceAccounts",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.listServiceAccounts",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.listTokens",
+      "type": "query"
+    },
+    {
+      "path": "serviceAccounts.removeGroupFromServiceAccount",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.revokeToken",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.rotateToken",
+      "type": "mutation"
+    },
+    {
+      "path": "serviceAccounts.updateServiceAccount",
+      "type": "mutation"
+    },
+    {
+      "path": "signOut",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.createAssetEvidence",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.createSupportingAsset",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.deleteAssetEvidence",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.deleteSupportingAssets",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.deleteTag",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.getApplicableTechniquesForAsset",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getAssetCountBySubcategory",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getAssetCountsBySource",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidenceActivityForAsset",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidenceActivityForCve",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidenceActivityForTechnique",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidenceDetail",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidencesForCve",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getEvidencesForTechnique",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getOpenaevPosture",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getProtectingControls",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getSupportingAsset",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getSupportingAssetRelationGraph",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getTechniqueCountPerCategory",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getTechniquesByCategory",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.listManagedTags",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.listSupportingAssets",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.listTags",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.mergeTag",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.renameTag",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.resetEvidenceState",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.resyncSupportingAssetWithConnectors",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.unmergeTag",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.updateEvidenceState",
+      "type": "mutation"
+    },
+    {
+      "path": "supportingAssets.updateSupportingAsset",
+      "type": "mutation"
+    },
+    {
+      "path": "tenants.createTenantsTransaction",
+      "type": "mutation"
+    },
+    {
+      "path": "tenants.deleteTenantsTransaction",
+      "type": "mutation"
+    },
+    {
+      "path": "tenants.getTenant",
+      "type": "query"
+    },
+    {
+      "path": "tenants.getTenantUserNamesByIds",
+      "type": "query"
+    },
+    {
+      "path": "tenants.getTenantUserProfile",
+      "type": "query"
+    },
+    {
+      "path": "tenants.getTenantUsers",
+      "type": "query"
+    },
+    {
+      "path": "tenants.getTenants",
+      "type": "query"
+    },
+    {
+      "path": "tenants.getTenantsWithMemberCount",
+      "type": "query"
+    },
+    {
+      "path": "tenants.listTenantUsers",
+      "type": "query"
+    },
+    {
+      "path": "tenants.removeTenantUser",
+      "type": "mutation"
+    },
+    {
+      "path": "tenants.updateTenantUserProfile",
+      "type": "mutation"
+    },
+    {
+      "path": "threatRelevanceSettings.getThreatRelevanceSettings",
+      "type": "query"
+    },
+    {
+      "path": "threatRelevanceSettings.updateThreatRelevanceSettings",
+      "type": "mutation"
+    },
+    {
+      "path": "threats.deleteImported",
+      "type": "mutation"
+    },
+    {
+      "path": "threats.getActivityForCve",
+      "type": "query"
+    },
+    {
+      "path": "threats.getByCveId",
+      "type": "query"
+    },
+    {
+      "path": "threats.getCatalogVolumes",
+      "type": "query"
+    },
+    {
+      "path": "threats.getDetail",
+      "type": "query"
+    },
+    {
+      "path": "threats.getMatchingActorsForOutcome",
+      "type": "query"
+    },
+    {
+      "path": "threats.getOutcomeScoresForAnalysis",
+      "type": "query"
+    },
+    {
+      "path": "threats.getRelevanceProof",
+      "type": "query"
+    },
+    {
+      "path": "threats.getRelevantForScenario",
+      "type": "query"
+    },
+    {
+      "path": "threats.hasAny",
+      "type": "query"
+    },
+    {
+      "path": "threats.list",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.addTreatmentPlanMoves",
+      "type": "mutation"
+    },
+    {
+      "path": "treatmentPlans.createTreatmentPlan",
+      "type": "mutation"
+    },
+    {
+      "path": "treatmentPlans.deleteTreatmentPlans",
+      "type": "mutation"
+    },
+    {
+      "path": "treatmentPlans.getScopeTreatmentPlanCandidates",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlan",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlanCandidates",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlanMoves",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlanProjection",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlanSimulationState",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.getTreatmentPlans",
+      "type": "query"
+    },
+    {
+      "path": "treatmentPlans.resimulateTreatmentPlanScenarios",
+      "type": "mutation"
+    },
+    {
+      "path": "treatmentPlans.setTreatmentPlanScope",
+      "type": "mutation"
+    },
+    {
+      "path": "treatmentPlans.updateTreatmentPlan",
+      "type": "mutation"
+    },
+    {
+      "path": "users.getUser",
+      "type": "query"
+    },
+    {
+      "path": "users.getUserHomeDashboard",
+      "type": "query"
+    },
+    {
+      "path": "users.getUserLocale",
+      "type": "query"
+    },
+    {
+      "path": "users.getUserTheme",
+      "type": "query"
+    },
+    {
+      "path": "users.getUsers",
+      "type": "query"
+    },
+    {
+      "path": "users.listPlatformUsers",
+      "type": "query"
+    },
+    {
+      "path": "users.updateUser",
+      "type": "mutation"
+    },
+    {
+      "path": "xtmOne.getSettings",
+      "type": "query"
+    }
+  ]
+}

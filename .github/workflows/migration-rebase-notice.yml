@@ -1,0 +1,178 @@
+name: Migration rebase notice
+
+# Third guard, and the one that fires *before* anything is
+# broken. The merge queue tests each PR on top of the ones ahead of it, and
+# the nightly CI run on `main` flags a fork that reached it anyway; the migration history
+# check of ci.yml (Backend lint), which runs on the PR merged into main, turns a stale
+# migration PR red on its next run. This workflow
+# is what makes that next run happen: when a migration lands on `main`, every
+# other open PR carrying a migration is now cut from a parent that is no longer
+# the tip, so it gets a comment asking for a rebase.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/alembic/versions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Ask open migration PRs to rebase
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the new Alembic head
+        id: head
+        # Parsed with `ast` rather than Alembic itself: reading `revision` /
+        # `down_revision` out of the version files needs no dependencies at
+        # all, whereas loading the Alembic environment would pull in the whole
+        # backend dependency set just to print one identifier.
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import ast
+          from pathlib import Path
+
+          versions = Path("backend/alembic/versions")
+          revisions: dict[str, str] = {}
+          parents: set[str] = set()
+          for path in sorted(versions.glob("*.py")):
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              values: dict[str, object] = {}
+              for node in ast.iter_child_nodes(tree):
+                  targets = (
+                      [t.id for t in node.targets if isinstance(t, ast.Name)]
+                      if isinstance(node, ast.Assign)
+                      else [node.target.id]
+                      if isinstance(node, ast.AnnAssign)
+                      and isinstance(node.target, ast.Name)
+                      and node.value is not None
+                      else []
+                  )
+                  for name in targets:
+                      if name in ("revision", "down_revision"):
+                          try:
+                              values[name] = ast.literal_eval(node.value)
+                          except (ValueError, TypeError, SyntaxError):
+                              pass
+              revision = values.get("revision")
+              if not isinstance(revision, str):
+                  continue
+              revisions[revision] = path.name
+              down = values.get("down_revision")
+              for parent in (down,) if isinstance(down, str) else (down or ()):
+                  if isinstance(parent, str):
+                      parents.add(parent)
+
+          heads = sorted(set(revisions) - parents)
+          # A fork here means `main` itself is already broken; CI on `main`
+          # owns that failure. Report every tip so the comment stays truthful.
+          print(f"head={', '.join(f'`{h}` ({revisions[h]})' for h in heads) or 'unknown'}")
+          PY
+
+      - name: Comment on open pull requests carrying a migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NEW_HEAD: ${{ steps.head.outputs.head }}
+          MERGED_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+
+          # Marker for a sticky comment: a second migration landing must
+          # refresh the existing note in place, not stack another one.
+          MARKER='<!-- migration-rebase-notice -->'
+          # Only a note this workflow wrote is refreshed: anyone can paste the
+          # marker into a comment, and the token cannot edit someone else's.
+          BOT_LOGIN='github-actions[bot]'
+
+          # The pulls endpoint paginates; `gh pr list --limit` would cap the set.
+          if ! OPEN_PRS=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].number'); then
+            echo "::error::Could not list the open pull requests."
+            exit 1
+          fi
+          if [ -z "$OPEN_PRS" ]; then
+            echo "No open pull requests."
+            exit 0
+          fi
+
+          # One PR per call, every failure returned rather than fatal: a
+          # transient API error on one PR must not skip all the PRs after it.
+          notify_pr() {
+            local pr="$1" files touches existing body
+
+            # A failed listing must not read as "no migration file".
+            if ! files=$(gh api --paginate "repos/$REPO/pulls/$pr/files" --jq '.[].filename'); then
+              echo "::warning::PR #$pr: could not list its files."
+              return 1
+            fi
+            touches=$(printf '%s\n' "$files" | grep -c '^backend/alembic/versions/' || true)
+            if [ "$touches" -eq 0 ]; then
+              return 0
+            fi
+
+            body=$(cat <<EOF
+          $MARKER
+          ### A migration landed on \`main\` — please rebase
+
+          This pull request adds or edits files under \`backend/alembic/versions/\`, and [\`$MERGED_SHA\`](https://github.com/$REPO/commit/$MERGED_SHA) just moved the Alembic head on \`main\` to $NEW_HEAD.
+
+          If this branch's earliest migration still chains off the previous head, the two histories fork the moment this merges — CI stays green here until it is re-run against the new \`main\`.
+
+          \`\`\`bash
+          git fetch origin main && git rebase origin/main
+          # re-point your earliest migration's down_revision to the head above
+          cd backend && uv run python -m pytest tests/test_migration_integrity.py
+          \`\`\`
+
+          Pushing the rebase re-runs the *Backend lint* job of CI, whose migration history check runs on this branch merged into \`main\`.
+          EOF
+            )
+
+            # `--paginate` applies `--jq` per page, so the reduction to a
+            # single id happens in the shell, not in jq.
+            if ! existing=$(gh api --paginate "repos/$REPO/issues/$pr/comments" \
+              --jq ".[] | select(.user.login == \"$BOT_LOGIN\" and (.body | contains(\"$MARKER\"))) | .id"); then
+              echo "::warning::PR #$pr: could not read its comments."
+              return 1
+            fi
+            existing=$(printf '%s\n' "$existing" | tail -n 1)
+
+            if [ -n "$existing" ]; then
+              if ! gh api --method PATCH "repos/$REPO/issues/comments/$existing" -f "body=$body" >/dev/null; then
+                echo "::warning::PR #$pr: could not refresh the rebase notice."
+                return 1
+              fi
+              echo "PR #$pr: refreshed the rebase notice."
+            else
+              if ! gh api --method POST "repos/$REPO/issues/$pr/comments" -f "body=$body" >/dev/null; then
+                echo "::warning::PR #$pr: could not post the rebase notice."
+                return 1
+              fi
+              echo "PR #$pr: posted a rebase notice."
+            fi
+          }
+
+          FAILED=0
+          for PR in $OPEN_PRS; do
+            if ! notify_pr "$PR"; then
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          # Every PR was attempted; the run still says which ones were not reached.
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED pull request(s) could not be checked or notified - see the warnings above."
+            exit 1
+          fi

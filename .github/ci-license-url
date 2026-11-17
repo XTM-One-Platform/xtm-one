@@ -1,0 +1,4 @@
+# The public URL of the `ci` certificate the end-to-end suites run with: one
+# line, empty until the certificate is published (dev-docs/ci-license.md).
+# Lines starting with # are ignored. It is committed, not a repository
+# variable, because a fork's pull request gets no variable either.

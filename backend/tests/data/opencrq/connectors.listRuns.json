@@ -1,0 +1,11 @@
+{
+  "procedure": "connectors.listRuns",
+  "source": "recorded",
+  "data": {
+    "inProgress": [],
+    "completed": [],
+    "inProgressCount": 0,
+    "completedCount": 0,
+    "serverNow": "2026-10-14T14:44:06.175Z"
+  }
+}

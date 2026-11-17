@@ -1,0 +1,748 @@
+name: Sandbox Images
+
+on:
+  # The dev images (Dockerfile.sandbox.dev) also carry the backend's and the
+  # frontend's locks: a change to either rebuilds them. Before a merge, the
+  # changes job narrows that down to the images whose inputs changed.
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/sandbox/**"
+      - ".github/workflows/sandbox-images.yml"
+      - ".xtm-one/stores.py"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "frontend/package.json"
+      - "frontend/yarn.lock"
+      - "frontend/.yarnrc.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/sandbox/**"
+      - ".github/workflows/sandbox-images.yml"
+      - ".xtm-one/stores.py"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "frontend/package.json"
+      - "frontend/yarn.lock"
+      - "frontend/.yarnrc.yml"
+  # A digest pin goes stale when nobody touches backend/sandbox: rerun
+  # every check, the eMudhra ones included, once a week. A failed scheduled run
+  # opens an issue (notify-on-failure). A manual run takes the same cold path.
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+  # No paths filter on a merge group: the changes job routes its diff.
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # A pull request or a merge group builds only the images whose inputs it
+  # changes: python-dev bakes the backend's lock, nodejs-dev the frontend's,
+  # every other image backend/sandbox alone. A lock bump then builds one dev
+  # image, not all of them. The checkout is the pull request's merge commit,
+  # or the merge group's, whose first parent is the base, so that diff is the
+  # change. A push to main, the weekly run and a manual run build every image.
+  changes:
+    name: Changed inputs
+    runs-on: ubuntu-26.04
+    outputs:
+      sandbox: ${{ steps.changed.outputs.sandbox }}
+      dev-targets: ${{ steps.changed.outputs.dev-targets }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        with:
+          fetch-depth: 2
+
+      - id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          sandbox=true python_dev=true nodejs_dev=true
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            touches() { grep -qE "$1" <<< "$files"; }
+            touches '^(backend/sandbox/|\.github/workflows/sandbox-images\.yml$)' || sandbox=false
+            [ "$sandbox" = true ] || touches '^(backend/pyproject\.toml|backend/uv\.lock|\.xtm-one/stores\.py)$' || python_dev=false
+            [ "$sandbox" = true ] || touches '^frontend/(package\.json|yarn\.lock|\.yarnrc\.yml)$' || nodejs_dev=false
+          fi
+          targets=()
+          if [ "$python_dev" = true ]; then targets+=('"python-dev"'); fi
+          if [ "$nodejs_dev" = true ]; then targets+=('"nodejs-dev"'); fi
+          echo "sandbox=$sandbox" >> "$GITHUB_OUTPUT"
+          echo "dev-targets=[$(IFS=,; echo "${targets[*]}")]" >> "$GITHUB_OUTPUT"
+
+  sandbox-image-matrix:
+    name: Sandbox image matrix
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true'
+    runs-on: ubuntu-26.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: set-matrix
+        # Excludes any entry marked ci_skip (currently sandbox-python-data —
+        # tensorflow==2.21.0 has no Python 3.14 wheel, a pre-existing issue
+        # unrelated to this workflow; see sandbox-images.json).
+        run: echo "matrix=$(jq -c '[.[] | select(.ci_skip != true)]' backend/sandbox/sandbox-images.json)" >> "$GITHUB_OUTPUT"
+
+  sandbox-image-smoke-test:
+    name: Sandbox image (${{ matrix.image }})
+    needs: sandbox-image-matrix
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.sandbox-image-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # PR, merge group and push runs only. setup-buildx makes a docker-container builder,
+      # whose plain `docker build` would not load the image; the weekly and
+      # manual runs use the default driver with no cache.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+
+      # Keyed per-tag: each matrix entry is its own runner/cache slot, so a
+      # change to e.g. requirements.sandbox.malware.txt only busts that one
+      # tag's cache, not the whole matrix's.
+      # Not on the weekly or manual run: a restored cache reuses the apt and uv
+      # layers while the pinned base is unchanged, so the run would not test
+      # what a fresh build produces, and would fill the repository's cache quota.
+      # A tag's layers run to a gigabyte: keyed on the sandbox's own files, an
+      # unchanged sandbox saves nothing new, and only main saves (a pull
+      # request's entry is readable by that pull request alone) - each set
+      # saved past the quota evicts the oldest-used caches of every workflow.
+      - name: Restore Docker layer cache
+        id: layer-cache
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.image }}--${{ hashFiles('backend/sandbox/**') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.image }}--
+
+      - name: Build image
+        working-directory: backend/sandbox
+        env:
+          BUILDX_CACHE_DIR: ${{ (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') && '/tmp/.buildx-cache' || '' }}
+        run: ./build-image.sh "${{ matrix.image }}:ci"
+
+      - name: Move cache
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Save Docker layer cache
+        if: github.event_name == 'push' && steps.layer-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.image }}--${{ hashFiles('backend/sandbox/**') }}
+
+      # Every check below runs through the image's own python3, not shell
+      # utilities: final-minimal (distroless) has no shell/coreutils at all,
+      # so `docker run --rm --entrypoint python3 <image> -c "..."` is the one
+      # invocation shape that works uniformly across both final targets.
+      - name: Assert no build-only or network tooling
+        run: |
+          docker run --rm --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import shutil, sys
+          # Build toolchain (hardening rule 1) + the download/exfil/pivot
+          # tools an escaped process would otherwise inherit for free.
+          # busybox ships every one of the latter as an applet, so
+          # final-minimal's busybox copy has to stay pruned.
+          bad = [b for b in ('gcc', 'g++', 'cc', 'make', 'cmake',
+                             'wget', 'curl', 'nc', 'netcat', 'telnet',
+                             'tftp', 'nslookup', 'httpd', 'busybox')
+                 if shutil.which(b)]
+          if bad:
+              print('FAIL: forbidden tooling present:', bad); sys.exit(1)
+          print('ok: no build-only or network tooling')
+          "
+
+      - name: Assert runtime-CLI-exception placement
+        # The full list of documented runtime-CLI exceptions (hardening
+        # guideline rule 2): tshark/nmap (pyshark/python-libnmap, network
+        # only) and git (GitPython, rules only). Every other tag must have
+        # none of these three.
+        run: |
+          docker run --rm --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import shutil, sys
+          tag = '${{ matrix.image }}'
+          expected = {
+              'tshark': tag.startswith('sandbox-python-network'),
+              'nmap': tag.startswith('sandbox-python-network'),
+              'git': tag.startswith('sandbox-python-rules'),
+          }
+          for tool, expect_present in expected.items():
+              present = bool(shutil.which(tool))
+              if present != expect_present:
+                  print(f'FAIL: {tool} present={present}, expected={expect_present}')
+                  sys.exit(1)
+          print('ok: runtime-CLI-exception placement correct')
+          "
+
+      - name: Assert non-root
+        run: |
+          docker run --rm --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import os, sys
+          uid = os.getuid()
+          if uid == 0:
+              print('FAIL: running as root'); sys.exit(1)
+          print(f'ok: running as uid {uid}')
+          "
+
+      # The eMudhra intermediates must not verify. A control host must
+      # verify (an empty trust store would reject everything), each test host
+      # must be refused for an untrusted issuer and not any other reason, and
+      # at least one must give that answer (both unreachable proves nothing).
+      - name: Assert the compromised eMudhra intermediates are not trusted
+        run: |
+          docker run --rm --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import socket, ssl, sys, time
+          def handshake(host):
+              for attempt in (1, 2):
+                  try:
+                      with socket.create_connection((host, 443), timeout=10) as s:
+                          ssl.create_default_context().wrap_socket(s, server_hostname=host).close()
+                      return
+                  except ssl.SSLCertVerificationError:
+                      raise
+                  except OSError:
+                      if attempt == 2:
+                          raise
+                      time.sleep(10)
+          handshake('pypi.org')
+          print('ok: control pypi.org verifies')
+          UNTRUSTED_ISSUER = (2, 18, 19, 20, 21)
+          rejected = 0
+          for host in ('dv-g3b-emudhra.we-have-a-problem.com',
+                       'dv-g3b-aaa-emudhra.we-have-a-problem.com'):
+              try:
+                  handshake(host)
+                  print('FAIL:', host, 'verified'); sys.exit(1)
+              except ssl.SSLCertVerificationError as e:
+                  if e.verify_code not in UNTRUSTED_ISSUER:
+                      print('FAIL:', host, 'refused for another reason:', e.verify_message); sys.exit(1)
+                  print('ok:', host, 'rejected:', e.verify_message)
+                  rejected += 1
+              except OSError as e:
+                  print('warn:', host, 'unreachable:', e)
+          if not rejected:
+              print('FAIL: no test host gave a conclusive answer'); sys.exit(1)
+          "
+
+      - name: Import check
+        run: |
+          docker run --rm --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import ${{ join(matrix.smoke_imports, ', ') }}
+          print('ok: ${{ join(matrix.smoke_imports, ', ') }} all import cleanly')
+          "
+
+      # code_interpreter writes a password-protected ZIP with pyzipper (the
+      # image is distroless: no 7z, no subprocess). The archive is written to
+      # stdout inside the image, reopened there with the right and a wrong
+      # password, then extracted on the runner by libarchive, the reader of
+      # Windows tar and macOS Archive Utility. A throwaway password, no secret.
+      - name: AES ZIP round trip
+        if: matrix.image == 'sandbox-python'
+        run: |
+          docker run --rm --network none --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import io, sys, pyzipper
+          pw = b'ci-throwaway-pass'
+          buf = io.BytesIO()
+          with pyzipper.AESZipFile(buf, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
+              zf.setpassword(pw)
+              zf.setencryption(pyzipper.WZ_AES, nbits=256)
+              zf.writestr('a.txt', 'alpha')
+              zf.writestr('dir/b.csv', 'x,y\\n1,2\\n')
+          with pyzipper.AESZipFile(io.BytesIO(buf.getvalue())) as zf:
+              zf.setpassword(pw)
+              assert zf.read('a.txt') == b'alpha'
+              assert zf.read('dir/b.csv') == b'x,y\\n1,2\\n'
+              zf.setpassword(b'wrong')
+              try:
+                  zf.read('a.txt')
+              except Exception:
+                  pass
+              else:
+                  sys.exit('FAIL: a wrong password was accepted')
+          sys.stdout.buffer.write(buf.getvalue())
+          " > /tmp/aes.zip
+          # libarchive reader on the runner, without depending on one apt
+          # mirror at test time: bsdtar when the runner image has it, else
+          # apt with retries. An index fetch that fails for one mirror (the
+          # security pocket unresolvable) does not stop the install from the
+          # others; the install itself must succeed. Last resort: the
+          # libarchive-c binding over the runner's own libarchive. The
+          # assertions below are the same whichever reader is used.
+          reader=""
+          if command -v bsdtar > /dev/null; then
+            reader=bsdtar
+          else
+            for attempt in 1 2 3; do
+              sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update -qq || echo "apt index refresh incomplete (attempt $attempt)"
+              if sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y -qq --no-install-recommends libarchive-tools > /dev/null; then
+                reader=bsdtar; break
+              fi
+              sleep $((attempt * 10))
+            done
+          fi
+          if [ -z "$reader" ] && python3 -m venv /tmp/la-venv && /tmp/la-venv/bin/pip install --quiet --retries 5 --timeout 30 'libarchive-c==5.1'; then
+            reader=libarchive-c
+          fi
+          if [ -z "$reader" ]; then
+            echo 'FAIL: no libarchive reader could be installed (bsdtar or libarchive-c)'; exit 1
+          fi
+          # libarchive-c 5.1: extract_file() takes no passphrase, file_reader()
+          # does; every block is read, so a wrong password raises ArchiveError.
+          la_extract=$'import os, sys, libarchive\nwith libarchive.file_reader("/tmp/aes.zip", passphrase=sys.argv[1]) as archive:\n    for entry in archive:\n        if entry.isdir:\n            continue\n        os.makedirs(os.path.dirname(entry.pathname) or ".", exist_ok=True)\n        with open(entry.pathname, "wb") as out:\n            for block in entry.get_blocks():\n                out.write(block)'
+          extract() {
+            if [ "$reader" = bsdtar ]; then
+              bsdtar -xf /tmp/aes.zip --passphrase "$1" -C "$2"
+            else
+              (cd "$2" && /tmp/la-venv/bin/python -c "$la_extract" "$1")
+            fi
+          }
+          mkdir -p /tmp/aes-ok /tmp/aes-wrong
+          extract ci-throwaway-pass /tmp/aes-ok
+          test "$(cat /tmp/aes-ok/a.txt)" = alpha
+          test -f /tmp/aes-ok/dir/b.csv
+          if extract wrong /tmp/aes-wrong 2>/dev/null; then
+            echo "FAIL: libarchive ($reader) accepted a wrong password"; exit 1
+          fi
+          echo "ok: AES-256 ZIP written by pyzipper, opened by libarchive ($reader), wrong password refused"
+
+      # code_interpreter reads a frame of a recording, a shot or a render with
+      # PyAV (the image has no ffmpeg binary and no subprocess). An MP4 is
+      # encoded inside the image with no network, each frame painted with the
+      # grey of its index, and the frame at t = 1 s is read back by seeking.
+      # The decoders of what Video Studio writes (h264, vp9) must be present.
+      - name: Video frame round trip
+        if: matrix.image == 'sandbox-python'
+        run: |
+          docker run --rm --network none --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import io, sys, av, numpy as np
+          from fractions import Fraction
+          for name in ('h264', 'hevc', 'vp9', 'mpeg4'):
+              av.codec.Codec(name, 'r')
+          buf = io.BytesIO()
+          with av.open(buf, 'w', format='mp4') as out:
+              stream = out.add_stream('mpeg4', rate=10)
+              stream.width, stream.height, stream.pix_fmt = 64, 48, 'yuv420p'
+              for i in range(20):
+                  img = np.full((48, 64, 3), i * 10, dtype=np.uint8)
+                  frame = av.VideoFrame.from_ndarray(img, format='rgb24')
+                  frame.pts, frame.time_base = i, Fraction(1, 10)
+                  for packet in stream.encode(frame):
+                      out.mux(packet)
+              for packet in stream.encode():
+                  out.mux(packet)
+          buf.seek(0)
+          with av.open(buf) as video:
+              stream = video.streams.video[0]
+              video.seek(int(1.0 / stream.time_base), stream=stream, backward=True)
+              frame = next(f for f in video.decode(stream) if f.time >= 1.0 - 1e-6)
+              grey = int(frame.to_ndarray(format='rgb24').mean())
+          if abs(frame.time - 1.0) > 1e-3 or abs(grey - 100) > 8:
+              sys.exit(f'FAIL: frame at {frame.time} s has grey {grey}, expected 1.0 s and about 100')
+          print(f'ok: frame at {frame.time:.2f} s decoded in process, grey {grey}')
+          "
+
+  sandbox-nodejs-smoke-test:
+    name: Sandbox image (sandbox-nodejs)
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        working-directory: backend/sandbox
+        run: ./build-image.sh sandbox-nodejs:ci
+
+      - name: Assert non-root and functional
+        run: |
+          UID_IN_IMAGE=$(docker run --rm --entrypoint node sandbox-nodejs:ci -e "console.log(process.getuid())")
+          if [ "$UID_IN_IMAGE" = "0" ]; then
+            echo "FAIL: sandbox-nodejs runs as root"; exit 1
+          fi
+          echo "ok: sandbox-nodejs runs as uid $UID_IN_IMAGE"
+
+      # Same rules as the Python images' eMudhra step, through the
+      # image's own Node. Node checks its compiled-in roots, not
+      # /etc/ssl/certs: this proves the Node binary, not the image's Debian
+      # CA bundle.
+      - name: Assert the compromised eMudhra intermediates are not trusted
+        run: |
+          docker run --rm -i --entrypoint node sandbox-nodejs:ci - <<'EOF'
+          const https = require('https');
+          const UNTRUSTED = ['CERT_REVOKED', 'UNABLE_TO_GET_ISSUER_CERT', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+            'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT'];
+          const once = (host) => new Promise((resolve) => {
+            https.get('https://' + host, { timeout: 10000 }, (r) => { r.resume(); resolve({ verified: true }); })
+              .on('timeout', function () { this.destroy(new Error('timeout')); })
+              .on('error', (e) => resolve({ verified: false, code: e.code || e.message }));
+          });
+          const get = async (host) => {
+            for (let attempt = 1; ; attempt++) {
+              const r = await once(host);
+              if (r.verified || UNTRUSTED.includes(r.code) || attempt === 2) return r;
+              await new Promise((done) => setTimeout(done, 10000));
+            }
+          };
+          (async () => {
+            const control = await get('pypi.org');
+            if (!control.verified) { console.log('FAIL: control pypi.org did not verify:', control.code); process.exit(1); }
+            console.log('ok: control pypi.org verifies');
+            let rejected = 0;
+            for (const host of ['dv-g3b-emudhra.we-have-a-problem.com', 'dv-g3b-aaa-emudhra.we-have-a-problem.com']) {
+              const r = await get(host);
+              if (r.verified) { console.log('FAIL:', host, 'verified'); process.exit(1); }
+              if (UNTRUSTED.includes(r.code)) { console.log('ok:', host, 'rejected:', r.code); rejected++; }
+              else console.log('warn:', host, 'unreachable or refused for another reason:', r.code);
+            }
+            if (!rejected) { console.log('FAIL: no test host gave a conclusive answer'); process.exit(1); }
+          })();
+          EOF
+
+      - name: Assert digest-pinned base
+        run: |
+          if ! grep -qE '^FROM (docker\.io/library/)?node:[^[:space:]]+@sha256:' Dockerfile.sandbox.nodejs; then
+            echo "FAIL: Dockerfile.sandbox.nodejs's FROM line is not digest-pinned"
+            exit 1
+          fi
+        working-directory: backend/sandbox
+
+  # The development images of sandbox_run_command (.xtm-one/checks.toml), the
+  # python-dev and nodejs-dev stages of Dockerfile.sandbox.dev, built from the
+  # repository root as XTM-One-Platform/release publishes them. A check runs
+  # in them with no network: each assertion below runs with --network none
+  # where the platform's sandbox would.
+  sandbox-dev-image-smoke-test:
+    name: Sandbox dev image (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.dev-targets != '[]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.changes.outputs.dev-targets) }}
+    env:
+      IMAGE: sandbox-${{ matrix.target }}:ci
+    steps:
+      - uses: actions/checkout@v6
+
+      # No layer cache: the image is the backend's or the frontend's whole
+      # lock, and the run must test what a fresh build produces.
+      - name: Build image
+        run: bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE"
+
+      - name: Assert non-root
+        run: |
+          uid=$(docker run --rm --network none --entrypoint id "$IMAGE" -u)
+          if [ "$uid" = "0" ]; then
+            echo "FAIL: $IMAGE runs as root"; exit 1
+          fi
+          echo "ok: $IMAGE runs as uid $uid"
+
+      # Hardening rules 1 and 2 (dev-docs/sandbox-image-hardening.md): no
+      # compiler, no download tool, no package manager that reaches an index;
+      # git is the one runtime CLI exception, named in apt.sandbox.dev.runtime.txt.
+      - name: Assert no build-only or network tooling, git present
+        run: |
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c '
+            bad=""
+            for b in gcc g++ cc make cmake curl wget nc netcat telnet uv npm npx; do
+              command -v "$b" > /dev/null && bad="$bad $b"
+            done
+            if [ -n "$bad" ]; then echo "FAIL: forbidden tooling present:$bad"; exit 1; fi
+            command -v git > /dev/null || { echo "FAIL: git missing"; exit 1; }
+            echo "ok: no build-only or network tooling, git present"
+          '
+
+      # The workspace helper (remote.TOOL_SRC) runs with the image's python in
+      # every command container: its modules must import, and pip must not
+      # install anything (no index on python-dev, no pip at all on nodejs-dev).
+      - name: Assert the helper's python, and no package install
+        run: |
+          docker run --rm --network none --entrypoint python "$IMAGE" -c "
+          import fnmatch, hashlib, json, os, stat, tarfile
+          assert hashlib.sha256(b'').hexdigest().startswith('e3b0c442')
+          print('ok: the helper modules import')
+          "
+          if docker run --rm --network none --entrypoint python "$IMAGE" -m pip install --user six; then
+            echo "FAIL: pip installed a package in $IMAGE"; exit 1
+          fi
+          echo "ok: no package install in $IMAGE"
+
+      - name: Assert the backend checks' tools run offline
+        if: matrix.target == 'python-dev'
+        run: |
+          docker run --rm --network none "$IMAGE" ruff --version
+          docker run --rm --network none "$IMAGE" mypy --version
+          docker run --rm --network none "$IMAGE" python -m pytest --version
+
+      # The integration tests' stores (hardening rule 2, a named runtime
+      # exception): baked under /opt/stores, owned by root, and each
+      # one starts and answers with no network, as the backend-integration
+      # check starts them.
+      - name: Assert the integration stores start offline
+        if: matrix.target == 'python-dev'
+        run: |
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c '
+            for f in /opt/stores/MANIFEST.json /opt/stores/bin/dragonfly /opt/stores/bin/silo; do
+              [ "$(stat -c %u "$f")" = "0" ] || { echo "FAIL: $f not owned by root"; exit 1; }
+            done
+            [ -w /opt/stores ] && { echo "FAIL: /opt/stores writable by $(id -un)"; exit 1; }
+            echo "ok: /opt/stores owned by root, read-only for $(id -un)"
+          '
+          docker run --rm --network none -v "$PWD/.xtm-one:/workspace/.xtm-one:ro" "$IMAGE" python /workspace/.xtm-one/stores.py --smoke
+
+      # The lab's renderer: headless Chromium under
+      # PLAYWRIGHT_BROWSERS_PATH, owned by root, launched by sandboxuser with no
+      # network, prints a PDF, as the presentation export does.
+      - name: Assert headless Chromium prints a PDF offline
+        if: matrix.target == 'python-dev'
+        run: |
+          docker run --rm --network none "$IMAGE" python -c "
+          import asyncio
+          from playwright.async_api import async_playwright
+
+          async def main():
+              async with async_playwright() as pw:
+                  browser = await pw.chromium.launch(headless=True)
+                  page = await browser.new_page()
+                  await page.set_content('<h1>lab export</h1>')
+                  pdf = await page.pdf()
+                  await browser.close()
+              assert pdf.startswith(b'%PDF'), pdf[:8]
+              print(f'ok: headless Chromium printed a {len(pdf)} byte PDF offline')
+
+          asyncio.run(main())
+          "
+
+      # frontend-install of checks.toml: node_modules linked from the image's
+      # yarn cache, with no network, on a copy of the frontend's manifest.
+      - name: Assert the frontend install runs offline
+        if: matrix.target == 'nodejs-dev'
+        run: |
+          work=$(mktemp -d)
+          cp frontend/package.json frontend/yarn.lock frontend/.yarnrc.yml "$work/"
+          chmod -R a+rwX "$work"
+          docker run --rm --network none -v "$work:/workspace/frontend" -w /workspace/frontend "$IMAGE" yarn --version
+          docker run --rm --network none -v "$work:/workspace/frontend" -w /workspace/frontend "$IMAGE" yarn install --immutable --mode=skip-build
+          echo "ok: yarn install --immutable ran offline from the image's cache"
+
+      # Every FROM, and every COPY --from= of an image (not an earlier stage),
+      # carries a digest (hardening rule 3).
+      - name: Assert every base image is digest-pinned
+        if: matrix.target == 'python-dev'
+        working-directory: backend/sandbox
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          stages, unpinned, total = set(), [], 0
+          for line in open('Dockerfile.sandbox.dev'):
+              m = re.match(r'FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?', line, re.I)
+              if m:
+                  total += 1
+                  ref, alias = m.groups()
+                  if ref not in stages and '@sha256:' not in ref:
+                      unpinned.append(ref)
+                  if alias:
+                      stages.add(alias)
+                  continue
+              c = re.match(r'COPY\s+(?:--\S+\s+)*--from=(\S+)', line, re.I)
+              if c and c.group(1) not in stages and '@sha256:' not in c.group(1):
+                  unpinned.append(c.group(1))
+          if total == 0 or unpinned:
+              print(f'FAIL: not digest-pinned (and not an earlier stage): {unpinned}')
+              sys.exit(1)
+          print(f'ok: all {total} FROM lines and every image COPY --from= are digest-pinned')
+          EOF
+
+  # The generic toolchain images (Dockerfile.sandbox.toolchain), built from the
+  # repository root like the dev images. They bake no lock and carry a
+  # compiler and package managers by design (hardening doc, "Toolchain
+  # images"), so the assertions are: non-root, the helper's python, the stack's
+  # toolchain answers offline, and every base digest-pinned.
+  sandbox-toolchain-image-smoke-test:
+    name: Sandbox toolchain image (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [toolchain-python, toolchain-node, toolchain-jvm, toolchain-rust, toolchain-dbt]
+    env:
+      IMAGE: sandbox-${{ matrix.target }}:ci
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        run: bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE"
+
+      - name: Assert non-root
+        run: |
+          uid=$(docker run --rm --network none --entrypoint id "$IMAGE" -u)
+          if [ "$uid" = "0" ]; then
+            echo "FAIL: $IMAGE runs as root"; exit 1
+          fi
+          echo "ok: $IMAGE runs as uid $uid"
+
+      - name: Assert the helper's python and git
+        run: |
+          docker run --rm --network none --entrypoint python "$IMAGE" -c "
+          import fnmatch, hashlib, json, os, stat, tarfile
+          assert hashlib.sha256(b'').hexdigest().startswith('e3b0c442')
+          print('ok: the helper modules import')
+          "
+          docker run --rm --network none --entrypoint git "$IMAGE" --version
+
+      - name: Assert the stack's toolchain runs offline
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          case "$TARGET" in
+            toolchain-python) cmd='python3.14 --version && python3.12 --version && uv --version && pip --version && python -m pytest --version && python -c "import pytest_asyncio, yaml" && actionlint -version && ansible --version && ansible-lint --version' ;;
+            toolchain-node) cmd='node --version && npm --version && corepack --version && PATH=/opt/node26/bin:$PATH node --version && PATH=/opt/node26/bin:$PATH npm --version' ;;
+            toolchain-jvm) cmd='java -version && javac -version && mvn --version' ;;
+            toolchain-rust) cmd='rustc --version && cargo --version && cargo clippy --version && cargo fmt --version && cc --version && pkg-config --exists gtk+-3.0 webkit2gtk-4.1 dbus-1' ;;
+            toolchain-dbt) cmd='dbt --version && python --version' ;;
+          esac
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c "$cmd"
+          # The CI gate binaries every toolchain target carries (#11710).
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c 'shellcheck --version && betterleaks version && helm version --short'
+
+      # cargo builds into CARGO_TARGET_DIR, never a target/ beside the crate:
+      # the workspace would save it back and a commit from the checkout carry it.
+      - name: Assert cargo builds outside the checkout
+        if: matrix.target == 'toolchain-rust'
+        run: |
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c '
+            set -e
+            cd /tmp && cargo new --quiet --vcs none probe && cd probe
+            cargo build --offline --quiet
+            test -x "$CARGO_TARGET_DIR/debug/probe"
+            test ! -e target
+            echo "ok: built into $CARGO_TARGET_DIR"'
+
+      # A native addon builds offline: node-gyp finds the bundled Node's headers
+      # through npm_config_nodedir instead of downloading them from nodejs.org.
+      - name: Assert node-gyp builds a native addon offline
+        if: matrix.target == 'toolchain-node'
+        run: |
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c '
+            set -e
+            mkdir -p /tmp/addon && cd /tmp/addon
+            printf "{\"targets\":[{\"target_name\":\"addon\",\"sources\":[\"addon.c\"]}]}" > binding.gyp
+            printf "#include <node_api.h>\nstatic napi_value init(napi_env e, napi_value x) { return x; }\nNAPI_MODULE(addon, init)\n" > addon.c
+            node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild
+            test -f build/Release/addon.node'
+
+      - name: Assert every base image is digest-pinned
+        if: matrix.target == 'toolchain-python'
+        working-directory: backend/sandbox
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          stages, unpinned, total = set(), [], 0
+          for line in open('Dockerfile.sandbox.toolchain'):
+              m = re.match(r'FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?', line, re.I)
+              if m:
+                  total += 1
+                  ref, alias = m.groups()
+                  if ref not in stages and '@sha256:' not in ref:
+                      unpinned.append(ref)
+                  if alias:
+                      stages.add(alias)
+                  continue
+              c = re.match(r'COPY\s+(?:--\S+\s+)*--from=(\S+)', line, re.I)
+              if c and c.group(1) not in stages and '@sha256:' not in c.group(1):
+                  unpinned.append(c.group(1))
+          if total == 0 or unpinned:
+              print(f'FAIL: not digest-pinned (and not an earlier stage): {unpinned}')
+              sys.exit(1)
+          print(f'ok: all {total} FROM lines and every image COPY --from= are digest-pinned')
+          EOF
+
+  sandbox-python-digest-check:
+    name: Sandbox Python Dockerfile is digest-pinned
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Assert every FROM line is digest-pinned
+        working-directory: backend/sandbox
+        run: |
+          # Every stage must be digest-pinned, however many there are; a FROM
+          # that names an earlier stage (FROM builder AS ...) inherits its pin.
+          python3 - <<'EOF'
+          import re, sys
+          stages, unpinned, total = set(), [], 0
+          for line in open('Dockerfile.sandbox.python'):
+              m = re.match(r'FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?', line, re.I)
+              if not m:
+                  continue
+              total += 1
+              ref, alias = m.groups()
+              if ref not in stages and '@sha256:' not in ref:
+                  unpinned.append(ref)
+              if alias:
+                  stages.add(alias)
+          if total == 0 or unpinned:
+              print(f'FAIL: not digest-pinned (and not an earlier stage): {unpinned}')
+              sys.exit(1)
+          print(f'ok: all {total} FROM lines are digest-pinned or an earlier stage')
+          EOF
+
+  # A red scheduled run reaches only whoever last edited the cron line, so a
+  # failed weekly run opens an issue, or comments on the one still open.
+  notify-on-failure:
+    name: Open an issue when the weekly run fails
+    needs:
+      - changes
+      - sandbox-image-matrix
+      - sandbox-image-smoke-test
+      - sandbox-nodejs-smoke-test
+      - sandbox-dev-image-smoke-test
+      - sandbox-toolchain-image-smoke-test
+      - sandbox-python-digest-check
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      issues: write
+    steps:
+      - name: Open the issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label sandbox --label ci --state open \
+                   --search 'in:title "weekly sandbox image checks failed"' --json number --jq '.[0].number // empty')
+          if [ -z "$open" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "ci(sandbox): the weekly sandbox image checks failed" \
+              --label ci --label sandbox --label security \
+              --body "A stale base digest or CA bundle is the likely cause. Run: $RUN_URL"
+          else
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          fi

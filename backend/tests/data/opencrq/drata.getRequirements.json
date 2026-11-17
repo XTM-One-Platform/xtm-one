@@ -1,0 +1,33 @@
+{
+  "procedure": "drata.getRequirements",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a13a7c-19b6-70a6-b5c4-73465fd8f3e6",
+      "code": "4.1",
+      "name": "Understanding the organization and its context",
+      "category": "Clauses",
+      "isInScope": true,
+      "isReady": false,
+      "controlCount": 1
+    },
+    {
+      "id": "01a13a7c-19b6-70a6-b5c4-733b9a81bfd1",
+      "code": "A.5.1",
+      "name": "Policies for information security",
+      "category": "Organizational",
+      "isInScope": true,
+      "isReady": true,
+      "controlCount": 1
+    },
+    {
+      "id": "01a13a7c-19b6-70a6-b5c4-733c015268d6",
+      "code": "A.5.15",
+      "name": "Access control",
+      "category": "Organizational",
+      "isInScope": true,
+      "isReady": true,
+      "controlCount": 2
+    }
+  ]
+}

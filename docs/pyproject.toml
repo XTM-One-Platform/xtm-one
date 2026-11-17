@@ -1,0 +1,31 @@
+# The documentation site's build dependencies, a uv project of its own
+# (https://docs.astral.sh/uv/): uv.lock pins every one of them, transitive ones
+# included. `uv sync` installs them into docs/.venv (README.md).
+[project]
+name = "xtm-one-docs"
+version = "0.0.0"
+description = "XTM One documentation site (MkDocs)"
+license = "Apache-2.0"
+requires-python = ">=3.13"
+dependencies = [
+  # Pinned exactly: an unpinned install takes whatever was released last, which
+  # can break `mkdocs build --strict` (the Docs build check) with no change here.
+  # mkdocs stays on 1.x: MkDocs 2.0 removes the plugin system and rewrites
+  # theming, and this site relies on both (the plugins below, overrides/).
+  # Bump deliberately, only once the strict build passes with the new set;
+  # Dependabot raises security updates for this project and never proposes
+  # MkDocs 2 (see .github/dependabot.yml).
+  "mkdocs==1.6.1",
+  "mkdocs-material==9.7.7",
+  "mkdocs-git-committers-plugin-2==2.5.0",
+  "mkdocs-git-revision-date-localized-plugin==1.6.0",
+  "mkdocs-glightbox==0.5.2",
+  # mike from git for symlink alias_type support (matching the OpenCTI docs
+  # setup), pinned to a commit so builds stay reproducible.
+  "mike @ git+https://github.com/jimporter/mike@0ea93915916da89ab3f317afdc3465f826ca1ee1",
+  "lxml==6.1.3",
+]
+
+[tool.uv]
+# Nothing to build or install from this directory itself.
+package = false

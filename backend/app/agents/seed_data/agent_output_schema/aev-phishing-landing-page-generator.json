@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "html": {
+      "type": "string",
+      "description": "Full HTML body content of the simulated phishing landing page"
+    },
+    "css": {
+      "type": "string",
+      "description": "CSS styles for the landing page"
+    }
+  },
+  "required": [
+    "html"
+  ],
+  "additionalProperties": false
+}

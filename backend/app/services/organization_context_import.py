@@ -1,0 +1,1092 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""Import one section of the organization profile from one connected platform (#11780).
+
+The no-model path of Settings > Organization: the administrator picks a
+section (assets, asset groups, AI systems, tech stack, crown jewels, PIRs),
+a source platform able to feed it (OpenAEV, OpenCTI, OpenCRQ), the filters
+that source supports, and gets a preview before anything is written: the
+source's own count of matching entities, then what the profile would gain
+(new, updated, unchanged, skipped) with a sample of rows. Applying saves the
+next version.
+
+Rules:
+
+- read with the administrator's own token (``_user_creds``), never another;
+- a platform not connected or not readable is reported with the reason,
+  never guessed, and never assumed installed;
+- rows a person typed (``source`` ``manual``, ``csv`` or ``api`` on an asset,
+  no platform id on an AI system or a crown jewel) are never overwritten: an
+  imported row with the same name is skipped and counted;
+- an imported row carries ``source=<platform>`` and ``external_id``; a re-run
+  with the same source updates its own rows only (matched by both);
+- no model call.
+
+Assets are typed on OpenAEV's category / subcategory taxonomy (#11781):
+an OpenAEV asset keeps its own category, subcategory and criticality, and a
+batch of OpenCTI Systems takes the category (or category/subcategory) picked
+for the batch (:func:`batch_taxonomy`). Asset groups go to ``asset_groups``.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.utils import format_exception_message
+from app.services.organization_context import (
+    ASSET_CRITICALITIES,
+    ASSET_ENVIRONMENTS,
+    ASSET_SUBCATEGORIES,
+    ASSET_TAXONOMY,
+    INTERNET_FACING,
+    LEGACY_ASSET_TYPES,
+    AiSystem,
+    AssetEntry,
+    AssetGroupEntry,
+    CrownJewel,
+    OrganizationProfile,
+    TechStackEntry,
+)
+
+logger = logging.getLogger(__name__)
+
+Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
+Source = Literal["openaev", "opencti", "opencrq"]
+
+#: section -> the platforms that can feed it, in the order the dialog lists them.
+SECTION_SOURCES: dict[str, tuple[str, ...]] = {
+    "assets": ("openaev", "opencti"),
+    "asset_groups": ("openaev",),
+    "ai_systems": ("openaev",),
+    "tech_stack": ("openaev",),
+    "crown_jewels": ("opencrq",),
+    "pirs": ("opencti",),
+}
+#: section -> the profile field it writes.
+SECTION_FIELD: dict[str, str] = {
+    "assets": "assets_exposure",
+    "asset_groups": "asset_groups",
+    "ai_systems": "ai_systems",
+    "tech_stack": "tech_stack",
+    "crown_jewels": "crown_jewels",
+    "pirs": "pir_ids",
+}
+#: (section, source) -> the filters that source supports for that section, in the order the dialog shows them.
+SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("assets", "openaev"): ("asset_groups", "tags", "category", "subcategory", "criticality", "platform"),
+    ("assets", "opencti"): (
+        "labels",
+        "markings",
+        "created_by",
+        "creator",
+        "category",
+        "subcategory",
+        "criticality",
+        "internet_facing",
+        "environment",
+        "platform",
+        "created_after",
+        "filter_group",
+    ),
+    ("asset_groups", "openaev"): ("tags", "search"),
+    ("ai_systems", "openaev"): ("tags", "search"),
+    ("tech_stack", "openaev"): ("type",),
+    ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id"),
+    ("pirs", "opencti"): ("pir_ids",),
+}
+#: The OpenCTI System attributes of OpenCTI-Platform/opencti#19943 (the OpenAEV asset taxonomy on a System):
+#: filter key -> attribute. An OpenCTI without them is read with the base query and these filters are hidden.
+OPENCTI_SYSTEM_ATTRIBUTES: dict[str, str] = {
+    "category": "x_opencti_system_category",
+    "subcategory": "x_opencti_system_subcategory",
+    "criticality": "x_opencti_criticality",
+    "internet_facing": "x_opencti_internet_facing",
+    "environment": "x_opencti_environment",
+    "platform": "x_opencti_platform",
+}
+#: filter key -> the OpenCTI vocabulary category listing its values (#19943).
+OPENCTI_SYSTEM_VOCABULARIES: dict[str, str] = {
+    "category": "system_category_ov",
+    "subcategory": "system_subcategory_ov",
+    "criticality": "system_criticality_ov",
+    "internet_facing": "system_internet_facing_ov",
+    "environment": "system_environment_ov",
+    "platform": "system_platform_ov",
+}
+#: OpenAEV endpoint platforms (the values of ``endpoint_platform``).
+OPENAEV_PLATFORMS: tuple[str, ...] = (
+    "Linux",
+    "Windows",
+    "MacOS",
+    "iOS",
+    "Android",
+    "Container",
+    "Service",
+    "Generic",
+    "Internal",
+    "Unknown",
+)
+#: Rows a person wrote: an import never overwrites them.
+HAND_SOURCES: frozenset[str] = frozenset({"manual", "csv", "api"})
+#: Entities read at most per import (the source's own count is still reported).
+MAX_ROWS = 1000
+#: Rows of the preview sample.
+SAMPLE_SIZE = 20
+#: OpenCRQ criticality, lowest first; a threshold keeps it and everything above.
+OPENCRQ_LEVELS: tuple[str, ...] = ("low", "medium", "high", "very_high")
+#: OpenCRQ criticality -> crown jewel criticality.
+FROM_OPENCRQ: dict[str, str] = {"very_high": "critical", "high": "high", "medium": "medium", "low": "low"}
+#: OpenAEV asset criticality -> profile criticality.
+FROM_OPENAEV_CRITICALITY: dict[str, str] = {
+    "critical": "critical",
+    "very_high": "critical",
+    "high": "high",
+    "medium": "medium",
+    "low": "low",
+}
+
+
+@dataclass
+class SourceStatus:
+    """Whether a platform can feed a section for this administrator, and why not."""
+
+    source: str
+    available: bool
+    reason: str = ""
+
+
+@dataclass
+class ReadResult:
+    """What a source answered: the mapped rows, its own count, the error that stopped it."""
+
+    rows: list[Any] = field(default_factory=list)
+    #: The source's own count of matching entities (``totalElements``, ``globalCount``); ``None`` unknown.
+    total: int | None = None
+    error: str | None = None
+    #: True when the source holds more matching entities than :data:`MAX_ROWS`.
+    truncated: bool = False
+    #: Rows that took the batch type because the source gave them none (OpenCTI Systems without a category).
+    batch_typed: int = 0
+
+
+@dataclass
+class ImportPlan:
+    """The preview of an import: counts, the sample, and the profile it would save."""
+
+    section: str
+    source: str
+    source_total: int | None
+    read: int
+    new: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    #: Rows a previous import from this source wrote that this read no longer returns (left the source or the filters).
+    gone: list[str] = field(default_factory=list)
+    #: True when the administrator chose to remove the ``gone`` rows (default: they are kept).
+    remove_gone: bool = False
+    #: Rows that took the batch type (no category in the source).
+    batch_typed: int = 0
+    sample: list[dict[str, Any]] = field(default_factory=list)
+    truncated: bool = False
+    error: str | None = None
+    profile: OrganizationProfile | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "section": self.section,
+            "source": self.source,
+            "source_total": self.source_total,
+            "read": self.read,
+            "counts": {
+                "new": len(self.new),
+                "updated": len(self.updated),
+                "unchanged": len(self.unchanged),
+                "skipped": len(self.skipped),
+                "gone": len(self.gone),
+            },
+            "new": self.new[:SAMPLE_SIZE],
+            "updated": self.updated[:SAMPLE_SIZE],
+            "skipped": self.skipped[:SAMPLE_SIZE],
+            "gone": self.gone[:SAMPLE_SIZE],
+            "remove_gone": self.remove_gone,
+            "batch_typed": self.batch_typed,
+            "sample": self.sample,
+            "truncated": self.truncated,
+            "error": self.error,
+        }
+
+
+# ── Mapping (no I/O) ──────────────────────────────────────────────────
+
+
+def _yes_no(value: Any) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "unknown"
+
+
+def batch_taxonomy(batch_type: str) -> tuple[str, str] | None:
+    """The (category, subcategory) a batch pick names: ``category`` or ``category/subcategory``.
+
+    A flat type of #11543 (``database``, ``other``...) is still read through
+    :data:`LEGACY_ASSET_TYPES`; anything else is ``None``.
+    """
+    category, _, subcategory = batch_type.strip().lower().partition("/")
+    if category in ASSET_TAXONOMY and (not subcategory or ASSET_SUBCATEGORIES.get(subcategory) == category):
+        return category, subcategory
+    if category in LEGACY_ASSET_TYPES and not subcategory:
+        return LEGACY_ASSET_TYPES[category]
+    return None
+
+
+#: OpenAEV ``endpoint_platform`` (lower-cased) -> the (category, subcategory) it stands for when the
+#: endpoint names no subcategory of its own: a Windows or macOS endpoint is a workstation a person
+#: uses (always reachable, :mod:`app.services.asset_reachability` rule 2), a Linux one a server.
+PLATFORM_TAXONOMY: dict[str, tuple[str, str]] = {
+    "windows": ("host", "workstation"),
+    "macos": ("host", "workstation"),
+    "linux": ("host", "server"),
+    "ios": ("mobile_device", "smartphone"),
+    "android": ("mobile_device", "smartphone"),
+    "container": ("container_workload", "container"),
+}
+
+
+def openaev_asset_taxonomy(asset: dict[str, Any], batch_type: str = "") -> tuple[str, str]:
+    """The (category, subcategory) of an OpenAEV asset: the batch's pick, else its own, lower-cased.
+
+    An endpoint without a subcategory of its own takes the one its platform
+    names (:data:`PLATFORM_TAXONOMY`) when that fits its category, so a
+    Windows host is recognised as a user endpoint.
+    """
+    picked = batch_taxonomy(batch_type) if batch_type else None
+    if picked:
+        return picked
+    category = str(asset.get("asset_category") or "").strip().lower()
+    subcategory = str(asset.get("asset_subcategory") or "").strip().lower()
+    from_platform = PLATFORM_TAXONOMY.get(str(asset.get("endpoint_platform") or "").strip().lower())
+    if category in ASSET_TAXONOMY:
+        if ASSET_SUBCATEGORIES.get(subcategory) == category:
+            return category, subcategory
+        return category, from_platform[1] if from_platform and from_platform[0] == category else ""
+    if from_platform:
+        return from_platform
+    if asset.get("endpoint_platform"):
+        return "host", ""
+    return "generic_asset", ""
+
+
+def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | None:
+    """An OpenAEV asset (endpoint) as an ``assets_exposure`` row, or ``None`` without a name or id."""
+    name = str(asset.get("asset_name") or "").strip()
+    asset_id = str(asset.get("asset_id") or "").strip()
+    if not name or not asset_id:
+        return None
+    category, subcategory = openaev_asset_taxonomy(asset, batch_type)
+    criticality = str(asset.get("asset_criticality") or "").strip().lower()
+    return AssetEntry(
+        name=name[:200],
+        category=category,  # type: ignore[arg-type]
+        subcategory=subcategory,
+        criticality=criticality if criticality in ASSET_CRITICALITIES else "unknown",  # type: ignore[arg-type]
+        internet_facing=_yes_no(asset.get("asset_internet_facing")),  # type: ignore[arg-type]
+        source="openaev",
+        external_id=asset_id[:200],
+    )
+
+
+def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
+    """An OpenAEV asset group as an ``asset_groups`` entry."""
+    name = str(group.get("asset_group_name") or "").strip()
+    group_id = str(group.get("asset_group_id") or "").strip()
+    if not name or not group_id:
+        return None
+    description = str(group.get("asset_group_description") or "").strip()
+    return AssetGroupEntry(
+        name=name[:200], description=description[:1000], source="openaev", external_id=group_id[:200]
+    )
+
+
+def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
+    """An OpenAEV AI target asset as an AI system linked to it by ``openaev_asset_id``."""
+    name = str(asset.get("asset_name") or "").strip()
+    asset_id = str(asset.get("asset_id") or "").strip()
+    if not name or not asset_id:
+        return None
+    exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
+    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, openaev_asset_id=asset_id[:100])  # type: ignore[arg-type]
+
+
+def _lower(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def opencti_system_has_type(node: dict[str, Any]) -> bool:
+    """Whether a System names its own category or subcategory (else the batch type applies)."""
+    return _lower(node.get("x_opencti_system_category")) in ASSET_TAXONOMY or bool(
+        ASSET_SUBCATEGORIES.get(_lower(node.get("x_opencti_system_subcategory")))
+    )
+
+
+def opencti_system(node: dict[str, Any], batch_type: str) -> AssetEntry | None:
+    """An OpenCTI System as an asset row.
+
+    Since OpenCTI-Platform/opencti#19943 a System carries the OpenAEV asset
+    taxonomy: its own category, subcategory, criticality, exposure,
+    environment, owner and platform are mapped. The batch's type is the
+    fallback of a System with no category (an older OpenCTI, or a System not
+    classified yet); ``createdBy`` is the fallback owner. The platform and the
+    markings have no profile field: they are kept as the tags
+    ``platform:<value>`` and ``marking:<definition>``.
+    """
+    name = str(node.get("name") or "").strip()
+    system_id = str(node.get("id") or "").strip()
+    if not name or not system_id:
+        return None
+    category = _lower(node.get("x_opencti_system_category"))
+    subcategory = _lower(node.get("x_opencti_system_subcategory"))
+    if category in ASSET_TAXONOMY:
+        subcategory = subcategory if ASSET_SUBCATEGORIES.get(subcategory) == category else ""
+    elif ASSET_SUBCATEGORIES.get(subcategory):
+        category = ASSET_SUBCATEGORIES[subcategory]
+    else:
+        category, subcategory = batch_taxonomy(batch_type) or ("generic_asset", "")
+    criticality = _lower(node.get("x_opencti_criticality"))
+    environment = _lower(node.get("x_opencti_environment"))
+    internet_facing = _lower(node.get("x_opencti_internet_facing"))
+    owner = (
+        str(node.get("x_opencti_owner") or "").strip() or str(((node.get("createdBy") or {}).get("name")) or "").strip()
+    )
+    tags = [str((label or {}).get("value") or "") for label in (node.get("objectLabel") or [])]
+    platform = str(node.get("x_opencti_platform") or "").strip()
+    if platform:
+        tags.append(f"platform:{platform}")
+    tags.extend(
+        f"marking:{(m or {}).get('definition')}"
+        for m in (node.get("objectMarking") or [])
+        if (m or {}).get("definition")
+    )
+    return AssetEntry(
+        name=name[:200],
+        category=category,  # type: ignore[arg-type]
+        subcategory=subcategory,
+        criticality=criticality if criticality in ASSET_CRITICALITIES else "unknown",  # type: ignore[arg-type]
+        environment=environment if environment in ASSET_ENVIRONMENTS else ("other" if environment else ""),  # type: ignore[arg-type]
+        internet_facing=internet_facing if internet_facing in INTERNET_FACING else "unknown",  # type: ignore[arg-type]
+        owner=owner[:200],
+        tags=tags[:50],
+        source="opencti",
+        external_id=system_id[:200],
+    )
+
+
+def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
+    """An OpenCRQ supporting asset at or above *min_level* as a crown jewel."""
+    from app.services.organization_context_opencrq import _asset_name
+
+    level = str(asset.get("criticality") or "").lower()
+    if level not in OPENCRQ_LEVELS or OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
+        return None
+    name = _asset_name(asset)
+    asset_id = str(asset.get("id") or "")
+    if not name or not asset_id:
+        return None
+    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], opencrq_asset_id=asset_id[:100])  # type: ignore[arg-type]
+
+
+# ── Merge (no I/O) ────────────────────────────────────────────────────
+
+
+def plan_import(
+    profile: OrganizationProfile, section: str, source: str, read: ReadResult, *, remove_gone: bool = False
+) -> ImportPlan:
+    """What importing *read* into *section* would do to *profile* (no I/O, *profile* untouched).
+
+    Rows this source wrote before that the read no longer returns are listed in
+    ``gone``; they are kept unless *remove_gone*. A truncated or failed read
+    never removes anything: the rows past the cut are not known to be gone.
+    """
+    plan = ImportPlan(
+        section=section,
+        source=source,
+        source_total=read.total,
+        read=len(read.rows),
+        truncated=read.truncated,
+        error=read.error,
+        remove_gone=remove_gone and not read.truncated and not read.error,
+        batch_typed=read.batch_typed,
+    )
+    draft = profile.model_copy(deep=True)
+    if section == "assets":
+        _merge_assets(draft, "assets_exposure", read.rows, source, plan)
+    elif section == "asset_groups":
+        _merge_assets(draft, "asset_groups", read.rows, source, plan)
+    elif section == "ai_systems":
+        _merge_keyed(draft, "ai_systems", "openaev_asset_id", read.rows, plan)
+    elif section == "crown_jewels":
+        _merge_keyed(draft, "crown_jewels", "opencrq_asset_id", read.rows, plan)
+    elif section == "tech_stack":
+        _merge_tech_stack(draft, read.rows, plan)
+    elif section == "pirs":
+        _merge_pirs(draft, read.rows, plan)
+    plan.sample = [
+        row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in read.rows[:SAMPLE_SIZE]
+    ]
+    plan.profile = draft
+    return plan
+
+
+def _merge_assets(
+    draft: OrganizationProfile,
+    attr: Literal["assets_exposure", "asset_groups"],
+    rows: list[AssetEntry] | list[AssetGroupEntry],
+    source: str,
+    plan: ImportPlan,
+) -> None:
+    current: list[Any] = list(getattr(draft, attr))
+    by_key = {(a.source, a.external_id): i for i, a in enumerate(current) if a.external_id}
+    names = {a.name.casefold(): a for a in current}
+    for row in rows:
+        index = by_key.get((source, row.external_id))
+        if index is not None:
+            before = current[index]
+            # Fields a person may have set on an imported row are kept when the source has none.
+            kept = {
+                "environment": row.environment or before.environment,
+                "owner": row.owner or before.owner,
+                "tech_stack": row.tech_stack or before.tech_stack,
+            }
+            if isinstance(row, AssetEntry):
+                kept["group"] = row.group or before.group
+            else:
+                kept["description"] = row.description or before.description
+            merged = row.model_copy(update=kept)
+            if merged == before:
+                plan.unchanged.append(row.name)
+            else:
+                current[index] = merged
+                plan.updated.append(row.name)
+            continue
+        if row.name.casefold() in names:
+            plan.skipped.append(row.name)
+            continue
+        current.append(row)
+        names[row.name.casefold()] = row
+        plan.new.append(row.name)
+    if not plan.truncated and not plan.error:
+        read_ids = {row.external_id for row in rows}
+        gone = [a for a in current if a.source == source and a.external_id and a.external_id not in read_ids]
+        plan.gone = [a.name for a in gone]
+        if plan.remove_gone and gone:
+            dropped = {id(a) for a in gone}
+            current = [a for a in current if id(a) not in dropped]
+    setattr(draft, attr, current[:5000])
+
+
+def _merge_keyed(draft: OrganizationProfile, attr: str, key: str, rows: list[Any], plan: ImportPlan) -> None:
+    current = list(getattr(draft, attr))
+    by_key = {getattr(r, key): i for i, r in enumerate(current) if getattr(r, key)}
+    names = {r.name.casefold() for r in current}
+    for row in rows:
+        index = by_key.get(getattr(row, key))
+        if index is not None:
+            before = current[index]
+            merged = row.model_copy(update={"owner": row.owner or before.owner})
+            if attr == "crown_jewels":
+                merged = merged.model_copy(
+                    update={"business_service": before.business_service, "asset_names": before.asset_names}
+                )
+            if merged == before:
+                plan.unchanged.append(row.name)
+            else:
+                current[index] = merged
+                plan.updated.append(row.name)
+            continue
+        if row.name.casefold() in names:
+            plan.skipped.append(row.name)
+            continue
+        current.append(row)
+        names.add(row.name.casefold())
+        plan.new.append(row.name)
+    setattr(draft, attr, current[:200])
+
+
+def _merge_tech_stack(draft: OrganizationProfile, rows: list[TechStackEntry], plan: ImportPlan) -> None:
+    current = list(draft.tech_stack)
+    names = {t.product.casefold() for t in current}
+    for row in rows:
+        if row.product.casefold() in names:
+            plan.unchanged.append(row.product)
+            continue
+        current.append(row)
+        names.add(row.product.casefold())
+        plan.new.append(row.product)
+    draft.tech_stack = current[:500]
+
+
+def _merge_pirs(draft: OrganizationProfile, rows: list[dict[str, str]], plan: ImportPlan) -> None:
+    ids = list(draft.pir_ids)
+    names = dict(draft.pir_names)
+    for row in rows:
+        if row["id"] in ids:
+            if row["name"] != row["id"] and not names.get(row["id"]):
+                names[row["id"]] = row["name"][:300]
+                plan.updated.append(row["name"])
+            else:
+                plan.unchanged.append(row["name"])
+            continue
+        ids.append(row["id"])
+        if row["name"] != row["id"]:
+            names[row["id"]] = row["name"][:300]
+        plan.new.append(row["name"])
+    draft.pir_ids = ids[:100]
+    draft.pir_names = {k: v for k, v in names.items() if k in draft.pir_ids}
+
+
+# ── Filters (no I/O) ──────────────────────────────────────────────────
+
+
+def _values(filters: dict[str, Any], key: str) -> list[str]:
+    raw = filters.get(key)
+    if raw is None or raw == "":
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    return [str(v).strip() for v in items if str(v).strip()]
+
+
+def openaev_filter_group(filters: dict[str, Any], *, asset_ids: list[str] | None = None) -> dict[str, Any] | None:
+    """The OpenAEV ``filterGroup`` of an asset import: every filter given, ANDed."""
+    parts: list[dict[str, Any]] = []
+    if asset_ids is not None:
+        parts.append({"key": "asset_id", "mode": "or", "operator": "eq", "values": asset_ids})
+    for key, field_name, operator in (
+        ("tags", "asset_tags", "contains"),
+        ("category", "asset_category", "eq"),
+        ("subcategory", "asset_subcategory", "eq"),
+        ("criticality", "asset_criticality", "eq"),
+        ("platform", "endpoint_platform", "eq"),
+        ("type", "security_platform_type", "eq"),
+    ):
+        values = _values(filters, key)
+        if values:
+            parts.append({"key": field_name, "mode": "or", "operator": operator, "values": values})
+    return {"mode": "and", "filters": parts} if parts else None
+
+
+def opencti_filter_group(filters: dict[str, Any]) -> dict[str, Any] | None:
+    """OpenCTI's ``FilterGroup`` for a Systems import: labels, markings, author, creation date.
+
+    A ``filter_group`` given as is (built with OpenCTI's own filter editor) is
+    nested under the generated one, so both apply.
+    """
+    parts: list[dict[str, Any]] = []
+    keyed = [
+        ("labels", "objectLabel"),
+        ("markings", "objectMarking"),
+        ("created_by", "createdBy"),
+        ("creator", "creator_id"),
+        *OPENCTI_SYSTEM_ATTRIBUTES.items(),
+    ]
+    for key, field_name in keyed:
+        values = _values(filters, key)
+        if values:
+            parts.append({"key": [field_name], "values": values, "operator": "eq", "mode": "or"})
+    created_after = str(filters.get("created_after") or "").strip()
+    if created_after:
+        parts.append({"key": ["created"], "values": [created_after], "operator": "gte", "mode": "or"})
+    nested = filters.get("filter_group")
+    groups = [nested] if isinstance(nested, dict) and (nested.get("filters") or nested.get("filterGroups")) else []
+    if not parts and not groups:
+        return None
+    return {"mode": "and", "filters": parts, "filterGroups": groups}
+
+
+# ── Sources (I/O) ─────────────────────────────────────────────────────
+
+
+async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, SourceStatus]:
+    """Whether each platform is connected for this administrator (no platform is assumed installed)."""
+    from app.services.ctem_metrics_collector import _user_creds
+    from app.services.organization_context_opencrq import _opencrq_connection
+
+    statuses: dict[str, SourceStatus] = {}
+    for source in ("openaev", "opencti"):
+        try:
+            creds = await _user_creds(db, str(user_id), source)
+        except Exception as exc:  # one platform never hides the others
+            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
+            creds = None
+        statuses[source] = SourceStatus(
+            source=source,
+            available=creds is not None,
+            reason="" if creds is not None else "not connected, or no token for this administrator",
+        )
+    try:
+        connection = await _opencrq_connection(db, str(user_id))
+    except Exception as exc:
+        logger.warning("Organization import: OpenCRQ status unreadable: %s", format_exception_message(exc))
+        connection = "unreadable"
+    statuses["opencrq"] = SourceStatus(
+        source="opencrq",
+        available=not isinstance(connection, str),
+        reason=connection if isinstance(connection, str) else "",
+    )
+    return statuses
+
+
+async def _openaev_search(
+    base_url: str, headers: dict[str, Any], path: str, filter_group: dict[str, Any] | None, text: str = ""
+) -> ReadResult:
+    from app.integrations.providers.openaev._common import _api, _search_body
+
+    result = ReadResult()
+    page = 0
+    items: list[dict[str, Any]] = []
+    while len(items) < MAX_ROWS:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "post",
+            path,
+            "organization import",
+            json=_search_body(page=page, size=200, filter_group=filter_group, text_search=text),
+            retry_transient=True,
+        )
+        if err or resp is None:
+            result.error = f"OpenAEV: {err or 'no answer'}"
+            return result
+        data = resp.json()
+        content = (data.get("content") if isinstance(data, dict) else data) or []
+        if result.total is None and isinstance(data, dict) and data.get("totalElements") is not None:
+            result.total = int(data["totalElements"])
+        items.extend(i for i in content if isinstance(i, dict))
+        if len(content) < 200 or (result.total is not None and len(items) >= result.total):
+            break
+        page += 1
+    result.truncated = result.total is not None and result.total > MAX_ROWS
+    result.rows = items[:MAX_ROWS]
+    return result
+
+
+async def _openaev_group_members(
+    base_url: str, headers: dict[str, Any], group_ids: list[str]
+) -> tuple[list[str], str | None]:
+    """Every asset id of the given groups, static members and dynamic matches alike."""
+    from app.integrations.providers.openaev._common import _api
+
+    members: list[str] = []
+    for group_id in group_ids:
+        resp, err = await _api(
+            base_url, headers, "get", f"/api/asset_groups/{group_id}", "read asset group", retry_transient=True
+        )
+        if err or resp is None:
+            return [], f"OpenAEV asset group {group_id}: {err or 'no answer'}"
+        data = resp.json() if resp is not None else {}
+        for key in ("asset_group_assets", "asset_group_dynamic_assets"):
+            members.extend(str(a) for a in (data.get(key) or []) if a)
+    return list(dict.fromkeys(members)), None
+
+
+async def _read_openaev(
+    db: AsyncSession, user_id: str, section: str, filters: dict[str, Any], batch_type: str
+) -> ReadResult:
+    from app.services.ctem_metrics_collector import _user_creds
+
+    creds = await _user_creds(db, user_id, "openaev")
+    if creds is None:
+        return ReadResult(error="OpenAEV: not connected, or no token for this administrator")
+    base_url, headers = creds
+    text = str(filters.get("search") or "").strip()
+    if section == "assets":
+        asset_ids = None
+        groups = _values(filters, "asset_groups")
+        if groups:
+            asset_ids, err = await _openaev_group_members(base_url, headers, groups)
+            if err:
+                return ReadResult(error=err)
+            if not asset_ids:
+                return ReadResult(total=0)
+        read = await _openaev_search(
+            base_url, headers, "/api/endpoints/search", openaev_filter_group(filters, asset_ids=asset_ids)
+        )
+        read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
+        return read
+    if section == "asset_groups":
+        tags = _values(filters, "tags")
+        group = (
+            {
+                "mode": "and",
+                "filters": [{"key": "asset_group_tags", "mode": "or", "operator": "contains", "values": tags}],
+            }
+            if tags
+            else None
+        )
+        read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
+        read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
+        return read
+    if section == "ai_systems":
+        read = await _openaev_search(base_url, headers, "/api/endpoints/search", openaev_filter_group(filters), text)
+        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows if a.get("ai_target_provider")) if r]
+        return read
+    if section == "tech_stack":
+        read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
+        seen: set[str] = set()
+        rows: list[TechStackEntry] = []
+        for item in read.rows:
+            product = str(item.get("asset_name") or item.get("security_platform_name") or "").strip()
+            if product and product.casefold() not in seen:
+                seen.add(product.casefold())
+                rows.append(TechStackEntry(product=product[:200]))
+        read.rows = rows
+        return read
+    return ReadResult(error=f"OpenAEV cannot feed {section}")
+
+
+_OCTI_SYSTEM_BASE = "id name createdBy { name } objectLabel { value } objectMarking { definition }"
+_OCTI_SYSTEM_TAXONOMY = " ".join(OPENCTI_SYSTEM_ATTRIBUTES.values()) + " x_opencti_owner"
+
+
+def opencti_systems_query(taxonomy: bool) -> str:
+    """The Systems page query; with *taxonomy*, the #19943 attributes too."""
+    fields = f"{_OCTI_SYSTEM_BASE} {_OCTI_SYSTEM_TAXONOMY}" if taxonomy else _OCTI_SYSTEM_BASE
+    return (
+        "query XtmOrganizationImportSystems($first: Int, $after: ID, $filters: FilterGroup) {\n"
+        "  systems(first: $first, after: $after, filters: $filters) {\n"
+        f"    edges {{ node {{ {fields} }} }}\n"
+        "    pageInfo { globalCount hasNextPage endCursor }\n"
+        "  }\n}\n"
+    )
+
+
+_OCTI_SYSTEM_FIELDS = 'query XtmOrganizationImportSystemFields { __type(name: "System") { fields { name } } }'
+
+
+async def opencti_has_system_taxonomy(client: Any, base_url: str, headers: dict[str, Any]) -> bool:
+    """Whether this OpenCTI carries the System taxonomy of OpenCTI-Platform/opencti#19943 (introspection)."""
+    from app.integrations.providers.opencti._common import _graphql
+
+    data, err = await _graphql(client, base_url, headers, _OCTI_SYSTEM_FIELDS, {})
+    if err:
+        return False
+    names = {str((f or {}).get("name")) for f in (((data or {}).get("__type") or {}).get("fields") or [])}
+    return set(OPENCTI_SYSTEM_ATTRIBUTES.values()) <= names
+
+
+async def _read_opencti(
+    db: AsyncSession, user_id: str, section: str, filters: dict[str, Any], batch_type: str
+) -> ReadResult:
+    from app.integrations.providers.opencti._common import _client, _graphql
+    from app.services.ctem_metrics_collector import _user_creds
+    from app.services.organization_context_draft import opencti_pirs, read_all_pirs
+
+    creds = await _user_creds(db, user_id, "opencti")
+    if creds is None:
+        return ReadResult(error="OpenCTI: not connected, or no token for this administrator")
+    base_url, headers = creds
+    result = ReadResult()
+    async with _client(headers, timeout=30) as client:
+        if section == "pirs":
+            data, err = await read_all_pirs(client, base_url, headers)
+            if err:
+                return ReadResult(error=f"OpenCTI PIRs: {err}")
+            picked = set(_values(filters, "pir_ids"))
+            rows = [row for row in opencti_pirs(data) if not picked or row["id"] in picked]
+            return ReadResult(rows=rows, total=len(rows))
+        if section != "assets":
+            return ReadResult(error=f"OpenCTI cannot feed {section}")
+        taxonomy = await opencti_has_system_taxonomy(client, base_url, headers)
+        if not taxonomy:
+            # An OpenCTI before #19943 rejects a filter on attributes it does not have.
+            filters = {k: v for k, v in filters.items() if k not in OPENCTI_SYSTEM_ATTRIBUTES}
+        query = opencti_systems_query(taxonomy)
+        variables: dict[str, Any] = {"first": 200, "after": None, "filters": opencti_filter_group(filters)}
+        nodes: list[dict[str, Any]] = []
+        while len(nodes) < MAX_ROWS:
+            data, err = await _graphql(client, base_url, headers, query, variables)
+            if err:
+                return ReadResult(error=f"OpenCTI: {err}")
+            page = (data or {}).get("systems") or {}
+            info = page.get("pageInfo") or {}
+            if result.total is None and info.get("globalCount") is not None:
+                result.total = int(info["globalCount"])
+            nodes.extend((edge or {}).get("node") or {} for edge in page.get("edges") or [])
+            if not info.get("hasNextPage") or not info.get("endCursor"):
+                break
+            variables["after"] = info["endCursor"]
+    result.truncated = result.total is not None and result.total > MAX_ROWS
+    result.rows = [r for r in (opencti_system(n, batch_type) for n in nodes[:MAX_ROWS]) if r]
+    result.batch_typed = sum(1 for n in nodes[:MAX_ROWS] if not opencti_system_has_type(n))
+    return result
+
+
+async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any]) -> ReadResult:
+    from app.integrations.providers.opencrq._common import _resolve_tenant
+    from app.services.organization_context_opencrq import _list_assets, _opencrq_connection
+
+    connection = await _opencrq_connection(db, user_id)
+    if isinstance(connection, str):
+        return ReadResult(error=f"OpenCRQ: {connection}")
+    base_url, headers = connection
+    tenant, err = await _resolve_tenant(base_url, headers, str(filters.get("tenant_id") or ""))
+    if err:
+        return ReadResult(error=f"OpenCRQ: {err}")
+    assets, err = await _list_assets(base_url, headers, tenant or "")
+    if err:
+        return ReadResult(error=f"OpenCRQ: {err}")
+    level = str(filters.get("min_criticality") or "high")
+    if level not in OPENCRQ_LEVELS:
+        level = "high"
+    rows = [j for j in (opencrq_jewel(a, level) for a in assets) if j]
+    rows.sort(key=lambda j: ("critical", "high", "medium", "low").index(j.criticality))
+    return ReadResult(rows=rows, total=len(rows))
+
+
+async def read_source(
+    db: AsyncSession, *, user_id: uuid.UUID, section: str, source: str, filters: dict[str, Any], batch_type: str = ""
+) -> ReadResult:
+    """Read *section* from *source*; a failure is answered in ``error``, never raised."""
+    if source not in SECTION_SOURCES.get(section, ()):
+        return ReadResult(error=f"{source} cannot feed {section}")
+    try:
+        if source == "openaev":
+            return await _read_openaev(db, str(user_id), section, filters, batch_type)
+        if source == "opencti":
+            return await _read_opencti(db, str(user_id), section, filters, batch_type)
+        return await _read_opencrq(db, str(user_id), filters)
+    except Exception as exc:  # a platform that fails is reported, never guessed
+        logger.warning("Organization import: %s unreadable: %s", source, format_exception_message(exc))
+        return ReadResult(error=f"{source}: {type(exc).__name__}")
+
+
+# ── Filter options (I/O) ──────────────────────────────────────────────
+
+
+@dataclass
+class FilterOptions:
+    """The values a source offers for each filter of a section, and the filters it cannot offer."""
+
+    #: filter key -> [{value, label, description, parent}] (``parent``: the category of a subcategory).
+    options: dict[str, list[dict[str, str]]] = field(default_factory=dict)
+    #: filter key -> why it is not offered, a code the dialog words: ``not_connected``, ``unreadable`` (the
+    #: platform's text stays in the log), ``no_system_taxonomy`` (an OpenCTI before #19943).
+    unavailable: dict[str, str] = field(default_factory=dict)
+
+
+def _option(value: Any, label: Any = None, description: Any = "", parent: Any = "") -> dict[str, str]:
+    return {
+        "value": str(value),
+        "label": str(label or value),
+        "description": str(description or ""),
+        "parent": str(parent or ""),
+    }
+
+
+def taxonomy_options(upper: bool) -> dict[str, list[dict[str, str]]]:
+    """Category, subcategory and criticality options from the profile's own taxonomy (OpenAEV's enums)."""
+    case = str.upper if upper else str
+    return {
+        "category": [_option(case(c)) for c in ASSET_TAXONOMY],
+        "subcategory": [_option(case(s), parent=case(c)) for c, subs in ASSET_TAXONOMY.items() for s in subs],
+        "criticality": [_option(case(c)) for c in ASSET_CRITICALITIES],
+    }
+
+
+_SUBCATEGORY_PARENT = re.compile(r"\(category:\s*([A-Z_]+)\)\s*$")
+
+
+def opencti_vocabulary_options(key: str, nodes: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """OpenCTI vocabulary entries as options; a subcategory's parent is read from its description (#19943)."""
+    rows = []
+    for node in nodes:
+        name = str(node.get("name") or "").strip()
+        if not name:
+            continue
+        description = str(node.get("description") or "")
+        match = _SUBCATEGORY_PARENT.search(description) if key == "subcategory" else None
+        rows.append(
+            _option(
+                name,
+                description=_SUBCATEGORY_PARENT.sub("", description).strip(),
+                parent=match.group(1) if match else "",
+            )
+        )
+    return rows
+
+
+_OCTI_OPTIONS = """
+query XtmOrganizationImportOptions {
+  labels(first: 500, orderBy: value, orderMode: asc) { edges { node { id value } } }
+  markingDefinitions(first: 200) { edges { node { id definition } } }
+  identities(first: 500, types: ["Organization", "Individual", "System"], orderBy: name, orderMode: asc) {
+    edges { node { id name entity_type } }
+  }
+  creators(entityTypes: ["System"]) { edges { node { id name } } }
+}
+"""
+
+_OCTI_VOCABULARY = """
+query XtmOrganizationImportVocabulary($category: VocabularyCategory!) {
+  vocabularies(category: $category, first: 500) { edges { node { name description } } }
+}
+"""
+
+
+def _edges(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    return [(e or {}).get("node") or {} for e in (((data or {}).get(key) or {}).get("edges") or [])]
+
+
+async def _opencti_options(db: AsyncSession, user_id: str) -> FilterOptions:
+    from app.integrations.providers.opencti._common import _client, _graphql
+    from app.services.ctem_metrics_collector import _user_creds
+
+    result = FilterOptions()
+    creds = await _user_creds(db, user_id, "opencti")
+    if creds is None:
+        result.unavailable = {k: "not_connected" for k in SOURCE_FILTERS[("assets", "opencti")]}
+        return result
+    base_url, headers = creds
+    async with _client(headers, timeout=30) as client:
+        data, err = await _graphql(client, base_url, headers, _OCTI_OPTIONS, {})
+        if err:
+            logger.warning("Organization import: OpenCTI filter values unreadable: %s", err)
+            for key in ("labels", "markings", "created_by", "creator"):
+                result.unavailable[key] = "unreadable"
+        else:
+            result.options["labels"] = [_option(n["id"], n.get("value")) for n in _edges(data, "labels") if n.get("id")]
+            result.options["markings"] = [
+                _option(n["id"], n.get("definition")) for n in _edges(data, "markingDefinitions") if n.get("id")
+            ]
+            result.options["created_by"] = [
+                _option(n["id"], n.get("name"), n.get("entity_type")) for n in _edges(data, "identities") if n.get("id")
+            ]
+            result.options["creator"] = [
+                _option(n["id"], n.get("name")) for n in _edges(data, "creators") if n.get("id")
+            ]
+        if not await opencti_has_system_taxonomy(client, base_url, headers):
+            for key in OPENCTI_SYSTEM_ATTRIBUTES:
+                result.unavailable[key] = "no_system_taxonomy"
+            return result
+        for key, category in OPENCTI_SYSTEM_VOCABULARIES.items():
+            vocab, err = await _graphql(client, base_url, headers, _OCTI_VOCABULARY, {"category": category})
+            if err:
+                logger.warning("Organization import: OpenCTI vocabulary %s unreadable: %s", category, err)
+                result.unavailable[key] = "unreadable"
+                continue
+            result.options[key] = opencti_vocabulary_options(key, _edges(vocab, "vocabularies"))
+    return result
+
+
+async def _openaev_options(db: AsyncSession, user_id: str, section: str) -> FilterOptions:
+    from app.integrations.providers.openaev._common import _api
+    from app.services.ctem_metrics_collector import _user_creds
+
+    result = FilterOptions()
+    if section == "assets":
+        result.options.update(taxonomy_options(upper=True))
+        result.options["platform"] = [_option(p) for p in OPENAEV_PLATFORMS]
+    if section == "tech_stack":
+        # OpenAEV's security platform types are the subcategories of its security_platform category.
+        result.options["type"] = [_option(s.upper()) for s in ASSET_TAXONOMY["security_platform"]]
+    wanted = set(SOURCE_FILTERS.get((section, "openaev"), ())) & {"tags", "asset_groups"}
+    if not wanted:
+        return result
+    creds = await _user_creds(db, user_id, "openaev")
+    if creds is None:
+        result.unavailable = {k: "not_connected" for k in wanted}
+        return result
+    base_url, headers = creds
+    for key, path, id_key, name_key in (
+        ("tags", "/api/tags", "tag_id", "tag_name"),
+        ("asset_groups", "/api/asset_groups", "asset_group_id", "asset_group_name"),
+    ):
+        if key not in wanted:
+            continue
+        resp, err = await _api(base_url, headers, "get", path, f"list {key}", retry_transient=True)
+        if err or resp is None:
+            logger.warning("Organization import: OpenAEV %s unreadable: %s", key, err or "no answer")
+            result.unavailable[key] = "unreadable"
+            continue
+        items = resp.json()
+        items = items.get("content") if isinstance(items, dict) else items
+        result.options[key] = [
+            _option(i[id_key], i.get(name_key)) for i in (items or []) if isinstance(i, dict) and i.get(id_key)
+        ][:1000]
+    return result
+
+
+async def _opencrq_options(db: AsyncSession, user_id: str) -> FilterOptions:
+    from app.integrations.providers.opencrq._common import _trpc
+    from app.services.organization_context_opencrq import _opencrq_connection
+
+    result = FilterOptions(options={"min_criticality": [_option(level) for level in OPENCRQ_LEVELS]})
+    connection = await _opencrq_connection(db, user_id)
+    if isinstance(connection, str):
+        result.unavailable["tenant_id"] = "not_connected"
+        return result
+    base_url, headers = connection
+    tenants, err = await _trpc(base_url, headers, "tenants.getTenants", "list tenants")
+    if err:
+        logger.warning("Organization import: OpenCRQ tenants unreadable: %s", err)
+        result.unavailable["tenant_id"] = "unreadable"
+        return result
+    result.options["tenant_id"] = [_option(t["id"], t.get("name")) for t in (tenants or []) if t.get("id")]
+    return result
+
+
+async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, source: str) -> FilterOptions:
+    """The values each filter of *section* offers in *source*, read live (a failure is a reason, never raised)."""
+    if source not in SECTION_SOURCES.get(section, ()):
+        return FilterOptions()
+    try:
+        if source == "opencti":
+            return await _opencti_options(db, str(user_id)) if section == "assets" else FilterOptions()
+        if source == "openaev":
+            return await _openaev_options(db, str(user_id), section)
+        return await _opencrq_options(db, str(user_id))
+    except Exception as exc:  # the dialog still opens: the filters say why they are empty
+        logger.warning("Organization import: %s options unreadable: %s", source, format_exception_message(exc))
+        return FilterOptions(unavailable={k: "unreadable" for k in SOURCE_FILTERS.get((section, source), ())})
+
+
+async def preview_import(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    section: str,
+    source: str,
+    filters: dict[str, Any],
+    batch_type: str = "",
+    remove_gone: bool = False,
+) -> tuple[ImportPlan, int | None]:
+    """The import plan over the current profile, and the version it starts from (writes nothing)."""
+    from app.services import organization_context as org_context
+
+    current = await org_context.current_version(db)
+    base = org_context.parse_profile(current.profile if current else {})
+    read = await read_source(
+        db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
+    )
+    plan = plan_import(base, section, source, read, remove_gone=remove_gone)
+    return plan, (current.version if current else None)
+
+
+def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """The ``sources`` entry the saved version keeps for the field the import wrote."""
+    used = ", ".join(f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "", [], {}))
+    basis = f"import of {plan.section}: {len(plan.new)} new, {len(plan.updated)} updated"
+    if plan.gone:
+        basis += f", {len(plan.gone)} no longer in the source ({'removed' if plan.remove_gone else 'kept'})"
+    basis += f"; read {datetime.now(UTC).strftime('%Y-%m-%dT%H:%MZ')}"
+    if used:
+        basis += f"; filters {used}"[:400]
+    return {SECTION_FIELD[plan.section]: {"source": plan.source, "basis": basis[:500]}}

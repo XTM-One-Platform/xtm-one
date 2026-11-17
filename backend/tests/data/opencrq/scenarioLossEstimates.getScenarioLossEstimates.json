@@ -1,0 +1,46 @@
+{
+  "procedure": "scenarioLossEstimates.getScenarioLossEstimates",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-0012-7000-8000-000000000001",
+      "riskScenarioId": "019edb28-0011-7000-8000-000000000001",
+      "lossDriverId": "a59a5bd6-acb9-5b2f-bb5e-db69daa426b7",
+      "minValue": 80000,
+      "likelyValue": 250000,
+      "maxValue": 600000,
+      "provenance": "manual",
+      "modelVersion": null,
+      "lowConfidence": false,
+      "isPosture": false,
+      "updatedAt": "2026-04-17T08:59:57.625Z",
+      "lossDriver": {
+        "id": "a59a5bd6-acb9-5b2f-bb5e-db69daa426b7",
+        "name": "Forensics & incident management",
+        "description": "External DFIR fees: scoping, containment, eradication, reconstruction and negotiation support.",
+        "lossCategoryId": "ddae60e0-5b5c-5878-a6ad-e40fcd8712de",
+        "lossCategoryName": "Response & Investigation"
+      }
+    },
+    {
+      "id": "019edb28-0012-7000-8000-000000000002",
+      "riskScenarioId": "019edb28-0011-7000-8000-000000000001",
+      "lossDriverId": "6927f75e-4e1d-5b09-822f-36baa9bea98e",
+      "minValue": 200000,
+      "likelyValue": 900000,
+      "maxValue": 3500000,
+      "provenance": "manual",
+      "modelVersion": null,
+      "lowConfidence": false,
+      "isPosture": false,
+      "updatedAt": "2026-04-17T08:59:57.625Z",
+      "lossDriver": {
+        "id": "6927f75e-4e1d-5b09-822f-36baa9bea98e",
+        "name": "Regulatory fines",
+        "description": "Statutory penalties imposed by regulators, bounded by the applicable statutory caps.",
+        "lossCategoryId": "3bb5dd52-0396-53f4-b442-f68ee8f9a2c1",
+        "lossCategoryName": "Legal, Regulatory & Contractual Consequences"
+      }
+    }
+  ]
+}

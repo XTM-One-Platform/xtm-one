@@ -1,0 +1,432 @@
+{
+  "title": "OpenAEV - Product brief",
+  "theme": "light",
+  "aspect_ratio": "A4",
+  "transition": "none",
+  "chrome": {
+    "footer_text": "filigran.io - synthetic product brief fixture",
+    "show_slide_numbers": true
+  },
+  "slides": [
+    {
+      "layout": "content",
+      "hide_footer": false,
+      "blocks": [
+        {
+          "type": "banner",
+          "variant": "gradient",
+          "eyebrow": "Product brief",
+          "title": "OpenAEV - Adversarial Exposure Validation",
+          "subtitle": "Continuously validate your defences against the threats that actually target you, and prove it.",
+          "icon": "shield-check",
+          "size": "md"
+        },
+        {
+          "type": "badges",
+          "variant": "outline",
+          "size": "sm",
+          "items": [
+            {
+              "text": "Open source",
+              "icon": "github",
+              "tone": "accent"
+            },
+            {
+              "text": "SaaS or on-premise",
+              "icon": "cloud",
+              "tone": "info"
+            },
+            {
+              "text": "ISO 27001",
+              "icon": "badge-check",
+              "tone": "success"
+            },
+            {
+              "text": "SOC 2 Type II",
+              "icon": "badge-check",
+              "tone": "success"
+            },
+            {
+              "text": "MITRE ATT&CK aligned",
+              "icon": "crosshair",
+              "tone": "muted"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "content": "What it does",
+          "level": 2
+        },
+        {
+          "type": "text",
+          "content": "OpenAEV runs **safe, repeatable attack simulations** against your real endpoints, mail flow and detection stack, then scores what was _prevented_, what was _detected_ and what went through - so remediation is driven by evidence, not by CVSS scores alone.",
+          "size": "sm"
+        },
+        {
+          "type": "feature_list",
+          "columns": 2,
+          "size": "sm",
+          "items": [
+            {
+              "icon": "swords",
+              "title": "Attack simulation",
+              "description": "Native injectors for endpoints, email, web and cloud; Caldera and Atomic Red Team included.",
+              "tone": "accent"
+            },
+            {
+              "icon": "radar",
+              "title": "Detection validation",
+              "description": "Expectations checked against your EDR, SIEM and mail gateway - per technique, per asset.",
+              "tone": "info"
+            },
+            {
+              "icon": "route",
+              "title": "Threat-informed scenarios",
+              "description": "Scenarios generated from OpenCTI intelligence: the actors and TTPs that target your sector.",
+              "tone": "success"
+            },
+            {
+              "icon": "bar-chart-3",
+              "title": "Posture over time",
+              "description": "Prevention and detection scores per team, per platform, per campaign - with the drift explained.",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "content": "At a glance",
+          "level": 2
+        },
+        {
+          "type": "key_value",
+          "columns": 2,
+          "density": "compact",
+          "framed": true,
+          "items": [
+            {
+              "label": "Deployment",
+              "value": "Filigran SaaS (EU / US / APAC) or self-hosted",
+              "icon": "server"
+            },
+            {
+              "label": "Agents",
+              "value": "Windows, Linux, macOS - native, session-less",
+              "icon": "monitor"
+            },
+            {
+              "label": "Integrations",
+              "value": "CrowdStrike, Defender, SentinelOne, Splunk, Sentinel, Elastic...",
+              "icon": "plug"
+            },
+            {
+              "label": "Intelligence",
+              "value": "OpenCTI native; STIX 2.1 import",
+              "icon": "brain"
+            },
+            {
+              "label": "Licensing",
+              "value": "Community (Apache 2.0) or Enterprise Edition",
+              "icon": "file-badge"
+            },
+            {
+              "label": "Support",
+              "value": "Community forum; 24x7 with Enterprise",
+              "icon": "life-buoy"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "content": "How a validation cycle runs",
+          "level": 2
+        },
+        {
+          "type": "process_flow",
+          "direction": "horizontal",
+          "loop": true,
+          "steps": [
+            {
+              "icon": "target",
+              "title": "Prioritize",
+              "description": "Pick the actors and techniques that target your sector, from OpenCTI.",
+              "tone": "accent"
+            },
+            {
+              "icon": "play",
+              "title": "Test",
+              "description": "Run the simulation against real endpoints, mail flow and cloud.",
+              "tone": "info"
+            },
+            {
+              "icon": "gauge",
+              "title": "Measure",
+              "description": "Score prevention and detection per technique and per asset.",
+              "tone": "warning"
+            },
+            {
+              "icon": "wrench",
+              "title": "Fix",
+              "description": "Ship the remediation, re-run, and prove the gap is closed.",
+              "tone": "success"
+            }
+          ]
+        },
+        {
+          "type": "columns",
+          "ratio": "wide_left",
+          "gap": "lg",
+          "columns": [
+            [
+              {
+                "type": "heading",
+                "content": "Deployment options",
+                "level": 3,
+                "icon": "server"
+              },
+              {
+                "type": "list",
+                "style": "check",
+                "size": "sm",
+                "density": "compact",
+                "items": [
+                  "**Filigran SaaS** - dedicated tenant in the EU, US or APAC region, upgraded for you",
+                  "**Self-hosted** - Docker Compose or Kubernetes (Helm chart), fully air-gappable",
+                  "**Cloud marketplaces** - AWS, Azure and GCP listings billed through your existing commitment",
+                  "**Agents** - Windows, Linux and macOS executors; agentless injectors for email, web and cloud"
+                ]
+              }
+            ],
+            [
+              {
+                "type": "callout",
+                "tone": "accent",
+                "icon": "clipboard-list",
+                "title": "Technical prerequisites",
+                "content": "One dedicated organization or project in your cloud account, a delegated DNS zone for the tenant hostname and an SSO provider (OIDC or SAML). The deployment information table lists every value to hand over.",
+                "density": "compact",
+                "fill": true
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "layout": "content",
+      "title": "Editions and pricing",
+      "subtitle": "Start on the Community Edition, upgrade in place - same platform, same data.",
+      "blocks": [
+        {
+          "type": "heading",
+          "content": "Who it is for",
+          "level": 2
+        },
+        {
+          "type": "personas",
+          "columns": 3,
+          "density": "tight",
+          "items": [
+            {
+              "name": "CISO",
+              "tagline": "Answers for cyber risk to the board",
+              "icon": "landmark",
+              "pains": [
+                "Cannot prove the detection stack works against **today's** threats",
+                "Security spend is defended with maturity scores, not evidence"
+              ],
+              "gains": [
+                "Prevention and detection scores per business unit, over time",
+                "Exposure expressed as financial risk the board understands"
+              ]
+            },
+            {
+              "name": "SOC / detection lead",
+              "tagline": "Owns detection coverage",
+              "icon": "radar",
+              "pains": [
+                "Detection rules age out silently between purple-team exercises",
+                "Every validation campaign is a project with a consultant"
+              ],
+              "gains": [
+                "Continuous validation of every EDR and SIEM rule that matters",
+                "Regressions caught the week they appear, not at the next audit"
+              ],
+              "tone": "info"
+            },
+            {
+              "name": "CTI analyst",
+              "tagline": "Turns intelligence into action",
+              "icon": "brain",
+              "pains": [
+                "Reports land in a wiki nobody tests the defences against",
+                "No feedback on whether the intelligence was actionable"
+              ],
+              "gains": [
+                "Threat-actor TTPs become runnable scenarios in one click",
+                "Sees which of their reports moved the posture score"
+              ],
+              "tone": "success"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "density": "compact",
+          "highlight_first_column": true,
+          "headers": [
+            {
+              "text": "Capability"
+            },
+            {
+              "text": "Community",
+              "align": "center"
+            },
+            {
+              "text": "Enterprise",
+              "align": "center",
+              "tone": "accent",
+              "icon": "sparkles"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "text": "Attack simulation and expectations"
+              },
+              true,
+              true
+            ],
+            [
+              {
+                "text": "OpenCTI threat-informed scenarios"
+              },
+              true,
+              true
+            ],
+            [
+              {
+                "text": "Security posture dashboards"
+              },
+              true,
+              true
+            ],
+            [
+              {
+                "text": "AI-generated scenarios and reports"
+              },
+              false,
+              true
+            ],
+            [
+              {
+                "text": "Autonomous exposure validation agent"
+              },
+              false,
+              true
+            ],
+            [
+              {
+                "text": "SSO, RBAC and audit trail"
+              },
+              {
+                "text": "Basic",
+                "tone": "muted"
+              },
+              true
+            ],
+            [
+              {
+                "text": "Support SLA"
+              },
+              {
+                "text": "Community",
+                "tone": "muted"
+              },
+              {
+                "text": "24x7, 1h critical",
+                "tone": "success"
+              }
+            ]
+          ],
+          "footnote": "Feature availability as of the current release. Enterprise Edition also unlocks the XTM One agentic assistant."
+        },
+        {
+          "type": "pricing_tiers",
+          "density": "compact",
+          "tiers": [
+            {
+              "name": "Community",
+              "price": "Free",
+              "period": "forever",
+              "description": "The full open-source platform.",
+              "icon": "github",
+              "tone": "muted",
+              "features": [
+                "Unlimited assets",
+                "All native injectors",
+                "Community support"
+              ],
+              "cta": "Deploy from GitHub"
+            },
+            {
+              "name": "Enterprise",
+              "price": "Per asset",
+              "period": "annual",
+              "description": "Everything in Community, plus AI and support.",
+              "icon": "building-2",
+              "tone": "accent",
+              "highlight": true,
+              "badge": "Most popular",
+              "features": [
+                "AI scenarios and reporting",
+                "XTM One agentic assistant",
+                "24x7 support, 1h critical SLA",
+                "SaaS or self-hosted"
+              ],
+              "cta": "Request a quote"
+            },
+            {
+              "name": "XTM Suite",
+              "price": "Bundle",
+              "period": "annual",
+              "description": "OpenAEV with OpenCTI and OpenCRQ.",
+              "icon": "layers",
+              "tone": "info",
+              "features": [
+                "Shared intelligence layer",
+                "Exposure to financial risk",
+                "One vendor, one contract"
+              ],
+              "cta": "Talk to sales"
+            }
+          ]
+        },
+        {
+          "type": "banner",
+          "variant": "soft",
+          "tone": "accent",
+          "size": "sm",
+          "icon": "calendar-check",
+          "title": "See it on your own environment",
+          "subtitle": "A 45-minute guided session with a solutions engineer - your assets, your detection stack.",
+          "actions": [
+            {
+              "label": "Book a demo",
+              "url": "https://filigran.io/contact/",
+              "icon": "arrow-right",
+              "primary": true
+            },
+            {
+              "label": "Read the docs",
+              "url": "https://docs.openaev.io/",
+              "icon": "book-open",
+              "primary": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

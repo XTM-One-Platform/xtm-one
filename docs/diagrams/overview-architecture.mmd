@@ -1,0 +1,91 @@
+%% Source diagram for docs/docs/deployment/overview.md.
+%% This is the editable Mermaid source. It lives OUTSIDE the published
+%% docs_dir (docs/docs) on purpose, so it never ships to the generated site.
+%% The published image, docs/docs/assets/images/xtm1_archi.png, is a designed
+%% drawing (with product logos), not a render of this file: when the
+%% architecture changes, update both. The page also carries an inline Mermaid
+%% component map, the precise reference.
+%% Render this file with: npx -y @mermaid-js/mermaid-cli@11 -i overview-architecture.mmd -o out.png
+flowchart LR
+    trig["📥 Triggers · inbound<br/>Chat · Channels · Webhooks<br/>Schedule · Integration events"]
+
+    subgraph core["🧠 XTM One"]
+        direction TB
+        P["Platform<br/>API · UI · chat · proxy · MCP endpoint"]
+        R[("Redis<br/>job queue · wake-ups · pub/sub")]
+        W["⚙️ Workers · agent runs · documents"]
+        P -->|wake-up| R
+        R -->|wake-up| W
+        R -. live activity · SSE .-> P
+    end
+
+    subgraph data["💾 Persistent stores"]
+        direction TB
+        PG[("PostgreSQL + pgvector<br/>data · vectors · run state · traces")]
+        S3[("Silo / S3<br/>files")]
+    end
+
+    subgraph llm["✨ LLM providers"]
+        direction TB
+        OA["OpenAI"]
+        AN["Anthropic"]
+        LMORE["⋯"]
+        OL["Ollama · local"]
+    end
+
+    subgraph tools["🔌 Tools & connectors · outbound"]
+        direction TB
+        subgraph integNat["Integrations · Internal (XTM Suite)"]
+            direction LR
+            CTI["OpenCTI"]
+            AEV["OpenAEV"]
+            CRQ["OpenCRQ"]
+        end
+        subgraph integExt["Integrations · External (100+)"]
+            direction LR
+            SL["Slack"]
+            MS["Microsoft 365"]
+            NO["Notion"]
+            IMORE["⋯"]
+        end
+        MCP["MCP servers"]
+        CT["Custom tools · sandboxed"]
+    end
+
+    trig ==>|messages · webhooks · ticks| P
+    P -->|read / write · run due| data
+    W -->|claim runs · persist · files| data
+    P -. agentic chat .-> llm
+    W -. assignment loop .-> llm
+    core <-. "tool & API calls" .-> tools
+
+    classDef coreC fill:#08243d,stroke:#1bb6ff,stroke-width:2px,color:#e8f6ff;
+    classDef dataC fill:#101f38,stroke:#3f5a80,color:#dbe6f5;
+    classDef llmC fill:#241a3d,stroke:#9b7bff,color:#ece5ff;
+    classDef moreLlmC fill:#1a1433,stroke:#6f5aa8,stroke-dasharray:4 3,color:#b9a6e6;
+    classDef integC fill:#0e2f2a,stroke:#2ec7a0,color:#dff7f0;
+    classDef moreIntegC fill:#0b241f,stroke:#1f8f74,stroke-dasharray:4 3,color:#a7ddce;
+    classDef nativeC fill:#08243d,stroke:#1bb6ff,stroke-width:2px,color:#cdeeff;
+    classDef trigC fill:#241905,stroke:#ffb01b,stroke-width:2px,color:#ffd98a;
+    class P,W coreC;
+    class PG,R,S3 dataC;
+    class OA,AN,OL llmC;
+    class LMORE moreLlmC;
+    class SL,MS,NO,MCP,CT integC;
+    class IMORE moreIntegC;
+    class CTI,AEV,CRQ nativeC;
+    class trig trigC;
+
+    style core fill:#06192b,stroke:#1bb6ff,color:#bfe6ff;
+    style data fill:#0a1526,stroke:#3f5a80,color:#9fb3d0;
+    style llm fill:#150f26,stroke:#9b7bff,color:#c9b6ff;
+    style tools fill:#08201c,stroke:#2ec7a0,color:#9fe8d5;
+    style integExt fill:#0a1f1b,stroke:#2ec7a0,color:#9fe8d5;
+    style integNat fill:#0a1c2e,stroke:#1bb6ff,color:#9fd8ff;
+
+    linkStyle 0,1 stroke:#5a7ab0,stroke-width:2px;
+    linkStyle 2 stroke:#3f5a80,stroke-width:1.5px;
+    linkStyle 3 stroke:#ffb01b,stroke-width:2px;
+    linkStyle 4,5 stroke:#5a7ab0,stroke-width:1.5px;
+    linkStyle 6,7 stroke:#9b7bff,stroke-width:1.5px;
+    linkStyle 8 stroke:#2ec7a0,stroke-width:1.5px;

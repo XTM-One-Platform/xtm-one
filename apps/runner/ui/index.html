@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XTM One Desktop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="glow"></div>
+
+    <header class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+          <rect width="260" height="260" rx="58" fill="#5E1AD5" />
+          <path d="M166.326 122.361L204.73 83.9507L196.231 75.4446L143.301 128.374L174.219 159.292L182.725 150.786L166.326 134.387H215.423V122.361H166.326Z" fill="#fff"/>
+          <path d="M160.525 89.1973L152.019 80.6978L135.627 97.0901V48H123.595V97.0901L81.844 55.3395L73.3379 63.839L129.608 120.115L160.525 89.1973Z" fill="#fff"/>
+          <path d="M85.2039 100.504L76.6978 109.01L93.0968 125.409H44V137.435H93.0968L51.8995 178.633L60.4056 187.132L116.122 131.422L85.2039 100.504Z" fill="#fff"/>
+          <path d="M98.8965 170.593L107.403 179.099L123.795 162.7V211.797H135.827V162.7L178.045 204.924L186.551 196.418L129.814 139.681L98.8965 170.593Z" fill="#fff"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <h1>XTM One Desktop</h1>
+        <p id="brand-sub">Connection panel</p>
+      </div>
+      <span id="status-pill" class="pill pill-muted">
+        <span class="dot"></span><span id="status-label">Starting...</span>
+      </span>
+    </header>
+
+    <main id="content">
+      <!-- Onboarding -->
+      <section id="section-onboarding" class="section" hidden>
+        <h2 class="section-title">Connect this machine</h2>
+        <p class="section-lead">
+          Enroll once. XTM One Desktop then opens your chat in its own window,
+          lives in your tray, and connects out to XTM One - the platform never
+          opens a port on this machine.
+        </p>
+        <form id="enroll-form" class="form">
+          <label class="field">
+            <span class="field-label">XTM One instance URL</span>
+            <input
+              id="enroll-server"
+              type="url"
+              inputmode="url"
+              placeholder="https://one.filigran.io"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
+          </label>
+          <label class="field">
+            <span class="field-label">Enrollment key</span>
+            <div class="inline">
+              <input
+                id="enroll-key"
+                type="password"
+                placeholder="renr-..."
+                autocomplete="off"
+                spellcheck="false"
+                required
+              />
+              <button
+                id="enroll-key-toggle"
+                type="button"
+                class="btn btn-outline"
+                aria-label="Show enrollment key"
+              >
+                Show
+              </button>
+            </div>
+            <span class="field-hint">In XTM One: sidebar &rsaquo; XTM One Desktop &rsaquo; Connect a machine</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Machine name <span class="muted">(optional)</span></span>
+            <input
+              id="enroll-name"
+              type="text"
+              placeholder="This machine's hostname"
+              autocomplete="off"
+            />
+          </label>
+          <p id="enroll-error" class="error" hidden></p>
+          <button id="enroll-submit" type="submit" class="btn btn-primary btn-block">
+            Connect this machine
+          </button>
+        </form>
+      </section>
+
+      <!-- Overview -->
+      <section id="section-overview" class="section" hidden>
+        <div class="status-card">
+          <div id="status-icon" class="status-icon"></div>
+          <div class="status-copy">
+            <p class="status-headline" id="status-headline">Online</p>
+            <p class="status-detail" id="status-detail">Serving commands</p>
+          </div>
+        </div>
+
+        <!-- Only shown on a fatal error (revoked credential, runners disabled):
+             the one-click path back to the Connect form. -->
+        <div class="row" id="reenroll-row" hidden>
+          <button id="btn-reenroll" class="btn btn-primary btn-block">
+            Re-enroll this machine
+          </button>
+        </div>
+
+        <div class="row">
+          <button id="btn-open-chat" class="btn btn-primary btn-block">Open XTM One Desktop</button>
+        </div>
+
+        <dl class="detail-grid">
+          <div><dt>Machine</dt><dd id="d-name">-</dd></div>
+          <div><dt>Instance</dt><dd id="d-server" class="ellipsis">-</dd></div>
+          <div><dt>Platform</dt><dd id="d-platform">-</dd></div>
+          <div><dt>Version</dt><dd id="d-version">-</dd></div>
+        </dl>
+
+        <div class="capabilities">
+          <p class="capabilities-title">From the chat, agents can act on this machine</p>
+          <ul>
+            <li>Run shell commands &amp; read, write and list files</li>
+            <li>Capture genuine full-desktop screenshots</li>
+            <li>Control a real, authenticated browser</li>
+          </ul>
+          <p class="capabilities-note">
+            Within this machine's permission model, with approvals in the chat, every
+            command audited. Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd> anywhere to
+            summon the window.
+          </p>
+        </div>
+
+        <div class="row">
+          <button id="btn-open-instance" class="btn btn-outline btn-block">Open in browser</button>
+        </div>
+        <div class="row">
+          <button id="btn-check-update" class="btn btn-ghost btn-block">Check for updates</button>
+        </div>
+        <p id="update-note" class="update-note" hidden></p>
+      </section>
+
+      <!-- Settings -->
+      <section id="section-settings" class="section" hidden>
+        <h2 class="section-title">Settings</h2>
+
+        <div class="toggle-row">
+          <div>
+            <p class="toggle-label">Start at login</p>
+            <p class="toggle-hint">Launch XTM One Desktop in the tray after sign-in.</p>
+          </div>
+          <button id="toggle-autostart" class="switch" role="switch" aria-checked="false">
+            <span class="switch-thumb"></span>
+          </button>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <p class="toggle-label">Automatic updates</p>
+            <p class="toggle-hint">Install signed updates from your instance.</p>
+          </div>
+          <button id="toggle-autoupdate" class="switch" role="switch" aria-checked="false">
+            <span class="switch-thumb"></span>
+          </button>
+        </div>
+
+        <label class="field">
+          <span class="field-label">Browser CDP endpoint</span>
+          <div class="inline">
+            <input id="cdp-url" type="text" spellcheck="false" placeholder="http://127.0.0.1:9222" />
+            <button id="btn-save-cdp" class="btn btn-outline">Save</button>
+          </div>
+          <span class="field-hint">Where agents drive a real browser over the DevTools Protocol.</span>
+        </label>
+
+        <div class="danger">
+          <p class="danger-title">Unenroll this machine</p>
+          <p class="danger-hint">
+            Removes the stored credential, closes the chat window and stops the
+            runner. The platform record must be revoked separately.
+          </p>
+          <button id="btn-unenroll" class="btn btn-danger btn-block">Unenroll</button>
+        </div>
+      </section>
+
+      <!-- About -->
+      <section id="section-about" class="section" hidden>
+        <div class="about">
+          <span class="brand-mark brand-mark-lg" aria-hidden="true">
+            <svg viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+              <rect width="260" height="260" rx="58" fill="#5E1AD5" />
+              <path d="M166.326 122.361L204.73 83.9507L196.231 75.4446L143.301 128.374L174.219 159.292L182.725 150.786L166.326 134.387H215.423V122.361H166.326Z" fill="#fff"/>
+              <path d="M160.525 89.1973L152.019 80.6978L135.627 97.0901V48H123.595V97.0901L81.844 55.3395L73.3379 63.839L129.608 120.115L160.525 89.1973Z" fill="#fff"/>
+              <path d="M85.2039 100.504L76.6978 109.01L93.0968 125.409H44V137.435H93.0968L51.8995 178.633L60.4056 187.132L116.122 131.422L85.2039 100.504Z" fill="#fff"/>
+              <path d="M98.8965 170.593L107.403 179.099L123.795 162.7V211.797H135.827V162.7L178.045 204.924L186.551 196.418L129.814 139.681L98.8965 170.593Z" fill="#fff"/>
+            </svg>
+          </span>
+          <h2>XTM One Desktop</h2>
+          <p class="about-version" id="about-version">v0.0.0</p>
+          <p class="about-by">by Filigran</p>
+          <a id="about-instance" class="about-link" href="#" target="_blank" rel="noreferrer">-</a>
+          <p class="about-note">
+            The native XTM One client, with the runner that lets your agents act
+            on this machine. Your credential is stored in the OS keychain
+            (DPAPI / Keychain / libsecret), never in a file.
+          </p>
+          <a class="about-link" href="https://filigran.io" target="_blank" rel="noreferrer">filigran.io</a>
+        </div>
+      </section>
+    </main>
+
+    <nav id="tabbar" class="tabbar" role="tablist" hidden>
+      <button class="tab" role="tab" aria-selected="false" data-section="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" data-section="settings">Settings</button>
+      <button class="tab" role="tab" aria-selected="false" data-section="about">About</button>
+    </nav>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,135 @@
+[
+  {
+    "file": "01-sentinel-kql-detections.md",
+    "source": "R2-04",
+    "name": "Microsoft Sentinel KQL detection opportunities",
+    "description": "Works through each attack procedure and produces telemetry requirements, up to five time-bounded KQL detections with ATT&CK, tuning and schema notes, and a hypotheses table. Use it to turn a report into Sentinel detections for review.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Detection Engineering Report"
+      },
+      {
+        "key": "test_in_siem",
+        "label": "Test queries in the SIEM",
+        "type": "boolean",
+        "description": "Run each generated query read-only against your connected SIEM to check that it parses and see the hit volume. Rules are never saved or deployed.",
+        "required": false,
+        "default": false
+      }
+    ]
+  },
+  {
+    "file": "02-splunk-spl-conversion.md",
+    "source": "R2-05",
+    "name": "Convert detection rules to Splunk SPL",
+    "description": "Extracts every detection rule in the material and converts it to Splunk SPL beside the original, marking approximations and documenting translation fidelity. Use it to port Sigma, YARA, Snort or KQL rules to Splunk.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the detection rules or the reports that contain them. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Splunk SPL detection ruleset"
+      },
+      {
+        "key": "test_in_siem",
+        "label": "Test queries in the SIEM",
+        "type": "boolean",
+        "description": "Run each generated query read-only against your connected SIEM to check that it parses and see the hit volume. Rules are never saved or deployed.",
+        "required": false,
+        "default": false
+      }
+    ]
+  },
+  {
+    "file": "03-detection-validation-handoff.md",
+    "source": "R2-06",
+    "name": "Detection, validation and handoff packages",
+    "description": "For each evidenced TTP, produces a Sigma rule with telemetry, SIEM portability notes, evasions, false-positive tuning and a validation test, then a deployment priority table and detection gaps. Use it to hand detections to the SOC ready to test and deploy.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to stakeholders.",
+        "required": false,
+        "default": "Detection, validation, and handoff package"
+      }
+    ]
+  },
+  {
+    "file": "04-detection-rules.md",
+    "source": "R3-06+R3-05",
+    "name": "Draft detection rules (Sigma or another format)",
+    "description": "Drafts one experimental detection rule per detectable behavior or indicator set from validated TTPs and IOCs, in Sigma or another chosen format with the validator to run. Use it after IOC extraction and ATT&CK mapping to give the SOC rules to validate.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the validated TTPs and IOCs (or the report). Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "rule_format",
+        "label": "Rule format",
+        "type": "select",
+        "description": "Detection format of the generated rules.",
+        "required": false,
+        "options": [
+          "Sigma",
+          "Microsoft Sentinel KQL",
+          "Splunk SPL",
+          "Elastic EQL",
+          "Google SecOps YARA-L",
+          "CrowdStrike Falcon LogScale",
+          "YARA"
+        ],
+        "default": "Sigma"
+      },
+      {
+        "key": "test_in_siem",
+        "label": "Test queries in the SIEM",
+        "type": "boolean",
+        "description": "For Microsoft Sentinel KQL, Splunk SPL, Elastic EQL or CrowdStrike Falcon LogScale: run each rule's query read-only against your connected SIEM to check that it parses and see the hit volume. Rules are never saved or deployed.",
+        "required": false,
+        "default": false
+      },
+      {
+        "key": "write_to_opencti",
+        "label": "Write to an OpenCTI draft",
+        "type": "boolean",
+        "description": "Put the rules (as indicators) in a new OpenCTI draft for analyst review, and report the draft id. When off, nothing is written.",
+        "required": false,
+        "default": false
+      }
+    ]
+  }
+]

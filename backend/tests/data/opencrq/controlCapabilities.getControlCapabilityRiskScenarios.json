@@ -1,0 +1,20 @@
+{
+  "procedure": "controlCapabilities.getControlCapabilityRiskScenarios",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "f2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Business Interruption on Internet Banking Platform",
+      "organizationId": "2938b146-a565-4468-baa4-568acd4c92af",
+      "organizationName": "Acme Bank Europe",
+      "sharedTtpCount": 1
+    },
+    {
+      "id": "019edb28-0007-7000-8000-000000000002",
+      "name": "Card Data Breach via Processing Partner",
+      "organizationId": "a4ade4eb-5013-4914-8a20-70c325b2f42c",
+      "organizationName": "FinSecure Partners",
+      "sharedTtpCount": 1
+    }
+  ]
+}

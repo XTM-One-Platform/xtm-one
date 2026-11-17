@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "properties": {
+    "platform": {
+      "type": "string",
+      "enum": [
+        "crowdstrike",
+        "splunk"
+      ],
+      "description": "Target detection platform"
+    },
+    "primary_rule_type": {
+      "type": "string",
+      "description": "Primary rule type (e.g. Process Creation, Process Monitoring)"
+    },
+    "secondary_rule_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional rule types if applicable"
+    },
+    "action": {
+      "type": "string",
+      "description": "Recommended action (Monitor, Detect, Kill Process)"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "Critical",
+        "High",
+        "Medium",
+        "Low",
+        "Informational"
+      ]
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Why this configuration is optimal"
+    },
+    "field_configurations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Field configurations for each recommended rule"
+    },
+    "detection_strategy": {
+      "type": "string",
+      "description": "How the rules work together"
+    }
+  },
+  "required": [
+    "platform",
+    "primary_rule_type",
+    "action",
+    "severity",
+    "reasoning",
+    "field_configurations",
+    "detection_strategy"
+  ],
+  "additionalProperties": false
+}

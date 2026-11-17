@@ -1,0 +1,27 @@
+{
+  "procedure": "businessValueCategories.getBusinessValueCategories",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "4574f84f-3d84-5c49-8ec1-149639f7b804",
+      "code": "operations-and-services",
+      "name": "Operations and services",
+      "description": "The processes and services your organisation runs for itself: production, logistics, internal support, back office.",
+      "displayOrder": 1
+    },
+    {
+      "id": "5ed6b543-76b5-546b-88e1-dc713a1a0f7e",
+      "code": "services-under-commitments",
+      "name": "Services delivered to others under commitments",
+      "description": "Services and products other organisations or customers rely on under contract, SLA or delivery commitment: SaaS, managed services, contracted deliveries, platforms clients run their business on.",
+      "displayOrder": 2
+    },
+    {
+      "id": "ef533937-fc24-5b19-8cd6-c7c501521e2b",
+      "code": "physical-assets-and-facilities",
+      "name": "Physical assets and facilities",
+      "description": "Equipment, plants, buildings, OT and ICS, vehicles: anything an attack can physically destroy or render untrustworthy.",
+      "displayOrder": 3
+    }
+  ]
+}

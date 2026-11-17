@@ -1,0 +1,19 @@
+{
+  "container": "xtm-one-brand",
+  "source": "frontend/public (the platform's own static logos), and the XTM product material of the Filigran brand pack (brand_assets/filigran), included by role and never copied: the product logos and marks, the architecture and product-flow diagrams and the product screenshots, public product material that ships on every platform. The Filigran pack's other families (its wordmarks, badges, illustrations and photos) and the partner, integration and customer logos stay on Filigran Copilot.",
+  "include": [
+    {"pack": "filigran", "only_roles": ["product_logo", "icon", "diagram", "screenshot"]}
+  ],
+  "assets": [
+    {
+      "file": "xtm-one-logo.svg",
+      "role": "logo",
+      "description": "XTM One logo (mark + wordmark), light-on-dark (drawn by the deck chrome)."
+    },
+    {
+      "file": "xtm-one-mark.svg",
+      "role": "logo_mark",
+      "description": "XTM One emblem without the wordmark."
+    }
+  ]
+}

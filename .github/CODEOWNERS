@@ -1,0 +1,23 @@
+# Default owners for anything not covered by a more specific rule below.
+* @fred-lr @davidloiret @antoinegaston @SoniaBadene @gregoirelafay @Letullier-Thibert @FabienLelaquais
+
+# Backend
+/backend/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+
+# Frontend
+/frontend/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+
+# Integrations (external apps / manifests)
+/apps/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+
+# Documentation
+/docs/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+/dev-docs/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+
+# Scripts / tooling
+/scripts/ @fred-lr @davidloiret @antoinegaston @Letullier-Thibert @FabienLelaquais
+
+# NOTE: for areas that touch the Models vertical's expertise (e.g. evaluations,
+# scoring, routing), also request a review from our peers on that team.
+# A dedicated codeowners split scoped to the Models vertical will be added
+# later once ownership strategy for that area is finalized.

@@ -1,0 +1,266 @@
+"""The lab seed of the screens a UX round reviews (#11713): CTEM cases, five scored stages and a live funnel
+(``[service.lab-ctem-screens]``), one video with a ready render in every XTM One lab, and an opt-in PIR list
+with shared names. ``lab_asgi`` is loaded with a stand-in for ``app.main`` (as test_lab_seed_declarations.py
+does); ``lab.py`` is read from its syntax tree. dev-docs/reference/agentic-labs.md, "The xtm-one lab".
+"""
+
+from __future__ import annotations
+
+import ast
+import asyncio
+import importlib.util
+import sys
+import tomllib
+import types
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+LAB_DIR = ROOT / ".xtm-one" / "lab"
+CHECKS = ROOT / ".xtm-one" / "checks.toml"
+LAB = LAB_DIR / "lab.py"
+DOCS = ROOT / "dev-docs" / "reference" / "agentic-labs.md"
+
+pytestmark = pytest.mark.skipif(not CHECKS.is_file() or not LAB.is_file(), reason="no .xtm-one next to the backend")
+
+
+def _lab_asgi(monkeypatch):
+    async def backend(scope, receive, send):
+        return None
+
+    monkeypatch.setitem(sys.modules, "app.main", types.SimpleNamespace(application=backend))
+    monkeypatch.syspath_prepend(str(LAB_DIR))
+    spec = importlib.util.spec_from_file_location("lab_asgi_screens_under_test", LAB_DIR / "lab_asgi.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _sample():
+    spec = importlib.util.spec_from_file_location("lab_ctem_sample_screens", LAB_DIR / "ctem_sample.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _functions() -> dict[str, ast.FunctionDef]:
+    tree = ast.parse(LAB.read_text(encoding="utf-8"))
+    return {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+
+def test_the_screens_posture_scores_every_stage_above_zero_with_a_live_funnel(monkeypatch):
+    from app.api.v1 import ctem_metrics
+    from app.services.ctem_scoring import compute_posture
+
+    module = _lab_asgi(monkeypatch)
+    original = ctem_metrics.build_posture_for_user
+    assert module.screens_ctem_posture({}) is False
+    assert ctem_metrics.build_posture_for_user is original
+
+    async def live(db, user_id, vertical="cyber"):
+        return {"scoping": {}}, set()
+
+    monkeypatch.setattr(ctem_metrics, "build_posture_for_user", live)
+    assert module.screens_ctem_posture({"LAB_CTEM_SCREENS": "on"}) is True
+    facts, present = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
+    assert present == {"opencti", "openaev"}
+    stages = compute_posture(facts, present)["stages"]
+    assert [s["key"] for s in stages if s["score"]] == [
+        "scoping",
+        "discovery",
+        "prioritization",
+        "validation",
+        "remediation",
+    ]
+    funnel = facts["prioritization"]["funnel"]
+    assert "funnel_inputs" not in facts["prioritization"] and "funnel_tailored" not in facts["prioritization"]
+    live_layers = [layer for layer in funnel["layers"] if layer["state"] == "live"]
+    assert [layer["key"] for layer in live_layers] == ["known", "relevant", "exploitable"]
+    counts = [layer["count"] for layer in live_layers]
+    assert counts == sorted(counts, reverse=True) and all(counts) and not funnel["capped"]
+    assert funnel["needs_action"] == counts[-1]
+    # Another vertical keeps the live collection; each read is a fresh copy.
+    assert asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "fimi")) == ({"scoping": {}}, set())
+    again, _ = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
+    assert again == facts and again is not facts
+
+
+def test_the_screens_lab_is_a_ctem_sample_lab_left_out_of_the_large_facts_and_the_kept_today(monkeypatch):
+    module = _lab_asgi(monkeypatch)
+    assert "LAB_CTEM_SCREENS" in module.CTEM_SAMPLE_SWITCHES
+    assert module.large_ctem_facts({"LAB_CTEM_POSTURE_HISTORY": "1", "LAB_CTEM_SCREENS": "on"}) is False
+    assert module.keep_seeded_posture_today({"LAB_CTEM_POSTURE_HISTORY": "1", "LAB_CTEM_SCREENS": "on"}) is False
+    guard = ast.unparse(_functions()["seeds_ctem_large_facts"])
+    assert "'LAB_CTEM_SCREENS'" in guard
+
+
+def test_the_screens_issues_group_into_at_least_three_cases_with_stable_keys(monkeypatch):
+    from app.services import ctem_cases
+
+    module = _lab_asgi(monkeypatch)
+    now = datetime(2026, 11, 14, tzinfo=UTC)
+    issues = module.screens_source_issues(now)
+    assert len({i.member_id for i in issues}) == len(issues)
+    grouping = ctem_cases.group_issues(issues)
+    assert len(grouping.groups) == module.ctem_sample.SCREENS_CASES >= 3
+    kinds = {r.kind for r in grouping.remediations.values()}
+    assert kinds == {"upgrade", "course_of_action"}
+    # R3: the OpenAEV finding joins the FortiOS case by its CVE; the weak cipher has no known fix.
+    forti = next(k for k in grouping.groups if k.startswith("upgrade:fortinet/fortios@"))
+    assert "openaev:finding-lab-0001" in {i.member_id for i in grouping.groups[forti]}
+    assert [i.member_id for i in grouping.no_known_fix] == ["openaev:finding-lab-0002"]
+    assert ctem_cases.group_issues(module.screens_source_issues(now)).groups.keys() == grouping.groups.keys()
+    assert all(i.first_seen_at and i.first_seen_at < now for i in issues)
+
+
+def test_the_screens_cases_source_read_answers_the_fixture_only_when_asked(monkeypatch):
+    from app.services import ctem_cases_source
+
+    module = _lab_asgi(monkeypatch)
+    original = ctem_cases_source.read_open_issues
+    assert module.screens_ctem_cases({}) is False
+    assert ctem_cases_source.read_open_issues is original
+    monkeypatch.setattr(ctem_cases_source, "read_open_issues", original)
+    assert module.screens_ctem_cases({"LAB_CTEM_SCREENS": "on"}) is True
+    read = asyncio.run(ctem_cases_source.read_open_issues(None, "u", "cyber", members=["opencti:gone"]))
+    assert read.missing == [] and read.complete and read.closed == []
+    assert len(read.issues) == len(module.ctem_sample.SCREENS_ISSUES)
+    assert asyncio.run(ctem_cases_source.read_open_issues(None, "u", "fimi")).issues == []
+
+
+def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
+    functions = _functions()
+    helper = ast.unparse(functions["seed_ctem_screens"])
+    for part in (
+        "'POST', '/ctem-cases/recompute?vertical=cyber'",
+        "/ctem-cases?vertical=cyber",
+        ": 429 ",
+        "len(cases) < 3",
+        "/ctem-metrics/posture?vertical=cyber",
+        "len(scored) != 5",
+        "/ctem/cases",
+    ):
+        assert part in helper, part
+    seed = ast.unparse(functions["seed_entities"])
+    assert "lab_switch('LAB_CTEM_SCREENS', LAB_CTEM_SCREENS_STATES) == 'on'" in seed
+    assert "seeded.update(seed_ctem_screens(token, base))" in seed
+    assert "skipped['CTEM cases and scored stages']" in seed
+
+
+def test_the_screens_labs_are_the_default_lab_with_the_switch():
+    services = tomllib.loads(CHECKS.read_text(encoding="utf-8"))["service"]
+    lab = services["lab"]
+    twins = {
+        "lab-ctem-screens": {"LAB_CTEM_SCREENS": "on"},
+        "lab-ctem-screens-light": {"LAB_CTEM_SCREENS": "on", "LAB_THEME": "light"},
+        "lab-pirs-same-name": {"LAB_OPENCTI_PIRS_SAME_NAME": "on"},
+    }
+    for name, switches in twins.items():
+        service = services[name]
+        assert service["env"] == {**lab["env"], **switches}, name
+        own = ("env", "description")
+        assert {k: v for k, v in service.items() if k not in own} == {k: v for k, v in lab.items() if k not in own}, (
+            name
+        )
+    for switch in ("LAB_CTEM_SCREENS", "LAB_OPENCTI_PIRS_SAME_NAME"):
+        holders = {n for n, s in services.items() if switch in s.get("env", {})}
+        assert holders == {n for n, s in twins.items() if switch in s}, switch
+
+
+def test_pir_names_are_unique_unless_the_same_name_switch_is_on(monkeypatch):
+    module = _lab_asgi(monkeypatch)
+    rows = module.lab_pirs({})
+    assert len({r["name"] for r in rows}) == len(rows) == len(module.LAB_OPENCTI_PIRS)
+    both = module.lab_pirs({"LAB_OPENCTI_PIRS_SAME_NAME": "on"})
+    assert len({r["id"] for r in both}) == len(both) == len(rows) + 2
+    names = [r["name"] for r in both]
+    shared = {n for n in names if names.count(n) > 1}
+    assert len(shared) == 2 and shared <= {r["name"] for r in rows}
+
+
+def test_the_pir_stub_answers_the_same_name_pair_when_asked(monkeypatch):
+    from app.services import ctem_metrics_collector, organization_context, organization_context_draft
+
+    module = _lab_asgi(monkeypatch)
+    original = organization_context_draft.list_pirs
+
+    async def user_creds(db, user_id, provider):
+        return ("https://opencti.lab.invalid", {})
+
+    async def current_version(db, organization_id=None):
+        return None
+
+    monkeypatch.setattr(ctem_metrics_collector, "_user_creds", user_creds)
+    monkeypatch.setattr(organization_context, "current_version", current_version)
+    monkeypatch.setattr(organization_context_draft, "list_pirs", original)
+    assert module.stub_opencti_pirs({"LAB_OPENCTI_PIRS": "1", "LAB_OPENCTI_PIRS_SAME_NAME": "on"}) is True
+    rows, unavailable, _ = asyncio.run(organization_context_draft.list_pirs(None, user_id="admin"))
+    assert unavailable is None and len(rows) == len(module.LAB_OPENCTI_PIRS) + 2
+
+
+def _ready_render_seed():
+    spec = importlib.util.spec_from_file_location("lab_seed_ready_render", LAB_DIR / "seed_video_ready_render.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_ready_render_seed_stores_the_committed_mp4_and_its_poster_with_no_ffmpeg():
+    module = _ready_render_seed()
+    mp4, poster = module.fixtures()
+    head = mp4.read_bytes()[:64]
+    # An ISO MP4 with its moov first (faststart), under 100 KB with its poster: the player plays it at once.
+    assert head[4:8] == b"ftyp" and b"moov" in mp4.read_bytes()[:4096]
+    assert poster.read_bytes()[:3] == b"\xff\xd8\xff"
+    assert mp4.stat().st_size + poster.stat().st_size < 100_000
+    from app.services.video_studio.spec import QUALITY_PRESETS, VideoSpec
+
+    assert module.QUALITY in QUALITY_PRESETS
+    assert VideoSpec.model_validate(module.spec()).title == module.VIDEO_TITLE
+    source = ast.unparse(ast.parse((LAB_DIR / "seed_video_ready_render.py").read_text(encoding="utf-8")))
+    # No ffmpeg: the python-dev image of every lab has none (#11713 retest).
+    assert "ffmpeg_path" not in source and "subprocess" not in source
+    # Found again on a restart: the existing video with a current render is answered, nothing written twice.
+    assert source.index("found.latest_render_id is not None") < source.index("mp4, poster = fixtures()")
+    assert "status=JOB_READY" in source and "found.latest_render_id = render.id" in source
+
+
+def test_a_missing_fixture_raises_naming_it(monkeypatch, tmp_path):
+    module = _ready_render_seed()
+    monkeypatch.setattr(module, "VIDEO_FIXTURE", tmp_path / "gone.mp4")
+    with pytest.raises(FileNotFoundError, match=r"gone\.mp4"):
+        module.fixtures()
+
+
+def test_every_lab_seeds_the_ready_render_and_reads_it_back():
+    functions = _functions()
+    helper = ast.unparse(functions["seed_video_ready_render"])
+    for part in (
+        "'seed_video_ready_render.py'",
+        "sys.executable",
+        "env=seed_script_env()",
+        "ready_render",
+        "stderr_summary(process.stderr)",
+        "/videos/",
+    ):
+        assert part in helper, part
+    seed = ast.unparse(functions["seed_entities"])
+    assert "seeded.update(seed_video_ready_render(token, base))" in seed
+    # A failed seed stops the lab start with its error named; only a Community lab (no Video Studio) skips it.
+    call = seed.index("seeded.update(seed_video_ready_render(token, base))")
+    assert "raise SystemExit(f'lab: video ready render not seeded: " in seed[call : call + 400]
+    assert "if lab_switch('LAB_EDITION', LAB_EDITIONS) != 'community':" in seed[call - 200 : call]
+    assert "'LAB_EDITION=community: the Video Studio is Enterprise Edition'" in seed
+
+
+def test_the_screens_seed_is_documented():
+    text = DOCS.read_text(encoding="utf-8")
+    for part in (
+        "[service.lab-ctem-screens]",
+        "LAB_CTEM_SCREENS",
+        "LAB_OPENCTI_PIRS_SAME_NAME",
+        "seed_video_ready_render.py",
+    ):
+        assert part in text, part

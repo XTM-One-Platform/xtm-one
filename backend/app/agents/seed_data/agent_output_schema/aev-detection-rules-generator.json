@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "processes": {
+      "type": "string",
+      "description": "Executable files used by the malware (comma-separated)"
+    },
+    "commands": {
+      "type": "string",
+      "description": "System commands executed by the malware (comma-separated)"
+    },
+    "files": {
+      "type": "string",
+      "description": "Files created, read, or modified by the malware (comma-separated)"
+    },
+    "technique": {
+      "type": "string",
+      "description": "MITRE ATT&CK technique ID (e.g. T1047)",
+      "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"
+    }
+  },
+  "required": [
+    "processes",
+    "commands",
+    "files",
+    "technique"
+  ],
+  "additionalProperties": false
+}

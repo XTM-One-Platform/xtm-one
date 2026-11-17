@@ -1,0 +1,13 @@
+{
+  "slug": "ocr-benchmark",
+  "name": "OCR benchmark",
+  "family": "PROSE",
+  "description": "Built-in evaluation: scores how faithfully a model transcribes the documents of the OCR benchmark dataset - text PDFs, read through each provider's own file path, and scanned pages, read as images. Add the models to compare, then run it. Scanned pages need a vision-capable model; a text-only model fails those entries. Created once: its models, agents and schedule are yours to change.",
+  "dataset_slug": "ocr-benchmark",
+  "agent_slugs": ["ocr-benchmark-transcriber"],
+  "execution_mode": "llm_only",
+  "use_agent_default_model": true,
+  "model_ids": [],
+  "trigger_config": {},
+  "timeout_seconds": 1800
+}

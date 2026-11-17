@@ -1,0 +1,71 @@
+# Sandbox requirements — SOAR, Cloud Security & Automation
+# Covers: SOAR platforms, cloud APIs, supply chain security, email security, task automation.
+# Install independently; do not mix with other sandbox domain files in one environment.
+#
+# Build (final-minimal — distroless, no runtime CLI/shared-library needs):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python \
+#     --target final-minimal \
+#     --build-arg APT_FILE=apt.sandbox.base.txt \
+#     --build-arg REQ_FILE=requirements.sandbox.soar.txt \
+#     -t sandbox-python-soar:<version> .
+
+# ── SOAR ──────────────────────────────────────────────────────────────────────
+thehive4py==2.1.0              # TheHive API client
+cortexutils==2.2.1             # Cortex analyzer/responder utilities
+jira==3.10.5                   # Jira REST API client
+python-gitlab==8.4.0           # GitLab API client
+PyGithub==2.9.1                # GitHub API client
+slack-sdk==3.43.0              # Slack SDK
+pymsteams==0.2.5               # Microsoft Teams webhook client
+pysnow==0.7.17                 # ServiceNow REST API client
+
+# ── Cloud Security ────────────────────────────────────────────────────────────
+boto3==1.43.39                 # AWS SDK
+azure-identity==1.25.3         # Azure authentication
+azure-monitor-query==2.0.0     # Azure Monitor log queries
+azure-mgmt-security==7.0.0     # Azure Security Center management
+msgraph-sdk==1.58.0            # Microsoft Graph SDK
+google-cloud-logging==3.16.0   # Google Cloud Logging client
+google-cloud-securitycenter==1.45.0  # Google Security Command Center client
+kubernetes==36.0.2             # Kubernetes Python client
+docker==7.1.0                  # Docker SDK for Python
+
+# ── Supply Chain ──────────────────────────────────────────────────────────────
+cyclonedx-python-lib==11.11.0  # CycloneDX SBOM generation
+spdx-tools==0.8.5              # SPDX SBOM tooling
+packageurl-python==0.17.6      # Package URL (purl) implementation
+cvss==3.6                      # CVSS score computation
+pip-audit==2.10.1              # Dependency vulnerability auditing
+safety==3.8.1                  # Known vulnerability checker
+bandit==1.9.4                  # Python security linter
+sigstore==4.3.0                # Sigstore signing and verification
+
+# ── Email Security ────────────────────────────────────────────────────────────
+mail-parser==4.6.3             # Email parsing
+dkimpy==1.1.8                  # DKIM signing and verification
+authheaders==0.16.3            # Email authentication headers
+checkdmarc==5.17.3             # DMARC record validation
+pyspf==2.0.14                  # SPF record validation
+imapclient==3.1.0              # IMAP client
+exchangelib==5.6.0             # Exchange Web Services client
+extract-msg==0.55.0            # Outlook .msg file extraction
+
+# ── Automation ────────────────────────────────────────────────────────────────
+tenacity==9.1.4                # Retry library
+backoff==2.2.1                 # Exponential backoff decorator
+celery==5.6.3                  # Distributed task queue
+APScheduler==3.11.3            # Task scheduling
+fastapi==0.139.0               # ASGI web framework
+uvicorn==0.49.0                # ASGI server
+loguru==0.7.3                  # Structured logging
+structlog==26.1.0              # Structured logging
+python-json-logger             # JSON log formatter (unpinned — constrained by pycti transitive dep)
+
+# ── Infrastructure (unpinned — resolved across the packages above) ────────────
+requests
+urllib3
+certifi
+click
+packaging
+httpx
+anyio

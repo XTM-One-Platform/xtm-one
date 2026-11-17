@@ -1,0 +1,32 @@
+# Final-stage packages of the toolchain targets of Dockerfile.sandbox.dev
+# (toolchain-python, toolchain-node, toolchain-jvm, toolchain-rust,
+# toolchain-dbt). These images are BUILD environments for any repository's
+# own checks and tests, so they are the named exception to hardening rules 1
+# and 2 (dev-docs/sandbox-image-hardening.md, "Toolchain images"): the
+# compiler and the package manager are what they are for. They run only behind
+# AGENTIC_CODING (Filigran-internal Copilot mode), in pods whose egress is
+# allow-listed to the package registries or the registry proxy.
+#
+# git: the checks of a checkout read its history; a build may shell out to it
+#      (version plugins, git dependencies of Cargo, npm, uv).
+# ca-certificates: TLS to the registries or the proxy.
+# build-essential: gcc, g++, make and libc headers, for the source builds the
+#      package managers fall back to: Python sdists without a wheel, node-gyp
+#      native addons, Cargo build scripts and the Rust linker (cc).
+# pkg-config: located by the same native builds (-sys crates, node-gyp).
+# openssh-client: git dependencies over ssh (Cargo, npm, uv) when a checkout
+#      declares them; no key ships in the image.
+# libmagic1t64: the shared library python-magic loads at import (a connector's
+#      tests fail at collection without it); GitHub's ubuntu runners ship it,
+#      so a repository's CI never installs it and its tests assume it. Same
+#      package as apt.sandbox.cti.runtime.txt (Debian trixie name).
+# shellcheck: the ShellCheck gate of a pull request's CI (xtm-one runner-ci,
+#      relay-ci, release-skill-ci, ci-license-expiry), run as a sandbox check
+#      before the push; actionlint also lints the run: steps with it.
+git
+ca-certificates
+build-essential
+pkg-config
+openssh-client
+libmagic1t64
+shellcheck

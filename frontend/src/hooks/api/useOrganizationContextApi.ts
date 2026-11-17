@@ -1,0 +1,542 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/** The organization profile (#8987): the structured context every agent and fleet run reads. */
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
+import type { PrioritizationPolicy } from "@/lib/organization-profile";
+
+interface CrownJewel {
+  name: string;
+  business_service: string;
+  owner: string;
+  criticality: "low" | "medium" | "high" | "critical";
+  opencrq_asset_id: string;
+}
+
+interface TechStackEntry {
+  product: string;
+  vendor: string;
+  cpe: string;
+}
+
+interface AiSystem {
+  name: string;
+  kind: "assistant" | "agent" | "model_api" | "embedded";
+  owner: string;
+  exposure: "internal" | "partner" | "public";
+  openaev_asset_id: string;
+}
+
+export interface OrganizationProfile {
+  name: string;
+  sector: string;
+  sub_sector: string;
+  regions: string[];
+  size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
+  crown_jewels: CrownJewel[];
+  tech_stack: TechStackEntry[];
+  ai_systems: AiSystem[];
+  pir_ids: string[];
+  /** The last known OpenCTI name of each saved PIR (#9615). */
+  pir_names?: Record<string, string>;
+  risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
+  loaded_hourly_rate: number | null;
+  currency: string;
+  ticketing: { integration: string; project: string };
+  /** The Exposure Posture score aimed for, 0-100 (#11547 S2e); absent or null: no target. */
+  posture_target?: number | null;
+  /** The CTEM prioritization rules (#11543); the Governance & Risk page reads its accepted risks. */
+  prioritization_policy?: PrioritizationPolicy;
+}
+
+export interface OrganizationContextResponse {
+  version: number | null;
+  source: string | null;
+  created_at: string | null;
+  author_user_id: string | null;
+  profile: OrganizationProfile;
+  missing_fields: string[];
+}
+
+interface OpenCrqSyncPlan {
+  linked: { crown_jewel: string; opencrq_asset_id: string }[];
+  pushed_to_opencrq: { opencrq_asset_id: string; name: string; criticality: string }[];
+  pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
+  ambiguous: string[];
+  not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
+}
+
+export interface OpenCrqSyncResponse {
+  applied: boolean;
+  plan: OpenCrqSyncPlan;
+  errors: string[];
+  version: number | null;
+}
+
+const KEY = ["organization-context"] as const;
+
+export function useOrganizationContext() {
+  return useQuery<OrganizationContextResponse>({
+    queryKey: KEY,
+    queryFn: () => api.get("/organization-context"),
+  });
+}
+
+/** Whether the organization profile has never been saved: the read answered
+ *  and holds no version. `false` while the read is pending or failed, so no
+ *  "generic" notice flashes on load (#11324). */
+export function useNoOrganizationProfile(): boolean {
+  const context = useOrganizationContext();
+  return context.data !== undefined && context.data.version == null;
+}
+
+/** Whether every agent's prompt starts with the organization summary (#11533):
+ *  the platform default an agent or an assignment overrides with its own mode. */
+export interface OrganizationContextInjection {
+  enabled: boolean;
+  /** The categories every inheriting agent preloads after the basic block (none by default). */
+  categories?: string[];
+  /** Every category of the profile model, in order (read-only). */
+  available_categories?: string[];
+}
+
+export function useOrganizationContextInjection() {
+  return useQuery<OrganizationContextInjection>({
+    queryKey: [...KEY, "injection"],
+    queryFn: () => api.get("/organization-context/injection"),
+  });
+}
+
+export function useSaveOrganizationContextInjection() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextInjection, Error, { enabled: boolean; categories?: string[] }>({
+    mutationFn: (body) => api.put("/organization-context/injection", body),
+    onSuccess: (saved) => qc.setQueryData([...KEY, "injection"], saved),
+  });
+}
+
+/** A fleet that reads a part of the profile, from its documented prerequisites (#9173, S2). */
+export interface OrganizationFieldReader {
+  fleet_id: string;
+  name: string;
+}
+
+/** A seeded agent whose persona reads a part of the profile (#10063 r1 A3). */
+export interface OrganizationAgentReader {
+  agent_id: string;
+  name: string;
+}
+
+/** Profile field ("sector", "crown_jewels", ...) -> the fleets, and the seeded agents, the reader can see that need it. */
+export function useOrganizationReaders(enabled = true) {
+  return useQuery<{ readers: Record<string, OrganizationFieldReader[]>; agents?: Record<string, OrganizationAgentReader[]> }>({
+    queryKey: [...KEY, "readers"],
+    queryFn: () => api.get("/organization-context/readers"),
+    enabled,
+  });
+}
+
+/** The first-login organization setup proposal (#9173, S3): proposed once per instance. */
+export interface OrganizationSetupPrompt {
+  /** True when the caller must be shown the proposal now. */
+  propose: boolean;
+  /** The instance's recorded answer, null while unanswered. */
+  outcome: OrganizationSetupAnswer | null;
+  answered_at: string | null;
+}
+
+export type OrganizationSetupAnswer = "started" | "later" | "dismissed";
+
+/** Asked only for an administrator in XTM One mode: the server decides, the client never shows it twice. */
+export function useOrganizationSetupPrompt(enabled: boolean) {
+  return useQuery<OrganizationSetupPrompt>({
+    queryKey: [...KEY, "setup-prompt"],
+    queryFn: () => api.get("/organization-context/setup-prompt"),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useAnswerOrganizationSetupPrompt() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, OrganizationSetupAnswer>({
+    mutationFn: (outcome) => api.post("/organization-context/setup-prompt", { outcome }),
+    onSuccess: (state) => qc.setQueryData([...KEY, "setup-prompt"], state),
+  });
+}
+
+/** A profile proposed from what OpenCTI, OpenAEV and OpenCRQ hold: nothing is saved. */
+export interface OrganizationDraftResponse {
+  based_on_version: number | null;
+  profile: OrganizationProfile;
+  /** One entry per field the draft filled, with the platform it came from. */
+  filled: { field: string; source: string; detail: string }[];
+  /** One line per platform that could not be read, and why. */
+  unavailable: string[];
+  missing_fields: string[];
+}
+
+/** "form" for a profile typed by hand, "draft" for one started from the platforms, "ai_draft" for accepted AI proposals. */
+export type ProfileSource = "form" | "draft" | "ai_draft";
+
+interface SaveOrganizationContextBody {
+  profile: OrganizationProfile;
+  source: ProfileSource;
+  /** With "ai_draft": the accepted proposals' provenance, field -> {source, basis}, kept in the version history. */
+  sources?: Record<string, { source: string; basis: string }>;
+}
+
+export function useSaveOrganizationContext() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextResponse, Error, SaveOrganizationContextBody>({
+    mutationFn: (body) => api.put("/organization-context", body),
+    onSuccess: (saved) => qc.setQueryData(KEY, saved),
+  });
+}
+
+/** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
+export interface AiDraftProposal {
+  /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */
+  field: string;
+  value: unknown;
+  /** "description", "document:<name>", "website:<url>", "opencti", "openaev" or "opencrq". */
+  source: string;
+  confidence: "high" | "medium" | "low";
+  basis: string;
+  /** An inferred amount: shown "Check this", never accepted in bulk. */
+  check: boolean;
+  current: unknown;
+  /** The current version already holds a value: never pre-accepted. */
+  conflict: boolean;
+}
+
+export interface AiDraftResponse {
+  based_on_version: number | null;
+  proposals: AiDraftProposal[];
+  /** Fields the profile misses that nothing given supports, named, never guessed. */
+  not_supported: string[];
+  suggested_pirs: string[];
+  unavailable: string[];
+  notes: string[];
+  usage: Record<string, number>;
+}
+
+export interface AiDraftInput {
+  description: string;
+  documents: File[];
+  website: string;
+  usePlatforms: boolean;
+}
+
+/** One metered model call on the administrator's click; 429 is the quota refusal, answered before any read. */
+export function useAiDraftOrganizationContext() {
+  return useMutation<AiDraftResponse, Error, AiDraftInput>({
+    mutationFn: ({ description, documents, website, usePlatforms }) => {
+      const form = new FormData();
+      form.append("description", description);
+      form.append("website", website);
+      form.append("use_platforms", String(usePlatforms));
+      for (const file of documents) form.append("documents", file, file.name);
+      return api.postForm("/organization-context/ai-draft", form);
+    },
+    // The dialog says every failure inline; the global toast would repeat the backend text.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/**
+ * The connected OpenCTI's PIRs, read in view and edit mode alike (#9615); `unavailable` says
+ * why the list is empty (the page then shows the saved names), `opencti_url` links each PIR.
+ */
+export interface OrganizationPirsResponse {
+  pirs: { id: string; name: string }[];
+  unavailable: "not_connected" | "unreadable" | null;
+  opencti_url?: string;
+}
+
+export function useOrganizationPirs(enabled: boolean) {
+  return useQuery<OrganizationPirsResponse>({
+    queryKey: [...KEY, "pirs"],
+    queryFn: () => api.get("/organization-context/pirs"),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDraftOrganizationContext() {
+  return useMutation<OrganizationDraftResponse, Error, void>({
+    mutationFn: () => api.post("/organization-context/draft", {}),
+    // The section shows its own catalogued toast; the global one would repeat the backend text.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** A profile section the platform import fills (#11780); one run imports one section. */
+export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
+
+export interface ImportSourcesResponse {
+  sections: {
+    section: ImportSectionKey;
+    /** The profile field the section writes. */
+    field: string;
+    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
+  }[];
+}
+
+/** Which platform can feed each section for this administrator, and why not; read when the dialog opens. */
+export function useOrganizationImportSources(enabled: boolean) {
+  return useQuery<ImportSourcesResponse>({
+    queryKey: [...KEY, "import-sources"],
+    queryFn: () => api.get("/organization-context/import/sources"),
+    enabled,
+  });
+}
+
+export interface ImportRequestBody {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+  filters: Record<string, string | string[]>;
+  /** The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems). */
+  batch_type: string;
+  based_on_version?: number | null;
+  /** Remove the rows this source wrote before that it no longer returns (default: kept). */
+  remove_gone?: boolean;
+}
+
+/** One value a source offers for an import filter, read live (#11886). */
+export interface ImportFilterOption {
+  value: string;
+  label: string;
+  description: string;
+  /** The category of a subcategory. */
+  parent: string;
+}
+
+export interface ImportFilterOptionsResponse {
+  options: Record<string, ImportFilterOption[]>;
+  /** filter key -> why the source offers none (an older OpenCTI, a list that could not be read). */
+  unavailable: Record<string, string>;
+}
+
+/** The values each filter of a section offers in a source, so the dialog picks instead of typing. */
+export function useOrganizationImportOptions(section: ImportSectionKey | null, source: ImportSourceKey | null, enabled: boolean) {
+  return useQuery<ImportFilterOptionsResponse>({
+    queryKey: [...KEY, "import-options", section, source],
+    queryFn: () => api.get(`/organization-context/import/options?section=${section}&source=${source}`),
+    enabled: enabled && section !== null && source !== null,
+    // An optional side read: a failure is said inline by the filters, never the page's error boundary.
+    throwOnError: false,
+    retry: 1,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What an import does: the source's own count, then new, updated, unchanged and skipped rows. */
+interface ImportPlan {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+  source_total: number | null;
+  read: number;
+  counts: { new: number; updated: number; unchanged: number; skipped: number; gone: number };
+  new: string[];
+  updated: string[];
+  skipped: string[];
+  /** Rows a previous import from this source wrote that it no longer returns. */
+  gone: string[];
+  remove_gone: boolean;
+  /** Rows that took the batch type because the source gave them no category. */
+  batch_typed: number;
+  sample: Record<string, unknown>[];
+  truncated: boolean;
+  error: string | null;
+}
+
+export interface ImportPreviewResponse {
+  based_on_version: number | null;
+  plan: ImportPlan;
+  applied: boolean;
+  version: number | null;
+}
+
+/** The preview: nothing is written. */
+export function usePreviewOrganizationImport() {
+  return useMutation<ImportPreviewResponse, Error, ImportRequestBody>({
+    mutationFn: (body) => api.post("/organization-context/import/preview", body),
+    // The dialog says every failure inline.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** The import: the source is read again and the next profile version saved. */
+export function useApplyOrganizationImport() {
+  const qc = useQueryClient();
+  return useMutation<ImportPreviewResponse, Error, ImportRequestBody>({
+    mutationFn: (body) => api.post("/organization-context/import/apply", body),
+    onSuccess: (result) => {
+      if (result.applied) qc.invalidateQueries({ queryKey: KEY });
+    },
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+export type SyncFrequency = "hourly" | "daily" | "weekly";
+
+/** An import saved with a schedule (#11913); section "all" is the Sync all schedule that runs every other one. */
+export interface OrganizationSync {
+  id: string;
+  section: ImportSectionKey | "all";
+  source: ImportSourceKey | "";
+  filters: Record<string, string | string[]>;
+  batch_type: string;
+  remove_gone: boolean;
+  frequency: SyncFrequency;
+  hour: number;
+  minute: number;
+  /** 0 Monday ... 6 Sunday (weekly). */
+  weekday: number;
+  timezone: string;
+  enabled: boolean;
+  /** Why the sync stopped by itself (a missing or revoked token); empty while it runs. */
+  paused_reason: string;
+  owner_email: string | null;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_result: { added?: number; updated?: number; removed?: number; version?: number | null; error?: string | null } | null;
+}
+
+export type OrganizationSyncBody = Pick<
+  OrganizationSync,
+  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
+>;
+
+const SYNCS = [...KEY, "syncs"] as const;
+
+export function useOrganizationSyncs() {
+  return useQuery<OrganizationSync[]>({
+    queryKey: SYNCS,
+    queryFn: () => api.get("/organization-context/syncs"),
+    // The list says its own failure with a retry; it never takes the page down.
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+export function useCreateOrganizationSync() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSync, Error, OrganizationSyncBody>({
+    mutationFn: (body) => api.post("/organization-context/syncs", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SYNCS }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+export function useUpdateOrganizationSync() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSync, Error, { id: string; body: OrganizationSyncBody }>({
+    mutationFn: ({ id, body }) => api.put(`/organization-context/syncs/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SYNCS }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+export function useDeleteOrganizationSync() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.delete(`/organization-context/syncs/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SYNCS }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Run now: a run that changed the profile saves a version, so the profile is read again too. */
+export function useRunOrganizationSync() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSync, Error, string>({
+    mutationFn: (id) => api.post(`/organization-context/syncs/${id}/run`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** A knowledge base the profile links as enterprise knowledge (#11543), readable or not for the caller. */
+export interface EnterpriseKnowledgeLink {
+  knowledge_base_id: string;
+  label: string;
+  kind: string;
+  readable: boolean;
+}
+
+export function useEnterpriseKnowledge(enabled: boolean) {
+  return useQuery<EnterpriseKnowledgeLink[]>({
+    queryKey: [...KEY, "enterprise-knowledge"],
+    queryFn: () => api.get("/organization-context/enterprise-knowledge"),
+    enabled,
+  });
+}
+
+/** The preview (apply false) or the save (apply true) of an assets CSV (#11543). */
+export interface AssetsImportResponse {
+  applied: boolean;
+  assets: { name: string; type: string; environment: string; internet_facing: string; owner: string; group: string }[];
+  links: Record<string, string[]>;
+  errors: { line: number; name: string; message: string }[];
+  unknown_crown_jewels: string[];
+  replaced: string[];
+  version: number | null;
+}
+
+export function useImportOrganizationAssets() {
+  const qc = useQueryClient();
+  return useMutation<AssetsImportResponse, Error, { file: File; apply: boolean }>({
+    mutationFn: ({ file, apply }) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("apply", String(apply));
+      return api.postForm("/organization-context/assets/import", form);
+    },
+    onSuccess: (result) => {
+      if (result.applied) qc.invalidateQueries({ queryKey: KEY });
+    },
+    // The dialog says every failure inline.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** The fill agent of one connected integration (#11888): created once, its daily sync with `schedule`. */
+export interface FillAgentResponse {
+  agent_id: string;
+  agent_name: string;
+  created: boolean;
+  assignment_id: string | null;
+  /** The preview instruction the chat starts with. */
+  prompt: string;
+}
+
+export function useCreateOrganizationFillAgent() {
+  const qc = useQueryClient();
+  return useMutation<FillAgentResponse, Error, { integration_id: string; schedule: boolean; cron?: string; timezone?: string }>({
+    mutationFn: (body) => api.post("/organization-context/fill-agent", body),
+    // The chat picks its first agent from the cached agents list: refetch it (an unmounted list too)
+    // before the dialog navigates, else a new fill agent is missing and the chat opens on the default one.
+    onSuccess: () => {
+      // A new agent (and its sync assignment) is a node of the flow catalog too.
+      syncFlowNodeCatalog(qc);
+      return qc.invalidateQueries({ queryKey: ["agents"], refetchType: "all" });
+    },
+    // The dialog says the failure inline.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+export function useOpenCrqSync() {
+  const qc = useQueryClient();
+  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean }>({
+    mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
+    onSuccess: (result) => {
+      if (result.applied) qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}

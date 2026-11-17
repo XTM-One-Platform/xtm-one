@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "Always true when a query was generated."
+    },
+    "spl_query": {
+      "type": "string",
+      "description": "Raw SPL query — no markdown, no backticks, no comments. Use <br /> for line breaks between pipeline stages. A single end-to-end SPL pipeline (a Splunk ES correlation search is one query, not a list)."
+    },
+    "message": {
+      "type": "string",
+      "description": "Short human-readable summary of what the query detects and which MITRE technique(s) and data source(s) it relies on."
+    }
+  },
+  "required": [
+    "success",
+    "spl_query",
+    "message"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,29 @@
+{
+  "original": {
+    "id": "AAMkADQ5ZjZlNjNiLTNhYzMtNDEyNi04ZGQwLWE0NjJmZDk1MmY1NgBGAAAAAACqkBsAAEb3NNTP-original",
+    "conversationId": "AAQkADQ5ZjZlNjNiLTNhYzMtNDEyNi04ZGQwLWE0NjJmZDk1MmY1NgAQAGsJnKZdzF1Ivno2RRpM5Rw=",
+    "subject": "Q3 patch status",
+    "isDraft": false,
+    "body": {
+      "contentType": "html",
+      "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div dir=\"ltr\"><p>Hi Sam,</p><p>Where are we on the Q3 patch rollout?</p><table border=\"1\"><tr><td>Fleet</td><td>Servers</td></tr></table><p>Alice</p></div></body></html>"
+    },
+    "from": {"emailAddress": {"name": "Alice Martin", "address": "alice@contoso.com"}},
+    "toRecipients": [{"emailAddress": {"name": "Sam Example", "address": "sam@contoso.com"}}],
+    "ccRecipients": [{"emailAddress": {"name": "Bob Stone", "address": "bob@contoso.com"}}]
+  },
+  "draft": {
+    "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('sam%40contoso.com')/messages/$entity",
+    "id": "AAMkADQ5ZjZlNjNiLTNhYzMtNDEyNi04ZGQwLWE0NjJmZDk1MmY1NgBGAAAAAACqkBsAAEb3NNTP-draft",
+    "conversationId": "AAQkADQ5ZjZlNjNiLTNhYzMtNDEyNi04ZGQwLWE0NjJmZDk1MmY1NgAQAGsJnKZdzF1Ivno2RRpM5Rw=",
+    "conversationIndex": "AQHbTkK3awmcpl3MXUi+ejZFGkzlHLLTXrno",
+    "subject": "RE: Q3 patch status",
+    "isDraft": true,
+    "body": {
+      "contentType": "html",
+      "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div id=\"appendonsend\"></div><hr style=\"display:inline-block;width:98%\" tabindex=\"-1\"><div id=\"divRplyFwdMsg\" dir=\"ltr\"><font face=\"Calibri, sans-serif\" style=\"font-size:11pt\" color=\"#000000\"><b>From:</b> Alice Martin &lt;alice@contoso.com&gt;<br><b>Sent:</b> Wednesday, October 21, 2026 17:02<br><b>To:</b> Sam Example &lt;sam@contoso.com&gt;<br><b>Cc:</b> Bob Stone &lt;bob@contoso.com&gt;<br><b>Subject:</b> Q3 patch status</font><div>&nbsp;</div></div><div dir=\"ltr\"><p>Hi Sam,</p><p>Where are we on the Q3 patch rollout?</p><table border=\"1\"><tr><td>Fleet</td><td>Servers</td></tr></table><p>Alice</p></div></body></html>"
+    },
+    "toRecipients": [{"emailAddress": {"name": "Alice Martin", "address": "alice@contoso.com"}}],
+    "ccRecipients": []
+  }
+}

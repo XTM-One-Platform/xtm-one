@@ -1,0 +1,63 @@
+{
+  "procedure": "controlValidation.getControlValidationEvidence",
+  "source": "recorded",
+  "data": [
+    {
+      "techniqueId": "f3a76fa1-0323-53f9-abc4-0f78d2738d58",
+      "techniqueExternalId": "T1003",
+      "function": "prevent",
+      "scenarioId": "scenario-openaev-002",
+      "scenarioName": "Credential dumping simulation",
+      "simulationId": "simulation-openaev-002",
+      "securityPlatformType": "EDR",
+      "verdict": "validated",
+      "evaluatedAt": "2026-09-30T10:13:54.939Z",
+      "assets": [
+        {
+          "id": "09c9d0e1-f2a3-4b4c-ad6e-7f8a9b0c1d2e",
+          "name": "Card Authorization Engine",
+          "derivedName": null,
+          "verdict": "validated"
+        }
+      ]
+    },
+    {
+      "techniqueId": "87fcb5f3-2335-5df0-984a-f5b1ebdf5ec4",
+      "techniqueExternalId": "T1190",
+      "function": "detect",
+      "scenarioId": "scenario-openaev-cae-010",
+      "scenarioName": "Web exploitation simulation",
+      "simulationId": "simulation-openaev-cae-010",
+      "securityPlatformType": "EDR",
+      "verdict": "validated",
+      "evaluatedAt": "2026-10-01T10:13:54.939Z",
+      "assets": [
+        {
+          "id": "09c9d0e1-f2a3-4b4c-ad6e-7f8a9b0c1d2e",
+          "name": "Card Authorization Engine",
+          "derivedName": null,
+          "verdict": "validated"
+        }
+      ]
+    },
+    {
+      "techniqueId": "87fcb5f3-2335-5df0-984a-f5b1ebdf5ec4",
+      "techniqueExternalId": "T1190",
+      "function": "detect",
+      "scenarioId": "scenario-openaev-cae-011",
+      "scenarioName": "Web exploitation simulation",
+      "simulationId": "simulation-openaev-cae-011",
+      "securityPlatformType": "EDR",
+      "verdict": "contradicted",
+      "evaluatedAt": "2026-10-07T10:13:54.939Z",
+      "assets": [
+        {
+          "id": "09c9d0e1-f2a3-4b4c-ad6e-7f8a9b0c1d2e",
+          "name": "Card Authorization Engine",
+          "derivedName": null,
+          "verdict": "contradicted"
+        }
+      ]
+    }
+  ]
+}

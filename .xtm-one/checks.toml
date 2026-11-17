@@ -1,0 +1,2094 @@
+# The checks an agent may run on a checkout of this repository in the sandbox
+# (sandbox_run_command(check="<name>")). One table per check: argv (no shell),
+# cwd relative to the checkout root, timeout in seconds, image key of the
+# sandbox image that carries the tools (OPENSANDBOX_IMAGES: python-dev and
+# nodejs-dev are built from backend/sandbox/Dockerfile.sandbox.dev with the
+# repository's locked dependencies), report = "junit" | "sarif" | "lines" and
+# report_path, the file the check writes (relative to cwd), default_args, the
+# arguments that end argv when a call gives none (a call's args replace them,
+# so a linter's default target is not linted next to the named file). The sandbox has no
+# network: a check that needs an install fails with a connection error.
+#
+# [service.<name>] tables declare how the repository runs from a checkout
+# (sandbox_start_service): argv, cwd, image, port, ready_path, ready_log (a
+# text its output must hold before it counts ready), timeout (to
+# readiness), lifetime (after the last call), env, depends_on (started
+# first in the same container) and needs (the repository paths the service
+# reads: a start on a narrow checkout without one of them is refused, naming
+# the materialize_repository add_paths call that adds them). See
+# dev-docs/reference/sandbox-workspace.md.
+
+# The lab: the whole product from this checkout (PostgreSQL + pgvector, a
+# Redis-API store, an S3 store, a stub model, the backend with its migrations
+# and seeded administrator, the Vite dev server), for a look at a change in the
+# browser. Throwaway credentials, valid only inside the lab. LAB_THEME =
+# "light" (or "dark") in env opens every session in that theme: [service.lab-light]
+# below is this lab in light, for a light-theme review in one call.
+# Every lab seeds an upcoming and a missed scheduled one-off owned by a member of
+# "Lab sample fleet", so the Reschedule dialog opens with no override (log lines
+# "seeded scheduled one-off: <url>" and "seeded scheduled one-off (missed): <url>", #11252).
+# dev-docs/reference/agentic-labs.md, "The xtm-one lab".
+[service.lab]
+description = "xtm-one from this checkout: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+# A restart in place keeps the toolchain and the frontend install (yarn.lock unchanged): the backend boot,
+# migrations and seed only (#12236).
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*" }
+
+# The same lab with LAB_THEME = "light": the theme preference of the administrator
+# and of the peer is light before their signed-in links print, so the first load
+# and every reload of either session paint light on every layer with no
+# preferences call. The default lab stays unset.
+[service.lab-light]
+description = "xtm-one from this checkout in the light theme: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_THEME = "light" }
+
+# The same lab with LAB_WORKER = "1": the SAQ worker runs beside the backend once it is ready, so its
+# orchestration reconciler claims what the lab queues after its start. A manually triggered assignment
+# run (POST /api/v1/assignments/{id}/trigger) then executes on the stub model and reaches completed or
+# failed with its context and trace, for a review of a new run's detail page (#11297). The rows the seed
+# scripts write keep their status: the seeded executions hold a far lease of the "lab-seed" owner, which
+# no worker presence names, and the seeded running evaluation run names no execution row. Runs the
+# backend queues itself (the CTEM boot fan-out) do execute here. The default labs stay worker-less.
+# [service.lab-worker-light] is the light twin.
+[service.lab-worker]
+description = "xtm-one from this checkout with the worker running (assignment runs execute on the stub model): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_WORKER = "1" }
+
+[service.lab-worker-light]
+description = "xtm-one from this checkout in the light theme with the worker running (assignment runs execute on the stub model): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_WORKER = "1", LAB_THEME = "light" }
+
+# The lab serving a @filigran/chatbot branch instead of the version frontend/package.json pins (#10928):
+# LAB_CHATBOT names a directory of this checkout holding a filigran-ui checkout (or a built
+# @filigran/chatbot package). Two calls: materialize_repository(FiligranHQ/filigran-ui, ref=<branch>,
+# path="<this checkout>/lab-chatbot", sub_paths ["packages/filigran-chatbot", "package.json", "yarn.lock"]), then
+# sandbox_start_service(service="lab-chatbot"). A XTM-Foundation/filigran-design-system head (a pnpm monorepo,
+# #11175) takes sub_paths ["packages/filigran-chatbot", "packages/filigran-design-system", "package.json",
+# "pnpm-workspace.yaml", "pnpm-lock.yaml", "llms.txt", "llms-full.txt"] and is built with pnpm (install
+# --frozen-lockfile, then --filter @filigran/chatbot run build). The lab builds the package when it has no dist/, puts its
+# package.json and dist/ over frontend/node_modules/@filigran/chatbot (every entry: the panel, /markdown,
+# /workspaces, /styles.css) and logs "chatbot: serving <version> from <path>, <repository>@<commit>".
+# No vite.config.ts edit. dev-docs/reference/agentic-labs.md, "A @filigran/chatbot branch in the lab".
+# The floating, docked and full screen displays (#11319): /lab-chatbot.html?mode=floating|sidebar|fullscreen|inline,
+# a lab-only page; the log prints "chatbot display <mode>: <signed-in URL>" per display before "lab up:".
+[service.lab-chatbot]
+description = "xtm-one from this checkout with the @filigran/chatbot of lab-chatbot/: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend", "lab-chatbot"]
+timeout = 600
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CHATBOT = "lab-chatbot" }
+
+# The same @filigran/chatbot branch in Copilot mode (#11300): [service.lab-copilot] plus LAB_CHATBOT, so a
+# chatbot change that differs by mode (the Copilot blue accent against the XTM One purple) is seen rendered
+# in both. Same lab-chatbot/ checkout and build; the log line ends ", in copilot mode". Needs the Enterprise
+# Edition licence the platform hands a lab, like [service.lab-copilot].
+[service.lab-chatbot-copilot]
+description = "xtm-one from this checkout in Copilot mode with the @filigran/chatbot of lab-chatbot/: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend", "lab-chatbot"]
+timeout = 600
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*", LAB_CHATBOT = "lab-chatbot" }
+
+# The lab with cost data hidden (OBSERVABILITY_COST_DATA_ENABLED = false, #9836 R5b): the ROI
+# report answers cost_masked, so the Value page, the fleet ROI view and the agent figures show
+# "Hidden" (never 0) on the seeded ROI records. The UX review of a cost_masked state starts this.
+[service.lab-roi-cost-masked]
+description = "xtm-one from this checkout with cost data hidden (ROI cost_masked): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", OBSERVABILITY_COST_DATA_ENABLED = "false" }
+
+# The lab with a live model (LAB_MODEL = "live"; Sam's decision, option A, 7 Nov 2026): the
+# platform mints a short-lived key of its own LLM proxy for this pod at start (LAB_MODEL_API_KEY,
+# LAB_MODEL_BASE_URL, LAB_MODEL_NAMES; services/sandbox_workspace/model_keys.py) and revokes it at
+# stop; the backend's custom OpenAI provider points at it. No provider credential in the pod. On a
+# platform without AGENTIC_LABS_MODEL_KEY_ACCOUNT the lab starts with the stub and says so.
+# dev-docs/reference/agentic-labs.md, "A live model (option A)".
+[service.lab-live]
+description = "xtm-one from this checkout with a live model through the Copilot's LLM proxy: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_MODEL = "live" }
+
+# The OOTB routing eval lab (#9646 slice 2b): [service.lab-live] plus an OpenCTI of its own in the
+# same pod, each product on the image the operator allows in AGENTIC_LABS_IMAGES (keys opencti,
+# opencti-search, opencti-broker, opencti-redis, opencti-s3; ports apart from the lab's stores).
+# The OpenCTI holds the lab's registration token and registers itself with the lab's backend
+# (LAB_OPENCTI = "live": the seed skips its .invalid OpenCTI row and waits for the real one; the
+# log line "seeded live OpenCTI integration: <url>"). The runner of #10169 then replays the golden
+# tasks: dev-docs/ootb-routing-eval.md, "The live half (lab)". On a platform without the five
+# image keys the start is refused with the key named; heavy (about 6 GB), started only on purpose.
+# LAB_WORKER = "1" runs the SAQ worker beside the backend (its reconciler claims the delegated background
+# tasks, e.g. the Dashboard Creator's widget tasks; without it they stay queued, #11023).
+[service.lab-ootb-live]
+description = "xtm-one with a live model and an OpenCTI of its own registered through the real path (OOTB routing eval): sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 900
+restart_target = 120
+lifetime = 7200
+depends_on = ["lab-opencti"]
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_MODEL = "live", LAB_OPENCTI = "live", LAB_OPENCTI_IDENTITIES = "0", LAB_OPENCTI_PIRS = "0", LAB_WORKER = "1" }
+
+[service.lab-opencti-search]
+description = "the search engine of the lab's OpenCTI"
+argv = ["sh", "-c", "exec /usr/share/opensearch/opensearch-docker-entrypoint.sh -Ediscovery.type=single-node"]
+port = 9200
+image = "opencti-search"
+timeout = 600
+env = { DISABLE_SECURITY_PLUGIN = "true", DISABLE_INSTALL_DEMO_CONFIG = "true", OPENSEARCH_JAVA_OPTS = "-Xms1g -Xmx1g" }
+
+[service.lab-opencti-broker]
+description = "the message broker of the lab's OpenCTI"
+argv = ["rabbitmq-server"]
+port = 5672
+image = "opencti-broker"
+timeout = 600
+
+[service.lab-opencti-redis]
+description = "the Redis of the lab's OpenCTI (6380: the lab's own store holds 6379)"
+# No persistence: the working directory is the read-only checkout, so an RDB snapshot fails and Redis then
+# refuses every write (MISCONF): OpenCTI's manager locks fail and its XTM One registration never retries.
+argv = ["sh", "-c", "exec redis-server --port 6380 --bind 127.0.0.1 --save '' --appendonly no"]
+port = 6380
+image = "opencti-redis"
+
+[service.lab-opencti-s3]
+description = "the S3 store of the lab's OpenCTI (9002: the lab's own store holds 9000)"
+# The S3 binary is "silo" on pgsty/silo (the image OpenCTI's own compose runs) and "minio" on minio/minio.
+argv = ["sh", "-c", "exec \"$(command -v silo || command -v minio)\" server /tmp/opencti-s3 --address 127.0.0.1:9002 --console-address 127.0.0.1:9003"]
+port = 9002
+image = "opencti-s3"
+env = { MINIO_ROOT_USER = "opencti", MINIO_ROOT_PASSWORD = "lab-only-opencti-s3" }
+
+[service.lab-opencti]
+description = "the lab's OpenCTI, registered with the lab's XTM One backend"
+# A product image gets no harness port wait (labs.py service_script) and OpenCTI checks its
+# dependencies once then exits: .xtm-one/lab/opencti-start.sh waits for each depends_on port, for the
+# search cluster at yellow and for a Redis write (a fresh OpenSearch or Redis answers on its port
+# before it serves, and the first-start initialisation then exits with code 1), generates the
+# per-start app:encryption_key OpenCTI 7.x needs, and logs node's exit code with its cause.
+argv = ["sh", ".xtm-one/lab/opencti-start.sh"]
+port = 4000
+image = "opencti"
+ready_path = "/health?health_access_key=lab-only-opencti-health"
+timeout = 900
+depends_on = ["lab-opencti-search", "lab-opencti-broker", "lab-opencti-redis", "lab-opencti-s3"]
+env = { NODE_OPTIONS = "--max-old-space-size=4096", APP__APP_LOGS__LOGS_LEVEL = "debug", APP__PORT = "4000", APP__BASE_URL = "http://localhost:4000", APP__HEALTH_ACCESS_KEY = "lab-only-opencti-health", APP__ADMIN__EMAIL = "lab@filigran.io", APP__ADMIN__PASSWORD = "lab-only-password", APP__ADMIN__TOKEN = "00000000-0000-4000-8000-000000000001", ELASTICSEARCH__URL = "http://localhost:9200", RABBITMQ__HOSTNAME = "localhost", RABBITMQ__PORT = "5672", RABBITMQ__USERNAME = "guest", RABBITMQ__PASSWORD = "guest", REDIS__HOSTNAME = "localhost", REDIS__PORT = "6380", MINIO__ENDPOINT = "localhost", MINIO__PORT = "9002", MINIO__USE_SSL = "false", MINIO__ACCESS_KEY = "opencti", MINIO__SECRET_KEY = "lab-only-opencti-s3", XTM__XTM_ONE_URL = "http://localhost:8100", XTM__XTM_ONE_TOKEN = "lab-only-registration-token-never-used-outside-the-lab" }
+
+# OpenCTI's Ask Ariane panel rendered in OpenCTI's own front (chat-layout program, xtm-one #10910): the
+# lab's OpenCTI above answers GraphQL and an OpenCTI front built from a nested checkout serves the UI.
+# Before the start: materialize_repository(OpenCTI-Platform/opencti, ref=<branch or master>, sub_paths =
+# OPENCTI_SUB_PATHS of .xtm-one/lab/opencti_ask_ariane.py, path="<this checkout>/opencti"), at the tag of the
+# opencti image key (7.261106.0 today; master's front queries fields that image lacks). /chatbot/* is
+# answered by the script from fixtures (agents, two seeded conversations, a long Markdown answer streamed
+# in chunks, "slow" holds the working state, "error" ends on an error frame), so no XTM One is needed. To
+# render a @filigran/* release that tag does not pin (a chatbot bump PR on master), write opencti-pins.json at
+# this checkout's root ({"@filigran/chatbot": "3.25.0", "@filigran/design-system": "1.5.0"}) or set
+# LAB_OPENCTI_PINS: the script rewrites the front's pins and yarn resolves the lock ("front pins overridden"). To
+# render a HOST change of master or a PR head (Ask Ariane panel, Theme*.ts, fds-tokens.generated.ts) on that tag
+# front, materialize the ref a second time with HOST_PATHS of the script under <this checkout>/opencti-host: the
+# script copies them over the tag checkout before the install ("host files from <repo>@<commit> (<ref>) overlaid"). The
+# start log names the seeded conversations ("seeded Ask Ariane conversation: <url>"). Heavy (about 6 GB,
+# the five OpenCTI image keys), started only on purpose.
+[service.lab-opencti-ask-ariane]
+description = "OpenCTI's front from a nested opencti/ checkout with the Ask Ariane panel answering from fixtures: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/opencti_ask_ariane.py"]
+port = 3200
+image = "python-dev"
+ready_path = "/chatbot/config"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab"]
+timeout = 900
+lifetime = 7200
+depends_on = ["lab-opencti"]
+
+# OpenCTI at a PR head, backend AND front from the same nested checkout (xtm-one #11862): the release-tag lab above
+# renders a master PR head blank (its front queries fields the tag's backend lacks). Before the start:
+# materialize_repository(OpenCTI-Platform/opencti, ref=<the PR head>, sub_paths = SUB_PATHS of
+# .xtm-one/lab/opencti_pr_head.py, path="<this checkout>/opencti"). The script installs both workspaces, writes the
+# connectors manifest, runs graphql-codegen and the esbuild development build, starts the backend on 4100 against
+# the lab's OpenSearch, RabbitMQ, Redis and S3 under its own prefixes (migrations run at boot), compiles Relay and
+# serves the front through a proxy that signs every request in as the lab admin. It seeds a label, a vocabulary
+# entry and one filled and one empty Organization, Individual, Sector, System, Malware, Indicator and Report; the
+# start answer lists their pages ("seeded opencti page <label>: <url>"). A PR adds its own seed in
+# opencti-lab-seed.json at this checkout's root. Theme: /lab/theme/dark or /lab/theme/light (?next=<path>). Heavy
+# (the four OpenCTI store image keys, a full backend build), started only on purpose.
+[service.lab-opencti-pr-head]
+description = "OpenCTI's backend and front built from a nested opencti/ checkout at a PR head, seeded, every page signed in as the lab admin"
+argv = ["python", ".xtm-one/lab/opencti_pr_head.py"]
+port = 3500
+# toolchain-node, not python-dev: OpenCTI's backend links a native module (node-calls-python) that node-gyp
+# compiles with make and a C++ compiler, which only the toolchain images carry.
+image = "toolchain-node"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded opencti page"
+needs = [".xtm-one/lab"]
+timeout = 900
+lifetime = 7200
+depends_on = ["lab-opencti-search", "lab-opencti-broker", "lab-opencti-redis", "lab-opencti-s3"]
+
+# OpenAEV's Ask Ariane panel rendered in OpenAEV's own front (xtm-one #11275): no OpenAEV backend runs. Before
+# the start: materialize_repository(OpenAEV-Platform/openaev, ref=<branch or main>, sub_paths=["openaev-front"],
+# path="<this checkout>/openaev"). The script answers /api/xtmone/chat/* from the OpenCTI lab's fixtures (context
+# usage frames included, so the composer gauge renders), the session calls from a signed-in lab admin on an
+# Enterprise Edition platform connected to XTM One, and every other /api call empty. Theme: /lab/theme/dark or
+# /lab/theme/light. Pins: openaev-pins.json at this checkout's root or LAB_OPENAEV_PINS (name@version pairs).
+[service.lab-openaev-ask-ariane]
+description = "OpenAEV's front from a nested openaev/ checkout with the Ask Ariane panel answering from fixtures, signed in as lab@filigran.io"
+argv = ["python", ".xtm-one/lab/openaev_ask_ariane.py"]
+port = 3300
+image = "python-dev"
+ready_path = "/api/xtmone/chat/agents"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab"]
+timeout = 900
+lifetime = 7200
+
+# OpenCRQ's Ask Ariane panel rendered in OpenCRQ's own front (xtm-one #11275): no OpenCRQ backend runs. Before
+# the start: materialize_repository(OpenCRQ-Platform/opencrq, ref=<branch or main>, sub_paths=["package.json",
+# "yarn.lock", ".yarnrc.yml", "tsconfig.base.json", "tsconfig.json", "front", "back", "module", "utils",
+# "eslint-rules", "integration-tests/package.json"], path="<this checkout>/opencrq"); the start exits 1 naming any
+# missing one (the front's tsconfig extends ../tsconfig.base.json). The script answers /api/xtm-one/chat/* from
+# the OpenCTI lab's fixtures (context usage frames included), the shell's tRPC calls (authStatus, isLoggedIn,
+# tenants, xtmOne.getSettings) for a signed-in lab admin on an Enterprise Edition platform connected to XTM One,
+# and every other procedure empty.
+# Theme: /lab/theme/dark or /lab/theme/light. Pins: opencrq-pins.json at this checkout's root or LAB_OPENCRQ_PINS.
+[service.lab-opencrq-ask-ariane]
+description = "OpenCRQ's front from a nested opencrq/ checkout with the Ask Ariane panel answering from fixtures, signed in as lab@filigran.io"
+argv = ["python", ".xtm-one/lab/opencrq_ask_ariane.py"]
+port = 3400
+image = "python-dev"
+ready_path = "/api/xtm-one/chat/agents"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab"]
+timeout = 900
+lifetime = 7200
+
+# OpenCRQ built from the PR head (xtm-one #11799, item 5): its own backend, migrations and platform seed (tenants,
+# assets, threats, risk scenarios, CRQ simulations with their loss estimates) on the lab's PostgreSQL, the front
+# from Vite over it, the seeded administrator lab@filigran.io signed in by a session row. Before the start:
+# materialize_repository(OpenCRQ-Platform/opencrq, ref=<the PR head>, sub_paths=["package.json", "yarn.lock",
+# ".yarnrc.yml", "tsconfig.base.json", "tsconfig.json", "front", "back", "module", "utils", "eslint-rules",
+# "integration-tests/package.json"], path="<this checkout>/opencrq"). Open /lab/sign-in first, then any page;
+# theme: /lab/theme/dark or /lab/theme/light.
+[service.lab-opencrq]
+description = "OpenCRQ back and front built from a nested opencrq/ checkout at the PR head, migrated, platform-seeded (risk scenarios with quantified results), signed in as lab@filigran.io"
+argv = ["python", ".xtm-one/lab/opencrq_pr_head.py"]
+port = 3600
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py"]
+timeout = 900
+lifetime = 7200
+
+# The Filigran licensing application built from the PR head (xtm-one #12370): next dev on the lab's PostgreSQL
+# (database licensing, the app's knex migrations), one seeded customer (/customer/0f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b)
+# and the Filigran License product, signed in through the app's own development provider (NODE_ENV=development and
+# LOCAL_ADMIN_*, compiled out of every next build; no Entra ID). Before the start:
+# materialize_repository(XTM-Internals/filigran-licenses, ref=<the PR head>, sub_paths=["package.json", "yarn.lock",
+# ".yarnrc.yml", "knexfile.ts", "next.config.ts", "tsconfig.json", "postcss.config.js", "tailwind.config.ts",
+# "public", "scripts", "src", "styles"], path="<this checkout>/filigran-licenses"). Open /lab/sign-in first (it
+# lands on the seeded customer); theme: /lab/theme/dark or /lab/theme/light.
+[service.lab-filigran-licenses]
+description = "Filigran licensing app (next dev) from a nested filigran-licenses/ checkout at the PR head, migrated, one customer and the Filigran License product seeded, signed in as lab@filigran.io"
+argv = ["python", ".xtm-one/lab/filigran_licenses_pr_head.py"]
+port = 3800
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py"]
+timeout = 900
+lifetime = 7200
+
+# OpenAEV built from the PR head (xtm-one #11799, item 5): its own backend (Maven reactor, Flyway migrations) on
+# the lab's PostgreSQL and S3, OpenSearch and RabbitMQ from the OpenCTI lab's store services, the front from Vite
+# over it, seeded through the API (assets, an asset group, a scenario, a simulation), the platform administrator
+# lab@filigran.io signed in by its token cookie. Before the start: materialize_repository(OpenAEV-Platform/openaev,
+# ref=<the PR head>, sub_paths=["pom.xml", "openaev-api", "openaev-framework", "openaev-model",
+# "openaev-build-services", "openaev-maven-plugin", "openaev-es8-client", "openaev-es9-client",
+# "openaev-opensearch-client", "openaev-ocsf", "openaev-front"], path="<this checkout>/openaev"). Open
+# /lab/sign-in first, then any page; theme: /lab/theme/dark or /lab/theme/light. Heavy (a JVM build), started
+# only on purpose.
+[service.lab-openaev]
+description = "OpenAEV back and front built from a nested openaev/ checkout at the PR head, migrated, seeded (assets, a scenario, a simulation), signed in as lab@filigran.io"
+argv = ["python", ".xtm-one/lab/openaev_pr_head.py"]
+port = 3700
+# toolchain-jvm: Temurin JDK 21 and Maven 3.9 (openaev java.version 21), Python for this script.
+image = "toolchain-jvm"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py"]
+timeout = 1500
+# A restart in place keeps the database, the jar (no source newer), the front install and the seed: the JVM boot
+# alone, measured at about 165 s without a class data sharing archive, read from one at the restart (#12236).
+restart_target = 180
+lifetime = 7200
+depends_on = ["lab-opencti-search", "lab-opencti-broker"]
+
+# The default XTM One labs seed the CTEM fleet opt-in states (LAB_CTEM_FLEET_OPTIN unset
+# reads "mixed"): one CTEM fleet on with a run estimate above 0, one partially on, one
+# paused (user_toggle), the others not set up, so the Fleet activity card of / renders its
+# four badges with no fetch override; the log line "seeded CTEM fleet opt-in states: <url>".
+# LAB_CTEM_FLEET_OPTIN = "off" switches every CTEM fleet automation off and reads each fleet's
+# health back: the "all off" invitation; the log line "seeded CTEM fleets all off: <url>" (#9703).
+# The EE licence and the peer (lab-peer@filigran.io, the invitation without buttons) are the
+# default lab's; the invitation's dismissal is the user's own (ctem_fleet_invite_dismissed), never
+# seeded, so it shows on every fresh start. [service.lab-ctem-fleets-off-light] is the light twin.
+[service.lab-ctem-fleets-off]
+description = "xtm-one from this checkout with every CTEM fleet off (the Fleet activity invitation): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_FLEET_OPTIN = "off" }
+
+[service.lab-ctem-fleets-off-light]
+description = "xtm-one from this checkout with every CTEM fleet off (the Fleet activity invitation), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_FLEET_OPTIN = "off", LAB_THEME = "light" }
+
+# The XTM One home states the default lab cannot reach, on real data. LAB_EDITION =
+# "community" starts the backend with ENTERPRISE_LICENSE empty: the edition resolves to
+# community and the home shows the first-visit splash (CtemTrialSplash), the log line
+# "seeded CE splash: <url>". LAB_DEFAULT_MODEL = "none" clears the default model once
+# the rows are seeded: the home's notices carry "No default model configured", the log
+# line "seeded model-less state: <url>"; the CTEM briefing and stage assessments then answer
+# no_model (the boot fan-out's pending runs deleted), the line "seeded CTEM no-model lock:
+# <url>" (or "not seeded CTEM no-model lock: <why>"). Each in dark and in light (LAB_THEME).
+[service.lab-ce]
+description = "xtm-one from this checkout in Community Edition (first-visit splash): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_EDITION = "community" }
+
+[service.lab-ce-light]
+description = "xtm-one from this checkout in Community Edition (first-visit splash), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_EDITION = "community", LAB_THEME = "light" }
+
+# The Enterprise License card of Settings > Platform on a database-stored licence, on real data.
+# LAB_LICENSE_SOURCE = "database" starts the backend with ENTERPRISE_LICENSE blanked and saves the
+# licence the platform hands the lab through PUT /settings/platform before any other seed, then reads
+# license_source "database" and has_db_license true back: the card shows Update License and Remove
+# License (no env override), and Remove reaches the no-licence card (Install / Start free trial /
+# Contact Filigran). The log line "seeded database licence: <url>" (or "not seeded database licence:
+# <why>"). [service.lab-db-license-light] is the light twin.
+[service.lab-db-license]
+description = "xtm-one from this checkout with the licence stored in the database (Update / Remove License): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_LICENSE_SOURCE = "database" }
+
+[service.lab-db-license-light]
+description = "xtm-one from this checkout with the licence stored in the database (Update / Remove License), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_LICENSE_SOURCE = "database", LAB_THEME = "light" }
+
+[service.lab-model-less]
+description = "xtm-one from this checkout with no default model (home notice): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_DEFAULT_MODEL = "none" }
+
+[service.lab-model-less-light]
+description = "xtm-one from this checkout with no default model (home notice), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_DEFAULT_MODEL = "none", LAB_THEME = "light" }
+
+# The two AiLockedFooter lock reasons the edition and model switches above do not open, on
+# real rows (no licence = lab-ce, no default model = lab-model-less). LAB_AI = "off" switches
+# the platform's runtime AI toggle off once every row is seeded (/platform/config answers
+# ai_enabled false), the log line "seeded platform AI off: <url>". LAB_PEER_GROUP_AI = "off"
+# puts lab-peer in "Lab group with AI off" (its /auth/me answers ai_disabled_by_group true),
+# the log lines "seeded group with AI off: <url>" and "seeded signed-in session (peer, group
+# AI off): <url>", the URL that opens the peer's session.
+[service.lab-ai-off]
+description = "xtm-one from this checkout with the platform's AI switched off (AI lock footers): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_AI = "off" }
+
+[service.lab-group-ai-off]
+description = "xtm-one from this checkout with lab-peer in a group whose AI is off (group AI lock footer): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_PEER_GROUP_AI = "off" }
+
+# The first-login organization setup dialog (#9173 S3) on the real API. LAB_ORG_SETUP_PROMPT =
+# "on" leaves the organization profile unsaved (every other lab saves version 1), so
+# GET /organization-context/setup-prompt answers propose true to lab@filigran.io, read back at
+# start: the dialog renders on sign-in with no fetch override; Dismiss, Later and Set up now
+# each record their outcome once (the proposal never comes back on that lab); lab-peer sees
+# nothing. The log line "seeded org setup prompt: <url>" (or "not seeded org setup prompt: <why>").
+[service.lab-org-setup-prompt]
+description = "xtm-one from this checkout with no organization profile saved (first-login setup dialog): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_ORG_SETUP_PROMPT = "on" }
+
+[service.lab-org-setup-prompt-light]
+description = "xtm-one from this checkout with no organization profile saved (first-login setup dialog), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_ORG_SETUP_PROMPT = "on", LAB_THEME = "light" }
+
+# Long-thread chat timings (scroll, open, switch) on stored history. LAB_PERF_THREAD = "on"
+# writes "Perf 200-message thread" (100 turns of tables, lists, code and prose) and "Perf short
+# thread" for lab@filigran.io through seed_perf_thread.py, reads both back and logs
+# "perf thread: {kind: id}" (or "not seeded perf thread: <why>"). Every other lab leaves it off.
+[service.lab-perf-thread]
+description = "xtm-one from this checkout with a 200-message conversation (chat timings): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_PERF_THREAD = "on" }
+
+# The env-managed Langfuse lock of Settings > Usage and quotas > Observability on a real answer.
+# Every lab saves lab-only Langfuse keys through the API (LAB_LANGFUSE unset = "stored": the
+# Configured badge and the "Stored: type to replace" placeholders, log line "seeded Langfuse stored
+# keys: <url>"). LAB_LANGFUSE = "env" hands the same keys to the backend as LANGFUSE_*, so its boot
+# seeds the row and GET /api/v1/settings/langfuse answers is_from_env true, the log line "seeded
+# Langfuse env-managed: <url>". The host is the loopback's discard port: nothing reaches a Langfuse.
+[service.lab-langfuse-env]
+description = "xtm-one from this checkout with Langfuse managed by LANGFUSE_* (Observability env lock): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_LANGFUSE = "env" }
+
+# The same lab with LAB_CTEM_SAMPLE = "1": OpenAEV is left unregistered (a CTEM
+# blind spot with its Connect button), the cyber posture collection answers the
+# deterministic OpenCTI facts of .xtm-one/lab/ctem_sample.py (lab_asgi) and three
+# earlier recorded days are written, so the command center's Coverage matrix and
+# Exposure stats render missing cells, trend lines and changes with no fetch
+# override. The start log prints "seeded CTEM coverage and history: <url>".
+[service.lab-ctem]
+description = "xtm-one from this checkout with a CTEM blind spot and a multi-day posture history: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SAMPLE = "1" }
+
+# The same lab with LAB_CTEM_SAMPLE_STATE = "on": the command center's sample state on
+# real answers. The posture collection answers no product and no fact (lab_asgi),
+# OpenCRQ is left unregistered, and the boot fan-out's active CTEM runs are deleted:
+# / shows the KPI and stage cards marked Sample, /ctem/<stage> its header badge and
+# the briefing card "generate yours, or wait for the monthly run", with no fetch
+# override. The start log prints "seeded CTEM sample state: <url>" (or "not seeded
+# CTEM sample state: <why>"). [service.lab-ctem-sample-light] is the light twin.
+[service.lab-ctem-sample]
+description = "xtm-one from this checkout with the CTEM sample state (no product connected, no briefing run): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SAMPLE_STATE = "on" }
+
+[service.lab-ctem-sample-light]
+description = "xtm-one from this checkout with the CTEM sample state (no product connected, no briefing run), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SAMPLE_STATE = "on", LAB_THEME = "light" }
+
+# The same lab with LAB_CTEM_FINDINGS = "on" and LAB_AI = "off": the rule-based rows of
+# /dashboard's Recommended actions on real answers. The cyber posture collection answers
+# the findings of .xtm-one/lab/ctem_sample.py (lab_asgi): failed OpenAEV expectations on
+# PREVENTION, DETECTION, VULNERABILITY and HUMAN_RESPONSE, Scoping connected with no data,
+# KEVs and a detection coverage under 60; AI off keeps the briefing's next steps out. No
+# fetch override. The start log prints "seeded CTEM findings: <url>" (or "not seeded CTEM
+# findings: <why>"). [service.lab-ctem-findings-light] is the light twin.
+[service.lab-ctem-findings]
+description = "xtm-one from this checkout with CTEM findings (failed expectations, a connected stage with no data, KEVs, a coverage gap), AI off: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_FINDINGS = "on", LAB_AI = "off" }
+
+[service.lab-ctem-findings-light]
+description = "xtm-one from this checkout with CTEM findings (failed expectations, a connected stage with no data, KEVs, a coverage gap), AI off, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_FINDINGS = "on", LAB_AI = "off", LAB_THEME = "light" }
+
+# The same lab with LAB_CTEM_SCREENS = "on" (#11713): the screens a CTEM UX round reviews on real
+# answers, no fetch override. The cyber posture answers .xtm-one/lab/ctem_sample.py screens_facts
+# (lab_asgi): OpenCTI and OpenAEV present, the five stages scored above zero and a live prioritization
+# funnel; the CTEM Cases source read answers ctem_sample.SCREENS_ISSUES and the lab runs the real
+# recompute, so /ctem/cases and the Mobilization board list 4 cases (a restart merges into the same
+# ones). The start log prints "seeded CTEM cases (4): <url>" and "seeded CTEM stages scored and
+# funnel: <url>". [service.lab-ctem-screens-light] is the light twin.
+[service.lab-ctem-screens]
+description = "xtm-one from this checkout with CTEM cases, five scored stages and a live funnel: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on" }
+
+# The CTEM deep-link lab (#12058): [service.lab-ctem-screens]' screens on a REAL OpenCTI instead of the sample.
+# [service.lab-opencti-ctem] is the lab's OpenCTI served under /opencti (APP__BASE_PATH) and registered with the
+# lab's backend through the real path (LAB_OPENCTI = "live"); LAB_CTEM_OPENCTI = "on" saves the tech stack, writes
+# 10 vulnerabilities (KEV, high EPSS, critical CVSS), 2 Software of the stack and 5 'has' relations in it
+# (lab.py CTEM_OPENCTI_VULNERABILITIES), forces a live posture rebuild and checks the funnel against them. The
+# lab's Vite server proxies /opencti to that OpenCTI signed in as its admin, and lab_asgi answers
+# products.opencti.url on the preview origin, so Known vulnerabilities, Relevant, Exploitable and the KEV and
+# critical KPIs open OpenCTI in the reviewer's browser with their filter chips and the same count. The start log
+# prints "seeded CTEM OpenCTI vulnerabilities (10): <url>" and "seeded CTEM funnel live from OpenCTI: <url>".
+# Heavy (about 6 GB, the five OpenCTI image keys of AGENTIC_LABS_IMAGES), started only on purpose.
+[service.lab-ctem-opencti]
+description = "xtm-one from this checkout with CTEM figures read live from a seeded OpenCTI of its own, opened under /opencti of the preview: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 900
+restart_target = 120
+lifetime = 7200
+depends_on = ["lab-opencti-ctem"]
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_OPENCTI = "live", LAB_OPENCTI_IDENTITIES = "0", LAB_OPENCTI_PIRS = "0", LAB_CTEM_OPENCTI = "on" }
+
+[service.lab-opencti-ctem]
+description = "the lab's OpenCTI served under /opencti, registered with the lab's XTM One backend (the CTEM deep-link lab)"
+argv = ["sh", ".xtm-one/lab/opencti-start.sh"]
+port = 4000
+image = "opencti"
+ready_path = "/opencti/health?health_access_key=lab-only-opencti-health"
+timeout = 900
+depends_on = ["lab-opencti-search", "lab-opencti-broker", "lab-opencti-redis", "lab-opencti-s3"]
+env = { NODE_OPTIONS = "--max-old-space-size=4096", APP__PORT = "4000", APP__BASE_URL = "http://localhost:4000", APP__BASE_PATH = "/opencti", APP__HEALTH_ACCESS_KEY = "lab-only-opencti-health", APP__ADMIN__EMAIL = "lab@filigran.io", APP__ADMIN__PASSWORD = "lab-only-password", APP__ADMIN__TOKEN = "00000000-0000-4000-8000-000000000001", ELASTICSEARCH__URL = "http://localhost:9200", RABBITMQ__HOSTNAME = "localhost", RABBITMQ__PORT = "5672", RABBITMQ__USERNAME = "guest", RABBITMQ__PASSWORD = "guest", REDIS__HOSTNAME = "localhost", REDIS__PORT = "6380", MINIO__ENDPOINT = "localhost", MINIO__PORT = "9002", MINIO__USE_SSL = "false", MINIO__ACCESS_KEY = "opencti", MINIO__SECRET_KEY = "lab-only-opencti-s3", XTM__XTM_ONE_URL = "http://localhost:8100", XTM__XTM_ONE_TOKEN = "lab-only-registration-token-never-used-outside-the-lab" }
+
+[service.lab-ctem-screens-light]
+description = "xtm-one from this checkout with CTEM cases, five scored stages and a live funnel, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on", LAB_THEME = "light" }
+
+# The stage pages in each module combination (#11998), LAB_CTEM_MODULES = "cti" | "cti-aev" | "all": the cyber
+# posture answers .xtm-one/lab/ctem_sample.py modules_facts (lab_asgi), the screens sample plus the Discovery lists
+# (techniques by tactic, top threats, sectors, countries); OpenAEV's facts are dropped without it and OpenCRQ is
+# left unregistered outside "all". A UX round of the CTEM mixed views captures /ctem/<stage> on each.
+# Every card answers data with no fetch override (#12220): Scoping's observables by type and CVSS severities,
+# Prioritization's top vulnerabilities and funnel (findings with OpenAEV), and with OpenAEV the Validation
+# outcome matrix. "cti-unscored" is OpenCTI alone with Discovery scored 0 (the page says it needs OpenAEV),
+# "none" no module at all. Each has its -light twin (LAB_THEME = "light").
+[service.lab-ctem-modules-cti]
+description = "xtm-one from this checkout with OpenCTI alone on the CTEM stage pages: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti" }
+
+[service.lab-ctem-modules-cti-aev]
+description = "xtm-one from this checkout with OpenCTI and OpenAEV on the CTEM stage pages: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti-aev" }
+
+[service.lab-ctem-modules-all]
+description = "xtm-one from this checkout with OpenCTI, OpenAEV and OpenCRQ on the CTEM stage pages: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "all" }
+
+[service.lab-ctem-modules-cti-unscored]
+description = "xtm-one from this checkout with OpenCTI alone and Discovery unscored on the CTEM stage pages: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti-unscored" }
+
+[service.lab-ctem-modules-none]
+description = "xtm-one from this checkout with no CTEM module answering on the CTEM stage pages: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "none" }
+
+[service.lab-ctem-modules-cti-light]
+description = "xtm-one from this checkout with OpenCTI alone on the CTEM stage pages, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti", LAB_THEME = "light" }
+
+[service.lab-ctem-modules-cti-aev-light]
+description = "xtm-one from this checkout with OpenCTI and OpenAEV on the CTEM stage pages, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti-aev", LAB_THEME = "light" }
+
+[service.lab-ctem-modules-all-light]
+description = "xtm-one from this checkout with OpenCTI, OpenAEV and OpenCRQ on the CTEM stage pages, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "all", LAB_THEME = "light" }
+
+[service.lab-ctem-modules-cti-unscored-light]
+description = "xtm-one from this checkout with OpenCTI alone and Discovery unscored on the CTEM stage pages, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "cti-unscored", LAB_THEME = "light" }
+
+[service.lab-ctem-modules-none-light]
+description = "xtm-one from this checkout with no CTEM module answering on the CTEM stage pages, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_MODULES = "none", LAB_THEME = "light" }
+
+# The same lab with LAB_OPENCTI_PIRS_SAME_NAME = "on" (#11713): the PIR picker of Settings >
+# Organization answers two more PIRs whose names repeat fixture names, so the name and short id
+# disambiguation renders on a real answer. Every other lab answers unique PIR names.
+[service.lab-pirs-same-name]
+description = "xtm-one from this checkout whose OpenCTI PIR list has two names shared by two PIRs: sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_OPENCTI_PIRS_SAME_NAME = "on" }
+
+# The same lab with LAB_AI_ADOPTION_SCALE = "large": AI Adoption with figures of 1,000 and
+# more on real answers (.xtm-one/lab/seed_ai_adoption_large.py): over 5,000 users, over 1,000
+# Agentic AI and Cursor active users, GitHub Copilot enterprise_daily rows with DAU, WAU, MAU and
+# chat and agent users over 1,000, over 1,000 API keys with requests in the thousands, so
+# /ai-adoption/agentic, /development and /gaps show K figures with no fetch override. The start
+# log prints "seeded ai adoption large figures: <url>" (or "not seeded ai adoption large figures:
+# <why>"). [service.lab-ai-adoption-large-light] is the light twin.
+[service.lab-ai-adoption-large]
+description = "xtm-one from this checkout with AI Adoption figures of 1,000 and more: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_AI_ADOPTION_SCALE = "large" }
+
+[service.lab-ai-adoption-large-light]
+description = "xtm-one from this checkout with AI Adoption figures of 1,000 and more, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_AI_ADOPTION_SCALE = "large", LAB_THEME = "light" }
+
+# The default lab with LAB_FIGURES_SCALE = "large" (#10734): three fleets whose About quota tile reads
+# about, a floor and a range of 1,000 and more, 1,240 runs of the first fleet in 30 days, and home
+# counts of 1,000 and more, so the K compaction renders with no fetch override. Log line
+# "seeded large fleet and home figures: <url>". The copilot twins show the Copilot home KPI cards.
+[service.lab-figures-large]
+description = "xtm-one from this checkout with fleet and home figures of 1,000 and more: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_FIGURES_SCALE = "large" }
+
+[service.lab-figures-large-light]
+description = "xtm-one from this checkout with fleet and home figures of 1,000 and more, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_FIGURES_SCALE = "large", LAB_THEME = "light" }
+
+# The default lab with LAB_CHAT_LAYOUT = "on" (#10910, program chat-layout): 10 agents with distinct icons
+# (one default, one name over 60 characters), 10 workspaces (one long name), 44 conversations over Today,
+# Yesterday, 7 days and older (long and French titles), and a 32-turn thread with Markdown, a 200-line code
+# block, tool calls, reasoning, attachments, feedback and a share. Log line "seeded chat layout: <url>".
+# LAB_OFFICE_ADDIN = "on" (#11109): the Office add-in task pane of apps/microsoft-office, built with the
+# frontend's packages and served at /office/ outside Office (no Office.js, no Microsoft call), signed in as
+# the administrator in the lab's theme. Log line "office add-in: <url>".
+[service.lab-chat-layout]
+description = "xtm-one from this checkout with the chat-layout rows and the Office add-in task pane: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend", "apps/microsoft-office"]
+timeout = 400
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CHAT_LAYOUT = "on", LAB_OFFICE_ADDIN = "on" }
+
+[service.lab-chat-layout-light]
+description = "xtm-one from this checkout with the chat-layout rows and the Office add-in task pane, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend", "apps/microsoft-office"]
+timeout = 400
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CHAT_LAYOUT = "on", LAB_THEME = "light", LAB_OFFICE_ADDIN = "on" }
+
+[service.lab-copilot-large]
+description = "xtm-one from this checkout in Copilot mode with fleet and home figures of 1,000 and more: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*", LAB_FIGURES_SCALE = "large" }
+
+[service.lab-copilot-large-light]
+description = "xtm-one from this checkout in Copilot mode with fleet and home figures of 1,000 and more, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*", LAB_FIGURES_SCALE = "large", LAB_THEME = "light" }
+
+# The same lab with LAB_CTEM_ACTIONS = "on", AI on: the Act now queue of / on stored artifacts.
+# .xtm-one/lab/seed_ctem_actions.py stores a ready assessment per CTEM stage (a
+# recommended_action each) and a ready briefing with three next_steps (high, medium, low;
+# the medium one repeats the Prioritization action, for the queue's dedupe); the cyber
+# posture answers the findings of ctem_sample.py (KEVs, detection coverage under 60). No
+# model call, no fetch override. The start log prints "seeded CTEM stage assessments: <url>"
+# (or "not seeded CTEM stage assessments: <why>").
+[service.lab-ctem-actions]
+description = "xtm-one from this checkout with ready CTEM stage assessments, a ready briefing with next steps and CTEM findings, AI on: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on" }
+
+[service.lab-ctem-actions-light]
+description = "xtm-one from this checkout with ready CTEM stage assessments, a ready briefing with next steps and CTEM findings, AI on, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_THEME = "light" }
+
+# The stale CTEM states (#12381): the same lab with LAB_CTEM_STALE = "on" and the worker.
+# seed_ctem_actions.py stores the briefing and every stage assessment 8 days old (past the
+# daily and weekly windows) and lab_asgi caches each cyber posture build 25 h old (past the
+# soft TTL) until a Force sync, so / and /ctem/<stage> show the stale posture, briefing and
+# assessment states after every reload. The stub model answers the briefing and stage
+# analysts with a schema-valid artifact after LAB_CTEM_REGEN_SECONDS (default 8), so a
+# regeneration completes. The start log prints "seeded CTEM stage assessments: <url>".
+[service.lab-ctem-stale]
+description = "xtm-one from this checkout with stale CTEM posture, briefing and stage assessments and a completing regeneration, AI on: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_CTEM_STALE = "on", LAB_WORKER = "1" }
+
+[service.lab-ctem-stale-light]
+description = "xtm-one from this checkout with stale CTEM posture, briefing and stage assessments and a completing regeneration, AI on, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_CTEM_STALE = "on", LAB_WORKER = "1", LAB_THEME = "light" }
+
+# The generic-context states of the command center (#11330) on seeds, no cache override (#11340).
+# lab-ctem-briefing-generic: LAB_CTEM_ACTIONS = "on" with LAB_ORG_SETUP_PROMPT = "on": the briefing
+# is ready and no organization profile is saved, so [data-testid=ctem-briefing-generic] ("This
+# briefing is generic") renders on /. The start log prints "seeded CTEM generic briefing: <url>".
+# lab-ctem-kev-tailored: LAB_CTEM_ACTIONS = "on" with LAB_CTEM_KEV_TAILORED = "on": the saved
+# profile carries a tech stack and lab_asgi narrows the cyber KEV count to it (kev_tailored_count 3,
+# three kev_tailored_products), so the Known-exploited figure reads the tailored count and
+# [data-testid=ctem-stats-generic] is absent. The start log prints "seeded CTEM tailored KEV: <url>".
+# Each has a -light twin.
+[service.lab-ctem-briefing-generic]
+description = "xtm-one from this checkout with a ready CTEM briefing and no organization profile saved (generic briefing notice), AI on: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_ORG_SETUP_PROMPT = "on" }
+
+[service.lab-ctem-briefing-generic-light]
+description = "xtm-one from this checkout with a ready CTEM briefing and no organization profile saved (generic briefing notice), AI on, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_ORG_SETUP_PROMPT = "on", LAB_THEME = "light" }
+
+[service.lab-ctem-kev-tailored]
+description = "xtm-one from this checkout with a saved tech stack and the CTEM KEV count tailored to it, AI on: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_CTEM_KEV_TAILORED = "on" }
+
+[service.lab-ctem-kev-tailored-light]
+description = "xtm-one from this checkout with a saved tech stack and the CTEM KEV count tailored to it, AI on, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_ACTIONS = "on", LAB_CTEM_KEV_TAILORED = "on", LAB_THEME = "light" }
+
+# The same lab in Community Edition with LAB_CTEM_ACTIVITY = "on" and LAB_AI = "off": every
+# source of the deterministic activity feed of /dashboard's Live activity card on real
+# answers, with no assignment run. The cyber posture collection answers the findings of
+# .xtm-one/lab/ctem_sample.py with a last_sync per connected product (lab_asgi), the OpenCRQ
+# registration's heartbeat is backdated (seed_ctem_activity.py) and every run is deleted
+# last. No fetch override. The start log prints "seeded CTEM activity feed: <url>" (or
+# "not seeded CTEM activity feed: <why>"). [service.lab-ctem-activity-light] is the light twin.
+[service.lab-ctem-activity]
+description = "xtm-one from this checkout in Community Edition with the CTEM activity feed sources (product syncs, an unhealthy platform, validation results) and no run, AI off: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_EDITION = "community", LAB_CTEM_ACTIVITY = "on", LAB_AI = "off" }
+
+[service.lab-ctem-activity-light]
+description = "xtm-one from this checkout in Community Edition with the CTEM activity feed sources (product syncs, an unhealthy platform, validation results) and no run, AI off, light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_EDITION = "community", LAB_CTEM_ACTIVITY = "on", LAB_AI = "off", LAB_THEME = "light" }
+
+# The same lab in dev mode (Copilot behaviour, XTM One seed) with every flag on:
+# the flag families that also need copilot or dev mode (EVALUATION) are served.
+# The XTM One-only routes (/ctem/:stage) are not: open them on [service.lab].
+# Needs the Enterprise Edition licence the platform hands a lab (ENTERPRISE_LICENSE),
+# or the dev mode shows the licence wall. Both labs seed one row per entity kind
+# and log the URLs (/tmp/lab/seeded.json). dev-docs/reference/agentic-labs.md.
+[service.lab-dev]
+description = "xtm-one from this checkout in dev mode, every flag on (evaluation pages): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "dev", ENABLED_FEATURES = "*" }
+
+# The same lab in Copilot mode with every flag on: the built-ins that
+# ship in copilot mode only (platform_targets ["copilot"]: the Filigran Brand
+# Deck, the THREAD deck and the Filigran video templates) are seeded, so a
+# presentation or template review needs no edit to this file. Neither other
+# lab seeds them (seed_matches_platform). It also imports one deck on the
+# Filigran Brand Deck ("seeded presentation: <url>", seed_presentation), so the
+# PDF and PPTX export gate runs with no model; its speaker view and clicker control
+# open from "seeded deck: <url>/presentations/<id>/speaker" (#11252). It also seeds one agent carrying the
+# Custom dashboards tool and one dashboard with widgets (seed_dashboard_studio), so the
+# dashboard studio rail draws its composer and focus chip ("seeded dashboard studio:
+# <url>/dashboards/<id>/studio"). Needs the Enterprise Edition licence
+# the platform hands a lab (ENTERPRISE_LICENSE), like [service.lab-dev].
+[service.lab-copilot]
+description = "xtm-one from this checkout in Copilot mode, every flag on (Filigran templates): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*" }
+
+# The Copilot lab with cost data hidden (OBSERVABILITY_COST_DATA_ENABLED = false): the ROI seed
+# runs in every mode, so GET /roi answers cost_masked to a reader without the organization
+# permission (sign in as lab-peer@filigran.io; the administrator still sees costs) and the Copilot
+# home (pages/Dashboard.tsx) shows its Value card with "Value" instead of "Net value" (#9836 R6b). [service.lab-roi-cost-masked]
+# is the XTM One twin (the Value page, no Copilot home). No Copilot Community Edition lab exists:
+# copilot mode without a valid licence renders LicenseRequired on every route (edition ""), so the
+# CE state of a Copilot widget is unreachable; review it on [service.lab-ce] when the screen exists
+# in XTM One mode. dev-docs/reference/agentic-labs.md.
+[service.lab-copilot-roi-cost-masked]
+description = "xtm-one from this checkout in Copilot mode with cost data hidden (ROI cost_masked): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*", OBSERVABILITY_COST_DATA_ENABLED = "false" }
+
+[service.lab-copilot-roi-cost-masked-light]
+description = "xtm-one from this checkout in Copilot mode with cost data hidden (ROI cost_masked), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "copilot", ENABLED_FEATURES = "*", OBSERVABILITY_COST_DATA_ENABLED = "false", LAB_THEME = "light" }
+
+# args: a path to lint instead of the whole backend (a call's args replace
+# default_args, so a named file is linted alone with the backend's rules).
+[check.backend-lint]
+description = "ruff over the backend; args: a path (the whole backend without args)"
+argv = ["ruff", "check", "--output-format", "sarif", "-o", ".xtm/ruff.sarif"]
+default_args = ["."]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "sarif"
+report_path = ".xtm/ruff.sarif"
+
+# The lab scripts (.xtm-one/lab, .xtm-one/stores.py) are not under backend/ and
+# CI lints none of them: this check runs ruff's syntax and pyflakes rules on
+# them (undefined names, unused imports and variables, shadowed definitions),
+# isolated from the backend's ruleset, whose security and print rules the lab
+# breaks by design. args: a path relative to .xtm-one (the lab and stores.py
+# without args).
+[check.lab-lint]
+description = "ruff syntax and pyflakes rules over the lab scripts (.xtm-one/lab, .xtm-one/stores.py); args: a path relative to .xtm-one"
+argv = ["ruff", "check", "--isolated", "--select", "E9,F", "--output-format", "sarif", "-o", ".xtm/lab-ruff.sarif"]
+default_args = ["lab", "stores.py"]
+cwd = ".xtm-one"
+timeout = 120
+image = "python-dev"
+report = "sarif"
+report_path = ".xtm/lab-ruff.sarif"
+
+# The live half of the OOTB routing eval (dev-docs/ootb-routing-eval.md): the golden tasks replayed on a
+# running lab through its chat API. It reaches the lab only from inside it, so it runs with
+# sandbox_run_command(check="lab-routing-eval", service_id=<the lab>) after sandbox_start_service
+# lab-ootb-live (a check container has no route to a lab pod). The lab's throwaway sign-in; args replace
+# the default task filter (--task TEXT, --surface NAME, --out PATH, repeatable).
+[check.lab-routing-eval]
+description = "OOTB routing eval on a running lab: run with service_id = the lab-ootb-live lab; args: --task TEXT (a golden task label, e.g. 'summarize a report', or a piece of its prompt; case-insensitive), --surface NAME, --entry SLUG (ask the tasks of that agent directly, no handover expected), --expect-format html|markdown (html: the answer must carry HTML tags; markdown, the default rule: none), --out PATH, --wait SECONDS, --task-timeout SECONDS (default 150: a longer turn is a timed_out row, the next task runs), --confirm TEXT (a second turn in the same conversation once the first answered, e.g. 'Build it as it is.'), --verify (read the OpenCTI dashboard the task names back through the lab's OpenCTI GraphQL: verified true/false, dashboard_id, widgets; --verify-wait SECONDS, default 90) (exit 2: the lab's OpenCTI not registered yet, run again; exit 3: the lab's LLM proxy key is over its quota, resets at the UTC time printed; exit 5: no golden task matches --task / --surface, nothing asked, the labels printed)"
+argv = ["python", ".xtm-one/lab/routing_eval.py", "--base", "http://127.0.0.1:8100", "--email", "lab@filigran.io", "--password", "lab-only-password"]
+default_args = ["--task", "create an OpenCTI dashboard from XTM One"]
+timeout = 270
+image = "python-dev"
+
+# The table the last lab-routing-eval run kept in the lab's copy (.xtm/routing-eval/last.json, rewritten after
+# each task), read back with no task asked and no LLM call: a calling turn handed back mid-call reads it here.
+[check.lab-routing-eval-last]
+description = "The table of the last lab-routing-eval run in this lab, no LLM call: run with service_id = the same lab (exit 1: that run stopped mid-way, its finished tasks listed; exit 4: no table kept)"
+argv = ["python", ".xtm-one/lab/routing_eval.py", "--last"]
+timeout = 30
+image = "python-dev"
+
+# The lab model key's LLM proxy quota usage (GET /v1/quota on the proxy), no completion asked: run it before
+# and after a step to prove that step spent no LLM call (equal counts) or one (the count grows).
+[check.lab-model-quota]
+description = "The lab model key's LLM proxy quota usage as JSON {used, limit, period, resets_at}, no LLM call: run with service_id = a live-model lab ({\"live\": false} on a stub-model lab)"
+argv = ["python", ".xtm-one/lab/routing_eval.py", "--quota"]
+timeout = 30
+image = "python-dev"
+
+# One GraphQL query against the lab's OpenCTI, from inside the lab (#12094): the self-check of OpenCTI data a desk
+# cannot run from a check container. Run with sandbox_run_command(check="lab-opencti-graphql", service_id=<a lab
+# holding lab-opencti, e.g. lab-ootb-live or lab-ctem-opencti>); args replace the default count: --count TYPE, or
+# --query TEXT [--variables JSON]; --base http://127.0.0.1:4100 for the lab-opencti-pr-head backend (its token is
+# picked by port). Exit 1 on a GraphQL error, 2 when the OpenCTI does not answer.
+[check.lab-opencti-graphql]
+description = "One GraphQL query against the lab OpenCTI with the lab admin token: run with service_id = a lab holding lab-opencti; args: --count TYPE | --query TEXT [--variables JSON] [--base URL]"
+argv = ["python", ".xtm-one/lab/opencti_graphql.py"]
+default_args = ["--count", "Report"]
+timeout = 90
+image = "python-dev"
+
+# The type checker on the change: affected = "lines" hands scripts/types_changed.py
+# the Python files the checkout changed (a modified one as PATH:A-B,C-D, never a
+# test file the change left alone); mypy runs once over them with [tool.mypy] and
+# only findings on the change's lines (or in a new file) fail the check, those on
+# untouched lines are counted as pre-existing. Its first line states the scope.
+# Without args it runs on the change (affected_by_default); a bare path in args
+# is narrowed to its changed lines, --whole keeps it whole. [tool.mypy] is
+# strict, so a new line calling untyped legacy code is reported as yours. CI's
+# gate stays `mypy` in backend/ (the extraction package, as configured).
+[check.backend-types]
+description = "mypy on the change: only findings on the lines it wrote fail, pre-existing ones counted; scope stated first; args: PATH (narrowed), PATH:A-B or --whole PATH"
+argv = ["python", "-m", "scripts.types_changed"]
+cwd = "backend"
+timeout = 900
+image = "python-dev"
+report = "lines"
+affected = "lines"
+affected_globs = ["*.py", "*.pyi"]
+affected_by_default = true
+affected_narrows_args = true
+
+[check.backend-dead-code]
+description = "vulture: a definition nothing names (backend/AGENTS.md, Dead code)"
+argv = ["python", "-m", "pytest", "-q", "tests/test_no_dead_code.py", "--junitxml=.xtm/dead-code.xml"]
+cwd = "backend"
+timeout = 600
+image = "python-dev"
+report = "junit"
+report_path = ".xtm/dead-code.xml"
+
+[check.backend-unit]
+description = "backend unit tests (no external service); args: a test file or -k expression; add --repeat N to run each selected test N times (flaky check); affected=true also runs the backend-tripwires suites on any source change"
+argv = ["python", "-m", "pytest", "-m", "not integration", "-q", "--junitxml=.xtm/pytest.xml"]
+cwd = "backend"
+timeout = 1800
+image = "python-dev"
+report = "junit"
+report_path = ".xtm/pytest.xml"
+# The test key ci.yml's unit job exports: a JWT test fails on an empty one.
+env = { SECRET_KEY = "ci-test-secret-key-not-for-production" }
+# The repository-wide tripwires (the backend-tripwires suites): affected=true runs
+# them first on every source change, since they scan the whole of backend/app and
+# name no changed identifier.
+affected_always = [
+  "tests/test_agent_facing_placeholders.py",
+  "tests/test_no_workarounds.py",
+  "tests/test_layering_private_api_imports.py",
+  "tests/test_logging_conventions.py",
+  "tests/test_baseexception_catch_convention.py",
+  "tests/test_write_routes_commit_before_response.py",
+  "tests/test_ai_disabled_read_surface.py",
+]
+
+# The backend tests marked `integration` (pyproject.toml: "requires external
+# services"), offline: .xtm-one/stores.py starts PostgreSQL 16 + pgvector, a
+# Redis-API store and an S3 store from the python-dev image's /opt/stores on
+# loopback in this check's own container (a few seconds), exports the
+# variables ci.yml's integration job exports, runs pytest with the arguments
+# and stops them. Pass a test file or -k: the whole suite is CI's.
+[check.backend-integration]
+description = "backend integration tests against throwaway PostgreSQL + pgvector, Redis-API and S3 stores started offline in the check's container; args: a test file or -k expression"
+argv = ["python", "../.xtm-one/stores.py", "-m", "integration", "-q", "--junitxml=.xtm/integration.xml"]
+cwd = "backend"
+timeout = 1800
+image = "python-dev"
+report = "junit"
+report_path = ".xtm/integration.xml"
+
+# The repository-wide tripwires: suites that scan every module under
+# backend/app (agent-facing placeholders, no workaround, layering, logging,
+# BaseException catches) and the route-table invariants (every write route
+# commits before it answers, the AI-disabled read surface). A targeted
+# backend-unit run on the touched test file does not collect them, so a change
+# that breaks one used to surface one CI round later. Static: no database, no
+# network.
+[check.backend-tripwires]
+description = "the repository-wide tripwire suites over backend/app (placeholders, no workaround, layering, logging, BaseException catches, write routes commit before the response, AI-disabled read surface); run after any change under backend/app"
+argv = ["python", "-m", "pytest", "-m", "not integration", "-q", "--junitxml=.xtm/tripwires.xml", "tests/test_agent_facing_placeholders.py", "tests/test_no_workarounds.py", "tests/test_layering_private_api_imports.py", "tests/test_logging_conventions.py", "tests/test_baseexception_catch_convention.py", "tests/test_write_routes_commit_before_response.py", "tests/test_ai_disabled_read_surface.py"]
+cwd = "backend"
+timeout = 900
+image = "python-dev"
+report = "junit"
+report_path = ".xtm/tripwires.xml"
+
+# The formatter, advisory: CI does not gate it and main is not format-clean.
+# Run it with affected=true: affected = "lines" hands scripts/format_changed.py
+# the Python files the checkout changed, a modified one as PATH:A-B,C-D (the
+# lines the change wrote), and it formats the file once through stdin and
+# keeps only the formatter's edits on those lines, so the answer is the diff of
+# the change's own lines; an edit spanning changed and untouched lines (one
+# statement) is named apart, drift on untouched lines is reported as
+# "pre-existing, not yours", never the diff of the ~3,400 drifted files. args: a path (or PATH:A-B, or . for the
+# whole backend); without args it runs as affected=true (affected_by_default),
+# since a checkout has no .git and the script cannot see the change itself.
+# A bare PATH or directory named as an arg is narrowed to the change's lines of
+# it (affected_narrows_args), as backend-format-fix does, so main's drift in a
+# file the change touched is never the answer; --whole PATH checks the file
+# whole. [tool.ruff.format] in pyproject.toml is the style; the check writes
+# nothing unless args carry --write (the same switch as backend-format-fix):
+# args ["--write"] writes the formatting of the change's lines in one call.
+[check.backend-format]
+description = "ruff format --check --diff on the lines the change wrote; no args: the change; args: PATH or directory (narrowed to its changed lines), PATH:A-B, --whole PATH (whole file), --write (write those lines in place, as backend-format-fix)"
+argv = ["python", "-m", "scripts.format_changed"]
+default_args = ["."]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+affected = "lines"
+affected_globs = ["*.py", "*.pyi"]
+affected_by_default = true
+affected_narrows_args = true
+
+# The formatter and the linter's safe fixes, applied: the files named as args
+# are rewritten in the checkout (the command's workspace changes come back like
+# any check's), so a drift backend-format reports is fixed by ruff, never
+# copied by hand from its diff. backend-format-fix takes the same changed-lines
+# mode as backend-format: with affected=true scripts/format_changed.py --fix
+# gets a modified file as PATH:A-B,C-D and writes only the formatter's edits
+# whose lines all sit in those ranges, so the untouched lines of a file main
+# never formatted stay as they are (a statement spanning both is named with
+# the PATH:X-Y that formats it whole); a new file is reformatted whole. Without args it runs on
+# the change (affected_by_default); a bare PATH or directory named as an arg
+# is narrowed to the change's lines of it (affected_narrows_args), so a file
+# main never formatted is not rewritten throughout; --whole in args formats
+# the paths as given, whole; PATH:A-B passes as is. backend-
+# lint-fix without args falls back to its default_args and only prints the
+# fixes as a diff. Read sandbox_checkout_diff after a run.
+[check.backend-format-fix]
+description = "ruff format applied, rewriting the checkout, on the lines the change wrote; no args: the change; args: PATH or directory (narrowed to its changed lines), PATH:A-B, or --whole PATH (whole file)"
+argv = ["python", "-m", "scripts.format_changed", "--fix"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+affected = "lines"
+affected_globs = ["*.py", "*.pyi"]
+affected_by_default = true
+affected_narrows_args = true
+
+[check.backend-lint-fix]
+description = "ruff check --fix on the files given as args, rewriting them in the checkout (safe fixes only); without args it prints the fixes as a diff and writes nothing"
+argv = ["ruff", "check", "--fix"]
+default_args = ["--diff"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+
+# The Alembic graph read from the script directory alone (no database): one
+# head, no duplicate or orphaned revision, a connected graph. CI's migrations
+# job refuses a second head (ci.yml, "Expected exactly one Alembic head");
+# run this after a rebase that brings a migration from main.
+[check.backend-alembic-heads]
+description = "the Alembic revision graph from the script directory, no database: exactly one head, no orphan (run after a rebase that brings a migration)"
+argv = ["python", "-m", "pytest", "-q", "--junitxml=.xtm/alembic-heads.xml", "tests/test_alembic_single_head.py", "tests/test_migration_integrity.py"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "junit"
+report_path = ".xtm/alembic-heads.xml"
+
+[check.backend-snapshots]
+description = "regenerate the HITL read-only tool snapshots (backend/tests/data/hitl_*_read_whitelist.txt) after adding or renaming a tool, then read the diff; args: --check to only verify"
+argv = ["python", "-m", "scripts.dump_platform_read_whitelist"]
+cwd = "backend"
+timeout = 600
+image = "python-dev"
+report = "lines"
+
+# A generator of backend/scripts/ run in the checkout (#11483): args name the
+# module then its own arguments ("refresh_lucide_icons", "--check"); what it
+# writes comes back to the workspace like any check's, so a generated file is
+# regenerated here, never rewritten through code_interpreter. Without args it
+# lists the generators.
+[check.backend-generate]
+description = "run one generator of backend/scripts/ in the checkout and keep what it writes; args: the module name then its arguments"
+argv = ["python", "-m", "scripts.run_generator"]
+cwd = "backend"
+timeout = 600
+image = "python-dev"
+report = "lines"
+
+# The built-in tool schema budget, read-only and without a test run: per
+# group its size, ceiling, headroom and delta against a baseline, and the
+# functions that grew most. Run it with --save-baseline right after the
+# checkout (base sizes), then again after a change that touches a tool's
+# description or arguments. Exits 1 when a ceiling is crossed.
+[check.backend-schema-budget]
+description = "the built-in tool schema budget per group: size, ceiling, headroom, delta against the baseline and the functions that grew most (no test run); args: --save-baseline on the base checkout first, --top N"
+argv = ["python", "-m", "scripts.tool_schema_budget"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+
+# nodejs-dev is offline and its yarn cache is baked from the lock of the
+# image's build: after a merge that changes frontend/yarn.lock, until the
+# next dev image is published and pinned, the install answers YN0080 on the
+# packages the image lacks. The fallback then runs the install (and the check
+# that ran it first) again on toolchain-node in the same call: the package
+# registry allow-list, no credential, .yarnrc.yml still refusing lifecycle
+# scripts and packages younger than its age gate. An unchanged lock never
+# leaves the fast offline path (#10657).
+[check.frontend-install]
+description = "link the frontend's locked dependencies from the image's cache (the other frontend checks run it first by themselves when the container has no install); a lock newer than the image's falls back to toolchain-node"
+argv = ["yarn", "install", "--immutable", "--mode=skip-build"]
+cwd = "frontend"
+timeout = 600
+image = "nodejs-dev"
+report = "lines"
+fallback = { image = "toolchain-node", when = "YN0080", reason = "the checkout's frontend/yarn.lock is newer than the lock baked in the nodejs-dev image (offline yarn cache)" }
+
+# A dependency bump (a version in frontend/package.json, a new package):
+# nodejs-dev has no network and only main's lock in its yarn cache, so
+# frontend-install answers YN0080 on anything new. This check runs on the
+# toolchain-node image (corepack's yarn, pods whose egress is the package
+# registry allow-list, no credential) and only writes frontend/yarn.lock:
+# mode=update-lockfile resolves and fetches to compute the checksums, links
+# nothing; .yarnrc.yml still refuses lifecycle scripts and packages younger
+# than its age gate. Read the lock with sandbox_checkout_diff, commit it with
+# package.json; nodejs-dev links the new packages once its image is rebuilt
+# from the merged lock, so the bump PR's CI runs its types and tests (#10540).
+# Each image runs in its own container and node_modules/ and .yarn/ never
+# travel through the workspace, so frontend-install (nodejs-dev, offline)
+# answers YN0080 on the bumped lock and falls back to toolchain-node (above).
+# The frontend-bump-* checks run the same gates there directly: frontend-bump-types links the new lock there
+# (frontend-bump-install, scripts still off) and type-checks it, and the
+# other frontend-bump-* checks run the rest of the frontend gates on the same
+# container: frontend-bump-build, then on a design-system bump
+# frontend-bump-safelist (reads the build's dist/assets, so never before a
+# build; frontend/AGENTS.md) and frontend-bump-build again, then
+# frontend-bump-classes (reads the build's dist) and frontend-bump-unit
+# (vitest, args: test files).
+[check.frontend-lock-update]
+description = "regenerate frontend/yarn.lock after a dependency bump in package.json (toolchain-node, registry allow-list; links nothing)"
+argv = ["yarn", "install", "--mode=update-lockfile"]
+cwd = "frontend"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+install_first = false
+
+[check.frontend-bump-install]
+description = "link a bumped frontend/yarn.lock on toolchain-node, the container frontend-lock-update fetched it on (registry allow-list, lifecycle scripts off); frontend-bump-types runs it first by itself"
+argv = ["yarn", "install", "--immutable", "--mode=skip-build"]
+cwd = "frontend"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+
+[check.frontend-bump-types]
+description = "tsc --noEmit over the frontend on toolchain-node after a dependency bump (frontend-lock-update, then this; nodejs-dev types it once its image carries the merged lock)"
+argv = ["yarn", "typecheck"]
+cwd = "frontend"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+
+[check.frontend-bump-safelist]
+description = "generate-safelist after a design-system bump, on toolchain-node: frontend-bump-build, then this (reads dist/assets), then frontend-bump-build again and frontend-bump-classes"
+argv = ["node", "scripts/fds-migration/generate-safelist.mjs"]
+cwd = "frontend"
+timeout = 300
+image = "toolchain-node"
+report = "lines"
+
+[check.frontend-bump-build]
+description = "yarn build into frontend/dist after a dependency bump, on toolchain-node (frontend-lock-update, then this); needed by frontend-bump-classes"
+argv = ["yarn", "build"]
+cwd = "frontend"
+timeout = 1800
+image = "toolchain-node"
+report = "lines"
+
+[check.frontend-bump-classes]
+description = "verify-classes after a dependency bump, on toolchain-node (after frontend-bump-build): every class the build uses is emitted by the design-system library or Tailwind"
+argv = ["node", "scripts/fds-migration/verify-classes.mjs"]
+cwd = "frontend"
+timeout = 300
+image = "toolchain-node"
+report = "lines"
+
+[check.frontend-bump-unit]
+description = "frontend unit tests (vitest) after a dependency bump, on toolchain-node (frontend-lock-update, then this); args: a test file"
+argv = ["yarn", "vitest", "run", "--reporter=default", "--reporter=junit", "--outputFile.junit=.xtm/vitest.xml"]
+cwd = "frontend"
+timeout = 1800
+image = "toolchain-node"
+report = "junit"
+report_path = ".xtm/vitest.xml"
+
+# The Office add-in (apps/microsoft-office) is an npm project of its own, out
+# of the frontend's yarn workspace: CI's "Office add-in lint" job runs
+# `npm ci && npm run check` there. office-addin-lock-update regenerates its
+# package-lock.json after a bump in its package.json (toolchain-node, registry
+# allow-list, lifecycle scripts off, nothing linked); office-addin-check then
+# installs that lock and runs the job's `npm run check` (tsc and vitest) on
+# the same image. Read the lock with sandbox_checkout_diff before the commit.
+# office-addin-install is a pre-push guard on the manifest and its lock: a
+# package.json bump pushed without its regenerated package-lock.json fails
+# `npm ci` (EUSAGE, out of sync) in CI one round later, so the commit names it.
+[check.office-addin-lock-update]
+description = "regenerate apps/microsoft-office/package-lock.json after a dependency bump in its package.json (toolchain-node, registry allow-list, scripts off; links nothing)"
+argv = ["npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]
+cwd = "apps/microsoft-office"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+install_first = false
+
+[check.office-addin-install]
+description = "npm ci of the Office add-in (apps/microsoft-office), as CI's 'Office add-in lint' job (toolchain-node, scripts off); office-addin-check runs it first by itself; out of sync with package.json: run office-addin-lock-update first"
+argv = ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"]
+cwd = "apps/microsoft-office"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+install_first = false
+pre_push = ["package.json", "package-lock.json"]
+
+[check.office-addin-check]
+description = "the Office add-in's npm run check (tsc --noEmit and vitest), as CI's 'Office add-in lint' job (after office-addin-install); args: appended to the script"
+argv = ["npm", "run", "check"]
+cwd = "apps/microsoft-office"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+
+# frontend/tests_unit imports modules that live outside frontend/ (the lab's
+# chatbot host params, the Office add-in's lib): `needs` makes a checkout of
+# frontend/ alone take them too, so tsc and the tests resolve every import.
+[check.frontend-types]
+description = "tsc --noEmit over the frontend (after frontend-install)"
+argv = ["yarn", "typecheck"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+# A pre-push guard: create_github_commit(from_checkout=...) names it when a change to these files did not
+# see it pass, run whole, on the tree being committed (CI's tsc step otherwise goes red one round later).
+pre_push = ["*.ts", "*.tsx", "tsconfig*.json", "package.json"]
+
+# The Playwright specs' own tsconfig (frontend/tests_e2e/tsconfig.json), the
+# "TypeScript (e2e specs)" step of ci.yml: run it after any tests_e2e change.
+[check.frontend-e2e-types]
+description = "tsc --noEmit over the e2e specs (tests_e2e/tsconfig.json), as CI's 'TypeScript (e2e specs)' step (after frontend-install)"
+argv = ["yarn", "typecheck", "-p", "tests_e2e"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+
+[check.frontend-lint]
+description = "oxlint over the frontend (after frontend-install); args: the files or directories to lint, instead of src/"
+argv = ["yarn", "oxlint"]
+default_args = ["src/"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+
+[check.frontend-i18n]
+description = "validate the frontend i18n tables as CI does (scripts/validate-i18n.mjs; after frontend-install)"
+argv = ["yarn", "validate:i18n"]
+cwd = "frontend"
+timeout = 600
+image = "nodejs-dev"
+report = "lines"
+
+[check.frontend-unit]
+description = "frontend unit tests (after frontend-install); args: test files; no args: the affected tests; --shard=K/3: one third of the suite as CI splits it; --whole: the whole suite"
+# Without args it runs the tests the change affects (whole_timeout on a tests
+# check turns affected_by_default on), never the whole suite. The whole suite
+# (707 vitest files, 6142 tests) ran 889 s in the sandbox on 14 Nov 2026
+# (#11815): args ["--shard=1/3"], ["--shard=2/3"], ["--shard=3/3"] run it in
+# three calls as ci.yml's "Frontend unit tests" jobs do, each with the check's
+# timeout; args ["--whole"] alone runs it in one call, bounded by
+# whole_timeout. The ECONNREFUSED 127.0.0.1:3100 lines in stderr are requests
+# a test leaves unmocked against happy-dom's origin: refused at once, never a
+# wait.
+# Two reporters: junit writes the file the answer counts and lists, default
+# prints each test's console output and the error behind a failure (a render
+# error's stack included) to stdout, which the answer shows condensed.
+argv = ["yarn", "vitest", "run", "--reporter=default", "--reporter=junit", "--outputFile.junit=.xtm/vitest.xml"]
+cwd = "frontend"
+timeout = 1800
+image = "nodejs-dev"
+report = "junit"
+report_path = ".xtm/vitest.xml"
+needs = [".xtm-one/lab/chatbot-host"]
+whole_timeout = 1500
+# The ratchet gates affected=true runs on every source change, first: they read
+# the whole tree, name no changed identifier, and CI fails on them.
+affected_always = [
+  "tests_unit/form-controls-gate.test.ts",
+  "src/pages/settings/settings-form-kit.test.ts",
+  "src/no-class-name-assertions.test.ts",
+]
+
+# The same vitest run in update mode, for a deliberate change to what a test
+# pins: `--update=all` rewrites the __snapshots__ of the files given (never a
+# bare `-u`: its optional value swallows the first file arg, and the whole
+# suite runs), and
+# ARCHITECTURE_FIXTURE=write lets the architecture renderer tests rewrite the
+# fixtures the backend's Chromium tests draw (backend/tests/data/architecture/).
+# Always name the test files as args, then read sandbox_checkout_diff.
+[check.frontend-unit-update]
+description = "frontend unit tests in update mode (after frontend-install): vitest --update=all rewrites the snapshots, ARCHITECTURE_FIXTURE=write the backend's architecture fixtures; args: the test files"
+argv = ["yarn", "vitest", "run", "--update=all"]
+cwd = "frontend"
+timeout = 1800
+image = "nodejs-dev"
+report = "lines"
+env = { ARCHITECTURE_FIXTURE = "write" }
+
+# The other half of `yarn test:unit`: the files written against Node's own
+# runner (`import { test } from "node:test"`), which vitest excludes and
+# frontend-unit therefore never runs (scripts/node-test-files.mjs finds them).
+[check.frontend-node-unit]
+description = "frontend node:test unit tests, the files vitest excludes (after frontend-install); args: a test file, else every node:test file"
+argv = ["node", "scripts/node-test-files.mjs"]
+cwd = "frontend"
+timeout = 1800
+image = "nodejs-dev"
+report = "lines"
+needs = ["apps/microsoft-office/src/lib"]
+
+# The codemod runner sandbox_codemod calls (dev-docs/reference/sandbox-workspace.md,
+# "sandbox_codemod"): it runs a transform module of the workspace over the
+# files the tool selected, parses every new text with oxc-parser and stages the
+# results; the tool replaces the placeholder argument with the staging directory
+# and writes the change set all or nothing. Not a check to call by hand.
+[check.frontend-codemod]
+description = "the codemod runner of sandbox_codemod (after frontend-install); called by that tool, not by hand"
+argv = ["node", "scripts/codemod.mjs"]
+cwd = "frontend"
+timeout = 600
+image = "nodejs-dev"
+report = "lines"
+
+# Dead code in the frontend: an unused file, export, type or dependency, as
+# CI's "Dead code (knip)" step (frontend/AGENTS.md, "No dead code"). Some
+# frontend tests import apps/microsoft-office/src: a checkout without it
+# reports them as unresolved imports (add_paths apps/microsoft-office/src).
+[check.frontend-knip]
+description = "knip over the frontend: unused files, exports, types and dependencies (after frontend-install)"
+argv = ["yarn", "knip"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+# A pre-push guard, as frontend-types: an unused export or file is CI's "Dead code (knip)" red otherwise.
+pre_push = ["*.ts", "*.tsx", "knip.json*", "package.json"]
+
+# CI's "Design-system guards" step (ci.yml, frontend job), split in single
+# commands because a check is one argv with no shell. count-legacy --check needs
+# no install and no build: styling that bypasses the design system may not grow
+# past scripts/fds-migration/count-legacy-baseline.json. verify-classes reads
+# the compiled CSS of dist/assets, so it runs after frontend-build (itself after
+# frontend-install); without dist it exits 2 and says so. In the sandbox,
+# frontend-design-system-classes passes --compile: it compiles src/index.css
+# in-process with the Tailwind PostCSS plugin the build uses (no tsc, no vite,
+# no frontend-build first) and is a pre-push guard, so a class the design
+# system never emits is named before the push, not by CI one round later.
+[check.frontend-design-system-guards]
+description = "count-legacy --check: no styling that bypasses the design system past its baseline, as CI's 'Design-system guards' step (no install needed)"
+argv = ["node", "scripts/fds-migration/count-legacy.mjs", "--check"]
+cwd = "frontend"
+timeout = 300
+image = "nodejs-dev"
+report = "lines"
+install_first = false
+
+[check.frontend-build]
+description = "yarn build (tsc -b and vite build) into frontend/dist (after frontend-install); needed by frontend-design-system-classes"
+argv = ["yarn", "build"]
+cwd = "frontend"
+timeout = 1800
+image = "nodejs-dev"
+report = "lines"
+
+[check.frontend-design-system-classes]
+description = "verify-classes --compile: every design-system class src uses compiles to a rule, as CI's 'Design-system guards' step, without a build (after frontend-install)"
+argv = ["node", "scripts/fds-migration/verify-classes.mjs", "--compile"]
+cwd = "frontend"
+timeout = 300
+image = "nodejs-dev"
+report = "lines"
+# A pre-push guard, as frontend-types: a class change CI's verify-classes refuses is named before the push.
+pre_push = ["frontend/src/*.ts", "frontend/src/*.tsx", "frontend/src/*.css", "frontend/package.json", "frontend/yarn.lock"]
+
+# The repository's workflow scripts and their node:test suites
+# (issue-type-sync.yml runs `node --test .github/scripts/issue-type-sync.test.mjs`):
+# node --test with no argument runs every *.test.mjs of the directory.
+[check.github-scripts-node-test]
+description = "node:test suites of the workflow scripts under .github/scripts; args: a test file"
+argv = ["node", "--test"]
+cwd = ".github/scripts"
+timeout = 300
+image = "nodejs-dev"
+report = "lines"
+
+# The CI gates below read git (`git ls-files`, `git rev-parse --show-toplevel`), which a checkout
+# has not: git_repo = true runs each in a throwaway repository of the checkout, removed after.
+# dev-docs/reference/sandbox-workspace.md, "CI parity", lists every CI job of a pull request with
+# the check that runs it here, or why it is CI-only.
+
+# editions.yml, "Every file is classified and carries its header". `needs` brings LICENSE (the EE
+# notice) and licensing/ to a narrow checkout; there the run sets XTM_CHECKOUT_SUB_PATHS and the
+# script checks the files the checkout holds only, leaving the whole-tree findings (a glob that
+# matches nothing, a stale `ce` entry) to CI. Fix what it lists with `python scripts/license_headers.py --fix`
+# (backend-generate does not run it: the script is not a generator).
+[check.editions]
+description = "the Editions gate: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
+argv = ["python", "scripts/license_headers.py", "--check"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+install_first = false
+git_repo = true
+needs = ["LICENSE", "licensing"]
+
+# agents-md-hygiene.yml: every AGENTS.md under its size budget, no issue number cited, no
+# dead dev-docs/ pointer. A pre-push guard on any AGENTS.md. `needs` brings dev-docs/ and the
+# root AGENTS.md to a narrow checkout; there the script checks the AGENTS.md files it holds only.
+[check.agents-md-hygiene]
+description = "AGENTS.md hygiene, as agents-md-hygiene.yml: size budget, no issue numbers, every dev-docs pointer exists"
+argv = ["bash", "scripts/check-agents-md-hygiene.sh"]
+timeout = 120
+image = "python-dev"
+report = "lines"
+install_first = false
+git_repo = true
+needs = ["AGENTS.md", "dev-docs"]
+pre_push = ["AGENTS.md", "dev-docs/*.md"]
+
+# sandbox-image-pin.yml, "Published image pin": the published sandbox images (custom-tools, toolchain,
+# dev) against their build inputs and the app default. A pre-push guard on every file
+# check-published-images.py hashes: a change to one of them (.xtm-one/stores.py included) without a
+# version bump in published-images.json is named before the commit, not one CI cycle later. Without
+# the base branch's manifest it skips the "inputs changed, same version" comparison CI makes on a pull
+# request; a stale pin (the inputs no longer hash to the manifest) is caught here as in CI.
+[check.sandbox-image-pin]
+description = "the published sandbox image pin, as sandbox-image-pin.yml: build inputs, versions and app default agree (--print-hashes in args prints the hashes to pin)"
+argv = ["python", "backend/sandbox/check-published-images.py"]
+timeout = 120
+image = "python-dev"
+report = "lines"
+install_first = false
+needs = ["backend/sandbox", "backend/app/core/config.py", ".xtm-one/stores.py"]
+pre_push = ["backend/sandbox/Dockerfile.sandbox.*", "backend/sandbox/apt.sandbox.*.txt", "backend/sandbox/requirements.sandbox.*.txt", "backend/sandbox/sandbox-images.json", "backend/sandbox/published-images.json", ".xtm-one/stores.py"]
+
+# ci.yml frontend-lint, "Command manifests" (yarn validate:commands).
+[check.frontend-commands]
+description = "validate the frontend command manifests as CI's 'Command manifests' step (scripts/validate-commands.mjs; after frontend-install)"
+argv = ["yarn", "validate:commands"]
+cwd = "frontend"
+timeout = 300
+image = "nodejs-dev"
+report = "lines"
+
+# runner-ci.yml and relay-ci.yml, "rustfmt": formatting needs no dependency, so it runs on
+# toolchain-rust offline. clippy links the GTK / WebKit and D-Bus development libraries CI
+# installs with apt: toolchain-rust carries them (apt.sandbox.toolchain.rust.txt), so the
+# clippy gates below run from the image that ships them (#11710 slice 2).
+[check.runner-fmt]
+description = "cargo fmt --all --check over apps/runner, as runner-ci.yml 'rustfmt'"
+argv = ["cargo", "fmt", "--all", "--check"]
+cwd = "apps/runner"
+timeout = 300
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+[check.relay-fmt]
+description = "cargo fmt --check over apps/relay, as relay-ci.yml 'rustfmt' (apps/agent-core: relay-agent-core-fmt)"
+argv = ["cargo", "fmt", "--check"]
+cwd = "apps/relay"
+timeout = 300
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+[check.relay-agent-core-fmt]
+description = "cargo fmt --check over apps/agent-core, as relay-ci.yml 'rustfmt'"
+argv = ["cargo", "fmt", "--check"]
+cwd = "apps/agent-core"
+timeout = 300
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+# runner-ci.yml "clippy (headless flavor)", the release's headless daemon: no X11 stack.
+[check.runner-clippy-headless]
+description = "cargo clippy of apps/runner's headless flavor with -D warnings, as runner-ci.yml (crates fetched on first run)"
+argv = ["cargo", "clippy", "--locked", "--no-default-features", "--features", "browser,self-update", "--", "-D", "warnings"]
+cwd = "apps/runner"
+timeout = 1800
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+# runner-ci.yml "clippy (default features - GUI app)": links GTK / WebKitGTK / xcb.
+[check.runner-clippy]
+description = "cargo clippy --all-targets of apps/runner (GUI app) with -D warnings, as runner-ci.yml"
+argv = ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"]
+cwd = "apps/runner"
+timeout = 1800
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+# relay-ci.yml "clippy (relay, release features)".
+[check.relay-clippy]
+description = "cargo clippy --all-targets of apps/relay with -D warnings, as relay-ci.yml"
+argv = ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"]
+cwd = "apps/relay"
+timeout = 1800
+image = "toolchain-rust"
+report = "lines"
+install_first = false
+
+# Every ShellCheck step of a pull request's CI, in one run: runner-ci.yml, relay-ci.yml
+# (install.sh at --severity=error), release-skill-ci.yml and ci-license-expiry.yml.
+# A script a narrow checkout does not hold is skipped (sc), never a failure; the pre-push
+# guard names only the scripts CI checks, never any other *.sh of the change.
+[check.shellcheck]
+description = "ShellCheck of every script CI checks (runner, relay, release skill, license-expiry scripts) the checkout holds"
+argv = ["sh", "-c", "rc=0; sc() { sev=$1; shift; set -- $(for f in \"$@\"; do [ -f \"$f\" ] && echo \"$f\"; done); [ $# -eq 0 ] || shellcheck $sev \"$@\" || rc=1; }; sc '' apps/runner/scripts/release-compile.sh apps/runner/scripts/release-stage.sh; sc --severity=error apps/relay/dist/install.sh; sc '' apps/relay/scripts/release-build.sh apps/relay/scripts/release-sign.sh; sc '' .agents/skills/release/release.sh .agents/skills/release/test.sh; sc '' .github/scripts/ci-license-*.sh; exit $rc"]
+timeout = 300
+image = "toolchain-python"
+report = "lines"
+install_first = false
+pre_push = ["apps/runner/scripts/release-*.sh", "apps/relay/dist/install.sh", "apps/relay/scripts/release-*.sh", ".agents/skills/release/*.sh", ".github/scripts/ci-license-*.sh"]
+
+# ci.yml "Secret scan (betterleaks)": the same scanner and version CI runs from its image
+# (ghcr.io/betterleaks/betterleaks:v1.9.0), on the checkout's tree, findings redacted.
+[check.secrets]
+description = "betterleaks secret scan of the checkout, as ci.yml 'Secret scan (betterleaks)' (findings redacted)"
+argv = ["betterleaks", "dir", ".", "--redact", "-v"]
+timeout = 600
+image = "toolchain-python"
+report = "lines"
+install_first = false
+
+# The pull request title rule: create_github_pr and update_github_pr refuse a
+# title that does not match before anything is written. Same pattern as
+# .github/workflows/pr-title-check.yml; tests/test_github_pr_title.py keeps the
+# two in step.
+[pull_request]
+title_pattern = '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9]+([_-][a-z0-9]+)*(\/[a-z0-9]+([_-][a-z0-9]+)*)*\))?: [a-z0-9].* \(#[0-9]+\)$'
+title_rule = "type(scope?): description (#123), type one of feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert; the description starts lower-case; the issue number ends it"
+title_example = "fix(auth): handle a missing token (#456)"
+
+# The issue title rule: create_github_issue and update_github_issue refuse a
+# title that does not match before anything is written. The pull request form
+# without the trailing issue reference (an issue does not name itself).
+[issue]
+title_pattern = '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9]+([_-][a-z0-9]+)*(\/[a-z0-9]+([_-][a-z0-9]+)*)*\))?: (?!.*\(#[0-9]+\)$)[a-z0-9].*$'
+title_rule = "type(scope?): description, type one of feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert; the description starts lower-case; no issue reference at the end"
+title_example = "fix(auth): handle a missing token"

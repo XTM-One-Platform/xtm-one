@@ -1,0 +1,63 @@
+[package]
+# The code the on-prem agents share: the runner (`apps/runner`, XTM One
+# Desktop + the headless OS-control daemon) and the relay (`apps/relay`, the
+# pull-based egress proxy). Every dependency below is one the runner already
+# locks, at the same requirement, so linking this crate adds no crate to the
+# runner's graph - only this one.
+name = "agent-core"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Shared core of the XTM One on-prem agents: credential storage, retry policy, host identity, release verification"
+license = "LicenseRef-XTM-One-Enterprise-Edition"
+repository = "https://github.com/XTM-One-Platform/xtm-one"
+publish = false
+
+# Standalone crate: its own workspace, like the two crates that depend on it.
+[workspace]
+
+[features]
+default = ["keychain"]
+# The OS-native credential store (DPAPI / Keychain / Secret Service). On Linux
+# it links libdbus, which a headless server or a container image may lack: the
+# relay, which keeps its credential as a file, builds without it.
+keychain = ["dep:keyring"]
+# Verifying a release before an agent replaces itself with it: minisign
+# signatures, the SHA-256 checksum, the rollback guard and the archive
+# extraction. Off by default so a build that never self-updates links none of it.
+self-update = [
+    "dep:minisign-verify",
+    "dep:base64",
+    "dep:zip",
+    "dep:tar",
+    "dep:flate2",
+]
+
+[dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["process", "time"] }
+tracing = "0.1"
+reqwest = { version = "0.12", default-features = false }
+sha2 = "0.10"
+hex = "0.4"
+
+minisign-verify = { version = "0.2", optional = true }
+base64 = { version = "0.22", optional = true }
+zip = { version = "9", default-features = false, features = [
+    "deflate",
+], optional = true }
+tar = { version = "0.4", optional = true }
+flate2 = { version = "1", optional = true }
+
+# OS-native credential storage, one backend per platform (as in the runner).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "test-util"] }

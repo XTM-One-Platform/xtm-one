@@ -1,0 +1,49 @@
+# Keep local build contexts lean and free of secrets/dev artifacts.
+# CI checkouts are clean, but local `docker compose build` would otherwise
+# upload .git, virtualenvs and node_modules into the build context and the
+# unguarded `COPY backend/ .` / `COPY frontend/ .` layers would bake them
+# into the image.
+
+.git
+.github
+.idea
+.vscode
+.cursor
+
+# Environment files (secrets must never reach an image layer)
+.env
+.env.*
+!.env.sample
+
+# Python
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+
+# Node
+**/node_modules
+**/dist
+**/.vite
+# The runner's headless install scripts are COPY'd into the image from
+# apps/runner/dist — re-include them past the **/dist exclusion above.
+!apps/runner/dist
+!apps/runner/dist/**
+# Same for the relay's install scripts.
+!apps/relay/dist
+!apps/relay/dist/**
+
+# Rust build output (the runner and the relay are built by CI on native OS
+# runners, never inside this image build)
+apps/runner/target
+apps/relay/target
+apps/agent-core/target
+
+# Docs / dev-only content not needed inside images
+dev-docs
+docs/site
+
+# Local data
+**/pgdata
+**/*.log

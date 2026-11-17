@@ -1,0 +1,30 @@
+{
+  "procedure": "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "b4c5d6e7-f8a9-4b0c-9d2e-3f4a5b6c7d8e",
+      "supportingAssetId": "e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b",
+      "primaryAssetId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "roles": [
+        "stores",
+        "processes"
+      ],
+      "supportingAssetName": "Core Banking System (Temenos T24)",
+      "supportingAssetDerivedName": null,
+      "supportingAssetCategoryId": "host"
+    },
+    {
+      "id": "41e1f2a3-b4c5-4d6e-9f8a-2b3c4d5e6f7a",
+      "supportingAssetId": "f6a7b8c9-d0e1-4f2a-ab4c-5d6e7f8a9b0c",
+      "primaryAssetId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "roles": [
+        "processes",
+        "reads"
+      ],
+      "supportingAssetName": "Internet Banking Portal",
+      "supportingAssetDerivedName": null,
+      "supportingAssetCategoryId": "web_application"
+    }
+  ]
+}

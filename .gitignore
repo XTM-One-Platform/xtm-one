@@ -1,0 +1,75 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.coverage
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.yarn/
+frontend/tsconfig.tsbuildinfo
+
+# A2A test rig for Google Agent Engine — developer tooling, not product
+scripts/a2a_agent_engine/
+scripts/a2a_agent_engine.tar.gz
+
+# Playwright
+frontend/.env.e2e
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/tests_e2e/.auth/
+!frontend/tests_e2e/.auth/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dev-launcher
+.dev-launcher.conf
+docker-compose.override-devlauncher.yml
+
+# bmad
+_bmad/
+_bmad-output/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/release/
+.github/agents/bmad*
+
+# Visual-regression captures written by frontend/scripts/gallery-shots.mjs.
+# Reference images for reviewing a styling change, regenerated on demand.
+.visual/
+
+# spec-kit (speckit)
+# `.specify/` (constitution, templates, scripts, workflows) and `specs/` (feature
+# specs, plans, tasks) are tracked so the spec-driven artifacts are shared.
+# Machine-local Spec Kit state is excluded by `.specify/.gitignore`.
+.specify/input/
+.specify/qa/
+.specify/integrations/.cache/
+# Per-developer agent files. The manifests in `.specify/integrations/` declare
+# which agents this repo supports; each developer materializes their own with
+# `specify integration upgrade <agent>`. Agent folders can also accumulate
+# credentials, which is why Spec Kit itself recommends excluding them.
+.github/agents/speckit.*
+.github/prompts/speckit.*
+.github/skills/speckit-*
+.claude/skills/speckit-*
+# Per-developer dev-server preview config.
+.claude/launch.json

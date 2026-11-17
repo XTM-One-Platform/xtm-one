@@ -1,0 +1,108 @@
+[
+  {
+    "file": "01-hunt-hypotheses.md",
+    "source": "R1-04",
+    "name": "Threat hunt hypotheses",
+    "description": "Turns threat intelligence into a table of attack procedures framed as hunt hypotheses, with search patterns, log sources and Event IDs, plus prioritization notes. Use it to build a hunt backlog the team can execute in the SIEM or EDR.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "02-hunt-lead-extraction.md",
+    "source": "R2-07",
+    "name": "Hunt lead extraction and prioritization",
+    "description": "Breaks a report into a ranked list of candidate hunt leads (observable behaviors or artifacts) with ATT&CK mapping, relevance, priority, confidence and citations, without writing queries or hypotheses. Use it first, to decide which leads are worth scoping.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "prioritized threat hunt lead list"
+      }
+    ]
+  },
+  {
+    "file": "03-hunt-lead-feasibility.md",
+    "source": "R2-08",
+    "name": "Hunt lead feasibility and coverage assessment",
+    "description": "Assesses each hunt lead against your logging, controls, existing detections and analyst capacity, and recommends hunt now, defer, close gap first or convert to detection. Use it after lead extraction, before committing analyst time.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Hunt leads or source material",
+        "type": "textarea",
+        "description": "Paste the hunt lead list (for example the output of the Hunt lead extraction assignment) or the report to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "stack_summary",
+        "label": "Stack summary",
+        "type": "textarea",
+        "description": "Your logging sources, detection tooling, existing detections and key controls. Leave empty to use the Security stack line of the agent's Organization context.",
+        "required": false
+      },
+      {
+        "key": "analyst_capacity",
+        "label": "Analyst capacity",
+        "type": "text",
+        "description": "Available hunting resource, e.g. '2 hunters, 20 hours per week'. Leave empty to get effort estimates only.",
+        "required": false
+      },
+      {
+        "key": "include_siem_inventory",
+        "label": "Read SIEM inventory",
+        "type": "boolean",
+        "description": "When on, the agent reads (never changes) data connectors, indexes and detection rules from your connected SIEM to complement the stack summary.",
+        "required": false,
+        "default": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "hunt lead feasibility and coverage assessment"
+      }
+    ]
+  },
+  {
+    "file": "04-hunt-hypotheses-package.md",
+    "source": "R3-07",
+    "name": "Threat hunt hypotheses package",
+    "description": "Converts a validated ATT&CK mapping into hunt hypotheses with patterns to look for and log sources or Event IDs, plus a prioritization note on what matters most and which data sources may be missing. Use it to hand a ready-to-run package to the hunting team.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Validated ATT&CK mapping",
+        "type": "textarea",
+        "description": "Paste the validated ATT&CK mapping (procedures and technique IDs) to convert. Leave empty to let the agent assemble a mapping from your connected integrations.",
+        "required": false
+      }
+    ]
+  }
+]

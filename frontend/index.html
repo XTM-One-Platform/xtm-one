@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" class="dark layer-0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+    <title>XTM One</title>
+    <meta name="description" content="Next-gen enterprise agentic AI platform by Filigran" />
+    <meta name="theme-color" content="#0a0f1c" />
+    <!-- Pre-paint the theme this browser cached (copilot-theme, written by
+         src/hooks/useThemeEffect.ts) before the bundle loads, so a reload in
+         light theme never shows a dark frame first Classic inline
+         script: the CSP allows it by the SHA-256 of its text, computed from
+         the served index.html (backend/app/services/branding.py). -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("copilot-theme") === "light") {
+            var root = document.documentElement;
+            root.dataset.mode = "light";
+            root.classList.remove("dark");
+            root.classList.add("light");
+            // Same value applyTheme writes (THEME_COLOR_LIGHT in
+            // src/hooks/useThemeEffect.ts), so the browser chrome matches.
+            // Only over the Copilot dark default (THEME_COLOR_DARK): a branded
+            // theme_color (XTM One purple, an operator's value) is kept as served.
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta && meta.getAttribute("content") === "#0a0f1c") meta.setAttribute("content", "#ececf2");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="XTM One" />
+    <meta property="og:description" content="Next-gen enterprise agentic AI platform by Filigran" />
+    <meta property="og:image" content="/og-image.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- Installed from a phone, the app opens full screen as the companion. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00c8d4" />
+    <link rel="manifest" href="/api/v1/platform/manifest.webmanifest" />
+    <!-- Brand fonts are self-hosted and bundled from src/fonts.ts. -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

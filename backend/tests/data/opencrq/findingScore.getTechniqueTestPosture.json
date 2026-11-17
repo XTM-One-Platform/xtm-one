@@ -1,0 +1,23 @@
+{
+  "procedure": "findingScore.getTechniqueTestPosture",
+  "source": "recorded",
+  "data": {
+    "testedAssetCount": 3,
+    "expectations": {
+      "prevention": {
+        "current": {
+          "held": 5,
+          "total": 9
+        },
+        "previous": null
+      },
+      "detection": {
+        "current": {
+          "held": 5,
+          "total": 10
+        },
+        "previous": null
+      }
+    }
+  }
+}

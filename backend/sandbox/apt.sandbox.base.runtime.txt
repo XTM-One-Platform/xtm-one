@@ -1,0 +1,14 @@
+# Final-stage runtime packages for the apt.sandbox.base.txt family
+# (sandbox-python, -cti, -rules, -soar).
+#
+# Only used if a tag falls back from the distroless "final-minimal" target to
+# the Debian-slim "final-full" target (see Dockerfile.sandbox.python and
+# research.md §3) — final-minimal has no package manager, so these packages
+# only apply there. Empirically, matplotlib's manylinux wheel bundles its own
+# freetype/png and does not need these at runtime on final-minimal; they are
+# kept here strictly for the documented final-full fallback path.
+#
+# libfreetype6, libpng16-16t64: matplotlib's font/PNG rendering backends, in
+# case a future matplotlib version stops bundling them in its wheel.
+libfreetype6
+libpng16-16t64

@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "scenarios": {
+      "type": "array",
+      "description": "One entry per risk scenario priced.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "opencrq_id": {"type": "string", "description": "The OpenCRQ scenario id, empty for a draft."},
+          "asset": {"type": "string", "description": "The crown jewel or business service at risk."},
+          "currency": {"type": "string"},
+          "expected_loss_before": {"type": "number"},
+          "expected_loss_after": {"type": "number"},
+          "loss_avoided": {"type": "number"},
+          "above_approval_threshold": {"type": "boolean"},
+          "assumptions": {"type": "array", "items": {"type": "string"}},
+          "draft": {"type": "boolean", "description": "True when the scenario is not yet in OpenCRQ."}
+        },
+        "required": ["name", "asset", "currency", "assumptions", "draft"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["scenarios"],
+  "additionalProperties": false
+}

@@ -1,0 +1,16 @@
+{
+  "procedure": "drata.getControlsForRequirement",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a13a7c-198d-7cf9-afdf-bbc9253cdaab",
+      "code": "DCF-1004",
+      "name": "Legacy VPN concentrator hardened",
+      "isReady": false,
+      "isMonitored": false,
+      "hasEvidence": false,
+      "hasPolicy": false,
+      "archivedAt": "2026-07-16T12:56:13.927Z"
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "description": "The frames the web chat streams (POST /api/v1/web/chat/messages, GET .../events), as the backend writes them and the chat panel (@filigran/chatbot) reads them; backend/tests/test_chat_panel_contracts.py checks each against the backend's names and end rules. \"relayed\": the backend fans the frame out to every stream of the conversation, the event stream included (a session_expired ends each stream on its own). \"end\": how it ends a turn - \"provisional\" (an error or cancelled marked \"provisional\": true; the stored end follows - any other end is final), \"stored\" (it carries the stored reply's message_id), null (it ends none, or ends a turn whose stored end is lost). Every frame but user_message, conversation_title and session_expired names its turn (turn_id). Change a shape here and on both sides together.",
+  "samples": [
+    {
+      "name": "turn started",
+      "relayed": false,
+      "end": null,
+      "frame": {"type": "turn_started", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "folded into the turn already running",
+      "relayed": false,
+      "end": null,
+      "frame": {"type": "folded_into_active_turn", "conversation_id": "11111111-2222-4333-8444-555555555555", "folded": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the user's message, relayed to the other streams",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "user_message", "message": {"id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "role": "user", "content": "Which alerts matter today?", "channel": "web", "sequence": 7, "created_at": "2026-10-22T10:00:00+00:00"}}
+    },
+    {
+      "name": "replay acknowledged (a stream attached to a turn in flight)",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "thinking", "resumed": true, "elapsed_s": 12.5, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a new segment of the answer starts",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "thinking", "intermediate": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the platform resumed a cut turn by itself (opens the resumed turn)",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "turn_resuming", "cause": "stop", "resume": 1, "of": 100, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "finished background work woke the conversation (opens the wake turn)",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "thinking", "wake": {"source": "background_task_wake", "task_id": "0b6d1c1e-3a52-4f0e-9a51-2f7c1c0de001", "agent_name": "Threat Researcher", "kind": "task"}, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "agentic actions charged",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "agentic_action", "actions": 1, "period": "2026-10", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a pause on a wait call starts",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "status", "status": "wait_start", "tool": "wait", "iteration": 2, "seconds": 60.0, "requested_seconds": 60, "clamped": false, "reason": "The enrichment is running", "until": null, "items": [{"id": "t-1", "kind": "task", "label": "Enrich IOCs", "status": "running", "started_at": "2026-10-22T10:00:00Z"}], "remaining_wait_seconds": 540.0, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "what a pause waits on changed state",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "status", "status": "wait_status", "tool": "wait", "items": [{"id": "t-1", "kind": "task", "label": "Enrich IOCs", "status": "completed", "started_at": "2026-10-22T10:00:00Z"}], "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a tool asks the host page to act",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "status", "status": "tool_progress", "tool": "act_on_page", "tool_call_id": "call_1", "event": "page_action_required", "conversation_id": "11111111-2222-4333-8444-555555555555", "action_id": "9b2f4c1e7a3d4e5f8a6b7c8d9e0f1a2b", "action": {"type": "snapshot"}, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a tool call waits for approval",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "approval_required", "proposals": [{"tool_call_id": "call_2", "tool_name": "delete_indicator", "tool_description": "Delete an indicator", "arguments": {"id": "ind-1"}, "input_schema": {"type": "object"}, "source": "builtin", "tool_entity_id": null}], "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the approval was answered",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "approval_resolved", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "answer text",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "stream", "content": "Two alerts", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a segment stored mid-turn (a steer folded in)",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "done", "content": "Looking into the first one.", "message_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", "conversation_id": "11111111-2222-4333-8444-555555555555", "intermediate": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the stored answer, naming the agent that wrote it",
+      "relayed": true,
+      "end": "stored",
+      "frame": {"type": "done", "content": "Two alerts matter today.", "message_id": "cccccccc-dddd-4eee-8fff-000000000000", "conversation_id": "11111111-2222-4333-8444-555555555555", "answered_by": {"agent_id": "dddddddd-eeee-4fff-8000-111111111111", "agent_name": "Triage", "agent_icon": "🛡️"}, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the note stored in place of a mentioned agent that did not answer",
+      "relayed": true,
+      "end": "stored",
+      "frame": {"type": "done", "content": "Triage could not answer.", "message_id": "eeeeeeee-ffff-4000-8111-222222222222", "conversation_id": "11111111-2222-4333-8444-555555555555", "answered_by": {"agent_id": "dddddddd-eeee-4fff-8000-111111111111", "agent_name": "Triage"}, "mention_failed": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the agent loop failed (its reply is stored next, as a done)",
+      "relayed": true,
+      "end": "provisional",
+      "frame": {"type": "error", "content": "I encountered an error: the model is unavailable.", "provisional": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a Stop reached the turn (its reply is stored next)",
+      "relayed": true,
+      "end": "provisional",
+      "frame": {"type": "cancelled", "provisional": true, "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the stopped turn's stored end",
+      "relayed": true,
+      "end": "stored",
+      "frame": {"type": "cancelled", "message_id": "ffffffff-0000-4111-8222-333333333333", "conversation_id": "11111111-2222-4333-8444-555555555555", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a turn torn down before its own end",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "error", "content": "The response was interrupted before it completed.", "reason": "interrupted", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "a relayed turn whose end could not be recovered",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "error", "content": "The end of this response could not be delivered. Reload the conversation to see it.", "reason": "lost", "turn_id": "3f1c9a7b2d4e4f60a1b2c3d4e5f60718"}
+    },
+    {
+      "name": "the conversation's generated title",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "conversation_title", "conversation_id": "11111111-2222-4333-8444-555555555555", "title": "Today's alerts"}
+    },
+    {
+      "name": "the session ended",
+      "relayed": false,
+      "end": null,
+      "frame": {"type": "session_expired", "reason": "idle"}
+    }
+  ]
+}

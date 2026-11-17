@@ -1,0 +1,34 @@
+# Sandbox requirements — Rules Engineering & Detection Content
+# Covers: Sigma rules, YAML/JSON schema tools, testing, templating, Git integration.
+# Kept separate from requirements.sandbox.cti.txt because sigma-cli (click>=8.3.1)
+# conflicts with greynoise (click<=8.1.8).
+# Install independently; do not mix with other sandbox domain files in one environment.
+#
+# Build (final-full — GitPython shells out to the real git binary at import
+# time, a documented runtime-CLI exception; see apt.sandbox.rules.runtime.txt):
+#   docker build -f backend/sandbox/Dockerfile.sandbox.python \
+#     --target final-full \
+#     --build-arg APT_FILE=apt.sandbox.base.txt \
+#     --build-arg REQ_FILE=requirements.sandbox.rules.txt \
+#     --build-arg RUNTIME_APT_FILE=apt.sandbox.rules.runtime.txt \
+#     -t sandbox-python-rules:<version> .
+
+# ── Rules Engineering ─────────────────────────────────────────────────────────
+pysigma==1.4.0                 # Sigma rule processing
+sigma-cli==3.0.3               # Sigma CLI tooling
+ruamel.yaml==0.19.1            # YAML parser with round-trip support
+yamllint==1.38.0               # YAML linter
+jsonschema==4.26.0             # JSON Schema validation
+pydantic==2.13.4               # Data validation and settings
+Jinja2==3.1.6                  # Templating engine
+deepdiff==9.1.0                # Deep diff for Python objects
+GitPython==3.2.1              # Git repository interaction
+pytest==9.1.1                  # Testing framework
+pre-commit==4.6.0              # Pre-commit hook management
+
+# ── Infrastructure (unpinned — resolved across the packages above) ────────────
+requests
+urllib3
+certifi
+click
+packaging

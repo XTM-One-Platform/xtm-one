@@ -1,0 +1,83 @@
+{
+  "procedure": "supportingAssets.listSupportingAssets",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "id": "01a13a55-9f98-73bf-9161-d93ebadb133e",
+        "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+        "name": "#1 AI Meeting Note Taker - TeamsMaestro",
+        "derivedName": "#1 ai meeting note taker - teamsmaestro",
+        "description": null,
+        "ownerId": null,
+        "exposure": "unknown",
+        "categoryId": "identity",
+        "subcategoryId": "service_account",
+        "criticality": "low",
+        "firstSeenAt": null,
+        "lastSeenAt": "2026-10-12T14:04:08.694Z",
+        "createdAt": "2026-10-14T12:14:12.361Z",
+        "updatedAt": "2026-10-14T12:14:12.361Z",
+        "owner": null,
+        "applicableEvidenceCount": 0,
+        "sources": [
+          {
+            "supportingAssetId": "01a13a55-9f98-73bf-9161-d93ebadb133e",
+            "connectorId": "019edb28-0004-7000-8000-000000000004",
+            "source": "microsoft_graph",
+            "sourceAssetId": "4ec25ca6-d412-41c8-83aa-cbc279816fac",
+            "firstSeenAt": null,
+            "lastSeenAt": "2026-10-12T14:04:08.694Z",
+            "reportedName": "#1 AI Meeting Note Taker - TeamsMaestro",
+            "reportedDescription": null,
+            "reportedCategoryId": "identity",
+            "reportedSubcategoryId": "service_account",
+            "reportedExposure": "unknown",
+            "reportedCriticality": "low"
+          }
+        ],
+        "mapped": false,
+        "posture": null
+      },
+      {
+        "id": "01a13a51-62c2-785c-bf01-33580d8e36e7",
+        "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+        "name": null,
+        "derivedName": "172.16.1.192",
+        "description": null,
+        "ownerId": null,
+        "exposure": "unknown",
+        "categoryId": "generic_asset",
+        "subcategoryId": null,
+        "criticality": "unknown",
+        "firstSeenAt": "2026-09-24T06:54:31.786Z",
+        "lastSeenAt": "2026-09-24T11:00:08.849Z",
+        "createdAt": "2026-10-14T12:09:32.972Z",
+        "updatedAt": "2026-10-14T12:09:32.972Z",
+        "owner": null,
+        "applicableEvidenceCount": 0,
+        "sources": [
+          {
+            "supportingAssetId": "01a13a51-62c2-785c-bf01-33580d8e36e7",
+            "connectorId": "019edb28-0004-7000-8000-000000000004",
+            "source": "microsoft_graph",
+            "sourceAssetId": "d5dfca0ad4932018bd9b7a2493f230670fd86e65",
+            "firstSeenAt": "2026-09-24T06:54:31.786Z",
+            "lastSeenAt": "2026-09-24T11:00:08.849Z",
+            "reportedName": null,
+            "reportedDescription": null,
+            "reportedCategoryId": "generic_asset",
+            "reportedSubcategoryId": null,
+            "reportedExposure": "unknown",
+            "reportedCriticality": "unknown"
+          }
+        ],
+        "mapped": false,
+        "posture": null
+      }
+    ],
+    "total": 2295,
+    "page": 1,
+    "limit": 3
+  }
+}

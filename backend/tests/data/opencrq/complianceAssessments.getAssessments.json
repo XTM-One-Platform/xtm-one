@@ -1,0 +1,52 @@
+{
+  "procedure": "complianceAssessments.getAssessments",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "019edb28-0034-7000-8000-000000000002",
+      "name": "NIST CSF 2.0 · T4 2026",
+      "status": "draft",
+      "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+      "frameworkTitle": "NIST CSF 2.0",
+      "createdAt": "2026-10-12T09:00:00.459Z",
+      "updatedAt": "2026-10-13T09:00:00.459Z",
+      "maturity": {
+        "requirementCount": 106,
+        "answeredCount": 41,
+        "notApplicableCount": 2,
+        "meanLevel": 2.048780487804878,
+        "distribution": [
+          5,
+          7,
+          13,
+          13,
+          3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "019edb28-0034-7000-8000-000000000001",
+      "name": "NIST CSF 2.0 · T2 2026",
+      "status": "published",
+      "frameworkId": "7e83ed4a-7d48-50e3-96b4-658c19a01804",
+      "frameworkTitle": "NIST CSF 2.0",
+      "createdAt": "2026-06-16T09:00:00.459Z",
+      "updatedAt": "2026-07-16T09:00:00.459Z",
+      "maturity": {
+        "requirementCount": 106,
+        "answeredCount": 99,
+        "notApplicableCount": 7,
+        "meanLevel": 2.111111111111111,
+        "distribution": [
+          11,
+          23,
+          29,
+          19,
+          14,
+          3
+        ]
+      }
+    }
+  ]
+}

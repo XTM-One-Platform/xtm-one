@@ -1,0 +1,56 @@
+openapi: 3.2.0
+info:
+  title: Acme Accounts API
+  version: "3.2"
+servers:
+  - url: https://api.acme.test/v1
+    name: Production
+security:
+  - oauth: [accounts:read]
+paths:
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in account
+      responses:
+        "200":
+          description: ok
+  /status:
+    get:
+      operationId: getStatus
+      security: []
+      responses:
+        "200":
+          description: ok
+components:
+  securitySchemes:
+    oauth:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://login.acme.test/authorize
+          scopes:
+            accounts:read: Read accounts
+        password:
+          tokenUrl: https://login.acme.test/token
+          scopes:
+            accounts:read: Read accounts
+        deviceAuthorization:
+          deviceAuthorizationUrl: https://login.acme.test/device
+          tokenUrl: https://login.acme.test/token
+          scopes:
+            accounts:read: Read accounts
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://login.acme.test/.well-known/openid-configuration
+    meta:
+      type: oauth2
+      oauth2MetadataUrl: https://login.acme.test/.well-known/oauth-authorization-server
+    mtls:
+      type: mutualTLS
+      description: A client certificate issued by Acme.
+    legacy:
+      type: apiKey
+      in: header
+      name: X-Legacy-Key
+      deprecated: true

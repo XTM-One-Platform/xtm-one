@@ -1,0 +1,11 @@
+# Builder-stage OS packages for Dockerfile.sandbox.dev (python-builder): the
+# compilers and headers the backend's uv.lock needs where a pin has no cp314
+# wheel (xmlsec against libxmlsec1, as backend/Dockerfile installs). Never in
+# a final stage (hardening rule 1).
+build-essential
+pkg-config
+libxml2-dev
+libxslt1-dev
+libxmlsec1-dev
+libxmlsec1-openssl
+libpq-dev

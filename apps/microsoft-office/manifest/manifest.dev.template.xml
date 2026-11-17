@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE — do not edit the generated output (manifest.xml) directly.
+  Run ./apps/generate-manifests.sh to regenerate.
+
+  APP_NAME is resolved by the script from:
+    1. PLATFORM_NAME env var  (trimmed, if not blank)
+    2. PLATFORM_MODE=copilot or dev  →  "Filigran Copilot"
+    3. Otherwise (xtm_one or ai_disabled)  →  "XTM One"
+
+  Development manifest — Vite dev server on https://localhost:3100.
+  For Word Desktop only (Word Online requires HTTPS).
+
+  Usage:
+    1. npm run dev (starts on https://localhost:3100)
+    2. Sideload manifest.xml in Word Desktop via shared folder or registry
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <Id>b7f3a1c4-e5d6-4890-abcd-ef1234567890</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Filigran</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="{{APP_NAME}} (Dev)" />
+  <Description DefaultValue="AI-powered assistant — development build." />
+  <IconUrl DefaultValue="https://localhost:3100/assets/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="https://localhost:3100/assets/icon-128.png" />
+  <SupportUrl DefaultValue="https://filigran.io/support" />
+
+  <AppDomains>
+    <AppDomain>https://localhost:3100</AppDomain>
+    <AppDomain>http://localhost:8000</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Document" />
+    <Host Name="Workbook" />
+    <Host Name="Presentation" />
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:3100/" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="getStarted.title" />
+            <Description resid="getStarted.desc" />
+            <LearnMoreUrl resid="getStarted.url" />
+          </GetStarted>
+          <FunctionFile resid="commands.url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="WordGroup">
+                <Label resid="group.label" />
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="WordShowTaskpane">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="taskpane.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>CopilotTaskpane</TaskpaneId>
+                    <SourceLocation resid="taskpane.url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+          <ExtensionPoint xsi:type="ContextMenu">
+            <OfficeMenu id="ContextMenuText">
+              <Control xsi:type="Button" id="WordContextCopilot">
+                <Label resid="ctx.copilot" />
+                <Supertip>
+                  <Title resid="ctx.copilot" />
+                  <Description resid="ctx.copilot.tip" />
+                </Supertip>
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Action xsi:type="ShowTaskpane">
+                  <TaskpaneId>CopilotTaskpane</TaskpaneId>
+                  <SourceLocation resid="taskpane.url" />
+                </Action>
+              </Control>
+            </OfficeMenu>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="getStarted.title" />
+            <Description resid="getStarted.desc" />
+            <LearnMoreUrl resid="getStarted.url" />
+          </GetStarted>
+          <FunctionFile resid="commands.url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="ExcelGroup">
+                <Label resid="group.label" />
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="ExcelShowTaskpane">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="taskpane.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>CopilotTaskpane</TaskpaneId>
+                    <SourceLocation resid="taskpane.url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+          <ExtensionPoint xsi:type="ContextMenu">
+            <OfficeMenu id="ContextMenuCell">
+              <Control xsi:type="Button" id="ExcelContextCopilot">
+                <Label resid="ctx.copilot" />
+                <Supertip>
+                  <Title resid="ctx.copilot" />
+                  <Description resid="ctx.copilot.tip" />
+                </Supertip>
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Action xsi:type="ShowTaskpane">
+                  <TaskpaneId>CopilotTaskpane</TaskpaneId>
+                  <SourceLocation resid="taskpane.url" />
+                </Action>
+              </Control>
+            </OfficeMenu>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="getStarted.title" />
+            <Description resid="getStarted.desc" />
+            <LearnMoreUrl resid="getStarted.url" />
+          </GetStarted>
+          <FunctionFile resid="commands.url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="PptGroup">
+                <Label resid="group.label" />
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="PptShowTaskpane">
+                  <Label resid="taskpane.label" />
+                  <Supertip>
+                    <Title resid="taskpane.label" />
+                    <Description resid="taskpane.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>CopilotTaskpane</TaskpaneId>
+                    <SourceLocation resid="taskpane.url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon.16" DefaultValue="https://localhost:3100/assets/icon-16.png" />
+        <bt:Image id="icon.32" DefaultValue="https://localhost:3100/assets/icon-32.png" />
+        <bt:Image id="icon.80" DefaultValue="https://localhost:3100/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="taskpane.url" DefaultValue="https://localhost:3100/" />
+        <bt:Url id="commands.url" DefaultValue="https://localhost:3100/commands.html" />
+        <bt:Url id="getStarted.url" DefaultValue="https://filigran.io" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="group.label" DefaultValue="{{APP_NAME}}" />
+        <bt:String id="taskpane.label" DefaultValue="{{APP_NAME}}" />
+        <bt:String id="getStarted.title" DefaultValue="{{APP_NAME}}" />
+        <bt:String id="ctx.copilot" DefaultValue="Ask {{APP_NAME}}" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="taskpane.tip" DefaultValue="Open the {{APP_NAME}} panel to chat with AI agents about your document." />
+        <bt:String id="getStarted.desc" DefaultValue="Click the {{APP_NAME}} button on the Home tab to get started." />
+        <bt:String id="ctx.copilot.tip" DefaultValue="Open {{APP_NAME}} to analyze, comment, or rewrite the selected text." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

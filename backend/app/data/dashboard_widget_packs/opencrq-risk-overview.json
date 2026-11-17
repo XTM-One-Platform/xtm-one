@@ -1,0 +1,105 @@
+{
+  "format": "xtm-one-widget-pack",
+  "version": 1,
+  "name": "OpenCRQ - Risk overview",
+  "widgets": [
+    {
+      "id": "active-findings",
+      "title": "Active findings",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "metric": "active_findings"
+      }
+    },
+    {
+      "id": "critical-findings",
+      "title": "Critical findings",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "metric": "critical_findings"
+      }
+    },
+    {
+      "id": "kev-findings",
+      "title": "Known exploited vulnerabilities",
+      "width": "third",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "number",
+      "size": "m",
+      "native": {
+        "metric": "kev_findings"
+      }
+    },
+    {
+      "id": "risk-by-scope",
+      "title": "Annual loss expectancy by scope",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "donut",
+      "size": "m",
+      "native": {
+        "metric": "risk_by_scope",
+        "window_days": 90
+      }
+    },
+    {
+      "id": "findings-by-severity",
+      "title": "Findings by severity",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "hbar",
+      "size": "m",
+      "native": {
+        "metric": "findings_by_severity"
+      }
+    },
+    {
+      "id": "exposure-trend-ale",
+      "title": "Annual loss expectancy over time",
+      "width": "full",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "area",
+      "size": "m",
+      "native": {
+        "metric": "exposure_trend_ale"
+      }
+    },
+    {
+      "id": "tolerance-gaps",
+      "title": "Scenarios outside risk tolerance",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "table",
+      "size": "m",
+      "native": {
+        "metric": "tolerance_gaps"
+      }
+    },
+    {
+      "id": "top-assets",
+      "title": "Most exposed assets",
+      "width": "half",
+      "kind": "platform",
+      "source": "opencrq",
+      "view": "table",
+      "size": "m",
+      "native": {
+        "metric": "top_assets"
+      }
+    }
+  ],
+  "description": "Cyber risk quantification from OpenCRQ: findings, annual loss expectancy by scope and over time, tolerance gaps and the most exposed assets."
+}

@@ -1,0 +1,69 @@
+{
+  "procedure": "mitreAttack.getTechniqueByExternalId",
+  "source": "recorded",
+  "data": {
+    "id": "1c75cd63-b80b-58a3-98c4-1f66b3ab6ad7",
+    "externalId": "T1566",
+    "name": "Phishing",
+    "description": "Adversaries may send phishing messages to gain access to victim systems. All forms of phishing are electronically delivered social engineering. Phishing can be targeted, known as spearphishing. In spearphishing, a specific individual, company, or industry will be targeted by the adversary. More generally, adversaries can conduct non-targeted phishing, such as in mass malware spam campaigns.\n\nAdver",
+    "url": "https://attack.mitre.org/techniques/T1566",
+    "parentTechniqueId": null,
+    "isSubtechnique": false,
+    "revoked": false,
+    "replacedByTechniqueId": null,
+    "replacedByTechniqueExternalId": null,
+    "tactics": [
+      {
+        "id": "29ae0fe7-7149-5146-a15b-8af3652ed977",
+        "externalId": "TA0001",
+        "name": "Initial Access"
+      }
+    ],
+    "subTechniques": [
+      {
+        "id": "7f90782d-cbf7-5326-b7bd-bc2e3defbf86",
+        "externalId": "T1566.001",
+        "name": "Spearphishing Attachment",
+        "revoked": false
+      },
+      {
+        "id": "6b5e133e-291d-516a-a76b-0e2448b8303f",
+        "externalId": "T1566.002",
+        "name": "Spearphishing Link",
+        "revoked": false
+      }
+    ],
+    "mitigations": [
+      {
+        "id": "a472b39f-8ef1-5b32-8781-bc40af856169",
+        "externalId": "M1017",
+        "name": "User Training"
+      },
+      {
+        "id": "0df652db-4098-54c1-9532-9a4e8643d5e9",
+        "externalId": "M1021",
+        "name": "Restrict Web-Based Content"
+      },
+      {
+        "id": "ef9127a6-f0f0-591a-bbab-b4d141799ed6",
+        "externalId": "M1031",
+        "name": "Network Intrusion Prevention"
+      },
+      {
+        "id": "8a626e62-99e5-57e2-a94e-ceb0cd55922d",
+        "externalId": "M1047",
+        "name": "Audit"
+      },
+      {
+        "id": "3ad4d6fd-a671-510b-b95e-184ed67b3275",
+        "externalId": "M1049",
+        "name": "Antivirus/Antimalware"
+      },
+      {
+        "id": "f85d7e85-7fcc-509e-8a53-7d3b2e57f0c6",
+        "externalId": "M1054",
+        "name": "Software Configuration"
+      }
+    ]
+  }
+}

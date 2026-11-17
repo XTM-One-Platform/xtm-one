@@ -1,0 +1,111 @@
+name: Feature branch deploy
+
+# Deploys a pull request's branch to staging while the "Deploy this branch to
+# staging" box of its description is checked (pull_request_template.md): once
+# when the box is checked, then on every push. It only runs the feature branch
+# deploy of deploy.yml (a dispatch from main naming the branch), so it holds no
+# secret and never checks out or runs the pull request's code.
+#
+# Under the box, the description holds the deploy's optional inputs: an
+# ```env staging block of KEY=value lines (xtmone_config, the extra env of the
+# platform and worker) and a "Staging chart: <repository>:<version>" line
+# (chart_ref). Every deploy reads them from the current description, and an
+# edit of either deploys again while the box stays checked. Invalid inputs fail
+# the run.
+#
+# pull_request_target, not pull_request: the run is main's, with main's
+# workflow, and its GITHUB_TOKEN may dispatch deploy.yml (a dispatch is the one
+# event a GITHUB_TOKEN starts a run with). A pull request from a fork is never
+# deployed: the release builds a branch of this repository only.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+# No concurrency group: a run that deploys nothing must never cancel one that
+# does. deploy.yml, and the release it dispatches, cancel the deploy of the
+# branch still in progress: a push aborts the deployment of the previous one.
+jobs:
+  dispatch:
+    name: Deploy the branch to staging
+    if: github.event.pull_request.state == 'open' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the feature branch deploy if the box is checked
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BODY: ${{ github.event.pull_request.body }}
+          CHANGES: ${{ toJSON(github.event.changes) }}
+        run: |
+          # A "- [x] Deploy this branch to staging" line; the web editor ends
+          # lines with CRLF.
+          checked() {
+            tr -d '\r' | grep -Eiq '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+Deploy this branch to staging'
+          }
+          # The deploy inputs of a description, as {"chart_ref": ...,
+          # "xtmone_config": {...}} on one line with sorted keys, the defaults
+          # without a block or chart line; otherwise why they are invalid, on
+          # stderr. An env line is KEY=value, its value the rest of the line
+          # verbatim; chart_ref follows the rules of the release's
+          # resolve-target.sh, which checks both inputs again.
+          inputs() {
+            local text block chart
+            text=$(tr -d '\r')
+            chart=$(grep -Ei '^[[:space:]]*staging chart:' <<< "$text" || true)
+            block=$(awk '
+              open && /^[[:space:]]*```[[:space:]]*$/ { open = 0; next }
+              open { print; next }
+              /^[[:space:]]*```env[[:space:]]+staging[[:space:]]*$/ { open = 1; blocks++ }
+              END { exit blocks > 1 ? 2 : open ? 3 : 0 }' <<< "$text") || {
+              if [ $? = 2 ]; then echo "there is more than one \`\`\`env staging block" >&2; else echo "the \`\`\`env staging block is not closed" >&2; fi
+              return 1
+            }
+            jq -nRcS --arg chart "$chart" 'try (
+              reduce ([inputs] | to_entries[]) as {key: $i, value: $line} ({};
+                if $line | test("\\A\\s*(#.*)?\\z") then .
+                else ($line | capture("\\A(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)\\z")
+                    // error("line \($i + 1) of the ```env staging block is not KEY=value, a # comment or a blank line")) as {$k, $v}
+                  | if has($k) then error("line \($i + 1) of the ```env staging block sets \($k) again") else .[$k] = $v end
+                end)
+              | {xtmone_config: .,
+                 chart_ref: ($chart | split("\n") | map(select(. != ""))
+                   | if length > 1 then error("there is more than one Staging chart line") else . end
+                   | (.[0] // "" | sub("\\A\\s*staging chart:\\s*"; ""; "i") | sub("\\s+\\z"; "")
+                      | if test("\\A`.*`\\z") then .[1:-1] else . end))}
+              | if .chart_ref != "" and (.chart_ref | test("\\A[A-Za-z0-9][A-Za-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*\\z") | not)
+                then error("Staging chart \(.chart_ref | tojson) is not <repository>:<version>, e.g. filigran/xtm-suite:0.261009.4")
+                else . end
+            ) catch ("\(.)\n" | halt_error(1))' <<< "$block"
+          }
+          if ! checked <<< "$BODY"; then
+            echo "The box is not checked: nothing to deploy."
+            exit 0
+          fi
+          if [ "$ACTION" = edited ] && [ "$(jq -r '.body | type' <<< "$CHANGES")" != object ]; then
+            echo "The description did not change: nothing to deploy."
+            exit 0
+          fi
+          if ! INPUTS=$(inputs <<< "$BODY" 2>&1); then
+            echo "::error title=Feature branch deploy::The deploy inputs of the description are invalid: $INPUTS"
+            exit 1
+          fi
+          # An edit deploys when it checks the box or changes the deploy
+          # inputs: a retitle, or another edit of a description already
+          # checked, deploys nothing new.
+          if [ "$ACTION" = edited ] && jq -r '.body.from // ""' <<< "$CHANGES" | checked; then
+            if [ "$(jq -r '.body.from // ""' <<< "$CHANGES" | inputs 2> /dev/null)" = "$INPUTS" ]; then
+              echo "The box was already checked and the deploy inputs did not change: nothing new to deploy."
+              exit 0
+            fi
+          fi
+          echo "Deploy inputs: $INPUTS"
+          gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main -f branch="$BRANCH" \
+            -f xtmone_config="$(jq -c '.xtmone_config' <<< "$INPUTS")" -f chart_ref="$(jq -r '.chart_ref' <<< "$INPUTS")"
+          echo "::notice title=Feature branch deploy::$BRANCH dispatched to staging, see Actions > Deploy"
+          echo "Feature branch deploy of \`$BRANCH\` dispatched: [Deploy runs]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/deploy.yml?query=event%3Aworkflow_dispatch)" >> "$GITHUB_STEP_SUMMARY"

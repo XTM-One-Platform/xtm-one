@@ -1,0 +1,93 @@
+name: Issue type sync
+
+# Keeps every issue's GitHub Type and its primary type label in line with the
+# title prefix, per .github/LABELS.md: `feat:` -> `feature` + Feature,
+# `fix:` -> `bug` + Bug, `docs:` -> `documentation` + Task, any other type ->
+# Task with no type label. Nothing else enforces it - `gh issue create` cannot
+# even set a Type - and a one-off cleanup of 781 drifted issues watched four
+# new untyped issues arrive while it ran. The rules live in
+# .github/scripts/issue-type-sync.mjs.
+#
+# The workflow's own edits are made with GITHUB_TOKEN, whose events never
+# start a workflow run, so a sync cannot re-trigger itself.
+on:
+  issues:
+    types: [opened, reopened, edited, labeled, unlabeled, typed, untyped]
+  # Safety net for an event this workflow missed (an outage, a failed run).
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Re-check the issues updated in the last N days (0 = every issue)"
+        default: "3"
+  pull_request:
+    paths:
+      - ".github/LABELS.md"
+      - ".github/scripts/issue-type-sync*"
+      - ".github/workflows/issue-type-sync.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test the sync rules
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Run the rule tests
+        run: node --test .github/scripts/issue-type-sync.test.mjs
+
+  sync:
+    name: Sync issue type and type label
+    # A body edit cannot change the type, and a new issue fires one `labeled`
+    # event per label: only title edits and the labels the rules read start a
+    # run. The label list is WATCHED_LABELS in the script, and a test fails
+    # when the two differ.
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'issues' && (
+        contains(fromJSON('["opened", "reopened", "typed", "untyped"]'), github.event.action)
+        || (github.event.action == 'edited' && github.event.changes.title)
+        || contains(fromJSON('["feature", "bug", "documentation", "enhancement", "feature-request", "feature request", "improvement", "nice-to-have", "security", "Aikido"]'), github.event.label.name)
+      ))
+    runs-on: ubuntu-26.04
+    # A sweep stops by itself after 40 minutes and reports what it left.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write
+    # One run at a time per issue, and each run re-reads the issue before
+    # deciding: a newer queued event replacing an older one loses nothing the
+    # title decides (without a prefix, the newest queued change wins). The
+    # sweep cannot join these groups - a group keeps one pending run, so a
+    # shared group would drop the events of other issues - and guards each
+    # issue itself instead (see sweep() in the script).
+    concurrency:
+      group: issue-type-sync-${{ github.event.issue.number || 'sweep' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SWEEP_DAYS: ${{ inputs.days || '3' }}
+        run: node .github/scripts/issue-type-sync.mjs

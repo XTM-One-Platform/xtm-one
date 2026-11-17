@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "Subject line of the simulated phishing lure email"
+    },
+    "html_body": {
+      "type": "string",
+      "description": "Full HTML body of the email. Must contain the {{phishing_url}} placeholder in the primary call-to-action link href",
+      "pattern": "\\{\\{phishing_url\\}\\}"
+    },
+    "text_body": {
+      "type": "string",
+      "description": "Plain-text fallback of the email. Should also contain the {{phishing_url}} placeholder",
+      "pattern": "\\{\\{phishing_url\\}\\}"
+    }
+  },
+  "required": [
+    "subject",
+    "html_body"
+  ],
+  "additionalProperties": false
+}

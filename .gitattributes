@@ -1,0 +1,45 @@
+# Every text file is stored with LF line endings, whatever the editor, the
+# shell or the coding agent wrote: ``git add`` converts CRLF to LF. The rule
+# wins over each machine's ``core.autocrlf``, so a Windows checkout no longer
+# commits whole-file CRLF rewrites that show every line as changed and break
+# blame - and shell scripts never reach a container with CRLF, where POSIX
+# ``/bin/sh`` (dash) reads the trailing ``\r`` as part of an option name and
+# refuses to start with ``Illegal option -``.
+# Pinned by backend/tests/test_repo_text_hygiene.py.
+* text=auto eol=lf
+
+# A fixture whose bytes are the test (a CRLF payload, a bare \r) is marked
+# here with ``-text``: Git stores it byte for byte and the hygiene test skips
+# it. Example: backend/tests/data/crlf_payload.eml -text
+
+# Windows-native scripts (PowerShell, batch, NSIS) are checked out with CRLF
+# (and stored as LF). They stay ASCII: Windows PowerShell 5.1 reads BOM-less
+# UTF-8 as cp1252.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.nsh text eol=crlf
+*.nsi text eol=crlf
+
+# Binaries are never converted (text=auto detects them; these are explicit).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.docx binary
+*.xlsx binary
+*.pptx binary

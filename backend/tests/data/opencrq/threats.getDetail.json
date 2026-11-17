@@ -1,0 +1,222 @@
+{
+  "procedure": "threats.getDetail",
+  "source": "recorded",
+  "data": {
+    "analysis": {
+      "id": "01a139e7-7e09-7c47-91b9-b77217c31c8c",
+      "tenantId": "89c70e9a-8317-4da7-8765-1b9ba004c32c",
+      "stixId": "intrusion-set--seed-sandworm",
+      "entityType": "intrusion-set",
+      "kind": "stix-import",
+      "name": "Sandworm Team",
+      "description": "Russian military intelligence (GRU) unit behind the most destructive cyber attacks on record, wiper deployments and attacks against energy grids and transport infrastructure.",
+      "mitreGroupId": "G0034",
+      "confidence": 90,
+      "stixCreated": "2013-08-23T10:13:54.630Z",
+      "firstSeen": "2013-08-23T10:13:54.630Z",
+      "lastSeen": null,
+      "primaryMotivation": "dominance",
+      "resourceLevel": "government",
+      "sophistication": null,
+      "objective": null,
+      "actorClass": "state_sponsored",
+      "actorClassOverride": null,
+      "lastObservedAt": null,
+      "lastAuthoredAt": "2025-08-20T10:13:54.630Z",
+      "activityStatus": "unknown",
+      "activityScore": 0,
+      "activityComputedAt": "2026-10-14T10:13:58.351Z",
+      "activityGate": 60,
+      "intentWordListVersion": "2026.08",
+      "firstIngestedAt": "2026-10-14T10:13:54.825Z",
+      "lastIngestedAt": "2026-10-14T10:13:54.825Z",
+      "createdAt": "2026-10-14T10:13:54.068Z",
+      "updatedAt": "2026-10-14T10:13:54.825Z"
+    },
+    "attributedTo": [],
+    "attributedFrom": [],
+    "threatActorTypes": [],
+    "roles": [],
+    "origin": {
+      "kind": "stix-import",
+      "stixId": "intrusion-set--seed-sandworm",
+      "firstIngestedAt": "2026-10-14T10:13:54.825Z",
+      "lastIngestedAt": "2026-10-14T10:13:54.825Z"
+    },
+    "activity": {
+      "activityScore": 0,
+      "activityStatus": "unknown",
+      "lastActivityAt": "2025-08-20T10:13:54.630Z",
+      "lastObservedAt": null,
+      "anchorProvenance": "authored"
+    },
+    "locations": [
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd046052512c",
+        "stixId": "location--seed-country-germany",
+        "name": "Germany",
+        "country": "Germany",
+        "relCreated": "2025-05-12T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-05-12T10:13:54.630Z",
+        "relConfidence": 70,
+        "countryId": "c3e29fe0-c397-57b2-a38c-86d2076c9ff8",
+        "countryIsoAlpha2": "DE",
+        "matchesOrganization": true,
+        "openctiStixRelationId": null
+      },
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd032c1693df",
+        "stixId": "location--seed-country-france",
+        "name": "France",
+        "country": "France",
+        "relCreated": "2025-08-10T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-08-10T10:13:54.630Z",
+        "relConfidence": 75,
+        "countryId": "ecdbdbd7-2a29-5bc6-8860-105d308a8a2a",
+        "countryIsoAlpha2": "FR",
+        "matchesOrganization": true,
+        "openctiStixRelationId": null
+      }
+    ],
+    "sectors": [
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd05a268a0c4",
+        "stixId": "identity--seed-sector-energy",
+        "name": "Energy",
+        "relCreated": "2025-07-31T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-07-31T10:13:54.630Z",
+        "relConfidence": 90,
+        "sectorId": "d4ae9e87-6444-5121-bb43-958bd7c647e4",
+        "matchesOrganization": false,
+        "openctiStixRelationId": null
+      },
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd06e10e1c3e",
+        "stixId": "identity--seed-sector-government-and-administrations",
+        "name": "Government and administrations",
+        "relCreated": "2025-06-01T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-06-01T10:13:54.630Z",
+        "relConfidence": 80,
+        "sectorId": "bd81bc43-bc3a-58df-9206-21bd00acd5e9",
+        "matchesOrganization": false,
+        "openctiStixRelationId": null
+      },
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd07d2ee3bb4",
+        "stixId": "identity--seed-sector-transport",
+        "name": "Transport",
+        "relCreated": "2025-02-21T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-02-21T10:13:54.630Z",
+        "relConfidence": 75,
+        "sectorId": "4874c857-e4c1-5629-bd98-0950c3251159",
+        "matchesOrganization": false,
+        "openctiStixRelationId": null
+      }
+    ],
+    "cves": [
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd0841f024dd",
+        "stixId": "vulnerability--seed-cve-2020-1472",
+        "cveId": "CVE-2020-1472",
+        "relCreated": "2025-07-11T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-07-11T10:13:54.630Z",
+        "relConfidence": 75,
+        "openctiStixRelationId": null
+      }
+    ],
+    "techniques": [
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd09f0ad08b3",
+        "stixId": "attack-pattern--seed-t1485",
+        "name": "Data Destruction",
+        "mitreExternalId": "T1485",
+        "relCreated": "2025-08-20T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-08-20T10:13:54.630Z",
+        "relConfidence": 90,
+        "mitreTechniqueId": "bc1e037c-4af1-5f89-95ef-b5467475e7da",
+        "mitreTechniqueUrl": "https://attack.mitre.org/techniques/T1485",
+        "tactics": [
+          {
+            "id": "a9035a0f-b96a-55a6-a793-98f952828c8b",
+            "externalId": "TA0040",
+            "name": "Impact"
+          }
+        ],
+        "openctiStixRelationId": null
+      },
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd0af3e17335",
+        "stixId": "attack-pattern--seed-t1561",
+        "name": "Disk Wipe",
+        "mitreExternalId": "T1561",
+        "relCreated": "2025-06-21T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-06-21T10:13:54.630Z",
+        "relConfidence": 85,
+        "mitreTechniqueId": "890ed347-c6a7-5276-991e-83aea5e7ce39",
+        "mitreTechniqueUrl": "https://attack.mitre.org/techniques/T1561",
+        "tactics": [
+          {
+            "id": "a9035a0f-b96a-55a6-a793-98f952828c8b",
+            "externalId": "TA0040",
+            "name": "Impact"
+          }
+        ],
+        "openctiStixRelationId": null
+      },
+      {
+        "id": "01a139e7-7e0a-7978-8bc6-bd0bb69062a1",
+        "stixId": "attack-pattern--seed-t1495",
+        "name": "Firmware Corruption",
+        "mitreExternalId": "T1495",
+        "relCreated": "2025-04-02T10:13:54.630Z",
+        "relStartTime": null,
+        "relStopTime": null,
+        "relModified": "2025-04-02T10:13:54.630Z",
+        "relConfidence": 75,
+        "mitreTechniqueId": "dc5ff45e-166e-56ce-a36d-b99ee5bcca0d",
+        "mitreTechniqueUrl": "https://attack.mitre.org/techniques/T1495",
+        "tactics": [
+          {
+            "id": "a9035a0f-b96a-55a6-a793-98f952828c8b",
+            "externalId": "TA0040",
+            "name": "Impact"
+          }
+        ],
+        "openctiStixRelationId": null
+      }
+    ],
+    "declaredIntent": {
+      "primaryMotivations": [
+        {
+          "value": "dominance",
+          "normalizedKey": "dominance",
+          "rendering": "scored"
+        }
+      ],
+      "secondaryMotivations": [],
+      "goals": [
+        {
+          "value": "Disrupt regional power grid operations for as long as possible",
+          "normalizedKey": "disrupt-regional-power-grid-operations-for-as-long-as-possible",
+          "rendering": "unrecognized"
+        }
+      ]
+    }
+  }
+}

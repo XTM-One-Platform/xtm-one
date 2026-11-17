@@ -1,0 +1,131 @@
+name: Docs Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-pages.yml"
+      - ".github/actions/uv-sync/**"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+# pypi.org can stop answering for several minutes: each download retries 5 times
+# at 30 s, and the install runs up to 3 times, a minute apart, as in CI and
+# Deploy.
+env:
+  UV_HTTP_TIMEOUT: "30"
+  UV_HTTP_RETRIES: "5"
+
+jobs:
+  build:
+    name: Publish versioned documentation
+    runs-on: ubuntu-26.04
+    # git-committers calls the GitHub API with no request timeout: a stalled
+    # connection must not hold the deploy for the default six hours. The
+    # install may take about ten minutes to ride out a pypi.org outage.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: false
+
+      # docs/.venv, then first on the PATH for mkdocs and mike.
+      - name: Install documentation dependencies
+        uses: ./.github/actions/uv-sync
+        with:
+          directory: docs
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve documentation version
+        id: version
+        run: echo "version=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
+
+      # Same cache and key as the Docs build check (ci-test-docs.yml), restored
+      # only: this build is not --strict, so a page whose co-authors failed to
+      # load (a GraphQL error is a warning) would be saved with a partial list
+      # that later builds reuse. mike runs `mkdocs build` from docs/, so
+      # git-committers reads it there, outside the site it publishes.
+      - name: Page contributors cache key
+        id: contributors-cache
+        run: echo "prefix=docs-git-committers-${{ hashFiles('docs/mkdocs.yml', 'docs/uv.lock') }}-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore page contributors cache
+        uses: actions/cache/restore@v5
+        with:
+          path: docs/.cache/plugin/git-committers
+          key: ${{ steps.contributors-cache.outputs.prefix }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ steps.contributors-cache.outputs.prefix }}-
+
+      # A failed or stalled contributors fetch must not block the publication:
+      # publish without the contributors instead. mike syncs the local gh-pages
+      # with origin/gh-pages, then commits only once the site is built, so a
+      # local gh-pages still equal to origin/gh-pages means the build failed.
+      # Any other state (a commit the push did not deliver, an error before the
+      # build) fails the step as before.
+      - name: Deploy version with mike
+        working-directory: docs
+        env:
+          MKDOCS_GIT_COMMITTERS_APIKEY: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git fetch origin gh-pages --depth=1 || true
+          if ! timeout 10m mike deploy --push --update-aliases "$VERSION" latest; then
+            local_ref=$(git rev-parse -q --verify refs/heads/gh-pages || true)
+            remote_ref=$(git rev-parse -q --verify refs/remotes/origin/gh-pages || true)
+            if [ "$local_ref" != "$remote_ref" ]; then
+              exit 1
+            fi
+            echo "The build with the page contributors failed; publishing without them."
+            MKDOCS_GIT_COMMITTERS_ENABLED=false mike deploy --push --update-aliases "$VERSION" latest
+            echo "::warning title=Page contributors::Published without the page contributors: git-committers failed (GitHub API rate limit, outage, network, or its settings in docs/mkdocs.yml). The next deploy fetches them again."
+          fi
+          mike set-default --push latest
+
+      - name: Checkout published site
+        run: |
+          git fetch origin gh-pages
+          git worktree add gh-pages-site gh-pages
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: gh-pages-site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-26.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,27 @@
+{
+  "procedure": "mitreAttack.getMitigations",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "0c47db65-3a58-5200-832c-411ff156e649",
+      "externalId": "M1013",
+      "name": "Application Developer Guidance",
+      "description": "Application Developer Guidance focuses on providing developers with the knowledge, tools, and best practices needed to write secure code, reduce vulnerabilities, and implement secure design principles. By integrating security throughout the software development lifecycle (SDLC), this mitigation aims to prevent the introduction of exploitable weaknesses in applications, systems, and APIs. This miti",
+      "url": "https://attack.mitre.org/mitigations/M1013"
+    },
+    {
+      "id": "d3105ad7-dfea-53a6-a95d-65a9adea36b2",
+      "externalId": "M1015",
+      "name": "Active Directory Configuration",
+      "description": "Implement robust Active Directory (AD) configurations using group policies to secure user accounts, control access, and minimize the attack surface. AD configurations enable centralized control over account settings, logon policies, and permissions, reducing the risk of unauthorized access and lateral movement within the network. This mitigation can be implemented through the following measures:\n\n",
+      "url": "https://attack.mitre.org/mitigations/M1015"
+    },
+    {
+      "id": "11f76ce3-6f3f-5002-8d61-f91814488f51",
+      "externalId": "M1016",
+      "name": "Vulnerability Scanning",
+      "description": "Vulnerability scanning involves the automated or manual assessment of systems, applications, and networks to identify misconfigurations, unpatched software, or other security weaknesses. The process helps prioritize remediation efforts by classifying vulnerabilities based on risk and impact, reducing the likelihood of exploitation by adversaries. This mitigation can be implemented through the foll",
+      "url": "https://attack.mitre.org/mitigations/M1016"
+    }
+  ]
+}

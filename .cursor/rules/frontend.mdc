@@ -1,0 +1,59 @@
+---
+description: Frontend rules for the React / TypeScript code in frontend/
+globs: frontend/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# Frontend Rules
+
+Full contracts: `dev-docs/reference/frontend-shared-utilities.md` (one row per module - grep it by name), `frontend/AGENTS.md` (the rules and an index of `dev-docs/reference/frontend-*.md`: directory map, pages, command palette, design system, theming, editions, common pitfalls).
+
+## Conventions
+
+- Functional components, `@/` imports, `cn()` for conditional classes, Tailwind utilities only (no inline `style={}`), Lucide icons only.
+- Server state through TanStack Query hooks in `hooks/api/` (one file per domain), every call through `lib/api.ts` (`api.postForm()` / `api.putForm()` for uploads); never raw `fetch()` or `useState` for API data. Types live in `types/index.ts`, never inline in hooks.
+- Strings go through i18n with keys in `src/i18n/lang/{en,fr,es,ja}.json` (`yarn check` validates them).
+- Shared constants come from `lib/constants.ts`; formatting comes from `lib/utils.ts` (`timeAgo()`, `formatShortDate()`, `formatShortDateTime()`, `formatCompactNumber()`, `formatDurationShort()`, `pluralize()`, `stripMarkdown()`, `toggleArrayItem()`). Never re-define a local copy.
+- `Switch` instead of a native checkbox, `Tip` instead of a `title` attribute, `useToast()` for mutation feedback (`success` / `error` / `info`).
+- Detail-page tab types are named `Tab`; permission variables are named `canManage`.
+- No workarounds (invariant 18): never decide on words found in a message or a name; read the field the backend sends, and a per-provider fact from the catalog.
+- Lint with `yarn check` (`yarn typecheck`, `yarn lint`, command and i18n validation, unit tests: `*.test.ts` on `node --test`, `*.test.tsx` on vitest + happy-dom). End-to-end tests run with `yarn test:e2e`.
+- `yarn typecheck` is TypeScript 7, which has no JavaScript compiler API: a script that reads TS source parses it with `oxc-parser`. `yarn lint` is oxlint (`.oxlintrc.json`, the rules the ESLint config had); `eslint-disable` comments still apply.
+
+## Theming (light and dark)
+
+Light mode is set by `data-mode="light"` on `<html>`, and there is no `.dark` class. Use tokens: `bg-background`, `bg-card`, `bg-popover`, `text-foreground`, `text-muted-foreground`, `border-border`, `text-cyan`, `font-title`, `shadow-glow`, `text-gradient-cyan`. For overlays use `bg-foreground/5` and `border-foreground/10`, never `bg-white/5`. For a per-mode value use the `light:` variant. A provider logo drawn white is added to the list in `index.css`. See `dev-docs/reference/frontend-design-system.md` > Theming.
+
+## Rules that break builds or behaviour
+
+- **URLs**: router navigation stays root-relative. Every other browser sink takes its path through `withBasePath()` (`lib/base-path.ts`): `window.location`, `window.open`, a raw `<a href>` / `<img src>`, a hand-rolled `fetch` / `WebSocket` / `EventSource` (through `API_BASE`). Shareable links use `absoluteUrl()`. Static assets are prefixed where they are defined (`providerLogoSrc()`, `PROVIDER_LOGOS`). Never prefix a value twice.
+- **Permissions**: `canManageEntity()` (it reads the server's `can_manage`), `canViewAgentChats()`, `canAuthorizeIntegration()`, `isEntityShared()`. Never re-derive share tiers in the browser.
+- **Editions**: gate AI affordances on `useAgenticAIEnabled()`. Everything said about Community Edition goes through `components/ui/enterprise-upsell.tsx`.
+- **Built-in tools**: offered only through `BUILTIN_TOOLS` + `useBuiltinTools()`. Never put a list of built-in ids or labels in a component.
+- **Chat streaming**:
+  - Never clear `thinkingContent` / `thinkingBufferRef` on `"streaming"`. Clear only on `"done"`, `"error"`, `"cancelled"` or a new `"thinking"` ack (`lib/turn-ack.ts`).
+  - Gate `ReasoningIndicator` + `ThinkingTextBubble` on `isSending && !streamingContent`.
+  - `waitingPanel()` (`lib/reasoning.ts`) decides whether the reasoning window or the mini-game is shown.
+- **Chat attachments**: use `useChatAttachments()` + `optimisticAttachment()`. Never a second tray, paste rule or size check.
+- **Handover types**: read and write maps through `lib/handover-types.ts`.
+- **Decks / reports**: render only through `components/presentation/` / `components/report/`. Never use `dangerouslySetInnerHTML` on spec text. Never key the `Deck` on `revision`. A slide's scheme comes from `resolveSlideScheme()`.
+- **Resizable panels**: `useResizableWidth()`. Sharing changes: `useCredentialSharingConfirm()`.
+
+## Shared building blocks (reuse, never re-compose)
+
+- **List pages**: `useEntityFilter()`, `SearchInput`, `TagFilter`, `CategoryFilter`, `EmptyState`, `Pagination`, `CompanyManagedBadge`, `ReadOnlyBadge`, `SharingWaysBadge`.
+- **Detail pages**: `DetailTabs` + `useTabParam()` / `useSectionParam()`, `BackButton`, `NotFoundState`, `EntityConfigCard`, `CompanyManagedBanner`, `CompanyManagedSwitch`, `GroupSharingCard`, `AgentsUsingCard`, `TimestampGrid`, `StatCard`, `EntityActivityTab`, `ActivityEmptyState`, `ResourceSharingCard`.
+- **Runs and tools**: `RunCard`, `AssignmentRunList`, `ToolScopeDialog`, `ToolTestDialog`, `PromptGenerator`, `OwnerDeactivatedNotice`.
+- **Inputs**: `Select`, `MultiSelect`, `TagInput`, `KeyValueEditor`, `ElementTypeEditor`, `ChannelPicker`, `ChannelIcon`, `IconPicker`, `DateFilterInput`, `ConfirmDialog` / `useConfirm()`.
+- **Visuals**: `AnimatedNumber`, `DiffBadge`, `AgentFlowGraph`, `PlatformFlowGraph` (`lib/graph-utils.ts`, `BeamParticle`), `Skeleton` / `PageSkeleton`, `ErrorBoundary`.
+- **Hooks**: `useDebounce()`, `useClickOutside()`, `makeMemoryHooks()`.
+- **Constants**: `REFETCH_INTERVAL_*`, `BACKEND_FETCH_LIMIT`, `OVERVIEW_STATS_FETCH_LIMIT`, `COPY_FEEDBACK_DELAY`, `SMOOTH_SCROLL_SETTLE_MS`, `CONTENT_PREVIEW_LIMIT`, `TRIGGER_TYPES`, `EXTERNAL_CHANNEL_TYPES`, `HANDOVER_TYPES`, `OUTPUT_FORMATS`, `PROVIDER_DISPLAY_NAMES` / `INTEGRATION_PROVIDER_NAMES` / `TRANSPORT_DISPLAY_NAMES`, `AUDIT_*`, `MEMORY_*`.
+
+## Adding a page or hook
+
+1. Create `src/pages/MyPage.tsx`.
+2. Add the route in `src/App.tsx`, wrapped in `<Page>`.
+3. Add the navigation entry in `nav-model.ts` (see `dev-docs/reference/frontend-pages.md`).
+4. Add types to `types/index.ts` and the hook to `hooks/api/`.
+5. Add i18n keys in all four languages.
+6. A feature flag goes through `isFeatureEnabled()` with `KNOWN_FEATURE_FLAGS`.

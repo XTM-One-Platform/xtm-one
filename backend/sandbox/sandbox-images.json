@@ -1,0 +1,60 @@
+[
+  {
+    "image": "sandbox-python",
+    "apt_file": "apt.sandbox.base.txt",
+    "req_file": "requirements.sandbox.base.txt",
+    "runtime_apt_file": "apt.sandbox.base.runtime.txt",
+    "final_target": "final-minimal",
+    "smoke_imports": ["numpy", "pandas", "matplotlib", "scipy", "tabulate", "pyzipper", "Cryptodome", "cryptography", "av"]
+  },
+  {
+    "image": "sandbox-python-cti",
+    "apt_file": "apt.sandbox.base.txt",
+    "req_file": "requirements.sandbox.cti.txt",
+    "runtime_apt_file": "apt.sandbox.cti.runtime.txt",
+    "final_target": "final-full",
+    "smoke_imports": ["pymisp", "pycti", "stix2", "taxii2client", "geoip2"]
+  },
+  {
+    "image": "sandbox-python-data",
+    "apt_file": "apt.sandbox.extended.txt",
+    "req_file": "requirements.sandbox.data.txt",
+    "runtime_apt_file": "apt.sandbox.extended.runtime.txt",
+    "final_target": "final-full",
+    "smoke_imports": ["numpy", "pandas", "sklearn", "matplotlib", "cv2"],
+    "ci_skip": true,
+    "ci_skip_reason": "tensorflow==2.21.0 has no wheel for Python 3.14 at all (pre-existing, unrelated to this feature — see SANDBOX.md). Kept in this file for create-register-images.sh/local dev; excluded from the CI matrix so it doesn't fail every PR."
+  },
+  {
+    "image": "sandbox-python-malware",
+    "apt_file": "apt.sandbox.extended.txt",
+    "req_file": "requirements.sandbox.malware.txt",
+    "runtime_apt_file": "apt.sandbox.malware.runtime.txt",
+    "final_target": "final-full",
+    "smoke_imports": ["yara", "pefile", "lief", "oletools", "capstone", "pytsk3", "dfvfs", "plaso"]
+  },
+  {
+    "image": "sandbox-python-network",
+    "apt_file": "apt.sandbox.extended.txt",
+    "req_file": "requirements.sandbox.network.txt",
+    "runtime_apt_file": "apt.sandbox.network.runtime.txt",
+    "final_target": "final-full",
+    "smoke_imports": ["scapy.all", "pyshark", "libnmap", "impacket", "netmiko", "requests_kerberos", "spnego", "msldap"]
+  },
+  {
+    "image": "sandbox-python-rules",
+    "apt_file": "apt.sandbox.base.txt",
+    "req_file": "requirements.sandbox.rules.txt",
+    "runtime_apt_file": "apt.sandbox.rules.runtime.txt",
+    "final_target": "final-full",
+    "smoke_imports": ["sigma", "jsonschema", "pydantic", "jinja2", "git"]
+  },
+  {
+    "image": "sandbox-python-soar",
+    "apt_file": "apt.sandbox.base.txt",
+    "req_file": "requirements.sandbox.soar.txt",
+    "runtime_apt_file": "apt.sandbox.base.runtime.txt",
+    "final_target": "final-minimal",
+    "smoke_imports": ["thehive4py", "jira", "boto3", "docker", "tenacity"]
+  }
+]

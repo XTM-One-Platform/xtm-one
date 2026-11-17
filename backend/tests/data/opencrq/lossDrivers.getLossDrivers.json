@@ -1,0 +1,39 @@
+{
+  "procedure": "lossDrivers.getLossDrivers",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "a59a5bd6-acb9-5b2f-bb5e-db69daa426b7",
+      "lossCategoryId": "ddae60e0-5b5c-5878-a6ad-e40fcd8712de",
+      "name": "Forensics & incident management",
+      "description": "External DFIR fees: scoping, containment, eradication, reconstruction and negotiation support.",
+      "displayOrder": 1,
+      "dwellSensitivity": "strong",
+      "scalingVariable": "systems_in_scope",
+      "lossCategoryName": "Response & Investigation",
+      "lossCategoryDisplayOrder": 1
+    },
+    {
+      "id": "0c555c92-5715-5fdc-8931-55530eb2ab69",
+      "lossCategoryId": "ddae60e0-5b5c-5878-a6ad-e40fcd8712de",
+      "name": "Incident legal counsel",
+      "description": "Outside counsel under privilege, up to the point where claims are asserted.",
+      "displayOrder": 2,
+      "dwellSensitivity": "weak",
+      "scalingVariable": "counsel_hours",
+      "lossCategoryName": "Response & Investigation",
+      "lossCategoryDisplayOrder": 1
+    },
+    {
+      "id": "b2e046bf-77b1-5a39-a282-0a2f1ca42ff3",
+      "lossCategoryId": "ddae60e0-5b5c-5878-a6ad-e40fcd8712de",
+      "name": "Crisis communications & PR",
+      "description": "External communications support; the cost tracks the public-visibility tier of the incident.",
+      "displayOrder": 3,
+      "dwellSensitivity": "none",
+      "scalingVariable": "public_severity_tier",
+      "lossCategoryName": "Response & Investigation",
+      "lossCategoryDisplayOrder": 1
+    }
+  ]
+}

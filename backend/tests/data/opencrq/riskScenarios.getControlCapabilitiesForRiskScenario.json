@@ -1,0 +1,36 @@
+{
+  "procedure": "riskScenarios.getControlCapabilitiesForRiskScenario",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "64e7879a-8b0c-5d14-9551-74d50b68dca1",
+      "externalId": "API",
+      "name": "API Security",
+      "strengthRung": "L2",
+      "coverageBucket": "L1",
+      "strengthSource": "tenant",
+      "coverageSource": "tenant",
+      "isAssessed": true
+    },
+    {
+      "id": "4c5d8d76-763f-5b20-8b5c-fe80d72682eb",
+      "externalId": "EDR",
+      "name": "Endpoint Detection and Response",
+      "strengthRung": "L2",
+      "coverageBucket": "L2",
+      "strengthSource": "tenant",
+      "coverageSource": "tenant",
+      "isAssessed": true
+    },
+    {
+      "id": "41e5f738-8943-5fed-8c6a-02740e8adf56",
+      "externalId": "EHB",
+      "name": "Endpoint Hardening / Security Baseline",
+      "strengthRung": "L1",
+      "coverageBucket": "L2",
+      "strengthSource": "tenant",
+      "coverageSource": "tenant",
+      "isAssessed": true
+    }
+  ]
+}

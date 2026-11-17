@@ -1,0 +1,20 @@
+{
+  "procedure": "assetDependencies.getSupportToSupportLinks",
+  "source": "rebuilt: the recorder kept only empty reads of this procedure; the rows come from the tool output the validation script recorded and the fields from getSupportToSupportLinks in OpenCRQ's asset-dependencies service",
+  "data": [
+    {
+      "id": "59e9f0a1-b2c3-4d4e-9f5a-0b1c2d3e4f5a",
+      "direction": "depends",
+      "relatedAssetId": "15c5d6e7-f8a9-4b0c-ad2e-3f4a5b6c7d8e",
+      "relatedAssetName": "Next-Gen Firewall (Palo Alto)",
+      "relatedAssetDerivedName": null
+    },
+    {
+      "id": "e7f8a9b0-c1d2-4e3f-8a5b-6c7d8e9f0a1b",
+      "direction": "provides",
+      "relatedAssetId": "17e7f8a9-b0c1-4d2e-9f4a-5b6c7d8e9f0a",
+      "relatedAssetName": "Primary Data Center (Paris)",
+      "relatedAssetDerivedName": null
+    }
+  ]
+}

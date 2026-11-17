@@ -1,0 +1,51 @@
+{
+  "procedure": "findingScore.listUniqueFindings",
+  "source": "recorded",
+  "data": {
+    "items": [
+      {
+        "key": "cve:019edb28-0005-7000-8000-000000000001",
+        "cveId": "CVE-2021-44228",
+        "cveTitle": "Apache Log4j2 JNDI Remote Code Execution (Log4Shell)",
+        "knownExploited": true,
+        "epss": 0.976,
+        "mitreTechniqueExternalId": null,
+        "mitreTechniqueName": null,
+        "expectationType": null,
+        "score": 48,
+        "band": "medium",
+        "worstScore": 48,
+        "worstBand": "medium",
+        "pendingVector": false,
+        "affectedAssetCount": 3,
+        "sources": [
+          "microsoft_graph"
+        ],
+        "firstSeenAt": "2025-11-13T08:59:58.261Z"
+      },
+      {
+        "key": "cve:019edb28-0005-7000-8000-000000000010",
+        "cveId": "CVE-2022-26134",
+        "cveTitle": "Atlassian Confluence OGNL Injection Remote Code Execution",
+        "knownExploited": true,
+        "epss": 0.974,
+        "mitreTechniqueExternalId": null,
+        "mitreTechniqueName": null,
+        "expectationType": null,
+        "score": 46,
+        "band": "medium",
+        "worstScore": 46,
+        "worstBand": "medium",
+        "pendingVector": false,
+        "affectedAssetCount": 1,
+        "sources": [
+          "microsoft_graph"
+        ],
+        "firstSeenAt": "2026-04-27T08:59:58.261Z"
+      }
+    ],
+    "total": 16985,
+    "page": 1,
+    "limit": 5
+  }
+}

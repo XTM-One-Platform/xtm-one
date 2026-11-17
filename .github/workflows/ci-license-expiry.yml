@@ -1,0 +1,105 @@
+name: CI license expiry
+
+# The `ci` certificate the end-to-end suites download (the URL in
+# .github/ci-license-url, dev-docs/ci-license.md) works one year at most. Every Monday this reads its
+# deadline (.github/scripts/ci-license-deadline.sh) and, from 30 days before
+# it, keeps one open issue asking for the renewal; it closes that issue once
+# the certificate at the URL is a new one. The pull requests that change the
+# script run its tests.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/ci-license-*"
+      - ".github/workflows/ci-license-expiry.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test the deadline script
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: ShellCheck
+        run: shellcheck .github/scripts/ci-license-*.sh
+
+      - name: Run the tests
+        run: |
+          bash .github/scripts/ci-license-deadline.test.sh
+          bash .github/scripts/ci-license-url.test.sh
+
+  check:
+    name: Check the CI license deadline
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            .github/scripts
+            .github/ci-license-url
+          persist-credentials: false
+
+      - name: Read the URL
+        id: url
+        run: echo "url=$(bash .github/scripts/ci-license-url.sh)" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Read the deadline
+        id: deadline
+        if: steps.url.outputs.url != ''
+        env:
+          CI_LICENSE_URL: ${{ steps.url.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --proto '=https' \
+            --retry 3 --retry-delay 5 --max-time 30 "$CI_LICENSE_URL" -o "$RUNNER_TEMP/ci-license.pem"
+          bash .github/scripts/ci-license-deadline.sh "$RUNNER_TEMP/ci-license.pem" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Open, update or close the renewal issue
+        if: steps.url.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CI_LICENSE_URL: ${{ steps.url.outputs.url }}
+          DEADLINE: ${{ steps.deadline.outputs.deadline }}
+          DAYS_LEFT: ${{ steps.deadline.outputs.days_left }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title_prefix="chore(licensing): renew the CI license"
+          issue="$(gh issue list --state open --search "in:title \"$title_prefix\"" --json number --jq '.[0].number // empty')"
+
+          if [ "$DAYS_LEFT" -ge 30 ]; then
+            echo "The CI license is valid until $DEADLINE ($DAYS_LEFT days)."
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "The certificate at \`$CI_LICENSE_URL\` is now valid until $DEADLINE ([run]($RUN_URL))."
+            fi
+            exit 0
+          fi
+
+          if [ "$DAYS_LEFT" -le 0 ]; then
+            state="reached its deadline, $DEADLINE: every end-to-end run fails at its \"CI license\" step"
+          else
+            state="expires on $DEADLINE, in $DAYS_LEFT days"
+          fi
+          message="The \`ci\` certificate at \`$CI_LICENSE_URL\` $state ([run]($RUN_URL)). The license owner issues a new one and replaces the file at the same URL: see the activation steps of \`dev-docs/ci-license.md\`. This issue closes itself at the first weekly check that finds the new certificate."
+          echo "::warning::The CI license $state"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$message"
+          else
+            gh issue create --title "$title_prefix before $DEADLINE" --body "$message"
+          fi

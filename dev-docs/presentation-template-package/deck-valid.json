@@ -1,0 +1,69 @@
+{
+  "title": "Synthetic Quarterly Review",
+  "theme": "dark",
+  "aspect_ratio": "16:9",
+  "transition": "slide",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Synthetic Quarterly Review",
+      "subtitle": "Every number on the following slides is made up",
+      "footer": "dev fixture",
+      "notes": "Say hello, then set the frame: this is a fixture deck."
+    },
+    {
+      "layout": "dashboard",
+      "title": "Posture at a glance",
+      "metrics": [
+        { "label": "Critical exposures", "value": "12", "delta": "-4", "trend": "down" },
+        { "label": "Mean time to remediate", "value": "3.1h", "delta": "-40m", "trend": "down" },
+        { "label": "Asset coverage", "value": "87%", "delta": "+6 pts", "trend": "up" },
+        { "label": "Open work items", "value": "31", "delta": "0", "trend": "flat" }
+      ],
+      "rich_text": "<p>Two synthetic campaigns account for the <strong>bulk</strong> of the change. Detail in the appendix.</p>",
+      "notes": "Trend colours come from the metric trend, not from the delta string."
+    },
+    {
+      "layout": "two_columns",
+      "title": "What changed this quarter",
+      "left": {
+        "heading": "Improved",
+        "bullets": [
+          "Patch latency down from 9 to 3 days",
+          "Detection coverage on edge assets",
+          "Two runbooks fully automated"
+        ]
+      },
+      "right": {
+        "heading": "Regressed",
+        "rich_text": "<ul><li>Third-party posture — one vendor stopped reporting</li><li>Inventory drift on the lab network</li></ul><p>Both are tracked as work items.</p>"
+      },
+      "notes": "Left uses bullets, right uses rich_text on purpose: the two must render at the same size."
+    },
+    {
+      "layout": "comparison",
+      "title": "Build vs buy for the next iteration",
+      "left": {
+        "label": "Build in house",
+        "points": ["Full control of the data model", "Roughly six months", "Ongoing maintenance cost"]
+      },
+      "right": {
+        "label": "Buy",
+        "points": ["Available immediately", "Vendor lock-in", "Predictable licence cost"]
+      },
+      "verdict": "Buy now, revisit at the FY26 planning round.",
+      "notes": "Expect a budget question here."
+    },
+    {
+      "layout": "generic",
+      "title": "Next steps",
+      "bullets": [
+        "Close the twelve critical exposures",
+        "Onboard the lab network into inventory",
+        "Re-open the vendor reporting channel"
+      ],
+      "rich_text": "<p>Owner: the synthetic CTEM agent. Review: next month.</p>",
+      "notes": "Close on the ask, not on the recap."
+    }
+  ]
+}

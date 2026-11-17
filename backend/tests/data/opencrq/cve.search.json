@@ -1,0 +1,11 @@
+{
+  "procedure": "cve.search",
+  "source": "recorded",
+  "data": [
+    {
+      "id": "01a13a4b-1fce-7d6d-ad0b-839ee508f30f",
+      "cveId": "CVE-2026-9999",
+      "cveTitle": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# Final-stage runtime packages of both targets of Dockerfile.sandbox.dev
+# (python-dev, nodejs-dev). Shared libraries the locked backend dependencies
+# load, and ONE runtime CLI exception (hardening rule 2):
+#
+# git: the checks of a checkout read the tree's history once the workspace
+#      ships it (sandbox_run_command with a git-aware checkout); a check such
+#      as pytest-randomly or a version hook may shell out to it. Named here on
+#      purpose, as sandbox-python-rules names it for GitPython.
+# libxmlsec1-openssl, libxml2, libxslt1.1: xmlsec (python3-saml) at import time.
+# libmagic1t64: python-magic, imported by pycti at import time.
+# ca-certificates: the system bundle the eMudhra check reads; no
+#      network reaches it from a sandbox.
+# python-dev also installs Playwright's headless Chromium and its OS
+# libraries (`playwright install --with-deps --only-shell chromium`, a stage
+# step of Dockerfile.sandbox.dev): the lab's presentation export.
+git
+ca-certificates
+libxmlsec1-openssl
+libxml2
+libxslt1.1
+libmagic1t64

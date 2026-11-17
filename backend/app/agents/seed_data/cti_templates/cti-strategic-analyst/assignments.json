@@ -1,0 +1,170 @@
+[
+  {
+    "file": "01-industry-threat-report.md",
+    "source": "R1-10",
+    "name": "Industry threat intelligence report",
+    "description": "Produces a sector-specific threat report, from executive summary through threat landscape, notable incidents, regulation, attacker motivations, sector challenges, recommendations and case studies. Use it for leadership or board briefings on threats to your industry.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "date_range",
+        "label": "Date range",
+        "type": "text",
+        "description": "Period the report covers, shown in its title, e.g. 'Q3 2026' or 'last 90 days'.",
+        "required": false,
+        "default": "last 90 days"
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "02-threat-trends.md",
+    "source": "R2-09",
+    "name": "Threat trend identification",
+    "description": "Identifies and ranks the top threat trends for a reporting period by evidence weight, each backed by at least three traceable data points, with analyst-commentary placeholders for implications and outlook. Use it for the data-heavy part of a recurring threat report.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the structured data (events, tickets, CVEs, reports with their identifiers) to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "reporting_period",
+        "label": "Reporting period",
+        "type": "text",
+        "description": "Period the trends cover.",
+        "required": false,
+        "default": "the last calendar quarter"
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "threat trend identification report"
+      }
+    ]
+  },
+  {
+    "file": "03-structured-threat-assessment.md",
+    "source": "R2-11",
+    "name": "Structured threat assessment",
+    "description": "Produces a structured assessment of one threat: operational environment, attack surface, threat profile with ATT&CK techniques, most likely and worst case scenarios, recommended actions, intelligence gaps and a handoff quick reference. Use it to serve the SOC (detectable kill chain) and leadership (two-sentence summary) at once.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_name",
+        "label": "Threat",
+        "type": "text",
+        "description": "Threat actor, malware, campaign or vulnerability to assess. Leave empty to use the threat the source material describes.",
+        "required": false
+      },
+      {
+        "key": "critical_systems",
+        "label": "Critical systems",
+        "type": "textarea",
+        "description": "Your critical systems and key dependencies. Leave empty to use the Critical systems line of the agent's Organization context, or get a generalized assessment.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "structured threat assessment"
+      }
+    ]
+  },
+  {
+    "file": "04-geopolitical-implications.md",
+    "source": "R1-09",
+    "name": "Geopolitical implications of cyberattacks",
+    "description": "Writes a long-form report on a threat actor's recent campaigns through a geopolitical lens: BLUF, multilingual source analysis, actor profile, escalation and political response forecasts, sector risk forecast and indicators to watch. Use it when geopolitical risk affects your operations.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the report(s), article text or analyst notes to analyse, in any language. Leave empty to let the agent collect from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "threat_actor",
+        "label": "Threat actor",
+        "type": "text",
+        "description": "The threat actor whose campaigns to analyse. Leave empty to use the actor the source material describes.",
+        "required": false
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  },
+  {
+    "file": "05-tariffs-monitoring.md",
+    "source": "R1-08",
+    "name": "Tariffs monitoring update",
+    "description": "Produces a structured update on recent tariff developments: overview, a table of enacted and proposed tariffs, outlook on timelines, escalation and supply-chain impact, and takeaways with monitoring indicators. Use it to brief procurement, vendor risk and leadership on policy-driven business risk.",
+    "manual_trigger_parameters": [
+      {
+        "key": "source_material",
+        "label": "Source material",
+        "type": "textarea",
+        "description": "Paste the news articles or notes to analyse. Leave empty to let the agent collect current news from your connected integrations.",
+        "required": false
+      },
+      {
+        "key": "tariff_scope",
+        "label": "Tariffs to monitor",
+        "type": "text",
+        "description": "Which tariffs to cover, e.g. 'U.S. tariffs' or 'EU-China tariffs on electric vehicles'.",
+        "required": false,
+        "default": "U.S. tariffs"
+      },
+      {
+        "key": "reporting_period",
+        "label": "Reporting period",
+        "type": "text",
+        "description": "How recent the news should be.",
+        "required": false,
+        "default": "last 30 days"
+      },
+      {
+        "key": "product",
+        "label": "Product or service",
+        "type": "text",
+        "description": "The intelligence product you deliver to the stakeholder teams.",
+        "required": false,
+        "default": "Threat intelligence report"
+      }
+    ]
+  }
+]

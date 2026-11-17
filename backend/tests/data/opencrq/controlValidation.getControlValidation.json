@@ -1,0 +1,50 @@
+{
+  "procedure": "controlValidation.getControlValidation",
+  "source": "recorded",
+  "data": {
+    "summary": {
+      "validatedTechniques": 1,
+      "contradictedTechniques": 2,
+      "testedTechniques": 3,
+      "latestProofAt": "2026-10-08T10:13:54.939Z"
+    },
+    "cells": [
+      {
+        "techniqueId": "f3a76fa1-0323-53f9-abc4-0f78d2738d58",
+        "techniqueExternalId": "T1003",
+        "function": "prevent",
+        "state": "validated",
+        "validatedVotes": 1,
+        "totalVotes": 1,
+        "latestProofAt": "2026-09-30T10:13:54.939Z"
+      },
+      {
+        "techniqueId": "87fcb5f3-2335-5df0-984a-f5b1ebdf5ec4",
+        "techniqueExternalId": "T1190",
+        "function": "detect",
+        "state": "contradicted",
+        "validatedVotes": 1,
+        "totalVotes": 2,
+        "latestProofAt": "2026-10-07T10:13:54.939Z"
+      },
+      {
+        "techniqueId": "87fcb5f3-2335-5df0-984a-f5b1ebdf5ec4",
+        "techniqueExternalId": "T1190",
+        "function": "prevent",
+        "state": "contradicted",
+        "validatedVotes": 1,
+        "totalVotes": 3,
+        "latestProofAt": "2026-10-07T10:13:54.939Z"
+      },
+      {
+        "techniqueId": "36f5a314-0685-57f8-8266-e78627ac574a",
+        "techniqueExternalId": "T1505",
+        "function": "detect",
+        "state": "contradicted",
+        "validatedVotes": 0,
+        "totalVotes": 1,
+        "latestProofAt": "2026-10-08T10:13:54.939Z"
+      }
+    ]
+  }
+}

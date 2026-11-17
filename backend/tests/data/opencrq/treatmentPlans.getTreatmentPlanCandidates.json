@@ -1,0 +1,58 @@
+{
+  "procedure": "treatmentPlans.getTreatmentPlanCandidates",
+  "source": "recorded",
+  "data": [
+    {
+      "capabilityId": "7558247f-4bdc-5f5e-b911-cad0720aa5dd",
+      "externalId": "WAF",
+      "name": "Web Application Firewall",
+      "currentStrengthRung": "L2",
+      "currentCoverageBucket": "L2",
+      "targetStrengthRung": null,
+      "targetCoverageBucket": "L3",
+      "inPlan": true,
+      "strengthAleReduction": 11073.506603108019,
+      "coverageAleReduction": 14823.669879197438,
+      "deployAleReduction": null
+    },
+    {
+      "capabilityId": "5972a172-5856-59d7-aa74-49c9ba62a7ff",
+      "externalId": "IDPS",
+      "name": "Detection and Prevention Systems",
+      "currentStrengthRung": "L1",
+      "currentCoverageBucket": "L1",
+      "targetStrengthRung": null,
+      "targetCoverageBucket": "L2",
+      "inPlan": true,
+      "strengthAleReduction": 0,
+      "coverageAleReduction": 9884.812354062104,
+      "deployAleReduction": null
+    },
+    {
+      "capabilityId": "7924f5d0-3449-5bc5-8eee-5877de2bea49",
+      "externalId": "IAM",
+      "name": "Identity and Access Management",
+      "currentStrengthRung": "L2",
+      "currentCoverageBucket": "L2",
+      "targetStrengthRung": null,
+      "targetCoverageBucket": "L3",
+      "inPlan": true,
+      "strengthAleReduction": 0,
+      "coverageAleReduction": 0,
+      "deployAleReduction": null
+    },
+    {
+      "capabilityId": "15330276-3b79-524c-9a8d-8f4752ebf169",
+      "externalId": "DDOS",
+      "name": "Distributed Denial of Service Protection",
+      "currentStrengthRung": "L0",
+      "currentCoverageBucket": "L0",
+      "targetStrengthRung": null,
+      "targetCoverageBucket": null,
+      "inPlan": false,
+      "strengthAleReduction": null,
+      "coverageAleReduction": null,
+      "deployAleReduction": 23222.30528533115
+    }
+  ]
+}

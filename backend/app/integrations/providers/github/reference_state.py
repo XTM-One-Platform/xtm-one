@@ -1,0 +1,618 @@
+"""The closing of a GitHub pull request or issue, read for the polling fallback.
+
+``GET /repos/{repo}/pulls/{n}`` for a pull request (``merged`` says how it
+closed), ``GET /repos/{repo}/issues/{n}`` for an issue (an issue number that
+is a pull request answers nothing: the reference named the wrong kind). The
+answer is the :class:`PullRequestEvent` the ``pull_request`` closed or
+``issues`` closed delivery would have produced; ``None`` while open, or when
+GitHub cannot be read (no access, an error, a timeout): an unreadable
+reference keeps its item blocked, it never releases it.
+
+:func:`read_commit_containment` answers whether a build carries a merge commit:
+``GET /repos/{repo}/compare/{commit}...{build}`` reads ``ahead`` or
+``identical`` when the build is that commit or a descendant of it.
+
+:func:`read_successful_workflow_run` answers the first successful run of a
+workflow created after a time (a release run deploying an infrastructure change):
+``GET /repos/{repo}/actions/workflows/{workflow}/runs?status=success&created=>=<after>``.
+
+:func:`read_pull_request_ci` answers the head of an open pull request and the
+verdict of its checks (:func:`head_ci_verdict`), for a work item parked on it
+whose CI delivery never came.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.core.egress import egress_client
+from app.integrations.pull_request_events import PullRequestEvent
+
+from . import _common
+from ._common import _BASE_URL, _headers, parse_repo
+
+REQUEST_TIMEOUT_SECONDS = 5.0
+MAX_TOTAL_SECONDS = 8.0
+
+
+def closing_event(repo: str, kind: str, number: int, data: Any) -> PullRequestEvent | None:
+    """The closing event GitHub's answer *data* describes, ``None`` while open. Pure."""
+    if not isinstance(data, dict) or data.get("state") != "closed":
+        return None
+    url = data.get("html_url") if isinstance(data.get("html_url"), str) else None
+    closed_at = _text(data.get("closed_at"))
+    if kind == "pull_request":
+        merged = bool(data.get("merged") or data.get("merged_at"))
+        sha = data.get("merge_commit_sha") if merged and isinstance(data.get("merge_commit_sha"), str) else None
+        # The merge time when it merged, else the close time.
+        when = (_text(data.get("merged_at")) if merged else None) or closed_at
+        head = data.get("head") if isinstance(data.get("head"), dict) else {}
+        return PullRequestEvent(
+            kind="closed",
+            repo=repo,
+            pr_numbers=(number,),
+            head_branch=_text(head.get("ref")),
+            merged=merged,
+            merge_sha=sha,
+            url=url,
+            closed_at=when,
+        )
+    if data.get("pull_request"):
+        return None
+    reason = data.get("state_reason") if isinstance(data.get("state_reason"), str) else None
+    return PullRequestEvent(
+        kind="issue_closed",
+        repo=repo,
+        pr_numbers=(number,),
+        url=url,
+        closed_at=closed_at,
+        extra={"state_reason": reason},
+    )
+
+
+def _text(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def contains_commit(data: Any) -> bool | None:
+    """Whether GitHub's compare answer *data* (base = the commit, head = the build) says the build carries it. Pure."""
+    status = data.get("status") if isinstance(data, dict) else None
+    if status in ("ahead", "identical"):
+        return True
+    if status in ("behind", "diverged"):
+        return False
+    return None
+
+
+def _commitish(value: str) -> str | None:
+    value = (value or "").strip().lower()
+    return value if value and len(value) <= 64 and all(c in "0123456789abcdef" for c in value) else None
+
+
+async def read_commit_containment(repo: str, commit: str, build_commit: str, token: str) -> bool | None:
+    owner, name, err = parse_repo(repo)
+    base, head = _commitish(commit), _commitish(build_commit)
+    if err or base is None or head is None:
+        return None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/compare/{base}...{head}?per_page=1",
+            "GitHub",
+            f"read whether {head[:12]} carries {base[:12]} in {repo}",
+            headers=_headers(token),
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    return contains_commit(data)
+
+
+_WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
+_BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+
+
+def first_successful_run(data: Any, after: str) -> dict | None:
+    """The oldest successful run of GitHub's runs answer *data* created at or after *after*; ``None`` when none. Pure.
+
+    *after* and ``created_at`` are both ``YYYY-MM-DDTHH:MM:SSZ``, so they compare as text.
+    """
+    runs = data.get("workflow_runs") if isinstance(data, dict) else None
+    found: dict | None = None
+    for run in runs if isinstance(runs, list) else []:
+        if not isinstance(run, dict) or run.get("conclusion") != "success":
+            continue
+        created = _text(run.get("created_at"))
+        if created is None or created < after:
+            continue
+        if found is None or created < found["created_at"]:
+            found = {
+                "id": run.get("id"),
+                "url": _text(run.get("html_url")),
+                "created_at": created,
+                "updated_at": _text(run.get("updated_at")),
+                "head_sha": _text(run.get("head_sha")),
+            }
+    return found
+
+
+async def read_successful_workflow_run(
+    repo: str, workflow: str, after: str, branch: str | None, token: str
+) -> dict | None:
+    owner, name, err = parse_repo(repo)
+    if err or not _WORKFLOW_RE.match(workflow or "") or (branch and not _BRANCH_RE.match(branch)):
+        return None
+    params = {"status": "success", "created": f">={after}", "per_page": "100", "exclude_pull_requests": "true"}
+    if branch:
+        params["branch"] = branch
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/actions/workflows/{workflow}/runs",
+            "GitHub",
+            f"read the successful runs of {workflow} in {repo}",
+            headers=_headers(token),
+            params=params,
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    return first_successful_run(data, after)
+
+
+#: Check run conclusions that do not fail a head (the webhook path's rule).
+_PASSING = frozenset({"success", "neutral", "skipped"})
+
+
+def head_ci_verdict(data: Any, required: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
+    """``(conclusion, url)`` of GitHub's check-runs answer *data* for one head commit. Pure.
+
+    :func:`head_ci_decision` with the deciding check run left out.
+    """
+    conclusion, url, _ = head_ci_decision(data, required)
+    return conclusion, url
+
+
+def head_ci_decision(data: Any, required: frozenset[str] = frozenset()) -> tuple[str | None, str | None, dict | None]:
+    """``(conclusion, url, decider)`` of GitHub's check-runs answer *data* for one head commit. Pure.
+
+    *decider* is ``{"check_id", "completed_at"}`` of the last check run to
+    complete among those that decided (the failed ones on ``failure``, every
+    one on ``success``): a re-run that ends with the same conclusion on the
+    same head has a new id and a later time, so a reader can tell it from the
+    conclusion it repeats (#11185).
+
+    The latest run per check name decides (a re-run replaces the run it
+    repeats): ``failure`` as soon as one completed without passing, ``success``
+    once every one completed, ``None`` while one runs or when none reported.
+    *required* holds the check names the base branch requires. When it names
+    any, they decide alone (#11766): ``failure`` once one of them completed
+    without passing, ``success`` once every one reported and passed, whatever
+    a check the base does not require says (a Codecov project status read
+    before the uploads, a labeler app). While one has not reported the head is
+    not decided (a ``pull_request_target`` run completes before the pull
+    request's own CI is created). Their ``success`` also waits for every other
+    check of the head to complete: a base that requires one fast check (a CLA)
+    would otherwise read green while the CI still runs (#12093). Without any,
+    every check decides.
+    A Codecov red read while another check of the head runs
+    (:func:`~.checks.coverage_pending`) is provisional and never fails the head
+    by itself: the coverage uploads may still turn it green (#12050).
+    The url is the failing run's, else the last completed one's.
+    """
+    from .checks import coverage_pending, is_coverage_grade
+
+    runs = data.get("check_runs") if isinstance(data, dict) else None
+    latest = {r["name"]: r for r in latest_runs_by_name(runs if isinstance(runs, list) else [])}
+    if not latest:
+        return None, None, None
+    provisional = coverage_pending(list(latest.values()))
+    total = data.get("total_count") if isinstance(data, dict) else None
+    partial_page = isinstance(total, int) and total > len(runs or [])
+    if required:
+        decision = _required_decision(latest, required, provisional)
+        if decision[0] == "success" and (partial_page or any(r.get("status") != "completed" for r in latest.values())):
+            # The required checks passed but the head's CI still runs: not decided yet.
+            return None, None, None
+        return decision
+    done = [r for r in latest.values() if r.get("status") == "completed"]
+    failed = [
+        r for r in done if (r.get("conclusion") or "") not in _PASSING and not (provisional and is_coverage_grade(r))
+    ]
+    if failed:
+        return "failure", _text(failed[0].get("html_url")), _decider(failed)
+    if len(done) != len(latest) or partial_page:
+        # One still runs, or the page did not hold every check: not decided.
+        return None, None, None
+    if required - latest.keys():
+        # A required check has not reported: the head's own CI may not exist yet.
+        return None, None, None
+    return "success", _text(done[-1].get("html_url")), _decider(done)
+
+
+def latest_runs_by_name(runs: list[Any]) -> list[dict]:
+    """The latest run (highest id) of each check name of *runs*. Pure."""
+    latest: dict[str, dict] = {}
+    for run in runs:
+        if not isinstance(run, dict) or not isinstance(run.get("name"), str):
+            continue
+        known = latest.get(run["name"])
+        if known is None or (run.get("id") or 0) > (known.get("id") or 0):
+            latest[run["name"]] = run
+    return list(latest.values())
+
+
+def _required_decision(
+    latest: dict[str, dict[str, Any]], required: frozenset[str], provisional: bool = False
+) -> tuple[str | None, str | None, dict[str, Any] | None]:
+    """The verdict of the *required* checks among the *latest* run per name, the others left out. Pure.
+
+    *provisional*: the head's coverage grades are not final, so a red one does not fail it.
+    """
+    from .checks import is_coverage_grade
+
+    reported = [latest[name] for name in sorted(required) if name in latest]
+    done = [r for r in reported if r.get("status") == "completed"]
+    failed = [
+        r for r in done if (r.get("conclusion") or "") not in _PASSING and not (provisional and is_coverage_grade(r))
+    ]
+    if failed:
+        return "failure", _text(failed[0].get("html_url")), _decider(failed)
+    if len(reported) != len(required) or len(done) != len(reported):
+        return None, None, None
+    return "success", _text(done[-1].get("html_url")), _decider(done)
+
+
+def status_runs(data: Any) -> list[dict[str, Any]]:
+    """The commit statuses of GitHub's combined-status answer *data* as check runs (name, status, conclusion). Pure.
+
+    A required context may be a commit status rather than a check run (a
+    Codecov project or patch status): read this way, the required checks are
+    placed whichever API reported them.
+    """
+    statuses = data.get("statuses") if isinstance(data, dict) else None
+    out: list[dict[str, Any]] = []
+    for status in statuses if isinstance(statuses, list) else []:
+        if not isinstance(status, dict) or not isinstance(status.get("context"), str):
+            continue
+        state = status.get("state")
+        out.append(
+            {
+                "id": 0,
+                "name": status["context"],
+                "status": "in_progress" if state == "pending" else "completed",
+                "conclusion": None if state == "pending" else ("success" if state == "success" else "failure"),
+                "html_url": status.get("target_url"),
+                "completed_at": status.get("updated_at"),
+            }
+        )
+    return out
+
+
+def _decider(runs: list[dict]) -> dict:
+    """The id and completion time of the last of *runs* to complete. Pure."""
+    last = max(runs, key=lambda r: (str(r.get("completed_at") or ""), r.get("id") or 0))
+    check_id = last.get("id")
+    return {
+        "check_id": check_id if isinstance(check_id, int) else None,
+        "completed_at": _text(last.get("completed_at")),
+    }
+
+
+#: The GitHub app whose check suites are the head's workflow runs.
+_ACTIONS_APP_SLUG = "github-actions"
+
+
+def own_ci_suites(data: Any) -> frozenset[int] | None:
+    """The check suite ids of GitHub's workflow runs answer *data* that are the head's own CI. Pure.
+
+    A ``pull_request_target`` run is the base's workflow: GitHub starts it
+    before the pull request's own workflows exist, so it is left out, as the
+    webhook path marks it advisory (``pr_events``). ``None`` when the head has
+    no workflow run at all (a repository whose CI is not GitHub Actions): its
+    checks decide as before.
+    """
+    runs = data.get("workflow_runs") if isinstance(data, dict) else None
+    if not isinstance(runs, list) or not runs:
+        return None
+    out: set[int] = set()
+    for run in runs:
+        if not isinstance(run, dict) or run.get("event") == "pull_request_target":
+            continue
+        suite = run.get("check_suite_id")
+        if isinstance(suite, int):
+            out.add(suite)
+    return frozenset(out)
+
+
+def own_ci_passed(data: Any, suites: frozenset[int]) -> bool:
+    """Whether one check run of GitHub's check-runs answer *data* passed in the head's own CI *suites*. Pure.
+
+    The polling twin of the webhook rule (``_ci_conclusion``): an advisory run
+    (a ``pull_request_target`` workflow, an app other than GitHub Actions, a
+    commit status) and a skipped or neutral run never make a head green alone.
+    """
+    runs = data.get("check_runs") if isinstance(data, dict) else None
+    for run in latest_runs_by_name(runs if isinstance(runs, list) else []):
+        app = run.get("app")
+        suite = run.get("check_suite")
+        slug = app.get("slug") if isinstance(app, dict) else None
+        suite_id = suite.get("id") if isinstance(suite, dict) else None
+        if (
+            slug == _ACTIONS_APP_SLUG
+            and isinstance(suite_id, int)
+            and suite_id in suites
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+        ):
+            return True
+    return False
+
+
+async def _own_ci_suites(owner: str, name: str, sha: str, token: str) -> frozenset[int] | None:
+    """The check suites of *sha*'s own workflow runs (:func:`own_ci_suites`); ``None`` when unreadable."""
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/actions/runs",
+            "GitHub",
+            f"read the workflow runs of {sha[:12]} in {owner}/{name}",
+            headers=_headers(token),
+            params={"head_sha": sha, "per_page": "100"},
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        return own_ci_suites(resp.json())
+    except ValueError:
+        return None
+
+
+async def _required_checks(owner: str, name: str, branch: str, token: str) -> frozenset[str]:
+    """The check names *branch*'s rulesets require; empty when they cannot be read."""
+    from .checks import required_contexts
+
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/rules/branches/{branch}",
+            "GitHub",
+            f"read the rules of {branch} in {owner}/{name}",
+            headers=_headers(token),
+            params={"per_page": "100"},
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return frozenset()
+    try:
+        return required_contexts(resp.json(), None)
+    except ValueError:
+        return frozenset()
+
+
+async def _commit_statuses(owner: str, name: str, sha: str, token: str) -> list[dict[str, Any]]:
+    """The commit statuses of *sha* as check runs (:func:`status_runs`); empty when they cannot be read."""
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/commits/{sha}/status",
+            "GitHub",
+            f"read the commit statuses of {sha[:12]} in {owner}/{name}",
+            headers=_headers(token),
+            params={"per_page": "100"},
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return []
+    try:
+        return status_runs(resp.json())
+    except ValueError:
+        return []
+
+
+async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | None:
+    """The head of an open pull request and its CI verdict (``PullRequestCiReader``).
+
+    Two reads: ``GET /repos/{repo}/pulls/{n}`` for the head, then
+    ``GET /repos/{repo}/commits/{head}/check-runs`` (one page of 100) for the verdict;
+    then ``GET /repos/{repo}/rules/branches/{base}`` and the head's commit
+    statuses on a head that reads decided: a head whose required checks have not
+    reported stays undecided, and a red the base does not require decides
+    nothing (#11766). A head that reads ``success`` is also read for its
+    workflow runs (``GET /repos/{repo}/actions/runs?head_sha=``): it stays
+    undecided until one check of its own CI passed (:func:`own_ci_passed`), so
+    a ``pull_request_target`` run that completes before the pull request's own
+    workflows start never releases a parked item.
+    """
+    owner, name, err = parse_repo(repo)
+    if err or number <= 0:
+        return None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/pulls/{number}",
+            "GitHub",
+            f"read the head of {repo}#{number}",
+            headers=_headers(token),
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+        if err or resp is None:
+            return None
+        try:
+            pull = resp.json()
+        except ValueError:
+            return None
+        if not isinstance(pull, dict) or pull.get("state") != "open":
+            return None
+        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+        sha = _commitish(str(head.get("sha") or ""))
+        if sha is None:
+            return None
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/commits/{sha}/check-runs?per_page=100",
+            "GitHub",
+            f"read the checks of {repo}#{number} at {sha[:12]}",
+            headers=_headers(token),
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        checks = resp.json()
+    except ValueError:
+        return None
+    required: frozenset[str] = frozenset()
+    base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
+    base_ref = _text(base.get("ref"))
+    if base_ref and _BRANCH_RE.match(base_ref) and head_ci_verdict(checks)[0] in ("success", "failure"):
+        required = await _required_checks(owner, name, base_ref, token)
+        if required and isinstance(checks, dict) and isinstance(checks.get("check_runs"), list):
+            statuses = await _commit_statuses(owner, name, sha, token)
+            known = {r.get("name") for r in checks["check_runs"] if isinstance(r, dict)}
+            extra = [r for r in statuses if r["name"] not in known]
+            if extra:
+                checks = {**checks, "check_runs": [*checks["check_runs"], *extra]}
+    conclusion, url, decider = head_ci_decision(checks, required)
+    if conclusion == "success":
+        # Every check reported so far passed, but they may all be advisory: the
+        # pull request's own workflows not started yet. Not decided until one of
+        # them passed; an unreadable runs list keeps the verdict (the webhook decides).
+        suites = await _own_ci_suites(owner, name, sha, token)
+        if suites is not None and not own_ci_passed(checks, suites):
+            conclusion, url, decider = None, None, None
+    draft = pull.get("draft")
+    from .checks import coverage_pending
+
+    listed = checks.get("check_runs") if isinstance(checks, dict) else None
+    full_ci = None
+    if conclusion == "success" and draft is False and base_ref and _BRANCH_RE.match(base_ref):
+        full_ci = await _full_ci_state(owner, name, base_ref, sha, token)
+    return {
+        "head_sha": sha,
+        "head_branch": _text(head.get("ref")),
+        "draft": draft if isinstance(draft, bool) else None,
+        "conclusion": conclusion,
+        "run_url": url,
+        # A Codecov grade read before its uploads: its red is provisional (#12050).
+        "coverage_pending": coverage_pending(
+            latest_runs_by_name([r for r in listed if isinstance(r, dict)] if isinstance(listed, list) else [])
+        ),
+        **(decider or {}),
+        **({"full_ci": full_ci} if full_ci else {}),
+    }
+
+
+async def _full_ci_state(owner: str, name: str, base_ref: str, sha: str, token: str) -> str | None:
+    """The state of the full CI run ``[merge] full_ci_workflows`` requires on *sha* (#12040).
+
+    ``running`` while one gated workflow is queued or running on the head (its
+    completion is a wake still to come), else the first non-green state
+    (``red``, ``absent``, ``unreadable``), ``green`` when all are green;
+    ``None`` when the base declares no gate or the gate cannot be read.
+    """
+    from .full_ci_gate import read_gate, workflow_verdict
+
+    headers = _headers(token)
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        workflows, problem = await read_gate(client, owner, name, base_ref, headers)
+        if problem or not workflows:
+            return None
+        states = [(await workflow_verdict(client, owner, name, w, sha, headers)).state for w in workflows]
+    if "running" in states:
+        return "running"
+    return next((s for s in states if s != "green"), "green")
+
+
+#: Pull requests of one head branch read per call: a release branch reopens one at a time.
+BRANCH_PULLS_PER_PAGE = 10
+
+
+def branch_closings(repo: str, branch: str, data: Any) -> list[PullRequestEvent]:
+    """The closings of GitHub's pulls answer *data* whose head is *branch*, oldest number first. Pure."""
+    out: list[PullRequestEvent] = []
+    for pull in data if isinstance(data, list) else []:
+        if not isinstance(pull, dict) or not isinstance(pull.get("number"), int):
+            continue
+        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+        if head.get("ref") != branch:
+            continue
+        event = closing_event(repo, "pull_request", pull["number"], pull)
+        if event is not None:
+            out.append(event)
+    return sorted(out, key=lambda e: e.pr_numbers[0])
+
+
+async def read_branch_closings(repo: str, branch: str, token: str) -> list[PullRequestEvent]:
+    """The closed pull requests of head *branch* in *repo* (``BranchClosingsReader``); ``[]`` when unreadable.
+
+    ``GET /repos/{repo}/pulls?head={owner}:{branch}&state=closed``, newest first, one page.
+    """
+    owner, name, err = parse_repo(repo)
+    if err or not _BRANCH_RE.match(branch or ""):
+        return []
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/pulls",
+            "GitHub",
+            f"read the closed pull requests of {branch} in {repo}",
+            headers=_headers(token),
+            params={
+                "head": f"{owner}:{branch}",
+                "state": "closed",
+                "sort": "created",
+                "direction": "desc",
+                "per_page": str(BRANCH_PULLS_PER_PAGE),
+            },
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return []
+    try:
+        data = resp.json()
+    except ValueError:
+        return []
+    return branch_closings(repo.lower(), branch, data)
+
+
+async def read_reference_state(repo: str, kind: str, number: int, token: str) -> PullRequestEvent | None:
+    owner, name, err = parse_repo(repo)
+    if err or kind not in ("pull_request", "issue") or number <= 0:
+        return None
+    path = "pulls" if kind == "pull_request" else "issues"
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/{path}/{number}",
+            "GitHub",
+            f"read the state of {repo}#{number}",
+            headers=_headers(token),
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    return closing_event(repo.lower(), kind, number, data)

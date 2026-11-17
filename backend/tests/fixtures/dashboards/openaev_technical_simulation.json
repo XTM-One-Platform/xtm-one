@@ -1,0 +1,1568 @@
+{
+ "data": {
+  "id": "b54ec176-1eaa-4e2e-acec-5590ad9d5ccd",
+  "type": "custom_dashboards",
+  "attributes": {
+   "custom_dashboard_id": "b54ec176-1eaa-4e2e-acec-5590ad9d5ccd",
+   "custom_dashboard_name": "Technical simulation",
+   "custom_dashboard_description": "",
+   "custom_dashboard_created_at": "2025-11-19T11:08:02.965829Z",
+   "custom_dashboard_updated_at": "2025-11-19T11:08:56.921714Z"
+  },
+  "relationships": {
+   "custom_dashboard_widgets": {
+    "data": [
+     {
+      "id": "b2640185-f35a-4480-ac5c-3bb52902c197",
+      "type": "widgets"
+     },
+     {
+      "id": "c358dfde-260b-4f76-8fc6-4a028664b108",
+      "type": "widgets"
+     },
+     {
+      "id": "f3cff8e5-da0b-4283-b132-00f347b7be79",
+      "type": "widgets"
+     },
+     {
+      "id": "58fddd07-6005-4a3f-b95b-5faa4fcb55ac",
+      "type": "widgets"
+     },
+     {
+      "id": "9e2c2de5-26a3-4bd0-8524-f387b3065cac",
+      "type": "widgets"
+     },
+     {
+      "id": "8a1f5e20-5d47-4c3f-8321-54e136d8369c",
+      "type": "widgets"
+     },
+     {
+      "id": "fd419314-2e2c-4209-b8a0-3cc024b12eab",
+      "type": "widgets"
+     },
+     {
+      "id": "ff7babe0-ede4-466d-9ec5-ec1b6b325e4f",
+      "type": "widgets"
+     },
+     {
+      "id": "0b21ec2d-5ce0-4007-9928-459d27bcb3cb",
+      "type": "widgets"
+     },
+     {
+      "id": "d0382bf5-8367-4e5c-a611-01c105f3e1b1",
+      "type": "widgets"
+     },
+     {
+      "id": "a752adb4-6bf0-4dfd-aa08-fd4bd6c346c5",
+      "type": "widgets"
+     },
+     {
+      "id": "408fcc11-57aa-420c-aa2f-8223144af254",
+      "type": "widgets"
+     },
+     {
+      "id": "adc73040-a5d4-4fad-81a8-9b1138bcfdeb",
+      "type": "widgets"
+     },
+     {
+      "id": "57e32f6f-f54b-47c7-9978-d5294c5db20a",
+      "type": "widgets"
+     },
+     {
+      "id": "7b942d0c-35ac-4f06-9158-544c27124b6a",
+      "type": "widgets"
+     },
+     {
+      "id": "e0ddbadf-e5de-45cf-b8ae-313961a667b7",
+      "type": "widgets"
+     },
+     {
+      "id": "58f2e690-0b15-4ca5-a5e3-77adf45afd08",
+      "type": "widgets"
+     },
+     {
+      "id": "8921a3a4-2c47-4b22-bcb6-f662866840ce",
+      "type": "widgets"
+     },
+     {
+      "id": "bd35aa1f-34fb-4bd9-8372-4eb2a441f550",
+      "type": "widgets"
+     },
+     {
+      "id": "7fd70cac-a280-4501-ae9b-72fc3387ce10",
+      "type": "widgets"
+     }
+    ]
+   },
+   "custom_dashboard_parameters": {
+    "data": [
+     {
+      "id": "15085be3-e76a-4647-b7bf-96d584edad9e",
+      "type": "custom_dashboards_parameters"
+     },
+     {
+      "id": "286adc8d-4c66-44d1-8176-ff059cca607b",
+      "type": "custom_dashboards_parameters"
+     },
+     {
+      "id": "2b4df4e9-59c8-4ecf-a49d-c87685628955",
+      "type": "custom_dashboards_parameters"
+     },
+     {
+      "id": "a0dd88b5-3c83-4154-9ff6-be8ea3a6a516",
+      "type": "custom_dashboards_parameters"
+     }
+    ]
+   }
+  }
+ },
+ "included": [
+  {
+   "id": "b2640185-f35a-4480-ac5c-3bb52902c197",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "b2640185-f35a-4480-ac5c-3bb52902c197",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "vulnerable-endpoint"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "Vulnerable endpoints number",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 10,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.048037Z",
+    "widget_updated_at": "2025-11-19T11:08:03.280841Z"
+   }
+  },
+  {
+   "id": "c358dfde-260b-4f76-8fc6-4a028664b108",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "c358dfde-260b-4f76-8fc6-4a028664b108",
+    "widget_type": "horizontal-barchart",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "finding"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "finding_type",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Latest findings",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 4,
+     "widget_layout_h": 6,
+     "widget_layout_x": 8,
+     "widget_layout_y": 6
+    },
+    "widget_created_at": "2025-11-19T11:08:03.024025Z",
+    "widget_updated_at": "2025-11-19T11:08:03.257120Z"
+   }
+  },
+  {
+   "id": "f3cff8e5-da0b-4283-b132-00f347b7be79",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "f3cff8e5-da0b-4283-b132-00f347b7be79",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "finding"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "finding_type",
+          "mode": "or",
+          "values": [
+           "Port",
+           "PortsScan"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "Ports Open",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 10,
+     "widget_layout_y": 4
+    },
+    "widget_created_at": "2025-11-19T11:08:03.036138Z",
+    "widget_updated_at": "2025-11-19T11:08:03.269110Z"
+   }
+  },
+  {
+   "id": "58fddd07-6005-4a3f-b95b-5faa4fcb55ac",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "58fddd07-6005-4a3f-b95b-5faa4fcb55ac",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "endpoints",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "endpoint"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "endpoints",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 8,
+     "widget_layout_y": 2
+    },
+    "widget_created_at": "2025-11-19T11:08:03.059819Z",
+    "widget_updated_at": "2025-11-19T11:08:03.292734Z"
+   }
+  },
+  {
+   "id": "9e2c2de5-26a3-4bd0-8524-f387b3065cac",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "9e2c2de5-26a3-4bd0-8524-f387b3065cac",
+    "widget_type": "horizontal-barchart",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "Detected TTPs",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "SUCCESS"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      },
+      {
+       "name": "Prevented TTPs",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "PREVENTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "SUCCESS"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 10,
+     "field": "base_attack_patterns_side",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Most Detected & Prevented TTPs",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 4,
+     "widget_layout_h": 6,
+     "widget_layout_x": 4,
+     "widget_layout_y": 17
+    },
+    "widget_created_at": "2025-11-19T11:08:03.071536Z",
+    "widget_updated_at": "2025-11-19T11:08:03.304579Z"
+   }
+  },
+  {
+   "id": "8a1f5e20-5d47-4c3f-8321-54e136d8369c",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "8a1f5e20-5d47-4c3f-8321-54e136d8369c",
+    "widget_type": "donut",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "inject_expectation_status",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Detection",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 4,
+     "widget_layout_x": 0,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.083345Z",
+    "widget_updated_at": "2025-11-19T11:08:03.316610Z"
+   }
+  },
+  {
+   "id": "fd419314-2e2c-4209-b8a0-3cc024b12eab",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "fd419314-2e2c-4209-b8a0-3cc024b12eab",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "Inject",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 8,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.094985Z",
+    "widget_updated_at": "2025-11-19T11:08:03.328406Z"
+   }
+  },
+  {
+   "id": "ff7babe0-ede4-466d-9ec5-ec1b6b325e4f",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "ff7babe0-ede4-466d-9ec5-ec1b6b325e4f",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "finding"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "Total number of findings",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 8,
+     "widget_layout_y": 4
+    },
+    "widget_created_at": "2025-11-19T11:08:03.106709Z",
+    "widget_updated_at": "2025-11-19T11:08:03.340109Z"
+   }
+  },
+  {
+   "id": "0b21ec2d-5ce0-4007-9928-459d27bcb3cb",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "0b21ec2d-5ce0-4007-9928-459d27bcb3cb",
+    "widget_type": "donut",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "PREVENTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "inject_expectation_status",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Prevention",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 4,
+     "widget_layout_x": 2,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.118427Z",
+    "widget_updated_at": "2025-11-19T11:08:03.351799Z"
+   }
+  },
+  {
+   "id": "d0382bf5-8367-4e5c-a611-01c105f3e1b1",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "d0382bf5-8367-4e5c-a611-01c105f3e1b1",
+    "widget_type": "donut",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "VULNERABILITY"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "inject_expectation_status",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Vulnerability",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 4,
+     "widget_layout_x": 4,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.130179Z",
+    "widget_updated_at": "2025-11-19T11:08:03.363600Z"
+   }
+  },
+  {
+   "id": "a752adb4-6bf0-4dfd-aa08-fd4bd6c346c5",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "a752adb4-6bf0-4dfd-aa08-fd4bd6c346c5",
+    "widget_type": "donut",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "vulnerable-endpoint"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "vulnerable_endpoint_action",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Recommended action",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 4,
+     "widget_layout_x": 6,
+     "widget_layout_y": 0
+    },
+    "widget_created_at": "2025-11-19T11:08:03.141986Z",
+    "widget_updated_at": "2025-11-19T11:08:03.375394Z"
+   }
+  },
+  {
+   "id": "408fcc11-57aa-420c-aa2f-8223144af254",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "408fcc11-57aa-420c-aa2f-8223144af254",
+    "widget_type": "list",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [],
+     "perspective": {
+      "name": "",
+      "filter": {
+       "mode": "and",
+       "filters": [
+        {
+         "key": "base_entity",
+         "mode": "or",
+         "values": [
+          "vulnerable-endpoint"
+         ],
+         "operator": "eq"
+        },
+        {
+         "key": "base_simulation_side",
+         "mode": "or",
+         "values": [
+          "15085be3-e76a-4647-b7bf-96d584edad9e"
+         ],
+         "operator": "eq"
+        }
+       ]
+      }
+     },
+     "columns": [
+      "vulnerable_endpoint_hostname",
+      "base_created_at",
+      "vulnerable_endpoint_agents_active_status",
+      "vulnerable_endpoint_action",
+      "vulnerable_endpoint_findings_summary"
+     ],
+     "sorts": [
+      {
+       "fieldName": "base_created_at",
+       "direction": "DESC"
+      }
+     ],
+     "limit": 100,
+     "widget_configuration_type": "list",
+     "title": "Vulnerable endpoints",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 12,
+     "widget_layout_h": 5,
+     "widget_layout_x": 0,
+     "widget_layout_y": 12
+    },
+    "widget_created_at": "2025-11-19T11:08:03.153586Z",
+    "widget_updated_at": "2025-11-19T11:08:03.386948Z"
+   }
+  },
+  {
+   "id": "adc73040-a5d4-4fad-81a8-9b1138bcfdeb",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "adc73040-a5d4-4fad-81a8-9b1138bcfdeb",
+    "widget_type": "vertical-barchart",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "Not Detected",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      },
+      {
+       "name": "Not Prevented",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "PREVENTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "temporal",
+     "stacked": false,
+     "interval": "week",
+     "widget_configuration_type": "temporal-histogram",
+     "title": "UNDETECTED/UNPREVENTED INJECTS BY WEEK",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 4,
+     "widget_layout_h": 6,
+     "widget_layout_x": 0,
+     "widget_layout_y": 17
+    },
+    "widget_created_at": "2025-11-19T11:08:03.165040Z",
+    "widget_updated_at": "2025-11-19T11:08:03.398861Z"
+   }
+  },
+  {
+   "id": "57e32f6f-f54b-47c7-9978-d5294c5db20a",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "57e32f6f-f54b-47c7-9978-d5294c5db20a",
+    "widget_type": "number",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "CVEsfound",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "finding"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "finding_type",
+          "mode": "or",
+          "values": [
+           "CVE"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "widget_configuration_type": "flat",
+     "title": "CVEs Found",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 2,
+     "widget_layout_h": 2,
+     "widget_layout_x": 10,
+     "widget_layout_y": 2
+    },
+    "widget_created_at": "2025-11-19T11:08:03.176614Z",
+    "widget_updated_at": "2025-11-19T11:08:03.410716Z"
+   }
+  },
+  {
+   "id": "7b942d0c-35ac-4f06-9158-544c27124b6a",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "7b942d0c-35ac-4f06-9158-544c27124b6a",
+    "widget_type": "horizontal-barchart",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "Undetected TTPs",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      },
+      {
+       "name": "UnpreventedTTPs",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "PREVENTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 10,
+     "field": "base_attack_patterns_side",
+     "widget_configuration_type": "structural-histogram",
+     "title": "MOST UNDETECTED &UNPREVENTED TTPS",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 4,
+     "widget_layout_h": 6,
+     "widget_layout_x": 8,
+     "widget_layout_y": 17
+    },
+    "widget_created_at": "2025-11-19T11:08:03.188016Z",
+    "widget_updated_at": "2025-11-19T11:08:03.422180Z"
+   }
+  },
+  {
+   "id": "e0ddbadf-e5de-45cf-b8ae-313961a667b7",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "e0ddbadf-e5de-45cf-b8ae-313961a667b7",
+    "widget_type": "vertical-barchart",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "Not Detected",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      },
+      {
+       "name": "Not Prevented",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "or",
+          "values": [
+           "PREVENTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "or",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "base_security_platforms_side",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Inject undetected & unprevented by security platform",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 12,
+     "widget_layout_h": 6,
+     "widget_layout_x": 0,
+     "widget_layout_y": 33
+    },
+    "widget_created_at": "2025-11-19T11:08:03.199434Z",
+    "widget_updated_at": "2025-11-19T11:08:03.434032Z"
+   }
+  },
+  {
+   "id": "58f2e690-0b15-4ca5-a5e3-77adf45afd08",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "58f2e690-0b15-4ca5-a5e3-77adf45afd08",
+    "widget_type": "security-coverage",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "SUCCESS",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "and",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "and",
+          "values": [
+           "SUCCESS"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "and",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "and",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      },
+      {
+       "name": "FAILED",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "and",
+          "values": [
+           "expectation-inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_status",
+          "mode": "and",
+          "values": [
+           "FAILED"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "inject_expectation_type",
+          "mode": "and",
+          "values": [
+           "DETECTION"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "and",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 100,
+     "field": "base_attack_patterns_side",
+     "widget_configuration_type": "structural-histogram",
+     "title": "LAST DETECTION COVERAGE",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 12,
+     "widget_layout_h": 10,
+     "widget_layout_x": 0,
+     "widget_layout_y": 23
+    },
+    "widget_created_at": "2025-11-19T11:08:03.211Z",
+    "widget_updated_at": "2025-11-19T11:08:03.445701Z"
+   }
+  },
+  {
+   "id": "8921a3a4-2c47-4b22-bcb6-f662866840ce",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "8921a3a4-2c47-4b22-bcb6-f662866840ce",
+    "widget_type": "donut",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [
+      {
+       "name": "",
+       "filter": {
+        "mode": "and",
+        "filters": [
+         {
+          "key": "base_entity",
+          "mode": "or",
+          "values": [
+           "inject"
+          ],
+          "operator": "eq"
+         },
+         {
+          "key": "base_simulation_side",
+          "mode": "or",
+          "values": [
+           "15085be3-e76a-4647-b7bf-96d584edad9e"
+          ],
+          "operator": "eq"
+         }
+        ]
+       }
+      }
+     ],
+     "mode": "structural",
+     "stacked": false,
+     "limit": 10,
+     "field": "inject_status",
+     "widget_configuration_type": "structural-histogram",
+     "title": "Inject status",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at",
+     "display_legend": false
+    },
+    "widget_layout": {
+     "widget_layout_w": 6,
+     "widget_layout_h": 6,
+     "widget_layout_x": 0,
+     "widget_layout_y": 39
+    },
+    "widget_created_at": "2025-11-19T11:08:03.222686Z",
+    "widget_updated_at": "2025-11-19T11:08:03.457230Z"
+   }
+  },
+  {
+   "id": "bd35aa1f-34fb-4bd9-8372-4eb2a441f550",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "bd35aa1f-34fb-4bd9-8372-4eb2a441f550",
+    "widget_type": "list",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [],
+     "perspective": {
+      "name": "",
+      "filter": {
+       "mode": "and",
+       "filters": [
+        {
+         "key": "base_entity",
+         "mode": "or",
+         "values": [
+          "finding"
+         ],
+         "operator": "eq"
+        },
+        {
+         "key": "base_simulation_side",
+         "mode": "or",
+         "values": [
+          "15085be3-e76a-4647-b7bf-96d584edad9e"
+         ],
+         "operator": "eq"
+        }
+       ]
+      }
+     },
+     "columns": [
+      "finding_value",
+      "base_created_at",
+      "finding_type"
+     ],
+     "sorts": [
+      {
+       "fieldName": "base_created_at",
+       "direction": "DESC"
+      }
+     ],
+     "limit": 100,
+     "widget_configuration_type": "list",
+     "title": "findings",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 8,
+     "widget_layout_h": 8,
+     "widget_layout_x": 0,
+     "widget_layout_y": 4
+    },
+    "widget_created_at": "2025-11-19T11:08:03.234148Z",
+    "widget_updated_at": "2025-11-19T11:08:03.468817Z"
+   }
+  },
+  {
+   "id": "7fd70cac-a280-4501-ae9b-72fc3387ce10",
+   "type": "widgets",
+   "attributes": {
+    "widget_id": "7fd70cac-a280-4501-ae9b-72fc3387ce10",
+    "widget_type": "list",
+    "widget_config": {
+     "start": null,
+     "end": null,
+     "series": [],
+     "perspective": {
+      "name": "",
+      "filter": {
+       "mode": "and",
+       "filters": [
+        {
+         "key": "base_entity",
+         "mode": "or",
+         "values": [
+          "inject"
+         ],
+         "operator": "eq"
+        },
+        {
+         "key": "base_simulation_side",
+         "mode": "or",
+         "values": [
+          "15085be3-e76a-4647-b7bf-96d584edad9e"
+         ],
+         "operator": "eq"
+        }
+       ]
+      }
+     },
+     "columns": [
+      "inject_status",
+      "base_created_at",
+      "execution_date",
+      "base_attack_patterns_side"
+     ],
+     "sorts": [
+      {
+       "fieldName": "base_created_at",
+       "direction": "DESC"
+      }
+     ],
+     "limit": 10,
+     "widget_configuration_type": "list",
+     "title": "Latest Injects",
+     "time_range": "DEFAULT",
+     "date_attribute": "base_created_at"
+    },
+    "widget_layout": {
+     "widget_layout_w": 6,
+     "widget_layout_h": 6,
+     "widget_layout_x": 6,
+     "widget_layout_y": 39
+    },
+    "widget_created_at": "2025-11-19T11:08:03.245632Z",
+    "widget_updated_at": "2025-11-19T11:08:03.480521Z"
+   }
+  },
+  {
+   "id": "15085be3-e76a-4647-b7bf-96d584edad9e",
+   "type": "custom_dashboards_parameters",
+   "attributes": {
+    "custom_dashboards_parameter_id": "15085be3-e76a-4647-b7bf-96d584edad9e",
+    "custom_dashboards_parameter_name": "simulation",
+    "custom_dashboards_parameter_type": "simulation"
+   }
+  },
+  {
+   "id": "286adc8d-4c66-44d1-8176-ff059cca607b",
+   "type": "custom_dashboards_parameters",
+   "attributes": {
+    "custom_dashboards_parameter_id": "286adc8d-4c66-44d1-8176-ff059cca607b",
+    "custom_dashboards_parameter_name": "End date",
+    "custom_dashboards_parameter_type": "endDate"
+   }
+  },
+  {
+   "id": "2b4df4e9-59c8-4ecf-a49d-c87685628955",
+   "type": "custom_dashboards_parameters",
+   "attributes": {
+    "custom_dashboards_parameter_id": "2b4df4e9-59c8-4ecf-a49d-c87685628955",
+    "custom_dashboards_parameter_name": "Start date",
+    "custom_dashboards_parameter_type": "startDate"
+   }
+  },
+  {
+   "id": "a0dd88b5-3c83-4154-9ff6-be8ea3a6a516",
+   "type": "custom_dashboards_parameters",
+   "attributes": {
+    "custom_dashboards_parameter_id": "a0dd88b5-3c83-4154-9ff6-be8ea3a6a516",
+    "custom_dashboards_parameter_name": "Time range",
+    "custom_dashboards_parameter_type": "timeRange"
+   }
+  }
+ ]
+}

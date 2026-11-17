@@ -1,0 +1,60 @@
+{
+  "procedure": "connectors.listConnectors",
+  "source": "recorded",
+  "data": [
+    {
+      "source": "first",
+      "domain": "vulnerability",
+      "mechanism": "scheduled_pull",
+      "scopeKinds": [
+        "cves"
+      ],
+      "platformConfigured": true,
+      "tenantConfigured": true,
+      "url": "https://www.first.org/epss/",
+      "state": "never_synced",
+      "activeRun": null,
+      "lastRun": null,
+      "schedule": {
+        "cadence": "daily",
+        "nextRunAt": "2026-10-15T06:00:00.000Z"
+      }
+    },
+    {
+      "source": "nist",
+      "domain": "vulnerability",
+      "mechanism": "scheduled_pull",
+      "scopeKinds": [
+        "cves"
+      ],
+      "platformConfigured": true,
+      "tenantConfigured": true,
+      "url": "https://nvd.nist.gov/",
+      "state": "never_synced",
+      "activeRun": null,
+      "lastRun": null,
+      "schedule": {
+        "cadence": "daily",
+        "nextRunAt": "2026-10-15T06:00:00.000Z"
+      }
+    },
+    {
+      "source": "cisa",
+      "domain": "vulnerability",
+      "mechanism": "scheduled_pull",
+      "scopeKinds": [
+        "cves"
+      ],
+      "platformConfigured": true,
+      "tenantConfigured": true,
+      "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+      "state": "never_synced",
+      "activeRun": null,
+      "lastRun": null,
+      "schedule": {
+        "cadence": "daily",
+        "nextRunAt": "2026-10-15T06:00:00.000Z"
+      }
+    }
+  ]
+}

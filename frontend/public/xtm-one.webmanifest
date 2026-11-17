@@ -1,0 +1,16 @@
+{
+  "name": "XTM One",
+  "short_name": "XTM One",
+  "description": "Unified Agentic AI for Continuous Threat Exposure Management",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#5E1AD5",
+  "background_color": "#070d19",
+  "icons": [
+    {
+      "src": "/xtp-one-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

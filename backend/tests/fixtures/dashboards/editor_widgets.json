@@ -1,0 +1,3015 @@
+{
+  "opencti": [
+    {
+      "type": "number",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "number",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "number",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "list",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "list",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "list",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "distribution-list",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "distribution-list",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "distribution-list",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "vertical-bar",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "vertical-bar",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "vertical-bar",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "line",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "line",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "line",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "area",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "area",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "area",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "timeline",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "timeline",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "donut",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "donut",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "donut",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "horizontal-bar",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "horizontal-bar",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "horizontal-bar",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "radar",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "radar",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "radar",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "polar-area",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "polar-area",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "polar-area",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "heatmap",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "heatmap",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "heatmap",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "tree",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "tree",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "tree",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "map",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "bookmark",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "wordcloud",
+      "perspective": "entities",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "entities",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "name",
+              "label": "Name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "modified",
+              "label": "Modification date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "creators",
+              "label": "Creators"
+            },
+            {
+              "attribute": "x_opencti_workflow_id",
+              "label": "Processing status"
+            },
+            {
+              "attribute": "objectLabel"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "wordcloud",
+      "perspective": "relationships",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "relationships",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": [
+            {
+              "attribute": "entity_type",
+              "label": "Type"
+            },
+            {
+              "attribute": "from_entity_type",
+              "label": "Source type"
+            },
+            {
+              "attribute": "from_relationship_type",
+              "label": "Source name"
+            },
+            {
+              "attribute": "to_entity_type",
+              "label": "Target type"
+            },
+            {
+              "attribute": "to_relationship_type",
+              "label": "Target name"
+            },
+            {
+              "attribute": "created",
+              "label": "Original creation date"
+            },
+            {
+              "attribute": "created_at",
+              "label": "Platform creation date"
+            },
+            {
+              "attribute": "createdBy"
+            },
+            {
+              "attribute": "objectMarking"
+            }
+          ]
+        }
+      ],
+      "parameters": {}
+    },
+    {
+      "type": "wordcloud",
+      "perspective": "audits",
+      "dataSelection": [
+        {
+          "label": "",
+          "number": 10,
+          "sort_by": "created_at",
+          "sort_mode": "desc",
+          "attribute": "entity_type",
+          "date_attribute": "created_at",
+          "isTo": true,
+          "perspective": "audits",
+          "filters": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicFrom": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "dynamicTo": {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": []
+          },
+          "columns": []
+        }
+      ],
+      "parameters": {}
+    }
+  ],
+  "openaev": [
+    {
+      "widget_type": "command-center",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "exposure-score",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "resilience-gauge",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "posture-radar",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "average",
+      "widget_config": {
+        "widget_configuration_type": "average",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "or",
+                  "values": [
+                    "expectation-inject"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "widget_type": "security-coverage",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "SUCCESS",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "expectation-inject"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_status",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "SUCCESS"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_type",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "DETECTION"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "name": "FAILED",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "expectation-inject"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_status",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "FAILED"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_type",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "DETECTION"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "base_attack_patterns_side"
+      }
+    },
+    {
+      "widget_type": "attack-path",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "SUCCESS",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "expectation-inject"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_status",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "SUCCESS"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_type",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "DETECTION"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "name": "FAILED",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "expectation-inject"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_status",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "FAILED"
+                  ]
+                },
+                {
+                  "id": "ID",
+                  "key": "inject_expectation_type",
+                  "mode": "and",
+                  "operator": "eq",
+                  "values": [
+                    "DETECTION"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "base_attack_patterns_side"
+      }
+    },
+    {
+      "widget_type": "vertical-barchart",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "horizontal-barchart",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "line",
+      "widget_config": {
+        "widget_configuration_type": "temporal-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "temporal",
+        "interval": "week"
+      }
+    },
+    {
+      "widget_type": "donut",
+      "widget_config": {
+        "widget_configuration_type": "structural-histogram",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ],
+        "mode": "structural",
+        "field": "finding_type",
+        "limit": 10
+      }
+    },
+    {
+      "widget_type": "list",
+      "widget_config": {
+        "widget_configuration_type": "list",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "perspective": {
+          "name": "",
+          "filter": {
+            "mode": "and",
+            "filters": [
+              {
+                "id": "ID",
+                "key": "base_entity",
+                "mode": "and",
+                "values": [
+                  "finding"
+                ],
+                "operator": "eq"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "widget_type": "number",
+      "widget_config": {
+        "widget_configuration_type": "flat",
+        "title": "",
+        "date_attribute": "base_created_at",
+        "time_range": "DEFAULT",
+        "series": [
+          {
+            "name": "",
+            "filter": {
+              "mode": "and",
+              "filters": [
+                {
+                  "id": "ID",
+                  "key": "base_entity",
+                  "mode": "and",
+                  "values": [
+                    "finding"
+                  ],
+                  "operator": "eq"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
