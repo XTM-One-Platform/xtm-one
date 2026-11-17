@@ -27,6 +27,7 @@ TOOLS = {
     "set_fleet_automations",
     "set_fleet_members",
     "set_fleet_exposure",
+    "share_fleet_workspace",
     "set_fleet_member_parent",
     "export_fleet_spec",
     "apply_fleet_spec",

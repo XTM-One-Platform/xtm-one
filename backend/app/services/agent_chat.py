@@ -1459,7 +1459,7 @@ def _add_platform_builder_tools(
         from app.services.builtin_tools import build_fleet_tools
 
         # The conversation is where export_fleet_spec keeps the full spec file.
-        fl_defs, fl_exec = build_fleet_tools(actor_id, conversation_id=conversation_id)
+        fl_defs, fl_exec = build_fleet_tools(actor_id, conversation_id=conversation_id, agent_id=agent_id)
         composite.add_tools(fl_defs, fl_exec)
     if "roi" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools.roi import build_roi_tools
