@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -395,6 +396,51 @@ async def test_reads_past_the_total_guard_fall_back_to_the_list_of_paths(monkeyp
         merged = await line_merge(None, {}, "acme/app", API, BASE, "feat/x", "main", ["a.py", "b.py"])
 
     assert merged == "the versions of the paths are over the 200 bytes one line merge reads"
+
+
+@pytest.mark.asyncio
+async def test_a_path_past_the_time_budget_is_a_conflict_and_the_paths_before_it_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #51: a slow merge_path (difflib on a large file) must never hold the call past its budget.
+    monkeypatch.setattr(merge_hunks, "LINE_MERGE_SECONDS", 0.2)
+    real = merge_hunks.merge_path
+
+    def slow_on_b(path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None) -> merge_hunks.PathMerge:
+        if path == "b.py":
+            time.sleep(1.0)
+        return real(path, base, ours, theirs)
+
+    monkeypatch.setattr(merge_hunks, "merge_path", slow_on_b)
+    paths = ["a.py", "b.py", "c.py"]
+    base = dict.fromkeys(paths, BASE_FILE)
+    ours = dict.fromkeys(paths, _edit(BASE_FILE, 2, "branch 2\n"))
+    theirs = dict.fromkeys(paths, _edit(BASE_FILE, 9, "main 9\n"))
+    fake = FakeGitHub(base, ours, theirs)
+    started = time.monotonic()
+    with patch(_SAFE_REQUEST, new=fake):
+        merged = await line_merge(None, {}, "acme/app", API, BASE, "feat/x", "main", paths)
+
+    assert time.monotonic() - started < 0.9
+    assert not isinstance(merged, str), merged
+    assert merged.clean == ["a.py"]
+    assert merged.conflicting == ["b.py", "c.py"]
+    assert all("time budget" in merged.merges[path].reason for path in ("b.py", "c.py"))
+
+
+@pytest.mark.asyncio
+async def test_a_spent_time_budget_reads_no_more_blobs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(merge_hunks, "LINE_MERGE_SECONDS", 0.0)
+    base = {"a.py": BASE_FILE}
+    ours = {"a.py": _edit(BASE_FILE, 2, "branch 2\n")}
+    theirs = {"a.py": _edit(BASE_FILE, 9, "main 9\n")}
+    fake = FakeGitHub(base, ours, theirs)
+    with patch(_SAFE_REQUEST, new=fake):
+        merged = await line_merge(None, {}, "acme/app", API, BASE, "feat/x", "main", ["a.py"])
+
+    assert not isinstance(merged, str), merged
+    assert merged.conflicting == ["a.py"] and "time budget" in merged.merges["a.py"].reason
+    assert not [url for verb, url, _ in fake.calls if verb == "get" and "/git/blobs/" in url]
 
 
 # ---------------------------------------------------------------------------
