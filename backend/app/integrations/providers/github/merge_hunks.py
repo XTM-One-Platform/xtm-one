@@ -24,11 +24,19 @@ versions are read, merged and released before the next one, so a path over
 the others still merge. Only a tree GitHub does not list in full, a failed
 read, or reads past ``MAX_LINE_MERGE_TOTAL_BYTES`` in all answer the reason,
 and the caller falls back to the list of paths.
+
+The merge of each path runs in a worker thread (difflib is quadratic on a
+large file and would block the event loop, so the worker lost its lease and
+the call never answered, #51), within ``LINE_MERGE_SECONDS`` in all: a path
+not merged in time, and every path after it, is a conflict with its reason,
+so the call always answers with what it merged.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +55,8 @@ MAX_MERGED_PATHS = 40
 MAX_MERGE_READ_BYTES = 3 * _MAX_COMMIT_CONTENT_BYTES
 #: Bytes of blobs one line merge reads in all, path after path (the resolver's own read budget).
 MAX_LINE_MERGE_TOTAL_BYTES = _MAX_READ_BYTES
+#: Seconds one line merge spends merging paths in all; a path past it is a conflict resolved whole (#51).
+LINE_MERGE_SECONDS = 60.0
 #: Lines of one side of one hunk shown in the answer; the rest are counted.
 MAX_HUNK_LINES = 40
 #: Characters of one shown line; the rest are counted.
@@ -239,7 +249,11 @@ async def line_merge(
         sides.append(side)
     merges: dict[str, PathMerge] = {}
     total = 0
+    deadline = time.monotonic() + LINE_MERGE_SECONDS
     for path in paths:
+        if time.monotonic() >= deadline:
+            merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
+            continue
         entries = [side.entries.get(path) for side in sides]
         odd = next((entry for entry in entries if entry is not None and entry.mode != _MODE_FILE), None)
         if odd is not None:
@@ -266,8 +280,21 @@ async def line_merge(
             merges[path] = PathMerge(path, reason=_over_path_budget(read))
             continue
         base, ours, theirs = (None if entry is None else blobs[entry.sha] for entry in entries)
-        merges[path] = merge_path(path, base, ours, theirs)
+        remaining = deadline - time.monotonic()
+        try:
+            # Off the event loop; a thread past the budget finishes on its own and its result is dropped.
+            merges[path] = await asyncio.wait_for(
+                asyncio.to_thread(merge_path, path, base, ours, theirs), timeout=max(remaining, 0.001)
+            )
+        except TimeoutError:
+            merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
     return LineMerge(merges)
+
+
+_OVER_TIME_BUDGET = (
+    "not merged within the time budget of the line merge: keep one side whole or give a merged 'content' or "
+    "'workspace_path'"
+)
 
 
 def _over_path_budget(size: int) -> str:
