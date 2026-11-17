@@ -632,6 +632,25 @@ restart_target = 120
 lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_PERF_THREAD = "on" }
 
+# The stale build notice ("A new version is available", #63). LAB_STALE_BUILD = "on": the
+# Vite dev server writes one build in <meta name="build-id"> and lab_asgi answers another as
+# build_id of GET /api/v1/auth/config, read back at start, so the notice renders on load and
+# when the tab regains focus with no React or fetch override. The log line
+# "seeded stale build notice: <url>" (or "not seeded stale build notice: <why>").
+[service.lab-stale-build]
+description = "xtm-one from this checkout with the stale build notice (page build differs from the server's): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_STALE_BUILD = "on" }
+
 # The env-managed Langfuse lock of Settings > Usage and quotas > Observability on a real answer.
 # Every lab saves lab-only Langfuse keys through the API (LAB_LANGFUSE unset = "stored": the
 # Configured badge and the "Stored: type to replace" placeholders, log line "seeded Langfuse stored

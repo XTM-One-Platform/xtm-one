@@ -95,6 +95,10 @@ With ``LAB_OFFICE_ADDIN_DIST`` set (by ``lab.py`` when ``LAB_OFFICE_ADDIN`` is o
 the task pane the lab builds there, read at each request: the build ends after the backend started, and until it
 exists the path goes to the application as before. The preview proxies ``/office`` here.
 
+With ``LAB_STALE_BUILD_SERVER_ID`` set (by ``lab.py`` under ``LAB_STALE_BUILD=on``, #63) ``GET /api/v1/auth/config``
+answers that id as ``build_id`` over the route's own answer: the Vite dev server writes another id in the page's
+``<meta name="build-id">``, so the stale build notice renders natively. Every other field is the route's.
+
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
 
@@ -1329,6 +1333,54 @@ async def answer_nova_engine_available(scope, receive, send) -> None:
     await backend(scope, receive, capture)
 
 
+#: The route whose ``build_id`` ``LAB_STALE_BUILD_SERVER_ID`` replaces (#63).
+AUTH_CONFIG_PATH = "/api/v1/auth/config"
+
+
+def with_build_id(body: bytes, build_id: str) -> bytes:
+    """The ``/auth/config`` JSON *body* with ``build_id`` set to *build_id*; *body* when it is not that JSON."""
+    try:
+        config = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(config, dict):
+        return body
+    return json.dumps({**config, "build_id": build_id}).encode()
+
+
+def asks_stale_build(scope: dict, environ: dict) -> str:
+    """The server build to report when *scope* reads ``/auth/config`` in a ``LAB_STALE_BUILD=on`` lab, else ``""``."""
+    build_id = environ.get("LAB_STALE_BUILD_SERVER_ID", "").strip()
+    reads_config = scope.get("type") == "http" and scope.get("method") == "GET" and scope.get("path") == AUTH_CONFIG_PATH
+    return build_id if build_id and reads_config else ""
+
+
+async def answer_stale_build(scope, receive, send, build_id: str) -> None:
+    """Run the route, then send its 200 JSON answer with ``build_id`` replaced (any other answer as is)."""
+    start: dict = {}
+    chunks: list[bytes] = []
+
+    async def capture(message):
+        if message["type"] == "http.response.start":
+            start.update(message)
+            return
+        if message["type"] != "http.response.body":
+            await send(message)
+            return
+        chunks.append(message.get("body", b""))
+        if message.get("more_body"):
+            return
+        body = b"".join(chunks)
+        if start.get("status") == 200:
+            body = with_build_id(body, build_id)
+        headers = [(k, v) for k, v in start.get("headers", []) if k.lower() != b"content-length"]
+        headers.append((b"content-length", str(len(body)).encode()))
+        await send({**start, "headers": headers})
+        await send({"type": "http.response.body", "body": body})
+
+    await backend(scope, receive, capture)
+
+
 #: The prefix the Office add-in task pane is served under (``vite.config.ts`` base of the hosted build).
 OFFICE_ADDIN_PREFIX = "/office"
 _office_addin_files: dict[str, object] = {}
@@ -1429,6 +1481,10 @@ async def application(scope, receive, send):
         return
     if asks_nova_engine_status(scope, os.environ):
         await answer_nova_engine_available(scope, receive, send)
+        return
+    stale_build = asks_stale_build(scope, os.environ)
+    if stale_build:
+        await answer_stale_build(scope, receive, send, stale_build)
         return
     answer, status = lab_answer(scope, os.environ.get("LAB_GITHUB_INTEGRATION_ID", "")), 200
     if (
