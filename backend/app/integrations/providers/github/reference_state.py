@@ -118,15 +118,18 @@ _WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 
-def first_successful_run(data: Any, after: str) -> dict | None:
+def first_successful_run(data: Any, after: str, title_contains: str | None = None) -> dict[str, Any] | None:
     """The oldest successful run of GitHub's runs answer *data* created at or after *after*; ``None`` when none. Pure.
 
-    *after* and ``created_at`` are both ``YYYY-MM-DDTHH:MM:SSZ``, so they compare as text.
+    *after* and ``created_at`` are both ``YYYY-MM-DDTHH:MM:SSZ``, so they compare as text. *title_contains*, when
+    given, keeps only the runs whose ``display_title`` holds it (the tag build of a release workflow, #34).
     """
     runs = data.get("workflow_runs") if isinstance(data, dict) else None
-    found: dict | None = None
+    found: dict[str, Any] | None = None
     for run in runs if isinstance(runs, list) else []:
         if not isinstance(run, dict) or run.get("conclusion") != "success":
+            continue
+        if title_contains and title_contains not in str(run.get("display_title") or ""):
             continue
         created = _text(run.get("created_at"))
         if created is None or created < after:
@@ -138,13 +141,14 @@ def first_successful_run(data: Any, after: str) -> dict | None:
                 "created_at": created,
                 "updated_at": _text(run.get("updated_at")),
                 "head_sha": _text(run.get("head_sha")),
+                "display_title": _text(run.get("display_title")),
             }
     return found
 
 
 async def read_successful_workflow_run(
-    repo: str, workflow: str, after: str, branch: str | None, token: str
-) -> dict | None:
+    repo: str, workflow: str, after: str, branch: str | None, title_contains: str | None, token: str
+) -> dict[str, Any] | None:
     owner, name, err = parse_repo(repo)
     if err or not _WORKFLOW_RE.match(workflow or "") or (branch and not _BRANCH_RE.match(branch)):
         return None
@@ -168,7 +172,7 @@ async def read_successful_workflow_run(
         data = resp.json()
     except ValueError:
         return None
-    return first_successful_run(data, after)
+    return first_successful_run(data, after, title_contains)
 
 
 #: Check run conclusions that do not fail a head (the webhook path's rule).
