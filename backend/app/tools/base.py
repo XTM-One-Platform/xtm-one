@@ -3068,6 +3068,19 @@ def name_result_files(call: ToolCall, result: ToolResult) -> ToolResult:
 # ---------------------------------------------------------------------------
 
 
+def _is_mcp_server_tool(definition: ToolDefinition) -> bool:
+    """A tool a bound MCP server declares (``mcp:<server>``), not the platform's own."""
+    return definition.source.startswith("mcp:") and definition.source != "mcp:resources"
+
+
+def _mcp_shadows_platform_tool(incoming: ToolDefinition, registered: list[ToolDefinition]) -> bool:
+    """Whether *incoming* is a server tool that would replace a platform tool of its name (#46)."""
+    if not _is_mcp_server_tool(incoming):
+        return False
+    current = next((d for d in registered if d.name == incoming.name), None)
+    return current is not None and not _is_mcp_server_tool(current)
+
+
 class CompositeToolExecutor:
     """Multiplexes tool calls to the correct executor by tool name.
 
@@ -3175,11 +3188,25 @@ class CompositeToolExecutor:
         """Register a batch of tool definitions with their executor.
 
         Deduplicates by name — if a tool with the same name already exists,
-        the new one silently replaces it (last-write-wins). This prevents the
+        the new one replaces it (last-write-wins). This prevents the
         ``tools: Tool names must be unique`` error from LLM providers.
+
+        One exception (#46): an MCP server tool never replaces a platform
+        tool (built-in, integration, custom) of the same name. A bound
+        ``/mcp/xtm`` server of another instance exposes ``get_agent``,
+        ``list_agents`` or ``load_skill``; replacing ours would route the
+        agent's own reads to that instance. The server tool is skipped and
+        logged; the platform tool keeps the name.
         """
         for defn in definitions:
             is_new = defn.name not in self._executors
+            if not is_new and _mcp_shadows_platform_tool(defn, self._definitions):
+                logger.warning(
+                    "MCP tool '%s' (source %s) not registered: a platform tool has that name",
+                    defn.name,
+                    defn.source,
+                )
+                continue
             if not is_new:
                 # Replace existing: remove old definition, add new one
                 self._definitions = [
