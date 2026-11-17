@@ -63,6 +63,9 @@ DROPPED_WHEN_SCOPED = frozenset(
         "search_github_repositories",
         "list_github_notifications",
         "manage_github_notification",
+        # Organization-wide searches and Copilot reports (people.py).
+        "get_github_engineering_metrics",
+        "get_github_ai_usage",
     }
 )
 
