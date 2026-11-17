@@ -14,7 +14,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from app.llm.anthropic_thinking_replay import THINKING_BLOCK_TYPES, block_chars
+from app.llm.anthropic_thinking_replay import THINKING_BLOCK_TYPES, block_chars, refuses_replayed_signatures
 from app.llm.base import ChatMessage
 from app.tools.base import ToolCall
 
@@ -32,10 +32,12 @@ class ThinkingBlocks:
     provider: str
     model: str
     call_ids: tuple[str, ...]
-    #: Set once a request carrying them was refused: never sent again.
+    #: Set once a request carrying the blocks was refused: never sent again.
     refused: bool = False
     #: Gemini's ``(call id, thought_signature)`` pairs.
     signatures: tuple[tuple[str, str], ...] = ()
+    #: Set once a refusal named the signatures: never sent again.
+    signatures_refused: bool = False
 
 
 def blocks_of(obj: object) -> list[dict]:
@@ -71,13 +73,14 @@ def _with_signatures(calls: list[dict], signatures: Mapping[str, str]) -> list[d
     ]
 
 
-def _without_replay(message: dict) -> dict:
-    """*message* without the blocks and signatures a replay put on it."""
+def _without_replay(message: dict, *, signatures: bool) -> dict:
+    """*message* without the blocks a replay put on it, and its signatures too when *signatures*."""
     calls = message.get("tool_calls") or []
-    if "thinking_blocks" not in message and not any("extra_content" in call for call in calls):
+    signed = signatures and any("extra_content" in call for call in calls)
+    if "thinking_blocks" not in message and not signed:
         return message
     out = {k: v for k, v in message.items() if k != "thinking_blocks"}
-    if calls:
+    if signed:
         out["tool_calls"] = [{k: v for k, v in call.items() if k != "extra_content"} for call in calls]
     return out
 
@@ -110,7 +113,8 @@ class BlocksReplay:
     messages: list[dict]
     without: list[dict]
     sent: list[ThinkingBlocks] = field(default_factory=list)
-    retired: list[ThinkingBlocks] = field(default_factory=list)
+    #: The turns the last retry retired: ``(turn, its blocks, its signatures)``.
+    retired: list[tuple[ThinkingBlocks, bool, bool]] = field(default_factory=list)
     #: False when thinking is off: the turns' blocks are not sent, only their signatures.
     with_blocks: bool = True
 
@@ -135,7 +139,6 @@ class BlocksReplay:
             kept = (msg._provider_extra or {}).get(EXTRA_KEY)
             usable = (
                 isinstance(kept, ThinkingBlocks)
-                and not kept.refused
                 and kept.provider == provider
                 and kept.model == model
                 and kept.call_ids == tuple(tc.id for tc in msg.tool_calls or [])
@@ -153,11 +156,14 @@ class BlocksReplay:
             kept = next(turns, None)
             if kept is None or kept.call_ids != tuple(tc.get("id") for tc in entry["tool_calls"]):
                 continue
-            if not kept.signatures and not blocks:
+            send_blocks = blocks and bool(kept.blocks) and not kept.refused
+            send_signatures = bool(kept.signatures) and not kept.signatures_refused
+            if not send_blocks and not send_signatures:
                 continue
-            entry = {**entry, "tool_calls": _with_signatures(entry["tool_calls"], dict(kept.signatures))}
-            if kept.blocks and blocks:
-                entry["thinking_blocks"] = [dict(b) for b in kept.blocks]
+            if send_signatures:
+                entry = {**entry, "tool_calls": _with_signatures(entry["tool_calls"], dict(kept.signatures))}
+            if send_blocks:
+                entry = {**entry, "thinking_blocks": [dict(b) for b in kept.blocks]}
             out[i] = entry
             replay.sent.append(kept)
         if replay.sent:
@@ -185,37 +191,57 @@ class BlocksReplay:
             return None
         return {EXTRA_KEY: ThinkingBlocks(tuple(blocks), self.provider, self.model, calls, signatures=kept_signatures)}
 
+    def _sends_blocks(self, kept: ThinkingBlocks) -> bool:
+        return self.with_blocks and bool(kept.blocks) and not kept.refused
+
+    def _sends_signatures(self, kept: ThinkingBlocks) -> bool:
+        return bool(kept.signatures) and not kept.signatures_refused
+
     def chars(self) -> int:
         return sum(
-            sum(block_chars(b) for b in kept.blocks if self.with_blocks) + sum(len(sig) for _, sig in kept.signatures)
+            sum(block_chars(b) for b in kept.blocks if self._sends_blocks(kept))
+            + sum(len(sig) for _, sig in kept.signatures if self._sends_signatures(kept))
             for kept in self.sent
         )
 
     def drop(self) -> list[dict]:
-        """Send the messages as built: no block this time, decided again next request."""
-        self.sent = []
-        self.messages = self.without
-        return self.without
+        """No block this time, decided again next request. The signatures stay:
+        they are small, and Gemini reasons from them."""
+        self.with_blocks = False
+        self.sent = [kept for kept in self.sent if self._sends_signatures(kept)]
+        self.messages = [_without_replay(m, signatures=False) for m in self.messages] if self.sent else self.without
+        return self.messages
 
     def restore(self) -> None:
-        """The request failed without the blocks too: they may be sent again."""
-        for kept in self.retired:
-            kept.refused = False
+        """The request failed without them too: they may be sent again."""
+        for kept, blocks, signatures in self.retired:
+            kept.refused = kept.refused and not blocks
+            kept.signatures_refused = kept.signatures_refused and not signatures
         self.retired = []
 
-    def retry_without(self, reason: str, sent: list[dict]) -> list[dict]:
-        """The request was refused with the blocks (and signatures): they are never sent again.
+    def retry_without(self, reason: str, sent: list[dict]) -> list[dict] | None:
+        """The request was refused: its blocks are never sent again, and its
+        signatures only when *reason* names them. ``None`` when that leaves the
+        request as sent, so there is nothing to retry.
 
         Returns *sent*, the messages as sent (cache breakpoints included), without them.
         """
+        signatures = refuses_replayed_signatures(reason)
+        retired = [(kept, self._sends_blocks(kept), signatures and self._sends_signatures(kept)) for kept in self.sent]
+        retired = [entry for entry in retired if entry[1] or entry[2]]
+        if not retired:
+            return None
         logger.warning(
-            "Thinking blocks or thought signatures refused (%d turn(s)); retrying once without them: %s",
-            len(self.sent),
+            "%s refused (%d turn(s)); retrying once without them: %s",
+            "Thought signatures" if signatures else "Thinking blocks",
+            len(retired),
             reason[:300],
         )
-        for kept in self.sent:
-            kept.refused = True
-        self.retired = self.sent
-        self.sent = []
-        self.messages = [_without_replay(m) for m in sent]
+        for kept, blocks, signed in retired:
+            kept.refused = kept.refused or blocks
+            kept.signatures_refused = kept.signatures_refused or signed
+        self.retired = retired
+        self.with_blocks = False
+        self.sent = [kept for kept in self.sent if self._sends_signatures(kept)]
+        self.messages = [_without_replay(m, signatures=signatures) for m in sent]
         return self.messages

@@ -9,6 +9,7 @@ import json
 import uuid
 
 import httpx
+import openai
 import pytest
 
 from app.core.xtm_auth import _normalize_url
@@ -232,7 +233,7 @@ async def test_a_signature_from_another_model_is_not_sent():
 
 @pytest.mark.asyncio
 async def test_a_refused_signature_is_retried_once_without_it():
-    refusal = httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
+    refusal = httpx.Response(502, json={"error": {"type": "provider_error", "message": "Corrupted thought signature.",
                                                   "retryable": False}})
     gateway = _Gateway(refusal, _ok())
     messages = _round_of_two_turns(None, _kept())
@@ -240,7 +241,7 @@ async def test_a_refused_signature_is_retried_once_without_it():
     first, retry = ([m for m in sent["messages"] if m["role"] == "assistant"][-1] for sent in gateway.sent)
     assert first["tool_calls"][0]["extra_content"] == SIGNATURE
     assert "extra_content" not in retry["tool_calls"][0]
-    assert messages[3]._provider_extra[EXTRA_KEY].refused
+    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
 
 
 @pytest.mark.asyncio
@@ -260,7 +261,7 @@ async def test_a_400_naming_the_signature_is_retried_once_without_it():
     await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
     retry = [m for m in gateway.sent[1]["messages"] if m["role"] == "assistant"][-1]
     assert "extra_content" not in retry["tool_calls"][0]
-    assert messages[3]._provider_extra[EXTRA_KEY].refused
+    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
 
 
 @pytest.mark.asyncio
@@ -285,3 +286,53 @@ async def test_an_alias_whose_listing_fails_keeps_its_schemas():
     provider = FiligranGatewayProvider(api_key=GATEWAY_URL, http_client=client)
     await provider.chat([ChatMessage(role="user", content="Plan it")], model="default", tools=[DUE])
     assert gateway.sent[0]["tools"][0]["function"]["parameters"] == DUE.input_schema
+
+
+# --- signatures outlive what is not about them (#15) -------------------------
+
+
+def _signature_sent(body: dict) -> bool:
+    return any("extra_content" in c for m in body["messages"] for c in m.get("tool_calls") or [])
+
+
+@pytest.mark.asyncio
+async def test_a_signature_survives_the_overflow_drop(monkeypatch):
+    gateway = _Gateway(_ok())
+    provider = gateway.provider()
+    monkeypatch.setattr(provider, "_resolve_context_window", lambda model: 1000)
+    messages = _round_of_two_turns(None, _kept(signature="s" * 8000))
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert _signature_sent(gateway.sent[0])
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
+                                            "retryable": False}}),
+        httpx.Response(413, json={"error": {"message": "request too large"}}),
+        httpx.Response(400, json={"error": {"message": "prompt is too long: 9 tokens > 8 maximum"}}),
+    ],
+)
+async def test_a_refusal_not_naming_the_signature_is_not_retried_without_it(refusal):
+    gateway = _Gateway(refusal)
+    messages = _round_of_two_turns(None, _kept())
+    with pytest.raises(openai.APIStatusError):
+        await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
+    # Nothing else was replayed: a retry would have sent the same request again.
+    assert len(gateway.sent) == 1
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+@pytest.mark.asyncio
+async def test_a_signature_refused_again_without_it_was_not_the_cause():
+    named = httpx.Response(400, json={"error": {"message": "Corrupted thought signature."}})
+    other = httpx.Response(400, json={"error": {"message": "bad tool schema"}})
+    gateway = _Gateway(named, other)
+    messages = _round_of_two_turns(None, _kept())
+    with pytest.raises(Exception, match="bad tool schema"):
+        await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False]
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused

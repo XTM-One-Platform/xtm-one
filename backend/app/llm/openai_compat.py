@@ -25,7 +25,11 @@ import httpx
 import openai
 from openai import AsyncOpenAI
 
-from app.llm.anthropic_thinking_replay import refuses_replayed_blocks, says_prompt_too_long
+from app.llm.anthropic_thinking_replay import (
+    refuses_replayed_blocks,
+    refuses_replayed_signatures,
+    says_prompt_too_long,
+)
 from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
@@ -488,12 +492,9 @@ def _refuses_replay(exc: Exception) -> bool:
         return status in (413, 502)
     if message is None:
         return True
-    return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)
-
-
-def _refuses_signature(message: str) -> bool:
-    """A 400 naming a Gemini thought signature (``thought_signature`` / "thought signature")."""
-    return re.search(r"\bthought[ _]signature", message, re.IGNORECASE) is not None
+    return (
+        refuses_replayed_blocks(message) or refuses_replayed_signatures(message) or says_prompt_too_long(message)
+    )
 
 
 async def _create_completion(client, params: dict, model: str | None, replay: BlocksReplay | None):
@@ -509,7 +510,10 @@ async def _create_completion(client, params: dict, model: str | None, replay: Bl
     except openai.APIStatusError as exc:
         if replay is None or not replay.sent or not _refuses_replay(exc):
             raise
-        params["messages"] = replay.retry_without(_error_message(exc), params["messages"])
+        retry = replay.retry_without(_error_message(exc), params["messages"])
+        if retry is None:
+            raise
+        params["messages"] = retry
     try:
         return await send()
     except openai.APIStatusError as exc:
