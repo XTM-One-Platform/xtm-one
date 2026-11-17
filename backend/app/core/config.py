@@ -2901,6 +2901,11 @@ class Settings(BaseSettings):
     # all egress is denied unless explicitly listed here.  Applied to both
     # custom-tool sandboxes (JS + Python) and the code-interpreter sandbox.
     opensandbox_network_allow: str = ""
+    # Read-only npm and PyPI mirror proxy of the command and service containers
+    # (sandbox_run_command, sandbox_start_service): its host joins their egress
+    # allow-list and the registry variables point at it. Empty: off, the dev
+    # images install offline from their caches. No credential in the URL.
+    sandbox_registry_mirror_url: str = ""
     # CPU/memory requested for each OpenSandbox container (code interpreter +
     # custom JS/Python tools). Values are passed through as-is to the
     # OpenSandbox SDK's ``resource`` argument, so use whatever unit strings
@@ -3353,6 +3358,28 @@ class Settings(BaseSettings):
         if v < 1:
             raise ValueError(f"MICROSOFT_TEAMS_MESSAGE_TEXT_LIMIT must be a positive integer, got {v!r}")
         return v
+
+    @field_validator("sandbox_registry_mirror_url")
+    @classmethod
+    def _validate_sandbox_registry_mirror_url(cls, v: str) -> str:
+        # A malformed or credentialed mirror URL is a startup error, never a
+        # credential copied into every command container's environment: the
+        # mirror is read-only and anonymous.
+        from urllib.parse import urlsplit
+
+        url = (v or "").strip()
+        if not url:
+            return ""
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError(f"SANDBOX_REGISTRY_MIRROR_URL must be an http(s) URL with a host, got {url!r}")
+        if parts.username or parts.password:
+            raise ValueError(
+                "SANDBOX_REGISTRY_MIRROR_URL must carry no credential: the mirror is read-only and anonymous"
+            )
+        if parts.query or parts.fragment:
+            raise ValueError(f"SANDBOX_REGISTRY_MIRROR_URL must carry no query or fragment, got {url!r}")
+        return url.rstrip("/")
 
     @field_validator(
         "migration_lock_timeout_seconds",

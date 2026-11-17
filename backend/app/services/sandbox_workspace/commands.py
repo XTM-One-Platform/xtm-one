@@ -1203,6 +1203,7 @@ def _default_api(user_id: uuid.UUID | None) -> Any:
     from app.services._sandbox_selector import _build_opensandbox_config, _create_opensandbox, sandbox_pool_state
     from app.services.code_interpreter import MAX_IMAGES
     from app.services.sandbox_workspace.paths import WORKSPACE_ENV
+    from app.services.sandbox_workspace.registry_mirror import command_egress, command_env
     from app.services.sandbox_workspace.remote import REMOTE_WORKSPACE
 
     async def _connect(sandbox_id: str):
@@ -1215,9 +1216,15 @@ def _default_api(user_id: uuid.UUID | None) -> Any:
             kind_label="sandbox-command",
             usage_type="sandbox_command",
             user_id=user_id,
-            egress_allow_list=settings.opensandbox_network_allow_list,
+            # Package installs reach the read-only registry mirror only, when one is set.
+            egress_allow_list=command_egress(),
             resource=settings.sandbox_resources(image_key),
-            env={"MPLBACKEND": "Agg", "COPILOT_MAX_IMAGES": str(MAX_IMAGES), WORKSPACE_ENV: REMOTE_WORKSPACE},
+            env={
+                **command_env(),
+                "MPLBACKEND": "Agg",
+                "COPILOT_MAX_IMAGES": str(MAX_IMAGES),
+                WORKSPACE_ENV: REMOTE_WORKSPACE,
+            },
             # The create runs as its own task past the call (``_created``): a pod-ready timeout
             # (HTTP 504, a cold Pool pulling the image) is retried until this window, not twice.
             retry_timeouts_for=CREATE_RETRY_WINDOW_SECONDS,
