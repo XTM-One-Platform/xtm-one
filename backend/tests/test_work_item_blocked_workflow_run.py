@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -70,6 +71,22 @@ def test_the_recorded_run_survives_a_rewrite():
     assert normalize_blocked_on_refs([ref]) == [ref]
 
 
+def test_title_contains_is_kept_and_makes_its_own_reference() -> None:
+    refs = normalize_blocked_on_refs([_wf(title_contains="refs/tags/"), _wf()])
+    assert refs == [_wf(title_contains="refs/tags/"), _wf()]
+
+
+def test_a_blank_title_contains_is_no_filter() -> None:
+    (ref,) = normalize_blocked_on_refs([_wf(title_contains="")])
+    assert "title_contains" not in ref
+
+
+@pytest.mark.parametrize("title", ["   ", 7, "x" * 201])
+def test_a_title_contains_the_platform_cannot_match_is_refused(title: object) -> None:
+    with pytest.raises(BlockedRefError):
+        normalize_blocked_on_refs([_wf(title_contains=title)])
+
+
 def test_two_waits_on_the_same_workflow_after_different_times_are_two_references():
     refs = normalize_blocked_on_refs([_wf(), _wf(after="2026-11-06T02:00:00Z"), _wf()])
     assert len(refs) == 2
@@ -105,6 +122,10 @@ def test_the_waits_for_line_names_the_workflow_and_the_time():
         f"Waits for: a successful {REPO} release.yml run on main after {AFTER}"
     )
     assert blocked_why(_blocked([_wf(state="succeeded")]))["text"] == "No reason given"
+    titled = blocked_why(_blocked([_wf(title_contains="refs/tags/")]))
+    assert titled is not None and titled["text"] == (
+        f"Waits for: a successful {REPO} release.yml run titled '*refs/tags/*' after {AFTER}"
+    )
 
 
 def test_a_workflow_run_is_never_read_as_a_pull_request():
@@ -143,7 +164,39 @@ def test_the_first_successful_run_after_the_time_is_picked():
         ]
     }
     run = first_successful_run(data, AFTER)
-    assert run == {"id": 2, "url": "u2", "created_at": "2026-11-06T02:00:00Z", "updated_at": None, "head_sha": "ab"}
+    assert run == {
+        "id": 2,
+        "url": "u2",
+        "created_at": "2026-11-06T02:00:00Z",
+        "updated_at": None,
+        "head_sha": "ab",
+        "display_title": None,
+    }
+
+
+def test_title_contains_skips_the_main_run_of_a_release_workflow() -> None:
+    # release.yml runs for a push on main and for the tag: only the tag build deploys (#34).
+    data = {
+        "workflow_runs": [
+            {
+                "id": 5,
+                "conclusion": "success",
+                "created_at": "2026-11-06T01:10:00Z",
+                "display_title": "Release refs/tags/v1",
+            },
+            {
+                "id": 4,
+                "conclusion": "success",
+                "created_at": "2026-11-06T01:00:00Z",
+                "display_title": "Release refs/heads/main",
+            },
+        ]
+    }
+    first = first_successful_run(data, AFTER)
+    assert first is not None and first["id"] == 4
+    tagged = first_successful_run(data, AFTER, "refs/tags/")
+    assert tagged is not None and tagged["id"] == 5 and tagged["display_title"] == "Release refs/tags/v1"
+    assert first_successful_run(data, AFTER, "refs/tags/v2") is None
 
 
 def test_no_successful_run_after_the_time_answers_none():
@@ -215,8 +268,10 @@ def poll(monkeypatch):
     async def token(db, provider, user_id):
         return "tok"
 
-    async def reader(repo, workflow, after, branch, tok):
-        store["reads"].append((repo, workflow, after, branch))
+    async def reader(
+        repo: str, workflow: str, after: str, branch: str | None, title_contains: str | None, tok: str
+    ) -> dict[str, Any] | None:
+        store["reads"].append((repo, workflow, after, branch, title_contains))
         return store["run"]
 
     async def published(item_id, note, run, matched):
@@ -237,10 +292,18 @@ async def test_a_successful_run_releases_the_item(poll):
     counts = await refs_mod.poll_blocked_on_refs(NOW)
     item = poll["item"]
     assert counts["read"] == 1 and counts["released"] == 1
-    assert poll["reads"] == [(REPO, "release.yml", AFTER, None)]
+    assert poll["reads"] == [(REPO, "release.yml", AFTER, None, None)]
     assert item.status == "open" and item.blocked_on_refs is None and item.claimed_by_agent_id is None
     assert item.description.startswith(f"released: a successful {REPO} release.yml run after {AFTER}: run 9")
     assert len(poll["published"]) == 1
+
+
+async def test_the_title_filter_reaches_the_reader(poll: dict[str, Any]) -> None:
+    poll["item"].blocked_on_refs = [_wf(title_contains="refs/tags/")]
+    counts = await refs_mod.poll_blocked_on_refs(NOW)
+    assert counts["released"] == 1
+    assert poll["reads"] == [(REPO, "release.yml", AFTER, None, "refs/tags/")]
+    assert "run titled '*refs/tags/*' after" in poll["item"].description
 
 
 async def test_no_run_yet_keeps_it_blocked(poll):

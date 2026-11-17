@@ -580,6 +580,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
                 "workflow": {"type": "string"},
                 "after": {"type": "string"},
                 "branch": {"type": "string"},
+                "title_contains": {"type": "string"},
                 "release_on": {
                     "type": "string",
                     "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded"],
@@ -588,9 +589,9 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
             "required": ["repo"],
         },
         "description": (
-            "What it waits for (replaces the list; [] clears it); reopens once all are met. PR (branch: "
+            "What it waits for (replaces the list; [] clears); reopens once all are met. PR (branch: "
             "successors too) or issue: release_on (default merged_or_closed, issue closed). deployment (number "
-            "or sha): the running build has the merge. workflow_run (workflow, after, branch): a later success."
+            "or sha): the build has the merge. workflow_run: a later success."
         ),
     },
     "blocked_reason": {

@@ -76,12 +76,13 @@ def commit_containment_readers() -> dict[str, CommitContainmentReader]:
     return dict(_CONTAINMENT_READERS)
 
 
-#: ``(repo, workflow, after, branch, token)`` -> the first successful run of *workflow*
-#: in *repo* created at or after *after* (ISO 8601 UTC), on *branch* when given, as
+#: ``(repo, workflow, after, branch, title_contains, token)`` -> the first successful run of
+#: *workflow* in *repo* created at or after *after* (ISO 8601 UTC), on *branch* when given,
+#: whose display title holds *title_contains* when given (#34), as
 #: ``{"id", "url", "created_at", "updated_at", "head_sha"}``; ``None`` when there is
 #: none yet or it cannot be read. A work item blocked on a ``workflow_run`` reference
 #: (a release run that deploys a change merged in another repository).
-WorkflowRunReader = Callable[[str, str, str, str | None, str], Awaitable[dict | None]]
+WorkflowRunReader = Callable[[str, str, str, str | None, str | None, str], Awaitable[dict[str, object] | None]]
 
 _WORKFLOW_RUN_READERS: dict[str, WorkflowRunReader] = {}
 

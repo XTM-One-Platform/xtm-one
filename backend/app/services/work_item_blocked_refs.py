@@ -95,7 +95,9 @@ blocked.
   waits for the first successful run of a workflow created at or after
   ``after`` (the time of the write when omitted): a change merged in another
   repository (an infrastructure chart) that reaches production only through
-  the next run of a release workflow. The polling fallback reads it through
+  the next run of a release workflow. An optional ``title_contains`` keeps only
+  the runs whose display title holds it (``"refs/tags/"``: the tag build of a
+  release workflow that also runs for a push on main, #34). The polling fallback reads it through
   the provider's :data:`~app.integrations.reference_state.WorkflowRunReader`
   (:func:`_poll_workflow_run`); the release note names the run.
 """
@@ -123,6 +125,8 @@ RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded")
 #: A workflow a ``workflow_run`` reference may name: its file name or its id.
 _WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+#: The longest ``title_contains`` a ``workflow_run`` reference may give.
+MAX_TITLE_CONTAINS_CHARS = 200
 #: What the workflow run stage remembers of a reference (with ``state`` and ``at``).
 _WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at")
 #: A commit a deployment reference may name.
@@ -289,6 +293,14 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
         if not isinstance(branch, str) or not _BRANCH_RE.match(branch.strip()):
             raise BlockedRefError(f"blocked_on_refs: branch must be a branch name, got {branch!r}")
         out["branch"] = branch.strip()
+    title = entry.get("title_contains")
+    if title is not None and title != "":
+        if not isinstance(title, str) or not title.strip() or len(title) > MAX_TITLE_CONTAINS_CHARS:
+            raise BlockedRefError(
+                "blocked_on_refs: title_contains must be a non-blank text of at most "
+                f"{MAX_TITLE_CONTAINS_CHARS} characters, got {title!r}"
+            )
+        out["title_contains"] = title
     for key in ("state", "at", *_WORKFLOW_RUN_KEPT):
         if isinstance(entry.get(key), str | int) and not isinstance(entry.get(key), bool):
             out[key] = entry[key]
@@ -297,7 +309,14 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
 
 def _ref_key(ref: dict) -> tuple:
     if ref.get("kind") == "workflow_run":
-        return (ref.get("repo"), "workflow_run", ref.get("workflow"), ref.get("branch"), ref.get("after"))
+        return (
+            ref.get("repo"),
+            "workflow_run",
+            ref.get("workflow"),
+            ref.get("branch"),
+            ref.get("after"),
+            ref.get("title_contains"),
+        )
     return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
 
 
@@ -403,7 +422,8 @@ def ref_label(ref: dict) -> str:
         return f"{ref['repo']} issue #{ref['number']}"
     if ref.get("kind") == "workflow_run":
         on = f" on {ref['branch']}" if ref.get("branch") else ""
-        return f"a successful {ref['repo']} {ref.get('workflow')} run{on} after {ref.get('after')}"
+        titled = f" titled '*{ref['title_contains']}*'" if ref.get("title_contains") else ""
+        return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled} after {ref.get('after')}"
     if ref.get("kind") == "deployment":
         if ref.get("number"):
             return f"deployment of {ref['repo']}#{ref['number']}"
@@ -1653,7 +1673,12 @@ async def _poll_workflow_run(
             counts["read"] += 1
             try:
                 seen[read_key] = await reader(
-                    str(ref["repo"]), str(ref["workflow"]), str(ref["after"]), ref.get("branch"), token
+                    str(ref["repo"]),
+                    str(ref["workflow"]),
+                    str(ref["after"]),
+                    ref.get("branch"),
+                    ref.get("title_contains"),
+                    token,
                 )
             except Exception as exc:
                 logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
