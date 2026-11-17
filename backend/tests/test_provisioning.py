@@ -78,3 +78,11 @@ def test_non_ai_boot_steps_are_not_skipped():
         "an early return here skips the admin upsert too — a fresh "
         "AI-disabled install would have no admin user"
     )
+
+
+def test_providers_are_provisioned_after_the_service_identity_exists():
+    """The gateway signs its boot model listing as the admin: provisioning follows the admin upsert."""
+    from app import main
+
+    source = inspect.getsource(main._bootstrap_platform_data)
+    assert source.index("set_service_identity(") < source.index("await provision_env_providers()")
