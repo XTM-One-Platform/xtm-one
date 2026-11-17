@@ -1459,7 +1459,7 @@ PROVIDER_CATALOG = {
                 },
                 {
                     "scope": "Editor",
-                    "description": "All Viewer permissions plus create annotations and manage dashboard tags.",
+                    "description": "All Viewer permissions plus create annotations, silences and alert rules, and manage dashboard tags.",
                 },
             ],
             "notes": (
