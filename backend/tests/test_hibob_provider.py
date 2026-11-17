@@ -2190,3 +2190,168 @@ def test_fmt_task_person_falls_back_to_bare_id_or_email_when_no_name():
     assert hibob._fmt_task_person({}) == "Unknown"
     assert hibob._fmt_task_person(None) == "N/A"
     assert hibob._fmt_task_person("emp-123") == "emp-123"
+
+
+# ── Employee tables: list columns resolved to names ──────────────────────
+
+
+def _route(monkeypatch, routes: dict[str, Any], calls: list[tuple[str, Any]]):
+    """Answer each request by the first route whose key ends the URL."""
+
+    @asynccontextmanager
+    async def fake_client(timeout: int = 30):
+        yield object()
+
+    async def fake_safe_request(_client: Any, method: str, url: str, _provider: str, _action: str, **kwargs: Any):
+        calls.append((url, kwargs.get("params")))
+        for suffix, payload in routes.items():
+            if url.endswith(suffix):
+                if isinstance(payload, str):
+                    return None, payload
+                return _FakeResponse(payload), None
+        return None, f"Error: unexpected {url}"
+
+    monkeypatch.setattr(hibob, "_client", fake_client)
+    monkeypatch.setattr(hibob, "safe_request", fake_safe_request)
+
+
+_FIELDS = [
+    {"id": "work.title", "type": "list", "typeData": {"listId": "title"}},
+    {"id": "work.department", "type": "list", "typeData": {"listId": "department"}},
+    {"id": "work.site", "type": "text"},
+]
+
+
+def test_employee_table_resolves_list_columns_to_names(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(
+        monkeypatch,
+        {
+            "/people/1001/work": {
+                "values": [
+                    {"id": 1, "title": "501", "department": "601", "site": "Site A"},
+                    {"id": 2, "title": "502", "department": "699", "site": "Site A"},
+                ]
+            },
+            "/company/people/fields": _FIELDS,
+            "/company/named-lists/title": {
+                "name": "title",
+                "items": [
+                    {"id": 501, "name": "Role One"},
+                    {"id": 1, "name": "Group", "children": [{"id": 502, "name": "Role Two"}]},
+                ],
+            },
+            "/company/named-lists/department": {
+                "name": "department",
+                "items": [{"id": 601, "name": "Team X"}],
+            },
+        },
+        calls,
+    )
+    content = _run_tool("get_hibob_employee_table", {"employee_id": "1001", "table_name": "work"})
+    assert "title: Role One (id 501)" in content
+    assert "title: Role Two (id 502)" in content
+    assert "department: Team X (id 601)" in content
+    # An id the list does not hold stays raw; a text column is untouched.
+    assert "department: 699" in content
+    assert "site: Site A" in content
+    # One metadata read and one read per list, archived items included.
+    list_reads = [c for c in calls if "/named-lists/" in c[0]]
+    assert len(list_reads) == 2
+    assert all(params == {"includeArchived": "true"} for _, params in list_reads)
+
+
+def test_employee_table_keeps_raw_ids_when_metadata_fails(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(
+        monkeypatch,
+        {
+            "/people/1001/work": {"values": [{"id": 1, "title": "501"}]},
+            "/company/people/fields": "Error: HiBob API returned 403",
+        },
+        calls,
+    )
+    content = _run_tool("get_hibob_employee_table", {"employee_id": "1001", "table_name": "work"})
+    assert "title: 501" in content
+    assert not any("/named-lists/" in url for url, _ in calls)
+
+
+def test_list_ids_by_column_prefers_the_table_category():
+    fields = [
+        {"id": "other.title", "type": "list", "typeData": {"listId": "other"}},
+        {"id": "work.title", "type": "list", "typeData": {"listId": "title"}},
+        {"id": "work.note", "type": "text", "typeData": {"listId": "ignored"}},
+    ]
+    assert hibob._list_ids_by_column(fields, "work", {"title", "note"}) == {"title": "title"}
+
+
+# ── Who's out: one employee over a range ─────────────────────────────────
+
+
+_OUTS = {
+    "outs": [
+        {
+            "employeeId": "1001",
+            "employeeDisplayName": "Person A",
+            "policyTypeDisplayName": "Holiday",
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-05",
+            "status": "approved",
+        },
+        {
+            "employeeId": "1002",
+            "employeeDisplayName": "Person B",
+            "policyTypeDisplayName": "Holiday",
+            "startDate": "2026-03-01",
+            "endDate": "2026-03-02",
+            "status": "approved",
+        },
+    ]
+}
+
+
+def test_whos_out_filters_one_employee(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(monkeypatch, {"/timeoff/whosout": _OUTS}, calls)
+    content = _run_tool(
+        "get_hibob_whos_out",
+        {"from_date": "2025-12-01", "to_date": "2026-11-30", "employee": "1001"},
+    )
+    assert "Person A" in content
+    assert "Person B" not in content
+    assert calls[0][1] == {"from": "2025-12-01", "to": "2026-11-30"}
+
+
+def test_whos_out_employee_without_time_off(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(monkeypatch, {"/timeoff/whosout": _OUTS}, calls)
+    content = _run_tool(
+        "get_hibob_whos_out",
+        {"from_date": "2025-12-01", "to_date": "2026-11-30", "employee": "1003"},
+    )
+    assert content == "No time off for employee 1003 from 2025-12-01 to 2026-11-30."
+
+
+def test_whos_out_employee_range_is_checked_before_any_request(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(monkeypatch, {"/timeoff/whosout": _OUTS}, calls)
+    too_long = _run_tool(
+        "get_hibob_whos_out",
+        {"from_date": "2024-01-01", "to_date": "2026-06-01", "employee": "1001"},
+    )
+    assert "at most 24 months" in too_long
+    missing = _run_tool("get_hibob_whos_out", {"employee": "1001"})
+    assert "required" in missing
+    reversed_range = _run_tool(
+        "get_hibob_whos_out",
+        {"from_date": "2026-06-01", "to_date": "2026-01-01", "employee": "1001"},
+    )
+    assert "before from_date" in reversed_range
+    assert calls == []
+
+
+def test_whos_out_without_employee_is_unchanged(monkeypatch):
+    calls: list[tuple[str, Any]] = []
+    _route(monkeypatch, {"/timeoff/whosout": _OUTS}, calls)
+    content = _run_tool("get_hibob_whos_out", {"from_date": "2026-01-01", "to_date": "2026-12-31"})
+    assert "Person A" in content and "Person B" in content

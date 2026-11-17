@@ -14,6 +14,7 @@ import base64
 import contextlib
 import json as _json
 import logging
+from datetime import date as _date
 from typing import Any
 from urllib.parse import unquote
 
@@ -886,6 +887,130 @@ async def _all_employee_field_ids(headers: dict) -> list[str]:
     return ids[:_MAX_PEOPLE_FIELD_IDS]
 
 
+#: Field types whose stored value is the id of a company list item.
+_LIST_FIELD_TYPES = frozenset({"list", "multi-list", "hierarchy-list"})
+#: Longest range ``get_hibob_whos_out`` reads for one employee.
+_WHOS_OUT_EMPLOYEE_MAX_DAYS = 731
+
+
+def _list_ids_by_column(fields: list[Any], category: str, columns: set[str]) -> dict[str, str]:
+    """Map each table column holding a list item id to its company list id.
+
+    *fields* is the ``GET /company/people/fields`` answer: a list-type field
+    carries ``typeData.listId``, the id ``GET /company/named-lists/{id}``
+    reads.  A column is matched on ``<category>.<column>`` first (``work.title``
+    for the work table), then on any field id ending in ``.<column>``.
+    """
+    exact: dict[str, str] = {}
+    loose: dict[str, str] = {}
+    for field in fields:
+        if not isinstance(field, dict) or field.get("type") not in _LIST_FIELD_TYPES:
+            continue
+        type_data = field.get("typeData")
+        list_id = type_data.get("listId") if isinstance(type_data, dict) else None
+        fid = field.get("id")
+        if not isinstance(list_id, str) or not list_id or not isinstance(fid, str):
+            continue
+        column = fid.rsplit(".", 1)[-1]
+        if column not in columns:
+            continue
+        if fid == f"{category}.{column}":
+            exact[column] = list_id
+        else:
+            loose.setdefault(column, list_id)
+    return {**loose, **exact}
+
+
+def _list_item_names(items: Any) -> dict[str, str]:
+    """Flatten a named list's items (nested children included) to id -> name."""
+    names: dict[str, str] = {}
+    stack = list(items) if isinstance(items, list) else []
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("value")
+        if item.get("id") is not None and isinstance(name, str) and name:
+            names[str(item["id"])] = name
+        children = item.get("children")
+        if isinstance(children, list):
+            stack.extend(children)
+    return names
+
+
+async def _list_column_names(headers: dict[str, str], category: str, entries: list[Any]) -> dict[str, dict[str, str]]:
+    """Resolve the list-typed columns of employee table *entries* to names.
+
+    Answers ``{column: {item id: item name}}`` for the columns the field
+    metadata types as a list; one metadata read and one read per list.  Any
+    failure answers what was resolved so far: the caller then prints the raw
+    id, as before.
+    """
+    columns = {
+        str(key)
+        for entry in entries
+        if isinstance(entry, dict)
+        for key, value in entry.items()
+        if isinstance(value, (str, int)) and not isinstance(value, bool)
+    }
+    if not columns:
+        return {}
+    async with _client() as client:
+        resp, err = await safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/company/people/fields",
+            _PROVIDER,
+            "list employee fields",
+            headers=headers,
+        )
+        if err or resp is None:
+            return {}
+        data, parse_err = _safe_parse_json(resp, "listing employee fields")
+        if parse_err or data is None:
+            return {}
+        fields = data if isinstance(data, list) else data.get("fields", [])
+        list_ids = _list_ids_by_column(fields if isinstance(fields, list) else [], category, columns)
+        resolved: dict[str, dict[str, str]] = {}
+        by_list: dict[str, dict[str, str]] = {}
+        for column, list_id in list_ids.items():
+            if list_id not in by_list:
+                resp, err = await safe_request(
+                    client,
+                    "get",
+                    f"{_BASE_URL}/company/named-lists/{list_id}",
+                    _PROVIDER,
+                    f"get company list '{list_id}'",
+                    headers=headers,
+                    params={"includeArchived": "true"},
+                )
+                if err or resp is None:
+                    by_list[list_id] = {}
+                else:
+                    body, parse_err = _safe_parse_json(resp, "reading a company list")
+                    items = body.get("items") if isinstance(body, dict) else body
+                    by_list[list_id] = {} if parse_err else _list_item_names(items)
+            if by_list[list_id]:
+                resolved[column] = by_list[list_id]
+    return resolved
+
+
+def _whos_out_range_error(from_date: str, to_date: str) -> str:
+    """Check the range of an employee's time-off read; '' when it is valid."""
+    if not from_date or not to_date:
+        return "Error: from_date and to_date are required when employee is given."
+    try:
+        start = _date.fromisoformat(from_date[:10])
+        end = _date.fromisoformat(to_date[:10])
+    except ValueError:
+        return "Error: from_date and to_date must be ISO dates (YYYY-MM-DD)."
+    if end < start:
+        return "Error: to_date is before from_date."
+    if (end - start).days > _WHOS_OUT_EMPLOYEE_MAX_DAYS:
+        return "Error: the range of an employee's time off is at most 24 months."
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Tool builder
 # ---------------------------------------------------------------------------
@@ -1207,16 +1332,21 @@ def build_tools(
             if not entries:
                 return f"No {label.lower()} found for employee {employee_id}."
             if isinstance(entries, list):
+                names = await _list_column_names(headers, table_name, entries)
                 lines = [
                     f"{label} for employee {employee_id} ({len(entries)} entries):"
                 ]
                 for e in entries:
+                    if not isinstance(e, dict):
+                        continue
                     parts: list[str] = []
                     for k, v in e.items():
                         if k == "id":
                             continue
                         if isinstance(v, dict):
                             v = v.get("displayName", str(v))
+                        elif k in names and str(v) in names[k]:
+                            v = f"{names[k][str(v)]} (id {v})"
                         if v is not None and v != "":
                             parts.append(f"{k}: {v}")
                     lines.append(f"  {' | '.join(parts)}")
@@ -1255,7 +1385,16 @@ def build_tools(
         from_date: str = "",
         to_date: str = "",
         include_pending: bool = False,
+        employee: str = "",
     ) -> str:
+        employee_id = ""
+        if employee.strip():
+            range_error = _whos_out_range_error(from_date, to_date)
+            if range_error:
+                return range_error
+            employee_id, err = await _resolve_employee_id(headers, employee)
+            if err:
+                return err
         params: dict[str, str] = {}
         if from_date:
             params["from"] = from_date
@@ -1278,6 +1417,10 @@ def build_tools(
                 return err
             data = resp.json()
             outs = data.get("outs", data) if isinstance(data, dict) else data
+            if employee_id and isinstance(outs, list):
+                outs = [o for o in outs if isinstance(o, dict) and str(o.get("employeeId", "")) == employee_id]
+                if not outs:
+                    return f"No time off for employee {employee_id} from {from_date} to {to_date}."
             if not outs or (isinstance(outs, list) and len(outs) == 0):
                 return "No one is out of office for the specified period."
             if isinstance(outs, list):
@@ -4118,7 +4261,7 @@ def build_tools(
             name="get_hibob_employee_table",
             source=src,
             priority=0,
-            description="Read historical data from an employee's HR table: work (roles, departments), employment (contracts, FTE), lifecycle (status changes), salary (payroll), equity (stock/RSUs), variable_payments (bonuses), training (certifications).",
+            description="Read historical data from an employee's HR table: work (roles, departments), employment (contracts, FTE), lifecycle (status changes), salary (payroll), equity (stock/RSUs), variable_payments (bonuses), training (certifications). List columns (title, department, site...) are shown as 'name (id N)', resolved from the company lists.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -4175,7 +4318,7 @@ def build_tools(
             name="get_hibob_whos_out",
             source=src,
             priority=0,
-            description="Get employees who are out of office in a date range. Great for coverage planning.",
+            description="Get employees who are out of office in a date range. Great for coverage planning. Pass employee (ID, email or name) with from_date and to_date (at most 24 months) for one person's time-off history.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -4193,6 +4336,11 @@ def build_tools(
                         "type": "boolean",
                         "description": "Include pending requests",
                         "default": False,
+                    },
+                    "employee": {
+                        "type": "string",
+                        "description": "Only this employee's time off (ID, email or display name); needs from_date and to_date",
+                        "default": "",
                     },
                 },
                 "required": [],
@@ -4544,7 +4692,7 @@ def build_tools(
             name="list_hibob_reports",
             source=src,
             priority=2,
-            description="List all company reports in HiBob with their IDs, names, types, and descriptions. Use the report ID with download_hibob_report.",
+            description="List all company reports in HiBob with their IDs, names, types, and descriptions. Use the report ID with download_hibob_report. The public Bob API has no performance-review endpoint: review cycles, answers and ratings are read from a Bob report built on them, when the service user may see it.",
             input_schema={"type": "object", "properties": {}, "required": []},
         ),
         ToolDefinition(
