@@ -9,7 +9,8 @@ name: Feature branch deploy
 # Under the box, the description holds the deploy's optional inputs: an
 # ```env staging block of KEY=value lines (xtmone_config, the extra env of the
 # platform and worker) and a "Staging chart: <repository>:<version>" line
-# (chart_ref). Every deploy reads them from the current description, and an
+# (chart_ref; a value starting with #, the template's example, is empty).
+# Every deploy reads them from the current description, and an
 # edit of either deploys again while the box stays checked. Invalid inputs fail
 # the run.
 #
@@ -52,7 +53,8 @@ jobs:
           # "xtmone_config": {...}} on one line with sorted keys, the defaults
           # without a block or chart line; otherwise why they are invalid, on
           # stderr. An env line is KEY=value, its value the rest of the line
-          # verbatim; chart_ref follows the rules of the release's
+          # verbatim; a chart line whose value starts with # (the template's
+          # example) is empty; chart_ref follows the rules of the release's
           # resolve-target.sh, which checks both inputs again.
           inputs() {
             local text block chart
@@ -77,7 +79,8 @@ jobs:
                  chart_ref: ($chart | split("\n") | map(select(. != ""))
                    | if length > 1 then error("there is more than one Staging chart line") else . end
                    | (.[0] // "" | sub("\\A\\s*staging chart:\\s*"; ""; "i") | sub("\\s+\\z"; "")
-                      | if test("\\A`.*`\\z") then .[1:-1] else . end))}
+                      | if test("\\A`.*`\\z") then .[1:-1] else . end
+                      | if startswith("#") then "" else . end))}
               | if .chart_ref != "" and (.chart_ref | test("\\A[A-Za-z0-9][A-Za-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*\\z") | not)
                 then error("Staging chart \(.chart_ref | tojson) is not <repository>:<version>, e.g. filigran/xtm-suite:0.261009.4")
                 else . end

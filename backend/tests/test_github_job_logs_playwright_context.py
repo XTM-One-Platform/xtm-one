@@ -176,7 +176,14 @@ def test_a_long_snapshot_is_bounded():
     assert lines[-1].startswith("[snapshot clipped:")
 
 
-def test_the_artifact_of_the_job_shard_is_opened_first():
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "E2E (core, 1/6)",  # GitHub appends the matrix values to a name that names none
+        "E2E core 1/6",  # a name that spells them out
+    ],
+)
+def test_the_artifact_of_the_job_shard_is_opened_first(job_name):
     artifacts = [
         {"id": 1, "name": "playwright-report-core-0", "size_in_bytes": 10},
         {"id": 2, "name": "test-results-agents-0", "size_in_bytes": 10},
@@ -184,7 +191,7 @@ def test_the_artifact_of_the_job_shard_is_opened_first():
         {"id": 4, "name": "test-results-core-0", "size_in_bytes": 10},
         {"id": 5, "name": "test-results-core-2", "size_in_bytes": 10, "expired": True},
     ]
-    picked = _context_artifacts(artifacts, "E2E core 1/6")
+    picked = _context_artifacts(artifacts, job_name)
     assert picked[0]["id"] == 4
     assert all("test-results" in a["name"] and not a.get("expired") for a in picked)
 

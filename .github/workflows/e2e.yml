@@ -90,9 +90,12 @@ jobs:
   # (E2E_SHARD, tests_e2e/shards.ts), and a job runs the setup project its
   # files depend on. A2A files never run concurrently on one deployment
   # (dev-docs/a2a-e2e-test-design.md); each of its jobs has a deployment of
-  # its own.
+  # its own. The name holds no matrix expression: GitHub appends the values
+  # itself ("E2E (core, 1/6)"), while a job skipped on a pull request never
+  # expands them and would show the expression as written. The matrix keeps
+  # only project and shard, so the appended values stay those two.
   shard:
-    name: E2E ${{ matrix.project }} ${{ matrix.shard }}
+    name: E2E
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -109,9 +112,9 @@ jobs:
           - { project: a2a, shard: 1/2 }
           - { project: a2a, shard: 2/2 }
           # Evaluation runs only in copilot or dev mode with EVALUATION on:
-          # its specs get a stack of their own. Every other job keeps
-          # the defaults below (xtm_one, FLOW_BUILDER).
-          - { project: evaluation, shard: 1/1, platform_mode: copilot, features: "FLOW_BUILDER,EVALUATION" }
+          # its specs get a stack of their own (PLATFORM_MODE and
+          # ENABLED_FEATURES below).
+          - { project: evaluation, shard: 1/1 }
 
     steps:
       - uses: actions/checkout@v6
@@ -256,8 +259,8 @@ jobs:
           # flag the flow library tab and the canvas are gone and those specs fail
           # on a "New flow" button that is not there. The flag-off shape is
           # asserted in backend/tests/test_flow_builder_feature_flag.py instead.
-          ENABLED_FEATURES: ${{ matrix.features || 'FLOW_BUILDER' }}
-          PLATFORM_MODE: ${{ matrix.platform_mode || 'xtm_one' }}
+          ENABLED_FEATURES: ${{ matrix.project == 'evaluation' && 'FLOW_BUILDER,EVALUATION' || 'FLOW_BUILDER' }}
+          PLATFORM_MODE: ${{ matrix.project == 'evaluation' && 'copilot' || 'xtm_one' }}
         run: |
           docker compose up -d --no-build \
             minio postgres redis scripted-llm platform worker
