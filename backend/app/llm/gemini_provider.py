@@ -644,17 +644,7 @@ class GeminiProvider(BaseLLMProvider):
 
         # --- tools ---
         if tools:
-            # Deduplicate by name (last definition wins)
-            seen: dict[str, types.FunctionDeclaration] = {}
-            for t in tools:
-                # Clean schema: remove unsupported keys for Gemini
-                schema = _clean_schema_for_gemini(t.input_schema)
-                seen[t.name] = types.FunctionDeclaration(
-                    name=t.name,
-                    description=t.description,
-                    parameters=schema if schema.get("properties") else None,
-                )
-            config.tools = [types.Tool(function_declarations=list(seen.values()))]
+            config.tools = [_gemini_tool(tools)]
 
         # --- call (with retry on transient errors) ---
         response = await retry_llm_call(
@@ -840,17 +830,7 @@ class GeminiProvider(BaseLLMProvider):
         if thinking_config := self._streaming_thinking_config(model, kwargs):
             config.thinking_config = thinking_config
         if tools:
-            seen: dict[str, types.FunctionDeclaration] = {}
-            for t in tools:
-                schema = _clean_schema_for_gemini(t.input_schema)
-                seen[t.name] = types.FunctionDeclaration(
-                    name=t.name,
-                    description=t.description,
-                    parameters=schema if schema.get("properties") else None,
-                )
-            config.tools = [
-                types.Tool(function_declarations=list(seen.values()))
-            ]
+            config.tools = [_gemini_tool(tools)]
 
         on_thinking = kwargs.get("on_thinking")
 
@@ -1830,6 +1810,26 @@ def _raise_for_speech(response) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def gemini_wire_tools(tools: list[ToolDefinition]) -> list[tuple[str, str, dict | None]]:
+    """*tools* as Gemini declares them: ``(name, description, parameters)``, one per
+    name (the last wins), each schema cleaned, no parameters without properties.
+    Shared with routes that forward OpenAI-format tools to Gemini (the AI Gateway)."""
+    seen: dict[str, tuple[str, str, dict | None]] = {}
+    for t in tools:
+        schema = _clean_schema_for_gemini(t.input_schema)
+        seen[t.name] = (t.name, t.description, schema if schema.get("properties") else None)
+    return list(seen.values())
+
+
+def _gemini_tool(tools: list[ToolDefinition]) -> types.Tool:
+    return types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(name=name, description=description, parameters=parameters)
+            for name, description, parameters in gemini_wire_tools(tools)
+        ]
+    )
 
 
 def _clean_schema_for_gemini(schema: dict) -> dict:

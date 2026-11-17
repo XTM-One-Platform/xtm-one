@@ -260,7 +260,7 @@ async def test_blocks_refused_again_without_them_were_not_the_cause(caplog):
     assert len(gateway.sent) == 2
     assert not messages[1]._provider_extra[EXTRA_KEY].refused
     # Only the structured message is logged, never the SDK's rendering of the body.
-    assert "Thinking blocks refused (1 turn(s)); retrying once without them: Invalid `signature`" in caplog.text
+    assert "Thinking blocks or thought signatures refused (1 turn(s)); retrying once without them: Invalid `signature`" in caplog.text
 
 
 @pytest.mark.asyncio

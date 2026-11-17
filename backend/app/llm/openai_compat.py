@@ -48,7 +48,7 @@ from app.llm.model_capabilities import (
     takes_no_effort,
 )
 from app.llm.model_limits import _normalize_family_key, reported_context_window
-from app.llm.openai_thinking_blocks import BlocksReplay, blocks_of
+from app.llm.openai_thinking_blocks import BlocksReplay, blocks_of, thought_signature_of
 from app.llm.speech import OpenAISpeechMixin
 from app.llm.video import OpenAIVideosMixin
 from app.tools.base import ToolCall, ToolDefinition
@@ -454,7 +454,12 @@ def _refuses_replay(exc: Exception) -> bool:
     if exc.status_code != 400:
         return True
     message = _error_message(exc)
-    return refuses_replayed_blocks(message) or says_prompt_too_long(message)
+    return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)
+
+
+def _refuses_signature(message: str) -> bool:
+    """A 400 naming a Gemini thought signature (``thought_signature`` / "thought signature")."""
+    return re.search(r"\bthought[ _]signature", message, re.IGNORECASE) is not None
 
 
 async def _create_completion(client, params: dict, model: str | None, replay: BlocksReplay | None):
@@ -609,27 +614,36 @@ def drop_claude_assistant_tail(oai_messages: list[dict], model: str | None) -> l
 
 
 def openai_function_tools(
-    tools: list[ToolDefinition] | None, model: str | None, *, anthropic: bool | None = None
+    tools: list[ToolDefinition] | None, model: str | None, *, upstream: str | None = None
 ) -> list[dict] | None:
-    """*tools* as OpenAI function tools. When Anthropic serves the model (*anthropic*,
-    else judged from its name) they go through the Anthropic provider's wire form
-    first: routes like the gateway pass the schema through, and Claude rejects
-    top-level ``allOf``/``anyOf``/``oneOf`` and duplicate names."""
+    """*tools* as OpenAI function tools. Routes like the gateway pass the schema
+    through, so when Anthropic or Gemini serves the model (*upstream*, else Anthropic
+    for a Claude name) they take that provider's own wire form: Claude rejects
+    top-level ``allOf``/``anyOf``/``oneOf`` and duplicate names, Gemini type unions,
+    empty enums and most JSON Schema keys."""
     if not tools:
         return None
-    if anthropic is None:
-        anthropic = is_claude_model(model)
-    if anthropic:
-        # Lazy: base.py imports this module, anthropic_provider imports base.py.
+    if upstream is None and is_claude_model(model):
+        upstream = "anthropic"
+    # Lazy imports: base.py imports this module, both providers import base.py.
+    if upstream == "anthropic":
         from app.llm.anthropic_provider import _wire_tools
 
         wire = [(w["name"], w["description"], w["input_schema"]) for w in _wire_tools(tools)]
+    elif upstream == "gemini":
+        from app.llm.gemini_provider import gemini_wire_tools
+
+        wire = gemini_wire_tools(tools)
     else:
         wire = [(t.name, t.description, t.input_schema) for t in tools]
     return [
         {
             "type": "function",
-            "function": {"name": name, "description": description, "parameters": schema},
+            "function": {
+                "name": name,
+                "description": description,
+                **({"parameters": schema} if schema is not None else {}),
+            },
         }
         for name, description, schema in wire
     ]
@@ -654,7 +668,7 @@ async def consume_openai_stream_with_tools(
     include_usage: bool = True,
     shape_request: Callable[[dict], Awaitable[None]] | None = None,
     replay: BlocksReplay | None = None,
-    anthropic_tools: bool | None = None,
+    tools_upstream: str | None = None,
     **kwargs,
 ) -> ChatResponse:
     """Consume an OpenAI-format streaming response, handling both text and tool calls.
@@ -679,7 +693,9 @@ async def consume_openai_stream_with_tools(
 
     With a *replay* (:mod:`app.llm.openai_thinking_blocks`), a refusal of its
     thinking blocks is retried once without them, and the response's own
-    blocks are kept on ``_provider_extra``.
+    blocks and thought signatures are kept on ``_provider_extra``.
+
+    *tools_upstream* is the provider serving *model* (:func:`openai_function_tools`).
     """
     params: dict = {"model": model, "messages": oai_messages, "stream": True}
     if include_usage:
@@ -696,7 +712,7 @@ async def consume_openai_stream_with_tools(
     ):
         params["reasoning_effort"] = reasoning_effort
     if tools:
-        params["tools"] = openai_function_tools(tools, model, anthropic=anthropic_tools)
+        params["tools"] = openai_function_tools(tools, model, upstream=tools_upstream)
     if shape_request is not None:
         await shape_request(params)
 
@@ -762,10 +778,12 @@ async def consume_openai_stream_with_tools(
                 for tc_delta in delta.tool_calls:
                     idx = tc_delta.index
                     if idx not in tool_calls_by_idx:
-                        tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": []}
+                        tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": [], "signature": None}
                     entry = tool_calls_by_idx[idx]
                     if tc_delta.id:
                         entry["id"] = tc_delta.id
+                    if signature := thought_signature_of(tc_delta):
+                        entry["signature"] = signature
                     if tc_delta.function:
                         if tc_delta.function.name:
                             entry["name"] = tc_delta.function.name
@@ -802,7 +820,13 @@ async def consume_openai_stream_with_tools(
             tool_calls=parsed_tool_calls,
             stop_reason=stop_reason,
             thinking="".join(thinking_chunks) if thinking_chunks else None,
-            _provider_extra=replay.capture(thinking_blocks, parsed_tool_calls) if replay else None,
+            _provider_extra=replay.capture(
+                thinking_blocks,
+                parsed_tool_calls,
+                {tc["id"]: tc["signature"] for tc in tool_calls_by_idx.values() if tc["signature"]},
+            )
+            if replay
+            else None,
         )
 
     return await retry_llm_call(
@@ -845,8 +869,9 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
     # fall back to prompt-based SAP enforcement.
     supports_streaming_structured_output: bool = True
 
-    # Whether a response's Claude ``thinking_blocks`` are kept and sent back
-    # within the tool round (:mod:`app.llm.openai_thinking_blocks`).
+    # Whether a response's Claude ``thinking_blocks`` and Gemini thought
+    # signatures are kept and sent back within the tool round
+    # (:mod:`app.llm.openai_thinking_blocks`).
     replays_thinking_blocks: bool = False
 
     def __init__(self, api_key: str, **kwargs):
@@ -866,9 +891,10 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
     async def _shape_request(self, params: dict, kwargs: dict) -> None:
         """Last edit of a chat-completions request before it is sent; *kwargs* are the caller's."""
 
-    async def _served_by_anthropic(self, model: str) -> bool:
-        """Whether Anthropic serves *model*, so its tools take the Anthropic wire form."""
-        return is_claude_model(model)
+    async def _upstream_of(self, model: str) -> str | None:
+        """The provider serving *model*, whose wire form its tools take
+        (:func:`openai_function_tools`); ``None`` when unknown."""
+        return "anthropic" if is_claude_model(model) else None
 
     async def _build_messages(self, messages: list[ChatMessage], model: str) -> list[dict]:
         oai_messages = await build_openai_messages_async(
@@ -882,7 +908,8 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         """The request's messages, checked against the context window, and its
         thinking-block replay when the provider sends blocks back. The blocks
         are dropped for this request when they would not fit, and never sent
-        with ``disable_thinking``, as the Anthropic provider does."""
+        with ``disable_thinking``, as the Anthropic provider does; Gemini's
+        signatures still are, as the Gemini provider does."""
         oai_messages = await self._build_messages(messages, model)
         text_chars, image_count, native_file_bytes = self._measure_oai_payload(oai_messages)
         self._check_resolved_overflow(
@@ -891,9 +918,9 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         )
         if not self.replays_thinking_blocks:
             return oai_messages, None
-        if kwargs.get("disable_thinking"):
-            return oai_messages, BlocksReplay(self.provider_name, model, oai_messages, oai_messages)
-        replay = BlocksReplay.build(oai_messages, messages, self.provider_name, model)
+        replay = BlocksReplay.build(
+            oai_messages, messages, self.provider_name, model, blocks=not kwargs.get("disable_thinking")
+        )
         if replay.sent:
             estimated = self._estimate_resolved_tokens(
                 text_chars=text_chars + replay.chars(), image_count=image_count,
@@ -944,9 +971,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
             params["response_format"] = structured_output
 
         if tools:
-            params["tools"] = openai_function_tools(
-                tools, model, anthropic=await self._served_by_anthropic(model)
-            )
+            params["tools"] = openai_function_tools(tools, model, upstream=await self._upstream_of(model))
         await self._shape_request(params, kwargs)
 
         response = await retry_llm_call(
@@ -990,7 +1015,13 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
             tool_calls=tool_calls if tool_calls else None,
             stop_reason=stop_reason,
             thinking=reasoning if reasoning else None,
-            _provider_extra=replay.capture(blocks_of(message), tool_calls) if replay else None,
+            _provider_extra=replay.capture(
+                blocks_of(message),
+                tool_calls,
+                {tc.id: sig for tc in message.tool_calls or [] if (sig := thought_signature_of(tc))},
+            )
+            if replay
+            else None,
         )
 
     # ------------------------------------------------------------------
@@ -1124,7 +1155,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
             on_token=on_token, temperature=temperature, max_tokens=max_tokens,
             include_usage=self.supports_stream_usage, replay=replay,
             shape_request=lambda params: self._shape_request(params, kwargs),
-            anthropic_tools=await self._served_by_anthropic(model) if tools else None,
+            tools_upstream=await self._upstream_of(model) if tools else None,
             **{**kwargs, "reasoning_effort": self._reasoning_effort(model, kwargs)},
         )
 

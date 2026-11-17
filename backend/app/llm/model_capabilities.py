@@ -465,6 +465,11 @@ def is_claude_model(model: str | None) -> bool:
     return model is not None and _normalize_family_key(model).startswith("claude-")
 
 
+def is_gemini_model(model: str | None) -> bool:
+    """Return True when *model* is a Google Gemini model, whatever route names it."""
+    return model is not None and _normalize_family_key(model).startswith("gemini-")
+
+
 def supports_bedrock_structured_output(model: str | None) -> bool:
     """Return False when Amazon Bedrock serves *model* without structured outputs."""
     rule = _find_rule(model, normalize=True)
