@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1777 tools across 110 providers; 51 held back by hand.
+# 1778 tools across 110 providers; 51 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -730,6 +730,7 @@ hibob:get_hibob_employee_tasks
 hibob:get_hibob_goal
 hibob:get_hibob_job_catalog_metadata
 hibob:get_hibob_out_today
+hibob:get_hibob_performance_snapshot
 hibob:get_hibob_timeoff_balance
 hibob:get_hibob_timeoff_changes
 hibob:get_hibob_timeoff_policy_details

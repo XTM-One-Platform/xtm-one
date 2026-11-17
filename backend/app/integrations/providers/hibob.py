@@ -15,6 +15,7 @@ import contextlib
 import json as _json
 import logging
 from datetime import date as _date
+from datetime import timedelta
 from typing import Any
 from urllib.parse import unquote
 
@@ -1076,6 +1077,53 @@ def _whos_out_range_error(from_date: str, to_date: str) -> str:
     if (end - start).days > _WHOS_OUT_EMPLOYEE_MAX_DAYS:
         return "Error: the range of an employee's time off is at most 24 months."
     return ""
+
+
+#: Days a performance snapshot reads by default (the last twelve months).
+_SNAPSHOT_DEFAULT_DAYS = 365
+
+#: Why a snapshot has no review section: the public Bob API has no reviews module.
+_REVIEWS_NOT_IN_PUBLIC_API = (
+    "Not available: the public Bob API exposes no performance review cycles, "
+    "answers or ratings. They are read through Bob MCP (an MCP server at "
+    "https://mcp.hibob.com/mcp/public, connected with OAuth by a Bob user)."
+)
+
+
+def _snapshot_range(from_date: str, to_date: str) -> tuple[str, str]:
+    """The snapshot's time-off range: the given dates, else the last twelve months."""
+    to_date = to_date.strip() or _date.today().isoformat()
+    if from_date.strip():
+        return from_date.strip(), to_date
+    try:
+        end = _date.fromisoformat(to_date[:10])
+    except ValueError:
+        return "", to_date
+    return (end - timedelta(days=_SNAPSHOT_DEFAULT_DAYS)).isoformat(), to_date
+
+
+def _timeoff_by_policy_lines(outs: list[dict[str, Any]], from_date: str, to_date: str) -> list[str]:
+    """One employee's time-off entries, a total of entries and days per policy first."""
+    if not outs:
+        return [f"No time off from {from_date} to {to_date}."]
+    totals: dict[str, list[int]] = {}
+    for entry in outs:
+        policy = str(entry.get("policyTypeDisplayName") or entry.get("policyType") or "Unknown policy")
+        try:
+            days = (
+                _date.fromisoformat(str(entry.get("endDate", ""))[:10])
+                - _date.fromisoformat(str(entry.get("startDate", ""))[:10])
+            ).days + 1
+        except ValueError:
+            days = 0
+        bucket = totals.setdefault(policy, [0, 0])
+        bucket[0] += 1
+        bucket[1] += max(days, 0)
+    lines = ["By policy (calendar days, half days counted whole):"]
+    lines.extend(f"  {policy}: {n} request(s), {days} day(s)" for policy, (n, days) in sorted(totals.items()))
+    lines.append("Entries:")
+    lines.extend(f"  {_format_timeoff(entry)}" for entry in outs)
+    return lines
 
 
 #: Default fields of a goal search (``progress`` is the goal's average KR progress).
@@ -4183,6 +4231,71 @@ def build_tools(
                 return "\n".join(lines)
             return _json_dump(data)
 
+    # ── Performance snapshot ─────────────────────────────────────────────
+
+    async def _employee_time_off(employee_id: str, from_date: str, to_date: str) -> str:
+        """Time off of one employee over a range, totalled by policy."""
+        async with _client() as client:
+            resp, err = await safe_request(
+                client,
+                "get",
+                f"{_BASE_URL}/timeoff/whosout",
+                _PROVIDER,
+                "get who's out",
+                headers=headers,
+                params={"from": from_date, "to": to_date},
+            )
+        if err or resp is None:
+            return err or "Error: HiBob API returned no response while reading time off."
+        data, parse_err = _safe_parse_json(resp, "reading time off")
+        if parse_err:
+            return parse_err
+        outs = data.get("outs", data) if isinstance(data, dict) else data
+        mine = [
+            o
+            for o in (outs if isinstance(outs, list) else [])
+            if isinstance(o, dict) and str(o.get("employeeId", "")) == employee_id
+        ]
+        return "\n".join(_timeoff_by_policy_lines(mine, from_date, to_date))
+
+    async def get_hibob_performance_snapshot(
+        employee: str,
+        from_date: str = "",
+        to_date: str = "",
+        include_goals: bool = True,
+        include_documents: bool = True,
+    ) -> str:
+        employee_id, err = await _resolve_employee_id(headers, employee)
+        if err:
+            return err
+        from_date, to_date = _snapshot_range(from_date, to_date)
+        range_error = _whos_out_range_error(from_date, to_date)
+        if range_error:
+            return range_error
+
+        sections: list[tuple[str, Any]] = [
+            ("Profile", get_hibob_employee(employee_id)),
+            ("Work history (titles, departments, managers)", get_hibob_employee_table(employee_id, "work")),
+            ("Lifecycle history", get_hibob_employee_table(employee_id, "lifecycle")),
+            (f"Time off {from_date} to {to_date}", _employee_time_off(employee_id, from_date, to_date)),
+        ]
+        if include_goals:
+            sections.append(
+                ("Goals and key results", search_hibob_goals(owner=employee_id, include_key_results=True, count=100))
+            )
+        if include_documents:
+            sections.append(("Documents", list_hibob_employee_documents(employee_id)))
+
+        lines = [f"Performance snapshot of employee {employee_id}"]
+        for title, pending in sections:
+            try:
+                body = await pending
+            except Exception as exc:  # one section failing must not hide the others
+                body = f"Error: {format_exception_message(exc)}"
+            lines.append(f"\n## {title}\n{body}")
+        lines.append(f"\n## Performance reviews\n{_REVIEWS_NOT_IN_PUBLIC_API}")
+        return "\n".join(lines)
+
     # ── Register all handlers ────────────────────────────────────────────
 
     _tools: dict[str, Any] = {
@@ -4258,6 +4371,7 @@ def build_tools(
         "list_hibob_job_families": list_hibob_job_families,
         "list_hibob_job_family_groups": list_hibob_job_family_groups,
         "get_hibob_job_catalog_metadata": get_hibob_job_catalog_metadata,
+        "get_hibob_performance_snapshot": get_hibob_performance_snapshot,
     }
     for name, fn in _tools.items():
         executor.register(name, fn)
@@ -5783,5 +5897,35 @@ def build_tools(
             priority=2,
             description="Get job profile field definitions (metadata). Discover available fields including custom fields.",
             input_schema={"type": "object", "properties": {}, "required": []},
+        ),
+        # ── Performance snapshot ───────────────────────────────────────
+        ToolDefinition(
+            name="get_hibob_performance_snapshot",
+            source=src,
+            priority=1,
+            description=(
+                "One employee's assessment file in one call: profile (withheld fields named), "
+                "work and lifecycle history, time off by policy over a range, goals with key "
+                "results, documents. Reviews are not in the public API (Bob MCP)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "employee": {"type": "string", "description": "Employee ID, email or name"},
+                    "from_date": {
+                        "type": "string",
+                        "description": "Time-off range start, YYYY-MM-DD (default: 365 days before to_date)",
+                        "default": "",
+                    },
+                    "to_date": {
+                        "type": "string",
+                        "description": "Time-off range end, YYYY-MM-DD (default: today); 24 months at most",
+                        "default": "",
+                    },
+                    "include_goals": {"type": "boolean", "description": "Add goals and key results", "default": True},
+                    "include_documents": {"type": "boolean", "description": "Add the documents list", "default": True},
+                },
+                "required": ["employee"],
+            },
         ),
     ]

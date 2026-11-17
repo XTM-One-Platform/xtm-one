@@ -2493,3 +2493,98 @@ def test_get_employee_lists_withheld_fields(monkeypatch: Any) -> None:
     assert "Title: Engineer" in content
     assert "Requested fields not returned (1)" in content
     assert "people_analytics.low_performance" in content
+
+
+def test_snapshot_range_defaults_to_the_last_twelve_months() -> None:
+    assert hibob._snapshot_range("", "2026-06-30") == ("2025-06-30", "2026-06-30")
+    assert hibob._snapshot_range("2026-01-01", "2026-03-01") == ("2026-01-01", "2026-03-01")
+
+
+def test_timeoff_by_policy_totals_requests_and_days() -> None:
+    lines = hibob._timeoff_by_policy_lines(
+        [
+            {"policyTypeDisplayName": "Holiday", "startDate": "2026-02-01", "endDate": "2026-02-05"},
+            {"policyTypeDisplayName": "Holiday", "startDate": "2026-03-01", "endDate": "2026-03-01"},
+            {"policyTypeDisplayName": "Sick", "startDate": "bad", "endDate": "2026-03-01"},
+        ],
+        "2026-01-01",
+        "2026-12-31",
+    )
+    assert "  Holiday: 2 request(s), 6 day(s)" in lines
+    assert "  Sick: 1 request(s), 0 day(s)" in lines
+    assert hibob._timeoff_by_policy_lines([], "2026-01-01", "2026-12-31") == [
+        "No time off from 2026-01-01 to 2026-12-31."
+    ]
+
+
+def test_performance_snapshot_gathers_every_section(monkeypatch: Any) -> None:
+    calls: list[tuple[str, Any]] = []
+    _route(
+        monkeypatch,
+        {
+            "/company/people/fields": [{"id": "work.title"}],
+            "/people/1001/work": {"values": [{"id": 1, "site": "Site A"}]},
+            "/people/1001/lifecycle": {"values": [{"id": 2, "status": "employed"}]},
+            # Before /people/1001, which also ends the documents URL.
+            "/docs/people/1001": {"documents": [{"id": 9, "name": "Doc A"}]},
+            "/people/1001": {"id": "1001", "displayName": "Person A", "work": {"title": "Engineer"}},
+            "/timeoff/whosout": _OUTS,
+            "/goals/goals/search": {"items": [_goal(7, "1001")], "responseMetadata": {"nextCursor": None}},
+            "/key-results/search": {"items": []},
+        },
+        calls,
+    )
+    content = _run_tool(
+        "get_hibob_performance_snapshot",
+        {"employee": "1001", "from_date": "2026-01-01", "to_date": "2026-12-31"},
+    )
+    assert content.startswith("Performance snapshot of employee 1001")
+    for heading in (
+        "## Profile",
+        "## Work history",
+        "## Lifecycle history",
+        "## Time off 2026-01-01 to 2026-12-31",
+        "## Goals and key results",
+        "## Documents",
+        "## Performance reviews",
+    ):
+        assert heading in content
+    assert "Title: Engineer" in content
+    assert "Holiday: 1 request(s), 5 day(s)" in content
+    assert "Person B" not in content
+    assert "[7] Goal 7" in content
+    assert "Doc A" in content
+    assert "Bob MCP" in content
+
+
+def test_performance_snapshot_checks_the_range_first(monkeypatch: Any) -> None:
+    calls: list[tuple[str, Any]] = []
+    _route(monkeypatch, {}, calls)
+    content = _run_tool(
+        "get_hibob_performance_snapshot",
+        {"employee": "1001", "from_date": "2026-06-01", "to_date": "2026-01-01"},
+    )
+    assert "before from_date" in content
+    assert calls == []
+
+
+def test_performance_snapshot_skips_optional_sections(monkeypatch: Any) -> None:
+    calls: list[tuple[str, Any]] = []
+    _route(
+        monkeypatch,
+        {
+            "/company/people/fields": [],
+            "/people/1001/work": {"values": []},
+            "/people/1001/lifecycle": {"values": []},
+            "/people/1001": {"id": "1001"},
+            "/timeoff/whosout": {"outs": []},
+        },
+        calls,
+    )
+    content = _run_tool(
+        "get_hibob_performance_snapshot",
+        {"employee": "1001", "include_goals": False, "include_documents": False},
+    )
+    assert "## Goals" not in content and "## Documents" not in content
+    assert "No time off from" in content
+    assert not any(url.endswith("/goals/goals/search") for url, _ in calls)
