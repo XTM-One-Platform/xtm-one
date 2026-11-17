@@ -45,9 +45,10 @@ import openai
 from app.core.utils import format_exception_message
 from app.core.xtm_auth import _normalize_url, issue_xtm_jwt
 from app.llm.anthropic_provider import build_cache_control
+from app.llm.base import ChatMessage
 from app.llm.decisions import DECISIONS_OPENAI
 from app.llm.identity import LLMCallerIdentity, resolve_llm_caller
-from app.llm.model_capabilities import is_claude_model
+from app.llm.model_capabilities import is_claude_model, is_gemini_model
 from app.llm.music import (
     MusicGenerationError,
     MusicProviderBusyError,
@@ -237,7 +238,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
     decisions_api = DECISIONS_OPENAI
     decisions_only_when_listed = True
     lists_decision_models = True
-    # The gateway returns Claude's thinking blocks as ``thinking_blocks``.
+    # The gateway returns Claude's thinking blocks as ``thinking_blocks``, and
+    # Gemini's thought signatures on its tool calls.
     replays_thinking_blocks = True
 
     def __init__(self, api_key: str, **kwargs):
@@ -279,15 +281,17 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         return super()._reasoning_effort(model, kwargs)
 
     async def _shape_request(self, params: dict, kwargs: dict) -> None:
-        if await self._served_by_anthropic(params["model"]):
+        if await self._upstream_of(params["model"]) == "anthropic":
             mark_claude_cache_breakpoints(params, build_cache_control(kwargs.get("prompt_cache")))
 
-    async def _served_by_anthropic(self, model: str) -> bool:
-        """A Claude model by name, or one the pinned target or the gateway's listing puts on Anthropic (an alias such as ``default``)."""
+    async def _upstream_of(self, model: str) -> str | None:
+        """Anthropic or Gemini by model name, else the pinned target, else the gateway's listed owner (an alias such as ``default``)."""
         if is_claude_model(model):
-            return True
+            return "anthropic"
+        if is_gemini_model(model):
+            return "gemini"
         if self._target:
-            return self._target == "anthropic"
+            return self._target
         try:
             owner = await self._owner_of(
                 model, self.client.with_options(max_retries=0, timeout=_OWNER_LISTING_TIMEOUT)
@@ -295,8 +299,24 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         except RuntimeError:
             # A failed listing must not fail the chat call, nor be retried on every one.
             self._owner_misses[model] = time.monotonic() + _OWNER_MISS_TTL_SECONDS
-            return False
-        return (owner or "").lower() == "anthropic"
+            return None
+        return (owner or "").lower() or None
+
+    async def _build_messages(self, messages: list[ChatMessage], model: str) -> list[dict]:
+        oai_messages = await super()._build_messages(messages, model)
+        if await self._upstream_of(model) != "gemini":
+            return oai_messages
+        # Gemini answers a call by tool name. Without it the gateway uses the call
+        # id, which restarts at ``call_0`` every response: read the turn's own calls.
+        names: dict = {}
+        out: list[dict] = []
+        for message in oai_messages:
+            if message.get("role") == "assistant":
+                names = {c.get("id"): (c.get("function") or {}).get("name") for c in message.get("tool_calls") or []}
+            elif message.get("role") == "tool" and (name := names.get(message.get("tool_call_id"))):
+                message = {**message, "name": name}
+            out.append(message)
+        return out
 
     async def _models_with_meta(self, client: openai.AsyncOpenAI | None = None) -> list[GatewayModel]:
         """Every gateway model with its upstream owner (``owned_by``) and types (:func:`_types_of`)."""
