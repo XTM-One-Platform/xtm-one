@@ -46,13 +46,14 @@ The platform auto-migrates on startup across several replicas, so a bad migratio
 
 ## Configuration
 
-All settings are in `app/core/config.py` (`dev-docs/reference/backend-configuration.md`). **Integration credentials are NOT in env vars**: they are stored per integration in the DB, configured via the UI.
+All settings are in `app/core/config.py` (`dev-docs/reference/backend-configuration.md`). **Integration credentials are NOT in env vars**: they are stored per integration in the DB, configured via the UI. Log an exception with `format_exc(e)`, never a raw `%s`, and never log a secret.
 
 ## Tests
 
 Details: `dev-docs/reference/backend-testing.md`. `make test` (repo root) runs the unit suite, unsharded, from a `uv`-synced `backend/.venv`; narrow it with `ARGS="tests/test_<name>.py -k name"`.
 
 - CI runs under pytest-xdist: deterministic `parametrize` ids, PostgreSQL tests through `tests/scratch_database.py`, source tripwires through `tests/app_sources.py`, a fixed resource keeps its module on one worker (`xdist_group`).
+- A red tripwire means a rule was re-spelled outside its owning module: move the code to the owner, never patch the tripwire.
 - Unit tests meet no Redis: a test of Redis-backed code fakes `redis_client`; one that needs the real one is an `integration` test.
 - `tests/live/` (`live_llm`) hits the real provider APIs only with `LIVE_LLM_SMOKE=1`; run it after changing what a provider sends.
 

@@ -61,7 +61,7 @@ Numbering is stable (code cites "invariant 16"); full text in `architecture-inva
 
 ## Working here
 
-- Conventions: `.cursor/rules/backend.mdc` and `frontend.mdc` (loaded with their files), then the area's `AGENTS.md`. No hardcoded colors; templates are DB-backed.
+- Conventions: the area's `AGENTS.md` (`backend/`, `frontend/`, then the nearest directory's), then `dev-docs/reference/`. No hardcoded colors; templates are DB-backed.
 - New model: import it in `backend/app/models/__init__.py` + an Alembic migration; a shareable entity takes the full visibility column set, joins `CompanyManagedEntity` and is tested as a non-admin (rule 19).
 - New routes register in `backend/app/main.py`; types go to `frontend/src/types/index.ts`, hooks to `frontend/src/hooks/api/`.
 - A new `.env.sample` variable is documented in `docs/docs/` (CI-enforced); update the user docs and `dev-docs/` a change affects.
