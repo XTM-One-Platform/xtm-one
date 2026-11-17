@@ -50,6 +50,17 @@ def test_a_line_added_or_removed_with_the_text_counts_and_context_does_not() -> 
     assert unread == 1
 
 
+def test_a_content_line_that_starts_with_two_dashes_or_two_pluses_counts() -> None:
+    # A commit file patch has no file headers: "--- drop index" is a removed
+    # "-- drop index" line and "+++i" an added "++i" line, both content.
+    files = [{"filename": "db/m.sql", "patch": "@@ -1,2 +1,2 @@\n--- drop index\n+++i; -- drop index\n"}]
+
+    hits, unread = pickaxe_hits(files, "drop index", "db")
+
+    assert hits == ["db/m.sql (+1 -1)"]
+    assert unread == 0
+
+
 @pytest.mark.asyncio
 async def test_only_the_commits_whose_diff_holds_the_text_are_answered() -> None:
     handlers, _ = _tools()
