@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 import tarfile
 
 import pytest
@@ -41,8 +42,8 @@ def test_the_service_runs_the_script_with_the_stores():
 
 def test_the_ports_never_meet_another_lab_or_a_store():
     module = _module()
-    ours = {module.PORT, module.NEXT_PORT, module.API_PORT, module.ES_PORT, module.ES_TRANSPORT_PORT}
-    assert len(ours) == 5
+    ours = {module.PORT, module.NEXT_PORT, module.API_PORT, module.FONT_PORT, module.ES_PORT, module.ES_TRANSPORT_PORT}
+    assert len(ours) == 6
     others = {spec["port"] for name, spec in _services().items() if name != "lab-xtm-hub"}
     stores = {module.lab.stores.PG_PORT, module.lab.stores.REDIS_PORT, module.lab.stores.S3_PORT}
     assert not ours & others and not ours & stores
@@ -100,6 +101,31 @@ def test_a_switch_opens_a_local_path_only(query, target):
     assert _module().next_path(query) == target
 
 
+def test_the_hmr_tunnel_keeps_the_browser_host():
+    headers = {"Host": "10.0.51.1:3900", "Origin": "http://10.0.51.1:3900", "Upgrade": "websocket"}
+    request = _module().tunnel_request("GET", "/_next/hmr?id=x", "HTTP/1.1", headers).decode()
+    assert request.startswith("GET /_next/hmr?id=x HTTP/1.1\r\n") and request.endswith("\r\n\r\n")
+    assert "Host: 10.0.51.1:3900\r\n" in request and "127.0.0.1" not in request
+
+
+def test_the_preview_keeps_the_csp_but_never_upgrades_to_https():
+    policy = "default-src 'self'; img-src 'self' data:; upgrade-insecure-requests; frame-ancestors 'none'"
+    assert _module().preview_csp(policy) == "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'"
+
+
+def test_the_hmr_socket_is_opened_from_loopback():
+    module = _module()
+    head = module.tunnel_head(
+        "GET",
+        "/_next/hmr?id=x",
+        "HTTP/1.1",
+        {"Host": "10.0.0.1:3900", "Origin": "http://10.0.0.1:3900", "Upgrade": "websocket"},
+    ).decode()
+    assert head.startswith("GET /_next/hmr?id=x HTTP/1.1\r\n") and "Upgrade: websocket" in head
+    assert f"Host: localhost:{module.NEXT_PORT}" in head and f"Origin: http://localhost:{module.NEXT_PORT}" in head
+    assert "10.0.0.1" not in head and head.endswith("\r\n\r\n")
+
+
 def test_the_locale_cookie_is_the_one_next_intl_reads():
     cookie = _module().locale_cookie("fr")
     assert cookie.startswith("NEXT_LOCALE=fr") and "Path=/" in cookie
@@ -112,16 +138,51 @@ def test_the_password_row_is_the_hub_scheme():
     assert digest == hashlib.pbkdf2_hmac("sha512", b"secret", b"00ff", 1000, 64).hex() and len(digest) == 128
 
 
-def test_the_font_mock_answers_with_local_files(tmp_path, monkeypatch):
+FONT_TS = """import { Geologica, IBM_Plex_Sans } from 'next/font/google';
+
+export const geologica = Geologica({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-geologica',
+  adjustFontFallback: false,
+});
+
+export const ibmPlexSans = IBM_Plex_Sans({
+  weight: ['100', '200', '300', '400', '500', '600', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-ibm-plex-sans',
+});
+"""
+FONT_DATA = {"Geologica": {"axes": [{"tag": "CRSV", "min": 0, "max": 1}, {"tag": "wght", "min": 100, "max": 900}]}}
+
+
+def test_the_stylesheet_urls_are_the_ones_turbopack_asks_for():
+    """next-core next_font/google/util.rs get_stylesheet_url: the variable wght range, else the sorted weights."""
+    module = _module()
+    urls = [module.stylesheet_url(call, FONT_DATA) for call in module.font_calls(FONT_TS)]
+    assert urls == [
+        "https://fonts.googleapis.com/css2?family=Geologica:wght@100..900&display=swap",
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@100;200;300;400;500;600;700&display=swap",
+    ]
+
+
+def test_the_font_mock_answers_with_faces_served_on_loopback(tmp_path, monkeypatch):
     module = _module()
     monkeypatch.setattr(module.lab, "CACHE", tmp_path)
-    face = tmp_path / "face.woff2"
+    face = tmp_path / "fonts" / "geologica" / "face.woff2"
+    face.parent.mkdir(parents=True)
     face.write_bytes(b"wOF2")
-    mock = module.write_font_mock({"Geologica": [{"weight": "100 900", "file": str(face)}]})
+    calls = module.font_calls(FONT_TS)
+    mock = module.write_font_mock({"Geologica": [{"weight": "100 900", "file": str(face)}]}, calls, FONT_DATA)
     text = mock.read_text(encoding="utf-8")
-    assert str(face) in text and "NEXT_FONT_GOOGLE_MOCKED_RESPONSES" in text and "/* latin */" in text
+    assert text.startswith("// ") and "NEXT_FONT_GOOGLE_MOCKED_RESPONSES" in text
+    responses = json.loads(text.split("module.exports = ", 1)[1].rstrip().rstrip(";"))
+    assert list(responses) == ["https://fonts.googleapis.com/css2?family=Geologica:wght@100..900&display=swap"]
+    css = responses["https://fonts.googleapis.com/css2?family=Geologica:wght@100..900&display=swap"]
+    assert f"src: url(http://127.0.0.1:{module.FONT_PORT}/geologica/face.woff2)" in css and "/* latin */" in css
     with pytest.raises(SystemExit):
-        module.write_font_mock({"Geologica": [{"weight": "400", "file": str(tmp_path / "missing.woff2")}]})
+        module.write_font_mock({"Geologica": [{"weight": "400", "file": str(tmp_path / "missing.woff2")}]}, calls, {})
 
 
 def test_only_the_elasticsearch_home_is_unpacked(tmp_path):

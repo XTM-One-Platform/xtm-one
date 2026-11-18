@@ -17,11 +17,13 @@ as code (an XTM Hub UI round ended BLOCKED for want of a lab before this one):
    documents, the demo organizations Winterfell and Casterly Rock) and creates the platform administrator
    ``lab@filigran.io`` (``ADMIN_*``). The lab then signs it in through the ``login`` mutation and seeds personal API
    tokens in every state (active, last used, expired, revoked) when the API serves them.
-5. The front (``apps/frontend``) runs ``relay-compiler`` once, then ``next dev --webpack``. ``next/font/google`` cannot
-   reach Google Fonts from a lab: ``NEXT_FONT_GOOGLE_MOCKED_RESPONSES`` (the Next.js hook its own tests use) names a
-   module that answers every stylesheet URL with ``@font-face`` rules on the real Geologica and IBM Plex Sans files,
-   taken from the Fontsource packages on npm. Turbopack reads that hook as plain data keyed by URL, the webpack loader
-   requires the module, hence ``--webpack``.
+5. The front (``apps/frontend``) runs ``relay-compiler`` once, then ``next dev --turbopack``, the bundler XTM Hub's
+   own ``dev`` script uses (webpack refuses the ``export *`` of the design system's client components).
+   ``next/font/google`` cannot reach Google Fonts from a lab: ``NEXT_FONT_GOOGLE_MOCKED_RESPONSES`` (the Next.js hook
+   its own tests use) names a module whose default export maps each stylesheet URL ``app/font.ts`` makes Turbopack ask
+   for (built as Turbopack's ``get_stylesheet_url`` builds it, the variable axes read from Next's ``font-data.json``)
+   to ``@font-face`` rules on the real Geologica and IBM Plex Sans files, taken from the Fontsource packages on npm and
+   served on loopback (``FONT_PORT``) since Turbopack downloads every ``url()`` of the stylesheet.
 6. This script listens on ``PORT``, the preview port: ``/lab/*`` here, the API paths (``/graphql-api``,
    ``/graphql-sse``, ``/auth/``, ``/document/``, ``/user/picture/``) to the backend, everything else to next dev with
    the browser's own Host kept. ``/lab/sign-in`` signs in as the administrator and opens ``/app/profile``;
@@ -32,6 +34,7 @@ as code (an XTM Hub UI round ended BLOCKED for want of a lab before this one):
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import http.client
 import http.cookies
@@ -39,7 +42,10 @@ import http.server
 import io
 import json
 import os
+import re
 import secrets
+import select
+import socket
 import subprocess
 import sys
 import tarfile
@@ -59,6 +65,7 @@ PORT = 3900
 NEXT_PORT = 3901
 API_PORT = 3902
 ES_PORT = 9204
+FONT_PORT = 3903
 ES_TRANSPORT_PORT = 9304
 DATABASE = "xtm_hub"
 #: Never a person's: the lab's database lives and dies with the lab container.
@@ -112,27 +119,12 @@ TOKENS = (
 )
 READY: dict[str, bool] = {}
 
-FONT_MOCK_JS = r"""
-// The lab's stand-in for Google Fonts (NEXT_FONT_GOOGLE_MOCKED_RESPONSES): every css2 URL gets the latin faces
-// below, served from local woff2 files (next/font reads a url() starting with "/" from disk).
-const FACES = __FACES__;
-const LATIN = __LATIN__;
-function css(url) {
-  let out = '';
-  for (const family of new URL(url).searchParams.getAll('family')) {
-    const name = family.split(':')[0];
-    for (const face of FACES[name] || []) {
-      out += `/* latin */\n@font-face {\n  font-family: '${name}';\n  font-style: normal;\n` +
-        `  font-weight: ${face.weight};\n  font-display: swap;\n  src: url(${face.file}) format('woff2');\n` +
-        `  unicode-range: ${LATIN};\n}\n`;
-    }
-  }
-  return out;
-}
-module.exports = new Proxy({}, {
-  get: (_target, key) => (typeof key === 'string' && key.startsWith('https://') ? css(key) : undefined),
-});
+FONT_MOCK_JS = """\
+// The lab's stand-in for Google Fonts (NEXT_FONT_GOOGLE_MOCKED_RESPONSES): each css2 URL app/font.ts makes
+// Turbopack ask for, answered with the latin faces the lab serves on loopback.
+module.exports = __RESPONSES__;
 """
+GOOGLE_FONTS_CSS2 = "https://fonts.googleapis.com/css2"
 
 
 def missing_sub_paths(where: Path) -> list[str]:
@@ -312,6 +304,19 @@ def start_elasticsearch() -> None:
               env={"ES_JAVA_OPTS": "-Xms512m -Xmx512m", "ES_PATH_CONF": str(home / "config")})
     lab.wait_http(f"http://127.0.0.1:{ES_PORT}/_cluster/health?wait_for_status=yellow&timeout=5s", 600,
                   "xtm-hub-elasticsearch")
+    release_migration_lock()
+
+
+def release_migration_lock() -> None:
+    """Drop the backend's migration lock index: an API stopped mid-migration (a lab restart) leaves it set and the next
+    start fails with 'Migration already on going'. The lab's Elasticsearch is its own; nothing else migrates it."""
+    request = urllib.request.Request(f"http://127.0.0.1:{ES_PORT}/migrations_lock", method="DELETE")
+    try:
+        urllib.request.urlopen(request, timeout=30).close()
+        lab.log("xtm-hub: released a stale Elasticsearch migration lock")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
 
 
 # endregion
@@ -335,15 +340,88 @@ def font_faces() -> dict[str, list[dict[str, str]]]:
     }
 
 
-def write_font_mock(faces: dict[str, list[dict[str, str]]]) -> Path:
+def font_url(file: str) -> str:
+    """Where Turbopack downloads a face from: the lab's loopback font server (serve_fonts)."""
+    return f"http://127.0.0.1:{FONT_PORT}/{Path(file).relative_to(lab.CACHE / 'fonts').as_posix()}"
+
+
+def font_calls(font_ts: str) -> list[dict]:
+    """The next/font/google calls of app/font.ts: family, fixed weights (none: the variable font) and display."""
+    calls = []
+    for name, body in re.findall(r"\b([A-Z][A-Za-z0-9_]*)\(\s*\{(.*?)\}\s*\)", font_ts, re.S):
+        listed = re.search(r"weight:\s*\[([^\]]*)\]", body)
+        single = re.search(r"weight:\s*['\"](\d+)['\"]", body)
+        weights = re.findall(r"\d+", listed.group(1)) if listed else [single.group(1)] if single else []
+        display = re.search(r"display:\s*['\"](\w+)['\"]", body)
+        calls.append({"family": name.replace("_", " "), "weights": sorted(set(weights), key=int),
+                      "display": display.group(1) if display else "swap"})
+    return calls
+
+
+def _axis(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else str(value)
+
+
+def stylesheet_url(call: dict, font_data: dict) -> str:
+    """The css2 URL Turbopack asks for (next-core next_font/google/util.rs get_stylesheet_url, normal style only)."""
+    family, display = call["family"].replace(" ", "+"), call["display"]
+    if call["weights"]:
+        return f"{GOOGLE_FONTS_CSS2}?family={family}:wght@{';'.join(call['weights'])}&display={display}"
+    axes = (font_data.get(call["family"]) or {}).get("axes") or []
+    wght = next((axis for axis in axes if axis.get("tag") == "wght"), None)
+    if wght is None:
+        return f"{GOOGLE_FONTS_CSS2}?family={family}&display={display}"
+    return f"{GOOGLE_FONTS_CSS2}?family={family}:wght@{_axis(wght['min'])}..{_axis(wght['max'])}&display={display}"
+
+
+def face_css(family: str, faces: list[dict[str, str]], display: str) -> str:
+    return "".join(
+        f"/* latin */\n@font-face {{\n  font-family: '{family}';\n  font-style: normal;\n  font-weight: {face['weight']};\n"
+        f"  font-display: {display};\n  src: url({font_url(face['file'])}) format('woff2');\n"
+        f"  unicode-range: {LATIN_RANGE};\n}}\n"
+        for face in faces
+    )
+
+
+def next_font_data(root: Path) -> dict:
+    """Next's own Google Fonts catalogue (axes per family), {} when the install does not carry it."""
+    for base in (root / "node_modules", root / "apps" / "frontend" / "node_modules"):
+        data = base / "next" / "dist" / "compiled" / "@next" / "font" / "dist" / "google" / "font-data.json"
+        if data.is_file():
+            return json.loads(data.read_text(encoding="utf-8"))
+    return {}
+
+
+def write_font_mock(faces: dict[str, list[dict[str, str]]], calls: list[dict], font_data: dict) -> Path:
     missing = [face["file"] for family in faces.values() for face in family if not Path(face["file"]).is_file()]
     if missing:
         raise SystemExit(f"xtm-hub: the font packages lack {', '.join(missing)}")
+    responses = {
+        stylesheet_url(call, font_data): face_css(
+            call["family"],
+            [face for face in faces[call["family"]] if not call["weights"] or face["weight"] in call["weights"]],
+            call["display"],
+        )
+        for call in calls
+        if call["family"] in faces
+    }
     mock = lab.CACHE / "fonts" / "google-fonts-mock.js"
     mock.parent.mkdir(parents=True, exist_ok=True)
-    mock.write_text(FONT_MOCK_JS.replace("__FACES__", json.dumps(faces)).replace("__LATIN__", json.dumps(LATIN_RANGE)),
-                    encoding="utf-8")
+    mock.write_text(FONT_MOCK_JS.replace("__RESPONSES__", json.dumps(responses, indent=2)), encoding="utf-8")
+    lab.log(f"font stand-in for {', '.join(responses) or 'no stylesheet'}")
     return mock
+
+
+class QuietFiles(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):  # noqa: A002 - the base signature
+        pass
+
+
+def serve_fonts() -> None:
+    """The faces on loopback: Turbopack downloads each url() of a Google Fonts stylesheet."""
+    handler = functools.partial(QuietFiles, directory=str(lab.CACHE / "fonts"))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", FONT_PORT), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
 # endregion
@@ -462,8 +540,52 @@ def locale_cookie(locale: str) -> str:
     return morsel["NEXT_LOCALE"].OutputString()
 
 
+def tunnel_request(command: str, path: str, version: str, headers) -> bytes:
+    """The websocket upgrade as the browser sent it, its Host kept: next dev refuses /_next/hmr to an Origin that is
+    not its Host (allowedDevOrigins), and without that socket Turbopack's dev client never hydrates the page."""
+    lines = [f"{command} {path} {version}"] + [f"{k}: {v}" for k, v in headers.items()]
+    return ("\r\n".join(lines) + "\r\n\r\n").encode()
+
+
+def preview_csp(policy: str) -> str:
+    """The app's policy without upgrade-insecure-requests (next.config.mjs sets it outside production): the preview
+    is plain http, and the browser would rewrite every chunk, stylesheet and font to an https URL nothing answers."""
+    kept = [part.strip() for part in policy.split(";") if part.strip().lower() != "upgrade-insecure-requests"]
+    return "; ".join(part for part in kept if part)
+
+
+def tunnel_head(command: str, path: str, version: str, headers) -> bytes:
+    """The upgrade request next dev gets: Host and Origin on loopback, since next dev refuses its HMR socket to an
+    origin outside allowedDevOrigins (the preview's address is not one, and the product's config is not ours)."""
+    lines = [f"{command} {path} {version}"]
+    lines += [f"{k}: {v}" for k, v in headers.items() if k.lower() not in ("host", "origin")]
+    lines += [f"Host: localhost:{NEXT_PORT}", f"Origin: http://localhost:{NEXT_PORT}"]
+    return ("\r\n".join(lines) + "\r\n\r\n").encode()
+
+
 class Front(proxy.Front):
     """The preview port: ``/lab/*`` here, the API paths to the backend, the rest to next dev."""
+
+    def _tunnel(self) -> None:
+        """next dev's HMR websocket: the bytes, both ways, the upgrade request presented from loopback."""
+        upstream = socket.create_connection(("127.0.0.1", NEXT_PORT), timeout=10)
+        upstream.sendall(tunnel_head(self.command, self.path, self.request_version, self.headers))
+        self.close_connection = True
+        sockets = [self.connection, upstream]
+        upstream.settimeout(None)
+        self.connection.settimeout(None)
+        try:
+            while True:
+                readable, _, _ = select.select(sockets, [], [], 300)
+                if not readable:
+                    return
+                for sock in readable:
+                    data = sock.recv(65536)
+                    if not data:
+                        return
+                    (upstream if sock is self.connection else self.connection).sendall(data)
+        finally:
+            upstream.close()
 
     def _send(self, status: int, body: bytes, ctype: str, cookies: list[str] = (), location: str = "") -> None:
         self.send_response(status)
@@ -497,6 +619,27 @@ class Front(proxy.Front):
         self._body()
         self._send(302, b"", "text/plain", [locale_cookie(locale)], next_path(self.path.partition("?")[2]))
 
+    def _tunnel(self) -> None:
+        """next dev's HMR websocket, the browser's Host kept (tunnel_request): the bytes, both ways."""
+        upstream = socket.create_connection(("127.0.0.1", NEXT_PORT), timeout=10)
+        upstream.sendall(tunnel_request(self.command, self.path, self.request_version, self.headers))
+        self.close_connection = True
+        sockets = [self.connection, upstream]
+        upstream.settimeout(None)
+        self.connection.settimeout(None)
+        try:
+            while True:
+                readable, _, _ = select.select(sockets, [], [], 300)
+                if not readable:
+                    return
+                for sock in readable:
+                    data = sock.recv(65536)
+                    if not data:
+                        return
+                    (upstream if sock is self.connection else self.connection).sendall(data)
+        finally:
+            upstream.close()
+
     def _forward(self, port: int) -> None:
         if "upgrade" in (self.headers.get("Connection") or "").lower():
             self._tunnel()
@@ -508,6 +651,8 @@ class Front(proxy.Front):
         response = connection.getresponse()
         self.send_response(response.status, response.reason)
         for key, value in response.getheaders():
+            if key.lower() == "content-security-policy":
+                value = preview_csp(value)
             if key.lower() not in ("transfer-encoding", "connection", "content-length"):
                 self.send_header(key, value)
         self.send_header("Transfer-Encoding", "chunked")
@@ -557,12 +702,14 @@ def main() -> None:
     backend, frontend = root / "apps" / "backend", root / "apps" / "frontend"
     lab.spawn("xtm-hub-api", [str(node), str(yarn), "tsx", "src/index.ts"], cwd=backend, env={**env, **api_env()})
     lab.run("relay", [str(node), str(yarn), "relay"], cwd=frontend, env=env)
-    mock = write_font_mock(font_faces())
+    mock = write_font_mock(font_faces(), font_calls((frontend / "app" / "font.ts").read_text(encoding="utf-8")),
+                           next_font_data(root))
+    serve_fonts()
     lab.wait_http(f"http://127.0.0.1:{API_PORT}/health", 900, "xtm-hub-api")
     seed_empty_user()
     seeded = seed_tokens()
     lab.log(f"seeded API tokens for {LAB_ADMIN_EMAIL}: {', '.join(seeded) or 'none'}")
-    lab.spawn("xtm-hub-next", [str(node), str(yarn), "next", "dev", "--webpack", "-p", str(NEXT_PORT), "-H",
+    lab.spawn("xtm-hub-next", [str(node), str(yarn), "next", "dev", "--turbopack", "-p", str(NEXT_PORT), "-H",
                                "127.0.0.1"], cwd=frontend, env={**env, **front_env(mock)})
     lab.wait_http(f"http://127.0.0.1:{NEXT_PORT}/", 900, "xtm-hub-next")
     proxy.VITE_PORT = NEXT_PORT  # the websocket tunnel (next dev's HMR)
