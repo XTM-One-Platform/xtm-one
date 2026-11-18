@@ -617,7 +617,7 @@ ee:
   - frontend/src/hooks/api/usePresentationClicker.ts
   - frontend/src/lib/organization-onboarding.ts
   # Frontend: pages and settings
-  - frontend/src/pages/Concierge.tsx
+  - frontend/src/pages/Health.tsx
   - frontend/src/pages/Intents.tsx
   - frontend/src/pages/PollVote.tsx
   - frontend/src/pages/Operations.*
