@@ -170,7 +170,10 @@ def _session_factory(created, **kwargs):
 
 def _admin_caller(monkeypatch, *, is_admin=True):
     fake = SimpleNamespace(
-        id=uuid.uuid4(), role="admin" if is_admin else "user", is_admin=is_admin
+        id=uuid.uuid4(),
+        email="caller@example.com",
+        role="admin" if is_admin else "user",
+        is_admin=is_admin,
     )
 
     async def _fake(_db, _uid):
