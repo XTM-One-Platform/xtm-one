@@ -11,6 +11,7 @@ reassigned since.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -56,12 +57,12 @@ class UserDeactivation(Base):
     #: The prior state of every object the cascade changed and can put back:
     #: ``{"agents": [{id, enabled, web_enabled}], "assignments": [id],
     #: "transfers": [{table, id, slug, is_default}]}``.
-    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     #: What an administrator must look at: ``[{key, kind, id, name, action,
     #: detail, reviewed_at, reviewed_by, resolution}]``.
-    review_items: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    review_items: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     #: Per-step counts, for the notification and the audit row.
-    counts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    counts: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False, default=dict)
     deactivated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

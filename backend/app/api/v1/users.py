@@ -1343,33 +1343,41 @@ async def toggle_user_active(
         )
 
     # Share grants are deliberately NOT pruned here, unlike ``delete_user``.
-    # Deactivation is a reversible toggle: pruning would silently
-    # destroy sharing configuration that should come back intact when the
-    # account is re-enabled, and a disabled account cannot authenticate, so
-    # the grant confers nothing meanwhile. The read side is what accommodates
-    # this — ``normalize_user_grants`` grandfathers already-stored ids past its
-    # active-account check, so an unrelated edit to a shared entity does not
-    # fail while a grantee is disabled, and ``GET /users/directory?ids=`` still
-    # resolves the name so the grant stays legible and removable.
-    user.is_active = not user.is_active
-    await db.flush()
-    status_text = "enabled" if user.is_active else "disabled"
-    await log_audit(
-        db,
-        user=admin,
-        action="toggle",
-        entity_type="user",
-        entity_id=user.id,
-        entity_name=user.full_name,
-        summary=f"{status_text.capitalize()} user '{user.email}'",
-        request=request,
-    )
+    # Deactivation is reversible: pruning would silently destroy sharing
+    # configuration that should come back intact when the account is
+    # re-enabled, and a disabled account cannot authenticate, so the grant
+    # confers nothing meanwhile. The read side is what accommodates this —
+    # ``normalize_user_grants`` grandfathers already-stored ids past its
+    # active-account check, and ``GET /users/directory?ids=`` still resolves the
+    # name so the grant stays legible and removable.
+    #
+    # Everything else the account owns or that acts as it goes through the one
+    # cascade every deactivation path shares (#122).
+    from app.core.database import async_session
+    from app.services import user_deactivation
+
+    label = (admin.full_name or "").strip() or admin.email
+    outcome: user_deactivation.DeactivationOutcome | user_deactivation.ReactivationOutcome
+    try:
+        if user.is_active:
+            outcome = await user_deactivation.deactivate_user(db, user, source="admin", actor=admin, actor_label=label)
+        else:
+            outcome = await user_deactivation.reactivate_user(db, user, source="admin", actor=admin, actor_label=label)
+    except user_deactivation.DeactivationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Commit before responding rather than on ``get_db`` teardown, which runs
     # after the response is sent: a caller acting on this toggle right away
     # (the A2A card / token surface stops resolving for a deactivated run-as
     # user) would otherwise race the transaction and still see the old state.
     await db.commit()
-    return {"status": "ok", "user_id": user_id, "is_active": user.is_active}
+    if isinstance(outcome, user_deactivation.DeactivationOutcome):
+        await user_deactivation.after_commit(async_session, user, outcome, label)
+    return {
+        "status": "ok",
+        "user_id": user_id,
+        "is_active": user.is_active,
+        "cascade": outcome.as_dict(),
+    }
 
 
 # ---------------------------------------------------------------------------

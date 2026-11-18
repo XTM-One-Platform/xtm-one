@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -605,6 +606,30 @@ class _UserLookupSession:
         self.commits += 1
 
 
+def _stub_cascade(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The route's cascade reduced to the flip: these tests are about the grants.
+
+    The cascade itself (``services/user_deactivation.py``) is covered against a
+    real database in ``test_user_deactivation_postgres.py``.
+    """
+    from app.services import user_deactivation
+
+    async def _deactivate(_db: Any, user: Any, **_kw: Any) -> Any:
+        user.is_active = False
+        return user_deactivation.DeactivationOutcome(user_id=user.id)
+
+    async def _reactivate(_db: Any, user: Any, **_kw: Any) -> Any:
+        user.is_active = True
+        return user_deactivation.ReactivationOutcome(user_id=user.id)
+
+    async def _after(*_a: Any, **_kw: Any) -> None:
+        return None
+
+    monkeypatch.setattr(user_deactivation, "deactivate_user", _deactivate)
+    monkeypatch.setattr(user_deactivation, "reactivate_user", _reactivate)
+    monkeypatch.setattr(user_deactivation, "after_commit", _after)
+
+
 async def test_deactivating_and_reactivating_a_grantee_never_prunes_their_grants(monkeypatch):
     """Pruning is for deletion only. A prune on deactivation would silently
     destroy sharing configuration an admin expects back intact when the
@@ -622,8 +647,9 @@ async def test_deactivating_and_reactivating_a_grantee_never_prunes_their_grants
 
     monkeypatch.setattr(users_module, "prune_user_grants", _record_prune)
     monkeypatch.setattr(users_module, "log_audit", _no_audit)
+    _stub_cascade(monkeypatch)
 
-    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
+    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True, full_name="Admin", email="admin@example.com")
     grantee = SimpleNamespace(
         id=uuid.uuid4(),
         email="grantee@example.com",
@@ -657,7 +683,8 @@ async def test_share_grants_survive_a_deactivate_edit_reactivate_cycle(monkeypat
         return None
 
     monkeypatch.setattr(users_module, "log_audit", _no_audit)
-    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
+    _stub_cascade(monkeypatch)
+    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True, full_name="Admin", email="admin@example.com")
     grantee = SimpleNamespace(
         id=uuid.uuid4(), email="grantee@example.com", full_name="Grantee", is_active=True
     )

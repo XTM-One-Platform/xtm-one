@@ -179,17 +179,11 @@ class User(Base):
     # When and by what the account was last deactivated (``admin``, ``scim``,
     # ``sso``, ``system``; ``services/user_deactivation.py``); cleared on
     # reactivation. The cascade's record is ``user_deactivations``.
-    deactivated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
-    )
-    deactivation_source: Mapped[str | None] = mapped_column(
-        String(32), nullable=True, default=None
-    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    deactivation_source: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     # Set by a SCIM DELETE: the identity provider removed the account. A soft
     # state on top of the deactivation; nothing is purged.
-    deprovisioned_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
-    )
+    deprovisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
     # Role: "admin" or "user"
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")

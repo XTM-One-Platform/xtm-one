@@ -684,9 +684,7 @@ async def _cancel_flow_runs(
     if owner is not None:
         query = query.where(FlowRun.user_id == owner)
     runs = list((await db.execute(query)).scalars().all())
-    outcome.executions_cancelled += await _cancel_flow_run_rows(
-        db, runs, now=now, message=message
-    )
+    outcome.executions_cancelled += await _cancel_flow_run_rows(db, runs, now=now, message=message)
     outcome.flow_runs_cancelled += len(runs)
     outcome.cancelled_flow_runs.extend(runs)
 
@@ -1213,9 +1211,7 @@ async def stop_owner_live_work(
     the same records as stopping them one by one. Flushes, never commits;
     the caller commits, then calls :func:`announce_stopped_work`.
     """
-    outcome = EmergencyStopOutcome(
-        scope="self", stopped_at=now or datetime.now(UTC), owner_id=owner
-    )
+    outcome = EmergencyStopOutcome(scope="self", stopped_at=now or datetime.now(UTC), owner_id=owner)
     stopped_at = outcome.stopped_at or datetime.now(UTC)
     await _cancel_runs(db, owner=owner, now=stopped_at, outcome=outcome, message=message)
     await _cancel_background_tasks(db, owner=owner, outcome=outcome, message=message)
@@ -1225,17 +1221,13 @@ async def stop_owner_live_work(
     return outcome
 
 
-async def announce_stopped_work(
-    outcome: EmergencyStopOutcome, *, conversation_ids: list[str] | None = None
-) -> None:
+async def announce_stopped_work(outcome: EmergencyStopOutcome, *, conversation_ids: list[str] | None = None) -> None:
     """Tell partners, conversations, flow streams and runners what a committed stop ended.
 
     *conversation_ids*: the conversations whose dependants to cancel, by
     default every one the stop cancelled (a sweep cascades its own).
     """
-    stopped_conversations = (
-        list(outcome.cancelled_conversation_ids) if conversation_ids is None else conversation_ids
-    )
+    stopped_conversations = list(outcome.cancelled_conversation_ids) if conversation_ids is None else conversation_ids
     if outcome.partner_cancel_run_ids:
         from app.a2a.client.delegation import spawn_run_cancel
 

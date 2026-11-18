@@ -16,7 +16,9 @@ Revises: a12346a2acred1
 Create Date: 2026-11-18 09:40:00.000000
 """
 
+import uuid
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -40,7 +42,7 @@ _USER_COLUMNS = (
 )
 
 
-def _has_table(conn, name: str) -> bool:
+def _has_table(conn: Any, name: str) -> bool:
     return bool(
         conn.execute(
             sa.text(
@@ -51,7 +53,7 @@ def _has_table(conn, name: str) -> bool:
     )
 
 
-def _user_columns(conn) -> set[str]:
+def _user_columns(conn: Any) -> set[str]:
     return set(
         conn.execute(
             sa.text(
@@ -63,7 +65,7 @@ def _user_columns(conn) -> set[str]:
     )
 
 
-def _uuid() -> postgresql.UUID:
+def _uuid() -> postgresql.UUID[uuid.UUID]:
     return postgresql.UUID(as_uuid=True)
 
 
