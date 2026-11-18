@@ -570,10 +570,17 @@ class CheckoutChecks:
     #: ``declared`` (``.xtm-one/checks.toml``) or ``detected`` (:mod:`detect`).
     origin: str
     infra: list[detect.Infra]
+    #: The checkout holds ``.xtm-one/checks.toml`` (a detected listing then means it declares services only).
+    has_checks_file: bool = False
 
     def listing(self, root: str) -> str:
         if self.origin == "declared":
             head = f"Declared in {display(_join(root, CHECKS_FILE))}:"
+        elif self.has_checks_file:
+            head = (
+                f"Detected from the repository's own files ({display(_join(root, CHECKS_FILE))} declares no "
+                "[check.NAME] table, its services are listed below; the source of each check in parentheses):"
+            )
         else:
             head = f"Detected from the repository's own files (no {CHECKS_FILE}; the source of each check in parentheses):"
         full = describe_checks(self.specs) or "(none)"
@@ -621,7 +628,7 @@ async def checkout_checks(session: WorkspaceSession, root: str, *, images: set[s
             continue
         files[rel] = await session.store.read_blob(record.id, entry.sha256)
     found = detect.detect(listing, files, images=images)
-    return CheckoutChecks(found.checks, "detected", found.infra)
+    return CheckoutChecks(found.checks, "detected", found.infra, has_checks_file=text is not None)
 
 
 async def _checks_file(session: WorkspaceSession, root: str) -> bytes | None:
@@ -645,7 +652,7 @@ async def list_checks(session: WorkspaceSession, *, checkout: str, known_images:
         raise ChecksError(str(exc)) from exc
     found = await checkout_checks(session, root, images=known_images)
     if not found.specs:
-        raise ChecksError(_nothing(root))
+        raise ChecksError(_nothing(root, has_checks_file=found.has_checks_file))
     lines = [found.listing(root)]
     if SCRIPT_CHECK not in found.specs:
         lines.append(SCRIPT_LISTING)
@@ -765,7 +772,7 @@ async def _resolve(
         if not argv:
             found = await checkout_checks(session, root, images=known_images)
             if not found.specs:
-                raise ChecksError(_nothing(root))
+                raise ChecksError(_nothing(root, has_checks_file=found.has_checks_file))
             raise ChecksError(f"check names the check to run (or argv a command, when the platform allows one). {found.listing(root)}")
         if not allow_argv:
             raise ChecksError(
@@ -788,7 +795,7 @@ async def _resolve(
             session, root, found.specs, args=args, max_timeout=max_timeout, known_images=known_images
         )
     if not found.specs:
-        raise ChecksError(_nothing(root))
+        raise ChecksError(_nothing(root, has_checks_file=found.has_checks_file))
     spec = found.specs.get(check)
     if spec is None:
         raise ChecksError(f"{check!r} is not a check of {_shown(root)}. {found.listing(root)}")
@@ -1192,9 +1199,10 @@ def _shown(root: str) -> str:
     return display(root).rstrip("/") + "/"
 
 
-def _nothing(root: str) -> str:
+def _nothing(root: str, *, has_checks_file: bool = False) -> str:
+    why = f"its {CHECKS_FILE} has no [check.NAME] table" if has_checks_file else f"no {CHECKS_FILE}"
     return (
-        f"{_shown(root)} declares no check (no {CHECKS_FILE}) and none was detected from its files: "
+        f"{_shown(root)} declares no check ({why}) and none was detected from its files: "
         "materialize_repository the whole tree, or with the directories of its manifests and .github/workflows "
         "among sub_paths (package.json, pyproject.toml, pom.xml, build.gradle, Cargo.toml, dbt_project.yml, Makefile)."
     )

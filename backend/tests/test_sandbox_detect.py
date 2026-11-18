@@ -1828,6 +1828,28 @@ async def test_a_checkout_without_checks_toml_runs_a_detected_check():
         await _resolve(workspace)
 
 
+async def test_a_services_only_checks_toml_is_named_in_the_detected_listing():
+    """A checks.toml with services and no check table: the header says so, never 'no .xtm-one/checks.toml'."""
+    workspace = _workspace()
+    pkg = json.dumps({"scripts": {"test": "vitest run"}})
+    services = b'[service.lab]\ndescription = "x"\ncommand = ["true"]\nport = 8080\n'
+    await workspace.put_tree(
+        [("co/front/package.json", pkg.encode()), ("co/front/yarn.lock", b""), ("co/.xtm-one/checks.toml", services)]
+    )
+    with pytest.raises(checks.ChecksError) as raised:
+        await _resolve(workspace, check="nope")
+    assert "checks.toml declares no [check.NAME] table" in str(raised.value)
+    assert "(no .xtm-one/checks.toml" not in str(raised.value)
+
+
+async def test_a_services_only_checks_toml_with_nothing_detected_says_why():
+    workspace = _workspace()
+    services = b'[service.lab]\ndescription = "x"\ncommand = ["true"]\nport = 8080\n'
+    await workspace.put_tree([("co/README.md", b"x"), ("co/.xtm-one/checks.toml", services)])
+    with pytest.raises(checks.ChecksError, match=r"has no \[check\.NAME\] table"):
+        await _resolve(workspace, check="nope")
+
+
 # -- pnpm: the release the checkout pins -----------------------------------------
 
 
