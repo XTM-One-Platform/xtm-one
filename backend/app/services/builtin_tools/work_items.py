@@ -608,7 +608,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     },
     "ask": {
         "type": "object",
-        "description": "{question, options:[{key,label,effect}], recommendation, deadline}",
+        "description": "{question, options:[{key,label,effect}], recommendation: option key, deadline}",
     },
 }
 
