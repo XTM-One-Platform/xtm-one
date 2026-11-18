@@ -3,7 +3,8 @@
 """Chat calls with function tools sent through OpenAI's Responses API.
 
 A model the capability table flags ``responses_api_with_tools``
-(``model_capabilities.uses_responses_api_with_tools``, gpt-6-astra today) has
+(``model_capabilities.uses_responses_api_with_tools``: gpt-6-astra, gpt-6.1-sol, gpt-6.2-sol,
+gpt-6.2-astra) has
 no valid request with function tools on ``/v1/chat/completions``: an effort
 next to tools is refused with "use /v1/responses or set reasoning_effort to
 'none'", and ``none`` itself is refused. ``/v1/responses`` takes the tools and

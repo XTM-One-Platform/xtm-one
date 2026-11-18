@@ -60,6 +60,9 @@ paths = [
   '''(^|/)frontend/src/i18n/lang/[^/]+\.json$''',
   # The local lab and sandbox checks: lab-only accounts, valid nowhere else.
   '''(^|/)\.xtm-one/''',
+  # The XTM Hub's vendored GraphQL schema: operation and field names
+  # (`resetPassword: Boolean`), no values.
+  '''(^|/)backend/app/integrations/providers/xtm_hub_schema\.graphql$''',
 ]
 
 [[allowlists]]

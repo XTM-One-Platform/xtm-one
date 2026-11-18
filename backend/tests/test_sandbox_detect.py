@@ -109,6 +109,47 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
+    # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
+    # that carries its own dependencies); before, only the pytest line of the job was detected.
+    wf = (
+        "jobs:\n  lint:\n    steps:\n"
+        "      - run: uv run plugin/scripts/flow_lint.py --format github\n"
+        "      - run: uv run plugin/scripts/flow_index.py --check\n"
+        "      - run: uv run --with pytest pytest plugin/tests -q\n"
+    )
+    argv = _argv(_detect({".github/workflows/flow.yml": wf}))
+    assert argv["python-lint"] == ("uv", "run", "plugin/scripts/flow_lint.py", "--format", "github")
+    assert argv["python-unit"] == ("uv", "run", "--with", "pytest", "pytest", "plugin/tests", "-q")
+    assert not any("flow_index" in " ".join(a) for a in argv.values())
+
+
+def test_a_repository_gate_script_with_an_expression_option_is_a_check_the_call_completes() -> None:
+    # OpenAEV-Platform/collectors tests-collectors.yml (gap repo-script-run-without-declared-check): the
+    # catalog gate passes its base ref as an expression; the line was dropped whole and no check ran it.
+    wf = (
+        "jobs:\n  catalog-contract:\n    steps:\n"
+        '      - run: python .github/scripts/check_catalog_contract.py --changed-since "origin/${{ github.base_ref }}"\n'
+        "      - run: uv run scripts/validate_manifest.py --ref=${{ github.sha }} --strict\n"
+        "      - run: python .github/scripts/build_test_matrix.py ${{ matrix.collector }}\n"
+        "      - run: ${{ matrix.command }}\n"
+        "      - run: python .github/scripts/check_release_notes.py\n"
+        "      - run: verify.py\n"
+    )
+    found = _detect({".github/workflows/tests.yml": wf})
+    argv = _argv(found)
+    assert argv["python-check-catalog-contract"] == ("python", ".github/scripts/check_catalog_contract.py")
+    assert argv["python-check-manifest"] == ("uv", "run", "scripts/validate_manifest.py", "--strict")
+    # A positional expression, a whole-expression command, a shipping name and a bare verb stay out.
+    assert not any("build_test_matrix" in " ".join(a) or "release" in " ".join(a) for a in argv.values())
+    assert not any("verify.py" in a for a in argv.values())
+    assert detect._without_expression_options('python x.py "${{ a }}"') is None
+    assert detect._without_expression_options("echo ${{ a }} && python x.py") is None
+    assert detect._gate_script_kind("check_catalog_contract") == "check-catalog-contract"
+    assert detect._gate_script_kind("checkout") is None
+    assert detect._gate_script_kind("check_publish") is None
+
+
 def test_a_workflow_wins_over_the_manifest_for_the_same_check():
     pkg = json.dumps({"scripts": {"lint": "eslint src", "test": "vitest"}})
     wf = "jobs:\n  a:\n    steps:\n      - run: yarn lint --max-warnings 0\n"
@@ -138,6 +179,10 @@ def test_a_workflow_wins_over_the_manifest_for_the_same_check():
         ("dbt parse", ("dbt", "parse")),
         ("sqlfluff lint models", ("dbt", "lint")),
         ("make test", ("make", "unit")),
+        ("uv run plugin/scripts/flow_lint.py --format github", ("python", "lint")),
+        ("python3 scripts/run_tests.py -q", ("python", "unit")),
+        ("uv run plugin/scripts/flow_index.py --check", None),
+        ("python scripts/release.py", None),
         ("docker build .", None),
         ("echo hi", None),
     ],
@@ -1531,6 +1576,51 @@ def test_a_narrow_checkout_keeps_the_root_requirements_and_python_tool_configs_i
     assert set(tree.named) == {"ci-requirements.txt", "shared/pylint_plugins/requirements.txt"}
     assert "shared/pylint_plugins/plugin.py" not in written
     assert "external-import/other/src/main.py" not in written
+
+
+def test_a_narrow_checkout_keeps_the_directory_a_ci_step_cds_into() -> None:
+    # connectors: the STIX ID lint job runs `cd ./shared/pylint_plugins/check_stix_plugin &&
+    # PYTHONPATH=. pylint ../../../ --load-plugins linter_stix_id_generator`; a checkout of one
+    # connector kept the plugin's requirements.txt but not the plugin, so the sandbox lint
+    # passed with "Plugin ... is impossible to load" and CI went red on the same files.
+    workflow = b"""
+on: pull_request
+jobs:
+  linter:
+    runs-on: ubuntu-latest
+    steps:
+      - run: uv pip install -r ./shared/pylint_plugins/check_stix_plugin/requirements.txt
+      - name: Run STIX ID pylint
+        run: |
+          cd ./shared/pylint_plugins/check_stix_plugin && \\
+            PYTHONPATH=. pylint ../../../ \\
+            --load-plugins linter_stix_id_generator
+"""
+    tree, written = _narrow_tree(
+        {
+            ".github/workflows/ci-lint-format.yml": workflow,
+            "shared/pylint_plugins/check_stix_plugin/requirements.txt": b"pylint\n",
+            "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py": b"",
+            "shared/pylint_plugins/check_stix_plugin/__init__.py": b"",
+            "shared/pylint_plugins/tests/test_plugin.py": b"",
+            "external-import/acme/src/main.py": b"",
+            "external-import/other/src/main.py": b"",
+        },
+        ["external-import/acme"],
+    )
+    plugin = "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py"
+    assert plugin in tree.named and plugin in written
+    assert "shared/pylint_plugins/check_stix_plugin/__init__.py" in written
+    # Only the directory the step runs from: neither its siblings nor the repository it lints.
+    assert "shared/pylint_plugins/tests/test_plugin.py" not in written
+    assert "external-import/other/src/main.py" not in written
+
+
+def test_a_step_that_cds_into_a_large_directory_keeps_none_of_it() -> None:
+    files = {f"tools/big/f{i}.py": b"" for i in range(detect.MAX_REFERENCED_DIR_FILES + 1)}
+    workflow = b"on: pull_request\njobs:\n  a:\n    steps:\n      - run: cd tools/big && python -m lint ../../src\n"
+    tree, _written = _narrow_tree({".github/workflows/ci.yml": workflow, **files, "src/a.py": b""}, ["src"])
+    assert not any(p.startswith("tools/big/") for p in tree.named)
 
 
 def test_a_job_running_two_formatters_gives_a_check_for_each():

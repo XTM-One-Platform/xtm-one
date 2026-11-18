@@ -287,6 +287,17 @@ function EntryRow({ entry, index, runs, bundleReview = false }: EntryRowProps) {
               </div>
             )}
             <p className="min-w-0 content-base line-clamp-1">{entry.description || entry.inputPrompt || "—"}</p>
+            {/* On the entry's own line: the answers open side by side without unfolding it. */}
+            {bundleReview && reviewIds.length > 0 && (
+              <Link
+                to={`/evaluations/review?results=${reviewIds.join(",")}`}
+                onClick={(e) => e.stopPropagation()}
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+              >
+                <Icon name="file-search" size={16} />
+                {t_i18n("Review bundles")}
+              </Link>
+            )}
           </div>
         </td>
         {results.map((r, i) => {
@@ -323,15 +334,6 @@ function EntryRow({ entry, index, runs, bundleReview = false }: EntryRowProps) {
           <td className="px-3 pt-1 pb-4 align-top" />
           {/* Second col: expected answer */}
           <td className="px-3 pt-1 pb-4 align-top">
-            {bundleReview && reviewIds.length > 0 && (
-              <Link
-                to={`/evaluations/review?results=${reviewIds.join(",")}`}
-                className="mb-2 inline-flex items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                <Icon name="file-search" size={16} />
-                {t_i18n("Review bundles")}
-              </Link>
-            )}
             <h4 className="content-caption font-medium text-default-secondary uppercase tracking-wider mb-1.5">{t_i18n("Expected Answer")}</h4>
             <div className="bg-elevation-hover rounded-sm p-3 max-h-72 overflow-auto">
               {entry.expectedAnswer ? <FormattedText text={entry.expectedAnswer} /> : <span className="content-compact text-default-secondary">—</span>}

@@ -85,24 +85,36 @@ def _provider_capturing(model: str, refuse: set[str | None] | None = None) -> tu
 
 
 @pytest.mark.parametrize(
-    "model", ["gpt-6-astra", "gpt-6-astra-2026-09-01", "openai/gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"]
+    "model",
+    [
+        "gpt-6-astra",
+        "gpt-6-astra-2026-09-01",
+        "openai/gpt-6-astra",
+        "gpt-6.2-sol",
+        "gpt-6.2-sol-2026-11-01",
+        "gpt-6.2-astra",
+        "openai/gpt-6.2-astra",
+        "gpt-6.1-sol",
+        "gpt-6.1-sol-2026-10-01",
+    ],
 )
-def test_gpt6_astra_is_declared_without_none(model):
+def test_models_that_refuse_none_are_declared_without_it(model):
     assert refuses_effort_none(model)
     assert lowest_effort(model) == "low"
 
 
 @pytest.mark.parametrize("effort", ["none", "minimal"])
 @pytest.mark.parametrize("has_tools", [False, True])
-@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"])
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.2-astra"])
 def test_a_model_that_refuses_none_gets_its_lowest_level(effort, has_tools, model):
     assert normalize_openai_reasoning_effort(effort, model, has_tools=has_tools) == "low"
 
 
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.2-astra"])
 @pytest.mark.parametrize("has_tools", [False, True])
-def test_gpt6_astra_with_no_effort_is_sent_none_of_it(has_tools):
+def test_a_model_that_refuses_none_with_no_effort_is_sent_none_of_it(has_tools, model):
     """No effort set: the parameter is left out, never ``none``."""
-    assert normalize_openai_reasoning_effort(None, "gpt-6-astra", has_tools=has_tools) is None
+    assert normalize_openai_reasoning_effort(None, model, has_tools=has_tools) is None
 
 
 def test_gpt6_astra_keeps_the_levels_it_accepts():

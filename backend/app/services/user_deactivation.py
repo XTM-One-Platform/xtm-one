@@ -62,7 +62,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
@@ -91,9 +91,9 @@ STOP_MESSAGE = "Stopped: the account it runs as was deactivated."
 NOTIFICATION_SOURCE = "user_deactivation"
 #: The audit actor of a cascade nobody signed in for (SCIM, SSO, the system).
 SYSTEM_ACTOR = "user_deactivation"
-#: Where the review list lives in the web app (S3 adds the page; until then the
-#: user's own page).
-REVIEW_PATH = "/settings/users"
+#: Where the review list lives in the web app: Settings > Access and security >
+#: Provisioning (``frontend/src/pages/settings/ProvisioningSection.tsx``).
+REVIEW_PATH = "/settings/security/provisioning"
 
 #: Review ``action`` values: what the cascade did to the object.
 ACTION_DISABLED = "disabled"
@@ -145,7 +145,10 @@ def _label(user: User | None) -> str:
     return (user.full_name or "").strip() or user.email
 
 
-def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: str) -> dict[str, Any]:
+def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: str, **params: Any) -> dict[str, Any]:
+    # ``detail`` is the English sentence of the audit trail and the admin
+    # notification; ``params`` are its values, from which the review screen
+    # renders the line in the reader's language (``REVIEW_DETAIL_LABELS``).
     return {
         "key": f"{kind}:{obj_id}:{action}",
         "kind": kind,
@@ -153,6 +156,7 @@ def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: 
         "name": name or str(obj_id),
         "action": action,
         "detail": detail,
+        "params": params,
         "reviewed_at": None,
         "reviewed_by": None,
         "resolution": None,
@@ -414,6 +418,7 @@ async def _transfer_agent(
                 agent.name,
                 ACTION_KEPT,
                 f"{tier.capitalize()} agent; no other active administrator to take it over.",
+                tier=tier,
             )
         )
         return
@@ -449,6 +454,7 @@ async def _transfer_agent(
                     assignment.name,
                     ACTION_PAUSED,
                     f"Of agent '{agent.name}'; it runs as {departing.email}.",
+                    agent=agent.name,
                 )
             )
     outcome.add("assignments_paused", paused)
@@ -460,6 +466,9 @@ async def _transfer_agent(
             ACTION_TRANSFERRED,
             f"{tier.capitalize()} agent moved to {_label(successor)}"
             + (f"; {paused} assignment(s) running as the departed account paused." if paused else "."),
+            tier=tier,
+            successor=_label(successor),
+            paused=paused,
         )
     )
 
@@ -483,6 +492,7 @@ async def _transfer_row(
                 row.name,
                 ACTION_KEPT,
                 f"{tier.capitalize()} {kind}; no other active administrator to take it over.",
+                tier=tier,
             )
         )
         return
@@ -502,7 +512,14 @@ async def _transfer_row(
     outcome.add(f"{kind}s_transferred")
     outcome.review_items.append(
         _review_item(
-            kind, row.id, row.name, ACTION_TRANSFERRED, f"{tier.capitalize()} {kind} moved to {_label(successor)}."
+            kind,
+            row.id,
+            row.name,
+            ACTION_TRANSFERRED,
+            f"{tier.capitalize()} {kind} moved to {_label(successor)}.",
+            tier=tier,
+            successor=_label(successor),
+            paused=0,
         )
     )
 
@@ -554,6 +571,7 @@ async def _disconnect_integrations(
                 integration.name,
                 ACTION_DISCONNECTED,
                 f"{integration.provider} account of the departed user; its token was cleared.",
+                provider=integration.provider,
             )
         )
     # Another person's agent bound to one of the account's private integrations
@@ -583,6 +601,7 @@ async def _disconnect_integrations(
                     agent.name,
                     ACTION_BOUND_ELSEWHERE,
                     f"Bound to {len(hit)} integration(s) of the departed user, now disconnected.",
+                    count=len(hit),
                 )
             )
             outcome.add("other_agents_bound")
@@ -901,6 +920,98 @@ async def reactivate_user(
     return outcome
 
 
+async def preview_deactivation(db: AsyncSession, user: User) -> dict[str, Any]:
+    """What :func:`deactivate_user` would do to *user*, read without writing.
+
+    The administrator's confirmation dialog shows it before the cascade runs.
+    The counts follow the steps of the cascade; a figure the cascade only
+    learns while acting (the sub-agent tasks under a cancelled run, the
+    agents of other people bound to a private integration) is not previewed.
+    ``refusal`` carries the reason the platform would refuse, else ``None``.
+    """
+    from app.models.assignment import AssignmentRun
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS
+
+    refusal: str | None = None
+    if is_platform_admin(user):
+        refusal = "The platform admin account cannot be disabled"
+    elif not user.is_active:
+        refusal = "The account is already deactivated"
+
+    async def count(query: Any) -> int:
+        return int((await db.execute(query)).scalar() or 0)
+
+    successor = await resolve_successor(db, user)
+    counts: dict[str, int] = {
+        "api_keys_revoked": await count(
+            select(func.count(UserApiKey.id)).where(UserApiKey.user_id == user.id, UserApiKey.revoked_at.is_(None))
+        ),
+        "runs_cancelled": await count(
+            select(func.count(AssignmentRun.id)).where(
+                AssignmentRun.user_id == user.id,
+                AssignmentRun.status.in_((*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS)),
+            )
+        ),
+        "timers_cancelled": await count(
+            select(func.count(PlatformTimer.id)).where(
+                PlatformTimer.user_id == user.id, PlatformTimer.state == TIMER_ARMED
+            )
+        ),
+        "scheduled_actions_cancelled": await count(
+            select(func.count(WorkItem.id)).where(
+                WorkItem.user_id == user.id,
+                WorkItem.action_mode.is_not(None),
+                WorkItem.status.in_(("open", "blocked")),
+            )
+        ),
+        "personal_credentials_disconnected": await count(
+            select(func.count(IntegrationUserCredential.integration_id)).where(
+                IntegrationUserCredential.user_id == user.id
+            )
+        ),
+    }
+    agents = (await db.execute(select(Agent).where(Agent.user_id == user.id))).scalars().all()
+    private_on = [a for a in agents if _private(a) and (a.enabled or a.web_enabled)]
+    shared = [a for a in agents if not _private(a)]
+    counts["private_agents_disabled"] = len(private_on)
+    counts["agents_transferred"] = len(shared) if successor is not None else 0
+    if shared:
+        counts["assignments_paused"] = await count(
+            select(func.count(Assignment.id)).where(
+                Assignment.agent_id.in_([a.id for a in shared]),
+                Assignment.run_as_user_id == user.id,
+                Assignment.enabled.is_(True),
+            )
+        )
+    kept = 0 if successor is not None else len(shared)
+    integrations = [
+        i
+        for i in (await db.execute(select(Integration).where(Integration.user_id == user.id))).scalars().all()
+        if not getattr(i, "is_builtin", False)
+    ]
+    counts["integrations_disconnected"] = len([i for i in integrations if _private(i) and i.status != "disconnected"])
+    groups: list[tuple[str, list[Any]]] = [("integration", list(integrations))]
+    for model, kind in ((Fleet, "fleet"), (Workspace, "workspace")):
+        groups.append((kind, list((await db.execute(select(model).where(model.user_id == user.id))).scalars().all())))
+    for kind, rows in groups:
+        moving = [r for r in rows if not _private(r)]
+        if successor is not None:
+            counts[f"{kind}s_transferred"] = len(moving)
+        else:
+            kept += len(moving)
+    return {
+        "user_id": str(user.id),
+        "refusal": refusal,
+        "successor": (
+            {"id": str(successor.id), "name": _label(successor), "email": successor.email}
+            if successor is not None
+            else None
+        ),
+        "counts": {k: v for k, v in counts.items() if v},
+        "kept_without_successor": kept,
+    }
+
+
 async def resolve_review_item(
     db: AsyncSession, episode: UserDeactivation, key: str, *, resolution: str, admin: User, now: datetime | None = None
 ) -> dict[str, Any]:
@@ -926,6 +1037,7 @@ __all__ = [
     "after_commit",
     "deactivate_user",
     "open_episode",
+    "preview_deactivation",
     "reactivate_user",
     "resolve_review_item",
     "resolve_successor",

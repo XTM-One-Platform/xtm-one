@@ -49,8 +49,12 @@ from app.integrations.providers.hubspot_activity import (
     activity_definitions,
     scopes_sentence,
 )
+from app.integrations.providers.hubspot_line_items import HubSpotLineItems, line_item_definitions
 from app.integrations.providers.hubspot_records import (
+    ASSOCIATION_CATEGORIES,
     ENGAGEMENT_SPECS,
+    association_label,
+    association_type_text,
     format_engagement,
     normalize_engagement,
     record_properties,
@@ -156,6 +160,21 @@ _LABELLED = {
     "tickets": ("hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority", "hubspot_owner_id"),
 }
 logger = logging.getLogger(__name__)
+
+#: The arguments naming an association type (create_hubspot_association, delete_hubspot_association).
+_ASSOCIATION_TYPE_ARGUMENTS: dict[str, Any] = {
+    "label": {
+        "type": "string",
+        "description": "Association label name, as get_hubspot_associations shows it (e.g. 'Primary')",
+        "default": "",
+    },
+    "association_category": {
+        "type": "string",
+        "description": "With association_type_id: HUBSPOT_DEFINED (default), USER_DEFINED or INTEGRATOR_DEFINED",
+        "default": "",
+    },
+    "association_type_id": {"type": "string", "description": "Association type ID, instead of label", "default": ""},
+}
 
 #: The HubSpot tool being run, so a 403 can name the tool that needs the scope.
 _CURRENT_TOOL: ContextVar[str] = ContextVar("hubspot_current_tool", default="")
@@ -1546,26 +1565,141 @@ def build_tools(
                 lines.append("  (more than 500: batch_get_hubspot_associations or the timeline reads the rest)")
             return "\n".join(lines)
 
+    async def _association_type(
+        client: httpx.AsyncClient,
+        from_type: str,
+        to_type: str,
+        label: str,
+        association_category: str,
+        association_type_id: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """The association type a label name or a category and type id names (``None``: none named)."""
+        label = str(label or "").strip()
+        type_id = str(association_type_id or "").strip()
+        if not label and not type_id:
+            return None, None
+        if type_id:
+            if not type_id.isdigit():
+                return None, "Error: association_type_id must be a number."
+            category = str(association_category or "").strip().upper() or "HUBSPOT_DEFINED"
+            if category not in ASSOCIATION_CATEGORIES:
+                return None, f"Error: association_category must be one of {', '.join(ASSOCIATION_CATEGORIES)}."
+            return {"associationCategory": category, "associationTypeId": int(type_id)}, None
+        resp, err = await _throttled(
+            client,
+            "get",
+            f"{_BASE_URL}/crm/v4/associations/{from_type}/{to_type}/labels",
+            "HubSpot",
+            f"list the association labels from {from_type} to {to_type}",
+            headers=headers,
+        )
+        if err:
+            return None, err
+        labels = resp.json().get("results", [])
+        found = association_label(labels, label)
+        if found is None:
+            named = sorted({str(t.get("label")) for t in labels if isinstance(t, dict) and t.get("label")})
+            return None, (
+                f"Error: no association label '{label}' from {from_type} to {to_type}. "
+                f"Labels defined: {', '.join(named) or 'none'}."
+            )
+        return found, None
+
     async def create_hubspot_association(
         from_type: str,
         from_id: str,
         to_type: str,
         to_id: str,
+        label: str = "",
+        association_category: str = "",
+        association_type_id: str = "",
     ) -> str:
-        """Associate two HubSpot records (e.g. contact to company, deal to contact)."""
+        """Associate two HubSpot records, with the default type or a labelled one (e.g. a deal's Primary company)."""
         async with egress_client(timeout=30) as client:
+            typed, err = await _association_type(
+                client, from_type, to_type, label, association_category, association_type_id
+            )
+            if err:
+                return err
+            if typed is None:
+                _, err = await _throttled(
+                    client,
+                    "put",
+                    f"{_BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/default/{to_type}/{to_id}",
+                    "HubSpot",
+                    f"associate {from_type} {from_id} → {to_type} {to_id}",
+                    headers=headers,
+                )
+                if err:
+                    return err
+                return f"Successfully associated {from_type} {from_id} with {to_type} {to_id}."
             _, err = await _throttled(
                 client,
                 "put",
-                f"{_BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/default/{to_type}/{to_id}",
+                f"{_BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}",
                 "HubSpot",
-                f"associate {from_type} {from_id} → {to_type} {to_id}",
+                f"associate {from_type} {from_id} → {to_type} {to_id} with {association_type_text(typed)}",
                 headers=headers,
+                json=[{k: typed[k] for k in ("associationCategory", "associationTypeId")}],
             )
             if err:
                 return err
             return (
-                f"Successfully associated {from_type} {from_id} with {to_type} {to_id}."
+                f"Successfully associated {from_type} {from_id} with {to_type} {to_id} as "
+                f"{association_type_text(typed)}; its other association types are kept "
+                "(get_hubspot_associations reads them, delete_hubspot_association removes one)."
+            )
+
+    async def delete_hubspot_association(
+        from_type: str,
+        from_id: str,
+        to_type: str,
+        to_id: str,
+        label: str = "",
+        association_category: str = "",
+        association_type_id: str = "",
+    ) -> str:
+        """Remove one association type (a label) between two records, or the whole association."""
+        async with egress_client(timeout=30) as client:
+            typed, err = await _association_type(
+                client, from_type, to_type, label, association_category, association_type_id
+            )
+            if err:
+                return err
+            if typed is None:
+                _, err = await _throttled(
+                    client,
+                    "delete",
+                    f"{_BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}",
+                    "HubSpot",
+                    f"remove every association of {from_type} {from_id} with {to_type} {to_id}",
+                    headers=headers,
+                )
+                if err:
+                    return err
+                return f"Removed every association between {from_type} {from_id} and {to_type} {to_id}."
+            _, err = await _throttled(
+                client,
+                "post",
+                f"{_BASE_URL}/crm/v4/associations/{from_type}/{to_type}/batch/labels/archive",
+                "HubSpot",
+                f"remove {association_type_text(typed)} from {from_type} {from_id} → {to_type} {to_id}",
+                headers=headers,
+                json={
+                    "inputs": [
+                        {
+                            "from": {"id": str(from_id)},
+                            "to": {"id": str(to_id)},
+                            "types": [{k: typed[k] for k in ("associationCategory", "associationTypeId")}],
+                        }
+                    ]
+                },
+            )
+            if err:
+                return err
+            return (
+                f"Removed {association_type_text(typed)} from {from_type} {from_id} → {to_type} {to_id}; "
+                "the records stay associated by their other types."
             )
 
     # ── Delete / Archive ──────────────────────────────────────────────────
@@ -2199,6 +2333,7 @@ def build_tools(
     _register("get_hubspot_owner", get_hubspot_owner)
     _register("get_hubspot_associations", get_hubspot_associations)
     _register("create_hubspot_association", create_hubspot_association)
+    _register("delete_hubspot_association", delete_hubspot_association)
     _register("delete_hubspot_record", delete_hubspot_record)
     _register("search_hubspot_tickets", search_hubspot_tickets)
     _register("get_hubspot_ticket", get_hubspot_ticket)
@@ -2210,6 +2345,8 @@ def build_tools(
     _register("upload_hubspot_file", upload_hubspot_file)
     _register("upload_hubspot_attachment", upload_hubspot_attachment)
     for name, handler in activity.handlers().items():
+        _register(name, handler)
+    for name, handler in HubSpotLineItems(_throttled, headers=headers).handlers().items():
         _register(name, handler)
 
     # ── Tool definitions ─────────────────────────────────────────────────
@@ -2873,8 +3010,11 @@ def build_tools(
         ToolDefinition(
             name="create_hubspot_association",
             description=(
-                "Associate two HubSpot records together (e.g. link a contact to a company, or a deal to a contact). "
-                "Uses the default association type."
+                "Associate two HubSpot records (e.g. a contact to a company, a deal to a contact). Without label or "
+                "association_type_id: the default association type. With a label name (e.g. 'Primary' from deals to "
+                "companies: the deal's primary company) or association_category + association_type_id: that type is "
+                "added, the records' other types kept. To move a label, add it on the new record and remove it from "
+                "the old one with delete_hubspot_association."
             ),
             input_schema={
                 "type": "object",
@@ -2886,6 +3026,28 @@ def build_tools(
                     "from_id": {"type": "string", "description": "Source record ID"},
                     "to_type": {"type": "string", "description": "Target object type"},
                     "to_id": {"type": "string", "description": "Target record ID"},
+                    **_ASSOCIATION_TYPE_ARGUMENTS,
+                },
+                "required": ["from_type", "from_id", "to_type", "to_id"],
+            },
+            source=src,
+            priority=1,
+        ),
+        ToolDefinition(
+            name="delete_hubspot_association",
+            description=(
+                "Remove one association type (a label, e.g. 'Primary' from a deal to a company) between two HubSpot "
+                "records, the records staying associated by their other types; without label or "
+                "association_type_id, remove every association between them."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "from_type": {"type": "string", "description": "Source object type (e.g. 'deals')"},
+                    "from_id": {"type": "string", "description": "Source record ID"},
+                    "to_type": {"type": "string", "description": "Target object type (e.g. 'companies')"},
+                    "to_id": {"type": "string", "description": "Target record ID"},
+                    **_ASSOCIATION_TYPE_ARGUMENTS,
                 },
                 "required": ["from_type", "from_id", "to_type", "to_id"],
             },
@@ -3215,6 +3377,7 @@ def build_tools(
             priority=1,
         ),
         *activity_definitions(src),
+        *line_item_definitions(src),
     ]
     definitions = [replace(d, description=d.description + scopes_sentence(d.name)) for d in definitions]
     if object_type_scope is not None:

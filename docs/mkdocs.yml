@@ -164,6 +164,7 @@ nav:
       - Installation: deployment/installation.md
       - Configuration: deployment/configuration.md
       - Authentication: deployment/authentication.md
+      - Provisioning with SCIM: deployment/scim-provisioning.md
       - Security headers: deployment/security-headers.md
       - Secret vaults: deployment/secret-vaults.md
       - Monitoring: deployment/monitoring.md

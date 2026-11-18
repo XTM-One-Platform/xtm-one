@@ -372,6 +372,16 @@ def _no_headless_layout_check(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _forget_tools_refusals():
+    """An endpoint's remembered tools refusal (``openai_compat``) is process-wide: clear it per test."""
+    from app.llm.openai_compat import forget_tools_refusals
+
+    forget_tools_refusals()
+    yield
+    forget_tools_refusals()
+
+
+@pytest.fixture(autouse=True)
 def _reset_ai_state_cache():
     """Drop the cached AI state around every test.
 

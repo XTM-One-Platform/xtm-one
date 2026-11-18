@@ -11,6 +11,12 @@ import EvaluationCompare from "./EvaluationCompare";
 import Evaluations from "./Evaluations";
 import type { EvaluationComparison } from "@/types";
 
+// One evaluation's tabs register palette commands; the palette is not under test here.
+vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/commands/CommandsProvider")>()),
+  useCommandSections: () => {},
+}));
+
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -147,10 +153,81 @@ describe("EvaluationCompare", () => {
 
   it("checks the shared entries against each evaluation's others", async () => {
     renderPage();
-    const row = await screen.findByRole("row", { name: /claude-opus-5-5 · Grounded/ });
+    // The same model in both runs: each reads by its agent alone.
+    const row = await screen.findByRole("row", { name: /^Grounded \d/ });
     // 23/58 on all three entries, 18/48 shared, 5/10 on its own entry.
     expect(row).toHaveTextContent("39.7");
     expect(row).toHaveTextContent("37.5");
     expect(row).toHaveTextContent("50.0");
+  });
+});
+
+describe("EvaluationCompare on one evaluation", () => {
+  const sonnet = { ...run("rs", "eb", "Grounded", "15.1.0"), model_id: "claude-sonnet-5-5", is_default_model: false };
+  const ONE: EvaluationComparison = {
+    ...COMPARISON,
+    evaluations: [{ ...COMPARISON.evaluations[1], runs: [sonnet, run("rb", "eb", "Grounded", "15.1.0")], run_choices: [sonnet, run("rb", "eb", "Grounded", "15.1.0")] }],
+    entries: COMPARISON.entries.map((e) => ({ ...e, members: e.members.filter((m) => m.evaluation_id === "eb") })),
+    cells: [
+      ...COMPARISON.cells.filter((c) => c.run_id === "rb"),
+      { run_id: "rs", entry_key: "k1", result_id: "res-s1", counted: true, anomaly: null, metrics: { "stix.entity_prf": [0, 34], "stix.relationship_prf": [0, 37] }, cost: 0.9, seconds: 60 },
+      { run_id: "rs", entry_key: "k2", result_id: "res-s2", counted: true, anomaly: null, metrics: { "stix.entity_prf": [4, 14], "stix.relationship_prf": [0, 8] }, cost: 1.0, seconds: 80 },
+      { run_id: "rs", entry_key: "k3", result_id: "res-s3", counted: true, anomaly: null, metrics: { "stix.entity_prf": [0, 10], "stix.relationship_prf": [0, 6] }, cost: 0.2, seconds: 40 },
+    ],
+  };
+
+  function renderOne(path: string) {
+    get.mockImplementation(((p: string) => Promise.resolve(p.startsWith("/evaluations/compare") ? ONE : [])) as typeof api.get);
+    renderWithProviders(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/evaluations/compare/:tab?" element={<EvaluationCompare />} />
+          <Route path="/evaluations/review" element={<Where />} />
+          <Route path="/evaluations/runs/:id" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("opens on its Leaderboard: the best run of each launch, then configurations by launch or every run ranked", async () => {
+    renderOne("/evaluations/compare?ids=eb");
+    expect(await screen.findByText("Best run of each launch")).toBeInTheDocument();
+    expect(screen.getByText("STIX_BUNDLE · 3 entries · 2 completed runs")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Leaderboard/ })).toHaveAttribute("aria-selected", "true");
+    // Both runs started in one minute: one launch; opus (23/58) leads sonnet (4/58) on Entity F1.
+    const opus = screen.getByRole("rowheader", { name: /claude-opus-5-5/ });
+    expect(opus.closest("tr")).toHaveTextContent("39.7");
+    fireEvent.click(screen.getByRole("radio", { name: "Every run, ranked" }));
+    const rows = await screen.findAllByTestId("leaderboard-run-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("claude-opus-5-5");
+    fireEvent.click(rows[1]);
+    expect(await screen.findByText("at /evaluations/runs/rs")).toBeInTheDocument();
+  });
+
+  it("ranks its configurations with intervals in Results, and says how", async () => {
+    renderOne("/evaluations/compare/results?ids=eb");
+    expect(await screen.findByText("1 · Ranking with 95% intervals")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Entity F1 of each configuration with its 95% interval/ })).toBeInTheDocument();
+    expect(screen.getByText("2 · Quality against cost")).toBeInTheDocument();
+    expect(screen.getByText(/No configuration ran more than once/)).toBeInTheDocument();
+    expect(screen.getByText("4 · Methodology")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Export CSV/ })).toBeEnabled();
+  });
+
+  it("compares its models run against run, the default model first, and opens both answers", async () => {
+    renderOne("/evaluations/compare/pairs?ids=eb");
+    expect(await screen.findByRole("heading", { name: "Grounded" })).toBeInTheDocument();
+    expect(await screen.findByText("2 · Every run ranked on the same entries")).toBeInTheDocument();
+    expect(screen.queryByText("1 · What can be compared")).not.toBeInTheDocument();
+    expect(screen.queryByText("4 · Do the shared entries stand for each dataset?")).not.toBeInTheDocument();
+    expect(screen.getByText("2 · Every run ranked on the same entries")).toBeInTheDocument();
+    // Entity F1 pooled over the three entries: the default model (opus) 23/58, sonnet 4/58;
+    // one agent ran them all, so the runs read by their model alone.
+    expect(
+      screen.getByText(/On the 3 entries both ran, claude-sonnet-5-5 scores 6\.9 against 39\.7 for claude-opus-5-5 \(/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^APT_K_47:.*Open both answers side by side/ }));
+    expect(await screen.findByText("at /evaluations/review?results=res-b1,res-s1")).toBeInTheDocument();
   });
 });

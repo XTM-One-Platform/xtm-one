@@ -819,34 +819,55 @@ def command_named_files(
     under the sub_paths, *sizes* every regular file of the repository. Each word
     of a ``run`` line (from the step's working directory, after a ``cd``) or of a
     script (from its manifest's directory) that names a regular file of the
-    repository is kept. Release, publish and deploy workflows and jobs are not
+    repository is kept. A workflow step that ``cd``s into a directory of the
+    repository runs from it and imports what lies there (``cd shared/plugin &&
+    PYTHONPATH=. pylint --load-plugins my_plugin ..``): the direct files of that
+    directory are kept when it holds at most :data:`MAX_REFERENCED_DIR_FILES`
+    files and :data:`MAX_REFERENCED_DIR_BYTES`. Release, publish and deploy workflows and jobs are not
     read (they ship, they do not check); a file under a sub_path, under a
     directory a build or an install writes, out of the repository or past
     :data:`MAX_COMPANION_BYTES` adds nothing; :data:`MAX_COMPANIONS` at most, sorted.
     """
     wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
     found: set[str] = set()
+    by_dir: dict[str, list[str]] = {}
+    for path in sizes:
+        by_dir.setdefault(posixpath.dirname(path), []).append(path)
 
-    def scan(line: str, cwd: str | None) -> None:
+    def keep(target: str | None) -> None:
+        if (
+            target
+            and target in sizes
+            and sizes[target] <= MAX_COMPANION_BYTES
+            and not any(target == s or target.startswith(s + "/") for s in wanted)
+            and not _skipped(target)
+        ):
+            found.add(target)
+
+    def keep_directory(directory: str) -> None:
+        members = by_dir.get(directory, []) if directory else []
+        if (
+            members
+            and len(members) <= MAX_REFERENCED_DIR_FILES
+            and sum(sizes[m] for m in members) <= MAX_REFERENCED_DIR_BYTES
+        ):
+            for member in members:
+                keep(member)
+
+    def scan(line: str, cwd: str | None, *, step: bool = False) -> None:
         for segment in _SCRIPT_SEPARATOR.split(line[:MAX_REQUIREMENTS_BYTES]):
             cd = _SCRIPT_CD.match(segment)
             if cd:
                 cwd = _script_path(cwd, cd.group(2)) if cwd is not None else None
+                if step and cwd:
+                    keep_directory(cwd)
                 continue
             if cwd is None:
                 continue
             for token in _SCRIPT_PATH.findall(segment):
                 if token.startswith("-") or ("/" not in token and "." not in token):
                     continue
-                target = _script_path(cwd, token)
-                if (
-                    target
-                    and target in sizes
-                    and sizes[target] <= MAX_COMPANION_BYTES
-                    and not any(target == s or target.startswith(s + "/") for s in wanted)
-                    and not _skipped(target)
-                ):
-                    found.add(target)
+                keep(_script_path(cwd, token))
 
     for path, data in sorted(workflows.items()):
         if not _is_workflow(path) or any(word in posixpath.basename(path).lower() for word in _SHIPPING):
@@ -864,7 +885,7 @@ def command_named_files(
                     continue
                 cwd = _clean_dir(job_dir, str(step.get("working-directory", "") or ""))
                 for line in _run_lines(step["run"]):
-                    scan(line, cwd)
+                    scan(line, cwd, step=True)
     for path, data in sorted(manifests.items()):
         if posixpath.basename(path) != "package.json":
             continue
@@ -1299,6 +1320,12 @@ def classify(tokens: list[str]) -> tuple[str, str] | None:
         return ("node", kind) if (kind := _script_kind(script)) else None
     if tool in ("python", "python3") and len(rest) >= 2 and rest[0] == "-m":
         return classify(rest[1:])
+    if tool in ("python", "python3") and rest and rest[0].endswith(".py"):
+        return classify(rest)
+    if tool.endswith(".py") and len(tool) > 3:
+        # A repository script (`uv run plugin/scripts/flow_lint.py`, `python scripts/lint_docs.py`): its
+        # name says the kind, as a package.json script name does; a PEP 723 header carries its dependencies.
+        return ("python", kind) if (kind := _script_kind(tool[:-3]) or _gate_script_kind(tool[:-3])) else None
     if tool in ("pip", "pip3"):
         return ("python", "install") if words[:1] == ["install"] and "--user" not in rest else None
     if tool in ("uv", "poetry"):
@@ -1358,10 +1385,78 @@ _CD = re.compile(r"^cd\s+([^\s;&|]+)\s*$")
 _SHIPPING = ("release", "publish", "deploy")
 
 
+#: A repository gate script named for what it checks (``check_catalog_contract.py``, ``validate_manifest.py``).
+_GATE_SCRIPT = re.compile(r"^(check|validate|verify)[-_][a-z0-9]")
+
+
+def _gate_script_kind(name: str) -> str | None:
+    """``check-<rest>`` for a repository gate script, its own check: ``check_catalog_contract`` gives ``check-catalog-contract``."""
+    lowered = name.lower()
+    if not _GATE_SCRIPT.match(lowered) or any(word in lowered for word in _SCRIPT_SKIP):
+        return None
+    rest = re.sub(r"[^a-z0-9]+", "-", re.sub(r"^(check|validate|verify)", "", lowered)).strip("-")
+    return f"check-{rest}" if rest else None
+
+
+_EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+_EXPRESSION_MARK = "\x00"
+
+
+def _script_index(tokens: list[str]) -> int | None:
+    """The index of the repository ``.py`` script a command runs (``python x.py``, ``uv run x.py``, ``x.py``)."""
+    if not tokens:
+        return None
+    tool = posixpath.basename(tokens[0])
+    if tool.endswith(".py"):
+        return 0
+    if tool in ("python", "python3") and len(tokens) > 1 and tokens[1].endswith(".py"):
+        return 1
+    if tool == "uv" and len(tokens) > 2 and tokens[1] == "run":
+        index = 2
+        while index < len(tokens) and tokens[index].startswith("-"):
+            index += 1
+        return index if index < len(tokens) and tokens[index].endswith(".py") else None
+    return None
+
+
+def _without_expression_options(line: str) -> str | None:
+    """*line* with each option of its repository script whose value is a ``${{ }}`` expression left out, or ``None``.
+
+    ``python .github/scripts/check_catalog_contract.py --changed-since "origin/${{ github.base_ref }}"``
+    gives ``python .github/scripts/check_catalog_contract.py``: the sandbox has no runner context, the
+    caller passes the option in the call's args. An expression anywhere else (the command, a positional
+    argument, a shell construct) leaves the line out, as before.
+    """
+    marked = _EXPRESSION.sub(_EXPRESSION_MARK, line)
+    if "${{" in marked or any(c in _SHELL_CHARS for c in marked):
+        return None
+    try:
+        tokens = shlex.split(marked)
+    except ValueError:
+        return None
+    start = _script_index(tokens)
+    if start is None or any(_EXPRESSION_MARK in t for t in tokens[: start + 1]):
+        return None
+    kept = tokens[: start + 1]
+    for token in tokens[start + 1 :]:
+        if _EXPRESSION_MARK not in token:
+            kept.append(token)
+        elif token.startswith("-") and "=" in token:
+            continue  # --name=${{ ... }}
+        elif len(kept) > start + 1 and kept[-1].startswith("-") and "=" not in kept[-1]:
+            kept.pop()  # --name ${{ ... }}: the flag goes with its value
+        else:
+            return None
+    return shlex.join(kept)
+
+
 def _command(line: str, cwd: str, dirs: frozenset[str] = frozenset()) -> tuple[str, list[str], list[str]] | None:
     """(cwd, the argv to run, the tokens to classify) of a workflow line, or ``None``."""
     if "${{" in line:
-        return None
+        stripped = _without_expression_options(line)
+        if stripped is None:
+            return None
+        line = stripped
     match = re.match(r"^cd\s+([^\s;&|]+)\s*&&\s*(.+)$", line)
     if match:
         where = _clean_dir(cwd, match.group(1), dirs)

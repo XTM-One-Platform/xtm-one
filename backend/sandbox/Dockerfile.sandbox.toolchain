@@ -144,6 +144,17 @@ RUN uv venv --python /usr/local/bin/python3.14 /opt/ansible \
     && for b in ansible ansible-playbook ansible-galaxy ansible-lint; do ln -s /opt/ansible/bin/$b /usr/local/bin/$b; done \
     && ansible --version && ansible-lint --version
 
+# Poetry in its own environment (/opt/poetry, Python 3.14), linked on PATH, so
+# the checks detected on a Poetry project (`poetry install`, `poetry run
+# pytest|ruff|mypy|flake8`) run as its CI runs them (OpenAEV-Platform/collectors
+# CI pins poetry==2.3.2). Its virtualenvs go to the user cache, never into the
+# checkout.
+ARG POETRY_VERSION=2.3.2
+RUN uv venv --python /usr/local/bin/python3.14 /opt/poetry \
+    && uv pip install --no-cache --python /opt/poetry/bin/python "poetry==${POETRY_VERSION}" \
+    && ln -s /opt/poetry/bin/poetry /usr/local/bin/poetry \
+    && poetry --version
+
 USER sandboxuser
 
 # ---------------------------------------------------------------------------

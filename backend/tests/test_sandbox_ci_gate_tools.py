@@ -50,6 +50,17 @@ def test_ansible_is_pinned_in_toolchain_python_only():
     assert "ansible-lint==${ANSIBLE_LINT_VERSION}" in python_stage
 
 
+def test_poetry_is_pinned_in_toolchain_python_and_asserted_offline():
+    # A Poetry project's detected checks (`poetry install`, `poetry run pytest`) exit 127 without it.
+    python_stage = DOCKERFILE.read_text().split("AS toolchain-python", 1)[1].split("\nFROM ", 1)[0]
+    assert re.search(r"ARG POETRY_VERSION=\d+\.\d+\.\d+", python_stage)
+    assert '"poetry==${POETRY_VERSION}"' in python_stage
+    assert "/usr/local/bin/poetry" in python_stage
+    images = (ROOT / ".github" / "workflows" / "sandbox-images.yml").read_text()
+    line = next(ln for ln in images.splitlines() if ln.strip().startswith("toolchain-python)"))
+    assert "poetry --version" in line
+
+
 def test_toolchain_rust_installs_the_libraries_runner_ci_installs():
     rust_stage = DOCKERFILE.read_text().split("AS toolchain-rust", 1)[1].split("\nFROM ", 1)[0]
     assert "apt.sandbox.toolchain.rust.txt" in rust_stage

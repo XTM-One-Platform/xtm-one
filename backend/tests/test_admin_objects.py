@@ -171,6 +171,23 @@ def test_every_arm_selects_the_unified_columns_in_one_order():
     assert "conversations.channel AS subtype" in conversation_sql
 
 
+def test_knowledge_bases_leave_out_a_workset_corpus():
+    """A workset's corpus is an ``is_internal`` knowledge base: its storage, which
+    no page opens. It is never listed (nor counted) as a Knowledge Base row; the
+    Workset row stands for it."""
+    sql = _compiled(admin_objects._entity_select(admin_objects.ENTITY_MAP["knowledge_base"]))
+    assert "WHERE knowledge_bases.is_internal IS false" in sql
+    workset_sql = _compiled(admin_objects._entity_select(admin_objects.ENTITY_MAP["workset"]))
+    assert "WHERE" not in workset_sql
+
+
+def test_the_knowledge_base_filter_narrows_the_count_too():
+    _, session = _list(object_type="knowledge_base")
+    count_sql, page_sql = (_compiled(s) for s in session.statements)
+    assert "knowledge_bases.is_internal IS false" in count_sql
+    assert "knowledge_bases.is_internal IS false" in page_sql
+
+
 def test_presentations_surface_their_title_as_the_row_name():
     """A deck has no ``name`` — its ``title`` is what the browser lists and searches."""
     sql = _compiled(admin_objects._entity_select(admin_objects.ENTITY_MAP["presentation"]))
@@ -467,9 +484,10 @@ def test_owner_status_and_company_filters_narrow_both_the_count_and_the_page():
     _response, session = _list(is_company_managed=False)
     assert "objects.is_company_managed IS false" in _compiled(session.statements[0])
 
-    # No filter: the search-free, filter-free statements carry no WHERE.
+    # No filter: the search-free, filter-free statements carry no filter WHERE
+    # (an arm's own exclusion, a workset's knowledge base, is not a filter).
     _response, session = _list()
-    assert "WHERE" not in _compiled(session.statements[0])
+    assert "WHERE objects." not in _compiled(session.statements[0])
 
 
 @pytest.mark.parametrize(
