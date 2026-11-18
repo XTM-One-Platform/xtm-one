@@ -18,7 +18,7 @@ import pytest
 
 from app.llm.base import BaseLLMProvider, ChatMessage, ChatResponse, ModelDeclinedError
 from app.llm.model_capabilities import uses_responses_api_with_tools
-from app.llm.openai_compat import FUNCTION_TOOLS_UNSUPPORTED, create_with_effort_retry
+from app.llm.openai_compat import FUNCTION_TOOLS_UNSUPPORTED, _create_completion, create_with_effort_retry
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.openai_responses import (
     build_responses_params,
@@ -106,10 +106,20 @@ def _provider(endpoints: _Endpoints) -> OpenAIProvider:
     return provider
 
 
-@pytest.mark.parametrize(
-    "model", [_ASTRA, "gpt-6-astra-2026-09-01", "openai/gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"]
-)
-def test_gpt6_astra_is_flagged_for_the_responses_api(model):
+_NO_CHAT_TOOLS_MODELS = [
+    _ASTRA,
+    "gpt-6-astra-2026-09-01",
+    "openai/gpt-6-astra",
+    "gpt-6.2-sol",
+    "gpt-6.2-sol-2026-11-01",
+    "openai/gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "openrouter/openai/gpt-6.2-astra",
+]
+
+
+@pytest.mark.parametrize("model", _NO_CHAT_TOOLS_MODELS)
+def test_models_without_chat_tools_are_flagged_for_the_responses_api(model):
     assert uses_responses_api_with_tools(model)
 
 
@@ -118,11 +128,12 @@ def test_other_models_are_not_flagged(model):
     assert not uses_responses_api_with_tools(model)
 
 
+@pytest.mark.parametrize("model", [_ASTRA, "gpt-6.2-sol", "gpt-6.2-astra"])
 @pytest.mark.parametrize("effort", ["none", "minimal", None])
-async def test_a_gpt6_astra_leg_with_tools_sends_a_responses_request_with_low(effort):
+async def test_a_leg_with_tools_sends_a_responses_request_with_low(effort, model):
     endpoints = _Endpoints()
     response = await _provider(endpoints).chat(
-        [ChatMessage(role="user", content="hi")], model=_ASTRA, tools=[_tool()], reasoning_effort=effort
+        [ChatMessage(role="user", content="hi")], model=model, tools=[_tool()], reasoning_effort=effort
     )
 
     assert response.content == "ok"
@@ -262,6 +273,77 @@ async def test_the_double_refusal_ends_in_one_named_cause_in_two_calls():
     assert caught.value.status_code == 400
     assert "function tools unsupported on chat completions for gpt-7-nova" in str(caught.value)
     assert FailoverLLMProvider._is_non_failoverable(caught.value) is False
+
+
+def _refusing_create(calls: list[dict]):
+    async def create(params):
+        calls.append(params)
+        raise _bad_request(_NONE_REFUSAL if params.get("reasoning_effort") == "none" else _TOOLS_REFUSAL)
+
+    return create
+
+
+_GATEWAY = "https://gateway.example/v1/"
+_WITH_TOOLS = {"model": "gpt-6.2-sol", "tools": [{"type": "function"}], "reasoning_effort": "low"}
+
+
+async def test_an_endpoint_that_refused_tools_is_not_asked_again():
+    """The gateway passes chat completions through (ai-gateway#354): a second tool call there fails without a request."""
+    calls: list[dict] = []
+    for _ in range(3):
+        with pytest.raises(openai.BadRequestError) as caught:
+            await create_with_effort_retry(_refusing_create(calls), _WITH_TOOLS, "gpt-6.2-sol", endpoint=_GATEWAY)
+        assert caught.value.code == FUNCTION_TOOLS_UNSUPPORTED
+        assert caught.value.status_code == 400
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("params", "model", "endpoint"),
+    [
+        ({**_WITH_TOOLS, "model": "gpt-6.2-astra"}, "gpt-6.2-astra", _GATEWAY),
+        (_WITH_TOOLS, "gpt-6.2-sol", "https://other.example/v1/"),
+        ({k: v for k, v in _WITH_TOOLS.items() if k != "tools"}, "gpt-6.2-sol", _GATEWAY),
+        (_WITH_TOOLS, "gpt-6.2-sol", None),
+    ],
+    ids=["another model", "another endpoint", "no tools", "no endpoint"],
+)
+async def test_only_the_refused_model_with_tools_on_that_endpoint_fails_fast(params, model, endpoint):
+    with pytest.raises(openai.BadRequestError):
+        await create_with_effort_retry(_refusing_create([]), _WITH_TOOLS, "gpt-6.2-sol", endpoint=_GATEWAY)
+
+    calls: list[dict] = []
+    with pytest.raises(openai.BadRequestError):
+        await create_with_effort_retry(_refusing_create(calls), params, model, endpoint=endpoint)
+    assert calls
+
+
+async def test_the_refusal_is_forgotten_after_a_while(monkeypatch):
+    """Once the gateway translates these requests (ai-gateway#354), tool calls come back without a restart."""
+    now = [1000.0]
+    monkeypatch.setattr("app.llm.openai_compat.time.monotonic", lambda: now[0])
+    calls: list[dict] = []
+    with pytest.raises(openai.BadRequestError):
+        await create_with_effort_retry(_refusing_create(calls), _WITH_TOOLS, "gpt-6.2-sol", endpoint=_GATEWAY)
+    now[0] += 3600
+    with pytest.raises(openai.BadRequestError):
+        await create_with_effort_retry(_refusing_create(calls), _WITH_TOOLS, "gpt-6.2-sol", endpoint=_GATEWAY)
+    assert len(calls) == 4
+
+
+async def test_an_openai_compatible_provider_remembers_the_refusal_per_base_url():
+    calls: list[dict] = []
+    create = _refusing_create(calls)
+
+    async def completions_create(**params):
+        return await create(params)
+
+    client = SimpleNamespace(base_url=httpx.URL(_GATEWAY), chat=SimpleNamespace(completions=SimpleNamespace(create=completions_create)))
+    for _ in range(2):
+        with pytest.raises(openai.BadRequestError) as caught:
+            await _create_completion(client, dict(_WITH_TOOLS), "gpt-6.2-sol", None)
+        assert caught.value.code == FUNCTION_TOOLS_UNSUPPORTED
+    assert len(calls) == 2
 
 
 class _Anthropic(BaseLLMProvider):

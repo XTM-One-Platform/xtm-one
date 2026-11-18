@@ -18,6 +18,7 @@ from __future__ import annotations
 import functools
 import logging
 import re
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any
 
@@ -266,8 +267,24 @@ async def create_without_refused_temperature[T](
         return await create({k: v for k, v in params.items() if k != "temperature"})
 
 
+# (endpoint, model) -> monotonic time until which a request with tools there
+# fails without being sent: it ended on ``function_tools_unsupported``.
+_TOOLS_REFUSED_UNTIL: dict[tuple[str, str | None], float] = {}
+#: Long enough to spare the doomed pair on every tool call, short enough to
+#: pick up an endpoint that starts taking them (ai-gateway#354) without a restart.
+_TOOLS_REFUSAL_TTL_SECONDS = 600.0
+
+
+def forget_tools_refusals() -> None:
+    _TOOLS_REFUSED_UNTIL.clear()
+
+
 async def create_with_effort_retry[T](
-    create: Callable[[dict[str, Any]], Awaitable[T]], params: dict[str, Any], model: str | None
+    create: Callable[[dict[str, Any]], Awaitable[T]],
+    params: dict[str, Any],
+    model: str | None,
+    *,
+    endpoint: str | None = None,
 ) -> T:
     """Run ``create(params)``; on a refusal of ``reasoning_effort``, retry once corrected.
 
@@ -275,8 +292,14 @@ async def create_with_effort_retry[T](
     line; this answers a model the table does not know yet, or one whose
     accepted values moved, on the same leg instead of failing over. A refused
     ``temperature`` is retried once without it on each request
-    (``create_without_refused_temperature``).
+    (``create_without_refused_temperature``). With *endpoint*, a request with
+    tools that ended on ``function_tools_unsupported`` there fails without
+    being sent for :data:`_TOOLS_REFUSAL_TTL_SECONDS`.
     """
+    refusal_key = (endpoint, model) if endpoint and params.get("tools") else None
+    if refusal_key and _TOOLS_REFUSED_UNTIL.get(refusal_key, 0.0) > time.monotonic():
+        request = httpx.Request("POST", f"{endpoint.rstrip('/')}/chat/completions")
+        raise _function_tools_unsupported(model, request, httpx.Headers())
 
     async def send(request: dict[str, Any]) -> T:
         return await create_without_refused_temperature(create, request, model)
@@ -296,6 +319,12 @@ async def create_with_effort_retry[T](
             return await send(corrected)
         except openai.APIStatusError as second:
             if retried == "none" and _effort_after_refusal(second, "none") is not _NO_RETRY:
+                if refusal_key:
+                    _TOOLS_REFUSED_UNTIL[refusal_key] = time.monotonic() + _TOOLS_REFUSAL_TTL_SECONDS
+                    logger.warning(
+                        "%s refuses function tools on chat completions at %s: failing fast for %ds",
+                        model, endpoint, _TOOLS_REFUSAL_TTL_SECONDS,
+                    )
                 raise function_tools_unsupported(second, model) from second
             raise
 
@@ -314,10 +343,16 @@ def function_tools_unsupported(exc: openai.APIStatusError, model: str | None) ->
     (``model_capabilities.responses_api_with_tools`` routes such a model to
     the Responses API).
     """
+    # A 400 even after a gateway 502: the leg ends on the request, not on the gateway.
+    return _function_tools_unsupported(model, exc.request, exc.response.headers)
+
+
+def _function_tools_unsupported(
+    model: str | None, request: httpx.Request, headers: httpx.Headers
+) -> openai.BadRequestError:
     message = f"function tools unsupported on chat completions for {model or 'this model'}"
     body = {"message": message, "param": "reasoning_effort", "code": FUNCTION_TOOLS_UNSUPPORTED, "retryable": False}
-    # A 400 even after a gateway 502: the leg ends on the request, not on the gateway.
-    response = httpx.Response(400, headers=exc.response.headers, request=exc.request)
+    response = httpx.Response(400, headers=headers, request=request)
     return openai.BadRequestError(message, response=response, body=body)
 
 
@@ -498,13 +533,20 @@ def _refuses_replay(exc: Exception) -> bool:
     )
 
 
+def endpoint_of(client: object) -> str | None:
+    base_url = getattr(client, "base_url", None)
+    return str(base_url) if base_url else None
+
+
 async def _create_completion(client, params: dict, model: str | None, replay: BlocksReplay | None):
     """``chat.completions.create`` with the effort / temperature retries, sent
     once more without the replayed thinking blocks when a request carrying them
     is refused."""
 
     def send():
-        return create_with_effort_retry(lambda p: client.chat.completions.create(**p), params, model)
+        return create_with_effort_retry(
+            lambda p: client.chat.completions.create(**p), params, model, endpoint=endpoint_of(client)
+        )
 
     try:
         return await send()
