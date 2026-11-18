@@ -244,3 +244,59 @@ def test_finalisation_nag_is_none_without_a_run_frictions_or_a_store(monkeypatch
 
     monkeypatch.setattr(database, "async_session", broken)
     assert asyncio.run(frictions.finalisation_nag(frictions.make_scope(AGENT, run_id=RUN))) is None
+
+
+class _StatusResult:
+    def __init__(self, status: str | None) -> None:
+        self._status = status
+
+    def scalar_one_or_none(self) -> str | None:
+        return self._status
+
+
+class _ItemSession:
+    """The ledger rows on the frictions read, the item's status on the work item read."""
+
+    def __init__(self, kind: str, status: str | None) -> None:
+        self.ledger = _Session([_Row(kind, "tool")])  # type: ignore[no-untyped-call]
+        self.status = status
+
+    async def __aenter__(self) -> _ItemSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def execute(self, stmt: object) -> object:
+        if "work_items" in str(stmt):
+            return _StatusResult(self.status)
+        return await self.ledger.execute(stmt)  # type: ignore[no-untyped-call]
+
+
+@pytest.mark.parametrize("status", ["done", "cancelled"])
+def test_finalisation_nag_says_the_run_s_own_item_is_already_finished(
+    monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    import app.core.database as database
+
+    item = uuid.uuid4()
+    monkeypatch.setattr(database, "async_session", lambda: _ItemSession("tool_error", status))
+    line = asyncio.run(frictions.finalisation_nag(frictions.make_scope(AGENT, run_id=RUN, work_item_id=item)))
+    assert line is not None
+    assert f"Your work item `{item}` is already {status}: write nothing more on it" in line
+    assert line.index("dispose_friction on each") < line.index("Your work item")
+
+
+@pytest.mark.parametrize("status", ["in_progress", "claimed", None])
+def test_finalisation_nag_says_nothing_of_an_open_or_unread_item(
+    monkeypatch: pytest.MonkeyPatch, status: str | None
+) -> None:
+    import app.core.database as database
+
+    monkeypatch.setattr(database, "async_session", lambda: _ItemSession("tool_error", status))
+    line = asyncio.run(frictions.finalisation_nag(frictions.make_scope(AGENT, run_id=RUN, work_item_id=uuid.uuid4())))
+    assert line is not None and "Your work item" not in line
+    # No item on the scope: the line is the one it always was, and the item is never read.
+    monkeypatch.setattr(database, "async_session", lambda: _ItemSession("tool_error", "done"))
+    line = asyncio.run(frictions.finalisation_nag(frictions.make_scope(AGENT, run_id=RUN)))
+    assert line is not None and line.endswith("then give your final answer.")
