@@ -336,7 +336,7 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
 
     assert doc.status == "error"
     assert "dimension" in doc.error_message
-    assert moved.await_args.args[1] == used_config
+    assert moved.await_args.args[0] == used_config
     assert before <= doc.embedding_next_retry_at <= datetime.now(UTC)
 
 

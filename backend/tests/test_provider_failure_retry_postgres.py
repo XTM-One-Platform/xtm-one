@@ -148,29 +148,49 @@ async def test_a_legacy_row_runs_on_the_config_the_save_compares_with(monkeypatc
         assert await _legacy_embedding_config_id(db, "openai") == used
 
 
-async def _noop():
-    return None
-
-
 @pytest.mark.asyncio
-async def test_a_job_sees_the_embedding_config_it_used_was_switched():
+async def test_a_job_sees_the_embedding_config_it_used_was_switched(monkeypatch):
+    from app.core.security import encrypt_value
+    from app.llm import router
+    from app.models.llm_config import LLMProviderConfig
     from app.models.platform_settings import PlatformSettings
 
-    used, other = uuid.uuid4(), uuid.uuid4()
+    monkeypatch.setattr(router, "ensure_not_excluded", lambda *_a, **_kw: _noop())
+
+    def config(provider, default_model):
+        return LLMProviderConfig(
+            provider=provider,
+            api_key_enc=encrypt_value("sk-test"),
+            available_models=[default_model] if default_model else [],
+            default_model=default_model,
+        )
+
     async with (
         scratch_database("provmoved", tables=ALL_TABLES, extensions=("vector",)) as scratch,
         scratch.sessions() as db,
     ):
-        ps = PlatformSettings(embedding_provider="openai", embedding_provider_id=None)
+        # The stored config has no model to embed with: the router falls back
+        # to the OpenAI config, which is what the job used.
+        stored = config("gemini", None)
+        fallback = config("openai", "text-embedding-3-small")
+        other = config("openai", "text-embedding-3-small")
+        db.add_all([stored, fallback])
+        await db.flush()
+        other.created_at = fallback.created_at - timedelta(minutes=1)
+        db.add(other)
+        ps = PlatformSettings(embedding_provider="gemini", embedding_provider_id=stored.id)
         db.add(ps)
         await db.commit()
-        # A row with no id names no config: nothing to compare.
-        assert await kb_helpers.embedding_config_moved(db, used) is False
 
-        ps.embedding_provider_id = used
-        await db.commit()
-        assert await kb_helpers.embedding_config_moved(db, str(used)) is False
+        assert await kb_helpers.embedding_config_moved(fallback.id) is False
+        assert await kb_helpers.embedding_config_moved(str(fallback.id)) is False
 
-        ps.embedding_provider_id = other
+        ps.embedding_provider = "openai"
+        ps.embedding_provider_id = other.id
         await db.commit()
-        assert await kb_helpers.embedding_config_moved(db, used) is True
+
+        assert await kb_helpers.embedding_config_moved(fallback.id) is True
+
+
+async def _noop():
+    return None

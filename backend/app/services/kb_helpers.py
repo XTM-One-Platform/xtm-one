@@ -1484,18 +1484,21 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
     return total
 
 
-async def embedding_config_moved(db: AsyncSession, used_config_id: uuid.UUID | str) -> bool:
-    """Whether the platform embedding config is no longer the one a job embedded
-    with: a provider switch while it ran. A row with no id names none."""
-    from app.models.platform_settings import PlatformSettings
+async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:
+    """Whether resolving the embedding provider now lands on another config than
+    the one a job embedded with: an admin switched it while the job ran.
 
-    current = (
-        await db.execute(
-            select(PlatformSettings.embedding_provider_id)
-            .order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    The router's own resolution, fallbacks included, on a fresh session: the
+    job's session still holds the settings it read when it started.
+    """
+    from app.core.database import async_session
+    from app.llm.router import get_embedding_provider
+
+    try:
+        async with async_session() as db:
+            _provider, _model, current = await get_embedding_provider(db)
+    except Exception:
+        return False
     return current is not None and str(current) != str(used_config_id)
 
 
