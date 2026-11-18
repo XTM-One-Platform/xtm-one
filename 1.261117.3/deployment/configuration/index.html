@@ -5591,8 +5591,8 @@
 <tr>
 <td><code>LLM_PROVIDER_{NAME}_MODELS</code></td>
 <td>No</td>
-<td>All available</td>
-<td>Comma-separated list of models to expose. Either pinned or an editable baseline, depending on <code>LLM_PROVIDER_MODELS_EDITABLE</code>. When unset, the provider's stored model list is never touched by the startup seed. A provider that lists no model chats on its built-in chat model only while no configured provider lists one: next to providers whose models are listed, it takes no chat and no failover. A key set for the image, video, speech or music models alone (<code>DEFAULT_*_PROVIDER</code> below) therefore needs no model list.</td>
+<td>— (<code>filigran_gateway</code>: its chat models)</td>
+<td>Comma-separated list of models to expose. Either pinned or an editable baseline, depending on <code>LLM_PROVIDER_MODELS_EDITABLE</code>. When unset, the provider's stored model list is never touched by the startup seed, except for <code>filigran_gateway</code>: when no other provider offers a chat model (and, with <code>LLM_PROVIDER_MODELS_EDITABLE=true</code> or <code>BYOLLM_ACTIVATED=true</code>, the gateway has no model list yet), startup lists the gateway's chat models and uses them as the list. From then on the list is refreshed on every startup, even once another provider offers chat models, until an administrator edits it (possible with either of those two variables). A model the gateway stops listing leaves the list, but agents and users that picked it keep their choice. If the gateway does not answer, the stored list is kept. A provider that lists no model chats on its built-in chat model only while no configured provider lists one: next to providers whose models are listed, it takes no chat and no failover. A key set for the image, video, speech or music models alone (<code>DEFAULT_*_PROVIDER</code> below) therefore needs no model list.</td>
 </tr>
 <tr>
 <td><code>LLM_PROVIDER_MODELS_EDITABLE</code></td>
@@ -8394,7 +8394,7 @@ call.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 19:36:35 UTC"><span class="timeago" datetime="2026-11-17T19:36:35+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 19:36:35 UTC">2026-11-17</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 18, 2026 10:15:08 UTC"><span class="timeago" datetime="2026-11-18T10:15:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 18, 2026 10:15:08 UTC">2026-11-18</span>
   </span>
 
     
@@ -8421,6 +8421,11 @@ call.</p>
 
     
     <nav>
+      
+        <a href="https://github.com/fred-lr" class="md-author" title="@fred-lr">
+          
+          <img src="https://avatars.githubusercontent.com/u/294083249?v=4&amp;size=72" alt="fred-lr">
+        </a>
       
         <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
           
