@@ -229,6 +229,13 @@ async def test_deactivation_cascade_then_reactivation_round_trip() -> None:
         assert ("workspace", str(seed["workspace"]), "transferred") in actions
         assert ("integration", str(seed["oauth"]), "disconnected") in actions
         assert ("agent", str(seed["borrower"]), "bound_by_other_agent") in actions
+        # Each item carries the values the review screen renders in the
+        # reader's language (REVIEW_DETAIL_LABELS), never the English detail.
+        by_key = {(i["kind"], i["id"], i["action"]): i["params"] for i in outcome.review_items}
+        moved = by_key[("workspace", str(seed["workspace"]), "transferred")]
+        assert moved["successor"] and moved["paused"] == 0
+        assert by_key[("agent", str(seed["borrower"]), "bound_by_other_agent")]["count"] == 1
+        assert by_key[("integration", str(seed["oauth"]), "disconnected")]["provider"]
 
         # One episode and one audit row.
         episodes = (

@@ -47,6 +47,20 @@ export const REVIEW_ACTION_LABELS = {
   bound_by_other_agent: "Used by another agent",
 } as const;
 
+/**
+ * @i18n-keys The line under a reviewed object, by what the cascade did to it;
+ * the values are the item's `params` (`_review_item` in
+ * backend/app/services/user_deactivation.py). An action without a line here
+ * shows its badge alone.
+ */
+export const REVIEW_DETAIL_LABELS = {
+  transferred: "Now owned by {successor}{paused, plural, =0 {.} one {; # assignment that ran as this account was paused.} other {; # assignments that ran as this account were paused.}}",
+  paused: "Assignment of the agent {agent}; it ran as this account.",
+  disconnected: "{provider} account of this user; its token was cleared.",
+  kept_no_successor: "No other active administrator could take it over.",
+  bound_by_other_agent: "{count, plural, one {Bound to # integration of this user, now disconnected.} other {Bound to # integrations of this user, now disconnected.}}",
+} as const;
+
 /** The catalog key of `key` in a label table, else `fallback` (a value the backend added later). */
 export function labelOf(table: Readonly<Record<string, string>>, key: string, fallback: string): string {
   return table[key] ?? fallback;

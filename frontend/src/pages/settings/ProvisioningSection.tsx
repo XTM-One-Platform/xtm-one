@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import {
   useCreateScimToken,
   useDeactivations,
@@ -28,7 +29,12 @@ import {
 } from "@/hooks/api/useProvisioningApi";
 import { useFormatter } from "@/i18n";
 import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
-import { DEACTIVATION_SOURCE_LABELS, labelOf as label, REVIEW_ACTION_LABELS } from "@/lib/provisioning-labels";
+import {
+  DEACTIVATION_SOURCE_LABELS,
+  labelOf as label,
+  REVIEW_ACTION_LABELS,
+  REVIEW_DETAIL_LABELS,
+} from "@/lib/provisioning-labels";
 import { formatShortDateTime } from "@/lib/utils";
 import { Icon, Spinner } from "@filigran/design-system";
 
@@ -136,27 +142,37 @@ function ScimCard() {
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            aria-label={t_i18n("Token name")}
-            className="max-w-xs"
-            value={name}
-            maxLength={255}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={() => create.mutate(name.trim(), { onSuccess: setCreated })}
-            disabled={create.isPending || !name.trim()}
-            data-testid="scim-token-generate"
-            aria-busy={create.isPending || undefined}
-          >
-            {create.isPending && <Spinner size="sm" tone="inherit" />}
-            {!create.isPending && <Icon name="key-round" size={16} aria-hidden />}
-            {t_i18n("Generate token")}
-          </Button>
-        </div>
+        <SettingsField
+          id="scim-token-name"
+          label={t_i18n("Token name")}
+          helper={t_i18n("One token per identity provider, so you can revoke one without stopping the others.")}
+          info={t_i18n(
+            "The name you will recognise in the token list and in the audit trail, for example Microsoft Entra production. The token itself is shown once, right after you generate it.",
+          )}
+        >
+          {/* items-start: the counter the Input draws under itself never pushes the button down. */}
+          <div className="flex flex-wrap items-start gap-2">
+            <Input
+              id="scim-token-name"
+              aria-describedby={settingsFieldHintId("scim-token-name")}
+              className="max-w-xs"
+              value={name}
+              maxLength={255}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Button
+              className="gap-1.5"
+              onClick={() => create.mutate(name.trim(), { onSuccess: setCreated })}
+              disabled={create.isPending || !name.trim()}
+              data-testid="scim-token-generate"
+              aria-busy={create.isPending || undefined}
+            >
+              {create.isPending && <Spinner size="sm" tone="inherit" />}
+              {!create.isPending && <Icon name="key-round" size={16} aria-hidden />}
+              {t_i18n("Generate token")}
+            </Button>
+          </div>
+        </SettingsField>
         {ConfirmEl}
       </CardContent>
     </Card>
@@ -228,17 +244,21 @@ function EpisodeRow({ episode }: { episode: DeactivationEpisode }) {
                   <Badge variant="outline" className="mr-2 content-caption">{t_i18n(label(REVIEW_ACTION_LABELS, item.action, "Moved"))}</Badge>
                   {item.name}
                 </p>
-                <p className="content-compact text-default-secondary">{item.detail}</p>
+                {item.params && item.action in REVIEW_DETAIL_LABELS && (
+                  <p className="content-compact text-default-secondary">
+                    {t_i18n(REVIEW_DETAIL_LABELS[item.action as keyof typeof REVIEW_DETAIL_LABELS], item.params)}
+                  </p>
+                )}
               </div>
               <div className="flex gap-1">
                 <Button variant="outline" size="sm" onClick={() => mark(item.key, "keep")} disabled={resolve.isPending}>
-                  {t_i18n("Keep as is")}
+                  {t_i18n("Mark as kept")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => mark(item.key, "reassign")} disabled={resolve.isPending}>
-                  {t_i18n("Reassigned")}
+                  {t_i18n("Mark as reassigned")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => mark(item.key, "delete")} disabled={resolve.isPending}>
-                  {t_i18n("Deleted")}
+                  {t_i18n("Mark as deleted")}
                 </Button>
               </div>
             </li>

@@ -145,7 +145,10 @@ def _label(user: User | None) -> str:
     return (user.full_name or "").strip() or user.email
 
 
-def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: str) -> dict[str, Any]:
+def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: str, **params: Any) -> dict[str, Any]:
+    # ``detail`` is the English sentence of the audit trail and the admin
+    # notification; ``params`` are its values, from which the review screen
+    # renders the line in the reader's language (``REVIEW_DETAIL_LABELS``).
     return {
         "key": f"{kind}:{obj_id}:{action}",
         "kind": kind,
@@ -153,6 +156,7 @@ def _review_item(kind: str, obj_id: Any, name: str | None, action: str, detail: 
         "name": name or str(obj_id),
         "action": action,
         "detail": detail,
+        "params": params,
         "reviewed_at": None,
         "reviewed_by": None,
         "resolution": None,
@@ -414,6 +418,7 @@ async def _transfer_agent(
                 agent.name,
                 ACTION_KEPT,
                 f"{tier.capitalize()} agent; no other active administrator to take it over.",
+                tier=tier,
             )
         )
         return
@@ -449,6 +454,7 @@ async def _transfer_agent(
                     assignment.name,
                     ACTION_PAUSED,
                     f"Of agent '{agent.name}'; it runs as {departing.email}.",
+                    agent=agent.name,
                 )
             )
     outcome.add("assignments_paused", paused)
@@ -460,6 +466,9 @@ async def _transfer_agent(
             ACTION_TRANSFERRED,
             f"{tier.capitalize()} agent moved to {_label(successor)}"
             + (f"; {paused} assignment(s) running as the departed account paused." if paused else "."),
+            tier=tier,
+            successor=_label(successor),
+            paused=paused,
         )
     )
 
@@ -483,6 +492,7 @@ async def _transfer_row(
                 row.name,
                 ACTION_KEPT,
                 f"{tier.capitalize()} {kind}; no other active administrator to take it over.",
+                tier=tier,
             )
         )
         return
@@ -502,7 +512,14 @@ async def _transfer_row(
     outcome.add(f"{kind}s_transferred")
     outcome.review_items.append(
         _review_item(
-            kind, row.id, row.name, ACTION_TRANSFERRED, f"{tier.capitalize()} {kind} moved to {_label(successor)}."
+            kind,
+            row.id,
+            row.name,
+            ACTION_TRANSFERRED,
+            f"{tier.capitalize()} {kind} moved to {_label(successor)}.",
+            tier=tier,
+            successor=_label(successor),
+            paused=0,
         )
     )
 
@@ -554,6 +571,7 @@ async def _disconnect_integrations(
                 integration.name,
                 ACTION_DISCONNECTED,
                 f"{integration.provider} account of the departed user; its token was cleared.",
+                provider=integration.provider,
             )
         )
     # Another person's agent bound to one of the account's private integrations
@@ -583,6 +601,7 @@ async def _disconnect_integrations(
                     agent.name,
                     ACTION_BOUND_ELSEWHERE,
                     f"Bound to {len(hit)} integration(s) of the departed user, now disconnected.",
+                    count=len(hit),
                 )
             )
             outcome.add("other_agents_bound")

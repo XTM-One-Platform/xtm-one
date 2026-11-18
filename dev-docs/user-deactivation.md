@@ -40,7 +40,7 @@ The revoked keys, cleared tokens, cancelled timers and one-offs, and stopped run
 
 ## Review list
 
-`review_items` entries are `{key, kind, id, name, action, detail, reviewed_at, reviewed_by, resolution}`. `resolve_review_item(..., resolution="keep" | "reassign" | "delete")` stamps one. A reviewed transfer is never taken back on reactivation.
+`review_items` entries are `{key, kind, id, name, action, detail, params, reviewed_at, reviewed_by, resolution}`. `detail` is the English sentence of the audit trail and the admin notification; the review screen never shows it and renders `REVIEW_DETAIL_LABELS[action]` (frontend/src/lib/provisioning-labels.ts) with `params` in the reader's language. An action gaining a parameter updates both sides. `resolve_review_item(..., resolution="keep" | "reassign" | "delete")` stamps one. A reviewed transfer is never taken back on reactivation.
 
 Admin API (`backend/app/api/v1/users.py`): `GET /api/v1/users/deactivations?open=true` lists the episodes newest first with `open_review_count`; `POST /api/v1/users/deactivations/{id}/review` with `{key, resolution}` stamps one item and audits it. The screen is Settings > Access and security > Provisioning (`frontend/src/pages/settings/ProvisioningSection.tsx`).
 

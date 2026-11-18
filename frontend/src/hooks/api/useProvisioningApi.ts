@@ -47,6 +47,8 @@ interface DeactivationReviewItem {
   name: string;
   action: string;
   detail: string;
+  /** The values of the line the screen renders from REVIEW_DETAIL_LABELS. */
+  params?: Record<string, string | number>;
   reviewed_at?: string | null;
   reviewed_by?: string | null;
   resolution?: string | null;
