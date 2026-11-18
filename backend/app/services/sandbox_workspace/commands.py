@@ -2477,6 +2477,8 @@ async def _wait_and_finish(
         report=outcome.report,
         report_missing=report_missing,
         failures_saved=bool(saved),
+        # A check that passed answers with its totals (a script's or an argv's output is its answer, kept).
+        green_summary=bool(command.check) and command.check != SCRIPT_CHECK,
     )
     notes = [run["cache_note"]] if run.get("cache_note") else []
     if lost:
