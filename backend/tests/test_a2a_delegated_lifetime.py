@@ -179,7 +179,7 @@ class TestTheParkedCeiling:
             # terminal — there is nothing on the run left to drive.
             return not stopped
 
-        async def _cancel(_db, run_ids):
+        async def _cancel(_db, run_ids, **_kwargs):
             stopped.extend(run_ids)
 
         monkeypatch.setattr(task_svc, "live_delegated_work", _live)

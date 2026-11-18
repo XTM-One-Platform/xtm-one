@@ -369,6 +369,31 @@ class TestTheContinuationIsReapableAgain:
         assert _task.reaped is False
 
 
+class TestTheTwoRunsOfOneQuestionAreLinked:
+    async def test_the_answer_links_the_run_that_asked_and_the_one_it_starts(self):
+        """``run_id`` moves to the new run, so the run pages would otherwise
+        have no way from one half of the exchange to the other."""
+        from app.a2a.run_exchange import ANSWERED_BY_RUN_KEY, PREVIOUS_RUN_KEY
+
+        _run = run(status="completed")
+        _task = task(_run.id, caller_question="Which tenant?")
+        new_run = await task_svc.answer_question(
+            FakeDb(_run),
+            task=_task,
+            exposure=exposure(),
+            agent=agent(),
+            client_id="partner-1",
+            provider="oauth_a2a",
+            message_id="m2",
+            parts=[{"text": "acme"}],
+        )
+        assert new_run.trigger_payload[PREVIOUS_RUN_KEY] == str(_run.id)
+        assert new_run.trigger_payload["a2a_question"] == "Which tenant?"
+        assert _run.trigger_payload[ANSWERED_BY_RUN_KEY] == str(new_run.id)
+        # What the run was given stays as it was.
+        assert _run.trigger_payload["message"] == "do the thing"
+
+
 class TestTheSweepLeavesAnAskingTaskAlone:
     def test_a_task_waiting_on_its_caller_is_not_a_candidate(self):
         """``input-required`` is not terminal, so nothing claims it and the

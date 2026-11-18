@@ -18975,5 +18975,19 @@
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "Les fournisseurs LLM configurés ne proposent aucun modèle. Les fonctionnalités agentiques et basées sur les LLM sont indisponibles tant qu'aucun n'en propose.",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Définissez {variable} et redémarrez, ou définissez LLM_PROVIDER_MODELS_EDITABLE=true pour sélectionner ses modèles ici.",
   "Select models on a provider in this section.": "Sélectionnez des modèles sur un fournisseur de cette section.",
-  "Set {variable} and restart.": "Définissez {variable} et redémarrez."
+  "Set {variable} and restart.": "Définissez {variable} et redémarrez.",
+  "Waiting on caller": "En attente de l'appelant",
+  "A2A Provider": "Fournisseur A2A",
+  "No result yet: the task is waiting for its caller to answer the question above.": "Pas encore de résultat : la tâche attend que son appelant réponde à la question ci-dessus.",
+  "No result in this run: it asked its caller a question, and the answer continued the task in another run.": "Pas de résultat dans cette exécution : elle a posé une question à son appelant, et la réponse a poursuivi la tâche dans une autre exécution.",
+  "No result: the task was cancelled before its caller answered.": "Pas de résultat : la tâche a été annulée avant que son appelant ne réponde.",
+  "Continues the task after its caller answered": "Poursuit la tâche après la réponse de son appelant",
+  "The agent asked": "L'agent a demandé",
+  "The caller answered": "L'appelant a répondu",
+  "View the run that asked": "Voir l'exécution qui a posé la question",
+  "Waiting on its caller": "En attente de son appelant",
+  "Asked its caller": "A interrogé son appelant",
+  "Cancelled before an answer": "Annulée avant une réponse",
+  "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.": "La tâche A2A attend la réponse de l'agent qui l'a soumise. Sa réponse poursuivra la tâche dans une nouvelle exécution, accessible depuis ici.",
+  "View the run that continued it": "Voir l'exécution qui l'a poursuivie"
 }

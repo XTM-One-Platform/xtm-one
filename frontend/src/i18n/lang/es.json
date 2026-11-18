@@ -18975,5 +18975,19 @@
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "Los proveedores LLM configurados no ofrecen ningún modelo. Las funciones agénticas y basadas en LLM no estarán disponibles hasta que alguno lo haga.",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Defina {variable} y reinicie, o defina LLM_PROVIDER_MODELS_EDITABLE=true para seleccionar sus modelos aquí.",
   "Select models on a provider in this section.": "Seleccione modelos en un proveedor de esta sección.",
-  "Set {variable} and restart.": "Defina {variable} y reinicie."
+  "Set {variable} and restart.": "Defina {variable} y reinicie.",
+  "Waiting on caller": "Esperando al llamante",
+  "A2A Provider": "Proveedor A2A",
+  "No result yet: the task is waiting for its caller to answer the question above.": "Aún no hay resultado: la tarea espera a que su llamante responda a la pregunta anterior.",
+  "No result in this run: it asked its caller a question, and the answer continued the task in another run.": "Sin resultado en esta ejecución: hizo una pregunta a su llamante y la respuesta continuó la tarea en otra ejecución.",
+  "No result: the task was cancelled before its caller answered.": "Sin resultado: la tarea se canceló antes de que su llamante respondiera.",
+  "Continues the task after its caller answered": "Continúa la tarea tras la respuesta de su llamante",
+  "The agent asked": "El agente preguntó",
+  "The caller answered": "El llamante respondió",
+  "View the run that asked": "Ver la ejecución que preguntó",
+  "Waiting on its caller": "Esperando a su llamante",
+  "Asked its caller": "Preguntó a su llamante",
+  "Cancelled before an answer": "Cancelada antes de una respuesta",
+  "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.": "La tarea A2A espera la respuesta del agente que la envió. Su respuesta continuará la tarea en una nueva ejecución, enlazada desde aquí.",
+  "View the run that continued it": "Ver la ejecución que la continuó"
 }

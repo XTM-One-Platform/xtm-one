@@ -18975,5 +18975,19 @@
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.",
   "Select models on a provider in this section.": "Select models on a provider in this section.",
-  "Set {variable} and restart.": "Set {variable} and restart."
+  "Set {variable} and restart.": "Set {variable} and restart.",
+  "Waiting on caller": "Waiting on caller",
+  "A2A Provider": "A2A Provider",
+  "No result yet: the task is waiting for its caller to answer the question above.": "No result yet: the task is waiting for its caller to answer the question above.",
+  "No result in this run: it asked its caller a question, and the answer continued the task in another run.": "No result in this run: it asked its caller a question, and the answer continued the task in another run.",
+  "No result: the task was cancelled before its caller answered.": "No result: the task was cancelled before its caller answered.",
+  "Continues the task after its caller answered": "Continues the task after its caller answered",
+  "The agent asked": "The agent asked",
+  "The caller answered": "The caller answered",
+  "View the run that asked": "View the run that asked",
+  "Waiting on its caller": "Waiting on its caller",
+  "Asked its caller": "Asked its caller",
+  "Cancelled before an answer": "Cancelled before an answer",
+  "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.": "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.",
+  "View the run that continued it": "View the run that continued it"
 }
