@@ -166,7 +166,9 @@ def test_the_screens_labs_are_the_default_lab_with_the_switch():
         )
     for switch in ("LAB_CTEM_SCREENS", "LAB_OPENCTI_PIRS_SAME_NAME"):
         holders = {n for n, s in services.items() if switch in s.get("env", {})}
-        assert holders == {n for n, s in twins.items() if switch in s}, switch
+        # The organization context labs (#83) are the screens lab with LAB_ORG_CONTEXT: test_lab_seed_org_context_83.
+        context = {n for n in holders if n.startswith("lab-ctem-context-")} if switch == "LAB_CTEM_SCREENS" else set()
+        assert holders - context == {n for n, s in twins.items() if switch in s}, switch
 
 
 def test_pir_names_are_unique_unless_the_same_name_switch_is_on(monkeypatch):

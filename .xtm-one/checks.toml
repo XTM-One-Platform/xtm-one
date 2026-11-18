@@ -782,6 +782,53 @@ restart_target = 120
 lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on" }
 
+# The CTEM screens of [service.lab-ctem-screens] in each organization context state (#83): LAB_ORG_CONTEXT
+# = "missing" saves no organization profile and answers the first-login setup proposal "dismissed" (no dialog
+# over the screens; DELETE /organization-context does not exist), "complete" saves a profile filling every
+# field a CTEM stage reads. Read back as context.state of GET /ctem-metrics/posture; the start log prints
+# "seeded org context <state>: <url>". The default labs keep the lab profile (partial).
+[service.lab-ctem-context-missing]
+description = "xtm-one from this checkout with the CTEM screens and no organization profile saved (the missing context state): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on", LAB_ORG_CONTEXT = "missing" }
+
+[service.lab-ctem-context-missing-light]
+description = "xtm-one from this checkout with the CTEM screens and no organization profile saved (the missing context state), light theme: lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on", LAB_ORG_CONTEXT = "missing", LAB_THEME = "light" }
+
+[service.lab-ctem-context-complete]
+description = "xtm-one from this checkout with the CTEM screens and a complete organization profile (the complete context state): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_CTEM_SCREENS = "on", LAB_ORG_CONTEXT = "complete" }
+
 # The CTEM deep-link lab (#12058): [service.lab-ctem-screens]' screens on a REAL OpenCTI instead of the sample.
 # [service.lab-opencti-ctem] is the lab's OpenCTI served under /opencti (APP__BASE_PATH) and registered with the
 # lab's backend through the real path (LAB_OPENCTI = "live"); LAB_CTEM_OPENCTI = "on" saves the tech stack, writes

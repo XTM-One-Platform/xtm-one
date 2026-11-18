@@ -1106,6 +1106,19 @@ LAB_ORG_TECH_STACK = (
     {"vendor": "Citrix", "product": "NetScaler ADC", "cpe": ""},
     {"vendor": "Atlassian", "product": "Confluence Data Center", "cpe": ""},
 )
+#: The profile ``LAB_ORG_CONTEXT=complete`` saves (#83): every field a CTEM stage reads
+#: (``ctem_context_scoring.CONTEXT_FIELDS``) is filled, so the posture answers ``context.state`` ``complete``.
+#: The PIR is the first of ``lab_asgi.LAB_OPENCTI_PIRS``, so the picker names it.
+LAB_ORG_COMPLETE_PROFILE = {
+    **LAB_ORG_PROFILE,
+    "regions": ["FR", "US"],
+    "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
+    "tech_stack": [dict(entry) for entry in LAB_ORG_TECH_STACK],
+    "ai_systems": [{"name": "Customer support assistant", "kind": "assistant", "exposure": "public"}],
+    "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
+    "risk_appetite": {"approval_threshold": 50000},
+    "ticketing": {"integration": "jira", "project": "SEC"},
+}
 
 #: ``LAB_CTEM_STALE`` values: ``on`` stores the CTEM briefing, stage assessments and cyber posture past their windows
 #: (``seed_ctem_actions.py``, ``lab_asgi.stale_ctem_posture``) and the stub completes a regeneration (#12381).
@@ -1642,6 +1655,11 @@ LAB_CTEM_SAMPLE_STATES = ("off", "on")
 #: ``LAB_ORG_SETUP_PROMPT`` values: ``on`` leaves the organization profile unsaved, so the first-login setup
 #: proposal (#9173 S3, ``GET /organization-context/setup-prompt``) answers ``propose: true`` to the administrator.
 LAB_ORG_SETUP_PROMPT_STATES = ("off", "on")
+#: ``LAB_ORG_CONTEXT`` values (#83): ``default`` keeps the lab profile and logs nothing; ``missing`` saves no
+#: profile and answers the first-login setup proposal ``dismissed`` (no dialog over the screens); ``partial`` keeps
+#: the lab profile (name and sector); ``complete`` saves ``LAB_ORG_COMPLETE_PROFILE``. Each but ``default`` is
+#: read back as ``context.state`` of ``GET /ctem-metrics/posture`` (``seed_org_context``).
+LAB_ORG_CONTEXT_STATES = ("default", "missing", "partial", "complete")
 #: ``LAB_PERF_THREAD`` values: ``on`` seeds a 200-message conversation and a short one for the administrator
 #: (``seed_perf_thread.py``), so long-thread scroll, open and switch timings need no hand-edited seed.
 LAB_PERF_THREAD_STATES = ("off", "on")
@@ -7459,6 +7477,13 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_screens(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM cases and scored stages"] = str(exc)[:600]
+    if mode == "xtm_one" and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "default":
+        # After seed_org_ai_draft_stub (the lab profile, or none under missing).
+        try:
+            state = lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES)
+            seeded[f"org context {state}"] = seed_org_context(token, base)
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["org context"] = str(exc)[:600]
     if seeds_ctem_posture_history():
         try:
             seeded["CTEM posture history"] = seed_ctem_posture_history(token, base)
@@ -7695,7 +7720,12 @@ def seed_org_ai_draft_stub(token: str, base: str) -> dict[str, str]:
     current = api("GET", "/organization-context", token)
     version = current.get("version") if isinstance(current, dict) else None
     # LAB_ORG_SETUP_PROMPT=on keeps the profile unsaved: the first-login setup proposal must be answered propose true.
-    if version is None and lab_switch("LAB_ORG_SETUP_PROMPT", LAB_ORG_SETUP_PROMPT_STATES) == "off":
+    # LAB_ORG_CONTEXT=missing keeps it unsaved too: the CTEM screens render the missing context state (#83).
+    if (
+        version is None
+        and lab_switch("LAB_ORG_SETUP_PROMPT", LAB_ORG_SETUP_PROMPT_STATES) == "off"
+        and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "missing"
+    ):
         profile = dict(LAB_ORG_PROFILE)
         # LAB_CTEM_KEV_TAILORED=on: a tech stack, so the command center's KEV figure is the tailored count.
         # LAB_CTEM_OPENCTI=on: the same stack, which the lab's OpenCTI holds as Software (the funnel's Relevant layer).
@@ -7707,6 +7737,30 @@ def seed_org_ai_draft_stub(token: str, base: str) -> dict[str, str]:
         saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
         version = saved.get("version") if isinstance(saved, dict) else None
     return {"id": f"profile version {version}", "url": f"{base}/settings/organization"}
+
+
+def seed_org_context(token: str, base: str) -> dict[str, str]:
+    """``LAB_ORG_CONTEXT`` other than ``default``: the CTEM organization context state, read back (#83). May raise.
+
+    ``missing``: no profile version is saved (``seed_org_ai_draft_stub`` skips its PUT) and the setup proposal is
+    answered ``dismissed``, since ``DELETE /organization-context`` does not exist (405). ``complete``: saves
+    ``LAB_ORG_COMPLETE_PROFILE`` as the next version. ``partial``: the lab profile as saved. Read back:
+    ``context.state`` of ``GET /ctem-metrics/posture?vertical=cyber`` equals the switch. Logged ``seeded org
+    context <state>: <base>/ctem/scoping``. Raises on another state: the caller logs it as not seeded.
+    """
+    state = lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES)
+    if state == "default":
+        raise RuntimeError("LAB_ORG_CONTEXT is default: the lab profile is kept as is")
+    if state == "missing":
+        api("POST", "/organization-context/setup-prompt", token, {"outcome": "dismissed"})
+    elif state == "complete":
+        api("PUT", "/organization-context", token, {"profile": dict(LAB_ORG_COMPLETE_PROFILE), "source": "form"})
+    posture = api("GET", "/ctem-metrics/posture?vertical=cyber", token)
+    context = (posture.get("context") if isinstance(posture, dict) else None) or {}
+    if context.get("state") != state:
+        raise RuntimeError(f"the posture answers context {str(context)[:300]}, expected the state {state!r}")
+    missing = context.get("missing_fields") or []
+    return {"id": f"{state}, {len(missing)} field(s) missing", "url": f"{base}/ctem/scoping"}
 
 
 def stale_build_ids() -> tuple[str, str]:
