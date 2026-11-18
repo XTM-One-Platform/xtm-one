@@ -176,7 +176,7 @@ _ACTIVATION_CHECK_SCHEMA: dict = {
         '"none_in" | "contains": ...}. Failed: skipped at zero tokens; unevaluable: run '
         "proceeds. Placeholders: {{agent.id}}, {{assignment.id}}, {{payload.a.b}}, "
         "{{date.today+N}}, {{datetime.day_start+N}}, {{datetime.day_end+N}} (trigger zone). "
-        "One integration's tool: base_name@integration_id. also: up to 3 more checks. "
+        "One integration's tool: base_name@integration_id. also/or: 3 more, all/any pass. "
         "Update: 'none' removes it, omit keeps it."
     ),
     "default": "",

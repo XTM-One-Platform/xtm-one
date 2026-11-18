@@ -63,6 +63,14 @@ two independent reasons to stand down (a live lease, a claim another run took)
 spends no token on either (#10597). An extra check that cannot be evaluated
 is passed over like the first one; ``also`` does not nest.
 
+A check may instead list up to three alternatives under ``or``
+(``{"tool": ..., "condition": ..., "or": [{"tool": ..., ...}]}``): the run
+goes ahead when ANY of the checks passes, the first included, and is skipped
+only when every one of them fails, its summary naming each check that failed.
+They are evaluated in order and the first that passes ends the evaluation; a
+check that cannot be evaluated lets the run go ahead, as a single check does.
+``or`` and ``also`` are not combined in one check, and ``or`` does not nest.
+
 The check runs before the run is charged, before any model is resolved and
 before the LLM activation gate (``activation_prompt``), which stays the second
 stage when both are set. A check whose condition fails ends the run as
@@ -102,8 +110,10 @@ _SHAPE_CONDITIONS = frozenset({"non_empty", "empty"})
 _LIST_OPERATORS = frozenset({"in", "not_in", "none_in"})
 _TEXT_OPERATORS = frozenset({"contains"})
 _PATH_OPERATORS = _LIST_OPERATORS | _TEXT_OPERATORS
-_KEYS = frozenset({"tool", "arguments", "condition", "integration_id", "also"})
-#: How many checks ``also`` may chain after the first one.
+_KEYS = frozenset({"tool", "arguments", "condition", "integration_id", "also", "or"})
+#: The keys that list further checks: ``also`` (all must pass) and ``or`` (one must pass).
+_LIST_KEYS = ("also", "or")
+#: How many checks ``also`` or ``or`` may list after the first one.
 MAX_EXTRA_CHECKS = 3
 
 _TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]{0,127}$")
@@ -196,21 +206,22 @@ def _condition_error(condition: Any) -> str | None:
     return None
 
 
-def _parse_extra_checks(raw: object, *, strict_placeholders: bool) -> tuple[list[dict], str | None]:
-    """The ``also`` list parsed check by check, or the first error met."""
+def _parse_extra_checks(raw: object, *, strict_placeholders: bool, key: str = "also") -> tuple[list[dict], str | None]:
+    """The ``also`` (or ``or``) list parsed check by check, or the first error met."""
     if raw is None or raw == []:
         return [], None
     if not isinstance(raw, list) or len(raw) > MAX_EXTRA_CHECKS:
-        return [], f"activation_check also takes a list of 1 to {MAX_EXTRA_CHECKS} checks."
+        return [], f"activation_check {key} takes a list of 1 to {MAX_EXTRA_CHECKS} checks."
     checks: list[dict] = []
     for position, item in enumerate(raw, start=1):
         if not isinstance(item, dict) or not item:
-            return [], f"activation_check also[{position}] must be a check object. {_FORMAT_HELP}"
-        if "also" in item:
-            return [], f"activation_check also[{position}] cannot hold its own also list."
+            return [], f"activation_check {key}[{position}] must be a check object. {_FORMAT_HELP}"
+        nested = next((name for name in _LIST_KEYS if name in item), None)
+        if nested is not None:
+            return [], f"activation_check {key}[{position}] cannot hold its own {nested} list."
         parsed, error, _provided = parse_activation_check(item, strict_placeholders=strict_placeholders)
         if error is not None or parsed is None:
-            return [], f"also[{position}]: {error}"
+            return [], f"{key}[{position}]: {error}"
         checks.append(parsed)
     return checks, None
 
@@ -302,7 +313,16 @@ def parse_activation_check(raw: object, *, strict_placeholders: bool = True) -> 
         return None, f"activation_check {error}", True
     if isinstance(condition, dict):
         condition = {key: (value.strip() if key == "path" else value) for key, value in condition.items()}
+    if raw.get("also") not in (None, []) and raw.get("or") not in (None, []):
+        return (
+            None,
+            "activation_check takes 'also' (every check must pass) or 'or' (one check must pass), not both.",
+            True,
+        )
     extra, error = _parse_extra_checks(raw.get("also"), strict_placeholders=strict_placeholders)
+    if error is not None:
+        return None, error, True
+    alternatives, error = _parse_extra_checks(raw.get("or"), strict_placeholders=strict_placeholders, key="or")
     if error is not None:
         return None, error, True
     parsed: dict = {"tool": tool, "arguments": json.loads(encoded), "condition": condition}
@@ -310,13 +330,21 @@ def parse_activation_check(raw: object, *, strict_placeholders: bool = True) -> 
         parsed["integration_id"] = integration_id
     if extra:
         parsed["also"] = extra
+    if alternatives:
+        parsed["or"] = alternatives
     return parsed, None, True
 
 
 def chained_checks(check: dict) -> list[dict]:
-    """*check* and the checks its ``also`` chains, in evaluation order, each without ``also``."""
-    first = {key: value for key, value in check.items() if key != "also"}
-    return [first, *[item for item in check.get("also") or [] if isinstance(item, dict)]]
+    """*check* and the checks its ``also`` (or ``or``) lists, in evaluation order, each without them."""
+    first = {key: value for key, value in check.items() if key not in _LIST_KEYS}
+    listed = check.get("or") if is_any_of(check) else check.get("also")
+    return [first, *[item for item in listed or [] if isinstance(item, dict)]]
+
+
+def is_any_of(check: dict) -> bool:
+    """Whether *check* lists alternatives under ``or``: the run goes ahead when one of them passes."""
+    return bool(check.get("or"))
 
 
 def stored_activation_check(value: object) -> dict | None:
@@ -403,6 +431,8 @@ def describe_check(check: dict) -> str:
     for item in chained_checks(check):
         arguments = json.dumps(item.get("arguments") or {})
         lines.append(f"{check_tool_label(item)}({arguments}), runs when {describe_condition(item.get('condition'))}")
+    if is_any_of(check):
+        return "any of: " + "; or ".join(lines)
     return "; then ".join(lines)
 
 
@@ -668,6 +698,20 @@ def chain_position(summary: str, *, position: int, total: int, tool: str, argume
         return summary
     called = json.dumps(arguments or {}, sort_keys=True, default=str)
     return f"{summary} (check {position} of {total}: {tool} {called})"
+
+
+def any_of_skip_summary(failures: list[tuple[str, str, dict | None]]) -> str:
+    """The ``result_summary`` of a run whose ``or`` checks all failed.
+
+    *failures* holds ``(tool label, outcome summary, resolved arguments)`` per
+    check, in evaluation order: each check is named with what it found.
+    """
+    parts = []
+    for position, (tool, summary, arguments) in enumerate(failures, start=1):
+        reason = summary.removeprefix(SKIP_SUMMARY_PREFIX).strip(" :")
+        called = json.dumps(arguments or {}, sort_keys=True, default=str)
+        parts.append(f"check {position}: {tool} {called}: {reason}")
+    return f"{SKIP_SUMMARY_PREFIX}s: none of {len(failures)} passed ({'; '.join(parts)})"
 
 
 def unevaluated_reason(position: int, tool: str) -> str:

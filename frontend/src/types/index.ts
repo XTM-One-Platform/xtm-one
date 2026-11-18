@@ -2684,7 +2684,9 @@ export interface ActivationCheck {
   condition: ActivationCheckCondition;
   integration_id?: string;
   /** Up to 3 more checks evaluated in order; the run is skipped at the first that fails. */
-  also?: Omit<ActivationCheck, "also">[];
+  also?: Omit<ActivationCheck, "also" | "or">[];
+  /** Up to 3 alternatives: the run goes ahead when one check passes, skipped when all fail. */
+  or?: Omit<ActivationCheck, "also" | "or">[];
 }
 
 
