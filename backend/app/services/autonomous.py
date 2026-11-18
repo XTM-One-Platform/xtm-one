@@ -1640,6 +1640,7 @@ async def _run_autonomous_tick_inner() -> int:
                 POLL_EVERY_TICKS,
                 poll_blocked_on_refs,
                 release_red_self_blocks,
+                release_satisfied_blocks,
             )
 
             _blocked_refs_poll_tick_counter -= 1
@@ -1650,6 +1651,8 @@ async def _run_autonomous_tick_inner() -> int:
                 polled = await poll_blocked_on_refs()
                 if polled["released"]:
                     logger.info("Reopened %d work item(s) whose references closed", polled["released"])
+                # The class of defect: every reference met, the item still blocked.
+                await release_satisfied_blocks()
                 # An item parked on a pull request whose CI delivery never came (#10692).
                 from app.services.work_item_pull_requests import poll_pull_request_ci
 
