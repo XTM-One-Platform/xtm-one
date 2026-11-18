@@ -38,6 +38,7 @@ from app.llm.openai_compat import (
     content_filter_finish,
     create_with_effort_retry,
     declined_by_filter,
+    endpoint_of,
     extract_openai_response_usage,
     extract_openai_usage,
     is_retryable_openai,
@@ -232,7 +233,7 @@ class OpenAIProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProvider):
         # --- call (with retry on transient errors) ---
         response = await retry_llm_call(
             lambda: create_with_effort_retry(
-                lambda p: self.client.chat.completions.create(**p), params, model
+                lambda p: self.client.chat.completions.create(**p), params, model, endpoint=endpoint_of(self.client)
             ),
             is_retryable=is_retryable_openai,
         )
