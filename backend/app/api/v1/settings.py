@@ -155,9 +155,9 @@ from app.services.branding import (
 )
 from app.services.builtin_tool_catalog import (
     build_builtin_tool_catalog,
-    withhold_concierge_tools,
     withhold_evaluation_tools,
     withhold_flow_builder_tools,
+    withhold_health_tools,
 )
 from app.services.ctem_verticals import normalize_vertical
 from app.services.handover_types import with_added_handover_targets
@@ -6370,7 +6370,7 @@ async def _scannable_tool_groups(db: AsyncSession) -> list[ScannableToolGroup]:
         catalog.pop("deep_investigation", None)
     if not is_feature_enabled("MOBILE_COMPANION"):
         catalog.pop("phone", None)
-    withhold_concierge_tools(catalog)
+    withhold_health_tools(catalog)
     if not is_feature_enabled("DASHBOARD_STUDIO"):
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
@@ -7044,7 +7044,7 @@ async def purge_my_memory(
         )
         await db.flush()
     # The user's own deletion purges the consolidation history at once (B19).
-    from app.services.concierge.memory_history import purge_lane_consolidations
+    from app.services.health.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id)
 
@@ -7128,7 +7128,7 @@ async def purge_my_agent_memory(
             )
         )
         await db.flush()
-    from app.services.concierge.memory_history import purge_lane_consolidations
+    from app.services.health.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id, agent_id=agent_id)
 
@@ -8154,7 +8154,7 @@ async def get_builtin_tool_catalog(
     ``deep_investigation`` is withheld the same way while "DEEP_INVESTIGATION"
     is off, ``video_studio`` while "VIDEO_STUDIO" is off and ``phone`` while
     "MOBILE_COMPANION" is off, and every ``gate="concierge"`` group while
-    "CONCIERGE" is off; they stay registry keys for the same reason, and the
+    Platform Health is not available; they stay registry keys for the same reason, and the
     flags also withhold the tool at run time. The evaluation tools leave the ``agent_builder``
     alias the same way while evaluation is off.
     """
@@ -8174,7 +8174,7 @@ def _offered_builtin_tool_catalog() -> dict[str, list[dict]]:
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
         catalog.pop("video_studio", None)
-    withhold_concierge_tools(catalog)
+    withhold_health_tools(catalog)
     return withhold_evaluation_tools(catalog)
 
 
