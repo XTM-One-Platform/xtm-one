@@ -1042,6 +1042,19 @@ export interface Integration {
   /** A2A only: which way the partner relationship points, from its settings
    *  row; absent or null for every other provider. */
   a2a_direction?: "inbound" | "outbound" | null;
+  /** A2A credential state, single-integration read only. Inbound, read by a
+   *  manager: the last token request the credential refused (#105). */
+  a2a_credential?: {
+    usable?: boolean;
+    last_token_minted_at?: string | null;
+    last_error?: { code: string; detail: string | null; at: string | null } | null;
+    last_refused_token_request?: {
+      at: string;
+      client_id: string | null;
+      reason: string | null;
+      what_to_do: string | null;
+    };
+  } | null;
   tags: string[];
   scopes: string | null;
   /** Latest scopes from the provider catalog (for drift detection). */

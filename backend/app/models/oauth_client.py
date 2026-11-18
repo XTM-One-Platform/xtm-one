@@ -86,6 +86,12 @@ class OAuthClient(Base):
         index=True,
     )
 
+    # When an ``oauth_a2a`` credential's secret was last rotated in place
+    # (#105): a regenerate keeps the client id and replaces the hash, so a
+    # bearer whose ``iat`` is before this stamp is refused by the task surface.
+    # NULL for a credential never rotated since the column exists.
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

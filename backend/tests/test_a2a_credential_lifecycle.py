@@ -27,6 +27,10 @@ from app.models.a2a import A2AIntegrationSettings
 
 
 class _Db:
+    async def execute(self, _statement):
+        # The current client id read before the mint (#105): none yet.
+        return SimpleNamespace(scalar_one_or_none=lambda: None)
+
     async def flush(self) -> None:
         return None
 

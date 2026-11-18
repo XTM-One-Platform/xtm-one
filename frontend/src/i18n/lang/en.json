@@ -5523,7 +5523,7 @@
   "The owner of this server has to authorize it.": "The owner of this server has to authorize it.",
   "The package has been imported successfully.": "The package has been imported successfully.",
   "The partner changed its card. Review and accept the change to resume.": "The partner changed its card. Review and accept the change to resume.",
-  "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.": "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.",
+  "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.": "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.",
   "The partner pastes it into Partner token endpoint.": "The partner pastes it into Partner token endpoint.",
   "The token URL appears once an agent bound to this integration publishes its card.": "The token URL appears once an agent bound to this integration publishes its card.",
   "The partner fetches the agent card URL (shown on the agent's Channels & Bots tab once this integration is bound to it). The card is served anonymously and declares the agent's skills, the JSON-RPC endpoint and the accepted credentials.": "The partner fetches the agent card URL (shown on the agent's Channels & Bots tab once this integration is bound to it). The card is served anonymously and declares the agent's skills, the JSON-RPC endpoint and the accepted credentials.",
@@ -5544,7 +5544,7 @@
   "The run's typed signature: each parameter is asked for at run time, becomes a pin on the node, and Call flow nodes expose it as an argument.": "The run's typed signature: each parameter is asked for at run time, becomes a pin on the node, and Call flow nodes expose it as an argument.",
   "The script becomes a platform Custom tool: reusable from agents, chat and other flows, editable later in Tools.": "The script becomes a platform Custom tool: reusable from agents, chat and other flows, editable later in Tools.",
   "The secret and recovery codes are never readable: not even by administrators. If this user lost their device, reset their enrollment so they can set it up again.": "The secret and recovery codes are never readable: not even by administrators. If this user lost their device, reset their enrollment so they can set it up again.",
-  "The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.": "The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.",
+  "The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.": "The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.",
   "The selected file is not a valid JSON payload.": "The selected file is not a valid JSON payload.",
   "The server is authenticated. Tokens are refreshed automatically.": "The server is authenticated. Tokens are refreshed automatically.",
   "The stored credentials cannot produce a token. Re-enter them.": "The stored credentials cannot produce a token. Re-enter them.",
@@ -18956,5 +18956,9 @@
   "Knowledge and sources": "Knowledge and sources",
   "About the organization profile": "About the organization profile",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# proposal} other {# proposals}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}"
+  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}",
+  "Copy both": "Copy both",
+  "The partner pastes the client ID and the secret together, as one pair.": "The partner pastes the client ID and the secret together, as one pair.",
+  "Last refused token request": "Last refused token request",
+  "Rotate client ID and secret": "Rotate client ID and secret"
 }

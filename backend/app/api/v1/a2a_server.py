@@ -161,7 +161,27 @@ async def _credential_integration(request: Request, db: AsyncSession):
     client = (
         await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
     ).scalar_one_or_none()
-    return getattr(client, "a2a_integration_id", None) if client else None
+    if client is None or minted_before_rotation(payload, client):
+        return None
+    return getattr(client, "a2a_integration_id", None)
+
+
+def minted_before_rotation(payload: dict, client) -> bool:
+    """Whether a partner bearer predates its credential's last secret rotation.
+
+    A regenerate keeps the client id and replaces the secret in place (#105),
+    so the row a stale bearer names still exists: the rotation stamp is what
+    retires it. ``iat`` is whole seconds, so the comparison is too: a bearer
+    minted in the very second of a rotation is accepted rather than a fresh
+    one refused.
+    """
+    rotated_at = getattr(client, "secret_rotated_at", None)
+    if rotated_at is None:
+        return False
+    issued = payload.get("iat")
+    if not isinstance(issued, int | float):
+        return True
+    return int(issued) < int(rotated_at.timestamp())
 
 
 @router.get("/{card_token}/.well-known/agent-card.json")
@@ -441,7 +461,11 @@ async def _authenticate(
             select(OAuthClient).where(OAuthClient.client_id == client_id)
         )
     ).scalar_one_or_none()
-    if client is None or not await _client_covers_exposure(db, client, exposure):
+    if (
+        client is None
+        or minted_before_rotation(payload, client)
+        or not await _client_covers_exposure(db, client, exposure)
+    ):
         return refused
     return client_id, "", OAUTH_A2A_PROVIDER
 

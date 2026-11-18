@@ -61,13 +61,19 @@ export function isA2AProvider(provider: string): boolean {
   return (A2A_PROVIDERS as readonly string[]).includes(provider);
 }
 
-/** Mint a fresh client id / secret for an `oauth_a2a` integration. The secret
- * comes back ONCE and is never retrievable again; regenerating retires the
- * previous one on every agent the integration is bound to. */
+/** Generate or rotate the credential of an `oauth_a2a` integration. The secret
+ * comes back ONCE and is never retrievable again. A regenerate rotates the
+ * secret and keeps the client id (#105); `{ rotateClientId: true }` is the
+ * explicit action that changes both. Either retires the previous secret on
+ * every agent the integration is bound to. */
 export function useRegenerateA2ACredential(integrationId: string) {
   const qc = useQueryClient();
-  return useMutation<{ client_id: string; client_secret: string }, Error, void>({
-    mutationFn: () => api.post(`/integrations/${integrationId}/a2a-credential`, {}),
+  return useMutation<{ client_id: string; client_secret: string }, Error, { rotateClientId?: boolean } | void>({
+    mutationFn: (options) =>
+      api.post(
+        `/integrations/${integrationId}/a2a-credential${options && options.rotateClientId ? "?rotate_client_id=true" : ""}`,
+        {},
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integrations"] });
     },

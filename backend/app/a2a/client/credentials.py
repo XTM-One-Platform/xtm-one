@@ -228,10 +228,48 @@ async def _mint_oauth_client_credentials(integration, http_client) -> MintedToke
     )
     if response.status_code != 200:
         await _forget_refused_client_secret(integration, response.status_code)
-        raise CredentialError(
-            f"Partner token endpoint returned HTTP {response.status_code}."
-        )
+        raise CredentialError(_token_refusal_detail(response, client_id))
     return _token_from_response(response)
+
+
+#: The OAuth ``error`` values a token endpoint may answer (RFC 6749 §5.2), the
+#: only ones echoed into a detail: anything else the partner sends is free text
+#: an operator should not be shown as ours.
+_OAUTH_TOKEN_ERRORS = frozenset(
+    {
+        "invalid_request",
+        "invalid_client",
+        "invalid_grant",
+        "unauthorized_client",
+        "unsupported_grant_type",
+        "invalid_scope",
+    }
+)
+
+
+def _token_refusal_detail(response, client_id: str) -> str:
+    """Why the partner refused a token, naming what the operator can check (#105).
+
+    The OAuth error code (``invalid_client`` is what an XTM One partner answers
+    for an unknown client id AND for a wrong secret alike) and the client id
+    presented, which is an identifier, never the secret. With the client id in
+    the detail, an operator compares it with the partner's in one glance.
+    """
+    error = None
+    try:
+        body = response.json()
+        if isinstance(body, dict) and body.get("error") in _OAUTH_TOKEN_ERRORS:
+            error = body["error"]
+    except Exception:
+        error = None
+    said = f" ({error})" if error else ""
+    hint = (
+        " Check that the client id and the secret are the pair the partner issued "
+        "most recently: a regenerate on the partner's side may have changed one of them."
+        if error == "invalid_client" or response.status_code == 401
+        else ""
+    )
+    return f"Partner token endpoint returned HTTP {response.status_code}{said} for client id {client_id}.{hint}"
 
 
 async def _mint_entra_client_credentials(integration, http_client) -> MintedToken:
@@ -680,5 +718,5 @@ async def outbound_headers(integration, http_client, *, fresh: bool = False) -> 
         # (#12346). Only on a real mint, never on a cached token.
         from app.a2a.client.credential_state import record_mint_success
 
-        await record_mint_success(integration)
+        await record_mint_success(integration, force=fresh)
     return token.headers()

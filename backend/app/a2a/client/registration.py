@@ -43,7 +43,7 @@ from app.a2a.client.verification import Verdict, apply_verdict, verify_card
 # partner's declaration is matched against, so those cannot disagree about
 # where this lives.
 from app.a2a.extensions import PARTNER_DISCOVERY_PATH
-from app.a2a.providers import GOOGLE_A2A_PROVIDER
+from app.a2a.providers import GOOGLE_A2A_PROVIDER, OAUTH_A2A_PROVIDER
 from app.core.config import settings as app_settings
 from app.models.a2a import (
     UNUSABLE_CARD_UNFETCHABLE,
@@ -57,6 +57,11 @@ logger = logging.getLogger(__name__)
 #: Targets whose card endpoint requires a credential. The OAuth target is
 #: absent on purpose — see the module docstring.
 _CARD_NEEDS_CREDENTIALS = frozenset({GOOGLE_A2A_PROVIDER, "entra_a2a"})
+
+#: Targets whose card is anonymous but whose credential an operator's Verify
+#: must still test (#105): without the mint, Verify answered usable on a
+#: secret the partner refuses, and the first real send turned it red.
+_VERIFY_MINTS_CREDENTIALS = frozenset({OAUTH_A2A_PROVIDER})
 
 #: A card fetch is a small GET. Bounded well below the delegation ceiling so a
 #: partner cannot hold a verification open the way it might hold a task.
@@ -255,6 +260,14 @@ async def _fetch_verdict(integration: Any, target: Any, *, trigger: str) -> tupl
                     ),
                 )
 
+        if verdict is None and integration.provider in _VERIFY_MINTS_CREDENTIALS:
+            # Every verification, the sweep's and a delegation's re-verify
+            # included, not only an operator's: otherwise a wrong secret flips
+            # back to usable on the anonymous card at the next sweep and a
+            # fixed one never heals the target by itself (#105). Only Verify
+            # bypasses the token cache.
+            verdict = await test_credential(integration, client, fresh=trigger == "manual")
+
         if verdict is None:
             verdict = await verify_card(card_url=url, http_client=client, headers=headers)
 
@@ -262,6 +275,36 @@ async def _fetch_verdict(integration: Any, target: Any, *, trigger: str) -> tupl
         # Whatever went wrong, the next attempt starts from a fresh mint.
         forget_token(integration)
     return verdict, url
+
+
+async def test_credential(integration: Any, client: httpx.AsyncClient, *, fresh: bool = True) -> Verdict | None:
+    """Mint a fresh token to test the credential; the unusable verdict, or None.
+
+    Test only: the token is not presented to the card, which stays anonymous.
+    A mint stamps ``last_token_minted_at`` and restores ``connected``
+    (``outbound_headers``); a refusal moves the integration to ``error`` with
+    the detail, exactly as a refused delegation does, so the badge after a
+    Verify says what the next send will meet.
+    """
+    try:
+        await outbound_headers(integration, client, fresh=fresh)
+        return None
+    except CredentialError as exc:
+        from app.a2a.client.credential_state import record_mint_failure
+
+        await record_mint_failure(integration, str(exc))
+        return Verdict(
+            usability=USABILITY_UNUSABLE,
+            unusable_reason=UNUSABLE_CREDENTIAL_NO_TOKEN,
+            error_detail=str(exc),
+        )
+    except Exception as exc:
+        # The token endpoint did not answer: says nothing about the secret.
+        return Verdict(
+            usability=USABILITY_UNUSABLE,
+            unusable_reason=UNUSABLE_CARD_UNFETCHABLE,
+            error_detail=f"Could not reach the partner token endpoint — {type(exc).__name__}: {exc}",
+        )
 
 
 def verdict_is_stale(target) -> bool:

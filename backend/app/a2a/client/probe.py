@@ -53,6 +53,21 @@ _WHAT_TO_DO = {
 }
 
 
+async def _mint_refusal(integration) -> str | None:
+    """Mint a fresh token for an OAuth partner; the refusal detail, or None."""
+    import httpx
+
+    from app.a2a.client.registration import _VERIFY_MINTS_CREDENTIALS, test_credential
+
+    if getattr(integration, "provider", None) not in _VERIFY_MINTS_CREDENTIALS:
+        return None
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+        verdict = await test_credential(integration, client)
+    if verdict is None:
+        return None
+    return verdict.error_detail or "The partner refused the credential."
+
+
 async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
     """The verdict for an outbound registration, or ``None`` if inbound.
 
@@ -87,6 +102,12 @@ async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
             "No partner agent is configured. Add at least one agent card URL "
             "in the configuration above."
         )
+
+    # Test Connection tests the credential (#105): an OAuth partner serves its
+    # card anonymously, so the stored verdicts below never tried the secret.
+    refused = await _mint_refusal(ctx.integration)
+    if refused is not None:
+        return ProbeResult.failed(refused)
 
     # Aggregated across targets, and the arithmetic is the point: a partner
     # exposing three agents where one has stopped answering is neither

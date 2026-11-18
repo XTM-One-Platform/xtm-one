@@ -51,27 +51,43 @@ PROVIDER = OAUTH_A2A_PROVIDER
 CLIENT_ID_KEY = "client_id"
 
 
-async def mint_credential(
-    db: AsyncSession, integration: Integration
-) -> tuple[str, str]:
-    """Mint (or re-mint) this integration's credential. Returns ``(id, secret)``.
+#: How many retired client ids an inbound integration remembers, so a partner
+#: still presenting one is told apart from an id nobody issued (#105).
+RETIRED_CLIENT_IDS_KEPT = 5
 
-    Re-minting REPLACES the previous registration rather than adding one, so
-    a regenerate genuinely retires the old secret everywhere at once instead
-    of leaving two usable credentials for one partner.
+
+def _new_client_id() -> str:
+    return f"a2a-{secrets.token_urlsafe(16)}"
+
+
+async def mint_credential(
+    db: AsyncSession, integration: Integration, *, rotate_client_id: bool = False
+) -> tuple[str, str]:
+    """Generate, or rotate, this integration's credential. Returns ``(id, secret)``.
+
+    **A regenerate rotates the SECRET only** (#105): the client id the partner
+    already holds stays, and the bcrypt hash on the same ``OAuthClient`` row is
+    replaced. The old secret stops working at once, and a bearer minted with
+    it before the rotation is refused by the task surface (``secret_rotated_at``
+    against the token's ``iat``). Re-minting the client id on every regenerate,
+    as this did before, left partners pasting the new secret next to the old
+    client id: the pair never matched and every token request was refused.
+
+    ``rotate_client_id`` is the explicit "Rotate client id and secret" action:
+    the previous row is deleted and a new client id minted, the retired id
+    remembered on the settings row so a refused request can name it.
+
+    The first Generate (no row yet) mints both, as always. Still ONE
+    registration per integration: a stray second row from before is deleted
+    rather than left usable.
 
     **Nothing mints on create, deliberately.** Create returns the
     integration, not the credential, so a secret minted then could never be
-    shown — the operator would land on a detail page showing a client id
-    whose secret nobody had ever seen, with regenerate as the only way
-    forward.
-
-    Minting is therefore operator-driven only, from the Config tab, where the
-    secret is shown at the moment it is asked for. The button reads "Generate"
-    until one exists and "Regenerate" after, and only the second warns about
-    retiring a live secret.
+    shown. Minting is operator-driven only, from the Config tab, where the
+    secret is shown at the moment it is asked for.
     """
     import json
+    from datetime import UTC, datetime
 
     from app.core.security import bcrypt_hashpw_async, encrypt_value
     from app.models.oauth_client import OAuthClient
@@ -80,38 +96,48 @@ async def mint_credential(
     existing = (
         (
             await db.execute(
-                select(OAuthClient).where(
-                    OAuthClient.a2a_integration_id == integration.id
-                )
+                select(OAuthClient)
+                .where(OAuthClient.a2a_integration_id == integration.id)
+                .order_by(OAuthClient.created_at.desc())
             )
         )
         .scalars()
         .all()
     )
-    for row in existing:
-        await db.delete(row)
-
-    client_id = f"a2a-{secrets.token_urlsafe(16)}"
     client_secret = secrets.token_urlsafe(32)
-    db.add(
-        OAuthClient(
-            client_id=client_id,
-            client_secret_hash=(
-                await bcrypt_hashpw_async(client_secret.encode())
-            ).decode(),
-            client_name=f"A2A partner — {integration.name}",
-            redirect_uris=[],
-            # Only this grant. An A2A partner credential must never be usable
-            # in the authorization-code flow, which would put a *user* behind
-            # it.
-            grant_types=["client_credentials"],
-            response_types=[],
-            # S106 false positive: RFC 7591's *name* for the client
-            # authentication method, not a credential.
-            token_endpoint_auth_method="client_secret_post",  # noqa: S106
-            a2a_integration_id=integration.id,
+    secret_hash = (await bcrypt_hashpw_async(client_secret.encode())).decode()
+
+    keep = existing[0] if existing and not rotate_client_id else None
+    retired = [row.client_id for row in existing if row is not keep]
+    for row in existing:
+        if row is not keep:
+            await db.delete(row)
+
+    if keep is not None:
+        client_id = keep.client_id
+        keep.client_secret_hash = secret_hash
+        keep.secret_rotated_at = datetime.now(UTC)
+    else:
+        client_id = _new_client_id()
+        db.add(
+            OAuthClient(
+                client_id=client_id,
+                client_secret_hash=secret_hash,
+                client_name=f"A2A partner — {integration.name}",
+                redirect_uris=[],
+                # Only this grant. An A2A partner credential must never be usable
+                # in the authorization-code flow, which would put a *user* behind
+                # it.
+                grant_types=["client_credentials"],
+                response_types=[],
+                # S106 false positive: RFC 7591's *name* for the client
+                # authentication method, not a credential.
+                token_endpoint_auth_method="client_secret_post",  # noqa: S106
+                a2a_integration_id=integration.id,
+            )
         )
-    )
+    if retired:
+        await _remember_retired_client_ids(db, integration, retired)
 
     # The client id is an identifier the partner sends in clear on every
     # exchange, so it re-displays freely alongside the pins-style config.
@@ -127,6 +153,17 @@ async def mint_credential(
 
     await db.flush()
     return client_id, client_secret
+
+
+async def _remember_retired_client_ids(db: AsyncSession, integration: Integration, retired: list[str]) -> None:
+    """Keep the last few retired client ids on the inbound settings row."""
+    from app.a2a.providers import get_settings
+
+    row = await get_settings(db, integration.id)
+    if row is None:
+        return
+    known = [cid for cid in (row.retired_client_ids or []) if cid not in retired]
+    row.retired_client_ids = (known + retired)[-RETIRED_CLIENT_IDS_KEPT:]
 
 
 async def check_connectivity(ctx: ProbeContext) -> ProbeResult:

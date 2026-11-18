@@ -389,14 +389,17 @@ export function A2ACredentialCard({
   // render a mint button to an outbound registration.
   if (direction !== "inbound") return null;
 
+  // A regenerate rotates the SECRET and keeps the client id the partner
+  // already holds (#105): the partner pastes one value. Changing both is its
+  // own action, whose confirm says both change.
   const onRegenerate = async () => {
     if (
       clientId &&
       !(await confirm({
-        title: "Regenerate partner credential?",
+        title: "Regenerate the secret?",
         description:
-          "The current secret stops working immediately, on every agent this integration is bound to. The partner must be given the new one.",
-        confirmLabel: "Regenerate",
+          "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.",
+        confirmLabel: "Regenerate secret",
         variant: "warning",
       }))
     ) {
@@ -404,6 +407,23 @@ export function A2ACredentialCard({
     }
     regenerate.mutate(undefined, { onSuccess: (data) => setIssued(data) });
   };
+
+  const onRotateClientId = async () => {
+    if (
+      !(await confirm({
+        title: "Rotate the client ID and the secret?",
+        description:
+          "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID AND the new secret.",
+        confirmLabel: "Rotate both",
+        variant: "warning",
+      }))
+    ) {
+      return;
+    }
+    regenerate.mutate({ rotateClientId: true }, { onSuccess: (data) => setIssued(data) });
+  };
+
+  const refused = integration.a2a_credential?.last_refused_token_request ?? null;
 
   return (
     <Card>
@@ -433,7 +453,7 @@ export function A2ACredentialCard({
       <CardContent className="space-y-3">
         <p className="text-[11px] text-default-secondary">
           {t_i18n(
-            "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.",
+            "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.",
           )}
         </p>
 
@@ -470,21 +490,62 @@ export function A2ACredentialCard({
 
         {issued ? (
           <div className="space-y-2 rounded-sm border border-feedback-alert-primary/40 bg-feedback-alert-primary/5 p-3">
-            <div className="flex items-center gap-1.5 content-caption font-medium text-feedback-warning-primary">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {t_i18n("Copy this now: the secret is never shown again")}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 content-caption font-medium text-feedback-warning-primary">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {t_i18n("Copy this now: the secret is never shown again")}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 content-caption"
+                data-testid="a2a-credential-copy-both"
+                onClick={() => copy(`client_id=${issued.client_id}\nclient_secret=${issued.client_secret}`, "both")}
+              >
+                {copied === "both" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {t_i18n("Copy both")}
+              </Button>
             </div>
+            <CopyRow
+              label={t_i18n("Client ID")}
+              value={issued.client_id}
+              copied={copied === "issued-id"}
+              onCopy={() => copy(issued.client_id, "issued-id")}
+            />
             <CopyRow
               label={t_i18n("Client secret")}
               value={issued.client_secret}
               copied={copied === "secret"}
               onCopy={() => copy(issued.client_secret, "secret")}
             />
+            <p className="content-caption text-default-secondary">
+              {t_i18n("The partner pastes the client ID and the secret together, as one pair.")}
+            </p>
           </div>
         ) : (
           <p className="content-caption text-default-secondary">
-            {t_i18n("The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.")}
+            {t_i18n("The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.")}
           </p>
+        )}
+        {refused && (
+          <div className="space-y-1 rounded-sm border border-line-primary p-3" data-testid="a2a-credential-last-refusal">
+            <div className="content-caption font-medium">{t_i18n("Last refused token request")}</div>
+            <p className="content-caption text-default-secondary">
+              {refused.at} · {t_i18n("Client ID")} {refused.client_id ?? "-"}
+            </p>
+            {refused.what_to_do && <p className="content-caption">{refused.what_to_do}</p>}
+          </div>
+        )}
+        {canManage && clientId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 content-caption"
+            onClick={onRotateClientId}
+            disabled={regenerate.isPending}
+          >
+            {t_i18n("Rotate client ID and secret")}
+          </Button>
         )}
         {regenerate.isError && (
           <p className="content-caption text-feedback-error-primary">{regenerate.error.message}</p>

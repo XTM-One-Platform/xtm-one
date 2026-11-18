@@ -2295,6 +2295,15 @@ async def get_integration(
         from app.a2a.providers import get_settings
 
         response.a2a_credential = describe(await get_settings(db, integration.id), integration)
+    elif response.a2a_direction == "inbound" and response.can_manage:
+        # The last token request this credential refused (#105): its managers
+        # alone, the token endpoint answering every caller invalid_client.
+        from app.a2a.providers import get_settings
+        from app.a2a.refusals import describe_refusal
+
+        refusal = describe_refusal(await get_settings(db, integration.id))
+        if refusal is not None:
+            response.a2a_credential = {"last_refused_token_request": refusal}
     await attach_vault_failures([response], Integration.__tablename__)
     return response
 
@@ -3399,20 +3408,36 @@ async def delete_integration(
     await db.commit()
 
 
+async def _a2a_inbound_client_id(db: AsyncSession, integration_id) -> str | None:
+    """The client id of an inbound integration's current credential, if any."""
+    from app.models.oauth_client import OAuthClient
+
+    return (
+        await db.execute(
+            select(OAuthClient.client_id)
+            .where(OAuthClient.a2a_integration_id == integration_id)
+            .order_by(OAuthClient.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 @router.post("/{integration_id}/a2a-credential")
 async def regenerate_a2a_credential(
     integration_id: str,
     request: Request,
+    rotate_client_id: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """Mint a fresh client id / secret for an ``oauth_a2a`` integration.
+    """Generate, or rotate, the partner credential of an ``oauth_a2a`` integration.
 
     The secret is returned in clear HERE and nowhere else — it is stored only
-    as a bcrypt hash. Regenerating REPLACES the previous registration, so the
-    old secret stops working immediately on every agent this integration is
-    bound to; that is the point of the action (a leaked credential must have
-    one revocation, not one per agent).
+    as a bcrypt hash. A regenerate rotates the SECRET and keeps the client id
+    (#105), so the partner pastes one value; the old secret stops working
+    immediately on every agent this integration is bound to. ``?rotate_client_id=true``
+    is the explicit "Rotate client id and secret" action: both change, and the
+    partner must paste both.
 
     Requires management authority over the integration, like any other edit.
     """
@@ -3459,7 +3484,14 @@ async def regenerate_a2a_credential(
             ),
         )
 
-    client_id, client_secret = await mint_credential(db, integration)
+    previous_client_id = await _a2a_inbound_client_id(db, integration.id)
+    client_id, client_secret = await mint_credential(db, integration, rotate_client_id=rotate_client_id)
+    if previous_client_id is None:
+        what = "generated the A2A partner credential"
+    elif client_id == previous_client_id:
+        what = "rotated the A2A partner secret (client id kept)"
+    else:
+        what = "rotated the A2A partner client id and secret"
     await log_audit(
         db,
         user=user,
@@ -3468,10 +3500,14 @@ async def regenerate_a2a_credential(
         entity_id=integration.id,
         entity_name=integration.name,
         summary=(
-            f"{user.email} regenerated the A2A partner credential for "
-            f"'{integration.name}' — the previous secret no longer works"
+            f"{user.email} {what} for '{integration.name}'"
+            + (" — the previous secret no longer works" if previous_client_id else "")
         ),
-        details={"client_id": client_id},
+        details={
+            "client_id": client_id,
+            "previous_client_id": previous_client_id,
+            "client_id_changed": previous_client_id is not None and client_id != previous_client_id,
+        },
         request=request,
     )
     await db.commit()
