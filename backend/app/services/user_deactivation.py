@@ -415,7 +415,10 @@ async def _transfer_agent(
         )
         return
     agent.user_id = successor.id
-    snapshot["transfers"].append({"table": "agents", "id": str(agent.id)})
+    # The assignments moved with the agent are recorded so that a reactivation
+    # takes back only those, never one the successor already owned.
+    moved: list[str] = []
+    snapshot["transfers"].append({"table": "agents", "id": str(agent.id), "assignments": moved})
     outcome.add("agents_transferred")
     # An assignment that would keep acting as the departed account is paused;
     # the others move to the new owner and keep running.
@@ -425,6 +428,7 @@ async def _transfer_agent(
         acts_as_departed = assignment.run_as_user_id == departing.id
         if assignment.user_id == departing.id:
             assignment.user_id = successor.id
+            moved.append(str(assignment.id))
         if acts_as_departed and assignment.enabled:
             pause_assignment(
                 assignment,
@@ -833,10 +837,15 @@ async def reactivate_user(
                 ).first()
                 row.is_default = has_default is None
             row.user_id = user.id
-            if model is Agent:
+            moved_ids = [uuid.UUID(value) for value in entry.get("assignments") or []]
+            if model is Agent and moved_ids:
                 await db.execute(
                     update(Assignment)
-                    .where(Assignment.agent_id == row.id, Assignment.user_id == episode.successor_user_id)
+                    .where(
+                        Assignment.id.in_(moved_ids),
+                        Assignment.agent_id == row.id,
+                        Assignment.user_id == episode.successor_user_id,
+                    )
                     .values(user_id=user.id)
                 )
             outcome.counts["transfers_restored"] = outcome.counts.get("transfers_restored", 0) + 1

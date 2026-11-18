@@ -115,7 +115,10 @@ async def _seed(session: Any) -> dict[str, Any]:
     shared_as_departed = _assignment(shared, d, name="runs-as-departed", run_as_user_id=d)
     shared_plain = _assignment(shared, d, name="plain")
     company_job = _assignment(company, d, name="company-job")
-    session.add_all([private_job, shared_as_departed, shared_plain, company_job])
+    # Authored by the platform admin (the successor) before the deactivation:
+    # never the departed account's, so a reactivation must leave it alone.
+    admin_job = _assignment(company, users["platform_admin"].id, name="admin-job")
+    session.add_all([private_job, shared_as_departed, shared_plain, company_job, admin_job])
 
     oauth = Integration(
         provider="microsoft",
@@ -158,6 +161,7 @@ async def _seed(session: Any) -> dict[str, Any]:
         "shared_as_departed": shared_as_departed.id,
         "shared_plain": shared_plain.id,
         "company_job": company_job.id,
+        "admin_job": admin_job.id,
         "oauth": oauth.id,
         "borrower": borrower.id,
         "key": key.id,
@@ -279,6 +283,9 @@ async def test_deactivation_cascade_then_reactivation_round_trip() -> None:
         as_departed = await session.get(Assignment, seed["shared_as_departed"])
         assert as_departed.enabled is True and as_departed.paused_reason is None
         assert (await session.get(Assignment, seed["shared_plain"])).user_id == users["departing"].id
+        assert (await session.get(Assignment, seed["company_job"])).user_id == users["departing"].id
+        # The successor's own assignment on a restored agent stays the successor's.
+        assert (await session.get(Assignment, seed["admin_job"])).user_id == users["platform_admin"].id
         assert (await session.get(Workspace, seed["workspace"])).user_id == users["departing"].id
         assert (await session.get(UserApiKey, seed["key"])).revoked_at is not None
         assert (await session.get(PlatformTimer, seed["timer"])).state == TIMER_CANCELLED

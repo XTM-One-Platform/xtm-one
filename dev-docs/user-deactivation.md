@@ -34,7 +34,7 @@ The platform admin account (`ADMIN_EMAIL`) cannot be deactivated, and no adminis
 
 - the private agents' `enabled` and `web_enabled`;
 - the assignments paused `owner_deactivated` (only while they still carry that reason);
-- the transferred objects, unless an administrator reviewed them, or they changed owner since.
+- the transferred objects, unless an administrator reviewed them, or they changed owner since. For an agent, only the assignments the cascade moved with it (their ids are recorded on the agent's transfer entry) go back; an assignment the successor already owned stays the successor's.
 
 The revoked keys, cleared tokens, cancelled timers and one-offs, and stopped runs stay ended. Administrators are told.
 
