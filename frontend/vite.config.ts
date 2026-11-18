@@ -86,6 +86,14 @@ export default defineConfig({
         configure: endWithBackend,
         timeout: 600_000,
       },
+      // A2A agent cards (`/a2a/<token>/.well-known/agent-card.json`) on the
+      // preview origin (#112). The browser's Host is kept (no changeOrigin):
+      // the backend's external_base then writes the card's own URLs (tokenUrl)
+      // on the origin the browser used, not on the unreachable backend port.
+      "^/a2a/": {
+        target: process.env.VITE_API_URL ?? "http://localhost:8100",
+        configure: endWithBackend,
+      },
       "/xtm/auth": {
         target: process.env.VITE_API_URL ?? "http://localhost:8100",
         changeOrigin: true,
