@@ -2,12 +2,12 @@
 
 The Concierge is a company-managed fleet of agents that looks after the platform's other agents and flows. It consolidates memories, diagnoses agents and flows from their traces, ratings and run history, tries changes on sandbox copies, measures them with evaluations, and files **improvement proposals** that the people who manage the target approve. Nothing it proposes reaches production without that approval, and an applied change that regresses is rolled back.
 
-!!! note "Feature flag"
-    The Concierge is available when the platform runs with `ENABLED_FEATURES=CONCIERGE` (platform and worker). An administrator then turns it on in **Settings > Concierge**.
+!!! note "Built in"
+    The Concierge is built in: no feature flag is needed. An administrator turns it on in **Settings > Concierge**.
 
 ## The fleet
 
-When the flag is on, the platform creates a company-managed fleet named after the Concierge, in a company-managed workspace of the same name, with five agents:
+The platform creates a company-managed fleet named after the Concierge, in a company-managed workspace of the same name, with five agents:
 
 | Agent | Role |
 |---|---|

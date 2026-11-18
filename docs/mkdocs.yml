@@ -151,12 +151,10 @@ markdown_extensions:
 # after `Prompt safety (Nova)`) when the flag is removed. See
 # `dev-docs/evaluation-feature-flag.md`.
 #
-# *Concierge* sits behind the `CONCIERGE` feature flag (#8261), off by default,
-# so its two pages are unpublished the same way; republish them (add
-# `Concierge: administration/concierge.md` to `Administration`, after `AI
-# governance`, and `Improvements: usage/improvements.md` to `Work with agents`,
-# after `Run budgets`) when the flag is removed. See
-# `dev-docs/concierge-feature-flag.md`.
+# *Concierge*: its flag is removed and it becomes Platform Health; its two pages
+# stay unpublished until the rename of the same slice publishes them under their
+# new names (`administration/health.md`, `usage/health.md`). See
+# `dev-docs/platform-health.md`, sections 2.2 and 2.4.
 exclude_docs: |
   usage/flows.md
   usage/flows-api.md

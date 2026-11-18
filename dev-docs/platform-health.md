@@ -2,8 +2,8 @@
 
 Issue: #101. Status: S0 (this spec). Read on main `7674eb87`, 18 Nov 2026.
 
-Platform Health replaces the Platform Concierge (`dev-docs/concierge-feature-flag.md`,
-`dev-docs/concierge-*.md`). It is built in, has no feature flag, and its checks never
+Platform Health replaces the Platform Concierge (`dev-docs/concierge-*.md`; its former
+flag document is retired, section 2.4). It is built in, has no feature flag, and its checks never
 consume agentic quota. It reports, inside XTM One, the issues, recommendations and gaps
 of the agents and fleets an admin enrols, of XTM One itself, and of every registered
 OpenCTI, OpenAEV and OpenCRQ platform.
@@ -125,7 +125,23 @@ alias for one minor release (section 2.3).
   `scope_mode = all` dropped, never turned into enrolments).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
-  values) with its helm-xtm-suite mirror when it exists.
+  values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no
+  hit in FiligranHQ/platform nor in the helm charts, so no deployment change.
+
+### 2.4 The former `CONCIERGE` flag
+
+The flag is gone from `FeatureFlag` / `KNOWN_FEATURE_FLAGS` (backend and
+`frontend/src/lib/utils.ts`). `ENABLED_FEATURES=CONCIERGE` left in an environment is an
+unknown id: logged and ignored at startup like any unknown flag, never an error.
+`services/concierge/availability.concierge_enabled` answers `True`; whether the fleet
+works is the admin switch alone (`concierge_settings.enabled`, off by default,
+`concierge_active`). Every gate the flag held is now open: the identity, consent reads
+(enrolled targets only, section 1.2), the budget, `/api/v1/concierge/*`, the agent, flow
+and profile cards, the Settings section, the fleet seeding, the scheduler, the
+`gate="concierge"` tool groups and `/api/v1/improvement-proposals`. Kept as they were:
+`platform_settings.concierge_settings`, the opt-ins and opt-outs, `agents.concierge_role`,
+the budget ledger, cycle digests, signal states and schedule marks (renamed by the S1
+migration, 2.3). `backend/tests/test_concierge_built_in.py` pins the built-in behaviour.
 
 ## 3. Engine
 
