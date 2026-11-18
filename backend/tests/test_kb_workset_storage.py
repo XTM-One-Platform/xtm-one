@@ -59,9 +59,8 @@ def _user(*, admin=False, user_id=None):
     return SimpleNamespace(id=user_id or uuid.uuid4(), is_admin=admin)
 
 
-def _storage(session, user, kb_id=None):
-    kb_id = str(uuid.uuid4()) if kb_id is None else kb_id
-    return asyncio.run(knowledge_bases._workset_storage_of(session, user, kb_id))
+def _storage(session, user):
+    return asyncio.run(knowledge_bases._workset_storage_of(session, user, uuid.uuid4()))
 
 
 def test_an_admin_is_told_which_workset_the_id_stores():
@@ -88,10 +87,12 @@ def test_the_owner_and_a_company_managed_workset_are_named_too():
     assert _storage(_Session(shared), _user()) is not None
 
 
-@pytest.mark.parametrize("kb_id", ["not-a-uuid", ""])
-def test_a_malformed_id_reads_nothing(kb_id):
+def test_a_malformed_id_is_the_unknown_id_s_404_and_reads_nothing():
     session = _Session(_workset())
-    assert _storage(session, _user(admin=True), kb_id) is None
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(knowledge_bases.get_knowledge_base("not-a-uuid", user=_user(admin=True), db=session))
+    assert caught.value.status_code == 404
+    assert caught.value.detail == "Knowledge base not found"
     assert session.statements == []
 
 
@@ -111,8 +112,6 @@ def test_the_route_answers_the_named_404(monkeypatch):
     monkeypatch.setattr(knowledge_bases, "get_user_knowledge_base", _hidden)
     monkeypatch.setattr(knowledge_bases, "get_user_group_ids", _groups)
     with pytest.raises(HTTPException) as caught:
-        asyncio.run(
-            knowledge_bases.get_knowledge_base(str(uuid.uuid4()), user=_user(admin=True), db=_Session(workset))
-        )
+        asyncio.run(knowledge_bases.get_knowledge_base(str(uuid.uuid4()), user=_user(admin=True), db=_Session(workset)))
     assert caught.value.status_code == 404
     assert caught.value.detail["code"] == "workset_storage"

@@ -676,7 +676,7 @@ async def create_knowledge_base(
 WORKSET_STORAGE_CODE = "workset_storage"
 
 
-async def _workset_storage_of(db: AsyncSession, user: User, kb_id: str) -> dict | None:
+async def _workset_storage_of(db: AsyncSession, user: User, kb_uuid: uuid.UUID) -> dict[str, str] | None:
     """What ``GET /knowledge-bases/{id}`` says of a workset's internal corpus.
 
     That knowledge base is hidden from every read (``is_internal``), so an old
@@ -687,12 +687,7 @@ async def _workset_storage_of(db: AsyncSession, user: User, kb_id: str) -> dict 
     """
     from app.models.workset import Workset
 
-    kb_uuid = safe_uuid(kb_id)
-    if kb_uuid is None:
-        return None
-    workset = (
-        await db.execute(select(Workset).where(Workset.knowledge_base_id == kb_uuid))
-    ).scalars().first()
+    workset = (await db.execute(select(Workset).where(Workset.knowledge_base_id == kb_uuid))).scalars().first()
     if workset is None:
         return None
     if not (user.is_admin or workset.is_company_managed or workset.user_id == user.id):
@@ -711,13 +706,12 @@ async def get_knowledge_base(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    kb_uuid = parse_path_id(kb_id, not_found_detail="Knowledge base not found")
     user_group_ids = await get_user_group_ids(db, user.id)
     try:
-        kb = await get_user_knowledge_base(
-            db, user.id, kb_id, user_group_ids, is_admin=user.is_admin
-        )
+        kb = await get_user_knowledge_base(db, user.id, kb_id, user_group_ids, is_admin=user.is_admin)
     except HTTPException as exc:
-        if exc.status_code == 404 and (storage := await _workset_storage_of(db, user, kb_id)):
+        if exc.status_code == 404 and (storage := await _workset_storage_of(db, user, kb_uuid)):
             raise HTTPException(status_code=404, detail=storage) from exc
         raise
     owner_name = None

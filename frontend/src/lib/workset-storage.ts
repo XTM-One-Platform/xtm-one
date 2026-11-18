@@ -19,7 +19,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * `detail.code === "workset_storage"` (backend `WORKSET_STORAGE_CODE`), so an
  * old link or an audit entry says what the id is instead of "not found".
  */
-export const WORKSET_STORAGE_CODE = "workset_storage";
+const WORKSET_STORAGE_CODE = "workset_storage";
 
 /** Whether a failed knowledge base read is the 404 of a workset's storage. */
 export function isWorksetStorage(error: unknown): boolean {
