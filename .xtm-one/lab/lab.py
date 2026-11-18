@@ -48,6 +48,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4356,6 +4357,80 @@ def seed_org_syncs(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"organization syncs": {"id": f"{len(rows)} syncs, {plan.get('read')} rows previewed", "url": url}}
 
 
+#: The custom integration provider every lab imports (#67): a ``filigran-integration-v1`` bundle with an
+#: API key setting, a select setting and no connectivity probe, so its card and its New integration form
+#: render without calling anything.
+LAB_CUSTOM_PROVIDER_METADATA = {
+    "format": "filigran-integration-v1",
+    "version": "1.0.0",
+    "name": "Lab sample custom integration",
+    "slug": "lab-sample-custom-integration",
+    "provider": "lab-sample-custom-integration",
+    "description": "Seeded by the lab: a custom provider imported from a bundle, with a long description "
+                   "so the catalog card wraps its text over several lines.",
+    "author": "XTM One lab",
+    "auth_type": "api_key",
+    "exported_at": "2026-11-18T00:00:00Z",
+    "settings": [
+        {"key": "api_key", "label": "API key", "type": "secret", "required": True,
+         "placeholder": "lab-only key"},
+        {"key": "region", "label": "Region", "type": "select", "required": False,
+         "options": [{"value": "eu", "label": "Europe"}, {"value": "us", "label": "United States"}]},
+    ],
+    "supports_polling": True,
+    "supports_webhook": False,
+    "test_connection": {"mode": "none"},
+}
+LAB_CUSTOM_PROVIDER = "custom:" + LAB_CUSTOM_PROVIDER_METADATA["provider"]
+
+
+def lab_custom_provider_bundle() -> bytes:
+    """The bundle ZIP of :data:`LAB_CUSTOM_PROVIDER_METADATA`: ``metadata.json`` and its ``checksum.sha256``."""
+    metadata = json.dumps(LAB_CUSTOM_PROVIDER_METADATA, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("metadata.json", metadata)
+        archive.writestr("checksum.sha256", hashlib.sha256(metadata).hexdigest())
+    return buffer.getvalue()
+
+
+def seed_custom_integration_provider(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One custom integration provider in the catalog (#67).
+
+    Imports :func:`lab_custom_provider_bundle` through ``POST /integrations/admin/import`` (the route the
+    Import bundle dialog calls) unless the catalog already lists :data:`LAB_CUSTOM_PROVIDER` (a
+    re-import of the same version answers 409). Read back: ``GET /integrations/catalog`` lists it with
+    ``is_custom``. Logged ``seeded custom integration provider: <base>/integrations/new?provider=<key>``.
+    May raise: the caller logs and skips.
+    """
+    def listed() -> dict | None:
+        rows = api("GET", "/integrations/catalog", token)
+        return next((r for r in (rows if isinstance(rows, list) else [])
+                     if isinstance(r, dict) and r.get("provider") == LAB_CUSTOM_PROVIDER), None)
+
+    if listed() is None:
+        boundary = f"lab-{uuid.uuid4().hex}"
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"bundle\"; filename=\"lab-custom.zip\"\r\n"
+            "Content-Type: application/zip\r\n\r\n"
+        ).encode() + lab_custom_provider_bundle() + f"\r\n--{boundary}--\r\n".encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{API_PORT}/api/v1/integrations/admin/import", data=body, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                response.read()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"POST /integrations/admin/import: {exc.code} {exc.read()[:200].decode('utf-8', 'replace')}") from exc
+    row = listed()
+    if row is None or not row.get("is_custom"):
+        raise RuntimeError(f"imported, but GET /integrations/catalog lists {LAB_CUSTOM_PROVIDER} as {str(row)[:200]}")
+    url = f"{base}/integrations/new?" + urllib.parse.urlencode({"provider": LAB_CUSTOM_PROVIDER})
+    log(f"seeded custom integration provider: {url}")
+    return {"custom integration provider": {"id": LAB_CUSTOM_PROVIDER, "url": url}}
+
+
 def seed_oauth_missing_scopes(token: str, base: str) -> dict[str, dict[str, str]]:
     """A connected Google OAuth integration whose token was granted all but one requested scope (#9813).
 
@@ -7015,6 +7090,10 @@ def seed_entities() -> None:
         seeded.update(seed_org_syncs(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["organization syncs"] = str(exc)[:600]
+    try:
+        seeded.update(seed_custom_integration_provider(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["custom integration provider"] = str(exc)[:600]
     # Before the AI switches (Enable fleet is refused while AI is off).
     if peer_id and "opencti" in suite:
         try:
