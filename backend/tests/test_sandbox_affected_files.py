@@ -384,6 +384,15 @@ def test_split_sorts_each_edit_by_the_changed_lines_it_touches():
     assert format_changed.label(parts.enclosing) == "5-6"
 
 
+def test_the_pre_existing_drift_names_its_first_ranges_and_counts_the_rest() -> None:
+    """Gap format-changed-preexisting-list: a drifted module printed its 456 ranges, about 19,800 characters."""
+    edits = [(i * 3, i * 3 + 1, i * 3, i * 3 + 1) for i in range(20)]
+    shown = format_changed.label(edits, format_changed.PREEXISTING_SHOWN)
+    assert shown == "1, 4, 7, 10, 13, 16, 19, 22, and 12 more"
+    assert format_changed.label(edits[:3], format_changed.PREEXISTING_SHOWN) == "1, 4, 7"
+    assert format_changed.label(edits).count(",") == 19
+
+
 def test_format_changed_fix_rewrites_only_the_changed_lines_of_a_drifted_file(tmp_path, monkeypatch):
     """The acceptance of the changed-lines fix: the pre-existing drift (lines 1-7 and 12) is left as it is."""
     import shutil

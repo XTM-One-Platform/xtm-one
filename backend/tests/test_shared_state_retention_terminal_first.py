@@ -117,6 +117,40 @@ def test_keep_last_on_a_protected_list_trims_terminal_items_only():
     assert changes["gaps"]["trimmed"] == 2 and changes["gaps"]["kept_open"] == 1
 
 
+@pytest.mark.asyncio
+async def test_a_keep_last_blocked_by_open_items_is_refused_naming_them(monkeypatch, limits):
+    # Gap shared-state-trim-after-size-check: keep_last_json kept the open items
+    # archive_when protects, the value stayed over the hard limit and the refusal
+    # advised the very keep_last_json the write carried.
+    stored = _gaps(["queued"] * 6)
+    limits(value_size({"gaps": stored}) + 10)
+    state = _state({"gaps": stored})
+    state.retention = {"keep_last": 50, "archive_when": TERMINAL}
+    session = _Session(state)
+    _sessions(monkeypatch, session)
+    with pytest.raises(ValueError) as refused:
+        await shared_state_service.upsert_state(
+            user_id=str(uuid.uuid4()),
+            key="harness-gaps",
+            append={"gaps": [{"n": 9, "state": "queued", "text": "y" * 40}]},
+            keep_last={"gaps": 3},
+            writer=COMPANY_AGENT,
+            is_company_managed=True,
+        )
+    message = str(refused.value)
+    assert "hard limit" in message
+    assert "open item(s) of 'gaps'" in message and "archive_when" in message
+    assert "keep_last_json with archive_key" not in message
+    assert session.committed is False
+
+
+def test_the_hard_limit_refusal_without_kept_open_items_keeps_its_advice(limits):
+    limits(100)
+    big = {"gaps": _gaps(["queued"] * 5)}
+    message = shared_state_service.size_limit_refusal(0, big, {"gaps": 0})
+    assert message is not None and "keep_last_json with archive_key" in message
+
+
 def test_keep_last_without_protection_is_unchanged():
     value = {"gaps": _gaps(["queued", "merged", "queued"])}
     out, changes = apply_list_ops(value, keep_last={"gaps": 1}, protect=retention_protect({"keep_last": 5}, value))

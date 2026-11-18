@@ -4630,6 +4630,48 @@ PROVIDER_CATALOG = {
             "notes": "Credly uses Basic Auth with your authorization token. The token is base64-encoded automatically. You need your Organization ID, which can be found in your Credly organization URL or via the API.",
         },
     },
+    "wordsmith": {
+        "name": "Wordsmith",
+        "description": "Legal AI for in-house legal teams — Agents (ask and follow up), Sessions, Tasks, Reviews and Playbooks, Files and document actions, Reports, Repositories, Skills, Events (whole public API)",
+        "logo": "/logos/wordsmith.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["legal"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {"region": "API Region"},
+        "extra_field_options": {
+            "region": [
+                {"value": "default", "label": "Default — api.wordsmith.ai"},
+                {"value": "us", "label": "US — api.us.wordsmith.ai"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Wordsmith API Key Setup",
+            "url": "https://app.wordsmith.ai/settings/api-keys",
+            "steps": [
+                "In Wordsmith, open Settings > API keys (your role needs the 'Use the Wordsmith API' permission).",
+                "Create a key named like '{APP_NAME}'. Full access reaches every tool; Selected permissions limits the tools to its scopes.",
+                "Optionally set an expiry; the key starts with sk-ws-api1-.",
+                "Copy the key (shown once) and paste it below. Pick the US region only if your organisation is hosted there.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Full access",
+                    "description": "Every tool, including artifacts and the routes that need a full-access key",
+                },
+                {
+                    "scope": "Selected permissions",
+                    "description": "Only the routes the key's scopes cover; a call outside them answers insufficient_scope with the scope it needs",
+                },
+                {
+                    "scope": "directory:admin / webhooks:write / audit:read",
+                    "description": "Organisation management, webhook endpoints and the audit log",
+                },
+            ],
+            "notes": "Each person can connect their own key, so their XTM One agents reach their own Wordsmith agents, sessions and tasks. Rate limit: 400 requests a minute per organisation.",
+        },
+    },
     "concord": {
         "name": "Concord",
         "description": "Contract Lifecycle Management — Agreements, Documents (PDF / Word, versions, attachments), Signatures, Templates, Negotiation",

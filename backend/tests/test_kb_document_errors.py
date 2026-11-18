@@ -56,6 +56,13 @@ from app.services.kb_document_errors import (
 from tests.test_document_processor import _build_doc_and_kb, _FakeSession
 from tests.test_knowledge_bases_list import _ExplodingDB, _fake_kb
 
+
+@pytest.fixture(autouse=True)
+def _embedding_config_not_moved(monkeypatch):
+    """The platform embedding config is the one each document job embedded with."""
+    monkeypatch.setattr("app.services.document_processor.embedding_config_moved", AsyncMock(return_value=False))
+
+
 # Stands for any text a driver or SDK puts in an exception: it must never be
 # stored on the row or served.
 _RAW = "internal-detail-marker"

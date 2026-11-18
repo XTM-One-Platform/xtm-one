@@ -136,11 +136,18 @@ def apply(source: list[bytes], formatted: list[bytes], edits: list[Edit]) -> lis
     return out
 
 
-def label(edits: list[Edit]) -> str:
-    """The source lines *edits* touch, as ``A-B`` ranges (an insertion as ``after N``)."""
+#: The pre-existing ranges named per file; the rest is a count (a drifted module holds hundreds).
+PREEXISTING_SHOWN = 8
+
+
+def label(edits: list[Edit], limit: int | None = None) -> str:
+    """The source lines *edits* touch, as ``A-B`` ranges (an insertion as ``after N``), the first *limit* named."""
     parts = []
-    for i1, i2, _, _ in sorted(edits):
+    ordered = sorted(edits)
+    for i1, i2, _, _ in ordered if limit is None else ordered[:limit]:
         parts.append(f"after {i1}" if i1 == i2 else (f"{i1 + 1}" if i2 == i1 + 1 else f"{i1 + 1}-{i2}"))
+    if limit is not None and len(ordered) > limit:
+        parts.append(f"and {len(ordered) - limit} more")
     return ", ".join(parts)
 
 
@@ -181,7 +188,7 @@ def ranged(path: str, ranges: list[str], *, fix: bool, ruff: str = "ruff") -> tu
     if parts.preexisting:
         print(
             f"{path}: pre-existing, not yours: {len(parts.preexisting)} edit(s) on lines "
-            f"{label(parts.preexisting)} (never written)."
+            f"{label(parts.preexisting, PREEXISTING_SHOWN)} (never written)."
         )
     return code, parts
 

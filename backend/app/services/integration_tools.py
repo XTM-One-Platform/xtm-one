@@ -181,6 +181,7 @@ from app.integrations.providers.whatsapp_bot import build_tools as whatsapp_bot_
 from app.integrations.providers.whatsapp_gateway import BACKEND_GATEWAY as WHATSAPP_GATEWAY_BACKEND
 from app.integrations.providers.whatsapp_gateway import gateway_token as whatsapp_gateway_token
 from app.integrations.providers.wiz import build_tools as wiz_tools
+from app.integrations.providers.wordsmith import build_tools as wordsmith_tools
 from app.integrations.providers.x import build_tools as x_tools
 from app.integrations.providers.xdr import build_tools as xdr_tools
 from app.integrations.providers.xsoar import build_tools as xsoar_tools
@@ -941,6 +942,7 @@ PROVIDER_TOOLS = {
     "drata": drata_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
@@ -1045,6 +1047,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
         "cybersixgill",
@@ -4099,6 +4102,23 @@ async def _get_token(
             logger.warning(
                 "Failed to extract extra_config for '%s' (filigran_ai): %s",
                 integ.name,
+                format_exception_message(exc),
+            )
+
+    # Wordsmith: a region host from extra_config is prepended as base_url
+    if provider == "wordsmith" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            region = extra.get("region", "").strip()
+            if region:
+                from app.integrations.providers.wordsmith import resolve_base_url as wordsmith_base_url
+
+                return f"{wordsmith_base_url(region)}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
                 format_exception_message(exc),
             )
 

@@ -113,6 +113,33 @@ async def test_a_detected_uv_project_runs_the_script_in_its_environment():
     assert command.argv == ("uv", "run", "python", "repro.py")
 
 
+async def test_a_uv_script_gets_the_with_dependencies_of_its_directory_s_uv_checks():
+    # XTM-Flow/filigran-flow: CI runs `uv run --with pytest --with pyyaml --with jsonschema ... pytest`; the script
+    # check ran `uv run python plugin/scripts/flow_lint.py` without them and failed on `import jsonschema`.
+    declared = (
+        b'[check.python-unit]\nargv = ["uv", "run", "--with", "pytest", "--with=pyyaml", "--with", "jsonschema", '
+        b'"pytest", "plugin/tests", "--with", "not-an-option"]\nimage = "python"\n'
+        b'[check.plugin-lint]\nargv = ["uv", "run", "--frozen", "--with", "pyyaml", "--with-requirements", '
+        b'"reqs.txt", "ruff", "check"]\ncwd = "plugin"\nimage = "python"\n'
+    )
+    workspace = _workspace()
+    await workspace.put_tree(
+        [
+            ("co/.xtm-one/checks.toml", declared),
+            ("co/plugin/scripts/flow_lint.py", b"import jsonschema\n"),
+            ("co/repro.py", b"print(1)\n"),
+        ]
+    )
+    root = await _resolve(workspace, check="script", args=["repro.py", "-q"], known_images={"python"})
+    assert root.argv == (
+        "uv", "run", "--with", "pytest", "--with", "pyyaml", "--with", "jsonschema", "python", "repro.py", "-q"
+    )  # fmt: skip
+    nested = await _resolve(workspace, check="script", args=["plugin/scripts/flow_lint.py"], known_images={"python"})
+    assert nested.argv == (
+        "uv", "run", "--with", "pyyaml", "--with-requirements", "plugin/reqs.txt", "python", "plugin/scripts/flow_lint.py"
+    )  # fmt: skip
+
+
 async def test_a_script_runs_on_the_interpreter_its_directory_s_install_used():
     # A project pinned to 3.12 installs with ``python3.12 -m pip``: the image's default python sees none
     # of those packages, so the script ran on it and failed with "No module named ...".

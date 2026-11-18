@@ -1397,6 +1397,12 @@ class ToolDefinition:
     cut_safe: bool = False
     read_only: bool = False
     read_only_call: Callable[[Mapping[str, Any]], bool] | None = field(default=None, compare=False, repr=False)
+    #: A tool its name reads as a write that CHECKS the state another write
+    #: changes (``sandbox_run_command`` runs a lint or a test suite on the
+    #: workspace the edit tools change): the loop breaker starts its counts over
+    #: after every write that took effect except its own, as it does for a
+    #: read, so run, edit, run is never an identical repeat (#175).
+    recheck_after_write: bool = False
     landed_probe: Callable[[Mapping[str, Any]], Awaitable[str | bool | None]] | None = field(
         default=None, compare=False, repr=False
     )

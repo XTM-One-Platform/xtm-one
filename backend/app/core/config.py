@@ -1381,7 +1381,7 @@ class Settings(BaseSettings):
     kb_search_statement_timeout_ms: int = 5000
 
     # Per-statement timeout (seconds) applied to the bulk KB embedding
-    # purge that runs when the platform embedding model/provider/dimensions
+    # purge that runs when the platform embedding model/dimensions
     # change (see ``_reset_kb_embeddings_for_new_model`` in
     # api/v1/settings.py). The global pool default is 30 000 ms
     # (core/database.py); a single ``DELETE FROM embeddings`` over a large

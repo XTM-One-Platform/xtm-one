@@ -246,3 +246,174 @@ async def test_background_reset_swallows_errors(monkeypatch):
 
     # Must not raise.
     await settings_module._run_embedding_reset_background("text-embedding-3-large")
+
+
+async def _save(monkeypatch, body, *, legacy_resolves_to=None, auto_retry=True, **ps_fields):
+    """Run the GA save; return (bg tasks, audit details)."""
+    _clear_env_locks(monkeypatch)
+    ps = _make_ps()
+    for key, value in ps_fields.items():
+        setattr(ps, key, value)
+    _common_patches(monkeypatch, ps=ps)
+    audits: list = []
+
+    async def _capture_audit(*_a, **kw):
+        audits.append(kw.get("details"))
+
+    async def _no_reference_check(*_a, **_kw):
+        return None
+
+    async def _four_failures(_db):
+        return 4
+
+    async def _legacy_config(_db, _provider):
+        return uuid.UUID(legacy_resolves_to) if legacy_resolves_to else None
+
+    monkeypatch.setattr(settings_module, "log_audit", _capture_audit)
+    monkeypatch.setattr(settings_module, "_refuse_missing_ga_provider_references", _no_reference_check)
+    monkeypatch.setattr(settings_module, "count_provider_failures", _four_failures)
+    monkeypatch.setattr(settings_module, "_legacy_embedding_config_id", _legacy_config)
+    monkeypatch.setattr(app_settings, "embedding_auto_retry_enabled", auto_retry)
+    bg = BackgroundTasks()
+    await settings_module.update_general_assistant_config(
+        body=body,
+        request=SimpleNamespace(),
+        background_tasks=bg,
+        user=SimpleNamespace(id="admin", email="admin@filigran.io"),
+        db=_MockSession([_Result(SimpleNamespace(llm_model="gpt-4.1"))]),
+    )
+    return [t.func for t in bg.tasks], audits[0]
+
+
+_CURRENT_CONFIG = "00000000-0000-0000-0000-000000000001"
+_OTHER_CONFIG = "00000000-0000-0000-0000-000000000002"
+_RESET = settings_module._run_embedding_reset_background
+_RETRY = settings_module.retry_provider_failures_now
+
+
+@pytest.mark.asyncio
+async def test_same_model_on_another_provider_keeps_the_vectors(monkeypatch):
+    # OpenAI direct -> AI Gateway, same model and dimensions: the stored vectors
+    # are still valid; only the documents that failed on the provider retry.
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="filigran_gateway",
+            embedding_provider_id=_OTHER_CONFIG,
+            embedding_model="text-embedding-3-small",
+            embedding_dimensions=1536,
+        ),
+    )
+
+    assert tasks == [_RETRY]
+    assert audit["embedding_config_changed"] is True
+    assert audit["kb_reset_scheduled"] is False
+    assert audit["provider_failures"] == 4
+    assert audit["provider_failures_retried"] is True
+
+
+@pytest.mark.asyncio
+async def test_provider_switch_with_auto_retry_off_records_the_failures_left(monkeypatch):
+    tasks, audit = await _save(
+        monkeypatch, GeneralAssistantConfigRequest(embedding_provider_id=_OTHER_CONFIG), auto_retry=False
+    )
+
+    assert tasks == []
+    assert audit["provider_failures"] == 4
+    assert audit["provider_failures_retried"] is False
+
+
+@pytest.mark.asyncio
+async def test_another_config_of_the_same_provider_type_keeps_the_vectors(monkeypatch):
+    tasks, audit = await _save(monkeypatch, GeneralAssistantConfigRequest(embedding_provider_id=_OTHER_CONFIG))
+
+    assert tasks == [_RETRY]
+    assert audit["kb_reset_scheduled"] is False
+
+
+@pytest.mark.parametrize("model", ["text-embedding-3-small", None])
+@pytest.mark.asyncio
+async def test_naming_the_config_a_legacy_row_runs_on_changes_nothing(monkeypatch, model):
+    # No id stored: the row runs on the newest config of its type, which the save now names.
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(embedding_provider_id=_OTHER_CONFIG),
+        legacy_resolves_to=_OTHER_CONFIG,
+        embedding_provider_id=None,
+        embedding_model=model,
+    )
+
+    assert tasks == []
+    assert audit["embedding_config_changed"] is False
+    assert audit["kb_reset_scheduled"] is False
+    assert "provider_failures" not in audit
+
+
+@pytest.mark.asyncio
+async def test_naming_another_config_than_a_legacy_row_runs_on_without_a_model_resets(monkeypatch):
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(embedding_provider_id=_OTHER_CONFIG),
+        legacy_resolves_to=_CURRENT_CONFIG,
+        embedding_provider_id=None,
+        embedding_model=None,
+    )
+
+    assert tasks == [_RESET]
+    assert audit["kb_reset_scheduled"] is True
+
+
+@pytest.mark.asyncio
+async def test_unchanged_embedding_settings_schedule_nothing(monkeypatch):
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="openai",
+            embedding_provider_id=_CURRENT_CONFIG,
+            embedding_model="text-embedding-3-small",
+            embedding_dimensions=1536,
+        ),
+        embedding_provider_id=uuid.UUID(_CURRENT_CONFIG),
+    )
+
+    assert tasks == []
+    assert audit["embedding_config_changed"] is False
+    assert audit["kb_reset_scheduled"] is False
+    assert "provider_failures" not in audit
+
+
+@pytest.mark.asyncio
+async def test_provider_switch_without_a_model_schedules_reset(monkeypatch):
+    # No model set: each provider embeds with its own default model.
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(embedding_provider="gemini", embedding_provider_id=_OTHER_CONFIG),
+        embedding_model=None,
+    )
+
+    assert tasks == [_RESET]
+    assert audit["kb_reset_scheduled"] is True
+    assert "provider_failures" not in audit
+
+
+@pytest.mark.asyncio
+async def test_dimensions_change_schedules_reset(monkeypatch):
+    tasks, audit = await _save(monkeypatch, GeneralAssistantConfigRequest(embedding_dimensions=512))
+
+    assert tasks == [_RESET]
+    assert audit["kb_reset_scheduled"] is True
+
+
+@pytest.mark.asyncio
+async def test_model_change_on_another_provider_schedules_reset(monkeypatch):
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="filigran_gateway",
+            embedding_provider_id=_OTHER_CONFIG,
+            embedding_model="text-embedding-3-large",
+        ),
+    )
+
+    assert tasks == [_RESET]
+    assert audit["kb_reset_scheduled"] is True

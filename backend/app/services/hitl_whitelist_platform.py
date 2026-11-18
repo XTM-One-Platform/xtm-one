@@ -150,6 +150,7 @@ HAND_GATED: dict[str, str] = {
     "download_threatq_export": _DOWNLOAD_REASON,
     "download_threatq_file": _DOWNLOAD_REASON,
     "download_whatsapp_media": _DOWNLOAD_REASON,
+    "download_wordsmith_file": _DOWNLOAD_REASON,
     "download_x_media": _DOWNLOAD_REASON,
     "download_xdr_script": _DOWNLOAD_REASON,
     "download_xtm_hub_resource": _DOWNLOAD_REASON,

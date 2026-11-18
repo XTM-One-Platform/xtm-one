@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -61,6 +62,19 @@ _KIND_TO_CONFIG_TYPES: dict[str, tuple[str, ...]] = {
     "entities_runtime": ("list",),
     "series": ("temporal-histogram", "structural-histogram"),
 }
+
+
+# The fields OpenAEV's CustomDashboardInput binds on POST and PUT; any other
+# field is dropped silently by the endpoint.
+_DASHBOARD_WRITABLE_FIELDS = (
+    "custom_dashboard_name",
+    "custom_dashboard_description",
+    "custom_dashboard_parameters",
+)
+# The scalar fields an update carries over from the stored dashboard when the
+# call does not name them (parameters are left out: OpenAEV keeps them when the
+# PUT omits them, and replaces them whole when it carries them).
+_DASHBOARD_MERGED_FIELDS = ("custom_dashboard_name", "custom_dashboard_description")
 
 
 def register(
@@ -265,40 +279,93 @@ def register(
             return json.dumps(items, default=str)[:2000]
 
         if action in ("create", "update"):
-            body: dict = dict(extra)
+            ignored = sorted(set(extra) - set(_DASHBOARD_WRITABLE_FIELDS))
+            if ignored:
+                # OpenAEV's dashboard endpoint drops any other field without an
+                # error (widgets live under /widgets), so a write carrying one
+                # would report a success that did not happen.
+                return (
+                    f"Nothing was written: config field(s) {', '.join(ignored)} "
+                    "are not stored by OpenAEV's custom dashboard endpoint, which "
+                    "keeps only " + ", ".join(_DASHBOARD_WRITABLE_FIELDS) + ". "
+                    "Widgets are not written through this action."
+                )
+            changes: dict[str, Any] = dict(extra)
             if name:
-                body["custom_dashboard_name"] = name
+                changes["custom_dashboard_name"] = name
             if description:
-                body["custom_dashboard_description"] = description
-            if action == "create" and not body.get("custom_dashboard_name"):
+                changes["custom_dashboard_description"] = description
+            if action == "create" and not changes.get("custom_dashboard_name"):
                 return "name is required for action 'create'."
+            kept: list[str] = []
             if action == "update":
                 if not dashboard_id:
                     return "dashboard_id is required for action 'update'."
-                if not body:
+                if not changes:
                     return (
                         "Provide at least one field to update (name, description, "
                         "or config)."
                     )
-            if action == "create":
-                resp, err = await _api(
-                    base_url, headers, "post", "/api/custom-dashboards",
-                    "create custom dashboard", json=body,
+                # The PUT replaces the entity whole: a field it does not carry is
+                # cleared (description) or refused (name). Read the dashboard and
+                # merge the change over it so an update only changes what it names.
+                current_resp, cerr = await _api(
+                    base_url,
+                    headers,
+                    "get",
+                    f"/api/custom-dashboards/{dashboard_id}",
+                    "read custom dashboard before update",
                 )
-            else:
+                if cerr or current_resp is None:
+                    return cerr or f"Nothing was written: dashboard {dashboard_id} could not be read."
+                current = current_resp.json()
+                if not isinstance(current, dict):
+                    return f"Nothing was written: dashboard {dashboard_id} could not be read before the update."
+                body: dict[str, Any] = {}
+                for field in _DASHBOARD_MERGED_FIELDS:
+                    if field not in changes and current.get(field) is not None:
+                        body[field] = current[field]
+                        kept.append(field)
+                body.update(changes)
                 resp, err = await _api(
                     base_url, headers, "put",
                     f"/api/custom-dashboards/{dashboard_id}",
                     "update custom dashboard", json=body,
                 )
+            else:
+                body = changes
+                resp, err = await _api(
+                    base_url,
+                    headers,
+                    "post",
+                    "/api/custom-dashboards",
+                    "create custom dashboard",
+                    json=body,
+                )
             if err:
                 return err
             d = resp.json()
+            if not isinstance(d, dict):
+                d = {}
+            not_applied = [
+                field
+                for field in _DASHBOARD_MERGED_FIELDS
+                if field in body and field in d and d.get(field) != body[field]
+            ]
             verb = "Created" if action == "create" else "Updated"
-            return (
+            answer = (
                 f"{verb} custom dashboard '{d.get('custom_dashboard_name')}' "
-                f"(id: {d.get('custom_dashboard_id')})."
+                f"(id: {d.get('custom_dashboard_id') or dashboard_id})."
             )
+            if kept:
+                answer += " Kept as they were: " + ", ".join(kept) + "."
+            if not_applied:
+                answer += (
+                    " WARNING: OpenAEV answered with different values for "
+                    + ", ".join(not_applied)
+                    + " than the ones sent; read the dashboard back with action 'get'."
+                )
+            return answer
 
         if action == "delete":
             if not dashboard_id:
@@ -428,7 +495,9 @@ def register(
                 "Manage OpenAEV custom dashboards and run their saved widgets. "
                 "Actions: 'list' (search dashboards), 'get' (dashboard_id), "
                 "'for_resource' (resource_id - dashboards bindable to a "
-                "simulation or scenario), 'create' (name), 'update', 'delete', "
+                "simulation or scenario), 'create' (name), 'update' (dashboard_id; "
+                "only the fields passed change, the rest is read from the stored "
+                "dashboard and kept), 'delete', "
                 "'list_widgets' (dashboard_id), 'get_widget' (dashboard_id + "
                 "widget_id - also the best way to learn a widget_config shape for "
                 "query_openaev_analytics), 'run_count' / 'run_average' / "
@@ -454,7 +523,7 @@ def register(
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "parameters": {"type": "string", "description": "JSON object of string parameters for the run_* actions."},
-                    "config": {"type": "string", "description": "JSON object of raw custom_dashboard_* fields."},
+                    "config": {"type": "string", "description": "JSON object of raw fields: custom_dashboard_name, custom_dashboard_description, custom_dashboard_parameters (replaces the parameters whole). Any other field (widgets included) is refused, as OpenAEV would drop it."},
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
                 },
