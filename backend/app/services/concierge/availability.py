@@ -11,33 +11,27 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Is the Platform Concierge on? (#8254)
+"""Is the Platform Health capability on? (#8254, dev-docs/platform-health.md)
 
-Two answers, kept apart: :func:`concierge_enabled` is the ``CONCIERGE``
-feature flag, the deployment's switch (what the evaluation engine gate reads);
-:func:`concierge_active` adds the administrator's "enabled" in Settings >
-Agents and automations > Concierge, the switch that starts and stops its work.
+The capability is built in: :func:`concierge_enabled` answers ``True`` on
+every deployment since the ``CONCIERGE`` feature flag was removed (slice S1 of
+the Platform Health plan). :func:`concierge_active` is the administrator's
+"enabled" in the settings, the switch that starts and stops its work; no agent
+or fleet is checked until it is enrolled (``consent``).
 """
 
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.feature_flags import is_feature_enabled
-
-FLAG = "CONCIERGE"
-
 
 def concierge_enabled() -> bool:
-    """The ``CONCIERGE`` feature flag."""
-    return is_feature_enabled(FLAG)
+    """Always ``True``: the capability is built in (the former ``CONCIERGE`` flag)."""
+    return True
 
 
 async def concierge_active(db: AsyncSession) -> bool:
-    """The flag AND Settings > Agents and automations > Concierge "enabled": may Concierge work start?"""
-    if not concierge_enabled():
-        return False
+    """The administrator's "enabled" in the settings: may the work start?"""
     from app.services.concierge.settings import load_concierge_settings
 
     return (await load_concierge_settings(db)).enabled
-

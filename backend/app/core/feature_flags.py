@@ -93,16 +93,9 @@ from typing import Literal
 #   documented, nothing is pushed to a phone, the PIN lock never refuses a
 #   request, and a phone gets the web app. Stored phones and PINs are kept.
 #   See dev-docs/mobile-companion-feature-flag.md. Remove once it is announced.
-# owner: platform-core - CONCIERGE gates the Platform Concierge (#1783, #8254):
-#   the /api/v1/concierge API, the Concierge identity (no run acts as it while
-#   off), the improvement opt-in and opt-out switches, Settings > Agents and automations > Concierge and
-#   every later Concierge surface. Both editions, every mode. Stored settings,
-#   opt-ins and opt-outs are kept. See dev-docs/concierge-feature-flag.md.
-#   Remove once the Concierge ships.
 FeatureFlag = Literal[
     "AGENTIC_CODING",
     "AGENT_WIZARD_ASSIST",
-    "CONCIERGE",
     "DASHBOARD_STUDIO",
     "DEEP_INVESTIGATION",
     "EVALUATION",
@@ -119,7 +112,6 @@ KNOWN_FEATURE_FLAGS: frozenset[str] = frozenset(
     {
         "AGENTIC_CODING",
         "AGENT_WIZARD_ASSIST",
-        "CONCIERGE",
         "DASHBOARD_STUDIO",
         "DEEP_INVESTIGATION",
         "EVALUATION",

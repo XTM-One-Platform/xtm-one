@@ -40,7 +40,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.api.v1.helpers import can_manage, get_user_agent, get_user_group_ids, parse_path_id, user_visible_filter
 from app.core.database import get_db
-from app.core.feature_flags import require_feature
 from app.models.concierge import ConciergeBudgetMonth, ConciergeCycle
 from app.models.flow import Flow
 from app.models.user import User
@@ -58,7 +57,7 @@ from app.services.concierge.settings import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(require_feature("CONCIERGE"))])
+router = APIRouter()
 
 #: What a caller is told when a revocation could not be applied (the reason is logged).
 NOT_APPLIED_DETAIL = "The change could not be applied. Nothing was changed."

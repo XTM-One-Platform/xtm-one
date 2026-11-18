@@ -6312,7 +6312,7 @@ async def execute_assignment_run(
                 composite.add_tools(pi_defs, pi_exec)
 
             # --- Memory Steward (#8258): refused to anyone but the Concierge ---
-            if "memory_steward" in agent_builtin_tool_ids and is_feature_enabled("CONCIERGE"):
+            if "memory_steward" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
                 # The run's Concierge cycle pays for the pass's model calls.
@@ -6335,7 +6335,7 @@ async def execute_assignment_run(
             )
             # --- Concierge orchestrator (#8261): read-only in a run, so a
             # cycle's own run never starts another cycle ---
-            if "concierge_orchestrator" in agent_builtin_tool_ids and is_feature_enabled("CONCIERGE"):
+            if "concierge_orchestrator" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
 
                 co_defs, co_exec = build_concierge_orchestrator_tools(
@@ -6362,14 +6362,14 @@ async def execute_assignment_run(
 
             # --- Concierge sandbox (#8255): a Concierge run has no user of its
             # own; the tools apply their own rule (the Concierge or an admin).
-            if "concierge_sandbox" in agent_builtin_tool_ids and is_feature_enabled("CONCIERGE"):
+            if "concierge_sandbox" in agent_builtin_tool_ids:
                 from app.services.concierge.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Concierge evaluation (#8257): the same rule, the tools' own.
-            if "concierge_evaluation" in agent_builtin_tool_ids and is_feature_enabled("CONCIERGE"):
+            if "concierge_evaluation" in agent_builtin_tool_ids:
                 from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
 
                 composite.add_tools(
@@ -6377,7 +6377,7 @@ async def execute_assignment_run(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
-            if "improvement_proposals" in agent_builtin_tool_ids and is_feature_enabled("CONCIERGE"):
+            if "improvement_proposals" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.improvements import build_improvement_tools
 
                 composite.add_tools(

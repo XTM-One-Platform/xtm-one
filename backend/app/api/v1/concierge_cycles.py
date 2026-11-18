@@ -35,7 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin, require_agentic_ai
 from app.api.v1.helpers import get_user_group_ids, parse_path_id
 from app.core.database import get_db
-from app.core.feature_flags import require_feature
 from app.models.concierge import ConciergeCycle
 from app.models.concierge_cycle import ConciergeCycleRun, ConciergeScheduleMark
 from app.models.user import User
@@ -49,7 +48,7 @@ from app.services.concierge.cycle_access import (
 )
 from app.services.concierge.naming import load_concierge_name
 
-router = APIRouter(dependencies=[Depends(require_feature("CONCIERGE"))])
+router = APIRouter()
 
 CYCLE_NOT_FOUND = "Cycle not found"
 

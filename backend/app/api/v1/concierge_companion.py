@@ -38,7 +38,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
-from app.core.feature_flags import require_feature
 from app.models.user import User
 from app.services.audit import log_audit
 from app.services.concierge import pets
@@ -46,7 +45,7 @@ from app.services.concierge.companion import CompanionPreference, companion_acti
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(require_feature("CONCIERGE"))])
+router = APIRouter()
 
 PET_NOT_FOUND = "Pet not found"
 #: The files one upload may carry: a zip, or pet.json and its spritesheet.

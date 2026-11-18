@@ -1441,11 +1441,7 @@ def _add_platform_builder_tools(
         from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
         add_flow_lab_tools(composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id)
-    if (
-        "concierge_orchestrator" in agent_builtin_tool_ids
-        and concierge_actor is not None
-        and is_feature_enabled("CONCIERGE")
-    ):
+    if "concierge_orchestrator" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
 
         # Acts as the Concierge in an administrator's chat with a fleet agent,
@@ -1466,21 +1462,17 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
+    if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.concierge.sandbox.tools import build_sandbox_tools
 
         # Its own access rule (the Concierge or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
-    if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
+    if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
 
         # Its own access rule (the Concierge, or an administrator where evaluation is on).
         composite.add_tools(*build_concierge_evaluation_tools(db, concierge_actor or None, run_id=run_id))
-    if (
-        "improvement_proposals" in agent_builtin_tool_ids
-        and concierge_actor is not None
-        and is_feature_enabled("CONCIERGE")
-    ):
+    if "improvement_proposals" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 
         # Its own access rule (scope in a Concierge run, the target's managers

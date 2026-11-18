@@ -262,7 +262,7 @@ OpenCTI, OpenAEV and OpenCRQ are opened on team approval (skill section 16).
 - Traces carry their own source (`platform_health`), excluded from customer quota and
   from agentic execution counts, visible in observability; the spend is shown on the
   Health page.
-- **Default ceiling: not set in this spec.** It is set in slice S8 from a measured lab run
+- **Default ceiling: not set in this spec.** It is set in slice S9 from a measured lab run
   (tokens and dollars of one full analysis pass per module on the lab with OpenCTI and
   OpenAEV registered), the measurement written here then. No guessed figure.
 

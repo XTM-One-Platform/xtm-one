@@ -2373,8 +2373,6 @@ _FEATURE_GATED_BUILTIN_TOOL_IDS: dict[str, FeatureFlag] = {
     "custom_dashboards": "DASHBOARD_STUDIO",
     "phone": "MOBILE_COMPANION",
     "deep_investigation": "DEEP_INVESTIGATION",
-    # Every Concierge group (the memory steward, the fleet's tools): dark with its flag.
-    **{group.id: "CONCIERGE" for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"},
 }
 
 

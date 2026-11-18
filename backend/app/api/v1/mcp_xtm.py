@@ -346,25 +346,23 @@ async def _build_xtm_tools(
         composite.add_tools(*build_flow_builder_tool(db, user_id))
 
     # The Concierge sandbox (#8255): the agent tools' own rule, administrators only here.
-    if is_feature_enabled("CONCIERGE"):
-        from app.services.concierge.sandbox.tools import build_sandbox_tools
+    from app.services.concierge.sandbox.tools import build_sandbox_tools
 
-        composite.add_tools(*build_sandbox_tools(db, user_id))
-        # Concierge evaluation (#8257): administrators, while evaluation is on.
-        from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+    composite.add_tools(*build_sandbox_tools(db, user_id))
+    # Concierge evaluation (#8257): administrators, while evaluation is on.
+    from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
 
-        composite.add_tools(*build_concierge_evaluation_tools(db, user_id))
-        # Improvement proposals (#8256): the caller's managed targets; filing
-        # stays the Concierge Experimenter's, so an MCP caller is refused it.
-        from app.services.builtin_tools.improvements import build_improvement_tools
+    composite.add_tools(*build_concierge_evaluation_tools(db, user_id))
+    # Improvement proposals (#8256): the caller's managed targets; filing
+    # stays the Concierge Experimenter's, so an MCP caller is refused it.
+    from app.services.builtin_tools.improvements import build_improvement_tools
 
-        composite.add_tools(*build_improvement_tools(db, user_id))
+    composite.add_tools(*build_improvement_tools(db, user_id))
 
     # Concierge (#8261): a person's reach - the targets they manage - on every call.
-    if is_feature_enabled("CONCIERGE"):
-        from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
 
-        composite.add_tools(*build_concierge_orchestrator_tools(user_id))
+    composite.add_tools(*build_concierge_orchestrator_tools(user_id))
 
     # Observability. ``allow_cross_agent`` grants the supervision surface; the
     # tools then gate it on the caller's own admin privilege, so a non-admin

@@ -2415,10 +2415,6 @@ FEATURE_GATED_BUILTIN_AGENTS: dict[str, FeatureFlag] = {
 # the flag was on (``seed.seed_builtin_skills``).
 FEATURE_GATED_BUILTIN_SKILLS: dict[str, FeatureFlag] = {
     "video-production": "VIDEO_STUDIO",
-    "memory-steward": "CONCIERGE",
-    "concierge-quality-analyst": "CONCIERGE",
-    "concierge-experimenter": "CONCIERGE",
-    "concierge-flow-lab": "CONCIERGE",
 }
 
 
