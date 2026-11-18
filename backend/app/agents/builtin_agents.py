@@ -2456,10 +2456,6 @@ FEATURE_GATED_BUILTIN_AGENTS: dict[str, FeatureFlag] = {
 # the flag was on (``seed.seed_builtin_skills``).
 FEATURE_GATED_BUILTIN_SKILLS: dict[str, FeatureFlag] = {
     "video-production": "VIDEO_STUDIO",
-    "memory-steward": "CONCIERGE",
-    "concierge-quality-analyst": "CONCIERGE",
-    "concierge-experimenter": "CONCIERGE",
-    "concierge-flow-lab": "CONCIERGE",
 }
 
 
@@ -3464,8 +3460,8 @@ BUILTIN_SKILLS: list[dict] = [
         "bind_to_agent_slugs": ["deck-importer"],
     },
     {
-        # Platform Concierge (#8258): the Memory Steward's working method. The
-        # Concierge fleet's seed (level 8, #8261) binds it to the Memory Steward.
+        # Platform Health (#8258): the Memory Steward's working method. The
+        # Platform Health fleet's seed (level 8, #8261) binds it to the Memory Steward.
         "slug": "memory-steward",
         "name": "Memory Steward",
         "description": (
@@ -3673,7 +3669,7 @@ BUILTIN_SKILLS: list[dict] = [
         ],
     },
     {
-        # Platform Concierge (#8259): the Quality Analyst's working method. Seeded
+        # Platform Health (#8259): the Quality Analyst's working method. Seeded
         # unbound; level 8 binds it to the Quality Analyst it seeds.
         "slug": "concierge-quality-analyst",
         "name": "Concierge Quality Analyst",
@@ -3688,7 +3684,7 @@ BUILTIN_SKILLS: list[dict] = [
         "platform_targets": ["global"],
     },
     {
-        # Platform Concierge (#8259): the Experimenter's working method. Seeded
+        # Platform Health (#8259): the Experimenter's working method. Seeded
         # unbound; level 8 binds it to the Experimenter it seeds.
         "slug": "concierge-experimenter",
         "name": "Concierge Experimenter",
@@ -3703,7 +3699,7 @@ BUILTIN_SKILLS: list[dict] = [
         "platform_targets": ["global"],
     },
     {
-        # Platform Concierge (#8260): the Flow Lab's working method. Seeded
+        # Platform Health (#8260): the Flow Lab's working method. Seeded
         # unbound; level 8 binds it to the Flow Lab agent it seeds.
         "slug": "concierge-flow-lab",
         "name": "Concierge Flow Lab",

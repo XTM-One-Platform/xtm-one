@@ -50,7 +50,7 @@ ee:
   - backend/app/services/chat_*.py
   - backend/app/services/chat_commands/**
   - backend/app/services/code_interpreter.py
-  - backend/app/services/concierge/**
+  - backend/app/services/health/**
   - backend/app/services/content_safety.py
   - backend/app/services/context_usage.py
   - backend/app/services/custom_tool_*.py
@@ -267,7 +267,7 @@ ee:
   - frontend/src/components/budget/**
   - frontend/src/components/chat/**
   - frontend/src/components/companion/**  # to confirm (product)
-  - frontend/src/components/concierge/**
+  - frontend/src/components/health/**
   - frontend/src/components/custom-dashboard/**
   - frontend/src/components/desktop/**
   - frontend/src/components/evaluation/**
@@ -458,7 +458,7 @@ ee:
   - backend/app/api/v1/workspace_knowledge.py
   - backend/app/api/v1/fleet*.py
   - backend/app/api/v1/schemas/fleet.py
-  - backend/app/api/v1/concierge*.py
+  - backend/app/api/v1/platform_health*.py
   - backend/app/api/v1/memory_consolidations.py
   - backend/app/api/v1/evaluation*.py
   - backend/app/api/v1/schemas/extension.py
@@ -466,7 +466,7 @@ ee:
   - backend/app/integrations/node_registry.py
   # Frontend: fleets, work items, concierge, agent graph
   - frontend/src/hooks/api/useFleetApi.ts
-  - frontend/src/hooks/api/useConcierge*.ts
+  - frontend/src/hooks/api/useHealth*.ts
   - frontend/src/hooks/api/useMemory*.ts
   - frontend/src/hooks/useFleet*.ts
   - frontend/src/hooks/useAgentDetailsDrawer.tsx
@@ -480,7 +480,7 @@ ee:
   - frontend/src/hooks/useLibraryParams.ts
   - frontend/src/lib/fleet-*.ts
   - frontend/src/lib/agent-graph-*.ts
-  - frontend/src/lib/concierge*.ts
+  - frontend/src/lib/health*.ts
   - frontend/src/lib/companion-chat-activity.ts
   - frontend/src/lib/handover-*.ts
   - frontend/src/lib/live-handovers.ts
@@ -619,17 +619,17 @@ ee:
   - frontend/src/hooks/api/usePresentationClicker.ts
   - frontend/src/lib/organization-onboarding.ts
   # Frontend: pages and settings
-  - frontend/src/pages/Concierge.tsx
+  - frontend/src/pages/Health.tsx
   - frontend/src/pages/Intents.tsx
   - frontend/src/pages/PollVote.tsx
   - frontend/src/pages/Operations.*
   - frontend/src/pages/operations/**
   - frontend/src/pages/WorkspaceProject.tsx
   - frontend/src/pages/integration-detail/ActivityTab.tsx
-  - frontend/src/pages/profile/Concierge*.tsx
+  - frontend/src/pages/profile/Health*.tsx
   - frontend/src/pages/profile/MemoryConsolidations.tsx
-  - frontend/src/pages/settings/Concierge*.tsx
-  - frontend/src/pages/settings/concierge-block.tsx
+  - frontend/src/pages/settings/Health*.tsx
+  - frontend/src/pages/settings/health-block.tsx
   - frontend/src/pages/settings/GeneralAssistantSkills.tsx
   - frontend/src/pages/settings/ga-skills.ts
   - frontend/src/pages/settings/ResourceToggleCard.tsx
