@@ -36,6 +36,8 @@ _PROVISIONERS: dict[str, str] = {
     "openaev": "app.services.openaev_trigger_provisioning",
     # Jira dynamic webhooks (#11036): the poll stays the fallback.
     "jira": "app.services.jira_webhooks",
+    # Wordsmith webhook endpoints (#160, slice 3).
+    "wordsmith": "app.services.wordsmith_webhooks",
 }
 
 

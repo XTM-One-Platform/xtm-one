@@ -26,8 +26,20 @@ import logging
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.services.tool_classification import infer_tool_type
+from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
+
+#: The filter keys of every Wordsmith event (the event's ``data`` and envelope, lifted).
+_WORDSMITH_FILTER_KEYS: dict[str, str] = {
+    "type": "The Wordsmith event type",
+    "status": "The status the event carries (task, review, report, input request, operation)",
+    "agent_id": "The Wordsmith agent the event names",
+    "assignee_id": "The task's assignee (task.created, task.assigned)",
+    "task_id": "The task the event names",
+    "resource_type": "The type of the object the event is about",
+    "actor_kind": "Who caused the event: user, agent or system",
+}
 
 #: Providers an XTM One instance only ever gets through a platform
 #: registration, which creates and rewrites them: never created by hand, and
@@ -4637,6 +4649,24 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "business_operations",
         "integration_types": ["legal"],
+        # Wordsmith webhook endpoints (services/wordsmith_webhooks.py): one endpoint
+        # per enabled trigger, signed deliveries, caught up from GET /events.
+        "available_events": [
+            {
+                "event": event,
+                "label": f"Wordsmith {event}",
+                "description": (
+                    f"Triggers on the Wordsmith event {event}. A webhook endpoint is created for the "
+                    "trigger (deleted with it) and missed deliveries are read back from the event log. "
+                    "The event carries IDs only: the run payload names the read tool (follow_up_tool)."
+                    + " trigger_config.audience 'customer' makes it an organisation endpoint"
+                    + (" (required for this event)." if event == "alert.triggered" else ".")
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _WORDSMITH_FILTER_KEYS,
+            }
+            for event in _WORDSMITH_EVENTS
+        ],
         "auth_type": "api_key",
         "fields": ["api_key"],
         "extra_fields": {"region": "API Region"},

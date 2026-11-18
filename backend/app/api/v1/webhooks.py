@@ -3853,6 +3853,12 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
         return await _handle_jira_webhook(integration_id, payload_raw, request)
+    if integ_pre and integ_pre.provider == "wordsmith":
+        # Wordsmith webhook endpoint: Wordsmith-Signature with the secret of the
+        # endpoint Wordsmith-Webhook-Id names, then deduplicated per event id.
+        from app.services import wordsmith_webhooks
+
+        return await wordsmith_webhooks.dispatch_delivery(integration_id, request.headers, body, payload_raw)
     if integ_pre and integ_pre.extra_config_enc:
         # HubSpot signs every delivery with the app client secret, so the
         # signature must be verified for the configured provider regardless of
