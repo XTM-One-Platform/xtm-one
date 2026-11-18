@@ -267,11 +267,6 @@ from .organization_context_write import (
     offers_organization_context_write,
     refused_admin_bound_ids,
 )
-from .user_admin import (  # noqa: E402
-    USER_ADMIN_GROUP,
-    build_user_admin_tools,
-    offers_user_admin,
-)
 from .organization_onboarding import (
     ORGANIZATION_ONBOARDING_TOOL,
     build_organization_onboarding_tool,
@@ -369,6 +364,11 @@ from .timers import build_timer_tools
 from .traces import (
     build_trace_tools,
 )
+from .user_admin import (
+    USER_ADMIN_GROUP,
+    build_user_admin_tools,
+    offers_user_admin,
+)
 from .video_studio import (
     build_video_studio_tools,
 )
@@ -435,6 +435,7 @@ __all__ = [
     "PLATFORM_IDENTITY_KEYS",
     "PLATFORM_INSIGHTS_SUITE_ID",
     "SCHEDULING_TOOL_NAMES",
+    "USER_ADMIN_GROUP",
     "ResolvedSkill",
     "SkillAccessContext",
     "SkillSubstitute",
@@ -496,6 +497,7 @@ __all__ = [
     "build_timeline_diff_tool",
     "build_timer_tools",
     "build_trace_tools",
+    "build_user_admin_tools",
     "build_video_studio_tools",
     "build_web_fetch_tool",
     "build_work_item_tools",
@@ -546,10 +548,8 @@ __all__ = [
     "offered_handover_types",
     "offers_ctem_case_tools",
     "offers_organization_context_write",
-    "offers_user_admin",
-    "build_user_admin_tools",
-    "USER_ADMIN_GROUP",
     "offers_organization_proposals",
+    "offers_user_admin",
     "orchestrator_may_delete_action",
     "orchestrator_phase_gate_blocked",
     "owned_consult_target",

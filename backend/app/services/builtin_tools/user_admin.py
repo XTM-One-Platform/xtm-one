@@ -170,11 +170,15 @@ async def _owned_counts(db: Any, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, d
     from app.models.assignment import Assignment
     from app.models.integration import Integration
 
-    counts: dict[uuid.UUID, dict[str, int]] = {uid: {"agents": 0, "assignments": 0, "integrations": 0} for uid in user_ids}
+    counts: dict[uuid.UUID, dict[str, int]] = {
+        uid: {"agents": 0, "assignments": 0, "integrations": 0} for uid in user_ids
+    }
     if not user_ids:
         return counts
     queries = {
-        "agents": select(Agent.user_id, func.count(Agent.id)).where(Agent.user_id.in_(user_ids)).group_by(Agent.user_id),
+        "agents": select(Agent.user_id, func.count(Agent.id))
+        .where(Agent.user_id.in_(user_ids))
+        .group_by(Agent.user_id),
         "assignments": select(Assignment.user_id, func.count(Assignment.id))
         .where(Assignment.user_id.in_(user_ids))
         .group_by(Assignment.user_id),
@@ -206,7 +210,9 @@ async def _groups_of(db: Any, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, list
     return groups
 
 
-def _user_row(user: Any, *, groups: list[dict[str, str]], last_login: datetime | None, owned: dict[str, int]) -> dict:
+def _user_row(
+    user: Any, *, groups: list[dict[str, str]], last_login: datetime | None, owned: dict[str, int]
+) -> dict[str, Any]:
     return {
         "id": str(user.id),
         "name": user.full_name,
@@ -289,7 +295,9 @@ def build_user_admin_tools(
             return None
         return person
 
-    async def _audit(db: Any, admin: Any, *, action: str, entity_type: str, entity: Any, summary: str, details: dict) -> None:
+    async def _audit(
+        db: Any, admin: Any, *, action: str, entity_type: str, entity: Any, summary: str, details: dict[str, Any]
+    ) -> None:
         from app.services.audit import log_audit
 
         await log_audit(
@@ -330,7 +338,11 @@ def build_user_admin_tools(
             users = (
                 (
                     await db.execute(
-                        select(User).where(*clauses).order_by(func.lower(User.email), User.id).limit(limit).offset(offset)
+                        select(User)
+                        .where(*clauses)
+                        .order_by(func.lower(User.email), User.id)
+                        .limit(limit)
+                        .offset(offset)
                     )
                 )
                 .scalars()
@@ -344,7 +356,9 @@ def build_user_admin_tools(
                 last = logins.get(user.id)
                 if (since and (last is None or last < since)) or (until and last is not None and last >= until):
                     continue
-                rows.append(_user_row(user, groups=groups.get(user.id, []), last_login=last, owned=owned.get(user.id, {})))
+                rows.append(
+                    _user_row(user, groups=groups.get(user.id, []), last_login=last, owned=owned.get(user.id, {}))
+                )
             next_offset = offset + len(users) if offset + len(users) < total else None
             return _json({"total": total, "offset": offset, "next_offset": next_offset, "users": rows})
 
@@ -441,7 +455,9 @@ def build_user_admin_tools(
             for user in users:
                 refusal = await deactivation_refusal(db, user, admin)
                 if refusal:
-                    results.append({"user": user.email, "user_id": str(user.id), "status": "refused", "reason": refusal})
+                    results.append(
+                        {"user": user.email, "user_id": str(user.id), "status": "refused", "reason": refusal}
+                    )
                     continue
                 try:
                     outcome = await user_deactivation.deactivate_user(
@@ -459,7 +475,9 @@ def build_user_admin_tools(
                     await db.commit()
                 except user_deactivation.DeactivationError as exc:
                     await db.rollback()
-                    results.append({"user": user.email, "user_id": str(user.id), "status": "refused", "reason": str(exc)})
+                    results.append(
+                        {"user": user.email, "user_id": str(user.id), "status": "refused", "reason": str(exc)}
+                    )
                     continue
                 except Exception:
                     await db.rollback()
@@ -537,11 +555,18 @@ def build_user_admin_tools(
             if term:
                 clauses.append(or_(Group.name.ilike(f"%{term}%"), Group.description.ilike(f"%{term}%")))
             members = (
-                select(func.count(GroupMember.id)).where(GroupMember.group_id == Group.id).correlate(Group).scalar_subquery()
+                select(func.count(GroupMember.id))
+                .where(GroupMember.group_id == Group.id)
+                .correlate(Group)
+                .scalar_subquery()
             )
             total = int(await db.scalar(select(func.count(Group.id)).where(*clauses)) or 0)
             rows = await db.execute(
-                select(Group, members).where(*clauses).order_by(func.lower(Group.name), Group.id).limit(limit).offset(offset)
+                select(Group, members)
+                .where(*clauses)
+                .order_by(func.lower(Group.name), Group.id)
+                .limit(limit)
+                .offset(offset)
             )
             groups = [
                 {
@@ -572,7 +597,9 @@ def build_user_admin_tools(
                 return "Not found: no such group"
             limit = _clamp(args.get("limit"), 100, MAX_PAGE)
             offset = max(0, int(args.get("offset") or 0))
-            total = int(await db.scalar(select(func.count(GroupMember.id)).where(GroupMember.group_id == group.id)) or 0)
+            total = int(
+                await db.scalar(select(func.count(GroupMember.id)).where(GroupMember.group_id == group.id)) or 0
+            )
             rows = await db.execute(
                 select(GroupMember, User)
                 .join(User, User.id == GroupMember.user_id)
@@ -604,7 +631,7 @@ def build_user_admin_tools(
                 }
             )
 
-    async def _change_members(args: dict, *, add: bool) -> str:
+    async def _change_members(args: dict[str, Any], *, add: bool) -> str:
         from sqlalchemy import select
 
         from app.core.database import async_session
@@ -655,7 +682,10 @@ def build_user_admin_tools(
                     entity_type="group",
                     entity=group,
                     summary=f"{verb} {len(changed)} member(s) {'to' if add else 'from'} group '{group.name}' through the user-admin tools",
-                    details={"tool": "add_group_members" if add else "remove_group_members", "user_ids": [str(u) for u in changed]},
+                    details={
+                        "tool": "add_group_members" if add else "remove_group_members",
+                        "user_ids": [str(u) for u in changed],
+                    },
                 )
             await db.commit()
             if changed:
@@ -739,7 +769,11 @@ def build_user_admin_tools(
                 entity_type="user",
                 entity=None,
                 summary=f"Review item {item.get('key')} marked {resolution} through the user-admin tools",
-                details={"tool": "resolve_deactivation_review_item", "deactivation_id": str(episode.id), "key": item.get("key")},
+                details={
+                    "tool": "resolve_deactivation_review_item",
+                    "deactivation_id": str(episode.id),
+                    "key": item.get("key"),
+                },
             )
             await db.commit()
             return _json({"status": "done", "item": item})
@@ -755,7 +789,7 @@ def build_user_admin_tools(
         "offset": {"type": "integer", "description": "Rows to skip: the next_offset of the previous call."},
     }
     group_id = {"type": "string", "description": "Group id (list_platform_groups)."}
-    specs: list[tuple[str, str, dict, list[str], Any]] = [
+    specs: list[tuple[str, str, dict[str, Any], list[str], Any]] = [
         (
             "list_platform_users",
             "Platform accounts, paged: id, name, email, status (active, inactive, deprovisioned), source (scim, "

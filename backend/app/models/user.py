@@ -186,9 +186,7 @@ class User(Base):
     deprovisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     # A break-glass or service account an administrator flagged: the agent
     # user-admin tools (``builtin_tools/user_admin.py``) refuse to deactivate it.
-    deactivation_protected: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
+    deactivation_protected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     # Role: "admin" or "user"
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")

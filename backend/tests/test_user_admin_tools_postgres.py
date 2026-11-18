@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock
@@ -28,6 +29,7 @@ from app.models.group import Group, GroupMember
 from app.models.integration import Integration
 from app.models.platform_timer import TIMER_CANCELLED, PlatformTimer
 from app.models.user import User
+from app.services.assignment_pause import OWNER_DEACTIVATED_REASON
 from app.services.builtin_tools import build_user_admin_tools
 from tests.scratch_database import ALL_TABLES, scratch_database
 from tests.test_user_deactivation_postgres import _PLATFORM_ADMIN, _seed, _user
@@ -48,7 +50,7 @@ def _point_sessions_at(monkeypatch: pytest.MonkeyPatch, db: Any) -> None:
     from app.core import database
 
     @asynccontextmanager
-    async def _session():
+    async def _session() -> AsyncIterator[Any]:
         async with db.sessions() as session:
             yield session
 
@@ -59,10 +61,18 @@ def _tools(admin_id: uuid.UUID, *, admin: bool = True) -> Any:
     _, executor = build_user_admin_tools(
         user_id=str(admin_id), caller_is_admin=admin, agent_name="Assistant", run_id="run-1"
     )
-    return lambda name, **args: executor.handler(name)(**args)
+
+    async def call(name: str, **args: Any) -> str:
+        handler = executor.handler(name)
+        assert handler is not None
+        answer = await handler(**args)
+        assert isinstance(answer, str)
+        return answer
+
+    return call
 
 
-async def test_deactivate_runs_the_cascade_then_reactivate_restores_it(monkeypatch) -> None:
+async def test_deactivate_runs_the_cascade_then_reactivate_restores_it(monkeypatch: pytest.MonkeyPatch) -> None:
     async with (
         scratch_database("useradmin", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
         db.sessions() as session,
@@ -88,15 +98,18 @@ async def test_deactivate_runs_the_cascade_then_reactivate_restores_it(monkeypat
         session.expire_all()
         assert (await session.get(User, users["departing"].id)).is_active is False
         assert (await session.get(Agent, seed["private"])).enabled is False
-        assert (await session.get(Assignment, seed["private_job"])).enabled is False
+        as_departed = await session.get(Assignment, seed["shared_as_departed"])
+        assert as_departed.enabled is False and as_departed.paused_reason == OWNER_DEACTIVATED_REASON
         assert (await session.get(PlatformTimer, seed["timer"])).state == TIMER_CANCELLED
         assert (await session.get(UserApiKey, seed["key"])).revoked_at is not None
         assert (await session.get(Integration, seed["oauth"])).status != "connected"
         assert (await session.get(Agent, seed["shared"])).user_id == users["platform_admin"].id
 
         audit = (
-            await session.execute(select(AuditLog).where(AuditLog.entity_id == str(users["departing"].id)))
-        ).scalars().all()
+            (await session.execute(select(AuditLog).where(AuditLog.entity_id == str(users["departing"].id))))
+            .scalars()
+            .all()
+        )
         mine = [row for row in audit if (row.details or {}).get("tool_group") == "user_admin"]
         assert mine and mine[0].details["run_id"] == "run-1" and mine[0].details["reason"] == "left the company"
 
@@ -124,13 +137,14 @@ async def test_deactivate_runs_the_cascade_then_reactivate_restores_it(monkeypat
         session.expire_all()
         assert (await session.get(User, users["departing"].id)).is_active is True
         assert (await session.get(Agent, seed["private"])).enabled is True
+        assert (await session.get(Assignment, seed["shared_as_departed"])).enabled is True
 
         listed = json.loads(await call("list_platform_users", status="active", search="departing"))
         assert [row["email"] for row in listed["users"]] == [departing]
         assert listed["users"][0]["owned"]["agents"] >= 1
 
 
-async def test_refusals_self_last_admin_protected_and_non_admin(monkeypatch) -> None:
+async def test_refusals_self_last_admin_protected_and_non_admin(monkeypatch: pytest.MonkeyPatch) -> None:
     async with (
         scratch_database("useradminref", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
         db.sessions() as session,
@@ -176,7 +190,7 @@ async def test_refusals_self_last_admin_protected_and_non_admin(monkeypatch) -> 
         assert (await _tools(plain.id)("list_platform_users")).startswith("Refused")
 
 
-async def test_group_members_and_a_scim_group_stays_read_only(monkeypatch) -> None:
+async def test_group_members_and_a_scim_group_stays_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
     async with (
         scratch_database("useradmingrp", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
         db.sessions() as session,
