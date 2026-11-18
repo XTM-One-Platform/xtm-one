@@ -123,6 +123,12 @@ alias for one minor release (section 2.3).
   `agents.concierge_role` to `health_role`) and tables (`concierge_*` to `health_*`), and
   carries `platform_settings.concierge_settings` into `health_settings` (thresholds kept,
   `scope_mode = all` dropped, never turned into enrolments).
+- Seeded assignments: the five fleet assignments are named "Platform Health ..." (memory
+  consolidation, quality review, flow review, investigation, weekly digest). Done in S1: the
+  former "Concierge ..." name stays in `FleetAssignmentSpec.former_names`; the next seed
+  renames the row still carrying it in place (schedule, enabled state and history kept, no
+  second row) and `fleet_assignment` finds either name meanwhile, so no migration is needed
+  for the names (`test_a_reseed_renames_an_assignment_still_under_its_former_name`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no

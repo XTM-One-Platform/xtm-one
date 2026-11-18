@@ -158,6 +158,31 @@ async def test_an_admin_edit_survives_the_next_seed(concierge_on):
     assert steward.persona == "Edited by an administrator."
 
 
+async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concierge_on):
+    """An assignment seeded as "Concierge ..." is renamed in place (#101 S1): same row,
+    schedule and enabled state kept, no second assignment, still found by its key."""
+    async with _scratch("cc_seed_rename") as sessions, sessions() as db:
+        db.add(_user("admin"))
+        await db.commit()
+        await fleet_seed.seed_concierge_fleet(db)
+        spec = fleet_seed.ASSIGNMENT_BY_KEY["digest"]
+        row = (await db.execute(select(Assignment).where(Assignment.name == spec.name))).scalar_one()
+        row.name = spec.former_names[0]
+        row.enabled = False
+        row_id = row.id
+        await db.commit()
+        before = await db.scalar(select(func.count()).select_from(Assignment))
+        found = await fleet_seed.fleet_assignment(db, "digest")
+        assert found is not None and found[0].id == row_id
+        await fleet_seed.seed_concierge_fleet(db)
+        after = await db.scalar(select(func.count()).select_from(Assignment))
+        await db.refresh(row)
+
+    assert after == before
+    assert (row.id, row.name, row.enabled) == (row_id, spec.name, False)
+    assert all(not s.name.startswith("Concierge") for s in fleet_seed.FLEET_ASSIGNMENTS)
+
+
 async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps_its_loops(concierge_on):
     async with _scratch("cc_seed_groups") as sessions, sessions() as db:
         db.add(_user("admin"))

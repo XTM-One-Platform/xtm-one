@@ -91,7 +91,8 @@ class FleetAgentSpec:
 class FleetAssignmentSpec:
     key: AssignmentKey
     agent_slug: str
-    #: The seed's key with the agent: never rename it.
+    #: The seed's key with the agent. A rename keeps the former name in
+    #: ``former_names``: the next seed renames the row still carrying it.
     name: str
     description: str
     prompt: str
@@ -99,6 +100,13 @@ class FleetAssignmentSpec:
     timeout_seconds: int = 3600
     max_iterations: int = FLEET_MAX_ITERATIONS
     extra: dict = field(default_factory=dict)
+    #: Names the seed gave this assignment before (Concierge, until S1 of #101).
+    former_names: tuple[str, ...] = ()
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """The current name first, then every former one."""
+        return (self.name, *self.former_names)
 
 
 ORCHESTRATOR_SLUG: Final = "concierge"
@@ -171,14 +179,16 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     FleetAssignmentSpec(
         key="memory",
         agent_slug="concierge-memory-steward",
-        name="Concierge memory consolidation",
+        name="Platform Health memory consolidation",
+        former_names=("Concierge memory consolidation",),
         description="Consolidates every memory lane Platform Health may read. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=f"List the memory lanes you may consolidate, then consolidate each one. {_REPORT}",
     ),
     FleetAssignmentSpec(
         key="quality",
         agent_slug="concierge-quality-analyst",
-        name="Concierge quality review",
+        name="Platform Health quality review",
+        former_names=("Concierge quality review",),
         description="Reviews the quality signals of the enrolled agents. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
             "Review the quality signals of the agents you supervise, record the findings the evidence "
@@ -188,7 +198,8 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     FleetAssignmentSpec(
         key="flows",
         agent_slug="concierge-flow-lab",
-        name="Concierge flow review",
+        name="Platform Health flow review",
+        former_names=("Concierge flow review",),
         description="Reviews the enrolled flows and assignments. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
             "Diagnose the flows and assignments you supervise, author the candidates worth measuring on "
@@ -198,7 +209,8 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     FleetAssignmentSpec(
         key="investigation",
         agent_slug=ORCHESTRATOR_SLUG,
-        name="Concierge investigation",
+        name="Platform Health investigation",
+        former_names=("Concierge investigation",),
         description="Investigates one agent or flow after a signal or an on-demand request.",
         prompt=(
             "Investigate the target the trigger names (`target_type`, `target_id`) and, for a signal, the "
@@ -209,10 +221,11 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     FleetAssignmentSpec(
         key="digest",
         agent_slug=ORCHESTRATOR_SLUG,
-        name="Concierge weekly digest",
+        name="Platform Health weekly digest",
+        former_names=("Concierge weekly digest",),
         description="Summarizes the Platform Health cycles closed since the last digest. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
-            "List the Concierge cycles closed since `since` and summarize them for administrators: "
+            "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
             "and everything skipped with its reason. Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
@@ -268,14 +281,22 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
     db.add(agent)
     await db.flush()
     await seed_initial_agent_versions(db, agent=agent, author_id=None)
-    logger.info("Seeded Concierge agent: %s", spec.slug)
+    logger.info("Seeded Platform Health agent: %s", spec.slug)
     return agent
 
 
 async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent: Agent) -> bool:
-    existing = (
-        await db.execute(select(Assignment).where(Assignment.agent_id == agent.id, Assignment.name == spec.name))
-    ).scalar_one_or_none()
+    rows = (
+        (await db.execute(select(Assignment).where(Assignment.agent_id == agent.id, Assignment.name.in_(spec.names))))
+        .scalars()
+        .all()
+    )
+    existing = next((row for row in rows if row.name == spec.name), None)
+    if existing is None and rows:
+        # Seeded under a former name: renamed in place, so its schedule,
+        # enabled state and history stay with it.
+        existing = rows[0]
+        existing.name = spec.name
     if existing is not None:
         # Seeded before the cap existed: it would inherit the platform default.
         if existing.max_iterations is None:
@@ -327,7 +348,7 @@ async def _ensure_fleet(
             icon="Compass",
             is_company_managed=True,
         )
-        logger.info("Seeded the Concierge fleet")
+        logger.info("Seeded the Platform Health fleet")
     homes = await home_fleets_of(db, [agent.id for agent in agents.values()])
     for agent in agents.values():
         if agent.id not in homes:
@@ -421,8 +442,9 @@ async def fleet_assignment(db: AsyncSession, key: AssignmentKey) -> tuple[Assign
             .where(
                 Agent.concierge_role == role,
                 Agent.is_company_managed.is_(True),
-                Assignment.name == spec.name,
+                Assignment.name.in_(spec.names),
             )
+            .order_by((Assignment.name == spec.name).desc())
             .limit(1)
         )
     ).first()

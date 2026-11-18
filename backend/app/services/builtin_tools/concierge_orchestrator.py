@@ -231,7 +231,9 @@ def build_concierge_orchestrator_tools(
         except Exception:
             logger.exception("get_concierge_cycle failed")
             return _GENERIC_ERROR
-        return "Platform Health cycle and its digest (figures and statuses as recorded):\n" + _data(item, "Platform Health cycle")
+        return "Platform Health cycle and its digest (figures and statuses as recorded):\n" + _data(
+            item, "Platform Health cycle"
+        )
 
     async def request_concierge_cycle(target_type: str = "agent", target: str = "") -> str:
         from app.core.database import async_session
