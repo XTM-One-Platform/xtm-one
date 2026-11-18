@@ -343,8 +343,26 @@ def builtin_fleet_documentation(entry: dict[str, Any]) -> dict[str, str] | None:
 # checklist and a quota range. Run counts are an estimate per trigger, labelled
 # as such on the page; they never come from a customer's runs.
 
-_PROFILE = "/settings/organization/profile"
 _INTEGRATIONS = "/integrations"
+
+#: The card of Settings > Organization that edits each profile field a prerequisite reads,
+#: and the tab that shows it (frontend ``lib/organization-profile-tabs.ts``: PROFILE_FIELD_CARD,
+#: PROFILE_CARD_TAB). The first tab is the bare section path.
+_PROFILE_FIELD_TAB: dict[str, tuple[str, str]] = {
+    "sector": ("identity", "identity"),
+    "regions": ("identity", "identity"),
+    "crown_jewels": ("business", "crown_jewels"),
+    "tracked_organizations": ("business", "tracked_organizations"),
+    "tech_stack": ("technology", "tech_stack"),
+    "ai_systems": ("technology", "ai_systems"),
+}
+
+
+def profile_fix_route(field: str) -> str:
+    """The page that fixes a missing profile *field*: its tab of Settings > Organization, landed on its card."""
+    tab, card = _PROFILE_FIELD_TAB[field]
+    base = "/settings/organization" if tab == "identity" else f"/settings/organization/profile/{tab}"
+    return f"{base}?card={card}"
 
 
 def _prereq(check: str, label: str, fix_route: str) -> dict[str, Any]:
@@ -354,10 +372,12 @@ def _prereq(check: str, label: str, fix_route: str) -> dict[str, Any]:
 _NEEDS_OPENCTI = _prereq("integration:opencti", "OpenCTI connected for you", _INTEGRATIONS)
 _NEEDS_OPENAEV = _prereq("integration:openaev", "OpenAEV connected for you", _INTEGRATIONS)
 _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _INTEGRATIONS)
-_NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", _PROFILE)
-_NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", _PROFILE)
-_NEEDS_JEWELS = _prereq("profile:crown_jewels", "Crown jewels in the organization profile", _PROFILE)
-_NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", _PROFILE)
+_NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
+_NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
+_NEEDS_JEWELS = _prereq(
+    "profile:crown_jewels", "Crown jewels in the organization profile", profile_fix_route("crown_jewels")
+)
+_NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")
 
 #: Gate impact classes (#9769, ``app.services.fleet_autonomy``): ``low`` stops
@@ -571,7 +591,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
     "prerequisites": [
         _NEEDS_OPENCTI,
         _NEEDS_OPENAEV,
-        _prereq("profile:ai_systems", "AI systems listed in the organization profile", _PROFILE),
+        _prereq("profile:ai_systems", "AI systems listed in the organization profile", profile_fix_route("ai_systems")),
         _SWITCHED_ON,
     ],
     "quota": [
@@ -655,7 +675,7 @@ CTEM_THIRD_PARTY_RISK_STRUCTURED: dict[str, Any] = {
         _prereq(
             "profile:tracked_organizations",
             "A tracked organization with monitoring on",
-            "/settings/organization/profile",
+            profile_fix_route("tracked_organizations"),
         ),
         _SWITCHED_ON,
     ],

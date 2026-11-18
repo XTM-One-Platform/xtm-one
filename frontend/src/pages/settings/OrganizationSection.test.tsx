@@ -985,6 +985,17 @@ describe("OrganizationSection", () => {
     expect(screen.getByRole("button", { name: /^Edit$/ })).toBeTruthy();
   });
 
+  it("a link to one card (?card=) opens the card's tab, focuses the card and drops the parameter (CTEM calls to action)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/settings/organization?card=crown_jewels"]}>
+        <OrganizationSection />
+      </MemoryRouter>,
+    );
+    // The bare path names the first tab, but the card lives on Business: the page moves there.
+    expect(await screen.findByTestId("settings.organization.panel-business")).toBeTruthy();
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
+  });
+
   it("marks the Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
     let resolveDraft: (value: unknown) => void = () => {};
     post.mockImplementation(() => new Promise((resolve) => (resolveDraft = resolve)));

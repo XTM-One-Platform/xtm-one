@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 import { CASE_STATE_LABEL, CaseStateChip } from "./cases-shared";
 import { caseDueFlags, casesListHref, EXPIRING_DAYS } from "./cases-due";
-import { FUNNEL_SETTINGS_PATH } from "./prioritization-funnel";
+import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
 /**
  * The segment fill of each state: the feedback token of its Chip severity
@@ -93,7 +93,7 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
         <CardContent className="flex flex-1 flex-wrap items-center gap-3 p-4">
           <p className="min-w-0 flex-1 content-compact">{t_i18n("Build cases from your tech stack")}</p>
           <Button asChild variant="outline">
-            <Link to={FUNNEL_SETTINGS_PATH}>{t_i18n("Add tech stack")}</Link>
+            <Link to={profileFieldHref("tech_stack")}>{t_i18n("Add tech stack")}</Link>
           </Button>
           <Button variant="outline" onClick={onConnectOpenAev}>
             {t_i18n("Connect OpenAEV")}

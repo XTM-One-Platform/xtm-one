@@ -97,11 +97,14 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import {
+  PROFILE_CARD_PARAM,
+  PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
   type ProfileTab,
   changedTabs,
   groupByTab,
+  parseProfileCard,
   profileTabOfPath,
   profileTabPath,
   tabOfField,
@@ -495,6 +498,32 @@ export function OrganizationSection() {
       { replace: true },
     );
   }, [setupRequested, data, setSearchParams]);
+  // A link to one card (`?card=<key>`, profileFieldHref): its tab opens, the page lands on the card, and the
+  // parameter leaves the URL in place, so Back returns to the page the link was on.
+  const requestedCard = parseProfileCard(searchParams.get(PROFILE_CARD_PARAM));
+  useEffect(() => {
+    if (!requestedCard || !data) return;
+    const cardTab = PROFILE_CARD_TAB[requestedCard];
+    if (cardTab !== tab) {
+      navigate({ pathname: profileTabPath(cardTab), search: location.search }, { replace: true });
+      return;
+    }
+    setFolded((prev) => {
+      if (!prev.has(requestedCard)) return prev;
+      const next = new Set(prev);
+      next.delete(requestedCard);
+      return next;
+    });
+    setFocusTarget(`${fieldId}-${requestedCard}`);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(PROFILE_CARD_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requestedCard, data, tab, fieldId, navigate, location.search, setSearchParams]);
   // A missing field opens its tab first, then the form on the field (#12329).
   const jumpTo = (path: string) => {
     setFolded(new Set());
@@ -1458,7 +1487,15 @@ export function OrganizationSection() {
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
           {missingIn("identity")}
-          <SettingsCard icon={Building2} title={t_i18n("Identity")} description={t_i18n("Who you are, where you operate and how large you are.")}>
+          <SettingsCard
+            id={`${fieldId}-identity`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            tabIndex={-1}
+            icon={Building2}
+            title={t_i18n("Identity")}
+            description={t_i18n("Who you are, where you operate and how large you are.")}
+          >
             <OrganizationUsedBy fields={["sector", "regions"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.identity">
@@ -1528,6 +1565,10 @@ export function OrganizationSection() {
           </SettingsCard>
 
           <SettingsCard
+            id={`${fieldId}-risk_appetite`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            tabIndex={-1}
             icon={Coins}
             title={t_i18n("Risk appetite and costs")}
             description={t_i18n("Pick the currency first: every amount below is in it. The risk quantifier compares scenarios with the thresholds; the ROI figures use the hourly rate.")}
@@ -1561,7 +1602,15 @@ export function OrganizationSection() {
             )}
           </SettingsCard>
 
-          <SettingsCard icon={Ticket} title={t_i18n("Ticketing and intelligence")} description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}>
+          <SettingsCard
+            id={`${fieldId}-ticketing`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            tabIndex={-1}
+            icon={Ticket}
+            title={t_i18n("Ticketing and intelligence")}
+            description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
+          >
             <OrganizationUsedBy fields={["ticketing", "pir_ids"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
@@ -1803,7 +1852,9 @@ export function OrganizationSection() {
           </SettingsCard>
 
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}
-          <TrackedOrganizations />
+          <div id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1}>
+            <TrackedOrganizations />
+          </div>
           </div>
           )}
 
