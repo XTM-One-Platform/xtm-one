@@ -266,3 +266,31 @@ async def test_editable_mode_does_not_refill_a_catalog_curated_to_empty(monkeypa
 
         assert (await _gateway_row(sessions)).available_models == []
         assert gateway.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_a_listed_gateway_keeps_refreshing_after_another_chat_provider(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+
+        monkeypatch.setenv("LLM_PROVIDER_OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("LLM_PROVIDER_OPENAI_MODELS", "gpt-5.4")
+        gateway.models = ["claude-sonnet-5", "gemini-3-pro"]
+        await _boot()
+
+        assert (await _gateway_row(sessions)).available_models == ["claude-sonnet-5", "gemini-3-pro"]
+
+
+@pytest.mark.asyncio
+async def test_editable_mode_refreshes_a_listed_catalog_nobody_edited(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+
+        gateway.models = ["claude-sonnet-5", "gemini-3-pro"]
+        await _boot()
+
+        assert (await _gateway_row(sessions)).available_models == ["claude-sonnet-5", "gemini-3-pro"]

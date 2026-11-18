@@ -666,10 +666,12 @@ def _listing_default(current: str | None, declared: str | None, listed: list[str
 async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
     """List the models of the seeded providers that have no ``*_MODELS`` list.
 
-    Only while no other provider offers a chat model: next to one, a gateway
-    key is there for its other models. Locked, the listing is the catalog on
-    every boot; editable, it only fills a row created by this boot. Done
-    before the seed's transaction so no network call holds the provider lock.
+    A catalog still equal to its last listing (``env_models``) is refreshed;
+    one an admin edited is left alone. A provider never listed is listed only
+    while no other provider offers a chat model (next to one, a gateway key is
+    there for its other models), and in editable mode only while it has no
+    catalog. Done before the seed's transaction so no network call holds the
+    provider lock.
     """
     from sqlalchemy import select as _sel
 
@@ -683,20 +685,20 @@ async def _seed_listed_models(providers: list[tuple[str, str]], models_editable:
         return {}
     names = {n for n, _ in wanted}
     async with async_session() as db:
-        rows = (
-            await db.execute(
-                _sel(LLMProviderConfig.provider, LLMProviderConfig.user_id, LLMProviderConfig.available_models)
-            )
-        ).all()
-    # The seeded rows of the providers to list, and every other config.
-    own = {provider for provider, user_id, _ in rows if provider in names and user_id is None}
-    offered = [m for provider, user_id, models in rows if not (provider in names and user_id is None) for m in models or []]
+        rows = (await db.execute(_sel(LLMProviderConfig))).scalars().all()
+    # The seeded rows of the providers to list, and every other config's models.
+    own = {r.provider: r for r in rows if r.provider in names and r.user_id is None}
+    offered = [m for r in rows if not (r.provider in names and r.user_id is None) for m in r.available_models or []]
     offered += [m for n, _ in providers if n not in names for m in env_models_for(n) or []]
-    if any(is_chat_capable_model(m) for m in offered):
-        return {}
-    if models_editable:
-        wanted = [(n, k) for n, k in wanted if n not in own]
-    listed = {n: await _list_models_for_seed(n, k) for n, k in wanted}
+    sole = not any(is_chat_capable_model(m) for m in offered)
+
+    def _to_list(name: str) -> bool:
+        row = own.get(name)
+        if row is not None and row.env_models is not None:
+            return row.available_models == row.env_models
+        return sole and (not models_editable or row is None or row.available_models is None)
+
+    listed = {n: await _list_models_for_seed(n, k) for n, k in wanted if _to_list(n)}
     return {n: models for n, models in listed.items() if models}
 
 
@@ -892,8 +894,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
                         await _cleanup_orphaned_model_references(
                             db, provider_name, retired, provider_id=existing.id
                         )
-                elif provider_name not in _SEED_LISTED_PROVIDERS or models_editable:
-                    # A failed listing keeps its last snapshot: no phantom catalog change.
+                elif provider_name not in _SEED_LISTED_PROVIDERS or existing.available_models != existing.env_models:
+                    # Kept while the catalog still equals it: a failed listing is no
+                    # catalog change, and the next boot refreshes it again.
                     existing.env_models = None
                 logger.debug("LLM env seed: updated %s from env var", provider_name)
                 cfg = existing
@@ -914,10 +917,11 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 db.add(cfg)
                 await db.flush()
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
-            if listed and models_editable and not cfg.available_models:
-                # Editable: listed only for a new row; the admin owns it after.
+            if listed and models_editable and cfg.available_models in (None, cfg.env_models):
+                # Editable: refreshed until an admin edits it (it then differs from the snapshot).
                 cfg.available_models = listed
-                cfg.default_model = _listing_default(None, declared_default, listed)
+                cfg.default_model = _listing_default(cfg.default_model, declared_default, listed)
+                cfg.env_models = listed
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
