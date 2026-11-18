@@ -124,6 +124,32 @@ def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
     assert not any("flow_index" in " ".join(a) for a in argv.values())
 
 
+def test_a_repository_gate_script_with_an_expression_option_is_a_check_the_call_completes() -> None:
+    # OpenAEV-Platform/collectors tests-collectors.yml (gap repo-script-run-without-declared-check): the
+    # catalog gate passes its base ref as an expression; the line was dropped whole and no check ran it.
+    wf = (
+        "jobs:\n  catalog-contract:\n    steps:\n"
+        '      - run: python .github/scripts/check_catalog_contract.py --changed-since "origin/${{ github.base_ref }}"\n'
+        "      - run: uv run scripts/validate_manifest.py --ref=${{ github.sha }} --strict\n"
+        "      - run: python .github/scripts/build_test_matrix.py ${{ matrix.collector }}\n"
+        "      - run: ${{ matrix.command }}\n"
+        "      - run: python .github/scripts/check_release_notes.py\n"
+        "      - run: verify.py\n"
+    )
+    found = _detect({".github/workflows/tests.yml": wf})
+    argv = _argv(found)
+    assert argv["python-check-catalog-contract"] == ("python", ".github/scripts/check_catalog_contract.py")
+    assert argv["python-check-manifest"] == ("uv", "run", "scripts/validate_manifest.py", "--strict")
+    # A positional expression, a whole-expression command, a shipping name and a bare verb stay out.
+    assert not any("build_test_matrix" in " ".join(a) or "release" in " ".join(a) for a in argv.values())
+    assert not any("verify.py" in a for a in argv.values())
+    assert detect._without_expression_options('python x.py "${{ a }}"') is None
+    assert detect._without_expression_options("echo ${{ a }} && python x.py") is None
+    assert detect._gate_script_kind("check_catalog_contract") == "check-catalog-contract"
+    assert detect._gate_script_kind("checkout") is None
+    assert detect._gate_script_kind("check_publish") is None
+
+
 def test_a_workflow_wins_over_the_manifest_for_the_same_check():
     pkg = json.dumps({"scripts": {"lint": "eslint src", "test": "vitest"}})
     wf = "jobs:\n  a:\n    steps:\n      - run: yarn lint --max-warnings 0\n"

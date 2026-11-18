@@ -1325,7 +1325,7 @@ def classify(tokens: list[str]) -> tuple[str, str] | None:
     if tool.endswith(".py") and len(tool) > 3:
         # A repository script (`uv run plugin/scripts/flow_lint.py`, `python scripts/lint_docs.py`): its
         # name says the kind, as a package.json script name does; a PEP 723 header carries its dependencies.
-        return ("python", kind) if (kind := _script_kind(tool[:-3])) else None
+        return ("python", kind) if (kind := _script_kind(tool[:-3]) or _gate_script_kind(tool[:-3])) else None
     if tool in ("pip", "pip3"):
         return ("python", "install") if words[:1] == ["install"] and "--user" not in rest else None
     if tool in ("uv", "poetry"):
@@ -1385,10 +1385,78 @@ _CD = re.compile(r"^cd\s+([^\s;&|]+)\s*$")
 _SHIPPING = ("release", "publish", "deploy")
 
 
+#: A repository gate script named for what it checks (``check_catalog_contract.py``, ``validate_manifest.py``).
+_GATE_SCRIPT = re.compile(r"^(check|validate|verify)[-_][a-z0-9]")
+
+
+def _gate_script_kind(name: str) -> str | None:
+    """``check-<rest>`` for a repository gate script, its own check: ``check_catalog_contract`` gives ``check-catalog-contract``."""
+    lowered = name.lower()
+    if not _GATE_SCRIPT.match(lowered) or any(word in lowered for word in _SCRIPT_SKIP):
+        return None
+    rest = re.sub(r"[^a-z0-9]+", "-", re.sub(r"^(check|validate|verify)", "", lowered)).strip("-")
+    return f"check-{rest}" if rest else None
+
+
+_EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+_EXPRESSION_MARK = "\x00"
+
+
+def _script_index(tokens: list[str]) -> int | None:
+    """The index of the repository ``.py`` script a command runs (``python x.py``, ``uv run x.py``, ``x.py``)."""
+    if not tokens:
+        return None
+    tool = posixpath.basename(tokens[0])
+    if tool.endswith(".py"):
+        return 0
+    if tool in ("python", "python3") and len(tokens) > 1 and tokens[1].endswith(".py"):
+        return 1
+    if tool == "uv" and len(tokens) > 2 and tokens[1] == "run":
+        index = 2
+        while index < len(tokens) and tokens[index].startswith("-"):
+            index += 1
+        return index if index < len(tokens) and tokens[index].endswith(".py") else None
+    return None
+
+
+def _without_expression_options(line: str) -> str | None:
+    """*line* with each option of its repository script whose value is a ``${{ }}`` expression left out, or ``None``.
+
+    ``python .github/scripts/check_catalog_contract.py --changed-since "origin/${{ github.base_ref }}"``
+    gives ``python .github/scripts/check_catalog_contract.py``: the sandbox has no runner context, the
+    caller passes the option in the call's args. An expression anywhere else (the command, a positional
+    argument, a shell construct) leaves the line out, as before.
+    """
+    marked = _EXPRESSION.sub(_EXPRESSION_MARK, line)
+    if "${{" in marked or any(c in _SHELL_CHARS for c in marked):
+        return None
+    try:
+        tokens = shlex.split(marked)
+    except ValueError:
+        return None
+    start = _script_index(tokens)
+    if start is None or any(_EXPRESSION_MARK in t for t in tokens[: start + 1]):
+        return None
+    kept = tokens[: start + 1]
+    for token in tokens[start + 1 :]:
+        if _EXPRESSION_MARK not in token:
+            kept.append(token)
+        elif token.startswith("-") and "=" in token:
+            continue  # --name=${{ ... }}
+        elif len(kept) > start + 1 and kept[-1].startswith("-") and "=" not in kept[-1]:
+            kept.pop()  # --name ${{ ... }}: the flag goes with its value
+        else:
+            return None
+    return shlex.join(kept)
+
+
 def _command(line: str, cwd: str, dirs: frozenset[str] = frozenset()) -> tuple[str, list[str], list[str]] | None:
     """(cwd, the argv to run, the tokens to classify) of a workflow line, or ``None``."""
     if "${{" in line:
-        return None
+        stripped = _without_expression_options(line)
+        if stripped is None:
+            return None
+        line = stripped
     match = re.match(r"^cd\s+([^\s;&|]+)\s*&&\s*(.+)$", line)
     if match:
         where = _clean_dir(cwd, match.group(1), dirs)
