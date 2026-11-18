@@ -713,6 +713,7 @@ ce:
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
+  - backend/app/integrations/providers/wordsmith  # a connector
   - backend/app/services/vault
   - backend/app/static
   - frontend/src/assets

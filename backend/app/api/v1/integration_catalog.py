@@ -4648,9 +4648,18 @@ PROVIDER_CATALOG = {
                 "Copy the key (shown once) and paste it below. Pick the US region only if your organisation is hosted there.",
             ],
             "permissions": [
-                {"scope": "Full access", "description": "Every tool, including artifacts and the routes that need a full-access key"},
-                {"scope": "Selected permissions", "description": "Only the routes the key's scopes cover; a call outside them answers insufficient_scope with the scope it needs"},
-                {"scope": "directory:admin / webhooks:write / audit:read", "description": "Organisation management, webhook endpoints and the audit log"},
+                {
+                    "scope": "Full access",
+                    "description": "Every tool, including artifacts and the routes that need a full-access key",
+                },
+                {
+                    "scope": "Selected permissions",
+                    "description": "Only the routes the key's scopes cover; a call outside them answers insufficient_scope with the scope it needs",
+                },
+                {
+                    "scope": "directory:admin / webhooks:write / audit:read",
+                    "description": "Organisation management, webhook endpoints and the audit log",
+                },
             ],
             "notes": "Each person can connect their own key, so their XTM One agents reach their own Wordsmith agents, sessions and tasks. Rate limit: 400 requests a minute per organisation.",
         },

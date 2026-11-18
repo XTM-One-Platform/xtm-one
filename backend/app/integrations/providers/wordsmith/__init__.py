@@ -30,6 +30,7 @@ signing secret, a ``callback_secret``) is never echoed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from typing import Any
@@ -40,6 +41,7 @@ from app.core.egress import egress_client
 from app.integrations.file_delivery import deliver_file, file_content_type
 from app.integrations.http import (
     TRANSIENT_RETRY_STATUSES,
+    RateLimiter,
     app_token_cache_key,
     get_shared_rate_limiter,
     parse_compound_token,
@@ -114,7 +116,11 @@ def redact_secrets(value: Any) -> Any:
     """*value* with every secret field replaced, recursively."""
     if isinstance(value, dict):
         return {
-            key: ("[redacted: shown once by Wordsmith, never repeated]" if key in _SECRET_KEYS and item else redact_secrets(item))
+            key: (
+                "[redacted: shown once by Wordsmith, never repeated]"
+                if key in _SECRET_KEYS and item
+                else redact_secrets(item)
+            )
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -158,7 +164,7 @@ class WordsmithClient:
     def __init__(self, token: str) -> None:
         self.base_url, self.credential = split_token(token)
 
-    def _limiter(self):
+    def _limiter(self) -> RateLimiter:
         return get_shared_rate_limiter(
             f"wordsmith:{app_token_cache_key('wordsmith', self.credential)}",
             rate=_RATE_PER_SECOND,
@@ -261,7 +267,12 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
     ops = {op.operation: op for op in group.operations}
     path_params = sorted({name for op in group.operations for name in op.path_params})
 
-    async def handler(operation: str, query: dict | None = None, body: dict | list | None = None, **ids: Any) -> str:
+    async def handler(
+        operation: str,
+        query: dict[str, Any] | None = None,
+        body: dict[str, Any] | list[Any] | None = None,
+        **ids: Any,
+    ) -> str:
         op = ops.get((operation or "").strip())
         if op is None:
             return f"Error: unknown operation '{operation}'. One of: {', '.join(ops)}."
@@ -282,7 +293,8 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
         )
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         answer = _render(resp, op.operation)
         if idempotency_key:
             answer += f"\nIdempotency-Key: {idempotency_key} (send it again as query.idempotency_key to retry safely)."
@@ -300,7 +312,10 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
     if any(op.method != "GET" for op in group.operations):
         properties["body"] = {"type": ["object", "array"], "description": "JSON body, as the Wordsmith docs define it."}
     for name in path_params:
-        properties[name] = {"type": "string", "description": _PATH_PARAM_DESCRIPTIONS.get(name, f"The {name.replace('_', ' ')}.")}
+        properties[name] = {
+            "type": "string",
+            "description": _PATH_PARAM_DESCRIPTIONS.get(name, f"The {name.replace('_', ' ')}."),
+        }
     return ToolDefinition(
         name=group.tool,
         description=description,
@@ -322,7 +337,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         resp, err = await client.request("GET", "/me", action="get me")
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         return _render(resp, "me")
 
     async def send_wordsmith_agent_question(
@@ -365,13 +381,12 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         )
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         answer = _render(resp, "question")
         status = ""
-        try:
+        with contextlib.suppress(ValueError, AttributeError):
             status = str(resp.json().get("status") or "")
-        except (ValueError, AttributeError):
-            pass
         if status == "in_progress":
             answer += (
                 "\nNot answered yet: read it with get_wordsmith_agents operation=get_question "
@@ -393,7 +408,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         )
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         return _render(resp, "operation")
 
     async def upload_wordsmith_file(
@@ -413,7 +429,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         )
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         grant = resp.json()
         upload_url = str(grant.get("upload_url") or "")
         job_id = str(grant.get("job_id") or "")
@@ -428,18 +445,26 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         resp, err = await client.request("POST", f"/files/uploads/{job_id}/complete", action="complete upload")
         if err:
             return err
-        assert resp is not None
-        return _render(resp, "uploaded file") + f"\nupload_job_id {job_id} was used; pass the file id above as file_ids."
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
+        return (
+            _render(resp, "uploaded file") + f"\nupload_job_id {job_id} was used; pass the file id above as file_ids."
+        )
 
     async def download_wordsmith_file(file_id: str, task_id: str = "") -> str | ToolResult:
         """Store a Wordsmith file (or a task file) as a file of this run."""
         if not file_id.strip() or "/" in file_id or "/" in task_id:
             return "Error: file_id (and task_id) must be ids."
-        path = f"/tasks/{task_id.strip()}/files/{file_id.strip()}/download" if task_id.strip() else f"/files/{file_id.strip()}/download"
+        path = (
+            f"/tasks/{task_id.strip()}/files/{file_id.strip()}/download"
+            if task_id.strip()
+            else f"/files/{file_id.strip()}/download"
+        )
         resp, err = await client.request("GET", path, action="download link")
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         link = resp.json()
         url = str(link.get("url") or "")
         if not url.startswith("https://"):
@@ -452,13 +477,15 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         return await deliver_file(
             data=fetched.content,
             filename=name,
-            content_type=file_content_type(str(link.get("content_type") or fetched.headers.get("content-type") or ""), name),
+            content_type=file_content_type(
+                str(link.get("content_type") or fetched.headers.get("content-type") or ""), name
+            ),
             source=PROVIDER,
             persist_file_fn=persist_file_fn,
             links=[("Web URL", link.get("web_url"))],
         )
 
-    async def _raw(method: str, path: str, query: dict | None, body: Any, idempotency_key: str) -> str:
+    async def _raw(method: str, path: str, query: dict[str, Any] | None, body: Any, idempotency_key: str) -> str:
         method = (method or "GET").upper()
         path = "/" + (path or "").strip().lstrip("/")
         if path.startswith("/api/v1/"):
@@ -472,15 +499,20 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         )
         if err:
             return err
-        assert resp is not None
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
         return _render(resp, f"{method} {path}")
 
-    async def get_wordsmith_api_request(path: str, query: dict | None = None) -> str:
+    async def get_wordsmith_api_request(path: str, query: dict[str, Any] | None = None) -> str:
         """GET any /api/v1 route."""
         return await _raw("GET", path, query, None, "")
 
     async def wordsmith_api_request(
-        method: str, path: str, query: dict | None = None, body: dict | list | None = None, idempotency_key: str = ""
+        method: str,
+        path: str,
+        query: dict[str, Any] | None = None,
+        body: dict[str, Any] | list[Any] | None = None,
+        idempotency_key: str = "",
     ) -> str:
         """Any method on any /api/v1 route (a write)."""
         return await _raw(method, path, query, body, idempotency_key)
@@ -536,7 +568,10 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             description="Wait up to 20 s for a Wordsmith operation (a question, a review, a document action) and read its state.",
             input_schema={
                 "type": "object",
-                "properties": {"operation_id": {"type": "string"}, "wait": {"type": "integer", "description": "0 to 20."}},
+                "properties": {
+                    "operation_id": {"type": "string"},
+                    "wait": {"type": "integer", "description": "0 to 20."},
+                },
                 "required": ["operation_id"],
             },
             source=SOURCE,
@@ -571,7 +606,10 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             description="GET any Wordsmith /api/v1 route not covered by another tool.",
             input_schema={
                 "type": "object",
-                "properties": {"path": {"type": "string", "description": "e.g. /tasks/ID/comments"}, "query": {"type": "object"}},
+                "properties": {
+                    "path": {"type": "string", "description": "e.g. /tasks/ID/comments"},
+                    "query": {"type": "object"},
+                },
                 "required": ["path"],
             },
             source=SOURCE,
@@ -605,7 +643,8 @@ async def validate_connection(token: str) -> tuple[bool, str]:
     resp, err = await client.request("GET", "/me", action="test connection")
     if err:
         return False, err.removeprefix("Error: ").split("\n", 1)[0]
-    assert resp is not None
+    if resp is None:
+        return False, "Wordsmith gave no answer."
     try:
         data = resp.json()
     except ValueError:

@@ -55,7 +55,6 @@ from app.integrations.providers.aws_security import build_tools as aws_security_
 from app.integrations.providers.bluesky import build_tools as bluesky_tools
 from app.integrations.providers.brave_search import build_tools as brave_search_tools
 from app.integrations.providers.concord import build_tools as concord_tools
-from app.integrations.providers.wordsmith import build_tools as wordsmith_tools
 from app.integrations.providers.credly import build_tools as credly_tools
 from app.integrations.providers.crowdsec import build_tools as crowdsec_tools
 from app.integrations.providers.crowdstrike import build_tools as crowdstrike_tools
@@ -181,6 +180,7 @@ from app.integrations.providers.whatsapp_bot import build_tools as whatsapp_bot_
 from app.integrations.providers.whatsapp_gateway import BACKEND_GATEWAY as WHATSAPP_GATEWAY_BACKEND
 from app.integrations.providers.whatsapp_gateway import gateway_token as whatsapp_gateway_token
 from app.integrations.providers.wiz import build_tools as wiz_tools
+from app.integrations.providers.wordsmith import build_tools as wordsmith_tools
 from app.integrations.providers.x import build_tools as x_tools
 from app.integrations.providers.xdr import build_tools as xdr_tools
 from app.integrations.providers.xsoar import build_tools as xsoar_tools

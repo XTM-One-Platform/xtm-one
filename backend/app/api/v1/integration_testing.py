@@ -829,11 +829,12 @@ async def test_provider_connectivity(
     elif provider == "wordsmith":
         # GET /me through the provider's own client: the region host, the
         # rate limiter and Wordsmith's error_code reading are the runtime's.
-        from app.integrations.providers.wordsmith import resolve_base_url
+        from app.integrations.providers.wordsmith import resolve_base_url as wordsmith_base_url
         from app.integrations.providers.wordsmith import validate_connection as wordsmith_validate
 
         region = (extra.get("region") or "").strip()
-        compound = f"{resolve_base_url(region)}||{token}" if region else token
+        credential = token or ""
+        compound = f"{wordsmith_base_url(region)}||{credential}" if region else credential
         ok, message = await wordsmith_validate(compound)
         return {"status": "ok" if ok else "error", "message": message}
     elif provider == "hackerone":
