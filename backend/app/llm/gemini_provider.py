@@ -1847,6 +1847,9 @@ def _clean_schema_for_gemini(schema: dict) -> dict:
     A type union is not a Gemini type either: ``"type": ["string", "null"]``
     and an ``anyOf`` with a ``{"type": "null"}`` variant become the non-null
     type with ``nullable: true``; any other union keeps its first non-null type.
+
+    An array without ``items`` fails the whole request: it gets an empty
+    ``items``, which Gemini takes as any element.
     """
     if not isinstance(schema, dict):
         return schema
@@ -1892,7 +1895,6 @@ def _clean_schema_for_gemini(schema: dict) -> dict:
         else:
             cleaned[key] = value
 
-    # Google refuses an array without items, failing the whole request; empty items mean any element.
     if cleaned.get("type") == "array" and not isinstance(cleaned.get("items"), dict):
         cleaned["items"] = {}
     if nullable and cleaned.get("type") not in (None, "null"):

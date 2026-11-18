@@ -11,23 +11,24 @@ from typing import Any
 
 import pytest
 
-from app.llm.gemini_provider import _clean_schema_for_gemini, gemini_wire_tools
+from app.llm.gemini_provider import _clean_schema_for_gemini, _gemini_tool
 from app.llm.openai_compat import openai_function_tools
 from app.tools.base import ToolDefinition
 
 genai_types = pytest.importorskip("google.genai.types")
 
 
-def _untyped_arrays(node: Any, path: str = "") -> list[str]:
-    """Every array of a cleaned schema whose ``items`` is not a schema."""
+def _refused_arrays(node: Any, path: str = "") -> list[str]:
+    """Every array of a cleaned schema without an ``items`` schema, which Google refuses."""
     found: list[str] = []
     if not isinstance(node, dict):
         return found
-    if node.get("type") == "array" and not isinstance(node.get("items"), dict):
+    items = node.get("items")
+    if node.get("type") == "array" and not isinstance(items, dict):
         found.append(path or "/")
     for name, prop in (node.get("properties") or {}).items():
-        found += _untyped_arrays(prop, f"{path}.{name}")
-    found += _untyped_arrays(node.get("items"), f"{path}[]")
+        found += _refused_arrays(prop, f"{path}.{name}")
+    found += _refused_arrays(items, f"{path}[]")
     return found
 
 
@@ -58,7 +59,7 @@ def test_a_nested_array_without_items_gets_empty_items() -> None:
             }
         },
     }
-    assert _untyped_arrays(_clean_schema_for_gemini(schema)) == []
+    assert _refused_arrays(_clean_schema_for_gemini(schema)) == []
 
 
 def test_typed_items_are_kept() -> None:
@@ -77,20 +78,21 @@ def test_the_gateway_sends_gemini_empty_items() -> None:
 
 
 def test_the_sdk_keeps_empty_items_on_the_wire() -> None:
-    """The direct provider: ``exclude_none`` must not drop the empty schema."""
-    ((name, description, parameters),) = gemini_wire_tools(
+    """The direct provider, serialized as the SDK's request path does: the empty schema stays."""
+    from google.genai import _common, models
+
+    tool = _gemini_tool(
         [
             ToolDefinition(
                 name="t", description="d", input_schema={"type": "object", "properties": {"v": {"type": "array"}}}
             )
         ]
     )
-    declaration = genai_types.FunctionDeclaration(name=name, description=description, parameters=parameters)
-    dumped = declaration.model_dump(mode="json", exclude_none=True)
-    assert dumped["parameters"]["properties"]["v"]["items"] == {}
+    wire = _common.convert_to_dict(models._Tool_to_mldev(tool))
+    assert wire["functionDeclarations"][0]["parameters"]["properties"]["v"] == {"items": {}, "type": "ARRAY"}
 
 
-def test_every_builtin_tool_declares_typed_arrays_on_gemini() -> None:
+def test_no_builtin_tool_declares_an_array_gemini_refuses() -> None:
     """Tripwire: no builtin tool reaches Gemini with an array Google refuses."""
     from app.services.builtin_tool_catalog import build_builtin_tool_catalog
 
@@ -100,6 +102,6 @@ def test_every_builtin_tool_declares_typed_arrays_on_gemini() -> None:
     refused = {
         tool["name"]: paths
         for tool in tools
-        if (paths := _untyped_arrays(_clean_schema_for_gemini(tool["input_schema"])))
+        if (paths := _refused_arrays(_clean_schema_for_gemini(tool["input_schema"])))
     }
     assert refused == {}
