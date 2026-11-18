@@ -1659,8 +1659,11 @@ async def _poll_workflow_run(
     tokens: dict[tuple[str, str], str | None],
     seen: dict[tuple, dict | None],
     counts: dict,
-) -> None:
-    """Read one ``workflow_run`` reference through the providers' readers and apply a successful run."""
+) -> bool:
+    """Read one ``workflow_run`` reference through the providers' readers and apply a successful run.
+
+    False when the pass's read budget left the reference unread, so the item is not stamped polled.
+    """
     key = _ref_key(ref)
     for provider, reader in readers.items():
         token = tokens.get((provider, str(user_id)))
@@ -1669,7 +1672,7 @@ async def _poll_workflow_run(
         read_key = (provider, str(user_id), *key)
         if read_key not in seen:
             if counts["read"] >= POLL_MAX_READS:
-                return
+                return False
             counts["read"] += 1
             try:
                 seen[read_key] = await reader(
@@ -1681,7 +1684,7 @@ async def _poll_workflow_run(
                     token,
                 )
             except Exception as exc:
-                logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                _note_read_failure(counts, ref, exc)
                 seen[read_key] = None
         run = seen[read_key]
         if run is None:
@@ -1695,10 +1698,11 @@ async def _poll_workflow_run(
                 item_id,
                 format_exception_message(exc),
             )
-            return
+            return True
         if outcome:
             counts[outcome] = counts.get(outcome, 0) + 1
-        return
+        return True
+    return True
 
 
 async def _poll_branch_successors(
@@ -1755,6 +1759,9 @@ async def _poll_branch_successors(
 
 #: Item id -> monotonic time of its last read, per process.
 _last_polled: dict[uuid.UUID, float] = {}
+# Items a pass left with a reference unread because its read budget ran out: never
+# stamped polled, and read first by the next pass of this process.
+_budget_skipped: set[uuid.UUID] = set()
 
 
 def open_refs(refs: Any) -> list[dict]:
@@ -1909,7 +1916,11 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
     now_mono = time.monotonic()
     try:
         async with async_session() as db:
-            candidates = [c for c in await _poll_candidates(db, now) if _due(c[0], now_mono)][:POLL_MAX_ITEMS]
+            due = [c for c in await _poll_candidates(db, now) if _due(c[0], now_mono)]
+            # An item a previous pass left unread for lack of budget goes first, so a
+            # long queue of blocked items cannot starve it pass after pass.
+            due.sort(key=lambda c: c[0] not in _budget_skipped)
+            candidates = due[:POLL_MAX_ITEMS]
             tokens: dict[tuple[str, str], str | None] = {}
             for _, user_id, _ in candidates:
                 for provider in providers:
@@ -1923,10 +1934,11 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
     runs_seen: dict[tuple, dict | None] = {}
     branches_seen: dict[tuple, list[PullRequestEvent]] = {}
     for item_id, user_id, refs in candidates:
-        _last_polled[item_id] = now_mono
+        complete = True
         for ref in open_refs(refs):
             if ref.get("kind") == "workflow_run":
-                await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts)
+                if not await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts):
+                    complete = False
                 continue
             kind = read_kind(ref)
             if kind is None:
@@ -1938,12 +1950,13 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
                 key = (provider, str(user_id), ref.get("repo"), kind, ref.get("number"))
                 if key not in seen:
                     if counts["read"] >= POLL_MAX_READS:
+                        complete = False
                         break
                     counts["read"] += 1
                     try:
                         seen[key] = await reader(str(ref["repo"]), kind, int(ref["number"]), token)
                     except Exception as exc:
-                        logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                        _note_read_failure(counts, ref, exc)
                         seen[key] = None
                 event = seen[key]
                 if event is None:
@@ -1963,9 +1976,23 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
                 break
             if ref.get("kind") == "pull_request" and ref.get("head_branch"):
                 await _poll_branch_successors(item_id, user_id, ref, branch_readers, tokens, branches_seen, counts)
+        if complete:
+            _last_polled[item_id] = now_mono
+            _budget_skipped.discard(item_id)
+        else:
+            counts["skipped_by_budget"] = counts.get("skipped_by_budget", 0) + 1
+            _budget_skipped.add(item_id)
     if len(_last_polled) > POLL_MAX_ITEMS * 40:
         for stale in [k for k, t in _last_polled.items() if now_mono - t >= POLL_QUIET_SECONDS]:
             _last_polled.pop(stale, None)
-    if counts["released"] or counts["noted"] or counts.get("surfaced"):
+    if counts.get("skipped_by_budget") or counts.get("read_failed"):
+        logger.warning("Blocked references polled with items left unread: %s", counts)
+    elif counts["released"] or counts["noted"] or counts.get("surfaced"):
         logger.info("Blocked references polled: %s", counts)
     return counts
+
+
+def _note_read_failure(counts: dict, ref: dict, exc: Exception) -> None:
+    """Count and log, at warning, a reference the provider could not read."""
+    counts["read_failed"] = counts.get("read_failed", 0) + 1
+    logger.warning("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))

@@ -283,6 +283,7 @@ def poll(monkeypatch):
     monkeypatch.setattr(refs_mod, "reference_token", token)
     monkeypatch.setattr(refs_mod, "_publish_workflow_run", published)
     monkeypatch.setattr(refs_mod, "_last_polled", {})
+    monkeypatch.setattr(refs_mod, "_budget_skipped", set())
     monkeypatch.setattr(reference_state, "_READERS", {})
     monkeypatch.setattr(reference_state, "_WORKFLOW_RUN_READERS", {"github": reader})
     return store
