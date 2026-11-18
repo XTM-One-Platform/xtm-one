@@ -1810,7 +1810,51 @@ def _fmt_scenario(s: dict, base_url: str = "") -> str:
         lines.append(f"  Severity: {s['scenario_severity']}")
     if s.get("scenario_main_focus"):
         lines.append(f"  Main focus: {s['scenario_main_focus']}")
+    lines.extend(_scenario_state_lines(s))
     return "\n".join(lines)
+
+
+# OpenAEV marks the scenarios its starter pack installs with this dependency;
+# a scenario without it was created or imported by a user (3.x does not tell
+# those two apart).
+_SCENARIO_BUILTIN_DEPENDENCY = "STARTERPACK"
+
+
+def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
+    """Recurrence, origin, inject count and dates of a scenario, when returned.
+
+    Each line is rendered only when OpenAEV returned the field it reads, so a
+    trimmed payload (an older OpenAEV, a search projection) adds nothing.
+    """
+    lines: list[str] = []
+    if "scenario_recurrence" in s:
+        cron = s.get("scenario_recurrence")
+        if cron:
+            recurrence = f"  Recurrence: {cron} (cron, UTC)"
+            if s.get("scenario_recurrence_start"):
+                recurrence += f", from {s['scenario_recurrence_start']}"
+            if s.get("scenario_recurrence_end"):
+                recurrence += f", until {s['scenario_recurrence_end']}"
+            lines.append(recurrence)
+        else:
+            lines.append("  Recurrence: not planned")
+    if "scenario_dependencies" in s:
+        dependencies = s.get("scenario_dependencies") or []
+        if _SCENARIO_BUILTIN_DEPENDENCY in dependencies:
+            lines.append("  Origin: built-in (starter pack)")
+        else:
+            lines.append("  Origin: created or imported by a user")
+    injects = s.get("scenario_injects")
+    if isinstance(injects, list):
+        lines.append(f"  Injects: {len(injects)}")
+    tags = s.get("scenario_tags")
+    if isinstance(tags, list) and tags:
+        lines.append(f"  Tags: {len(tags)}")
+    if s.get("scenario_created_at"):
+        lines.append(f"  Created: {s['scenario_created_at']}")
+    if s.get("scenario_updated_at"):
+        lines.append(f"  Updated: {s['scenario_updated_at']}")
+    return lines
 
 
 def _fmt_finding(f: dict, base_url: str = "") -> str:
