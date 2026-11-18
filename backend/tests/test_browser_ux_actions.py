@@ -436,7 +436,7 @@ async def test_hover_aims_at_a_point_the_element_itself_receives(page):
     result = await _call({"action": "hover", "selector": "path[data-edge-hit]"})
     assert not result.is_error
     page.locator.assert_called_with("path[data-edge-hit]")
-    script = page.element.evaluate.await_args.args[0]
+    script = page.element.evaluate.await_args_list[0].args[0]  # the native tooltip read (#126) comes after
     assert "elementFromPoint" in script and "getPointAtLength" in script
     page.mouse.move.assert_awaited_once_with(412.4, 233.6)
     page.hover.assert_not_awaited()

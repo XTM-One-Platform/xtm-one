@@ -289,7 +289,7 @@ async def test_blocks_refused_again_without_them_were_not_the_cause(caplog):
     assert len(gateway.sent) == 2
     assert not messages[1]._provider_extra[EXTRA_KEY].refused
     # Only the structured message is logged, never the SDK's rendering of the body.
-    assert "Thinking blocks or thought signatures refused (1 turn(s)); retrying once without them: Invalid `signature`" in caplog.text
+    assert "Thinking blocks refused (1 turn(s)); retrying once without them: Invalid `signature`" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -370,3 +370,23 @@ async def test_a_refused_temperature_is_still_retried_once_the_blocks_are_droppe
     sent = [("thinking_blocks" in r["messages"][1], "temperature" in r) for r in gateway.sent]
     assert sent == [(True, True), (False, True), (False, False)]
     assert messages[1]._provider_extra[EXTRA_KEY].refused
+
+
+@pytest.mark.asyncio
+async def test_each_turn_of_a_multi_turn_round_gets_its_own_blocks():
+    """Turns are paired by position from the end: two rounds' turns never swap blocks."""
+    other = {**BLOCK, "thinking": "Need the time.", "signature": "other=="}
+    first = ChatMessage(role="assistant", content="", tool_calls=[ToolCall(id="call_1", name="weather", arguments={})])
+    second = ChatMessage(role="assistant", content="", tool_calls=[ToolCall(id="call_2", name="weather", arguments={})])
+    first._provider_extra = _kept()
+    second._provider_extra = _kept(blocks=(other,), call_ids=("call_2",))
+    messages = [
+        ChatMessage(role="user", content="Weather?"),
+        first,
+        ChatMessage(role="tool", content="Sunny", tool_call_id="call_1"),
+        second,
+        ChatMessage(role="tool", content="Rainy", tool_call_id="call_2"),
+    ]
+    gateway = _Gateway(_ok())
+    await gateway.provider().chat(messages, model=MODEL, tools=[TOOL])
+    assert [t["thinking_blocks"] for t in gateway.assistant_turns()] == [[BLOCK, REDACTED], [other]]

@@ -11,6 +11,7 @@ from app.llm.model_capabilities import (
     capped_effort,
     defaults_to_adaptive_thinking,
     omit_temperature,
+    refuses_effort_with_tools,
     refuses_forced_tool_choice,
     requires_summarized_thinking_opt_in,
     supported_effort,
@@ -148,10 +149,21 @@ async def test_bedrock_chat_default_model_omits_temperature():
     assert "temperature" not in sent_kwargs["inferenceConfig"]
 
 
-def test_gpt_6_keeps_temperature_while_using_completion_tokens():
+def test_gpt_6_omits_temperature_while_using_completion_tokens():
     assert build_openai_generation_params(
         "gpt-6-mini", temperature=0.2, max_tokens=512
-    ) == {"temperature": 0.2, "max_completion_tokens": 512}
+    ) == {"max_completion_tokens": 512}
+
+
+@pytest.mark.parametrize(
+    "model", ["gpt-6-luna", "gpt-6-luna-2026-09-01", "gpt-6.2-sol", "gpt-6.2-astra", "openai/gpt-6-luna"]
+)
+def test_gpt_6_is_not_sent_a_temperature(model: str):
+    """gpt-6 models refuse any temperature but 1 (#125); they keep the gpt-6 effort rules."""
+    assert omit_temperature(model) is True
+    assert "temperature" not in build_openai_generation_params(model, temperature=0.2, max_tokens=512)
+    assert refuses_effort_with_tools(model) is True
+    assert supported_effort(model, "max") == "max"
 
 
 def test_chatgpt_model_keeps_temperature_with_completion_tokens():
