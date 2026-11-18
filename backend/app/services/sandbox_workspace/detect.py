@@ -1134,6 +1134,25 @@ def _clean_dir(base: str, rel: str, dirs: frozenset[str] = frozenset()) -> str |
     return joined
 
 
+#: The check kinds whose trailing tree target (``black --check .``) a call's args replace.
+_TREE_TARGET_KINDS = ("lint", "format", "types")
+#: The tree targets a workflow line ends with: the check's whole directory.
+_TREE_TARGETS = frozenset({".", "./"})
+
+
+def _split_tree_target(kind: str, argv: list[str]) -> tuple[list[str], tuple[str, ...]]:
+    """(*argv* without its trailing ``.``, that ``.`` as default args) for a lint, format or types check.
+
+    A detected ``black --check .`` ran ``black --check . x.py`` when a call named one file: the call's
+    args followed the tree target, so the whole tree was checked again. Its ``.`` is a default argument
+    instead: a call without args runs the whole directory as before, a call with args runs on them alone.
+    Other kinds, and an argv of one word, are kept whole.
+    """
+    if kind.split("-", 1)[0] not in _TREE_TARGET_KINDS or len(argv) < 2 or argv[-1] not in _TREE_TARGETS:
+        return argv, ()
+    return argv[:-1], (argv[-1],)
+
+
 class _Collector:
     def __init__(self, images: frozenset[str]) -> None:
         self.images = images
@@ -1170,9 +1189,11 @@ class _Collector:
         if kind == "install" and posixpath.basename(argv[0]) == "pnpm" and not any("strict-dep-builds" in a for a in argv):
             # A workflow's own `pnpm install` too: the CI runner it was written for does not fail on it.
             argv = [*argv, _PNPM_LENIENT_BUILDS]
+        argv, defaults = _split_tree_target(kind, argv)
         self.found[key] = CheckSpec(
             name=name,
             argv=tuple(argv),
+            default_args=defaults,
             cwd=directory,
             timeout=min(_TIMEOUTS.get(kind, 900), MAX_TIMEOUT),
             image=self.image(runs_on or stack),
