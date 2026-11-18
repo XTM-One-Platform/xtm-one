@@ -6143,6 +6143,24 @@ async def execute_assignment_run(
                         )
                     )
 
+            # --- User and group administration (opt-in, administrators only, #250) ---
+            if "user_admin" in agent_builtin_tool_ids and effective_user_id:
+                from app.models.user import User as _AdminActingUser
+                from app.services.builtin_tools import build_user_admin_tools, offers_user_admin
+
+                _ua_acting_admin = bool(getattr(await db.get(_AdminActingUser, effective_user_id), "is_admin", False))
+                if offers_user_admin(
+                    agent_builtin_tool_ids, acting_user_id=str(effective_user_id), acting_is_admin=_ua_acting_admin
+                ):
+                    composite.add_tools(
+                        *build_user_admin_tools(
+                            user_id=str(effective_user_id),
+                            caller_is_admin=_ua_acting_admin,
+                            agent_name=agent.name,
+                            run_id=str(run.id),
+                        )
+                    )
+
             # --- Cross-run shared-state tools (built-in, opt-in) ---
             if "shared_state" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_shared_state_tools

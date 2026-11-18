@@ -307,6 +307,19 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         bind_admin_only=True,
     ),
     BuiltinToolGroup(
+        # Users and groups for an administrator's agent (#250): the one
+        # deactivation cascade, the group membership, the review queue. Only an
+        # administrator binds it, and a turn wires it for an administrator alone.
+        id="user_admin",
+        name="User Administration",
+        tagline="Administrators only: list, deactivate and reactivate accounts, manage group members",
+        detail="Lets the agent do what Administration > Users and groups offers for the administrator it acts for: list and read accounts (source, status, groups, last sign-in, what they own), preview and run the deactivation cascade on one or many accounts (dry run by default), reactivate an account, add or remove group members (a group the identity provider manages stays read-only) and work the deactivation review queue. Every change is audited with the administrator, the agent and the run. Only an administrator can add it to an agent, and it runs only when the agent acts for an administrator.",
+        category="platform",
+        icon="UserCog",
+        agent_keyed=True,
+        bind_admin_only=True,
+    ),
+    BuiltinToolGroup(
         id="memory_steward",
         name="Memory Steward",
         tagline="Consolidate agent memory lanes, reversibly, for the Platform Concierge",

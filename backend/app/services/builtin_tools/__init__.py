@@ -267,6 +267,11 @@ from .organization_context_write import (
     offers_organization_context_write,
     refused_admin_bound_ids,
 )
+from .user_admin import (  # noqa: E402
+    USER_ADMIN_GROUP,
+    build_user_admin_tools,
+    offers_user_admin,
+)
 from .organization_onboarding import (
     ORGANIZATION_ONBOARDING_TOOL,
     build_organization_onboarding_tool,
@@ -541,6 +546,9 @@ __all__ = [
     "offered_handover_types",
     "offers_ctem_case_tools",
     "offers_organization_context_write",
+    "offers_user_admin",
+    "build_user_admin_tools",
+    "USER_ADMIN_GROUP",
     "offers_organization_proposals",
     "orchestrator_may_delete_action",
     "orchestrator_phase_gate_blocked",

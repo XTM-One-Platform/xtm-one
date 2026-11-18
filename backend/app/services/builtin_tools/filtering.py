@@ -405,6 +405,9 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         # The write side of the organization profile (#11594): bound to an
         # agent by an administrator, wired for an administrator's turn alone.
         "organization_context",
+        # User and group administration: the same, bound by an administrator
+        # and wired for an administrator's turn alone.
+        "user_admin",
     }
 )
 
