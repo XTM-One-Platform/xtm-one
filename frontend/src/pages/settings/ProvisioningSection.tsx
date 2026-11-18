@@ -10,7 +10,6 @@
  * administrator. Contract: dev-docs/scim.md, dev-docs/user-deactivation.md.
  */
 import { useState } from "react";
-import { Check, Copy, KeyRound, ListChecks, Trash2, UserCog, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +30,7 @@ import { useFormatter } from "@/i18n";
 import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
 import { DEACTIVATION_SOURCE_LABELS, labelOf as label, REVIEW_ACTION_LABELS } from "@/lib/provisioning-labels";
 import { formatShortDateTime } from "@/lib/utils";
-import { Spinner } from "@filigran/design-system";
+import { Icon, Spinner } from "@filigran/design-system";
 
 function useCopy() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -68,7 +67,7 @@ function ScimCard() {
     <Card data-testid="scim-section">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Workflow className="h-4 w-4" />
+          <Icon name="network" size={16} aria-hidden />
           {t_i18n("SCIM provisioning")}
         </CardTitle>
         <CardDescription>
@@ -83,7 +82,7 @@ function ScimCard() {
               {data?.endpoint ?? ""}
             </code>
             <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => data && copy("endpoint", data.endpoint)} disabled={!data}>
-              {copied === "endpoint" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied === "endpoint" ? <Icon name="check" size={16} aria-hidden /> : <Icon name="copy" size={16} aria-hidden />}
               {copied === "endpoint" ? t_i18n("Copied") : t_i18n("Copy")}
             </Button>
           </div>
@@ -97,7 +96,7 @@ function ScimCard() {
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 break-all rounded-sm bg-elevation-hover px-3 py-2 font-mono-plex content-compact">{created.token}</code>
               <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => copy("token", created.token)}>
-                {copied === "token" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copied === "token" ? <Icon name="check" size={16} aria-hidden /> : <Icon name="copy" size={16} aria-hidden />}
                 {copied === "token" ? t_i18n("Copied") : t_i18n("Copy")}
               </Button>
             </div>
@@ -129,7 +128,7 @@ function ScimCard() {
                   onClick={() => void handleRevoke(token.id, token.name)}
                   disabled={revoke.isPending}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Icon name="trash-2" size={16} aria-hidden />
                   {t_i18n("Revoke")}
                 </Button>
               </div>
@@ -153,7 +152,8 @@ function ScimCard() {
             data-testid="scim-token-generate"
             aria-busy={create.isPending || undefined}
           >
-            {create.isPending ? <Spinner size="sm" tone="inherit" /> : <KeyRound className="h-3 w-3" />}
+            {create.isPending && <Spinner size="sm" tone="inherit" />}
+            {!create.isPending && <Icon name="key-round" size={16} aria-hidden />}
             {t_i18n("Generate token")}
           </Button>
         </div>
@@ -170,7 +170,7 @@ function ActivityCard() {
     <Card data-testid="scim-activity">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <UserCog className="h-4 w-4" />
+          <Icon name="history" size={16} aria-hidden />
           {t_i18n("Latest SCIM changes")}
         </CardTitle>
         <CardDescription>{t_i18n("The last 50 accounts and groups the identity provider created, changed or deactivated. Refused calls are not listed.")}</CardDescription>
@@ -257,7 +257,7 @@ function ReviewCard() {
     <Card data-testid="deactivation-review">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <ListChecks className="h-4 w-4" />
+          <Icon name="list-checks" size={16} aria-hidden />
           {t_i18n("Deactivation review")}
         </CardTitle>
         <CardDescription>
