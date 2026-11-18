@@ -15,12 +15,12 @@ from types import SimpleNamespace
 import pytest
 
 from app.models.assignment import AssignmentRun
-from app.models.concierge import ConciergeCycle
-from app.services.concierge import budget
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
-from app.services.concierge.budget import current_month
-from app.services.concierge.memory_history import Lane
+from app.models.health import ConciergeCycle
+from app.services.health import budget
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
+from app.services.health.budget import current_month
+from app.services.health.memory_history import Lane
 from tests.memory_steward_world import entry, make_world, world_database
 
 pytestmark = pytest.mark.integration

@@ -70,7 +70,7 @@ def test_audience_flags_match_the_backend_sets():
 
 def test_concierge_only_groups_are_the_specialists_suites():
     """A chat's session tools never offer a suite that only a Concierge specialist's run may use."""
-    from app.services.concierge.fleet_seed import FLEET_AGENTS
+    from app.services.health.fleet_seed import FLEET_AGENTS
 
     concierge_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.concierge_only}
     assert concierge_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}

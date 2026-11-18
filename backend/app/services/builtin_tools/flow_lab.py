@@ -28,11 +28,11 @@ Built-in group ``flow_lab`` (PRD ``platform-concierge.md`` sections 6.9 and 8):
 cycle cannot use it; these writes are its authoring path, and when an admin
 chats with the Flow Lab ``flow_builder`` lands on sandbox copies too
 (level 2). Nothing here writes a production flow: the only path to
-production is an approved proposal (level 3, ``services/concierge/flow_proposals``).
+production is an approved proposal (level 3, ``services/health/flow_proposals``).
 
 Each call opens its own session and resolves its caller (the Concierge
 principal, else the user), and every target goes through
-``services/concierge/flow_lab_access``: one rule on every path, by id and by
+``services/health/flow_lab_access``: one rule on every path, by id and by
 name. Values read from runs come back inside untrusted-content blocks, never
 as instructions. Errors are generic, reasons in the logs. Gated by
 ``CONCIERGE``, not by ``FLOW_BUILDER``, which hides the builder's UI only
@@ -50,7 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Registers the flow experiment kinds and the flow finding rule with level 6
 # when the tool registry loads, so the Experimenter can measure flow variants.
-import app.services.concierge.flow_experiments  # noqa: F401
+import app.services.health.flow_experiments  # noqa: F401
 from app.core import database
 from app.core.utils import format_exception_message
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -82,7 +82,7 @@ _LISTED_CASES = 20
 
 
 def _enabled() -> bool:
-    from app.services.concierge.availability import concierge_enabled
+    from app.services.health.availability import concierge_enabled
 
     return bool(concierge_enabled())
 
@@ -94,7 +94,7 @@ def _untrusted(text: str, source: str) -> str:
 
 
 def _not_found(what: str) -> str:
-    from app.services.concierge.flow_lab_access import NOT_FOUND
+    from app.services.health.flow_lab_access import NOT_FOUND
 
     return f"Error: {what} {NOT_FOUND}."
 
@@ -102,7 +102,7 @@ def _not_found(what: str) -> str:
 async def _run(
     user_id: str, name: str, fn: Callable[..., Awaitable[str]], args: dict[str, Any], *, agent_id: str | None = None
 ) -> str:
-    from app.services.concierge.flow_lab_access import resolve_caller
+    from app.services.health.flow_lab_access import resolve_caller
 
     if not _enabled():
         return _OFF
@@ -125,8 +125,8 @@ async def _run(
 
 async def _get_flow_diagnosis(db: AsyncSession, caller: Any, flow: str = "", last_runs: int = 50) -> str:
     from app.models.flow_run import FlowRun
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.flow_lab import PAYLOAD_EXCERPT_CHARS, diagnose_flow, excerpt
+    from app.services.health import flow_lab_access as access
+    from app.services.health.flow_lab import PAYLOAD_EXCERPT_CHARS, diagnose_flow, excerpt
 
     target = await access.resolve_flow(db, caller, flow)
     if target is None:
@@ -166,8 +166,8 @@ async def _get_flow_diagnosis(db: AsyncSession, caller: Any, flow: str = "", las
 
 
 async def _get_assignment_path(db: AsyncSession, caller: Any, assignment: str = "", last_runs: int = 30) -> str:
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.flow_lab import assignment_path
+    from app.services.health import flow_lab_access as access
+    from app.services.health.flow_lab import assignment_path
 
     target = await access.resolve_assignment(db, caller, assignment)
     if target is None:
@@ -195,8 +195,8 @@ async def _get_assignment_path(db: AsyncSession, caller: Any, assignment: str = 
 async def _find_flow_candidates(
     db: AsyncSession, caller: Any, agent: str = "", days: int = 30, min_occurrences: int = 5
 ) -> str:
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.flow_lab import repeated_sequences
+    from app.services.health import flow_lab_access as access
+    from app.services.health.flow_lab import repeated_sequences
 
     target = await access.resolve_agent(db, caller, agent)
     if target is None:
@@ -219,7 +219,7 @@ async def _get_flow_shadow(db: AsyncSession, caller: Any, shadow_id: str = "") -
 
     from app.models.assignment import Assignment
     from app.models.flow_shadow import FlowShadow, FlowShadowPair
-    from app.services.concierge import flow_lab_access as access
+    from app.services.health import flow_lab_access as access
 
     sid = access.parse_id(shadow_id)
     shadow = await db.get(FlowShadow, sid) if sid else None
@@ -259,8 +259,8 @@ async def _get_flow_shadow(db: AsyncSession, caller: Any, shadow_id: str = "") -
 async def _get_flow_run_comparison(
     db: AsyncSession, caller: Any, left_kind: str = "", left_id: str = "", right_kind: str = "", right_id: str = ""
 ) -> str:
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.flow_comparison import compare_sides, run_side
+    from app.services.health import flow_lab_access as access
+    from app.services.health.flow_comparison import compare_sides, run_side
 
     left = await access.resolve_run(db, caller, left_kind, left_id)
     right = await access.resolve_run(db, caller, right_kind, right_id)
@@ -327,7 +327,7 @@ async def _version(db: AsyncSession, flow: Any, graph: dict, message: str) -> No
 
 
 def _reach_refusal(graph: dict, reach: set[str]) -> str | None:
-    from app.services.concierge.flow_lab_access import node_config_ids
+    from app.services.health.flow_lab_access import node_config_ids
 
     outside = node_config_ids(graph) - reach
     if not outside:
@@ -346,8 +346,8 @@ async def _create_sandbox_flow(
 
     from app.models.flow import Flow
     from app.models.flow_run import FlowRun
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.sandbox.copies import SandboxOverrides, create_sandbox_copy
+    from app.services.health import flow_lab_access as access
+    from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 
     if not caller.is_concierge:
         return _CONCIERGE_ONLY
@@ -365,7 +365,7 @@ async def _create_sandbox_flow(
     # The copy runs as what it stands for, with live reads, and its output comes
     # back: the sandbox's own rule, opt-in and owner opt-out included, read
     # again at every run (``sandbox.tools.subject_refusal``).
-    from app.services.concierge.sandbox.tools import subject_refusal
+    from app.services.health.sandbox.tools import subject_refusal
 
     for kind, row in (("flow", source), ("agent", agent)):
         if row is not None and await subject_refusal(db, kind, row.id) is not None:
@@ -378,7 +378,7 @@ async def _create_sandbox_flow(
     replay_from: list[Any] = []
     if source is not None:
         # A repaired or optimized copy replays its source's recorded writes (B5).
-        from app.services.concierge.consent import content_readable
+        from app.services.health.consent import content_readable
 
         rows = (
             await db.execute(
@@ -417,8 +417,8 @@ async def _target_reachable(db: AsyncSession, caller: Any, target_type: str, tar
     from app.models.agent import Agent
     from app.models.assignment import Assignment
     from app.models.flow import Flow
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.consent import in_supervision_scope
+    from app.services.health import flow_lab_access as access
+    from app.services.health.consent import in_supervision_scope
 
     if target_type == "flow":
         flow = await db.get(Flow, target_id)
@@ -435,7 +435,7 @@ async def _checked_run_ids(db: AsyncSession, target_type: str, target_id: Any, r
     """The run ids that really are the target's runs (a flow's or an assignment's), newest first; the rest is dropped."""
     from app.models.assignment import AssignmentRun
     from app.models.flow_run import FlowRun
-    from app.services.concierge import flow_lab_access as access
+    from app.services.health import flow_lab_access as access
 
     wanted = [rid for rid in (access.parse_id(str(r)) for r in (run_ids or [])[:50]) if rid is not None]
     if not wanted or target_type not in ("flow", "assignment"):
@@ -461,8 +461,8 @@ async def _record_flow_finding(
     run_ids: Any = None,
     counts: Any = None,
 ) -> str:
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.findings import Evidence, FindingError, record_finding
+    from app.services.health import flow_lab_access as access
+    from app.services.health.findings import Evidence, FindingError, record_finding
 
     refusal = _flow_lab_refusal(caller)
     if refusal:
@@ -506,10 +506,10 @@ async def _record_flow_finding(
 async def _draft_flow_variant(
     db: AsyncSession, caller: Any, finding_id: str = "", change_type: str = "", sandbox_flow_id: str = "", summary: str = ""
 ) -> str:
-    from app.models.concierge_finding import ConciergeFinding
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.experiments import ExperimentError, draft
-    from app.services.concierge.flow_experiments import FLOW_CHANGE_TYPES
+    from app.models.health_finding import ConciergeFinding
+    from app.services.health import flow_lab_access as access
+    from app.services.health.experiments import ExperimentError, draft
+    from app.services.health.flow_experiments import FLOW_CHANGE_TYPES
 
     refusal = _flow_lab_refusal(caller)
     if refusal:
@@ -536,7 +536,7 @@ async def _draft_flow_variant(
 
 
 async def _update_sandbox_flow(db: AsyncSession, caller: Any, sandbox_flow_id: str = "", graph: Any = None) -> str:
-    from app.services.concierge import flow_lab_access as access
+    from app.services.health import flow_lab_access as access
 
     if not caller.is_concierge:
         return _CONCIERGE_ONLY
@@ -547,7 +547,7 @@ async def _update_sandbox_flow(db: AsyncSession, caller: Any, sandbox_flow_id: s
     if checked is None:
         return refusal
     from app.models.flow import Flow
-    from app.services.concierge.sandbox.copies import sandbox_copy_of
+    from app.services.health.sandbox.copies import sandbox_copy_of
 
     copy = await sandbox_copy_of(db, flow_id=flow.id)
     source = await db.get(Flow, copy.source_id) if copy is not None and copy.source_id else None
@@ -565,8 +565,8 @@ async def _update_sandbox_flow(db: AsyncSession, caller: Any, sandbox_flow_id: s
 
 async def _run_flow_shadow(db: AsyncSession, caller: Any, assignment: str = "", sandbox_flow_id: str = "") -> str:
     from app.models.flow_shadow import SHADOW_PURPOSE_MEASURE
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.flow_shadow import ShadowError, start_shadow
+    from app.services.health import flow_lab_access as access
+    from app.services.health.flow_shadow import ShadowError, start_shadow
 
     if not caller.is_concierge:
         return _CONCIERGE_ONLY
@@ -579,7 +579,7 @@ async def _run_flow_shadow(db: AsyncSession, caller: Any, assignment: str = "", 
     reach = await access.sandbox_reach(db, source_flow=None, basis_agent_id=target.agent_id)
     if access.node_config_ids(flow.graph) - (reach | access.graph_reference_ids(target.trigger_config)):
         return "Error: the sandbox flow names entities this assignment's agent does not use, so it cannot shadow it."
-    from app.services.concierge.consent import content_readable
+    from app.services.health.consent import content_readable
 
     # A shadow reads the assignment's events and outputs: content, so the
     # agent must be opted in (each run's user is checked again at read time).

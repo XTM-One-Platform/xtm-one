@@ -13,10 +13,10 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.services.concierge import fleet_seed
-from app.services.concierge.digest import digest_status
-from app.services.concierge.settings import ConciergeSettings, ConciergeSignalSettings, _read
-from app.services.concierge.signals import (
+from app.services.health import fleet_seed
+from app.services.health.digest import digest_status
+from app.services.health.settings import ConciergeSettings, ConciergeSignalSettings, _read
+from app.services.health.signals import (
     SignalReading,
     cost_crossed,
     failure_crossed,
@@ -196,7 +196,7 @@ def test_every_assignment_and_handover_names_a_fleet_agent():
 
 
 def test_assignment_keys_cover_every_schedule():
-    from app.services.concierge.cycles import SCHEDULE_KEYS
+    from app.services.health.cycles import SCHEDULE_KEYS
 
     assert set(SCHEDULE_KEYS) | {"investigation"} == set(fleet_seed.ASSIGNMENT_BY_KEY)
 
@@ -213,8 +213,8 @@ def test_every_persona_file_exists():
 @pytest.mark.asyncio
 async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch):
     """A specialist turn inside an orchestrator's scope acts with the specialist's role, then the scope is restored."""
-    from app.services.concierge import identity
-    from app.services.concierge.turns import concierge_turn_scoped
+    from app.services.health import identity
+    from app.services.health.turns import concierge_turn_scoped
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
     orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
@@ -238,8 +238,8 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
 @pytest.mark.asyncio
 async def test_a_user_id_that_names_no_user_never_acts_as_the_concierge(monkeypatch):
     """Only a turn with no user at all acts as the Concierge; an id that parses to no user acts as no one."""
-    from app.services.concierge import identity
-    from app.services.concierge.turns import concierge_turn_scoped
+    from app.services.health import identity
+    from app.services.health.turns import concierge_turn_scoped
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
     orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
@@ -290,7 +290,7 @@ def test_an_untriggered_fleet_run_is_gated_as_no_person():
 def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only(monkeypatch, who, wired):
     from app.core.config import settings
     from app.services import agent_chat
-    from app.services.concierge import identity
+    from app.services.health import identity
 
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     added: list[str] = []

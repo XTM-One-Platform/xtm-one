@@ -35,8 +35,8 @@ async def test_a_person_never_writes_through_the_flow_lab(handler):
 
 async def test_a_sandbox_flow_shadows_only_an_assignment_whose_agent_reaches_what_it_names(monkeypatch):
     from app.services.builtin_tools import flow_lab as tools
-    from app.services.concierge import consent, flow_shadow
-    from app.services.concierge import flow_lab_access as access
+    from app.services.health import consent, flow_shadow
+    from app.services.health import flow_lab_access as access
 
     agent_id, own, foreign = uuid.uuid4(), str(uuid.uuid4()), str(uuid.uuid4())
     assignment = SimpleNamespace(agent_id=agent_id, trigger_config={"owner_agent_id": own})
@@ -113,7 +113,7 @@ def test_a_sandbox_graph_may_only_name_what_its_source_reaches():
 async def test_a_turn_s_tools_are_the_concierge_s_only_for_the_calling_agent(monkeypatch):
     """The wiring hands the calling agent to the caller check: a run's inline agent reads as its runner."""
     from app.services.builtin_tools import flow_lab as tools
-    from app.services.concierge import flow_lab_access
+    from app.services.health import flow_lab_access
 
     seen: list[tuple] = []
 
@@ -137,9 +137,9 @@ async def test_a_sandbox_flow_needs_the_consent_of_what_it_stands_for(monkeypatc
     """Scope alone is not enough: the basis agent, and a copied flow, must be
     opted in with their owner not opted out (the sandbox's own rule)."""
     from app.services.builtin_tools import flow_lab as tools
-    from app.services.concierge import flow_lab_access as access
-    from app.services.concierge.sandbox import copies
-    from app.services.concierge.sandbox import tools as sandbox_tools
+    from app.services.health import flow_lab_access as access
+    from app.services.health.sandbox import copies
+    from app.services.health.sandbox import tools as sandbox_tools
 
     agent = SimpleNamespace(id=uuid.uuid4())
     flow = SimpleNamespace(id=uuid.uuid4())

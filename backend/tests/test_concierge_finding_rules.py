@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.concierge.findings import (
+from app.services.health.findings import (
     MAX_EVIDENCE_IDS,
     Evidence,
     FindingError,
@@ -17,7 +17,7 @@ from app.services.concierge.findings import (
     merge_evidence,
     normalize_pattern_key,
 )
-from app.services.concierge.variants import MAX_VARIANT_CHARS, VariantError, check_variant, placeholders
+from app.services.health.variants import MAX_VARIANT_CHARS, VariantError, check_variant, placeholders
 
 AGENT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
@@ -140,7 +140,7 @@ class TestVariant:
 class TestTargetAccess:
     @pytest.mark.asyncio
     async def test_a_registered_rule_reads_a_target_that_is_no_agent_s(self, monkeypatch) -> None:
-        from app.services.concierge import access
+        from app.services.health import access
 
         flow_id = uuid.UUID(int=7)
         granted = access.AgentAccess(agent=None, content=False)
@@ -164,7 +164,7 @@ def test_evidence_serializes_every_ref_kind() -> None:
 
 class TestReadRules:
     def test_a_content_finding_is_redacted_without_content_access(self) -> None:
-        from app.services.concierge.access import redact_finding
+        from app.services.health.access import redact_finding
 
         payload = {
             "hypothesis": "h",
@@ -193,7 +193,7 @@ class TestReadRules:
         ],
     )
     def test_writes_are_held_by_one_role_of_the_concierge(self, principal, role, refused) -> None:
-        from app.services.concierge.access import WRITE_REFUSED, Reader
+        from app.services.health.access import WRITE_REFUSED, Reader
 
         scope = SimpleNamespace(opted_out_user_ids=frozenset())
         reader = Reader(user=None, principal=principal, scope=scope)
@@ -203,7 +203,7 @@ class TestReadRules:
 
 @pytest.mark.asyncio
 async def test_nobody_to_read_for_reads_nothing(monkeypatch) -> None:
-    from app.services.concierge import access
+    from app.services.health import access
 
     monkeypatch.setattr(access, "_current_principal", lambda _agent_id: None)
     assert await access.load_reader(None, None) is None

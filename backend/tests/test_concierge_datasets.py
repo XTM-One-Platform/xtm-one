@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.models.concierge_dataset import CASE_NON_REGRESSION, CASE_TO_FIX, ConciergeDatasetEntrySource
-from app.services.concierge.datasets import WITHDRAWN_RUN_ERROR, DatasetBuildError, _Case, _judge_instructions
+from app.models.health_dataset import CASE_NON_REGRESSION, CASE_TO_FIX, ConciergeDatasetEntrySource
+from app.services.health.datasets import WITHDRAWN_RUN_ERROR, DatasetBuildError, _Case, _judge_instructions
 
 pytestmark = pytest.mark.integration
 
@@ -125,7 +125,7 @@ async def test_rated_answers_and_failed_runs_become_entries_within_consent():
     import app.models  # noqa: F401
     from app.models.audit_log import AuditLog
     from app.models.dataset import Dataset, DatasetEntry
-    from app.services.concierge.datasets import build_dataset_from_traces, entry_recordings
+    from app.services.health.datasets import build_dataset_from_traces, entry_recordings
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with scratch_database("conciergeds", tables=ALL_TABLES, extensions=("vector",)) as db, db.sessions() as s:
@@ -172,7 +172,7 @@ async def test_rated_answers_and_failed_runs_become_entries_within_consent():
 async def test_a_target_outside_the_scope_is_refused_before_any_read():
     import app.models  # noqa: F401
     from app.models.dataset import Dataset
-    from app.services.concierge.datasets import build_dataset_from_traces
+    from app.services.health.datasets import build_dataset_from_traces
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -197,8 +197,8 @@ async def test_a_revocation_removes_the_entries_their_copies_and_their_results(k
     from app.models.dataset import DatasetEntry, EvaluationDataset
     from app.models.dataset_version import DatasetVersion, DatasetVersionEntry
     from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
-    from app.services.concierge.consent import Revocation, apply_revocation
-    from app.services.concierge.datasets import build_dataset_from_traces
+    from app.services.health.consent import Revocation, apply_revocation
+    from app.services.health.datasets import build_dataset_from_traces
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -268,7 +268,7 @@ async def test_a_revocation_removes_the_entries_their_copies_and_their_results(k
 
 
 def test_a_cap_keeps_some_of_every_kind_of_case():
-    from app.services.concierge.datasets import _interleaved
+    from app.services.health.datasets import _interleaved
 
     def _cases(prefix, n, rated):
         return [
@@ -288,8 +288,8 @@ async def test_a_flow_run_needs_the_consent_of_every_agent_node_and_goes_with_it
     from app.models.dataset import DatasetEntry
     from app.models.flow import Flow
     from app.models.flow_run import FlowRun, FlowRunStep
-    from app.services.concierge.consent import Revocation, apply_revocation
-    from app.services.concierge.datasets import build_dataset_from_traces
+    from app.services.health.consent import Revocation, apply_revocation
+    from app.services.health.datasets import build_dataset_from_traces
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -357,8 +357,8 @@ async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with
     from app.models.dataset import DatasetEntry
     from app.models.flow import Flow
     from app.models.flow_run import FlowRun, FlowRunStep
-    from app.services.concierge.consent import Revocation, apply_revocation
-    from app.services.concierge.datasets import build_dataset_from_traces
+    from app.services.health.consent import Revocation, apply_revocation
+    from app.services.health.datasets import build_dataset_from_traces
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -435,7 +435,7 @@ async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with
 async def test_a_narrowed_scope_removes_a_flow_entry_whose_agent_node_left_it():
     import app.models  # noqa: F401
     from app.models.platform_settings import PlatformSettings
-    from app.services.concierge.datasets import withdraw_out_of_scope
+    from app.services.health.datasets import withdraw_out_of_scope
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (

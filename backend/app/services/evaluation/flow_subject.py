@@ -202,7 +202,6 @@ async def run_flow_for_entry(
     from app.core.database import release_db_connection_before_loop
     from app.services import orchestration_engine as engine
     from app.services.assignment_pause import FlowOwnerDeactivatedError
-    from app.services.concierge.sandbox.runs import SandboxRunError
     from app.services.flow_runner import (
         TriggerParametersError,
         create_flow_run,
@@ -210,6 +209,7 @@ async def run_flow_for_entry(
         manual_run_trigger,
         stop_flow_run,
     )
+    from app.services.health.sandbox.runs import SandboxRunError
 
     try:
         _entry, trigger_type, trigger_payload = manual_run_trigger(flow.graph or {}, entry_parameters(input_prompt))
@@ -222,8 +222,8 @@ async def run_flow_for_entry(
     sandboxed = bool(getattr(flow, "is_sandbox", False))
     try:
         if sandboxed:
-            from app.services.concierge.sandbox.copies import sandbox_copy_of
-            from app.services.concierge.sandbox.runs import start_sandbox_flow_run
+            from app.services.health.sandbox.copies import sandbox_copy_of
+            from app.services.health.sandbox.runs import start_sandbox_flow_run
 
             copy = await sandbox_copy_of(db, flow_id=flow.id)
             if copy is None:
@@ -300,7 +300,7 @@ async def run_flow_for_entry(
         output = await final_step_output(db, flow_run_id)
     sandbox = None
     if sandboxed:
-        from app.services.concierge.sandbox.runs import sandbox_run_report
+        from app.services.health.sandbox.runs import sandbox_run_report
 
         report = await sandbox_run_report(db, flow_run_id=flow_run_id)
         sandbox = report.to_dict() if report is not None else None

@@ -39,7 +39,7 @@ from app.models.flow_shadow import (
     FlowShadowPair,
 )
 from app.models.user import User
-from app.services.concierge import flow_shadow
+from app.services.health import flow_shadow
 from tests.agentic_gate_stub import stub_agentic_gate
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -71,7 +71,7 @@ class FakeSandbox:
         self.run_status = "completed"
 
     def install(self, monkeypatch) -> None:
-        copies = ModuleType("app.services.concierge.sandbox.copies")
+        copies = ModuleType("app.services.health.sandbox.copies")
         copies.is_sandbox_copy = lambda row: row.id in self.copy_ids
 
         async def sandbox_copy_of(_db, *, flow_id=None, agent_id=None):
@@ -83,7 +83,7 @@ class FakeSandbox:
             self.retained.append(until)
 
         copies.retain_sandbox_copy = retain_sandbox_copy
-        runs = ModuleType("app.services.concierge.sandbox.runs")
+        runs = ModuleType("app.services.health.sandbox.runs")
 
         async def start_sandbox_flow_run(db, copy, *, trigger_type, trigger_payload, case_ref, purpose, run_as_user_id):
             self.started.append(
@@ -108,15 +108,15 @@ class FakeSandbox:
 
         runs.start_sandbox_flow_run = start_sandbox_flow_run
         runs.sandbox_run_report = sandbox_run_report
-        import app.services.concierge.sandbox as real
+        import app.services.health.sandbox as real
 
-        package = ModuleType("app.services.concierge.sandbox")
+        package = ModuleType("app.services.health.sandbox")
         # Still a package: the submodules not faked here import as they are.
         package.__path__ = real.__path__
         package.copies, package.runs = copies, runs
-        monkeypatch.setitem(sys.modules, "app.services.concierge.sandbox", package)
-        monkeypatch.setitem(sys.modules, "app.services.concierge.sandbox.copies", copies)
-        monkeypatch.setitem(sys.modules, "app.services.concierge.sandbox.runs", runs)
+        monkeypatch.setitem(sys.modules, "app.services.health.sandbox", package)
+        monkeypatch.setitem(sys.modules, "app.services.health.sandbox.copies", copies)
+        monkeypatch.setitem(sys.modules, "app.services.health.sandbox.runs", runs)
 
 
 @pytest.fixture
@@ -127,7 +127,7 @@ def sandbox(monkeypatch) -> FakeSandbox:
 def install_fake_sandbox(monkeypatch) -> FakeSandbox:
     """Level 2 faked, the Concierge's gates open, and any production flow run refused."""
     from app.services import flow_runner
-    from app.services.concierge import availability, budget, consent
+    from app.services.health import availability, budget, consent
 
     stub_agentic_gate(monkeypatch)
     monkeypatch.setattr(availability, "concierge_enabled", lambda: True)
@@ -318,8 +318,8 @@ async def test_a_shadow_that_did_not_hold_creates_no_flow(sandbox):
 
 
 async def test_a_shadow_runs_content_follows_the_assignment_run_it_copied(sandbox, monkeypatch):
-    from app.services.concierge import consent, flow_lab_access, identity
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health import consent, flow_lab_access, identity
+    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
 
     calls: list[dict] = []
     withdrawn = False

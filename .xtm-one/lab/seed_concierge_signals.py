@@ -3,7 +3,7 @@
 Started by ``lab.py`` (``seed_concierge_signals``) with the backend's interpreter, from
 ``backend/`` and with the backend's environment, once the backend answers. Without it
 ``GET /api/v1/concierge/signals`` answers ``[]``: a signal is written only by the signal pass
-(``services/concierge/signals.py``) reading real traces, and no API writes one, so every review
+(``services/health/signals.py``) reading real traces, and no API writes one, so every review
 of the Signals tab overrode ``window.fetch``. This writes the rows through the models
 (``ConciergeSignalState``, ``ConciergeCycle``, ``ConciergeCycleRun``); no model is called and
 no run is started. Arguments: the agent and the assignment the rows target, the user who owns
@@ -92,8 +92,8 @@ async def seed(agent_id: str, assignment_id: str, user_id: str) -> dict[str, obj
     from sqlalchemy import func, select
 
     from app.core.database import async_session, engine
-    from app.models.concierge import ConciergeCycle
-    from app.models.concierge_cycle import ConciergeCycleRun, ConciergeSignalState
+    from app.models.health import ConciergeCycle
+    from app.models.health_cycle import ConciergeCycleRun, ConciergeSignalState
     from app.models.flow import Flow
 
     now = datetime.now(UTC)

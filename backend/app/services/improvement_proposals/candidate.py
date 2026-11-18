@@ -42,7 +42,7 @@ from app.models.dataset import DatasetEntry, EvaluationDataset
 from app.models.evaluation import Evaluation, EvaluationRun
 from app.models.improvement_proposal import STATUS_WATCHING, ImprovementProposal
 from app.models.sandbox_copy import SOURCE_AGENT, SandboxCopy
-from app.services.concierge.sandbox.copies import register_sandbox_reference_check
+from app.services.health.sandbox.copies import register_sandbox_reference_check
 from app.services.improvement_proposals.lifecycle import AUDIT_ENTITY, ProposalError
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ async def baseline_of(db: AsyncSession, proposal: ImprovementProposal, noun: str
 async def baseline_subject(db: AsyncSession, proposal: ImprovementProposal, baseline: EvaluationRun) -> BaselineSubject:
     """The agent *baseline* ran, mapped back to production when it was a sandbox copy."""
     from app.models.agent import Agent
-    from app.services.concierge.sandbox.copies import sandbox_copy_of
+    from app.services.health.sandbox.copies import sandbox_copy_of
 
     evaluation = await db.get(Evaluation, proposal.evaluation_id)
     subject = await db.get(Agent, baseline.agent_id) if baseline.agent_id is not None else None
@@ -137,8 +137,8 @@ async def _fresh_copy(
     """A sandbox copy of *agent* as it is now, the change in it, replaying what
     the baseline's copy replayed: ``(copy agent id, None)``, or ``(None, why)``
     with nothing left behind when the Concierge may not evaluate it."""
-    from app.services.concierge.evaluations import evaluation_subject_refusal
-    from app.services.concierge.sandbox.copies import SandboxCopyError, create_sandbox_copy
+    from app.services.health.evaluations import evaluation_subject_refusal
+    from app.services.health.sandbox.copies import SandboxCopyError, create_sandbox_copy
 
     try:
         async with db.begin_nested():

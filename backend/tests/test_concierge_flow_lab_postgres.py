@@ -22,7 +22,7 @@ from app.models.flow_run import FlowRun, FlowRunStep
 from app.models.group import Group, GroupMember
 from app.models.llm_trace import LLMSpan, LLMTrace
 from app.models.user import User
-from app.services.concierge.flow_lab import assignment_path, diagnose_flow, repeated_sequences
+from app.services.health.flow_lab import assignment_path, diagnose_flow, repeated_sequences
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration

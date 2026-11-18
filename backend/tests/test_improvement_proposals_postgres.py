@@ -45,7 +45,7 @@ from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.services import improvement_proposals as proposals
 from app.services import persona_improvement as loop
-from app.services.concierge.settings import ConciergeSettings
+from app.services.health.settings import ConciergeSettings
 from app.services.improvement_proposals import lifecycle, registry
 from tests.scratch_database import scratch_database
 from tests.test_persona_improvement_postgres import BASE_PERSONA, REWRITE, _propose, _seed

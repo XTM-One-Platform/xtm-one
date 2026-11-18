@@ -289,13 +289,13 @@ class User(Base):
     )
 
     # Platform Concierge opt-out (#8254): the Concierge reads none of this
-    # user's memory lanes and conversations (``services/concierge/consent.py``).
+    # user's memory lanes and conversations (``services/health/consent.py``).
     health_content_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 
     # The Concierge companion (#8261): ``{"enabled": bool, "pet": slug}``,
-    # off when unset (``services/concierge/companion.py``).
+    # off when unset (``services/health/companion.py``).
     concierge_companion: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # The bell shows the work items waiting for this person (#9437), on by

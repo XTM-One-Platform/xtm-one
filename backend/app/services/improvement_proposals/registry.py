@@ -133,7 +133,7 @@ _HANDLER_MODULES: tuple[str, ...] = (
     "app.services.improvement_proposals.skill",
     "app.services.improvement_proposals.assignment_prompt",
     # The four flow types (#8260): flow_repair, flow_optimization, new_flow, agent_to_flow.
-    "app.services.concierge.flow_proposals",
+    "app.services.health.flow_proposals",
 )
 _loaded = False
 

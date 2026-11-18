@@ -14,7 +14,7 @@
 """Concierge cycles, signals and the Improvements inbox (#8261).
 
 Mounted under ``/api/v1/health`` beside level 1's routes, behind the
-``CONCIERGE`` flag. Access is ``services/concierge/cycle_access.py``, the rule
+``CONCIERGE`` flag. Access is ``services/health/cycle_access.py``, the rule
 the orchestrator's tools share: a person reads the cycles of the targets they
 manage (administrators: all); "Improve with Concierge" needs the same right.
 Approve / Reject stay level 3's ``/api/v1/improvement-proposals`` routes.
@@ -35,10 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin, require_agentic_ai
 from app.api.v1.helpers import get_user_group_ids, parse_path_id
 from app.core.database import get_db
-from app.models.concierge import ConciergeCycle
-from app.models.concierge_cycle import ConciergeCycleRun, ConciergeScheduleMark
+from app.models.health import ConciergeCycle
+from app.models.health_cycle import ConciergeCycleRun, ConciergeScheduleMark
 from app.models.user import User
-from app.services.concierge.cycle_access import (
+from app.services.health.cycle_access import (
     TARGET_NOT_FOUND,
     evidence_links,
     may_read_cycle,
@@ -46,7 +46,7 @@ from app.services.concierge.cycle_access import (
     readable_proposals,
     resolve_target,
 )
-from app.services.concierge.naming import load_concierge_name
+from app.services.health.naming import load_concierge_name
 
 router = APIRouter()
 
@@ -180,7 +180,7 @@ async def request_cycle(
 ):
     """ "Improve with Concierge": an investigation of one agent or flow the caller manages."""
     from app.services.audit import log_audit
-    from app.services.concierge.cycles import start_cycle
+    from app.services.health.cycles import start_cycle
 
     group_ids = await get_user_group_ids(db, user.id)
     target = await resolve_target(db, user, group_ids, body.target_type, body.target_id)
@@ -293,7 +293,7 @@ async def list_signals(
     db: AsyncSession = Depends(get_db),
 ):
     """Signal states: all for an administrator, one managed target's otherwise."""
-    from app.services.concierge.signals import list_signal_states
+    from app.services.health.signals import list_signal_states
 
     group_ids = await get_user_group_ids(db, user.id)
     await _require_target_reader(db, user, group_ids, target_type, target_id)

@@ -11,19 +11,19 @@ from sqlalchemy import select
 from app.models.agent import Agent
 from app.models.agent_skill import AgentSkill
 from app.models.assignment import Assignment
-from app.models.concierge_experiment import (
+from app.models.health_experiment import (
     STATUS_COMPLETED,
     STATUS_RUNNING,
     STATUS_SKIPPED,
     STATUS_STALE,
     ConciergeExperiment,
 )
-from app.services.concierge import (
+from app.services.health import (
     experiments,
     quality_deps,
     text_kinds,  # noqa: F401 - registers the kinds under test
 )
-from app.services.concierge.variants import VariantError
+from app.services.health.variants import VariantError
 from tests.concierge_experiment_helpers import (
     PERSONA,
     PROMPT,
@@ -135,7 +135,7 @@ async def test_a_skill_variant_needs_managers_who_read_the_agent_s_chats(monkeyp
     import uuid
 
     from app.models.user import User
-    from app.services.concierge.experiments import ExperimentError
+    from app.services.health.experiments import ExperimentError
 
     Deps(monkeypatch)
     async with _temp_database(f"ce_skill_managers_{case}") as sessions, sessions() as db:

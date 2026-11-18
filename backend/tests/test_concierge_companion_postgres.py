@@ -31,8 +31,8 @@ from app.api.v1 import concierge_companion as routes
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.assignment import Assignment, AssignmentRun
-from app.models.concierge import ConciergeCycle
-from app.models.concierge_cycle import ConciergeCycleRun
+from app.models.health import ConciergeCycle
+from app.models.health_cycle import ConciergeCycleRun
 from app.models.improvement_proposal import ImprovementProposal
 from app.models.user import User
 from tests.concierge_support import World, concierge_database
@@ -260,7 +260,7 @@ async def test_a_failed_run_without_its_end_time_still_shows() -> None:
 
 
 async def test_the_review_count_is_reused_for_a_minute(monkeypatch) -> None:
-    from app.services.concierge import companion
+    from app.services.health import companion
 
     calls: list[str] = []
 

@@ -350,7 +350,7 @@ async def _measured_world(sessionmaker, seeded, *, baseline_on: str, proposal_ty
 
 def _in_scope(monkeypatch) -> None:
     """The Concierge supervises the agent: its sandbox copy may be evaluated."""
-    from app.services.concierge import evaluations
+    from app.services.health import evaluations
 
     async def in_supervision_scope(_db, _target_type, _target_id):
         return True

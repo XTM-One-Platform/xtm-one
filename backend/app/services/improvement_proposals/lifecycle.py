@@ -64,8 +64,8 @@ from app.models.improvement_proposal import (
     ImprovementProposal,
 )
 from app.services.audit import log_audit, log_system_audit
-from app.services.concierge.availability import concierge_enabled
 from app.services.evaluation_comparison import NOISE_MARGIN_POINTS, compare_metric
+from app.services.health.availability import concierge_enabled
 from app.services.improvement_proposals.dedup import dedup_key, evidence_fingerprint
 from app.services.improvement_proposals.registry import (
     ProposalHandler,
@@ -182,7 +182,7 @@ def surface_filter() -> Any:
 async def watch_days(db: AsyncSession) -> int:
     """The watch window of an agent-filed change, in days (decision B18): Settings >
     Agents and automations > Concierge (``ConciergeSettings.proposal_watch_days``), read on *db*."""
-    from app.services.concierge.settings import load_concierge_settings
+    from app.services.health.settings import load_concierge_settings
 
     return (await load_concierge_settings(db)).proposal_watch_days
 

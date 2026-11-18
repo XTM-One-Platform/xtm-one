@@ -14,8 +14,8 @@ import pytest
 from app.api.v1.helpers import agent_tool_admin_bypass
 from app.core.config import settings
 from app.core.feature_flags import KNOWN_FEATURE_FLAGS
-from app.services.concierge import identity
-from app.services.concierge.settings import ConciergeBudgetCaps, ConciergeSettings, _read, scope_narrowed
+from app.services.health import identity
+from app.services.health.settings import ConciergeBudgetCaps, ConciergeSettings, _read, scope_narrowed
 
 
 @pytest.fixture
@@ -170,7 +170,7 @@ def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only
 def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -> None:
     """A copy runs as its source's owner, often an admin: its turn is the
     Concierge's reach whoever started it (an evaluation case has no principal)."""
-    from app.services.concierge.sandbox.session import SandboxSession, sandbox_session
+    from app.services.health.sandbox.session import SandboxSession, sandbox_session
 
     admin = SimpleNamespace(**vars(_user("admin")), is_admin=True)
     assert agent_tool_admin_bypass(admin) is True
@@ -190,8 +190,8 @@ def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> N
     """``concierge_turn_scoped`` would reset it for a non-fleet agent: a copy's
     turn, and any turn inside a sandbox case, keep it (``calling_concierge``
     still refuses the copy the Concierge's own tools)."""
-    from app.services.concierge.sandbox.session import SandboxSession, sandbox_session
-    from app.services.concierge.turns import concierge_turn_scoped
+    from app.services.health.sandbox.session import SandboxSession, sandbox_session
+    from app.services.health.turns import concierge_turn_scoped
 
     copy = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False, is_sandbox=True)
     consulted = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False, is_sandbox=False)

@@ -20,8 +20,8 @@ from app.models.agent_memory_entry import AgentMemoryEntry
 from app.models.memory_consolidation import MemoryConsolidation, MemoryConsolidationTombstone, MemoryLaneCheckpoint
 from app.models.user import User
 from app.services import persistent_memory as pm
-from app.services.concierge import memory_history as history
-from app.services.concierge.consent import Revocation, apply_revocation
+from app.services.health import memory_history as history
+from app.services.health.consent import Revocation, apply_revocation
 from tests.memory_steward_world import applied, count, entry, make_world, state, world_database
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]

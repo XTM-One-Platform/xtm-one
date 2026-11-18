@@ -18,10 +18,10 @@ from sqlalchemy import select
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.core.config import settings
-from app.models.concierge import ConciergeBudgetMonth, ConciergeCycle
+from app.models.health import ConciergeBudgetMonth, ConciergeCycle
 from app.services import agentic_gate
-from app.services.concierge import budget
-from app.services.concierge.settings import load_concierge_settings
+from app.services.health import budget
+from app.services.health.settings import load_concierge_settings
 from tests.concierge_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration

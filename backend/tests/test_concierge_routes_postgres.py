@@ -31,8 +31,8 @@ from app.models.audit_log import AuditLog
 from app.models.flow import Flow
 from app.models.user import User
 from app.services import agentic_gate
-from app.services.concierge import consent
-from app.services.concierge.consent import Revocation
+from app.services.health import consent
+from app.services.health.consent import Revocation
 from tests.concierge_support import World, concierge_database
 
 pytestmark = pytest.mark.integration

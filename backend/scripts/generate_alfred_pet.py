@@ -10,7 +10,7 @@ the output is regenerated from it alone:
 It writes ``app/agents/seed_data/concierge_pets/alfred/pet.json`` and
 ``spritesheet.webp``: a version 1 Codex pet atlas, 8 columns of 192x208 cells
 and 9 rows, one state a row with the format's frame counts
-(``app/services/concierge/pets.py``, ``STATES``). Each cell is drawn on a
+(``app/services/health/pets.py``, ``STATES``). Each cell is drawn on a
 48x52 grid and scaled 4x, nearest neighbour, so the frames stay consistent.
 ``--check`` regenerates in memory and fails when the committed atlas differs.
 """
@@ -30,7 +30,7 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.services.concierge.pets import CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS_BY_VERSION, STATES
+from app.services.health.pets import CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS_BY_VERSION, STATES
 
 OUT_DIR = ROOT / "app" / "agents" / "seed_data" / "concierge_pets" / "alfred"
 GRID_W, GRID_H = 48, 52

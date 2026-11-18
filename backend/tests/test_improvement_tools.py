@@ -22,7 +22,7 @@ import pytest
 
 from app.services import improvement_proposals as proposals
 from app.services.builtin_tools import improvements as tools
-from app.services.concierge import identity
+from app.services.health import identity
 
 _TARGET = uuid.UUID("00000000-0000-4000-8000-000000008256")
 _PROPOSE_ARGS = {
@@ -79,7 +79,7 @@ def filed(monkeypatch):
 
     monkeypatch.setattr(proposals, "file_proposal", _file)
     monkeypatch.setattr(tools, "target_in_scope", _in_scope)
-    monkeypatch.setattr("app.services.concierge.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
     return calls
 
 
@@ -299,7 +299,7 @@ async def test_another_agent_in_a_concierge_run_lists_as_its_user(readable, monk
         return True
 
     monkeypatch.setattr(tools, "target_in_scope", _everything_in_scope)
-    monkeypatch.setattr("app.services.concierge.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
     db = _Db(rows=[mine, theirs], users={user.id: user})
 
     answer = json.loads(

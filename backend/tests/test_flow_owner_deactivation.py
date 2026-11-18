@@ -516,7 +516,7 @@ def test_every_path_that_starts_a_flow_run_applies_the_rule():
     assert "refuse_flow_if_owner_deactivated(" in _source(flow_runs.run_flow)
     assert "is_paused_by_deactivated_owner(" in _source(flow_builder.build_flow_builder_tool)
     # A Concierge sandbox run acts as its source flow's owner (#8255).
-    from app.services.concierge.sandbox import runs
+    from app.services.health.sandbox import runs
 
     assert "is_paused_by_deactivated_owner(" in _source(runs.start_sandbox_flow_run)
     # Releasing a parked run, and the run gate every queued run passes.

@@ -29,8 +29,8 @@ from app.models.agent import Agent
 from app.models.fleet import Fleet
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.services.concierge import fleet_seed
-from app.services.concierge.settings import load_concierge_settings
+from app.services.health import fleet_seed
+from app.services.health.settings import load_concierge_settings
 from tests.concierge_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration

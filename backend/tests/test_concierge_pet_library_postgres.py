@@ -27,7 +27,7 @@ from app.api.v1 import concierge_companion as routes
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
-from app.models.concierge_pet import ConciergePet
+from app.models.health_pet import ConciergePet
 from app.models.user import User
 from tests.concierge_support import World, concierge_database
 

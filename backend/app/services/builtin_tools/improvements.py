@@ -85,7 +85,7 @@ async def target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.UU
     that carries it."""
     from app.models.agent import Agent
     from app.models.assignment import Assignment
-    from app.services.concierge.consent import in_supervision_scope
+    from app.services.health.consent import in_supervision_scope
 
     if target_type in ("agent", "flow"):
         return await in_supervision_scope(db, target_type, target_id)
@@ -110,7 +110,7 @@ def calling_concierge(agent_id: str | None) -> Any | None:
     copy's turn, a consulted agent): those agents are not the Concierge and
     read as their runner.
     """
-    from app.services.concierge.identity import current_concierge
+    from app.services.health.identity import current_concierge
 
     principal = current_concierge()
     if principal is None or agent_id is None or str(principal.agent_id) != str(agent_id):
@@ -121,7 +121,7 @@ def calling_concierge(agent_id: str | None) -> Any | None:
 async def filing_agent(db: AsyncSession, agent_id: str | None) -> Any | None:
     """The Experimenter agent calling the tool in its Concierge run, read again from its row, or ``None``."""
     from app.models.agent import Agent
-    from app.services.concierge.identity import is_concierge_agent
+    from app.services.health.identity import is_concierge_agent
 
     principal = calling_concierge(agent_id)
     if principal is None or principal.role != FILING_ROLE:
@@ -177,7 +177,7 @@ def build_improvement_tools(
         ImprovementProposal,
     )
     from app.services import improvement_proposals as proposals
-    from app.services.concierge.availability import concierge_enabled
+    from app.services.health.availability import concierge_enabled
 
     executor = CallableToolExecutor()
 

@@ -14,7 +14,7 @@
 """The Concierge orchestrator's tools (#8261): signals, cycles, digests, requests.
 
 Group ``concierge_orchestrator``, agent-keyed, offered while ``CONCIERGE`` is
-on. One rule on every path (``services/concierge/cycle_access.py``), decided at
+on. One rule on every path (``services/health/cycle_access.py``), decided at
 each call from the database rows:
 
 * as **the Concierge** (``identity.current_concierge()``: a scheduled run, an
@@ -68,7 +68,7 @@ def _data(payload: Any, label: str) -> str:
 async def _caller(db, user_id: str | None):
     """``(principal, user)``: the Concierge principal when the work acts as it, else the person."""
     from app.models.user import User
-    from app.services.concierge.identity import current_concierge
+    from app.services.health.identity import current_concierge
 
     principal = current_concierge()
     user = None
@@ -84,8 +84,8 @@ async def _find_target(db, principal, user, group_ids, target_type: str, target:
     """The target named by id or by exact name, as the caller may reach it; ``None`` when not exactly one."""
     from app.models.agent import Agent
     from app.models.flow import Flow
-    from app.services.concierge.consent import in_supervision_scope
-    from app.services.concierge.cycle_access import resolve_target
+    from app.services.health.consent import in_supervision_scope
+    from app.services.health.cycle_access import resolve_target
 
     model = Flow if target_type == "flow" else Agent
     target_id = _uuid(target)
@@ -123,7 +123,7 @@ def build_concierge_orchestrator_tools(
 
     async def list_concierge_signals(target_type: str = "", target: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
-        from app.services.concierge.signals import list_signal_states
+        from app.services.health.signals import list_signal_states
 
         try:
             async with async_session() as db:
@@ -163,8 +163,8 @@ def build_concierge_orchestrator_tools(
 
     async def list_concierge_cycles(target_type: str = "", target: str = "", status: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
-        from app.models.concierge import ConciergeCycle
-        from app.models.concierge_cycle import ConciergeCycleRun
+        from app.models.health import ConciergeCycle
+        from app.models.health_cycle import ConciergeCycleRun
 
         try:
             async with async_session() as db:
@@ -199,9 +199,9 @@ def build_concierge_orchestrator_tools(
 
     async def get_concierge_cycle(cycle_id: str = "") -> str:
         from app.core.database import async_session
-        from app.models.concierge import ConciergeCycle
-        from app.models.concierge_cycle import ConciergeCycleRun
-        from app.services.concierge.cycle_access import may_read_cycle
+        from app.models.health import ConciergeCycle
+        from app.models.health_cycle import ConciergeCycleRun
+        from app.services.health.cycle_access import may_read_cycle
 
         cid = _uuid(cycle_id)
         if cid is None:
@@ -237,8 +237,8 @@ def build_concierge_orchestrator_tools(
 
     async def request_concierge_cycle(target_type: str = "agent", target: str = "") -> str:
         from app.core.database import async_session
-        from app.services.concierge.cycles import start_cycle
-        from app.services.concierge.naming import DEFAULT_NAME
+        from app.services.health.cycles import start_cycle
+        from app.services.health.naming import DEFAULT_NAME
 
         if target_type not in ("agent", "flow"):
             return "`target_type` is `agent` or `flow`."

@@ -26,16 +26,16 @@ from sqlalchemy import func, select
 
 import app.core.database as database
 from app.models.agent import Agent
-from app.models.concierge_finding import ConciergeFinding
 from app.models.group import Group, GroupMember
+from app.models.health_finding import ConciergeFinding
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.services.builtin_tools.concierge_experiments import build_concierge_experiment_tools
 from app.services.builtin_tools.concierge_quality import build_concierge_diagnosis_tools
-from app.services.concierge import availability
-from app.services.concierge.access import NOT_IN_REACH, WRITE_REFUSED
-from app.services.concierge.findings import Evidence, record_finding
-from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge, current_concierge
+from app.services.health import availability
+from app.services.health.access import NOT_IN_REACH, WRITE_REFUSED
+from app.services.health.findings import Evidence, record_finding
+from app.services.health.identity import ConciergePrincipal, acting_as_concierge, current_concierge
 from app.tools.base import ToolCall
 from tests.test_provisioning_postgres import _temp_database
 
@@ -337,7 +337,7 @@ async def test_the_tools_answer_off_while_the_capability_is_off(monkeypatch):
 
 async def _drafted(sessions, world: World) -> uuid.UUID:
     """A persona experiment drafted for the seeded finding, as the Quality Analyst would."""
-    from app.services.concierge import experiments, text_kinds  # noqa: F401 - registers the text kinds
+    from app.services.health import experiments, text_kinds  # noqa: F401 - registers the text kinds
 
     async with sessions() as db:
         finding = await db.get(ConciergeFinding, world.finding_id)
@@ -356,7 +356,7 @@ async def _drafted(sessions, world: World) -> uuid.UUID:
 async def _cycle_run(sessions, world: World) -> tuple[uuid.UUID, uuid.UUID]:
     """An assignment run of the Experimenter that a Concierge cycle started: ``(run, cycle)``."""
     from app.models.assignment import AssignmentRun
-    from app.services.concierge.memory_steward_deps import CYCLE_KEY
+    from app.services.health.memory_steward_deps import CYCLE_KEY
 
     cycle = uuid.uuid4()
     async with sessions() as db:
@@ -370,8 +370,8 @@ async def _cycle_run(sessions, world: World) -> tuple[uuid.UUID, uuid.UUID]:
 
 @pytest.mark.asyncio
 async def test_a_concierge_run_s_experiment_is_sized_on_its_cycle(monkeypatch):
-    from app.services.concierge import experiments
-    from app.services.concierge.access import load_reader
+    from app.services.health import experiments
+    from app.services.health.access import load_reader
 
     async with _world(monkeypatch, "cq_cycle") as (world, sessions):
         experiment_id = await _drafted(sessions, world)
@@ -401,7 +401,7 @@ async def test_a_concierge_run_s_experiment_is_sized_on_its_cycle(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_only_the_experimenter_settles_an_experiment_it_reads(monkeypatch):
-    from app.services.concierge import experiments
+    from app.services.health import experiments
 
     async with _world(monkeypatch, "cq_settle") as (world, sessions):
         experiment_id = await _drafted(sessions, world)

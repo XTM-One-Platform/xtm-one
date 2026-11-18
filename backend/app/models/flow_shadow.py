@@ -5,7 +5,7 @@
 A **shadow** runs a flow beside an assignment: every live run of the
 assignment gets a paired flow run on the same event, in level 2's intercepted
 mode (no write node executes), and the pair's outputs are compared
-(``services/concierge/flow_comparison``). It serves two purposes:
+(``services/health/flow_comparison``). It serves two purposes:
 
 * ``measure`` - the Experimenter measures a sandbox flow before proposing it;
 * ``switch_over`` - an approved ``agent_to_flow`` proposal (decision B12): the

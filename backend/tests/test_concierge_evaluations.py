@@ -17,8 +17,8 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.services.concierge import evaluation_tools, identity
-from app.services.concierge.evaluation_tools import REFUSED, evaluation_tool_refusal
+from app.services.health import evaluation_tools, identity
+from app.services.health.evaluation_tools import REFUSED, evaluation_tool_refusal
 
 
 class _Db:
@@ -97,7 +97,7 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
     from datetime import UTC, datetime
 
     from app.services import audit
-    from app.services.concierge import datasets, evaluations
+    from app.services.health import datasets, evaluations
 
     monkeypatch.setattr(evaluation_tools, "evaluation_tool_refusal", _allowed)
     monkeypatch.setattr(identity, "in_concierge_run", lambda: False)
@@ -143,7 +143,7 @@ async def _allowed(_db, _user_id):
 
 @pytest.fixture
 def concierge_on(monkeypatch):
-    from app.services.concierge import budget
+    from app.services.health import budget
 
     async def _licensed(_db):
         return None
@@ -221,8 +221,8 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
     from app.models.evaluation import Evaluation, EvaluationRun
     from app.models.orchestration import OrchestrationExecution
     from app.services import orchestration_engine
-    from app.services.concierge.evaluations import launch_concierge_evaluation
     from app.services.evaluation.constants import MODEL_INDEPENDENT
+    from app.services.health.evaluations import launch_concierge_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async def _no_wake() -> None:
@@ -263,7 +263,7 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
 async def test_a_launch_is_refused_before_anything_is_written(case):
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation
-    from app.services.concierge.evaluations import ConciergeEvaluationError, launch_concierge_evaluation
+    from app.services.health.evaluations import ConciergeEvaluationError, launch_concierge_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -299,7 +299,7 @@ async def test_a_launch_is_refused_before_anything_is_written(case):
 async def test_a_comparison_states_its_verdict_or_why_there_is_none(candidate, verdict, reason):
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
-    from app.services.concierge.evaluations import compare_concierge_runs
+    from app.services.health.evaluations import compare_concierge_runs
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -341,7 +341,7 @@ async def test_a_comparison_states_its_verdict_or_why_there_is_none(candidate, v
 async def test_a_person_s_evaluation_is_never_read_or_compared():
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation, EvaluationRun
-    from app.services.concierge.evaluations import (
+    from app.services.health.evaluations import (
         ConciergeEvaluationError,
         compare_concierge_runs,
         concierge_evaluation_runs,
@@ -395,11 +395,11 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
     from decimal import Decimal
 
     import app.models  # noqa: F401
-    from app.models.concierge import ConciergeBudgetMonth, ConciergeCycle
     from app.models.evaluation import EvaluationRun
+    from app.models.health import ConciergeBudgetMonth, ConciergeCycle
     from app.services import orchestration_engine
-    from app.services.concierge import budget
-    from app.services.concierge.evaluations import (
+    from app.services.health import budget
+    from app.services.health.evaluations import (
         ENTRY_TOKENS_ESTIMATE,
         launch_concierge_evaluation,
         settle_concierge_evaluations,
@@ -444,11 +444,11 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
 @pytest.mark.usefixtures("concierge_on")
 async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monkeypatch):
     import app.models  # noqa: F401
-    from app.models.concierge import ConciergeCycle
     from app.models.evaluation import EvaluationRun
+    from app.models.health import ConciergeCycle
     from app.services import orchestration_engine
-    from app.services.concierge import budget
-    from app.services.concierge.evaluations import (
+    from app.services.health import budget
+    from app.services.health.evaluations import (
         BUDGET_STOP_ERROR,
         compare_concierge_runs,
         launch_concierge_evaluation,
@@ -497,8 +497,8 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
 async def test_a_launch_outside_a_cycle_is_refused_at_the_cap():
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation
-    from app.services.concierge import budget
-    from app.services.concierge.evaluations import launch_concierge_evaluation
+    from app.services.health import budget
+    from app.services.health.evaluations import launch_concierge_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (

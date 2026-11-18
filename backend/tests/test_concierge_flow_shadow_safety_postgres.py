@@ -22,12 +22,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 
 from app.models.assignment import Assignment, AssignmentRun
-from app.models.concierge import ConciergeBudgetMonth, ConciergeCycle
 from app.models.flow import Flow
 from app.models.flow_run import FlowRun
 from app.models.flow_shadow import PAIR_STATUS_SKIPPED, SHADOW_STATUS_RUNNING, FlowShadow, FlowShadowPair
+from app.models.health import ConciergeBudgetMonth, ConciergeCycle
 from app.models.llm_trace import LLMTrace
-from app.services.concierge import flow_shadow
+from app.services.health import flow_shadow
 from tests.test_concierge_flow_shadow_postgres import (
     FakeSandbox,
     _advance,
@@ -129,8 +129,8 @@ async def test_rotating_a_shadow_s_cycle_keeps_the_reservations_of_runs_still_go
 
 
 async def test_a_spent_budget_stops_the_pairing_and_keeps_the_cursor(sandbox, monkeypatch):
-    from app.services.concierge import budget
-    from app.services.concierge.settings import ConciergeBudgetCaps
+    from app.services.health import budget
+    from app.services.health.settings import ConciergeBudgetCaps
 
     real_settings = budget.load_concierge_settings
 
@@ -178,7 +178,7 @@ async def test_a_shadow_pairs_a_bounded_number_of_runs(sandbox):
 
 
 async def test_runs_without_consent_or_not_started_by_the_trigger_are_passed_over(sandbox, monkeypatch):
-    from app.services.concierge import consent
+    from app.services.health import consent
 
     async def opted_out(_db, *, agent_id=None, flow_id=None, user_id=None, user_ids=()):
         return user_id != opted_out_user
@@ -204,7 +204,7 @@ async def test_runs_without_consent_or_not_started_by_the_trigger_are_passed_ove
 
 
 async def test_with_the_concierge_off_a_held_switch_over_waits_then_is_given_up(sandbox, monkeypatch):
-    from app.services.concierge import availability
+    from app.services.health import availability
 
     async def off(_db):
         return False
@@ -239,7 +239,7 @@ async def test_with_the_concierge_off_a_held_switch_over_waits_then_is_given_up(
 
 
 async def test_with_the_concierge_off_a_regressing_watch_still_rolls_back(sandbox, monkeypatch):
-    from app.services.concierge import availability
+    from app.services.health import availability
 
     async def off(_db):
         return False

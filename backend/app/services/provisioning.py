@@ -98,7 +98,7 @@ async def provision_builtin_content(
     # mode), built in since #101; named "Platform Health" in every mode
     # (``concierge.naming``).
     if seed_mode in ("xtm_one", "dev", "copilot"):
-        from app.services.concierge.fleet_seed import seed_concierge_fleet
+        from app.services.health.fleet_seed import seed_concierge_fleet
 
         async with async_session() as db:
             seeded_fleet = await seed_concierge_fleet(db)

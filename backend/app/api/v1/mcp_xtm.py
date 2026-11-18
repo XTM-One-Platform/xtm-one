@@ -346,11 +346,11 @@ async def _build_xtm_tools(
         composite.add_tools(*build_flow_builder_tool(db, user_id))
 
     # The Concierge sandbox (#8255): the agent tools' own rule, administrators only here.
-    from app.services.concierge.sandbox.tools import build_sandbox_tools
+    from app.services.health.sandbox.tools import build_sandbox_tools
 
     composite.add_tools(*build_sandbox_tools(db, user_id))
     # Concierge evaluation (#8257): administrators, while evaluation is on.
-    from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+    from app.services.health.evaluation_tools import build_concierge_evaluation_tools
 
     composite.add_tools(*build_concierge_evaluation_tools(db, user_id))
     # Improvement proposals (#8256): the caller's managed targets; filing

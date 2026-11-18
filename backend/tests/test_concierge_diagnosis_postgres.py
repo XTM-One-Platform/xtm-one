@@ -23,9 +23,9 @@ from app.models.annotation import Annotation
 from app.models.assignment import AssignmentRun
 from app.models.llm_trace import LLMTrace
 from app.models.user import User
-from app.services.concierge.access import AgentAccess, Reader
-from app.services.concierge.diagnosis import quality_signals, verify_evidence
-from app.services.concierge.findings import Evidence, record_finding
+from app.services.health.access import AgentAccess, Reader
+from app.services.health.diagnosis import quality_signals, verify_evidence
+from app.services.health.findings import Evidence, record_finding
 from tests.test_provisioning_postgres import _temp_database
 
 pytestmark = pytest.mark.integration

@@ -17,7 +17,7 @@ Every route needs the ``CONCIERGE`` flag.
 
 * ``GET /pets``, ``GET /pets/{slug}/spritesheet``: every signed-in user.
 * ``POST /pets``, ``DELETE /pets/{slug}``: administrators. An upload is
-  hostile input (``services/concierge/pets.py``); a refusal is a 422 with the
+  hostile input (``services/health/pets.py``); a refusal is a 422 with the
   format's rule it broke, never a 500 and never the input echoed back.
 * ``GET`` / ``PUT /me/companion``, ``GET /me/activity``: the signed-in user's
   own, nobody else's.
@@ -40,8 +40,8 @@ from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.models.user import User
 from app.services.audit import log_audit
-from app.services.concierge import pets
-from app.services.concierge.companion import CompanionPreference, companion_activity, read_preference
+from app.services.health import pets
+from app.services.health.companion import CompanionPreference, companion_activity, read_preference
 
 logger = logging.getLogger(__name__)
 

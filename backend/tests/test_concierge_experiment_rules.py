@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models.concierge_experiment import (
+from app.models.health_experiment import (
     STATUS_COMPLETED,
     STATUS_DRAFT,
     STATUS_FAILED,
@@ -18,15 +18,15 @@ from app.models.concierge_experiment import (
     STATUS_SKIPPED,
     STATUS_STALE,
 )
-from app.services.concierge import experiments
-from app.services.concierge.experiments import (
+from app.services.health import experiments
+from app.services.health.experiments import (
     DEFAULT_CASE_TOKENS,
     MAX_CASES,
     MIN_CASES,
     filing_verdict,
     size_to_budget,
 )
-from app.services.concierge.quality_deps import Budget
+from app.services.health.quality_deps import Budget
 
 NO_CAP = Budget(tokens=None, cost_usd=None, refusal=None)
 

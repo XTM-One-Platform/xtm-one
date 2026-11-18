@@ -28,8 +28,8 @@ from app.models.audit_log import AuditLog
 from app.models.flow import Flow, FlowVersion
 from app.models.flow_shadow import SHADOW_PURPOSE_SWITCH_OVER, FlowShadow
 from app.models.user import User
-from app.services.concierge.sandbox.copies import SandboxOverrides, create_sandbox_copy
 from app.services.flow_graph import auto_layout, normalize_graph
+from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 from app.services.improvement_proposals import ProposalError, ProposalSpec, approve, file_proposal, handler_for
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -213,7 +213,7 @@ async def test_a_graph_naming_an_agent_the_approver_may_not_use_is_refused():
 
 
 async def test_the_switch_over_refuses_a_copy_changed_after_approval():
-    from app.services.concierge.flow_switch_over import _is_the_approved_graph
+    from app.services.health.flow_switch_over import _is_the_approved_graph
 
     async with _database() as sessions:
         seeded = await _seed(sessions)

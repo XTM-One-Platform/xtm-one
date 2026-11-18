@@ -14,7 +14,7 @@
 """The Quality Analyst's tools (Platform Concierge, #8259), and what the
 Concierge's tool groups share.
 
-One access rule (``services/concierge/access.py``) read on the rows at every
+One access rule (``services/health/access.py``) read on the rows at every
 call, on every surface (agent tools, ``/mcp/xtm``). The ``concierge_diagnosis``
 group: ``get_quality_signals``, ``list_findings`` (reads), ``record_finding``,
 ``draft_variant`` (the Concierge's Quality Analyst only). The Experimenter's
@@ -44,7 +44,7 @@ from ._shared import logger
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from app.services.concierge.access import Reader
+    from app.services.health.access import Reader
 
 DIAGNOSIS_GROUP_ID = "concierge_diagnosis"
 
@@ -63,7 +63,7 @@ class RefusalError(Exception):
 
 
 def concierge_enabled() -> bool:
-    from app.services.concierge.availability import concierge_enabled
+    from app.services.health.availability import concierge_enabled
 
     return bool(concierge_enabled())
 
@@ -91,11 +91,11 @@ async def run_tool(
     run_id: str | None = None,
     agent_id: str | None = None,
 ) -> str:
-    from app.services.concierge.access import load_reader
-    from app.services.concierge.experiments import ExperimentError
-    from app.services.concierge.findings import FindingError
-    from app.services.concierge.quality_deps import ProposalRefusedError
-    from app.services.concierge.variants import VariantError
+    from app.services.health.access import load_reader
+    from app.services.health.experiments import ExperimentError
+    from app.services.health.findings import FindingError
+    from app.services.health.quality_deps import ProposalRefusedError
+    from app.services.health.variants import VariantError
 
     if not concierge_enabled():
         return _OFF
@@ -119,7 +119,7 @@ async def run_tool(
 
 
 async def agent_access_or_refuse(db: AsyncSession, reader: Reader, agent_id: uuid.UUID):
-    from app.services.concierge.access import NOT_IN_REACH
+    from app.services.health.access import NOT_IN_REACH
 
     access = await reader.agent_access(db, agent_id)
     if access is None:
@@ -128,8 +128,8 @@ async def agent_access_or_refuse(db: AsyncSession, reader: Reader, agent_id: uui
 
 
 async def finding_for(db: AsyncSession, reader: Reader, finding_id: Any):
-    from app.models.concierge_finding import ConciergeFinding
-    from app.services.concierge.access import NOT_IN_REACH, target_access
+    from app.models.health_finding import ConciergeFinding
+    from app.services.health.access import NOT_IN_REACH, target_access
 
     finding = await db.get(ConciergeFinding, parse_uuid(finding_id, "finding_id"))
     if finding is None:
@@ -142,7 +142,7 @@ async def finding_for(db: AsyncSession, reader: Reader, finding_id: Any):
 
 
 def _finding_payload(finding: Any, *, content: bool) -> dict[str, Any]:
-    from app.services.concierge.access import redact_finding
+    from app.services.health.access import redact_finding
 
     payload = {
         "id": str(finding.id),
@@ -168,7 +168,7 @@ def _finding_payload(finding: Any, *, content: bool) -> dict[str, Any]:
 
 
 async def _get_quality_signals(db: AsyncSession, reader: Reader, agent_id: str = "", period_days: int = 7) -> str:
-    from app.services.concierge.diagnosis import quality_signals
+    from app.services.health.diagnosis import quality_signals
 
     access = await agent_access_or_refuse(db, reader, parse_uuid(agent_id, "agent_id"))
     signals = await quality_signals(db, reader, access, days=period_days)
@@ -179,8 +179,8 @@ async def _get_quality_signals(db: AsyncSession, reader: Reader, agent_id: str =
 async def _list_findings(
     db: AsyncSession, reader: Reader, target_id: str = "", status: str = "", limit: int = 20
 ) -> str:
-    from app.services.concierge import findings as finding_store
-    from app.services.concierge.access import target_access
+    from app.services.health import findings as finding_store
+    from app.services.health.access import target_access
 
     limit = max(1, min(int(limit or 20), 50))
     target_ids: list[uuid.UUID] | None = None
@@ -210,7 +210,7 @@ async def _list_findings(
 
 
 async def _without_opted_out(db: AsyncSession, reader: Reader, access: Any, evidence: dict[str, Any]) -> dict[str, Any]:
-    from app.services.concierge.diagnosis import verify_evidence
+    from app.services.health.diagnosis import verify_evidence
 
     checked, _dropped = await verify_evidence(db, reader, access, evidence)
     return {**checked.as_json(), "counts": evidence.get("counts") or {}}
@@ -227,9 +227,9 @@ async def _record_finding(
     suggested_experiment: str = "",
     evidence: dict | None = None,
 ) -> str:
-    from app.services.concierge.access import agent_of_target
-    from app.services.concierge.diagnosis import verify_evidence
-    from app.services.concierge.findings import record_finding
+    from app.services.health.access import agent_of_target
+    from app.services.health.diagnosis import verify_evidence
+    from app.services.health.findings import record_finding
 
     refusal = reader.write_refusal("quality_analyst")
     if refusal:
@@ -278,8 +278,8 @@ async def _draft_variant(
     text: str = "",
     summary: str = "",
 ) -> str:
-    from app.services.concierge import text_kinds  # noqa: F401 - registers level 6's kinds
-    from app.services.concierge.experiments import draft
+    from app.services.health import text_kinds  # noqa: F401 - registers level 6's kinds
+    from app.services.health.experiments import draft
 
     refusal = reader.write_refusal("quality_analyst")
     if refusal:
@@ -312,7 +312,7 @@ _EVIDENCE_SCHEMA = {
 
 
 def _diagnosis_definitions() -> list[ToolDefinition]:
-    from app.models.concierge_finding import FINDING_STATUSES, PATTERN_KINDS
+    from app.models.health_finding import FINDING_STATUSES, PATTERN_KINDS
     from app.services.builtin_tool_groups import builtin_source
 
     source = builtin_source(DIAGNOSIS_GROUP_ID)

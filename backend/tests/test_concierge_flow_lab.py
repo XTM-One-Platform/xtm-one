@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.concierge.flow_lab import (
+from app.services.health.flow_lab import (
     MIN_PATH_RUNS,
     excerpt,
     flow_trigger_for_assignment_run,

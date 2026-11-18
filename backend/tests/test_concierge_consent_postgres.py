@@ -23,9 +23,9 @@ from app.models.agent import Agent
 from app.models.audit_log import AuditLog
 from app.models.flow import Flow
 from app.models.user import User
-from app.services.concierge import consent
-from app.services.concierge.consent import ConsentDeniedError
-from app.services.concierge.identity import acting_as_concierge, concierge_principal_for
+from app.services.health import consent
+from app.services.health.consent import ConsentDeniedError
+from app.services.health.identity import acting_as_concierge, concierge_principal_for
 from tests.concierge_support import World, concierge_database, configure, make_agent
 
 pytestmark = pytest.mark.integration

@@ -21,7 +21,7 @@ import pytest
 from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.flow_run import FlowRun
-from app.services.concierge import flow_lab_access as access
+from app.services.health import flow_lab_access as access
 from tests.test_concierge_flow_lab_postgres import _database, _runs, _seed
 
 pytestmark = pytest.mark.integration
@@ -142,8 +142,8 @@ async def test_a_name_others_share_still_resolves_to_the_one_flow_within_reach()
 @pytest.fixture
 def concierge(monkeypatch):
     """The Concierge acting, level 1's consent recorded at its call site."""
-    from app.services.concierge import consent
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health import consent
+    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
 
     calls: dict[str, list] = {"scope": [], "content": [], "audit": []}
     state = {"in_scope": True, "readable": True}
@@ -156,7 +156,7 @@ def concierge(monkeypatch):
         calls["content"].append({"agent_id": agent_id, "flow_id": flow_id, "user_id": user_id})
         return state["readable"]
 
-    from app.services.concierge import identity
+    from app.services.health import identity
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
     monkeypatch.setattr(consent, "in_supervision_scope", in_supervision_scope)

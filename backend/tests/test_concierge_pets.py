@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from PIL import Image, PngImagePlugin
 
-from app.services.concierge import pets
-from app.services.concierge.pets import ATLAS_SIZE, PetPackageError, parse_package
+from app.services.health import pets
+from app.services.health.pets import ATLAS_SIZE, PetPackageError, parse_package
 
 V1 = ATLAS_SIZE[1]
 V2 = ATLAS_SIZE[2]

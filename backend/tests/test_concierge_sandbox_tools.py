@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
-from app.services.concierge.sandbox import tools
+from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+from app.services.health.sandbox import tools
 from app.tools.base import ToolCall
 
 _SOURCE = uuid.uuid4()
@@ -48,13 +48,13 @@ def _agent(**fields):
 @pytest.fixture
 def world(monkeypatch):
     state = {"flag": True, "scope": True, "created": []}
-    monkeypatch.setattr("app.services.concierge.availability.concierge_enabled", lambda: state["flag"])
-    monkeypatch.setattr("app.services.concierge.identity.concierge_enabled", lambda: state["flag"])
+    monkeypatch.setattr("app.services.health.availability.concierge_enabled", lambda: state["flag"])
+    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: state["flag"])
 
     async def _scope(_db, _type, _id):
         return state["scope"]
 
-    monkeypatch.setattr("app.services.concierge.consent.in_supervision_scope", _scope)
+    monkeypatch.setattr("app.services.health.consent.in_supervision_scope", _scope)
     state["readable"] = True
     state["read_as"] = []
 
@@ -62,7 +62,7 @@ def world(monkeypatch):
         state["read_as"].append(kwargs)
         return state["readable"]
 
-    monkeypatch.setattr("app.services.concierge.consent.content_readable", _readable)
+    monkeypatch.setattr("app.services.health.consent.content_readable", _readable)
 
     async def _create(db, **kwargs):
         state["created"].append(kwargs)
@@ -70,7 +70,7 @@ def world(monkeypatch):
 
         return SimpleNamespace(id=uuid.uuid4(), copy_id=uuid.uuid4(), expires_at=datetime.now(UTC))
 
-    monkeypatch.setattr("app.services.concierge.sandbox.copies.create_sandbox_copy", _create)
+    monkeypatch.setattr("app.services.health.sandbox.copies.create_sandbox_copy", _create)
     return state
 
 
@@ -134,9 +134,9 @@ async def test_one_access_rule(world, case, allowed):
 async def test_a_run_of_a_copy_is_refused_once_its_source_is_no_longer_readable(world, monkeypatch):
     """Consent is read again at run time: an opt-in revoked after the copy was made stops its runs."""
     copy = SimpleNamespace(id=uuid.uuid4(), source_type="agent", source_id=_SOURCE, copy_agent_id=uuid.uuid4())
-    monkeypatch.setattr("app.services.concierge.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
+    monkeypatch.setattr("app.services.health.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
     ran = AsyncMock()
-    monkeypatch.setattr("app.services.concierge.sandbox.runs.run_sandbox_agent", ran)
+    monkeypatch.setattr("app.services.health.sandbox.runs.run_sandbox_agent", ran)
     world["readable"] = False
     _, executor = tools.build_sandbox_tools(_db(source=_agent()), None)
     with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
@@ -196,9 +196,9 @@ async def test_a_prototype_runs_only_while_its_recorded_basis_agent_is_in_reach(
     scope, opt-in and its owner's opt-out, at every run."""
     basis = _agent()
     copy = _prototype(f"flow_lab:agent:{basis.id}")
-    monkeypatch.setattr("app.services.concierge.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
+    monkeypatch.setattr("app.services.health.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
     started = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
-    monkeypatch.setattr("app.services.concierge.sandbox.runs.start_sandbox_flow_run", started)
+    monkeypatch.setattr("app.services.health.sandbox.runs.start_sandbox_flow_run", started)
     monkeypatch.setattr("app.services.orchestration_engine.notify_orchestration_wake", AsyncMock())
     world["readable"] = readable
     _, executor = tools.build_sandbox_tools(_db(source=basis), None)
@@ -211,9 +211,9 @@ async def test_a_prototype_runs_only_while_its_recorded_basis_agent_is_in_reach(
 
 async def test_a_prototype_with_no_recorded_basis_never_runs(world, monkeypatch):
     copy = _prototype("finding:1")
-    monkeypatch.setattr("app.services.concierge.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
+    monkeypatch.setattr("app.services.health.sandbox.copies.get_sandbox_copy", AsyncMock(return_value=copy))
     started = AsyncMock()
-    monkeypatch.setattr("app.services.concierge.sandbox.runs.start_sandbox_flow_run", started)
+    monkeypatch.setattr("app.services.health.sandbox.runs.start_sandbox_flow_run", started)
     _, executor = tools.build_sandbox_tools(_db(source=_agent()), None)
     with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
         result = await executor.execute_tool(ToolCall(id="r", name="run_sandbox", arguments={"copy_id": str(copy.id)}))
@@ -222,7 +222,7 @@ async def test_a_prototype_with_no_recorded_basis_never_runs(world, monkeypatch)
 
 
 async def test_a_new_flow_experiments_arm_stands_for_the_experiments_agent():
-    from app.services.concierge.flow_lab_access import EXPERIMENT_COPY_PREFIX, copy_subject
+    from app.services.health.flow_lab_access import EXPERIMENT_COPY_PREFIX, copy_subject
 
     agent_id, experiment_id = uuid.uuid4(), uuid.uuid4()
     db = MagicMock()
@@ -236,9 +236,9 @@ async def test_a_new_flow_experiments_arm_stands_for_the_experiments_agent():
 
 async def test_the_concierge_never_runs_an_ownerless_copy_as_the_admin_it_acts_for(monkeypatch):
     """Its subject's owner, else nobody; only an administrator's own call runs one as that administrator."""
-    from app.services.concierge.sandbox import runs
+    from app.services.health.sandbox import runs
 
-    monkeypatch.setattr("app.services.concierge.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
     admin, owner = uuid.uuid4(), uuid.uuid4()
     db = MagicMock()
     db.scalar = AsyncMock(return_value=None)
@@ -255,7 +255,7 @@ async def test_the_concierge_never_runs_an_ownerless_copy_as_the_admin_it_acts_f
 
 async def test_every_run_of_a_copy_re_reads_its_subjects_reach_whoever_starts_it(monkeypatch):
     """An evaluation case or a flow run started by the worker, with no caller to check, still stops."""
-    from app.services.concierge.sandbox import runs
+    from app.services.health.sandbox import runs
 
     async def _refused(_db, _type, _id):
         return "the source is not opted in"

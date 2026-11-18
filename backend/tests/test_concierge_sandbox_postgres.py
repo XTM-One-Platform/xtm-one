@@ -21,10 +21,10 @@ from app.models.flow_run import FlowRun
 from app.models.llm_trace import LLMSpan, LLMTrace
 from app.models.sandbox_copy import SandboxCopy, SandboxRun
 from app.models.user import User
-from app.services.concierge.sandbox import copies, runs, turns
-from app.services.concierge.sandbox import tools as sandbox_tools
-from app.services.concierge.sandbox.replay import load_recorded_calls
 from app.services.flow_runner import FlowWalker
+from app.services.health.sandbox import copies, runs, turns
+from app.services.health.sandbox import tools as sandbox_tools
+from app.services.health.sandbox.replay import load_recorded_calls
 from app.services.tracing.read_store import trace_visible_query
 from tests.agentic_gate_stub import stub_agentic_gate
 from tests.scratch_database import ALL_TABLES, scratch_database
@@ -347,7 +347,7 @@ async def test_an_agent_copy_answers_a_case_as_an_evaluation_turn(sessions, monk
 
 
 async def test_a_flow_called_from_a_sandbox_run_is_intercepted(sessions):
-    from app.services.concierge.sandbox.flows import flow_burst_session
+    from app.services.health.sandbox.flows import flow_burst_session
 
     async with sessions() as session:
         owner = await _user(session)
@@ -450,7 +450,7 @@ async def test_a_flow_copy_runs_only_what_its_source_names(sessions):
 
 async def test_a_flow_called_from_a_sandbox_run_records_nothing_and_lists_nowhere(sessions, monkeypatch):
     from app.models.flow_run import FlowRunStep
-    from app.services.concierge.sandbox.flows import SANDBOX_RUN_SOURCE, load_recorded_steps, production_runs_only
+    from app.services.health.sandbox.flows import SANDBOX_RUN_SOURCE, load_recorded_steps, production_runs_only
 
     async def _send(self, *args, **kwargs):
         raise AssertionError("a sandbox run sent a request")
@@ -525,8 +525,8 @@ async def test_a_flow_called_from_a_sandbox_run_records_nothing_and_lists_nowher
 
 
 async def test_a_flow_case_replays_its_entrys_recordings(sessions, monkeypatch):
-    from app.services.concierge.sandbox.flows import ENTRY_KEY, flow_burst_session
-    from app.services.concierge.sandbox.replay import RecordedCall
+    from app.services.health.sandbox.flows import ENTRY_KEY, flow_burst_session
+    from app.services.health.sandbox.replay import RecordedCall
 
     entry_id = uuid.uuid4()
     held = {entry_id: [RecordedCall(tool="get_case", arguments={"id": "7"}, output="from the entry")]}
@@ -534,7 +534,7 @@ async def test_a_flow_case_replays_its_entrys_recordings(sessions, monkeypatch):
     async def _entry_recordings(_db, ids):
         return {i: held[i] for i in ids if i in held}
 
-    monkeypatch.setattr("app.services.concierge.datasets.entry_recordings", _entry_recordings)
+    monkeypatch.setattr("app.services.health.datasets.entry_recordings", _entry_recordings)
     async with sessions() as session:
         owner = await _user(session)
         source = Flow(id=uuid.uuid4(), user_id=owner.id, name="Triage", graph={"nodes": [_node("start", "trigger.manual")], "edges": []})
@@ -558,8 +558,8 @@ async def test_a_flow_case_replays_the_node_steps_of_the_run_its_entry_came_from
     """With the replay index full of the entry's own tool calls (*cap*), the
     node steps are still kept: a flow node without one would read live."""
     from app.models.flow_run import FlowRunStep
-    from app.services.concierge.sandbox import flows, replay
-    from app.services.concierge.sandbox.replay import RecordedCall
+    from app.services.health.sandbox import flows, replay
+    from app.services.health.sandbox.replay import RecordedCall
 
     if cap is not None:
         monkeypatch.setattr(replay, "MAX_RECORDED_CALLS", cap)
@@ -569,7 +569,7 @@ async def test_a_flow_case_replays_the_node_steps_of_the_run_its_entry_came_from
     async def _entry_recordings(_db, ids):
         return {entry_id: [RecordedCall(tool="get_case", arguments={"id": "7"}, output="from the entry")]}
 
-    monkeypatch.setattr("app.services.concierge.datasets.entry_recordings", _entry_recordings)
+    monkeypatch.setattr("app.services.health.datasets.entry_recordings", _entry_recordings)
     async with sessions() as session:
         owner = await _user(session)
         source = Flow(
@@ -623,9 +623,9 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
     administrator the Concierge acts for."""
     from app.core.config import settings
     from app.models.platform_settings import PlatformSettings
-    from app.services.concierge.flow_lab_access import BASIS_AGENT_PREFIX
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
-    from app.services.concierge.settings import ConciergeSettings
+    from app.services.health.flow_lab_access import BASIS_AGENT_PREFIX
+    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health.settings import ConciergeSettings
 
     monkeypatch.setattr(sandbox_tools, "subject_refusal", _REAL_SUBJECT_REFUSAL)
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")

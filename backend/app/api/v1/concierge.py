@@ -40,14 +40,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.api.v1.helpers import can_manage, get_user_agent, get_user_group_ids, parse_path_id, user_visible_filter
 from app.core.database import get_db
-from app.models.concierge import ConciergeBudgetMonth, ConciergeCycle
 from app.models.flow import Flow
+from app.models.health import ConciergeBudgetMonth, ConciergeCycle
 from app.models.user import User
 from app.services.audit import log_audit
-from app.services.concierge import budget as concierge_budget
-from app.services.concierge.consent import Revocation, apply_revocation
-from app.services.concierge.naming import default_concierge_name, load_concierge_name
-from app.services.concierge.settings import (
+from app.services.health import budget as concierge_budget
+from app.services.health.consent import Revocation, apply_revocation
+from app.services.health.naming import default_concierge_name, load_concierge_name
+from app.services.health.settings import (
     ConciergeBudgetCaps,
     ConciergeSettings,
     load_concierge_settings,

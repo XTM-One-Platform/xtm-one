@@ -14,7 +14,7 @@
 """Memory Steward tools (Platform Concierge, #8258).
 
 The Concierge's Memory Steward works through the memory lanes it may read
-and consolidates each one (``services/concierge/memory_steward.py``). The
+and consolidates each one (``services/health/memory_steward.py``). The
 tools return statuses and counts, never memory content: the pass reads the
 lane itself, and only counts go to the digest.
 
@@ -34,9 +34,9 @@ from app.core.database import async_session
 from app.core.utils import format_exception_message
 from app.models.agent import Agent
 from app.models.user import User
-from app.services.concierge import identity, memory_history
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
+from app.services.health import identity, memory_history
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
 from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 
 from ._shared import logger

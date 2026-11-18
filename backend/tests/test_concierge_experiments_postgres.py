@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models.concierge_experiment import (
+from app.models.health_experiment import (
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_INCOMPLETE,
@@ -20,8 +20,8 @@ from app.models.concierge_experiment import (
     STATUS_SKIPPED,
     STATUS_STALE,
 )
-from app.models.concierge_finding import STATUS_EXPERIMENTING, STATUS_PROPOSED
-from app.services.concierge import experiments, quality_deps
+from app.models.health_finding import STATUS_EXPERIMENTING, STATUS_PROPOSED
+from app.services.health import experiments, quality_deps
 from tests.concierge_experiment_helpers import VARIANT, Deps, draft_variant, run_experiment, seed
 from tests.test_provisioning_postgres import _temp_database
 

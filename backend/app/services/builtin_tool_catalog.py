@@ -51,7 +51,7 @@ def withhold_concierge_tools(catalog: dict[str, list[dict]]) -> dict[str, list[d
     already carrying one stays valid.
     """
     from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
-    from app.services.concierge.availability import concierge_enabled
+    from app.services.health.availability import concierge_enabled
 
     if concierge_enabled():
         return catalog
@@ -283,13 +283,13 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     catalog["roi"] = _extract(build_roi_tools("")[0])
 
     # Concierge sandbox (#8255): every call loads what it needs at execution.
-    from app.services.concierge.sandbox.tools import build_sandbox_tools
+    from app.services.health.sandbox.tools import build_sandbox_tools
 
     sandbox_defs, _ = build_sandbox_tools(None, None)  # type: ignore[arg-type]
     catalog["concierge_sandbox"] = _extract(sandbox_defs)
 
     # Concierge evaluation (#8257): its own access rule at execution.
-    from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+    from app.services.health.evaluation_tools import build_concierge_evaluation_tools
 
     evaluation_defs, _ = build_concierge_evaluation_tools(None, None)  # type: ignore[arg-type]
     catalog["concierge_evaluation"] = _extract(evaluation_defs)

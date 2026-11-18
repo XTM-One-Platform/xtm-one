@@ -30,7 +30,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from app.services.concierge import text_kinds  # noqa: F401 - registers level 6's kinds
+from app.services.health import text_kinds  # noqa: F401 - registers level 6's kinds
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from .concierge_quality import RefusalError, build_group, finding_for, parse_uuid, untrusted_json
@@ -38,7 +38,7 @@ from .concierge_quality import RefusalError, build_group, finding_for, parse_uui
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from app.services.concierge.access import Reader
+    from app.services.health.access import Reader
 
 EXPERIMENTS_GROUP_ID = "concierge_experiments"
 
@@ -47,7 +47,7 @@ EXPERIMENTS_READ_TOOLS: frozenset[str] = frozenset({"list_experiments", "get_exp
 
 
 async def _experiment_for(db: AsyncSession, reader: Reader, experiment_id: Any):
-    from app.models.concierge_experiment import ConciergeExperiment
+    from app.models.health_experiment import ConciergeExperiment
 
     experiment = await db.get(ConciergeExperiment, parse_uuid(experiment_id, "experiment_id"))
     if experiment is None:
@@ -64,8 +64,8 @@ async def _list_experiments(
 ) -> str:
     from sqlalchemy import select
 
-    from app.models.concierge_experiment import EXPERIMENT_STATUSES, ConciergeExperiment
-    from app.services.concierge.experiments import experiment_payload
+    from app.models.health_experiment import EXPERIMENT_STATUSES, ConciergeExperiment
+    from app.services.health.experiments import experiment_payload
 
     finding, access = await finding_for(db, reader, finding_id)
     query = select(ConciergeExperiment).where(ConciergeExperiment.finding_id == finding.id)
@@ -80,7 +80,7 @@ async def _list_experiments(
 
 
 async def _get_experiment(db: AsyncSession, reader: Reader, experiment_id: str = "") -> str:
-    from app.services.concierge.experiments import experiment_payload, settle
+    from app.services.health.experiments import experiment_payload, settle
 
     experiment, _finding, access = await _experiment_for(db, reader, experiment_id)
     if reader.write_refusal("experimenter") is None:
@@ -96,8 +96,8 @@ async def _run_experiment(
     experiment_id: str = "",
     max_cases: int = 20,
 ) -> str:
-    from app.services.concierge.diagnosis import window_figures
-    from app.services.concierge.experiments import experiment_payload, run
+    from app.services.health.diagnosis import window_figures
+    from app.services.health.experiments import experiment_payload, run
 
     refusal = reader.write_refusal("experimenter")
     if refusal:
@@ -120,12 +120,12 @@ async def _run_experiment(
 
 async def _propose_from_experiment(db: AsyncSession, reader: Reader, experiment_id: str = "") -> str:
     from app.models.agent import Agent
-    from app.services.concierge.experiments import propose
+    from app.services.health.experiments import propose
 
     refusal = reader.write_refusal("experimenter")
     if refusal:
         return refusal
-    from app.services.concierge.diagnosis import verify_evidence
+    from app.services.health.diagnosis import verify_evidence
 
     experiment, finding, access = await _experiment_for(db, reader, experiment_id)
     author = await db.get(Agent, reader.principal.agent_id)
@@ -157,7 +157,7 @@ async def _propose_from_experiment(db: AsyncSession, reader: Reader, experiment_
 
 
 def _experiment_definitions() -> list[ToolDefinition]:
-    from app.models.concierge_experiment import EXPERIMENT_STATUSES
+    from app.models.health_experiment import EXPERIMENT_STATUSES
     from app.services.builtin_tool_groups import builtin_source
 
     source = builtin_source(EXPERIMENTS_GROUP_ID)
