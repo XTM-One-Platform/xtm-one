@@ -2063,6 +2063,7 @@
   "Continued sources": "Continued sources",
   "Continuous Threat Exposure Management": "Continuous Threat Exposure Management",
   "Contract Management": "Contract Management",
+  "Legal": "Legal",
   "Contract:": "Contract:",
   "Control a headless browser for web automation": "Control a headless browser for web automation",
   "Control a headless web browser to navigate pages, interact with elements, extract content, and take screenshots. When enabled, agents can automate web interactions: filling forms, scraping dynamic content, testing web applications, and more. The browser session persists across tool calls within the same conversation.": "Control a headless web browser to navigate pages, interact with elements, extract content, and take screenshots. When enabled, agents can automate web interactions: filling forms, scraping dynamic content, testing web applications, and more. The browser session persists across tool calls within the same conversation.",

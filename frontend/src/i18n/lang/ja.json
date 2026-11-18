@@ -2060,6 +2060,7 @@
   "Continued sources": "継続したソース",
   "Continuous Threat Exposure Management": "継続的脅威エクスポージャー管理",
   "Contract Management": "契約管理",
+  "Legal": "法務",
   "Contract:": "契約：",
   "Control a headless browser for web automation": "Web自動化のためにヘッドレスブラウザを制御",
   "Control a headless web browser to navigate pages, interact with elements, extract content, and take screenshots. When enabled, agents can automate web interactions: filling forms, scraping dynamic content, testing web applications, and more. The browser session persists across tool calls within the same conversation.": "ヘッドレスブラウザを操作してページの移動、要素の操作、コンテンツの抽出、スクリーンショットの取得を行います。有効にすると、エージェントはフォーム入力、動的コンテンツのスクレイピング、ウェブアプリのテストなどのウェブ操作を自動化できます。ブラウザセッションは同じ会話内のツール呼び出し間で維持されます。",
