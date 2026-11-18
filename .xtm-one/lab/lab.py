@@ -3654,6 +3654,48 @@ def seed_roi_chat_only(token: str, base: str) -> dict[str, dict[str, str]]:
     return seeded
 
 
+#: Seeded background tasks by status (``seed_background_tasks.py`` ``TASKS``).
+LAB_BACKGROUND_TASKS = {"running": 3, "pending": 1, "completed": 2, "failed": 1}
+
+
+def seed_background_tasks(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Running, pending, completed and failed background tasks, the open ones with a live execution.
+
+    The administrator owns a parent agent that delegated to a target agent. ``seed_background_tasks.py
+    seed`` writes the ``sub_agent_tasks`` rows through the backend's models (no API creates one without
+    a model call): 3 running (two with long titles), 1 pending, 2 completed and 1 failed; each open task
+    gets a ``sub_agent`` execution parked ``pending`` 30 days ahead, so no worker runs it and the
+    orphan recovery leaves it. Read back on ``GET /chat/sub-agent-tasks?agent_id=<parent>``: the counts
+    by status, and every open task with ``execution_state`` ``pending``. The chat notice shows a
+    completion of the last 60 seconds: ``seed_background_tasks.py restamp <json>`` before a capture.
+    Logged ``seeded background tasks (running, pending, completed, failed): <url>``.
+    May raise: the caller logs and skips (dev:harness-gaps lab-seed-running-background-tasks).
+    """
+    parent = _seed_agent(token, "Background parent")
+    target = _seed_agent(token, "Background worker")
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "background_tasks.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_background_tasks.py"), "seed", admin, parent, target,
+         str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_background_tasks.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    tasks = json.loads(out.read_text())["tasks"]
+    answer = api("GET", f"/chat/sub-agent-tasks?agent_id={parent}&limit=50", token)
+    listed = [t for t in answer if isinstance(t, dict) and t.get("task_id") in set(tasks.values())] if isinstance(answer, list) else []
+    counts = {status: sum(1 for t in listed if t.get("status") == status) for status in LAB_BACKGROUND_TASKS}
+    if counts != LAB_BACKGROUND_TASKS:
+        raise RuntimeError(f"GET /chat/sub-agent-tasks: {counts} listed, {LAB_BACKGROUND_TASKS} expected")
+    dead = [t["task_id"] for t in listed if t.get("status") in ("pending", "running") and t.get("execution_state") != "pending"]
+    if dead:
+        raise RuntimeError(f"GET /chat/sub-agent-tasks: open task(s) with no live execution: {dead}")
+    url = f"{base}/chat?agent={parent}"
+    log(f"seeded background tasks (running, pending, completed, failed): {url} ({base}/operations/background-tasks)")
+    return {"background tasks": {"id": parent, "url": url}}
+
+
 #: The group ``seed_group_manager`` creates: lab-only, managed by the peer.
 LAB_MANAGED_GROUP = "Lab managed group"
 
@@ -7286,6 +7328,10 @@ def seed_entities() -> None:
         seeded.update(seed_roi_chat_only(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["ROI chat-only"] = str(exc)[:600]
+    try:
+        seeded.update(seed_background_tasks(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["background tasks"] = str(exc)[:600]
     if peer_id and "ROI review agent" in seeded:
         try:
             seeded.update(seed_roi_chat_records(token, base, seeded["ROI review agent"]["id"], peer_id))
