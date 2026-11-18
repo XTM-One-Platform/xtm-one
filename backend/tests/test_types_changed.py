@@ -77,6 +77,37 @@ def test_mypy_failing_to_run_is_exit_2(monkeypatch: pytest.MonkeyPatch, capsys: 
     assert "mypy could not run" in capsys.readouterr().out
 
 
+def test_a_syntax_error_on_a_type_comment_names_the_comment_as_its_cause(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Gap types-changed-type-comment-syntax: prose after '# type:' is a mypy syntax error Python never sees."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "x.py").write_text(
+        "def f() -> None:\n    with open('a') as h:\n        # type: fail fast on a closed handle\n        h.read()\n",
+        encoding="utf-8",
+    )
+    stdout = 'app/x.py:3: error: Expected an indented block after "with" statement on line 2  [syntax]\n'
+    _fake_mypy(monkeypatch, stdout, 2)
+    assert types_changed.main(["app/x.py:3-3"]) == 2
+    out = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("types_changed: app/x.py:3 holds a '# type:' comment") for line in out)
+    assert out[-1] == "types_changed: mypy could not run (output above)."
+
+
+def test_a_syntax_error_elsewhere_and_type_ignore_get_no_cause_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "y.py").write_text("x = (  # type: ignore[misc]\nprint(1\n", encoding="utf-8")
+    stdout = (
+        "y.py:1: error: '(' was never closed  [syntax]\n"
+        "y.py:2: error: invalid syntax  [syntax]\n"
+        "missing.py:4: error: invalid syntax  [syntax]\n"
+    )
+    assert types_changed.type_comment_causes(stdout) == []
+
+
 def test_no_file_runs_the_configured_gate_as_ci(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _fake_mypy(monkeypatch, "", 0)
     assert types_changed.main([]) == 0
