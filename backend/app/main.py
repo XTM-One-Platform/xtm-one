@@ -656,30 +656,46 @@ async def _list_models_for_seed(provider_name: str, api_key: str) -> list[str] |
     return [m for m in listed if is_chat_capable_model(m)] or None
 
 
+def _listing_default(current: str | None, declared: str | None, listed: list[str]) -> str | None:
+    """The default for a listed catalog: *current*, else *declared*, while listed; else the first."""
+    from app.llm.env_models import resolve_default_model
+
+    return resolve_default_model(current if current in listed else declared, listed)
+
+
 async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
     """List the models of the seeded providers that have no ``*_MODELS`` list.
 
-    Locked, the listing replaces the catalog on every boot, as an env list
-    would; editable, it only fills an empty catalog. Done before the seed's
-    transaction so no network call holds the provider lock.
+    Only while no other provider offers a chat model: next to one, a gateway
+    key is there for its other models. Locked, the listing is the catalog on
+    every boot; editable, it only fills a row created by this boot. Done
+    before the seed's transaction so no network call holds the provider lock.
     """
     from sqlalchemy import select as _sel
 
     from app.core.database import async_session
     from app.llm.env_models import env_models_for
+    from app.llm.router import is_chat_capable_model
     from app.models.llm_config import LLMProviderConfig
 
     wanted = [(n, k) for n, k in providers if n in _SEED_LISTED_PROVIDERS and env_models_for(n) is None]
-    if wanted and models_editable:
-        async with async_session() as db:
-            rows = await db.execute(
-                _sel(LLMProviderConfig.provider, LLMProviderConfig.available_models).where(
-                    LLMProviderConfig.user_id.is_(None),
-                    LLMProviderConfig.provider.in_([n for n, _ in wanted]),
-                )
+    if not wanted:
+        return {}
+    names = {n for n, _ in wanted}
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                _sel(LLMProviderConfig.provider, LLMProviderConfig.user_id, LLMProviderConfig.available_models)
             )
-            curated = {provider for provider, models in rows if models}
-        wanted = [(n, k) for n, k in wanted if n not in curated]
+        ).all()
+    # The seeded rows of the providers to list, and every other config.
+    own = {provider for provider, user_id, _ in rows if provider in names and user_id is None}
+    offered = [m for provider, user_id, models in rows if not (provider in names and user_id is None) for m in models or []]
+    offered += [m for n, _ in providers if n not in names for m in env_models_for(n) or []]
+    if any(is_chat_capable_model(m) for m in offered):
+        return {}
+    if models_editable:
+        wanted = [(n, k) for n, k in wanted if n not in own]
     listed = {n: await _list_models_for_seed(n, k) for n, k in wanted}
     return {n: models for n, models in listed.items() if models}
 
@@ -825,6 +841,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
             # by a listing (``_seed_listed_models``).
             env_models = env_models_for(provider_name)
             listed = listed_models.get(provider_name)
+            # A listing is alphabetical: the provider's own default (the gateway's
+            # ``default`` alias) when listed, else the stored one, else the first.
+            declared_default = getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
             if listed and not models_editable:
                 env_models = listed
             seed_lists[provider_name] = env_models or listed or []
@@ -854,9 +873,10 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     else:
                         # Pinned regime: the env list IS the catalog.
                         existing.available_models = env_models
-                        # A listing is alphabetical, not the operator's order: keep the default it still offers.
                         existing.default_model = (
-                            resolve_default_model(existing.default_model, env_models) if listed else env_models[0]
+                            _listing_default(existing.default_model, declared_default, env_models)
+                            if listed
+                            else env_models[0]
                         )
                     existing.env_models = env_models
                     # A model the seed just dropped from the catalog must not
@@ -864,7 +884,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     # as a ghost reference that 404s at runtime — the same
                     # cleanup a UI shrink and the orphaned-provider prune run.
                     retired = before - set(existing.available_models or [])
-                    if retired:
+                    # A listing may be partial (an upstream down): it hides the
+                    # model, it does not clear the choices made on it.
+                    if retired and not listed:
                         # Scoped to this config: a model another config
                         # also serves stays on the choices pinned to it.
                         await _cleanup_orphaned_model_references(
@@ -880,7 +902,11 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     user_id=None,
                     provider=provider_name,
                     api_key_enc=encrypt_value(api_key),
-                    default_model=env_models[0] if env_models else None,
+                    default_model=(
+                        _listing_default(None, declared_default, env_models)
+                        if listed and env_models
+                        else (env_models[0] if env_models else None)
+                    ),
                     available_models=env_models,
                     env_models=env_models,
                     is_from_env=True,
@@ -889,9 +915,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 await db.flush()
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
             if listed and models_editable and not cfg.available_models:
-                # Editable: the listing only fills an empty catalog; the admin owns it after.
+                # Editable: listed only for a new row; the admin owns it after.
                 cfg.available_models = listed
-                cfg.default_model = resolve_default_model(cfg.default_model, listed)
+                cfg.default_model = _listing_default(None, declared_default, listed)
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
@@ -905,13 +931,17 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 if platform_default_model and platform_default_model in available_models
                 else provider_default
             )
+            if listed and model_for_platform not in (platform_default_model, declared_default):
+                # A first-in-alphabet pick is no one's choice: not pinned platform-wide.
+                model_for_platform = None
             if model_for_platform:
                 await _ensure_platform_default_model(
                     db,
                     provider_name,
                     model_for_platform,
                     provider_id=str(cfg.id),
-                    available_models=available_models or None,
+                    # A listing is chat models only: the chosen one, not its first.
+                    available_models=None if listed else available_models or None,
                     # Under BYOLLM an empty default of a configured install is
                     # the administrator's choice, not a gap.
                     fill_empty_defaults=not install_configured_before_boot,

@@ -20,6 +20,7 @@ from app.api.v1.platform_settings_helpers import get_platform_settings
 from app.core.config import settings
 from app.llm.gateway_provider import FiligranGatewayProvider
 from app.models.llm_config import LLMProviderConfig
+from app.models.user import User
 from app.services import model_catalog_announcements as mca
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -53,7 +54,14 @@ class _Gateway:
         monkeypatch.setattr(FiligranGatewayProvider, "list_models", _list_models)
 
 
-def _env(monkeypatch, *, editable: bool = False, models: str | None = None, default_model: str = "") -> None:
+def _env(
+    monkeypatch,
+    *,
+    editable: bool = False,
+    models: str | None = None,
+    default_model: str = "",
+    extra: dict[str, str] | None = None,
+) -> None:
     for key in [k for k in os.environ if k.startswith("LLM_PROVIDER_")]:
         monkeypatch.delenv(key)
     import app.main as app_main
@@ -62,6 +70,8 @@ def _env(monkeypatch, *, editable: bool = False, models: str | None = None, defa
     monkeypatch.setenv("LLM_PROVIDER_FILIGRAN_GATEWAY_API_KEY", GATEWAY_KEY)
     if models is not None:
         monkeypatch.setenv("LLM_PROVIDER_FILIGRAN_GATEWAY_MODELS", models)
+    for key, value in (extra or {}).items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setattr(settings, "byollm_activated", False)
     monkeypatch.setattr(settings, "models_env_providing_only", False)
     monkeypatch.setattr(settings, "llm_provider_models_editable", editable)
@@ -163,3 +173,96 @@ async def test_a_models_list_in_the_environment_is_not_replaced(monkeypatch):
         assert (await _gateway_row(sessions)).available_models == ["gpt-5.4"]
         assert gateway.calls == 0
 
+
+
+@pytest.mark.asyncio
+async def test_another_chat_provider_keeps_the_gateway_unlisted(monkeypatch):
+    """A gateway key set for embeddings next to a chat provider adds no chat model."""
+    async with _database() as sessions:
+        _env(
+            monkeypatch,
+            extra={"LLM_PROVIDER_OPENAI_API_KEY": "sk-openai", "LLM_PROVIDER_OPENAI_MODELS": "gpt-5.4"},
+        )
+        gateway = _Gateway(monkeypatch, LISTED)
+
+        await _boot()
+
+        assert not (await _gateway_row(sessions)).available_models
+        assert gateway.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_the_gateway_default_alias_stays_the_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        _Gateway(monkeypatch, [*LISTED, "default"])
+
+        await _boot()
+
+        assert (await _gateway_row(sessions)).default_model == "default"
+        async with sessions() as db:
+            assert (await get_platform_settings(db)).agent_default_model == "default"
+
+
+@pytest.mark.asyncio
+async def test_an_alphabetical_pick_is_not_pinned_as_the_platform_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        _Gateway(monkeypatch, LISTED)
+
+        await _boot()
+
+        async with sessions() as db:
+            assert (await get_platform_settings(db)).agent_default_model is None
+
+
+@pytest.mark.asyncio
+async def test_a_shorter_listing_keeps_the_choices_made_on_a_hidden_model(monkeypatch):
+    """A partial listing (an upstream down) must not clear what users picked."""
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        row = await _gateway_row(sessions)
+        async with sessions() as db:
+            user = User(
+                email="ada@example.com",
+                hashed_password="x",
+                full_name="Ada",
+                role="user",
+                is_active=True,
+                preferred_llm_provider="filigran_gateway",
+                preferred_llm_provider_id=row.id,
+                preferred_llm_model="gpt-5.4",
+            )
+            db.add(user)
+            await db.commit()
+
+        gateway.models = ["claude-sonnet-5"]
+        await _boot()
+
+        assert (await _gateway_row(sessions)).available_models == ["claude-sonnet-5"]
+        async with sessions() as db:
+            kept = (await db.execute(select(User).where(User.email == "ada@example.com"))).scalar_one()
+            assert kept.preferred_llm_model == "gpt-5.4"
+
+
+@pytest.mark.asyncio
+async def test_editable_mode_does_not_refill_a_catalog_curated_to_empty(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        async with sessions() as db:
+            row = (
+                await db.execute(select(LLMProviderConfig).where(LLMProviderConfig.provider == "filigran_gateway"))
+            ).scalar_one()
+            row.available_models = []
+            row.default_model = None
+            await db.commit()
+        gateway.calls = 0
+
+        await _boot()
+
+        assert (await _gateway_row(sessions)).available_models == []
+        assert gateway.calls == 0

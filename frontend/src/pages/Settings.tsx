@@ -533,7 +533,11 @@ function SettingsPage() {
   const hasReasoningCompatibleProvider = (availableModels?.length ?? 0) > 0;
   // Configured, but no model listed: the fix is the model list, not another provider.
   const modellessProviders = emptyChatProviders(providers);
-  const envLockedModelless = modellessProviders.find((p) => p.models_env_locked);
+  // Env-only mode hides every provider control: the env variable is the one way in.
+  const envHintProvider = modelsEnvProvidingOnly
+    ? modellessProviders[0]
+    : modellessProviders.find((p) => p.models_env_locked);
+  const modelsEnvVariable = (p: LLMProvider) => `LLM_PROVIDER_${p.provider.toUpperCase()}_MODELS`;
 
   const getModelOptionLabel = (m: AvailableModel) => modelOptionLabel(m, providers);
 
@@ -1100,10 +1104,12 @@ function SettingsPage() {
               {aiLicensed && modellessProviders.length > 0 ? (
                 <p className="text-[13px] text-default-secondary leading-relaxed">
                   {t_i18n("The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.")}
-                  {envLockedModelless && isAdmin
-                    ? " " + t_i18n("Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.", {
-                        variable: `LLM_PROVIDER_${envLockedModelless.provider.toUpperCase()}_MODELS`,
-                      })
+                  {envHintProvider && isAdmin
+                    ? " " + (modelsEnvProvidingOnly
+                      ? t_i18n("Set {variable} and restart.", { variable: modelsEnvVariable(envHintProvider) })
+                      : t_i18n("Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.", {
+                          variable: modelsEnvVariable(envHintProvider),
+                        }))
                     : canManageProviders && " " + t_i18n("Select models on a provider in this section.")}
                 </p>
               ) : (

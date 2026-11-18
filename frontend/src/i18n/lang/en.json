@@ -18959,5 +18959,6 @@
   "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}",
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.",
-  "Select models on a provider in this section.": "Select models on a provider in this section."
+  "Select models on a provider in this section.": "Select models on a provider in this section.",
+  "Set {variable} and restart.": "Set {variable} and restart."
 }

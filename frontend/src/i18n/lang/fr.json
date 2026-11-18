@@ -18959,5 +18959,6 @@
   "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# champ non renseigné, signalé par chaque agent qui en a besoin} other {# champs non renseignés, signalés par chaque agent qui en a besoin}}",
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "Les fournisseurs LLM configurés ne proposent aucun modèle. Les fonctionnalités agentiques et basées sur les LLM sont indisponibles tant qu'aucun n'en propose.",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Définissez {variable} et redémarrez, ou définissez LLM_PROVIDER_MODELS_EDITABLE=true pour sélectionner ses modèles ici.",
-  "Select models on a provider in this section.": "Sélectionnez des modèles sur un fournisseur de cette section."
+  "Select models on a provider in this section.": "Sélectionnez des modèles sur un fournisseur de cette section.",
+  "Set {variable} and restart.": "Définissez {variable} et redémarrez."
 }
