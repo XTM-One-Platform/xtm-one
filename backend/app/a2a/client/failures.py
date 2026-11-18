@@ -114,6 +114,26 @@ def classify_http_status(status: int) -> Classification:
     return TRANSIENT
 
 
+#: What a partner answers a request naming a task it will not act on: an
+#: ended task (A2A's ``UnsupportedOperation``, Google's "is in terminal
+#: state"), an id it does not know, or a state that conflicts.
+_TASK_REFUSAL_STATUSES = frozenset({400, 404, 409, 410, 422})
+
+
+def refuses_the_named_task(status: int) -> bool:
+    """Whether *status*, answered to a request naming a partner task, refuses
+    that task rather than this registration.
+
+    The id came from the partner, so the request reached the agent that
+    issued it: the refusal concerns that task alone, and the next delegation
+    is a fresh request it may well accept. Durable for the registration it
+    would refuse that next delegation too, until an operator re-verifies a
+    registration nothing is wrong with. A registration that really is broken
+    still shows it on the next request that names no task.
+    """
+    return status in _TASK_REFUSAL_STATUSES
+
+
 def classify_exception(exc: BaseException) -> Classification:
     """Classify a raised failure.
 

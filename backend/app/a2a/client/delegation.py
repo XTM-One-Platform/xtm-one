@@ -57,6 +57,7 @@ from app.a2a.client.failures import (
     classify_exception,
     classify_http_status,
     durable,
+    refuses_the_named_task,
 )
 from app.a2a.client.registration import (
     VerdictWriteContendedError,
@@ -2122,25 +2123,42 @@ async def delegate(
                 signature_state=signature_state,
             )
         except _PartnerHttpError as exc:
-            breaker.record_failure(target, exc.classification)
-            if exc.classification.is_durable:
-                target.usability = USABILITY_UNUSABLE
-                target.unusable_reason = exc.classification.reason
-            if exc.status in (401, 403):
-                forget_token(integration)
-            outcome = (
-                OUTCOME_CREDENTIAL_REJECTED
-                if exc.status in (401, 403)
-                else OUTCOME_UNREACHABLE
-            )
-            result = DelegationResult(
-                outcome=outcome,
-                partner_reason=exc.partner_said or None,
-                detail=exc.detail or f"Partner returned HTTP {exc.status}.",
-                partner_task_id=task_id,
-                protocol_version=version,
-                signature_state=signature_state,
-            )
+            if task_id and refuses_the_named_task(exc.status):
+                # The partner refused the task this request named - ended, or
+                # never kept - not the registration. Not counted against the
+                # breaker either: a considered answer from a reachable partner.
+                result = DelegationResult(
+                    outcome=OUTCOME_PARTNER_FAILED,
+                    partner_reason=exc.partner_said or None,
+                    detail=(
+                        f"Partner refused this task (HTTP {exc.status}): it has "
+                        "ended or the partner no longer knows it. Send the work "
+                        "as a new delegation."
+                    ),
+                    partner_task_id=task_id,
+                    protocol_version=version,
+                    signature_state=signature_state,
+                )
+            else:
+                breaker.record_failure(target, exc.classification)
+                if exc.classification.is_durable:
+                    target.usability = USABILITY_UNUSABLE
+                    target.unusable_reason = exc.classification.reason
+                if exc.status in (401, 403):
+                    forget_token(integration)
+                outcome = (
+                    OUTCOME_CREDENTIAL_REJECTED
+                    if exc.status in (401, 403)
+                    else OUTCOME_UNREACHABLE
+                )
+                result = DelegationResult(
+                    outcome=outcome,
+                    partner_reason=exc.partner_said or None,
+                    detail=exc.detail or f"Partner returned HTTP {exc.status}.",
+                    partner_task_id=task_id,
+                    protocol_version=version,
+                    signature_state=signature_state,
+                )
         except httpx.ConnectTimeout as exc:
             # Ahead of the timeout branch below, which it is a subclass of:
             # nothing reached the partner, so there is nothing to cancel.

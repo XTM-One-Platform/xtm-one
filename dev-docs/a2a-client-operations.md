@@ -225,6 +225,14 @@ partner that answered a send at the same origin seconds earlier is plainly
 reachable, and suspending the registration over one lost task would be the
 wrong conclusion.
 
+The same holds for any request that names a task the partner issued — a
+continuation, a collect, a poll. A 400, 404, 409, 410 or 422 there refuses that
+task (it has ended, or the partner no longer knows it), so the delegation fails
+`partner_failed` with the partner's words, the breaker counts nothing, and the
+registration stays usable. Google Agent Engine answers a continuation of a
+cancelled task `400 … is in terminal state: canceled`. A request that names no
+task — a fresh submission — still classifies its 4xx as `request_rejected_by_partner`.
+
 ### A task that outlasts an attempt is handed back, not failed
 
 An attempt that ends with the partner still working returns a `still_running`
@@ -243,7 +251,11 @@ distinction is whether the partner has answered at all: never having heard from
 it, calling its task "still running" would invent a fact.
 
 **An answer outlives the run that asked for it** (#12079). A chat delegation
-is resumed through its conversation, which outlives the turn. An assignment or
+is resumed through its conversation, which outlives the turn. So is a partner's
+question: a chat agent relays it to its user and ends the turn to get the
+answer, which the next turn sends with `continue_task_id`, so a chat turn ending
+cancels no `input-required` task. Its row is concluded with the question, so a
+user who never answers leaves the task to the partner's own timeout. An assignment or
 scheduled run usually ends right after the hand-back, and an ended run is never
 resumed, so for that path:
 
@@ -559,7 +571,7 @@ it and the delegation path can never disagree about the same partner.
 | `signature_invalid` | The partner's card signature does not verify. **No override exists.** Contact the partner. |
 | `no_common_protocol_version` | The partner speaks no A2A version this platform supports. |
 | `no_common_transport` | The partner serves no binding this platform speaks — gRPC only, or something unrecognised. Not a version problem; there is no setting that helps. |
-| `request_rejected_by_partner` | The partner refused the request we SENT — a 4xx that is not about credentials. Not a card problem: the cause is in the server log, in the partner's own words. Durable, so it persists until a **Test Connection** clears it. |
+| `request_rejected_by_partner` | The partner refused the request we SENT — a 4xx that is not about credentials, on a request naming no task (a refused task fails only its delegation). Not a card problem: the cause is in the server log, in the partner's own words. Durable, so it persists until a **Test Connection** clears it. |
 | `credential_cannot_mint_token` | The stored credentials cannot produce a token. Re-enter them. |
 | `credential_rejected_by_partner` | We minted a token and the partner refused it. Check the credentials *with the partner*. |
 | `destination_not_permitted` | The address is one this platform will not send to — loopback, private, link-local, cloud metadata, or anything else not globally routable (including carrier-grade NAT space, `100.64.0.0/10`). |
