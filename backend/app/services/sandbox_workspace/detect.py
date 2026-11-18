@@ -819,34 +819,55 @@ def command_named_files(
     under the sub_paths, *sizes* every regular file of the repository. Each word
     of a ``run`` line (from the step's working directory, after a ``cd``) or of a
     script (from its manifest's directory) that names a regular file of the
-    repository is kept. Release, publish and deploy workflows and jobs are not
+    repository is kept. A workflow step that ``cd``s into a directory of the
+    repository runs from it and imports what lies there (``cd shared/plugin &&
+    PYTHONPATH=. pylint --load-plugins my_plugin ..``): the direct files of that
+    directory are kept when it holds at most :data:`MAX_REFERENCED_DIR_FILES`
+    files and :data:`MAX_REFERENCED_DIR_BYTES`. Release, publish and deploy workflows and jobs are not
     read (they ship, they do not check); a file under a sub_path, under a
     directory a build or an install writes, out of the repository or past
     :data:`MAX_COMPANION_BYTES` adds nothing; :data:`MAX_COMPANIONS` at most, sorted.
     """
     wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
     found: set[str] = set()
+    by_dir: dict[str, list[str]] = {}
+    for path in sizes:
+        by_dir.setdefault(posixpath.dirname(path), []).append(path)
 
-    def scan(line: str, cwd: str | None) -> None:
+    def keep(target: str | None) -> None:
+        if (
+            target
+            and target in sizes
+            and sizes[target] <= MAX_COMPANION_BYTES
+            and not any(target == s or target.startswith(s + "/") for s in wanted)
+            and not _skipped(target)
+        ):
+            found.add(target)
+
+    def keep_directory(directory: str) -> None:
+        members = by_dir.get(directory, []) if directory else []
+        if (
+            members
+            and len(members) <= MAX_REFERENCED_DIR_FILES
+            and sum(sizes[m] for m in members) <= MAX_REFERENCED_DIR_BYTES
+        ):
+            for member in members:
+                keep(member)
+
+    def scan(line: str, cwd: str | None, *, step: bool = False) -> None:
         for segment in _SCRIPT_SEPARATOR.split(line[:MAX_REQUIREMENTS_BYTES]):
             cd = _SCRIPT_CD.match(segment)
             if cd:
                 cwd = _script_path(cwd, cd.group(2)) if cwd is not None else None
+                if step and cwd:
+                    keep_directory(cwd)
                 continue
             if cwd is None:
                 continue
             for token in _SCRIPT_PATH.findall(segment):
                 if token.startswith("-") or ("/" not in token and "." not in token):
                     continue
-                target = _script_path(cwd, token)
-                if (
-                    target
-                    and target in sizes
-                    and sizes[target] <= MAX_COMPANION_BYTES
-                    and not any(target == s or target.startswith(s + "/") for s in wanted)
-                    and not _skipped(target)
-                ):
-                    found.add(target)
+                keep(_script_path(cwd, token))
 
     for path, data in sorted(workflows.items()):
         if not _is_workflow(path) or any(word in posixpath.basename(path).lower() for word in _SHIPPING):
@@ -864,7 +885,7 @@ def command_named_files(
                     continue
                 cwd = _clean_dir(job_dir, str(step.get("working-directory", "") or ""))
                 for line in _run_lines(step["run"]):
-                    scan(line, cwd)
+                    scan(line, cwd, step=True)
     for path, data in sorted(manifests.items()):
         if posixpath.basename(path) != "package.json":
             continue
