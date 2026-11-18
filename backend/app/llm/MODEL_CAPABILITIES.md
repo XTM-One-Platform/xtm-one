@@ -164,7 +164,8 @@ provider: `gpt-6-astra` (dated ids included).
 `gpt-6-astra` also sets `omit_temperature`: it answers `temperature` with
 HTTP 400 "Unsupported parameter" on chat completions and the Responses API
 alike, so neither request carries it (`build_openai_generation_params`,
-`openai_responses.build_responses_params`). A 400 that names `temperature`
+`openai_responses.build_responses_params`). `gpt-6-luna` sets it too: it
+refuses any `temperature` but its default 1 ("Unsupported value"). A 400 that names `temperature`
 all the same (a model the table does not flag yet) is retried once on the
 same leg without it by `openai_compat.create_without_refused_temperature()`,
 on chat completions (inside `create_with_effort_retry()`) and the Responses
