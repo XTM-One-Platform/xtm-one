@@ -287,7 +287,7 @@ class User(Base):
 
     # Platform Concierge opt-out (#8254): the Concierge reads none of this
     # user's memory lanes and conversations (``services/concierge/consent.py``).
-    concierge_opt_out: Mapped[bool] = mapped_column(
+    health_content_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 

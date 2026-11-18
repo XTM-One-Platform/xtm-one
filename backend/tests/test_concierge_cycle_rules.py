@@ -217,9 +217,9 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
     from app.services.concierge.turns import concierge_turn_scoped
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
-    orchestrator = SimpleNamespace(id=uuid.uuid4(), concierge_role="orchestrator", is_company_managed=True)
-    specialist = SimpleNamespace(id=uuid.uuid4(), concierge_role="quality_analyst", is_company_managed=True)
-    personal = SimpleNamespace(id=uuid.uuid4(), concierge_role=None, is_company_managed=False)
+    orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
+    specialist = SimpleNamespace(id=uuid.uuid4(), health_role="quality_analyst", is_company_managed=True)
+    personal = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False)
     seen: list = []
 
     @concierge_turn_scoped
@@ -242,7 +242,7 @@ async def test_a_user_id_that_names_no_user_never_acts_as_the_concierge(monkeypa
     from app.services.concierge.turns import concierge_turn_scoped
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
-    orchestrator = SimpleNamespace(id=uuid.uuid4(), concierge_role="orchestrator", is_company_managed=True)
+    orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
     seen: list = []
 
     @concierge_turn_scoped
@@ -269,8 +269,8 @@ def test_an_untriggered_fleet_run_is_gated_as_no_person():
 
     owner, person = uuid.uuid4(), uuid.uuid4()
     assignment = SimpleNamespace(run_as_user_id=None, user_id=owner)
-    fleet = SimpleNamespace(concierge_role="orchestrator", is_company_managed=True)
-    other = SimpleNamespace(concierge_role=None, is_company_managed=True)
+    fleet = SimpleNamespace(health_role="orchestrator", is_company_managed=True)
+    other = SimpleNamespace(health_role=None, is_company_managed=True)
     assert _run_person(assignment, None, fleet) is None
     assert _execution_identity(assignment, None, fleet) is None
     assert _run_person(assignment, person, fleet) == person
@@ -295,7 +295,7 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     added: list[str] = []
     composite = SimpleNamespace(add_tools=lambda definitions, _executor: added.extend(d.name for d in definitions))
-    experimenter = SimpleNamespace(id=uuid.uuid4(), concierge_role="experimenter", is_company_managed=True)
+    experimenter = SimpleNamespace(id=uuid.uuid4(), health_role="experimenter", is_company_managed=True)
     principal = identity.concierge_principal_for(experimenter, None)
     groups = ["concierge_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
     if who == "concierge_alone":

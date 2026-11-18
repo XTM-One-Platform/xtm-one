@@ -24,7 +24,7 @@ def flag_on(monkeypatch):
 
 
 def _agent(*, role: str | None = "experimenter", company_managed: bool = True):
-    return SimpleNamespace(id=uuid.uuid4(), concierge_role=role, is_company_managed=company_managed)
+    return SimpleNamespace(id=uuid.uuid4(), health_role=role, is_company_managed=company_managed)
 
 
 def _user(role: str = "admin", *, active: bool = True):
@@ -111,7 +111,7 @@ def test_the_seed_alone_gives_a_role_and_only_a_known_one_to_a_company_managed_a
 
     agent = _agent(role=None)
     asyncio.run(identity.set_concierge_role(_Db(), agent, "flow_lab"))
-    assert agent.concierge_role == "flow_lab"
+    assert agent.health_role == "flow_lab"
     with pytest.raises(ValueError):
         asyncio.run(identity.set_concierge_role(_Db(), agent, "sandbox"))
     with pytest.raises(ValueError):
@@ -193,8 +193,8 @@ def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> N
     from app.services.concierge.sandbox.session import SandboxSession, sandbox_session
     from app.services.concierge.turns import concierge_turn_scoped
 
-    copy = SimpleNamespace(id=uuid.uuid4(), concierge_role=None, is_company_managed=False, is_sandbox=True)
-    consulted = SimpleNamespace(id=uuid.uuid4(), concierge_role=None, is_company_managed=False, is_sandbox=False)
+    copy = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False, is_sandbox=True)
+    consulted = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False, is_sandbox=False)
     principal = identity.concierge_principal_for(_agent(), None)
     seen: list = []
 

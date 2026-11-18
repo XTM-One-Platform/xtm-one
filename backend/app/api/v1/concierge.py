@@ -127,9 +127,9 @@ async def get_agent_opt_in(
 ) -> OptInResponse:
     groups = await get_user_group_ids(db, user.id)
     agent = await get_user_agent(db, user.id, agent_id, groups, is_admin=user.is_admin)
-    fleet = agent.concierge_role is not None
+    fleet = agent.health_role is not None
     return OptInResponse(
-        opt_in=bool(agent.concierge_improvement_opt_in) and not fleet,
+        opt_in=bool(agent.health_enrolled) and not fleet,
         can_manage=can_manage(user, agent, groups) and not fleet,
         eligible=not fleet,
     )
@@ -147,11 +147,11 @@ async def set_agent_opt_in(
     agent = await get_user_agent(db, user.id, agent_id, groups, is_admin=user.is_admin)
     if not can_manage(user, agent, groups):
         raise HTTPException(status_code=403, detail="You cannot manage this agent.")
-    if agent.concierge_role is not None:
+    if agent.health_role is not None:
         raise HTTPException(status_code=409, detail="A Concierge agent is never improved by the Concierge.")
-    was = bool(agent.concierge_improvement_opt_in)
+    was = bool(agent.health_enrolled)
     if was != body.opt_in:
-        agent.concierge_improvement_opt_in = body.opt_in
+        agent.health_enrolled = body.opt_in
         await log_audit(
             db,
             user=user,
@@ -160,7 +160,7 @@ async def set_agent_opt_in(
             entity_id=agent.id,
             entity_name=agent.name,
             summary=f"Turned the Concierge improvement opt-in {'on' if body.opt_in else 'off'}",
-            details={"concierge_improvement_opt_in": body.opt_in},
+            details={"health_enrolled": body.opt_in},
             request=request,
         )
         revocation = None if body.opt_in else Revocation(kind="agent_opt_in_revoked", agent_id=agent.id)
@@ -193,7 +193,7 @@ async def get_flow_opt_in(
 ) -> OptInResponse:
     groups = await get_user_group_ids(db, user.id)
     flow = await _visible_flow(db, user, flow_id, groups)
-    return OptInResponse(opt_in=bool(flow.concierge_improvement_opt_in), can_manage=can_manage(user, flow, groups))
+    return OptInResponse(opt_in=bool(flow.health_enrolled), can_manage=can_manage(user, flow, groups))
 
 
 @router.put("/flows/{flow_id}/opt-in", response_model=OptInResponse)
@@ -208,8 +208,8 @@ async def set_flow_opt_in(
     flow = await _visible_flow(db, user, flow_id, groups)
     if not can_manage(user, flow, groups):
         raise HTTPException(status_code=403, detail="You cannot manage this flow.")
-    if bool(flow.concierge_improvement_opt_in) != body.opt_in:
-        flow.concierge_improvement_opt_in = body.opt_in
+    if bool(flow.health_enrolled) != body.opt_in:
+        flow.health_enrolled = body.opt_in
         await log_audit(
             db,
             user=user,
@@ -218,7 +218,7 @@ async def set_flow_opt_in(
             entity_id=flow.id,
             entity_name=flow.name,
             summary=f"Turned the Concierge improvement opt-in {'on' if body.opt_in else 'off'}",
-            details={"concierge_improvement_opt_in": body.opt_in},
+            details={"health_enrolled": body.opt_in},
             request=request,
         )
         revocation = None if body.opt_in else Revocation(kind="flow_opt_in_revoked", flow_id=flow.id)
@@ -231,7 +231,7 @@ async def set_flow_opt_in(
 
 @router.get("/me/opt-out", response_model=OptOutResponse)
 async def get_my_opt_out(user: User = Depends(get_current_user)) -> OptOutResponse:
-    return OptOutResponse(opt_out=bool(user.concierge_opt_out))
+    return OptOutResponse(opt_out=bool(user.health_content_opt_out))
 
 
 @router.put("/me/opt-out", response_model=OptOutResponse)
@@ -242,8 +242,8 @@ async def set_my_opt_out(
     db: AsyncSession = Depends(get_db),
 ) -> OptOutResponse:
     row = (await db.execute(select(User).where(User.id == user.id).with_for_update())).scalar_one()
-    if bool(row.concierge_opt_out) != body.opt_out:
-        row.concierge_opt_out = body.opt_out
+    if bool(row.health_content_opt_out) != body.opt_out:
+        row.health_content_opt_out = body.opt_out
         await log_audit(
             db,
             user=row,
@@ -252,7 +252,7 @@ async def set_my_opt_out(
             entity_id=row.id,
             entity_name=row.email,
             summary=f"{'Opted out of' if body.opt_out else 'Opted back in to'} the Concierge",
-            details={"concierge_opt_out": body.opt_out},
+            details={"health_content_opt_out": body.opt_out},
             request=request,
         )
         revocation = Revocation(kind="user_opt_out", user_id=row.id) if body.opt_out else None

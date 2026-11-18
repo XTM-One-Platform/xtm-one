@@ -41,7 +41,7 @@ def _user(role="user"):
 
 def _agent(**fields):
     return SimpleNamespace(
-        id=_SOURCE, user_id=uuid.uuid4(), is_sandbox=False, concierge_role=None, is_company_managed=False, **fields
+        id=_SOURCE, user_id=uuid.uuid4(), is_sandbox=False, health_role=None, is_company_managed=False, **fields
     )
 
 
@@ -109,7 +109,7 @@ async def test_one_access_rule(world, case, allowed):
     source = _agent()
     if case == "fleet_agent":
         source = _agent()
-        source.concierge_role, source.is_company_managed = "experimenter", True
+        source.health_role, source.is_company_managed = "experimenter", True
     if case == "a_copy":
         source.is_sandbox = True
     world["flag"] = case != "flag_off"

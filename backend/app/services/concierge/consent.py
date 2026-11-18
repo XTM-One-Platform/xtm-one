@@ -23,15 +23,15 @@ never a re-spelling of it:
   supervision scope alone, :func:`in_supervision_scope`.
 * **Enrolment** (Platform Health S1, ``dev-docs/platform-health.md`` 1.2): the
   supervision scope only ever holds ENROLLED targets, an agent or flow whose
-  managers opted it in (``concierge_improvement_opt_in``). ``scope_mode = all``
+  managers opted it in (``health_enrolled``). ``scope_mode = all``
   no longer means every agent: it means every enrolled one, and ``selected``
   narrows that set further. Nothing is supervised on upgrade but what an owner
   already chose.
 * **Content** (trace payloads, memories, conversation excerpts, a flow run's
   journal): the target is in scope AND opted in by its managers
-  (``agents.concierge_improvement_opt_in``, ``flows.concierge_improvement_opt_in``),
+  (``agents.health_enrolled``, ``flows.health_enrolled``),
   AND no user whose lane or conversation it is opted out
-  (``users.concierge_opt_out``). :func:`content_readable` is the Python
+  (``users.health_content_opt_out``). :func:`content_readable` is the Python
   predicate, :func:`consent_filter` the same rule as a SQL clause for
   PostgreSQL tables, :class:`ConsentScope` the same rule as sets for a store
   that is not PostgreSQL (ClickHouse traces).
@@ -164,9 +164,9 @@ async def load_consent_scope(db: AsyncSession) -> ConsentScope:
     if current is None:
         return _INACTIVE
     selected = current.scope_mode == "selected"
-    fleet = frozenset((await db.execute(select(Agent.id).where(Agent.concierge_role.is_not(None)))).scalars())
-    agent_q = select(Agent.id).where(Agent.concierge_improvement_opt_in.is_(True), Agent.concierge_role.is_(None))
-    flow_q = select(Flow.id).where(Flow.concierge_improvement_opt_in.is_(True))
+    fleet = frozenset((await db.execute(select(Agent.id).where(Agent.health_role.is_not(None)))).scalars())
+    agent_q = select(Agent.id).where(Agent.health_enrolled.is_(True), Agent.health_role.is_(None))
+    flow_q = select(Flow.id).where(Flow.health_enrolled.is_(True))
     if selected:
         agent_q = agent_q.where(Agent.id.in_(current.scope_agent_ids))
         flow_q = flow_q.where(Flow.id.in_(current.scope_flow_ids))
@@ -186,7 +186,7 @@ async def load_consent_scope(db: AsyncSession) -> ConsentScope:
 
 async def opted_out_user_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
     """Every user who opted out."""
-    return frozenset((await db.execute(select(User.id).where(User.concierge_opt_out.is_(True)))).scalars())
+    return frozenset((await db.execute(select(User.id).where(User.health_content_opt_out.is_(True)))).scalars())
 
 
 async def content_readable_agent_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
@@ -206,14 +206,14 @@ async def in_supervision_scope(db: AsyncSession, target_type: TargetType, target
     # Enrolled targets only (module docstring): an agent or flow its managers opted in.
     if target_type == "agent":
         row = (
-            await db.execute(select(Agent.concierge_role, Agent.concierge_improvement_opt_in).where(Agent.id == target))
+            await db.execute(select(Agent.health_role, Agent.health_enrolled).where(Agent.id == target))
         ).one_or_none()
         if row is None or row[0] is not None or row[1] is not True:
             return False
         return current.scope_mode == "all" or target in current.scope_agent_ids
     if target_type == "flow":
         opted = (
-            await db.execute(select(Flow.concierge_improvement_opt_in).where(Flow.id == target))
+            await db.execute(select(Flow.health_enrolled).where(Flow.id == target))
         ).scalar_one_or_none()
         if opted is not True:
             return False
@@ -253,7 +253,7 @@ async def content_readable(
             return False
         row = (
             await db.execute(
-                select(Agent.concierge_role, Agent.concierge_improvement_opt_in).where(Agent.id == agent)
+                select(Agent.health_role, Agent.health_enrolled).where(Agent.id == agent)
             )
         ).one_or_none()
         if row is None or row[0] is not None or row[1] is not True:
@@ -261,13 +261,15 @@ async def content_readable(
     if flow is not None:
         if selected and flow not in current.scope_flow_ids:
             return False
-        opted = (await db.execute(select(Flow.concierge_improvement_opt_in).where(Flow.id == flow))).scalar_one_or_none()
+        opted = (await db.execute(select(Flow.health_enrolled).where(Flow.id == flow))).scalar_one_or_none()
         if opted is not True:
             return False
     wanted = {_uuid(x) for x in users if x is not None}
     if not wanted:
         return True
-    opted_out = await db.execute(select(User.id).where(User.id.in_(wanted), User.concierge_opt_out.is_(True)).limit(1))
+    opted_out = await db.execute(
+        select(User.id).where(User.id.in_(wanted), User.health_content_opt_out.is_(True)).limit(1)
+    )
     return opted_out.first() is None
 
 
@@ -302,8 +304,8 @@ async def consent_filter(
         agent_ok = exists(
             select(Agent.id).where(
                 Agent.id == agent_id_col,
-                Agent.concierge_improvement_opt_in.is_(True),
-                Agent.concierge_role.is_(None),
+                Agent.health_enrolled.is_(True),
+                Agent.health_role.is_(None),
             )
         )
         if selected:
@@ -311,14 +313,14 @@ async def consent_filter(
         set_targets.append(agent_id_col.is_not(None))
         checks.append(or_(agent_id_col.is_(None), agent_ok))
     if flow_id_col is not None:
-        flow_ok = exists(select(Flow.id).where(Flow.id == flow_id_col, Flow.concierge_improvement_opt_in.is_(True)))
+        flow_ok = exists(select(Flow.id).where(Flow.id == flow_id_col, Flow.health_enrolled.is_(True)))
         if selected:
             flow_ok = and_(flow_id_col.in_(current.scope_flow_ids), flow_ok)
         set_targets.append(flow_id_col.is_not(None))
         checks.append(or_(flow_id_col.is_(None), flow_ok))
     for col in user_id_cols:
         checks.append(
-            or_(col.is_(None), ~exists(select(User.id).where(User.id == col, User.concierge_opt_out.is_(True))))
+            or_(col.is_(None), ~exists(select(User.id).where(User.id == col, User.health_content_opt_out.is_(True))))
         )
     return and_(or_(*set_targets), *checks)
 

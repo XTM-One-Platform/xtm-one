@@ -80,7 +80,7 @@ async def _client(sessions: async_sessionmaker, user: User) -> AsyncIterator[htt
 
 async def _opt_in(sessions, model, row_id) -> bool:
     async with sessions() as db:
-        return (await db.get(model, row_id)).concierge_improvement_opt_in
+        return (await db.get(model, row_id)).health_enrolled
 
 
 # ── Routes: who may do what ───────────────────────────────────────────────
@@ -108,7 +108,7 @@ async def test_the_agent_opt_in_is_written_by_whoever_may_manage_it(who: str, st
         if status == 200:
             async with sessions() as db:
                 rows = (await db.execute(select(AuditLog).where(AuditLog.entity_id == world.private.id))).scalars().all()
-            assert [(r.action, r.details) for r in rows] == [("update", {"concierge_improvement_opt_in": True})]
+            assert [(r.action, r.details) for r in rows] == [("update", {"health_enrolled": True})]
             assert rows[0].user_id == getattr(world, who).id
         assert handlers == []
 
@@ -185,7 +185,7 @@ async def test_a_failing_revocation_changes_nothing(monkeypatch) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
-            (await db.get(Agent, world.private.id)).concierge_improvement_opt_in = True
+            (await db.get(Agent, world.private.id)).health_enrolled = True
             await db.commit()
         async with _client(sessions, world.owner) as client:
             response = await client.put(f"/api/v1/health/agents/{world.private.id}/opt-in", json={"opt_in": False})
@@ -204,8 +204,8 @@ async def test_the_opt_out_is_the_users_own(handlers) -> None:
             bad = await client.put("/api/v1/health/me/opt-out", json={"opt_out": True, "user_id": str(world.owner.id)})
             assert bad.status_code == 422
         async with sessions() as db:
-            assert (await db.get(User, world.reader.id)).concierge_opt_out is True
-            assert (await db.get(User, world.owner.id)).concierge_opt_out is False
+            assert (await db.get(User, world.reader.id)).health_content_opt_out is True
+            assert (await db.get(User, world.owner.id)).health_content_opt_out is False
         assert handlers == [Revocation(kind="user_opt_out", user_id=world.reader.id)]
 
 

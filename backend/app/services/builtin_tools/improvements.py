@@ -127,7 +127,7 @@ async def filing_agent(db: AsyncSession, agent_id: str | None) -> Any | None:
     if principal is None or principal.role != FILING_ROLE:
         return None
     agent = await db.get(Agent, principal.agent_id)
-    if agent is None or not is_concierge_agent(agent) or agent.concierge_role != FILING_ROLE:
+    if agent is None or not is_concierge_agent(agent) or agent.health_role != FILING_ROLE:
         return None
     return agent
 
@@ -287,7 +287,7 @@ def build_improvement_tools(
         elif handler.target_type == "agent":
             agent = await db.get(Agent, tid)
             # The fleet is never in its own scope: any role, company-managed or not.
-            if agent is None or agent.is_sandbox or agent.concierge_role is not None:
+            if agent is None or agent.is_sandbox or agent.health_role is not None:
                 reason = "the target is a sandbox copy or one of the fleet"
         if reason is not None:
             logger.info("propose_improvement refused: %s", reason)

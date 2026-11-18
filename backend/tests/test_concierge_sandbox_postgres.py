@@ -84,7 +84,7 @@ async def test_an_agent_copy_is_hidden_from_everyone_and_runs_as_its_source(sess
     async with sessions() as session:
         owner = await _user(session)
         admin = await _user(session, admin=True)
-        source = await _agent(session, owner, concierge_improvement_opt_in=True)
+        source = await _agent(session, owner, health_enrolled=True)
         copy = await copies.create_sandbox_copy(
             session,
             source_type="agent",
@@ -96,7 +96,7 @@ async def test_an_agent_copy_is_hidden_from_everyone_and_runs_as_its_source(sess
 
         agent = await session.get(Agent, copy.copy_agent_id)
         assert (agent.is_sandbox, agent.user_id, agent.is_company_managed) == (True, None, False)
-        assert (agent.persona, agent.concierge_improvement_opt_in) == ("Be thorough.", False)
+        assert (agent.persona, agent.health_enrolled) == ("Be thorough.", False)
         assert abs(copy.expires_at - copy.created_at - copies.SANDBOX_COPY_TTL) < timedelta(seconds=5)
 
         for user in (owner, admin):
@@ -631,10 +631,10 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     graph = {"nodes": [_node("start", "trigger.manual")], "edges": []}
     async with sessions() as session:
-        session.add(PlatformSettings(concierge_settings=ConciergeSettings(enabled=True).model_dump(mode="json")))
+        session.add(PlatformSettings(health_settings=ConciergeSettings(enabled=True).model_dump(mode="json")))
         owner = await _user(session)
         admin = await _user(session, admin=True)
-        opted_in = await _agent(session, owner, concierge_improvement_opt_in=True)
+        opted_in = await _agent(session, owner, health_enrolled=True)
         opted_out = await _agent(session, owner)
         source = Flow(id=uuid.uuid4(), user_id=owner.id, name="Not opted in", graph=graph)
         session.add(source)

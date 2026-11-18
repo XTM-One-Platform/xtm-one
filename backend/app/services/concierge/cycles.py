@@ -208,7 +208,7 @@ async def start_cycle(
         if not in_scope:
             return CycleStart(refusal="not_in_scope")
 
-    specialist = agent.concierge_role
+    specialist = agent.health_role
     try:
         async with db.begin_nested():
             cycle_id = await open_cycle(

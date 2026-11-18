@@ -62,7 +62,7 @@ def _now() -> datetime:
 
 
 class ConciergeFinding(Base):
-    __tablename__ = "concierge_findings"
+    __tablename__ = "health_findings"
     __table_args__ = (
         CheckConstraint(_in("status", FINDING_STATUSES), name="ck_concierge_findings_status_valid"),
         CheckConstraint(_in("target_type", TARGET_TYPES), name="ck_concierge_findings_target_type_valid"),

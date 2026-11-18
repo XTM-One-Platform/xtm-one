@@ -419,7 +419,7 @@ async def test_an_agent_change_is_watched_for_the_set_window(monkeypatch, live_w
     async with _temp_database(f"proposal_watch_{int(live_watcher)}") as sessionmaker:
         seeded = await _seed(sessionmaker)
         async with sessionmaker() as db:
-            db.add(PlatformSettings(concierge_settings=ConciergeSettings(proposal_watch_days=3).model_dump(mode="json")))
+            db.add(PlatformSettings(health_settings=ConciergeSettings(proposal_watch_days=3).model_dump(mode="json")))
             await db.commit()
         if live_watcher:
 

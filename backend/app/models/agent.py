@@ -625,13 +625,18 @@ class Agent(Base):
     # Platform Concierge (#8254, ``services/concierge/``). The improvement
     # opt-in: whoever may manage the agent lets the Concierge read its
     # memories and conversation content (``consent.py``). Off by default.
-    concierge_improvement_opt_in: Mapped[bool] = mapped_column(
+    health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Platform Health content opt-in (dev-docs/platform-health.md 1.2): the
+    # second, separate opt-in inside an enrolled agent that lets the analysis
+    # layer read its content. Carried from the former improvement opt-in by
+    # migration h118health01; off by default.
+    health_content_opt_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
     # The agent's role in the Concierge fleet, which makes its runs act as the
     # Concierge identity (``identity.py``). Written by the seed alone, never by
     # a REST route or an agent tool. NULL for every other agent.
-    concierge_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    health_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Coordination access: which AGENTS may read and write the company-managed
     # work items this agent creates and the company-managed shared state it

@@ -57,12 +57,12 @@ class _Db:
 
 
 def _fleet_agent(role="experimenter"):
-    return SimpleNamespace(id=uuid.uuid4(), concierge_role=role, is_company_managed=True, is_sandbox=False)
+    return SimpleNamespace(id=uuid.uuid4(), health_role=role, is_company_managed=True, is_sandbox=False)
 
 
 def _target_agent(**fields):
     return SimpleNamespace(
-        **{"id": _TARGET, "concierge_role": None, "is_company_managed": False, "is_sandbox": False, **fields}
+        **{"id": _TARGET, "health_role": None, "is_company_managed": False, "is_sandbox": False, **fields}
     )
 
 
@@ -94,7 +94,7 @@ async def _call(db, name, args, *, principal=None, user_id=None, agent_id=None):
 
 
 def _principal(agent, role=None):
-    return identity.ConciergePrincipal(agent_id=agent.id, role=role or agent.concierge_role)
+    return identity.ConciergePrincipal(agent_id=agent.id, role=role or agent.health_role)
 
 
 async def test_the_experimenter_files_with_itself_as_author(filed):
@@ -157,10 +157,10 @@ async def test_anyone_but_the_experimenter_on_a_supervised_target_is_refused(fil
     if case == "a person":
         principal = None
     elif case == "another fleet role":
-        experimenter.concierge_role = "quality_analyst"
+        experimenter.health_role = "quality_analyst"
         principal = _principal(experimenter)
     elif case == "role revoked on the row":
-        experimenter.concierge_role = None
+        experimenter.health_role = None
     elif case == "not company-managed":
         experimenter.is_company_managed = False
     elif case == "outside the scope":
@@ -168,7 +168,7 @@ async def test_anyone_but_the_experimenter_on_a_supervised_target_is_refused(fil
     elif case == "a sandbox copy":
         target.is_sandbox = True
     elif case == "a fleet agent":
-        target.concierge_role = "memory_steward"
+        target.health_role = "memory_steward"
     elif case == "an unknown type":
         args["proposal_type"] = "workspace"
     # A sandbox copy's turn, run inline, keeps the Experimenter's principal bound.

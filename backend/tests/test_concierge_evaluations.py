@@ -161,7 +161,7 @@ async def _world(s, *, scope_agent_ids: list | None = None, budget: dict | None 
 
     agent = Agent(name="Analyst", slug=f"a-{uuid.uuid4().hex[:6]}", skip_llm=True)
     fleet = Agent(
-        name="Experimenter", slug=f"e-{uuid.uuid4().hex[:6]}", concierge_role="experimenter", is_company_managed=True
+        name="Experimenter", slug=f"e-{uuid.uuid4().hex[:6]}", health_role="experimenter", is_company_managed=True
     )
     flow = Flow(name="Triage", graph={"nodes": [{"id": "start", "kind": "trigger.manual", "config": {}}]})
     dataset = Dataset(name="Concierge - Analyst", family="PROSE", concierge_built=True)
@@ -173,7 +173,7 @@ async def _world(s, *, scope_agent_ids: list | None = None, budget: dict | None 
         if scope_agent_ids is None
         else {"scope_mode": "selected", "scope_agent_ids": [str(a) for a in scope_agent_ids], "scope_flow_ids": []}
     )
-    s.add(PlatformSettings(concierge_settings={"enabled": True, **scope, **({"budget": budget} if budget else {})}))
+    s.add(PlatformSettings(health_settings={"enabled": True, **scope, **({"budget": budget} if budget else {})}))
     s.add_all(
         DatasetEntry(dataset_id=d.id, position=0, input_prompt="Question", expected_answer="a") for d in (dataset, human)
     )

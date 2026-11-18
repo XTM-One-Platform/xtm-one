@@ -72,7 +72,7 @@ def _now() -> datetime:
 
 
 class ConciergeExperiment(Base):
-    __tablename__ = "concierge_experiments"
+    __tablename__ = "health_experiments"
     __table_args__ = (
         CheckConstraint(_in("status", EXPERIMENT_STATUSES), name="ck_concierge_experiments_status_valid"),
         CheckConstraint(_in("change_type", CHANGE_TYPES), name="ck_concierge_experiments_change_type_valid"),
@@ -82,7 +82,7 @@ class ConciergeExperiment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     finding_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("concierge_findings.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("health_findings.id", ondelete="CASCADE"), nullable=False
     )
     change_type: Mapped[str] = mapped_column(String(32), nullable=False)
     #: What the variant changes: the agent (persona), the skill, the assignment.

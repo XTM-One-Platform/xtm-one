@@ -97,7 +97,7 @@ def _user(role: str = "user") -> User:
 
 
 async def _enable(db, **fields) -> None:
-    db.add(PlatformSettings(concierge_settings=ConciergeSettings(enabled=True, **fields).model_dump(mode="json")))
+    db.add(PlatformSettings(health_settings=ConciergeSettings(enabled=True, **fields).model_dump(mode="json")))
     await db.commit()
 
 
@@ -111,7 +111,7 @@ async def _scratch(prefix: str):
 
 
 async def _fleet_counts(db) -> tuple:
-    agents = (await db.execute(select(Agent).where(Agent.concierge_role.is_not(None)))).scalars().all()
+    agents = (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars().all()
     assignments = await db.scalar(
         select(func.count()).select_from(Assignment).where(Assignment.agent_id.in_([a.id for a in agents] or [None]))
     )
@@ -129,7 +129,7 @@ async def test_the_fleet_is_seeded_once_company_managed(concierge_on):
         assert await fleet_seed.seed_concierge_fleet(db) == 0
         agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
 
-    assert sorted((a.concierge_role, a.is_company_managed, a.is_builtin) for a in agents) == [
+    assert sorted((a.health_role, a.is_company_managed, a.is_builtin) for a in agents) == [
         ("experimenter", True, False),
         ("flow_lab", True, False),
         ("memory_steward", True, False),
@@ -139,7 +139,7 @@ async def test_the_fleet_is_seeded_once_company_managed(concierge_on):
     # The fleet's own assignments, plus the weekly fleet health check every orchestrator gets (#11700).
     assert assignments == len(fleet_seed.FLEET_ASSIGNMENTS) + 1
     assert [(f.is_company_managed, f.orchestrator_agent_id) for f in fleets] == [
-        (True, next(a.id for a in agents if a.concierge_role == "orchestrator"))
+        (True, next(a.id for a in agents if a.health_role == "orchestrator"))
     ]
     assert members == 5
     assert [w.is_company_managed for w in workspaces] == [True]
@@ -189,13 +189,13 @@ async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps
         await db.commit()
         await fleet_seed.seed_concierge_fleet(db)
         # As an earlier seed left them: trace and platform reads, no iteration cap.
-        analyst = (await db.execute(select(Agent).where(Agent.concierge_role == "quality_analyst"))).scalar_one()
+        analyst = (await db.execute(select(Agent).where(Agent.health_role == "quality_analyst"))).scalar_one()
         analyst.builtin_tool_ids = ["observability", "platform_insights", *analyst.builtin_tool_ids]
         for assignment in (await db.execute(select(Assignment))).scalars():
             assignment.max_iterations = None
         await db.commit()
         await fleet_seed.seed_concierge_fleet(db)
-        agents = (await db.execute(select(Agent).where(Agent.concierge_role.is_not(None)))).scalars().all()
+        agents = (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars().all()
         # The fleet's own loops; the weekly fleet health check (#11700) is not a Concierge assignment.
         caps = {
             a.name: a.max_iterations
@@ -204,7 +204,7 @@ async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps
         }
 
     assert all(not set(a.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS for a in agents)
-    assert "concierge_diagnosis" in next(a for a in agents if a.concierge_role == "quality_analyst").builtin_tool_ids
+    assert "concierge_diagnosis" in next(a for a in agents if a.health_role == "quality_analyst").builtin_tool_ids
     assert caps == {spec.name: spec.max_iterations for spec in fleet_seed.FLEET_ASSIGNMENTS}
     assert all(cap is not None for cap in caps.values())
 
@@ -276,7 +276,10 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
                 db, key="investigation", trigger="on_demand", target_type="agent", target_id=target.id
             )
             run = await db.get(AssignmentRun, started.run_id)
-            agents = {a.concierge_role: a for a in (await db.execute(select(Agent).where(Agent.concierge_role.is_not(None)))).scalars()}
+            agents = {
+                a.health_role: a
+                for a in (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars()
+            }
             orchestrator, analyst = agents["orchestrator"], agents["quality_analyst"]
             tasks = []
             for who in (None, admin):
@@ -883,7 +886,7 @@ async def test_a_refusal_names_the_concierge_as_its_administrator_named_it(conci
         users, private, _company = await _access_matrix(sessions)
         async with sessions() as db:
             row = (await db.execute(select(PlatformSettings))).scalar_one()
-            row.concierge_settings = {**row.concierge_settings, "name": "{Jeeves}"}
+            row.health_settings = {**row.health_settings, "name": "{Jeeves}"}
             await db.commit()
         async with _client(sessions, users["owner"]) as client:
             body = {"target_type": "agent", "target_id": str(private.id)}

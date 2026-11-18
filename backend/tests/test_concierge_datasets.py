@@ -51,14 +51,14 @@ async def _world(s):
     from app.models.platform_settings import PlatformSettings
     from app.models.user import User
 
-    s.add(PlatformSettings(concierge_settings={"enabled": True, "scope_mode": "all"}))
+    s.add(PlatformSettings(health_settings={"enabled": True, "scope_mode": "all"}))
     users = {
         name: User(email=f"{name}-{uuid.uuid4().hex[:6]}@example.com", hashed_password="x", full_name=name)
         for name in ("alice", "bob", "rater", "out")
     }
-    users["out"].concierge_opt_out = True
+    users["out"].health_content_opt_out = True
     s.add_all(users.values())
-    agent = Agent(name="Analyst", slug=f"a-{uuid.uuid4().hex[:6]}", concierge_improvement_opt_in=True)
+    agent = Agent(name="Analyst", slug=f"a-{uuid.uuid4().hex[:6]}", health_enrolled=True)
     other = Agent(name="Private", slug=f"p-{uuid.uuid4().hex[:6]}")
     s.add_all([agent, other])
     await s.flush()
@@ -180,7 +180,7 @@ async def test_a_target_outside_the_scope_is_refused_before_any_read():
         db.sessions() as s,
     ):
         _users, agent, _other = await _world(s)
-        agent.concierge_role = "experimenter"  # the fleet is never in its own scope
+        agent.health_role = "experimenter"  # the fleet is never in its own scope
         await s.commit()
         with pytest.raises(DatasetBuildError) as refused:
             await build_dataset_from_traces(s, target_type="agent", target_id=agent.id)
@@ -297,7 +297,7 @@ async def test_a_flow_run_needs_the_consent_of_every_agent_node_and_goes_with_it
         db.sessions() as s,
     ):
         users, agent, other = await _world(s)
-        flow = Flow(name="Triage flow", concierge_improvement_opt_in=True)
+        flow = Flow(name="Triage flow", health_enrolled=True)
         s.add(flow)
         await s.flush()
 
@@ -366,9 +366,9 @@ async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with
         db.sessions() as s,
     ):
         users, agent, _other = await _world(s)
-        caller = Flow(name="Caller", concierge_improvement_opt_in=True)
+        caller = Flow(name="Caller", health_enrolled=True)
         called = Flow(name="Called, not opted in")
-        nested = Flow(name="Called by the called", concierge_improvement_opt_in=True)
+        nested = Flow(name="Called by the called", health_enrolled=True)
         s.add_all([caller, called, nested])
         await s.flush()
 
@@ -411,7 +411,7 @@ async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with
         await s.commit()
 
         refused = await build_dataset_from_traces(s, target_type="flow", target_id=caller.id, failed=False)
-        called.concierge_improvement_opt_in = True
+        called.health_enrolled = True
         await s.commit()
         built = await build_dataset_from_traces(s, target_type="flow", target_id=caller.id, failed=False)
         sources = [src for src in await _sources(s) if src.dataset_id == built.dataset_id]
@@ -446,7 +446,7 @@ async def test_a_narrowed_scope_removes_a_flow_entry_whose_agent_node_left_it():
         flow_id, outsider = uuid.uuid4(), uuid.uuid4()
         entries = await _flow_entries(s, flow_id, {"inside": [agent.id], "outside": [agent.id, outsider], "none": []})
         settings_row = (await s.execute(select(PlatformSettings))).scalar_one()
-        settings_row.concierge_settings = {
+        settings_row.health_settings = {
             "enabled": True,
             "scope_mode": "selected",
             "scope_agent_ids": [str(agent.id)],

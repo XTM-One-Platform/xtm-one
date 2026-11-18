@@ -26,7 +26,7 @@ SOURCE_FLOW_RUN = "flow_run"
 
 
 class ConciergeDatasetEntrySource(Base):
-    __tablename__ = "concierge_dataset_entry_sources"
+    __tablename__ = "health_dataset_entry_sources"
     __table_args__ = (
         CheckConstraint("case_kind IN ('to_fix', 'non_regression')", name="ck_concierge_entry_sources_case_kind"),
         CheckConstraint(

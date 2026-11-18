@@ -31,7 +31,7 @@ class ConciergeCycle(Base):
     in flight set aside, ``spent_*`` what it really cost.
     """
 
-    __tablename__ = "concierge_cycles"
+    __tablename__ = "health_cycles"
     __table_args__ = (
         Index("ix_concierge_cycles_status_opened", "status", "opened_at"),
         # One open cycle per target (#8261, migration c8cnc8254081): the
@@ -70,7 +70,7 @@ class ConciergeCycle(Base):
 class ConciergeBudgetMonth(Base):
     """The Concierge's spend of one month, the row every reservation locks first."""
 
-    __tablename__ = "concierge_budget_months"
+    __tablename__ = "health_budget_months"
 
     month: Mapped[str] = mapped_column(String(7), primary_key=True)
     reserved_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
@@ -95,7 +95,7 @@ class ConciergeBudgetWork(Base):
     (``charged_at``), whichever tick books it.
     """
 
-    __tablename__ = "concierge_budget_work"
+    __tablename__ = "health_budget_work"
 
     # What the work is (``evaluation``, ``run``) and its id.
     kind: Mapped[str] = mapped_column(String(32), primary_key=True)

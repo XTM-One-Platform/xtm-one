@@ -365,7 +365,7 @@ class PlatformSettings(Base):
     # --- Platform Concierge ───────────────────────────────────────
     # Enable, supervision scope and budget caps; NULL or a missing key = its
     # default. Read and written only by ``services/concierge/settings.py``.
-    concierge_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    health_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # --- Terms of Use acceptance (platform-wide) ────────────────────
     # A SINGLE platform-level acceptance of the Terms of Use, replacing the

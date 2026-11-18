@@ -103,7 +103,10 @@ class Flow(Base):
 
     # Platform Concierge improvement opt-in (#8254): the agent's opt-in, for a
     # flow's run journals (``services/concierge/consent.py``). Off by default.
-    concierge_improvement_opt_in: Mapped[bool] = mapped_column(
+    health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Platform Health content opt-in (dev-docs/platform-health.md 1.2),
+    # carried from the former improvement opt-in by migration h118health01.
+    health_content_opt_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 

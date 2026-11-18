@@ -82,7 +82,7 @@ async def _seed(sessions) -> World:
         db.add(GroupMember(group_id=group.id, user_id=users["member"].id))
 
         agent = Agent(id=uuid.uuid4(), name="Billing agent", user_id=users["owner"].id, persona="You bill.")
-        agent.concierge_improvement_opt_in = True
+        agent.health_enrolled = True
         agent.shared_user_ids = [str(users["config"].id), str(users["chats"].id), str(users["read_only"].id)]
         agent.shared_user_permissions = {
             str(users["config"].id): "config",
@@ -94,21 +94,21 @@ async def _seed(sessions) -> World:
         company_agent = Agent(
             id=uuid.uuid4(), name="Company agent", user_id=admin.id, is_company_managed=True, persona="You help."
         )
-        company_agent.concierge_improvement_opt_in = True
+        company_agent.health_enrolled = True
         outside_agent = Agent(id=uuid.uuid4(), name="Outside agent", user_id=users["owner"].id, persona="x")
         analyst = Agent(
             id=uuid.uuid4(), name="Quality Analyst", user_id=admin.id, is_company_managed=True, persona="x"
         )
-        analyst.concierge_role = "quality_analyst"
+        analyst.health_role = "quality_analyst"
         experimenter = Agent(
             id=uuid.uuid4(), name="Experimenter", user_id=admin.id, is_company_managed=True, persona="x"
         )
-        experimenter.concierge_role = "experimenter"
+        experimenter.health_role = "experimenter"
         db.add_all([agent, company_agent, outside_agent, analyst, experimenter])
         await db.flush()
         db.add(
             PlatformSettings(
-                concierge_settings={
+                health_settings={
                     "enabled": True,
                     "scope_mode": "selected",
                     "scope_agent_ids": [str(agent.id), str(company_agent.id)],
@@ -243,7 +243,7 @@ async def test_a_revoked_opt_in_redacts_a_content_finding_at_the_next_read(monke
     async with _world(monkeypatch, "cq_revoked") as (world, sessions):
         async with sessions() as db:
             agent = await db.get(Agent, world.agent.id)
-            agent.concierge_improvement_opt_in = False
+            agent.health_enrolled = False
             await db.commit()
         with _as(world.analyst, "quality_analyst"):
             listed = _parsed(await _call("", "list_findings", target_id=str(world.agent.id)))

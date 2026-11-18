@@ -25,11 +25,11 @@ from app.core.database import Base
 class ConciergeCycleRun(Base):
     """The assignment run a cycle started, who asked for it, and its digest."""
 
-    __tablename__ = "concierge_cycle_runs"
+    __tablename__ = "health_cycle_runs"
     __table_args__ = (Index("ix_concierge_cycle_runs_target", "target_type", "target_id"),)
 
     cycle_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("concierge_cycles.id", ondelete="CASCADE"), primary_key=True
+        UUID(as_uuid=True), ForeignKey("health_cycles.id", ondelete="CASCADE"), primary_key=True
     )
     # No foreign keys below: a deleted agent, assignment or run leaves the
     # digest readable, and the cycle never locks the busy run tables.
@@ -59,7 +59,7 @@ class ConciergeSignalState(Base):
     cycle, staying crossed starts nothing, clearing re-arms it.
     """
 
-    __tablename__ = "concierge_signal_states"
+    __tablename__ = "health_signal_states"
     __table_args__ = (
         UniqueConstraint("target_type", "target_id", "kind", name="uq_concierge_signal_states_target_kind"),
         Index("ix_concierge_signal_states_active", "active"),
@@ -87,7 +87,7 @@ class ConciergeSignalState(Base):
 class ConciergeScheduleMark(Base):
     """When a fleet-wide schedule last fired, and what came of it."""
 
-    __tablename__ = "concierge_schedule_marks"
+    __tablename__ = "health_schedule_marks"
 
     # ``cycles.ScheduleKey``: ``memory`` | ``quality`` | ``flows`` | ``digest``.
     schedule: Mapped[str] = mapped_column(String(16), primary_key=True)

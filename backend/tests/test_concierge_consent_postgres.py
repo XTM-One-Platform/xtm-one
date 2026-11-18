@@ -44,12 +44,12 @@ async def test_the_predicate_the_filter_and_the_snapshot_agree(scope: str) -> No
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
-            opted_in = make_agent(world.owner, "opted-in", concierge_improvement_opt_in=True)
+            opted_in = make_agent(world.owner, "opted-in", health_enrolled=True)
             other_flow = Flow(id=uuid.uuid4(), user_id=world.owner.id, name="other", graph={})
             db.add_all([opted_in, other_flow])
-            (await db.get(Agent, world.fleet.id)).concierge_improvement_opt_in = True
-            (await db.get(Flow, world.flow.id)).concierge_improvement_opt_in = True
-            (await db.get(User, world.revoked.id)).concierge_opt_out = True
+            (await db.get(Agent, world.fleet.id)).health_enrolled = True
+            (await db.get(Flow, world.flow.id)).health_enrolled = True
+            (await db.get(User, world.revoked.id)).health_content_opt_out = True
             await db.commit()
         await configure(
             sessions,
@@ -101,7 +101,7 @@ async def test_a_revocation_applies_to_the_next_read() -> None:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=True)
         async with sessions() as db:
-            (await db.get(Agent, world.private.id)).concierge_improvement_opt_in = True
+            (await db.get(Agent, world.private.id)).health_enrolled = True
             await db.commit()
             assert await consent.content_readable(db, agent_id=world.private.id, user_id=world.reader.id) is True
             assert await consent.content_readable_agent_ids(db) == frozenset({world.private.id})
@@ -109,7 +109,7 @@ async def test_a_revocation_applies_to_the_next_read() -> None:
             assert await consent.in_supervision_scope(db, "agent", world.fleet.id) is False
             assert await consent.in_supervision_scope(db, "flow", world.flow.id) is True
         async with sessions() as other:
-            (await other.get(User, world.reader.id)).concierge_opt_out = True
+            (await other.get(User, world.reader.id)).health_content_opt_out = True
             await other.commit()
         async with sessions() as db:
             assert await consent.content_readable(db, agent_id=world.private.id, user_id=world.reader.id) is False
@@ -124,8 +124,8 @@ async def test_an_audited_read_names_the_concierge_and_a_refused_one_writes_noth
         await configure(sessions, world.admin, enabled=True)
         trace_id = uuid.uuid4()
         async with sessions() as db:
-            (await db.get(Agent, world.private.id)).concierge_improvement_opt_in = True
-            (await db.get(User, world.revoked.id)).concierge_opt_out = True
+            (await db.get(Agent, world.private.id)).health_enrolled = True
+            (await db.get(User, world.revoked.id)).health_content_opt_out = True
             await db.commit()
             principal = concierge_principal_for(await db.get(Agent, world.fleet.id), None)
             with acting_as_concierge(principal):

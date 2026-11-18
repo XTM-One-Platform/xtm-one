@@ -160,15 +160,15 @@ _MOVED_OUT_OF_THE_MODELS = {"persona_improvements"}
 
 #: No-FK user-id columns the merge handles another way (``_fold_daily_stats``),
 #: or that it never has to: ``improvement_proposals``,
-#: ``concierge_dataset_entry_sources``, ``concierge_cycle_runs`` and
+#: ``health_dataset_entry_sources``, ``health_cycle_runs`` (formerly ``concierge_*``) and
 #: ``platform_settings.organization_setup_prompted_by_user_id`` (#9173, who answered
 #: the once-per-instance setup proposal) were created after it.
 _HANDLED_ELSEWHERE = {
     ("llm_daily_stats", "user_id"),
     ("improvement_proposals", "requested_by_user_id"),
     ("improvement_proposals", "decided_by_user_id"),
-    ("concierge_dataset_entry_sources", "source_user_id"),
-    ("concierge_cycle_runs", "requested_by_user_id"),
+    ("health_dataset_entry_sources", "source_user_id"),
+    ("health_cycle_runs", "requested_by_user_id"),
     ("platform_settings", "organization_setup_prompted_by_user_id"),
 }
 

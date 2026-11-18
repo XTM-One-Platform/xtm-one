@@ -122,7 +122,7 @@ async def _copy_agent(db: AsyncSession, source_id: uuid.UUID, overrides: Sandbox
         # Reachable from no channel: a copy would answer there for real.
         channel_config=None,
     )
-    for consent_field in ("concierge_improvement_opt_in", "concierge_role"):
+    for consent_field in ("health_enrolled", "health_content_opt_in", "health_role"):
         kwargs.pop(consent_field, None)
     kwargs["builtin_tool_ids"] = sandbox_tool_ids(kwargs.get("builtin_tool_ids"))
     copy = Agent(**kwargs, is_sandbox=True)

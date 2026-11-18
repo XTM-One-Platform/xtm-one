@@ -4,7 +4,7 @@ Pinned here, with ``ENABLED_FEATURES`` empty: every built-in group gated on the
 Concierge (``gate="concierge"``) is offered and kept by the registry, and the
 agent builder advertises the memory steward; a chat turn wires the Concierge's
 tool groups; the improvement proposal routes are served; the listing rule shows
-the seeded fleet (``concierge_role``) to everyone the listing allows.
+the seeded fleet (``health_role``) to everyone the listing allows.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ async def test_the_fleet_is_listed_with_no_flag():
                 name="Concierge",
                 user_id=admin.id,
                 is_company_managed=True,
-                concierge_role="orchestrator",
+                health_role="orchestrator",
                 slug=f"concierge-{uuid.uuid4().hex[:6]}",
             )
             plain = Agent(

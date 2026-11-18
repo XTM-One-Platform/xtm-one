@@ -396,7 +396,7 @@ async def seed_concierge_fleet(db: AsyncSession) -> int:
         if agent is None:
             agent = by_slug[spec.slug] = await _create_agent(db, spec, owner_id, name)
             created += 1
-        if agent.concierge_role != spec.role:
+        if agent.health_role != spec.role:
             await set_concierge_role(db, agent, spec.role)
         kept = [tool for tool in agent.builtin_tool_ids or [] if tool not in NON_CONSENT_TOOL_GROUPS]
         if kept != list(agent.builtin_tool_ids or []):
@@ -440,7 +440,7 @@ async def fleet_assignment(db: AsyncSession, key: AssignmentKey) -> tuple[Assign
             select(Assignment, Agent)
             .join(Agent, Agent.id == Assignment.agent_id)
             .where(
-                Agent.concierge_role == role,
+                Agent.health_role == role,
                 Agent.is_company_managed.is_(True),
                 Assignment.name.in_(spec.names),
             )
@@ -459,7 +459,7 @@ async def fleet_agent_ids(db: AsyncSession) -> list[uuid.UUID]:
         (
             await db.execute(
                 select(Agent.id).where(
-                    Agent.concierge_role.in_(sorted(CONCIERGE_ROLES)), Agent.is_company_managed.is_(True)
+                    Agent.health_role.in_(sorted(CONCIERGE_ROLES)), Agent.is_company_managed.is_(True)
                 )
             )
         ).scalars()

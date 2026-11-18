@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Settings > Agents and automations > Concierge: the one reader and writer of ``PlatformSettings.concierge_settings`` (#8254).
+"""Settings > Agents and automations > Concierge: the one reader and writer of ``PlatformSettings.health_settings`` (#8254).
 
 One JSON column, one model. Later levels add fields with defaults to
 :class:`ConciergeSettings` (schedule, signal thresholds, shadow and watch
@@ -203,7 +203,7 @@ async def load_concierge_settings(db: AsyncSession) -> ConciergeSettings:
 
     stored = (
         await db.execute(
-            select(PlatformSettings.concierge_settings)
+            select(PlatformSettings.health_settings)
             .order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc())
             .limit(1)
         )
@@ -225,13 +225,13 @@ async def save_concierge_settings(
     from app.services.concierge.naming import concierge_name, rename_concierge
 
     row = await get_platform_settings(db)
-    before = _read(row.concierge_settings)
-    row.concierge_settings = new.model_dump(mode="json")
+    before = _read(row.health_settings)
+    row.health_settings = new.model_dump(mode="json")
     await log_audit(
         db,
         user=actor,
         action="configure",
-        entity_type="concierge_settings",
+        entity_type="health_settings",
         summary="Updated the Concierge settings",
         details={"before": before.model_dump(mode="json"), "after": new.model_dump(mode="json")},
         request=request,

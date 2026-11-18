@@ -40,7 +40,7 @@ async def test_settings_are_saved_audited_and_switch_the_concierge_on(monkeypatc
             assert (stored.enabled, stored.scope_mode, stored.scope_agent_ids) == (True, "selected", [world.private.id])
             assert await concierge_active(db) is True
             rows = (
-                await db.execute(select(AuditLog).where(AuditLog.entity_type == "concierge_settings"))
+                await db.execute(select(AuditLog).where(AuditLog.entity_type == "health_settings"))
             ).scalars().all()
             assert [(r.action, r.user_id, r.details["after"]["enabled"]) for r in rows] == [
                 ("configure", world.admin.id, True)

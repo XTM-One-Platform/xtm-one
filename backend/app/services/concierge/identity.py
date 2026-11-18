@@ -21,7 +21,7 @@ consent. The fleet's runs are company-managed assignment runs with no user, so
 they already read with no account and no admin bypass
 (``helpers.no_account_provenance``); this module adds which runs those are.
 
-* A run acts as the Concierge when its agent row carries a ``concierge_role``,
+* A run acts as the Concierge when its agent row carries a ``health_role``,
   is company-managed, the ``CONCIERGE`` flag is on, and the run has no user or
   an admin user (:func:`concierge_principal_for`). A non-admin chatting with a
   fleet agent gets no principal, so every Concierge tool refuses.
@@ -109,7 +109,7 @@ def is_concierge_agent(agent: Any) -> bool:
     The role alone is not enough: the fleet is company-managed, and a private
     agent never acts as the platform.
     """
-    role = getattr(agent, "concierge_role", None)
+    role = getattr(agent, "health_role", None)
     return role in CONCIERGE_ROLES and getattr(agent, "is_company_managed", False) is True
 
 
@@ -122,10 +122,10 @@ def concierge_principal_for(agent: Any, user: Any | None) -> ConciergePrincipal 
     if not concierge_enabled() or not is_concierge_agent(agent):
         return None
     if user is None:
-        return ConciergePrincipal(agent_id=agent.id, role=agent.concierge_role)
+        return ConciergePrincipal(agent_id=agent.id, role=agent.health_role)
     if getattr(user, "role", None) != "admin" or getattr(user, "is_active", True) is False:
         return None
-    return ConciergePrincipal(agent_id=agent.id, role=agent.concierge_role, on_behalf_of_admin_id=user.id)
+    return ConciergePrincipal(agent_id=agent.id, role=agent.health_role, on_behalf_of_admin_id=user.id)
 
 
 @contextlib.contextmanager
@@ -250,5 +250,5 @@ async def set_concierge_role(db: AsyncSession, agent: Any, role: str | None) -> 
             raise ValueError(f"not a Concierge role: {role!r}")
         if getattr(agent, "is_company_managed", False) is not True:
             raise ValueError("a Concierge fleet agent must be company-managed")
-    agent.concierge_role = role
+    agent.health_role = role
     await db.flush()

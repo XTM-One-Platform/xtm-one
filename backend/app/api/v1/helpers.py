@@ -3334,17 +3334,17 @@ def hidden_rows_excluded(model_cls: Any):
     (``is_internal``, #3074) and the Concierge's sandbox copies (``is_sandbox``,
     #8255). The owning primitive reads such a row by id; its own row is the
     authorization. While "CONCIERGE" is off, the Concierge fleet
-    (``concierge_role``) too: it must not stay chattable once the flag is off."""
+    (``health_role``) too: it must not stay chattable once the flag is off."""
     clauses = [
         getattr(model_cls, column).is_(False)
         for column in ("is_internal", "is_sandbox")
         if hasattr(model_cls, column)
     ]
-    if hasattr(model_cls, "concierge_role"):
+    if hasattr(model_cls, "health_role"):
         from app.services.concierge.availability import concierge_enabled
 
         if not concierge_enabled():
-            clauses.append(model_cls.concierge_role.is_(None))
+            clauses.append(model_cls.health_role.is_(None))
     return and_(*clauses) if clauses else None
 
 

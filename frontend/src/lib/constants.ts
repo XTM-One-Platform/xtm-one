@@ -1111,6 +1111,7 @@ const AUDIT_ENTITY_LABELS = {
   concierge_cycle: "Platform Health cycle",
   concierge_pet: "Platform Health pet",
   concierge_settings: "Platform Health settings",
+  health_settings: "Platform Health settings",
   conversation: "Conversation",
   conversation_files: "Conversation files",
   custom_dashboard: "Custom dashboard",

@@ -71,7 +71,7 @@ class World:
             }
             self.private = make_agent(self.owner, "private", **shares)
             self.company = make_agent(self.admin, "company", is_company_managed=True)
-            self.fleet = make_agent(self.admin, "experimenter", is_company_managed=True, concierge_role="experimenter")
+            self.fleet = make_agent(self.admin, "experimenter", is_company_managed=True, health_role="experimenter")
             self.flow = Flow(id=uuid.uuid4(), user_id=self.owner.id, name="triage", graph={}, **shares)
             db.add_all([self.private, self.company, self.fleet, self.flow])
             await db.commit()
