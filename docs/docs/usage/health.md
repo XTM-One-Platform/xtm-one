@@ -1,12 +1,12 @@
-# Improvements
+# Platform Health
 
-When the [Concierge](../administration/concierge.md) is on, it looks for ways to improve the agents and flows of the platform, tries them on sandbox copies, and files **improvement proposals**. A proposal changes nothing until someone who manages the target approves it.
+When [Platform Health](../administration/health.md) is on, it looks for ways to improve the agents and flows of the platform, tries them on sandbox copies, and files **improvement proposals**. A proposal changes nothing until someone who manages the target approves it.
 
 ## Where to find them
 
-- **Agent page > Overview > Improvements**: the proposals on the agent, its skills and its assignments, and the Concierge's cycles on the agent.
+- **Agent page > Overview > Improvements**: the proposals on the agent, its skills and its assignments, and the Platform Health cycles on the agent.
 - **A flow's page > Improvements** (the compass in its toolbar): the proposals and cycles of the flow.
-- Administrators: **Administration > Concierge** lists every proposal.
+- Administrators: the **Platform Health** page (`/health`) lists every proposal.
 
 These appear only to the people who may manage the agent or flow: its owner, a person or group it is shared with at the **config** level, and administrators for a company-managed one. Read-only sharing does not show them.
 
@@ -21,9 +21,9 @@ Each proposal shows:
 
 Approve or reject it from the target's page. An approved change is applied as a new version of the target and watched: if it regresses within the watch window it is rolled back, unless someone edited the target meanwhile, in which case that edit is kept.
 
-## Improve with Concierge
+## Improve with Platform Health
 
-The **Improve with Concierge** button, on the agent page and on a flow's page, asks the Concierge to investigate that agent or flow now. It is offered to the people who may manage it. The Concierge says so when it cannot start:
+The **Improve with …** button (it carries the orchestrator's name), on the agent page and on a flow's page, asks Platform Health to investigate that agent or flow now. It is offered to the people who may manage it. Platform Health says so when it cannot start:
 
 - it is already working on this target;
 - the target is outside its supervision scope;
@@ -34,15 +34,15 @@ What it finds appears under Improvements once its cycle ends.
 
 ## The companion
 
-The companion is a small animated pet in the bottom-right corner of the screen that shows what the Concierge, and your own work, is doing. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. Alfred, a butler with a silver tray, is the built-in pet and the default one.
+The companion is a small animated pet in the bottom-right corner of the screen that shows what Platform Health, and your own work, is doing. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. Alfred, a butler with a silver tray, is the built-in pet and the default one.
 
 | The pet | When |
 |---|---|
 | Waves | It appears |
-| Looks worried | A Concierge cycle you asked for (every cycle, for an administrator), or one of your runs, failed in the last 30 minutes |
+| Looks worried | A Platform Health cycle you asked for (every cycle, for an administrator), or one of your runs, failed in the last 30 minutes |
 | Checks its watch | One of your runs is waiting for your approval |
 | Presents a letter | A proposal waits for a decision you may take |
 | Is at work | A cycle you asked for is running, one of your runs is running, or the chat on screen is answering |
 | Stands by | Nothing of the above |
 
-Click the pet to read what it shows, to open the Concierge page, or to hide it; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.
+Click the pet to read what it shows, to open the Platform Health page, or to hide it; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.

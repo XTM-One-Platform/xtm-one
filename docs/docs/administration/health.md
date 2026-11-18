@@ -1,17 +1,17 @@
-# Concierge
+# Platform Health
 
-The Concierge is a company-managed fleet of agents that looks after the platform's other agents and flows. It consolidates memories, diagnoses agents and flows from their traces, ratings and run history, tries changes on sandbox copies, measures them with evaluations, and files **improvement proposals** that the people who manage the target approve. Nothing it proposes reaches production without that approval, and an applied change that regresses is rolled back.
+Platform Health (formerly the Concierge) is a company-managed fleet of agents that looks after the platform's other agents and flows. It consolidates memories, diagnoses agents and flows from their traces, ratings and run history, tries changes on sandbox copies, measures them with evaluations, and files **improvement proposals** that the people who manage the target approve. Nothing it proposes reaches production without that approval, and an applied change that regresses is rolled back.
 
 !!! note "Built in"
-    The Concierge is built in: no feature flag is needed. An administrator turns it on in **Settings > Concierge**.
+    Platform Health is built in: no feature flag is needed. An administrator turns it on in **Settings > Automations > Platform Health**. The former `/concierge` page and `/api/v1/concierge` routes still answer for one minor release: the page redirects to `/health`, the API routes are deprecated aliases of `/api/v1/health` and carry a `Deprecation` header.
 
 ## The fleet
 
-The platform creates a company-managed fleet named after the Concierge, in a company-managed workspace of the same name, with five agents:
+The platform creates a company-managed fleet named after the orchestrator, in a company-managed workspace of the same name, with five agents:
 
 | Agent | Role |
 |---|---|
-| **Concierge** (or the name set below) | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
+| **Concierge** (or the name set below; renamed with the seeded fleet) | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
 | **Memory Steward** | Consolidates the memory of agents whose managers opted in. |
 | **Quality Analyst** | Diagnoses agents and drafts persona, skill and assignment-prompt variants. |
 | **Flow Lab** | Diagnoses flows and drafts repairs, optimizations and new flows on sandbox copies. |
@@ -19,21 +19,21 @@ The platform creates a company-managed fleet named after the Concierge, in a com
 
 They are ordinary company-managed agents: an administrator may edit their persona, model and skills, and the platform keeps those edits. None of them can edit an agent or a flow directly. The fleet never supervises itself.
 
-Every piece of Concierge work is a run of one of the fleet's assignments, and every run starts inside a **cycle**: a unit of work with its own share of the Concierge budget. Each cycle ends with a digest.
+Every piece of Platform Health work is a run of one of the fleet's assignments, and every run starts inside a **cycle**: a unit of work with its own share of the Platform Health budget. Each cycle ends with a digest.
 
-## Settings > Concierge
+## Settings > Automations > Platform Health
 
 | Section | What it sets |
 |---|---|
-| Enable, name, scope, budget | Whether the Concierge works, the name people see it under, which agents and flows it supervises (all, or a list), and its budget per cycle and per month, in tokens and in dollars. |
+| Enable, name, scope, budget | Whether Platform Health works, the name its orchestrator agent is shown under, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
-| Dry-run | Every write of every Concierge agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
+| Dry-run | Every write of every Platform Health agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
 
 ### Name
 
-The **Name** field sets what people call the Concierge: the title of its page, the inbox and the entry points ("Improve with …"), the refusals it answers with, its profile row, and the name of the orchestrator agent, its fleet and its workspace. Left empty, the name is **Alfred** on a Filigran Copilot deployment and **Concierge** on every other. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
+The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Alfred** on a Filigran Copilot deployment and **Concierge** on every other. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
 
 Saving a new name renames the orchestrator, the fleet and the workspace that still carry the previous one. A row an administrator renamed by hand keeps its own name. The agents' personas are not changed: the name is what people read, not an instruction to the model.
 
@@ -41,7 +41,7 @@ A schedule that is due while the budget is reached, or while agentic AI is off, 
 
 ### Companion pets
 
-The **Companion pets** block lists the pets users may pick for their companion (see [Improvements](../usage/improvements.md#the-companion)). **Alfred** is built in and cannot be removed. **Add a pet** takes a pet in the Codex pet format, as one `.zip` holding `pet.json` and its spritesheet, or as the two files:
+The **Companion pets** block lists the pets users may pick for their companion (see [Platform Health](../usage/health.md#the-companion)). **Alfred** is built in and cannot be removed. **Add a pet** takes a pet in the Codex pet format, as one `.zip` holding `pet.json` and its spritesheet, or as the two files:
 
 - `pet.json` with `id` (lowercase letters, digits and dashes), `displayName`, an optional `description`, `spritesheetPath` (a `.webp` or `.png` path inside the package) and, for a version 2 pet, `"spriteVersionNumber": 2`;
 - a spritesheet of 8 columns of 192x208 cells: 1536x1872 for version 1 (9 rows: idle, running right, running left, waving, jumping, failed, waiting, running, review), 1536x2288 for version 2 (two more rows, the look directions).
@@ -76,16 +76,16 @@ A cycle reads **Completed** only when its run completed with nothing skipped. Ot
 
 The weekly digest assignment summarizes the cycles closed since the previous one; its result appears in the dashboard's latest results.
 
-## The Concierge page
+## The Platform Health page
 
-Administrators find every proposal, cycle and signal under **Administration > Concierge**:
+Administrators find every proposal, cycle and signal on the **Platform Health** page (`/health`):
 
 - **Improvements**: every proposal, filtered by type and status, with its measured result, the number of writes simulated during its experiment, and its evidence. Evidence the viewer may not open is counted, not linked.
 - **Cycles**: every cycle and its digest.
 - **Signals**: the signals currently crossed, and whether each started an investigation.
 
-Managers see the proposals and cycles of the agents and flows they manage on those pages (see [Improvements](../usage/improvements.md)).
+Managers see the proposals and cycles of the agents and flows they manage on those pages (see [Platform Health](../usage/health.md)).
 
-## Chat with the Concierge
+## Chat with the orchestrator
 
-The Concierge orchestrator answers in chat. With an administrator it reads every cycle and signal of its scope; with anyone else, only those of the agents and flows that person manages, and it may start an investigation on one of them on their behalf.
+The Platform Health orchestrator answers in chat. With an administrator it reads every cycle and signal of its scope; with anyone else, only those of the agents and flows that person manages, and it may start an investigation on one of them on their behalf.

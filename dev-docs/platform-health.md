@@ -110,7 +110,7 @@ alias for one minor release (section 2.3).
 | Flow page | `pages/flow-builder/ConciergePanel.tsx`, toolbar button | Same compact row in the flow side panel |
 | Profile | `ConciergeOptOutRow.tsx`, `ConciergeCompanionCard.tsx` | Opt-out kept and renamed; companion kept as a profile option and renamed |
 | i18n | about 577 occurrences in 5 catalogs | Renamed in every language |
-| Docs | `docs/docs/administration/concierge.md`, 7 `dev-docs/concierge-*.md` | `administration/health.md`, `usage/health.md`; dev-docs folded into this file and `platform-health-*.md` slices |
+| Docs | `docs/docs/administration/concierge.md`, 7 `dev-docs/concierge-*.md` | `administration/health.md`, `usage/health.md`; dev-docs folded into this file and `platform-health-*.md` slices. Done in S1: both pages renamed (`administration/concierge.md` to `administration/health.md`, `usage/improvements.md` to `usage/health.md`), rewritten to Platform Health and published in `mkdocs.yml` (Administration, and Use the platform > Monitor activity) |
 | Flag | `CONCIERGE` in `backend/app/core/feature_flags.py` and `frontend/src/lib/utils.ts` | Removed per "Removing the flag"; `ENABLED_FEATURES=CONCIERGE` becomes a no-op logged once |
 
 ### 2.3 Aliases and migration
