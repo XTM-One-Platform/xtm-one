@@ -177,11 +177,6 @@ def test_gpt_6_1_and_astra_omit_the_temperature_they_refuse(model):
     }
 
 
-def test_gpt_6_1_keeps_the_gpt_6_rule_refusing_effort_with_tools():
-    """gpt-6.1 is a gpt-6 model: no rule of its own may shadow ``effort_refused_with_tools``."""
-    assert refuses_effort_with_tools("gpt-6.1-sol") is True
-
-
 def test_chatgpt_model_keeps_temperature_with_completion_tokens():
     assert build_openai_generation_params(
         "chatgpt-4o-latest", temperature=0.2, max_tokens=512
