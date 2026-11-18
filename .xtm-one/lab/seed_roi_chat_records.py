@@ -21,6 +21,11 @@ show, all inside the default 30-day window:
 * lines of a member of "Lab sample fleet" (the fleet scope narrows to them), of the ROI review
   agent, and lines owned by the lab peer (the Mine scope of a non-administrator).
 
+Every line carries its agent's home fleet as the platform's writer stamps it at the first write
+(``fleet_runs.home_fleet_defaults_of``, #12077), ``fleet_backfilled`` false: the trace maintenance
+that backfills older rows does not run in the lab, so an unstamped line would never reach the fleet
+scope (dev:harness-gaps lab-seed-roi-chat-records-fleet-stamp).
+
 No model call, no conversation: ``conversation_id`` stays NULL, so the measured time is 0.
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
@@ -58,8 +63,12 @@ LINES: tuple[tuple[str, str, float, tuple[str, ...], float, str, str, float | No
 )
 
 
-def plan(now: datetime, ids: dict[str, str]) -> list[dict]:
-    """The ``roi_chat_records`` columns of every seeded line, oldest edit first, times relative to *now*."""
+def plan(now: datetime, ids: dict[str, str], fleets: dict[str, str] | None = None) -> list[dict]:
+    """The ``roi_chat_records`` columns of every seeded line, oldest edit first, times relative to *now*.
+
+    *fleets* maps an agent id to its home fleet id; an agent with none leaves ``fleet_id`` NULL.
+    """
+    fleets = fleets or {}
     rows = []
     for label, kind, size, signals, hours, user, agent, adjusted, title in sorted(LINES, key=lambda line: -line[4]):
         edited = now - timedelta(hours=hours)
@@ -68,7 +77,8 @@ def plan(now: datetime, ids: dict[str, str]) -> list[dict]:
             "label": label,
             "record": {
                 "record_key": f"{kind}:{deliverable}", "kind": kind, "deliverable_id": deliverable,
-                "user_id": ids[user], "agent_id": ids[agent], "conversation_id": None, "title": title,
+                "user_id": ids[user], "agent_id": ids[agent], "fleet_id": fleets.get(ids[agent]),
+                "fleet_backfilled": False, "conversation_id": None, "title": title,
                 "size": float(size), "signals": list(signals),
                 "first_signal_at": edited + timedelta(minutes=30) if signals else None,
                 "last_edit_at": edited, "created_at": edited - timedelta(hours=1),
@@ -81,26 +91,30 @@ def plan(now: datetime, ids: dict[str, str]) -> list[dict]:
 
 
 async def seed(ids: dict[str, str]) -> dict[str, object]:
-    """Write the lines; answer their ids by label."""
+    """Write the lines stamped with their agents' home fleets; answer their ids by label and the stamped count."""
     import app.models  # noqa: F401 - every table, so the foreign keys resolve
     from app.core.database import async_session, engine
     from app.models.roi import RoiChatRecord
+    from app.services.fleet_runs import home_fleet_defaults_of
 
     def _uuid(value: object) -> object:
         return uuid.UUID(value) if isinstance(value, str) else value
 
-    keyed = {"user_id", "agent_id", "adjusted_by_user_id"}
+    keyed = {"user_id", "agent_id", "fleet_id", "adjusted_by_user_id"}
     written: dict[str, str] = {}
     async with async_session() as db:
+        homes = await home_fleet_defaults_of(db, ids.values())
+        fleets = {str(agent): str(defaults.fleet_id) for agent, defaults in homes.items()}
         rows = []
-        for row in plan(datetime.now(UTC), ids):
+        planned = plan(datetime.now(UTC), ids, fleets)
+        for row in planned:
             record = RoiChatRecord(**{k: _uuid(v) if k in keyed else v for k, v in row["record"].items()})
             db.add(record)
             rows.append((row["label"], record))
         await db.commit()
         written = {label: str(record.id) for label, record in rows}
     await engine.dispose()
-    return {"records": written}
+    return {"records": written, "fleet_stamped": sum(1 for row in planned if row["record"]["fleet_id"])}
 
 
 def main() -> None:
