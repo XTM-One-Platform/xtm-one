@@ -81,6 +81,7 @@ from app.integrations.file_delivery import (
     with_extension,
 )
 from app.integrations.http import PLATFORM_USER_AGENT, parse_compound_token
+from app.integrations.providers.xtm_hub_api import build_api_tools
 from app.services.content_safety import wrap_untrusted
 from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition, ToolResult
 
@@ -516,6 +517,7 @@ async def xtm_hub_graphql(
     api_token: str | None = None,
     platform_token: tuple[str, str] | None = None,
     upload: tuple[str, str, bytes, str] | None = None,
+    uploads: list[tuple[str, str, bytes, str]] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Run one GraphQL query against the Hub; returns ``(data, error)``.
 
@@ -527,6 +529,9 @@ async def xtm_hub_graphql(
     ``(variable, filename, data, content_type)``, the request is a GraphQL
     multipart request carrying that file as ``$variable``, with the
     ``Apollo-Require-Preflight`` header the Hub's CSRF prevention asks for.
+    *uploads* is the same for several files, each
+    ``(variable path, filename, data, content_type)`` with a path such as
+    ``images.0``, whose variable the caller already set to ``None``.
     """
     headers = {
         "Accept": "application/json",
@@ -542,7 +547,19 @@ async def xtm_hub_graphql(
         headers["XTM-Hub-Platform-Id"] = platform_id
         headers["XTM-Hub-Platform-Token"] = token
     body: dict[str, Any]
-    if upload is None:
+    if uploads:
+        headers["Apollo-Require-Preflight"] = "true"
+        body = {
+            "data": {
+                "operations": json.dumps({"query": query, "variables": variables}),
+                "map": json.dumps({str(i): [f"variables.{path}"] for i, (path, *_rest) in enumerate(uploads)}),
+            },
+            "files": {
+                str(i): (filename, data, content_type)
+                for i, (_path, filename, data, content_type) in enumerate(uploads)
+            },
+        }
+    elif upload is None:
         headers["Content-Type"] = "application/json"
         body = {"json": {"query": query, "variables": variables}}
     else:
@@ -1973,6 +1990,22 @@ def build_tools(
     executor.register("download_xtm_hub_resource", download_xtm_hub_resource)
     executor.register("publish_xtm_hub_resource", publish_xtm_hub_resource)
 
+    # ── 8. The rest of the Hub API, one tool per operation (xtm_hub_api) ────
+
+    async def _run_api(
+        query: str,
+        variables: dict[str, Any],
+        action: str,
+        token_value: str,
+        uploads: list[tuple[str, str, bytes, str]] | None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        return await xtm_hub_graphql(base_url, query, variables, action, api_token=token_value, uploads=uploads)
+
+    async def _read_api_file(file_context: FileContext | None, file_id: str) -> tuple[bytes, str, str] | str:
+        return await read_pipe_file(file_context, file_id, max_bytes=_MAX_UPLOAD_BYTES, target="the XTM Hub")
+
+    api_definitions = build_api_tools(base_url, executor, authed=_authed, run=_run_api, read_file=_read_api_file)
+
     catalog_enum = list(CATALOGS)
     return [
         ToolDefinition(
@@ -2357,4 +2390,5 @@ def build_tools(
             source=_SOURCE,
             priority=1,
         ),
+        *api_definitions,
     ]
