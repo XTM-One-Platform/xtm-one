@@ -148,6 +148,10 @@ class CheckSpec:
     #: A pre-push guard (``prepush.py``): globs of the files under ``cwd`` and ``needs`` whose change CI checks
     #: with this check; ``create_github_commit(from_checkout=...)`` names it when it did not pass on the tree.
     pre_push: tuple[str, ...] = ()
+    #: Pre-push guards this check stands in for (``frontend-bump-knip`` for ``frontend-knip``): the same gate run
+    #: on another image, where the guard's own image cannot install the tree (a dependency bump). Its whole run
+    #: is kept as each named guard's run, so ``create_github_commit`` does not name the guard as never run.
+    stands_for: tuple[str, ...] = ()
     #: The command reads git (``git ls-files``, ``git rev-parse --show-toplevel``): it runs inside a throwaway
     #: repository of the checkout (:data:`GIT_REPO_SHELL`), as CI runs it in a clone.
     git_repo: bool = False
@@ -378,6 +382,15 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             raise ChecksError(
                 f"[check.{name}] pre_push must be a list of at most {MAX_AFFECTED_GLOBS} non-empty globs."
             )
+        stands_for = raw.get("stands_for", [])
+        if (
+            not isinstance(stands_for, list)
+            or not all(isinstance(g, str) and g and g != name for g in stands_for)
+            or len(stands_for) > MAX_AFFECTED_GLOBS
+        ):
+            raise ChecksError(
+                f"[check.{name}] stands_for must be a list of at most {MAX_AFFECTED_GLOBS} names of other checks."
+            )
         specs[name] = CheckSpec(
             name=name,
             argv=tuple(argv),
@@ -401,6 +414,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             fallback_reason=fallback_reason,
             needs=_needs(raw, f"check.{name}"),
             pre_push=tuple(pre_push),
+            stands_for=tuple(stands_for),
             git_repo=git_repo,
         )
     return specs

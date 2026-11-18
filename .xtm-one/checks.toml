@@ -1733,7 +1733,9 @@ fallback = { image = "toolchain-node", when = "YN0080", reason = "the checkout's
 # frontend-bump-safelist (reads the build's dist/assets, so never before a
 # build; frontend/AGENTS.md) and frontend-bump-build again, then
 # frontend-bump-classes (reads the build's dist) and frontend-bump-unit
-# (vitest, args: test files).
+# (vitest, args: test files) and frontend-bump-knip (CI's dead-code step).
+# frontend-bump-types and frontend-bump-knip declare stands_for: their whole
+# run counts as the pre-push run of frontend-types and frontend-knip.
 [check.frontend-lock-update]
 description = "regenerate frontend/yarn.lock after a dependency bump in package.json (toolchain-node, registry allow-list; links nothing)"
 argv = ["yarn", "install", "--mode=update-lockfile"]
@@ -1759,6 +1761,20 @@ timeout = 900
 image = "toolchain-node"
 report = "lines"
 needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+# Its whole run counts as frontend-types' pre-push run: nodejs-dev cannot install a bumped lock.
+stands_for = ["frontend-types"]
+
+# CI's "Dead code (knip)" step on a bump: frontend-knip (nodejs-dev) cannot link a lock newer than its
+# baked cache, so its pre-push guard stayed "never ran" and CI was the only knip on a bump. Its whole run
+# here counts as frontend-knip's pre-push run (stands_for).
+[check.frontend-bump-knip]
+description = "knip over the frontend after a dependency bump, on toolchain-node (frontend-lock-update, then this): unused files, exports, types and dependencies; stands for frontend-knip's pre-push guard"
+argv = ["yarn", "knip"]
+cwd = "frontend"
+timeout = 900
+image = "toolchain-node"
+report = "lines"
+stands_for = ["frontend-knip"]
 
 [check.frontend-bump-safelist]
 description = "generate-safelist after a design-system bump, on toolchain-node: frontend-bump-build, then this (reads dist/assets), then frontend-bump-build again and frontend-bump-classes"
