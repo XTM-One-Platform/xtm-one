@@ -1347,7 +1347,9 @@ def build_shared_state_tools(
         if unknown:
             return (
                 f"Error: from_workspace_path names {', '.join(unknown)}; it may hold "
-                f"{', '.join(_WORKSPACE_JSON_ARGUMENTS)}. Nothing was written."
+                f"{', '.join(_WORKSPACE_JSON_ARGUMENTS)}. Pass any other argument inline beside "
+                "from_workspace_path: replace=true inline writes the file's value_json whole. "
+                "Nothing was written."
             )
         merged = dict(inline)
         for name, value in loaded.items():
