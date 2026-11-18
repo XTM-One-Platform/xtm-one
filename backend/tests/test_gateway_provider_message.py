@@ -64,13 +64,22 @@ async def test_a_refused_effort_behind_the_gateway_is_retried_with_a_listed_valu
     assert [c.get("reasoning_effort") for c in calls] == ["none", "low"]
 
 
-async def test_a_refused_temperature_behind_the_gateway_is_retried_without_it():
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _TEMPERATURE_REFUSAL,
+        # gpt-6-luna on the staging gateway: the direct 400's ``param`` does not survive the 502.
+        "Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported.",
+    ],
+    ids=["parameter", "value"],
+)
+async def test_a_refused_temperature_behind_the_gateway_is_retried_without_it(refusal):
     calls: list[dict[str, Any]] = []
 
     async def create(params: dict[str, Any]) -> str:
         calls.append(params)
         if "temperature" in params:
-            raise _gateway_502(_TEMPERATURE_REFUSAL)
+            raise _gateway_502(refusal)
         return "ok"
 
     assert await create_with_effort_retry(create, {"model": "m", "temperature": 0.2}, "m") == "ok"

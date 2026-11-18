@@ -163,6 +163,7 @@ _EFFORT_OFF_VALUES = frozenset({"none", "minimal"})
 _SUPPORTED_VALUES = re.compile(r"[Ss]upported values are:?([^.]*)")
 _QUOTED_VALUE = re.compile(r"'([a-z]+)'")
 _NO_RETRY = object()
+_TEMPERATURE_REFUSAL = re.compile(r"Unsupported (?:parameter|value): 'temperature'")
 
 
 # The AI Gateway's 502 for an upstream 4xx: "... upstream returned status 400 Bad Request",
@@ -232,7 +233,8 @@ def _refuses_temperature(exc: openai.APIStatusError) -> bool:
     message = _refusal_message(exc)
     if message is None:
         return False
-    return getattr(exc, "param", None) == "temperature" or "Unsupported parameter: 'temperature'" in message
+    # Behind the gateway the 400's ``param`` is lost: its message names the parameter or the value.
+    return getattr(exc, "param", None) == "temperature" or _TEMPERATURE_REFUSAL.search(message) is not None
 
 
 @functools.lru_cache(maxsize=64)
