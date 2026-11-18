@@ -45,7 +45,11 @@ from app.core.session_transactions import (
 from app.core.utils import format_exception_message
 from app.models.embedding import Embedding
 from app.models.knowledge_base import KBActivityLog, KnowledgeBase, KnowledgeDocument
-from app.services.kb_document_errors import worker_timeout_message
+from app.services.kb_document_errors import (
+    DIMENSION_MISMATCH_OPENING,
+    PROVIDER_FAILURE_SENTENCES,
+    worker_timeout_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1409,6 +1413,34 @@ def schedule_embedding_retry(
     doc.embedding_next_retry_at = now + timedelta(
         seconds=_embedding_retry_delay_seconds(count)
     )
+
+
+async def retry_provider_failures_now(db: AsyncSession, *, now: datetime | None = None) -> int:
+    """Make the documents that failed on the embedding provider due now.
+
+    For a switch to another provider of the same model, which keeps the vectors:
+    :func:`recover_failed_documents` re-queues them within its batch and attempt
+    cap. A dimension mismatch is otherwise never retried. Returns the row count.
+    """
+    if not app_settings.embedding_auto_retry_enabled:
+        return 0
+    conditions = [
+        KnowledgeDocument.status == "error",
+        or_(
+            KnowledgeDocument.error_message.in_(PROVIDER_FAILURE_SENTENCES),
+            KnowledgeDocument.error_message.startswith(DIMENSION_MISMATCH_OPENING, autoescape=True),
+        ),
+    ]
+    max_attempts = app_settings.embedding_auto_retry_max_attempts
+    if max_attempts > 0:
+        conditions.append(KnowledgeDocument.embedding_retry_count < max_attempts)
+    result = await db.execute(
+        update(KnowledgeDocument)
+        .where(*conditions)
+        .values(embedding_next_retry_at=now or datetime.now(UTC))
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
 
 
 async def recover_failed_documents(

@@ -161,7 +161,7 @@ from app.services.builtin_tool_catalog import (
 )
 from app.services.ctem_verticals import normalize_vertical
 from app.services.handover_types import with_added_handover_targets
-from app.services.kb_helpers import enqueue_reembedding
+from app.services.kb_helpers import enqueue_reembedding, retry_provider_failures_now
 from app.services.llm_provider_deletion import (
     DeletionImpact,
     ReplacementError,
@@ -1089,36 +1089,6 @@ async def _run_embedding_reset_background(target_embedding_model: str | None) ->
             exc_info=True,
         )
 
-
-
-async def _run_failed_documents_requeue_background() -> None:
-    """Queue again the documents in error after a switch to another provider of
-    the same model: ``ready`` vectors stay valid, but a failure such as a
-    dimension mismatch is never auto-retried and only a new provider fixes it.
-    """
-    from app.core.database import async_session
-
-    try:
-        async with async_session() as bg_db:
-            rows = await bg_db.execute(
-                update(KnowledgeDocument)
-                .where(KnowledgeDocument.status == "error")
-                .values(
-                    status="pending",
-                    error_message=None,
-                    embedding_retry_count=0,
-                    embedding_next_retry_at=None,
-                )
-                .returning(KnowledgeDocument.id)
-            )
-            doc_ids = [str(r[0]) for r in rows.all()]
-            await bg_db.commit()
-        if doc_ids:
-            await enqueue_reembedding(doc_ids)
-        logger.info("Embedding provider switch: re-queued %d failed document(s)", len(doc_ids))
-    except Exception:
-        # recover_stuck_documents picks up pending docs whose enqueue was lost.
-        logger.error("Re-queue of failed KB documents after a provider switch failed", exc_info=True)
 
 def _build_probe_candidates(
     *,
@@ -3895,8 +3865,10 @@ async def update_general_assistant_config(
         provider_changed and not ps.embedding_model
     )
     embedding_config_changed = kb_reset_scheduled or provider_changed
-    if provider_changed and not kb_reset_scheduled:
-        background_tasks.add_task(_run_failed_documents_requeue_background)
+    # Naming the config of a legacy row (no id, same provider type) is no switch.
+    named_legacy_config = previous_embedding_provider == (ps.embedding_provider, None)
+    if provider_changed and not kb_reset_scheduled and not named_legacy_config:
+        await retry_provider_failures_now(db)
 
     if kb_reset_scheduled:
         # The embedding-config write itself is tiny and is committed atomically
