@@ -10,7 +10,7 @@ level 7's own contract:
 * a shadow that did not hold creates no flow;
 * starting a shadow keeps its sandbox copy past the shadow and its watch.
 
-The switch-over, its watch and rollback: ``test_concierge_flow_switch_over_postgres.py``.
+The switch-over, its watch and rollback: ``test_health_flow_switch_over_postgres.py``.
 """
 
 from __future__ import annotations

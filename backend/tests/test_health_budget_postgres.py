@@ -22,7 +22,7 @@ from app.models.health import ConciergeBudgetMonth, ConciergeCycle
 from app.services import agentic_gate
 from app.services.health import budget
 from app.services.health.settings import load_concierge_settings
-from tests.concierge_support import World, concierge_database, configure
+from tests.health_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration
 

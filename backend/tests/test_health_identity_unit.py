@@ -1,6 +1,6 @@
 """Platform Concierge level 1 (#8254), without a database: the flag, the
 identity rules and the settings model. Against PostgreSQL:
-``test_concierge_identity_postgres.py``.
+``test_health_identity_postgres.py``.
 """
 
 from __future__ import annotations

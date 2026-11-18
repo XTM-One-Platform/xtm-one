@@ -33,7 +33,7 @@ from app.models.user import User
 from app.services import agentic_gate
 from app.services.health import consent
 from app.services.health.consent import Revocation
-from tests.concierge_support import World, concierge_database
+from tests.health_support import World, concierge_database
 
 pytestmark = pytest.mark.integration
 

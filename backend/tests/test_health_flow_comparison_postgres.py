@@ -11,7 +11,7 @@ import pytest
 
 from app.models.flow_run import FlowRun
 from app.services.health.flow_comparison import run_side
-from tests.test_concierge_flow_lab_postgres import _database, _runs, _seed
+from tests.test_health_flow_lab_postgres import _database, _runs, _seed
 
 pytestmark = pytest.mark.integration
 

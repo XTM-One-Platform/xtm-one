@@ -1,5 +1,5 @@
 """Platform Concierge level 1 (#8254), without a database: the consent snapshot.
-The predicate and the SQL filter against PostgreSQL: ``test_concierge_consent_postgres.py``.
+The predicate and the SQL filter against PostgreSQL: ``test_health_consent_postgres.py``.
 """
 
 from __future__ import annotations

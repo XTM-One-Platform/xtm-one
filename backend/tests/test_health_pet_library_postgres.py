@@ -29,7 +29,7 @@ from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.health_pet import ConciergePet
 from app.models.user import User
-from tests.concierge_support import World, concierge_database
+from tests.health_support import World, concierge_database
 
 pytestmark = pytest.mark.integration
 

@@ -35,7 +35,7 @@ from app.models.health import ConciergeCycle
 from app.models.health_cycle import ConciergeCycleRun
 from app.models.improvement_proposal import ImprovementProposal
 from app.models.user import User
-from tests.concierge_support import World, concierge_database
+from tests.health_support import World, concierge_database
 
 pytestmark = pytest.mark.integration
 

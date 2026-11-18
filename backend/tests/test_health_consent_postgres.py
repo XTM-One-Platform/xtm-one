@@ -26,7 +26,7 @@ from app.models.user import User
 from app.services.health import consent
 from app.services.health.consent import ConsentDeniedError
 from app.services.health.identity import acting_as_concierge, concierge_principal_for
-from tests.concierge_support import World, concierge_database, configure, make_agent
+from tests.health_support import World, concierge_database, configure, make_agent
 
 pytestmark = pytest.mark.integration
 

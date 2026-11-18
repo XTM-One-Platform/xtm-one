@@ -18,7 +18,7 @@ from app.models.audit_log import AuditLog
 from app.services.health.availability import concierge_active
 from app.services.health.identity import concierge_run_scope, current_concierge, mark_concierge_run
 from app.services.health.settings import ConciergeSettings, load_concierge_settings
-from tests.concierge_support import World, concierge_database, configure
+from tests.health_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration
 

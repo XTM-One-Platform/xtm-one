@@ -1,6 +1,6 @@
 """Switch-over, live watch and rollback (#8260, B12) against a real PostgreSQL.
 
-On the shadow suite's fixtures (``test_concierge_flow_shadow_postgres``):
+On the shadow suite's fixtures (``test_health_flow_shadow_postgres``):
 
 * a held switch-over shadow creates the production flow from the sandbox
   copy, activates it and pauses the assignment, both audited;
@@ -28,7 +28,7 @@ from app.models.flow_shadow import (
     FlowShadow,
 )
 from app.services.assignment_pause import pause_assignment
-from tests.test_concierge_flow_shadow_postgres import (
+from tests.test_health_flow_shadow_postgres import (
     CRON,
     FakeSandbox,
     _advance,

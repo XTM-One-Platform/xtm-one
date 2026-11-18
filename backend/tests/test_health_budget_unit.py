@@ -1,5 +1,5 @@
 """Platform Concierge level 1 (#8254), without a database: the budget's
-arithmetic. Against PostgreSQL: ``test_concierge_budget_postgres.py``.
+arithmetic. Against PostgreSQL: ``test_health_budget_postgres.py``.
 """
 
 from __future__ import annotations

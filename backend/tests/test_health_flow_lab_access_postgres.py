@@ -22,7 +22,7 @@ from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.flow_run import FlowRun
 from app.services.health import flow_lab_access as access
-from tests.test_concierge_flow_lab_postgres import _database, _runs, _seed
+from tests.test_health_flow_lab_postgres import _database, _runs, _seed
 
 pytestmark = pytest.mark.integration
 

@@ -23,7 +23,7 @@ A refusal answers its code and the rule (`pets.ERROR_MESSAGES`), never the input
 
 ## Alfred
 
-The built-in pet and the default one: an original elderly butler in a tailcoat, bow tie and white gloves, with a silver tray and a pocket watch. No gallery asset (the awesome-codex-pet pets are CC BY-NC 4.0) and no likeness of any existing character is used: every pixel is drawn by `generate_alfred_pet.py` on a 48x52 grid scaled 4x. `tests/test_concierge_pets.py` regenerates the atlas in memory and fails when the committed one differs; rerun the script after a change.
+The built-in pet and the default one: an original elderly butler in a tailcoat, bow tie and white gloves, with a silver tray and a pocket watch. No gallery asset (the awesome-codex-pet pets are CC BY-NC 4.0) and no likeness of any existing character is used: every pixel is drawn by `generate_alfred_pet.py` on a 48x52 grid scaled 4x. `tests/test_health_pets.py` regenerates the atlas in memory and fails when the committed one differs; rerun the script after a change.
 
 ## The preference and the activity
 

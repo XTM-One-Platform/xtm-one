@@ -1,6 +1,6 @@
 """Flow shadows on the Concierge's budget, consent and switches, and locked decisions (#8260), on PostgreSQL.
 
-On the shadow suite's fixtures (``test_concierge_flow_shadow_postgres``):
+On the shadow suite's fixtures (``test_health_flow_shadow_postgres``):
 
 * every paired run is reserved on the Concierge's own budget line and
   charged when its pair settles; a spent budget stops the pairing, cursor
@@ -28,7 +28,7 @@ from app.models.flow_shadow import PAIR_STATUS_SKIPPED, SHADOW_STATUS_RUNNING, F
 from app.models.health import ConciergeBudgetMonth, ConciergeCycle
 from app.models.llm_trace import LLMTrace
 from app.services.health import flow_shadow
-from tests.test_concierge_flow_shadow_postgres import (
+from tests.test_health_flow_shadow_postgres import (
     FakeSandbox,
     _advance,
     _assignment_run,
@@ -37,7 +37,7 @@ from tests.test_concierge_flow_shadow_postgres import (
     _shadow,
     install_fake_sandbox,
 )
-from tests.test_concierge_flow_switch_over_postgres import _watching
+from tests.test_health_flow_switch_over_postgres import _watching
 
 pytestmark = pytest.mark.integration
 

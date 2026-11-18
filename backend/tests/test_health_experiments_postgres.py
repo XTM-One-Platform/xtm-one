@@ -22,7 +22,7 @@ from app.models.health_experiment import (
 )
 from app.models.health_finding import STATUS_EXPERIMENTING, STATUS_PROPOSED
 from app.services.health import experiments, quality_deps
-from tests.concierge_experiment_helpers import VARIANT, Deps, draft_variant, run_experiment, seed
+from tests.health_experiment_helpers import VARIANT, Deps, draft_variant, run_experiment, seed
 from tests.test_provisioning_postgres import _temp_database
 
 pytestmark = pytest.mark.integration

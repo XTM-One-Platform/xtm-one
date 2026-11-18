@@ -24,7 +24,7 @@ from app.services.health import (
     text_kinds,  # noqa: F401 - registers the kinds under test
 )
 from app.services.health.variants import VariantError
-from tests.concierge_experiment_helpers import (
+from tests.health_experiment_helpers import (
     PERSONA,
     PROMPT,
     SKILL,
