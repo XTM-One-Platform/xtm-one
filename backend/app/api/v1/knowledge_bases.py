@@ -672,6 +672,39 @@ async def create_knowledge_base(
     )
 
 
+#: The ``detail.code`` of the 404 a workset's storage answers with.
+WORKSET_STORAGE_CODE = "workset_storage"
+
+
+async def _workset_storage_of(db: AsyncSession, user: User, kb_id: str) -> dict | None:
+    """What ``GET /knowledge-bases/{id}`` says of a workset's internal corpus.
+
+    That knowledge base is hidden from every read (``is_internal``), so an old
+    link or an audit entry to it answers 404; the detail names the workset that
+    owns it when the caller may read that workset (own, company-managed, or an
+    admin), so the page can say what it is and where to find it. Anything else
+    (no such id, a workset the caller cannot read) stays a plain 404.
+    """
+    from app.models.workset import Workset
+
+    kb_uuid = safe_uuid(kb_id)
+    if kb_uuid is None:
+        return None
+    workset = (
+        await db.execute(select(Workset).where(Workset.knowledge_base_id == kb_uuid))
+    ).scalars().first()
+    if workset is None:
+        return None
+    if not (user.is_admin or workset.is_company_managed or workset.user_id == user.id):
+        return None
+    return {
+        "code": WORKSET_STORAGE_CODE,
+        "message": "This knowledge base is the internal storage of a workset.",
+        "workset_id": str(workset.id),
+        "workset_name": workset.label or workset.key,
+    }
+
+
 @router.get("/{kb_id}", response_model=KnowledgeBaseResponse)
 async def get_knowledge_base(
     kb_id: str,
@@ -679,9 +712,14 @@ async def get_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ):
     user_group_ids = await get_user_group_ids(db, user.id)
-    kb = await get_user_knowledge_base(
-        db, user.id, kb_id, user_group_ids, is_admin=user.is_admin
-    )
+    try:
+        kb = await get_user_knowledge_base(
+            db, user.id, kb_id, user_group_ids, is_admin=user.is_admin
+        )
+    except HTTPException as exc:
+        if exc.status_code == 404 and (storage := await _workset_storage_of(db, user, kb_id)):
+            raise HTTPException(status_code=404, detail=storage) from exc
+        raise
     owner_name = None
     if kb.user_id:
         owner_row = await db.execute(
