@@ -1382,7 +1382,6 @@ def schedule_embedding_retry(
     doc: KnowledgeDocument,
     *,
     retryable: bool,
-    immediately: bool = False,
     now: datetime | None = None,
 ) -> None:
     """Schedule (or clear) the next automatic embedding retry for a document.
@@ -1398,8 +1397,7 @@ def schedule_embedding_retry(
       * the per-document attempt cap has been reached
         (``embedding_auto_retry_max_attempts > 0`` and exhausted).
 
-    Otherwise it is set to ``now + backoff(retry_count) + jitter``, or to ``now``
-    when *immediately* (the embedding config changed while the job ran). The
+    Otherwise it is set to ``now + backoff(retry_count) + jitter``. The
     ``embedding_retry_count`` is *not* incremented here — the sweeper
     increments it when it actually re-enqueues the document, so the count
     reflects the number of retries initiated.
@@ -1413,8 +1411,9 @@ def schedule_embedding_retry(
         doc.embedding_next_retry_at = None
         return
     now = now or datetime.now(UTC)
-    delay = 0 if immediately else _embedding_retry_delay_seconds(count)
-    doc.embedding_next_retry_at = now + timedelta(seconds=delay)
+    doc.embedding_next_retry_at = now + timedelta(
+        seconds=_embedding_retry_delay_seconds(count)
+    )
 
 
 def _provider_failure_conditions() -> list:
@@ -1482,6 +1481,28 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
         logger.error("Retry of provider failures after an embedding provider switch failed", exc_info=True)
     logger.info("Embedding provider switch: %d failed document(s) due for retry", total)
     return total
+
+
+
+async def retry_provider_failure_now(db: AsyncSession, doc_id: uuid.UUID, *, now: datetime | None = None) -> bool:
+    """Make one document's provider failure due now, while the row still is that
+    failure under the cap: a guarded write, as it may have been re-queued since.
+    Never raises; returns whether the row was written."""
+    if not app_settings.embedding_auto_retry_enabled:
+        return False
+    try:
+        result = await db.execute(
+            update(KnowledgeDocument)
+            .where(KnowledgeDocument.id == doc_id, *_provider_failure_conditions())
+            .values(embedding_next_retry_at=now or datetime.now(UTC))
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+    except Exception:
+        logger.warning("Could not retry document %s after an embedding provider switch", doc_id, exc_info=True)
+        await db.rollback()
+        return False
+    return bool(result.rowcount)
 
 
 async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:

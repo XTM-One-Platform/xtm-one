@@ -192,5 +192,64 @@ async def test_a_job_sees_the_embedding_config_it_used_was_switched(monkeypatch)
         assert await kb_helpers.embedding_config_moved(fallback.id) is True
 
 
+@pytest.mark.asyncio
+async def test_one_failure_is_made_due_only_while_it_is_still_that_failure(monkeypatch):
+    monkeypatch.setattr(kb_helpers.app_settings, "embedding_auto_retry_enabled", True)
+    monkeypatch.setattr(kb_helpers.app_settings, "embedding_auto_retry_max_attempts", 3)
+    async with (
+        scratch_database("provone", tables=ALL_TABLES, extensions=("vector",)) as scratch,
+        scratch.sessions() as db,
+    ):
+        kb = KnowledgeBase(name=f"kb-{uuid.uuid4().hex[:8]}", user_id=None, is_company_managed=True)
+        db.add(kb)
+        await db.flush()
+        mismatch = dimension_mismatch_message("text-embedding-3-large", "3072", 1536)
+        failed, requeued, spent = (
+            KnowledgeDocument(
+                knowledge_base_id=kb.id,
+                filename=f"{name}.md",
+                source_type="text",
+                status=status,
+                error_message=mismatch,
+                embedding_retry_count=retries,
+            )
+            for name, status, retries in (("failed", "error", 0), ("requeued", "pending", 0), ("spent", "error", 3))
+        )
+        db.add_all([failed, requeued, spent])
+        await db.commit()
+
+        assert await kb_helpers.retry_provider_failure_now(db, failed.id, now=_NOW) is True
+        assert await kb_helpers.retry_provider_failure_now(db, requeued.id, now=_NOW) is False
+        assert await kb_helpers.retry_provider_failure_now(db, spent.id, now=_NOW) is False
+
+        due = (
+            (
+                await db.execute(
+                    select(KnowledgeDocument.filename).where(KnowledgeDocument.embedding_next_retry_at.is_not(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert due == ["failed.md"]
+
+
+@pytest.mark.asyncio
+async def test_one_failure_retry_never_raises():
+    class _Broken:
+        rolled_back = False
+
+        async def execute(self, _statement):
+            raise RuntimeError("connection dropped")
+
+        async def rollback(self):
+            self.rolled_back = True
+
+    db = _Broken()
+
+    assert await kb_helpers.retry_provider_failure_now(db, uuid.uuid4()) is False
+    assert db.rolled_back is True
+
+
 async def _noop():
     return None

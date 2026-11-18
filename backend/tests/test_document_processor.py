@@ -311,8 +311,6 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
     """The job embedded on the old provider while an admin switched to another
     one: the new provider may produce the right size, so the failure is retried
     at once instead of left for good."""
-    from datetime import UTC, datetime
-
     doc, kb = _build_doc_and_kb()
     session = _FakeSession(doc=doc, kb=kb)
     provider = SimpleNamespace(
@@ -326,17 +324,18 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
         return True
 
     moved = AsyncMock(side_effect=_moved)
+    retried = AsyncMock(return_value=True)
     monkeypatch.setattr(document_processor, "async_session", lambda: session)
     monkeypatch.setattr(
         document_processor, "chunk_text", lambda *_a, **_kw: ["This chunk has enough content to be embedded."]
     )
     monkeypatch.setattr(document_processor, "log_kb_activity", AsyncMock())
     monkeypatch.setattr(document_processor, "embedding_config_moved", moved)
+    monkeypatch.setattr(document_processor, "retry_provider_failure_now", retried)
     monkeypatch.setattr(
         "app.llm.router.get_embedding_provider",
         AsyncMock(return_value=(provider, "text-embedding-3-large", used_config)),
     )
-    before = datetime.now(UTC)
 
     await document_processor._process_document_impl(str(doc.id))
 
@@ -345,8 +344,9 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
     assert moved.await_args.args[0] == used_config
     # Asked once the error is committed: the job holds no connection meanwhile.
     assert commits_when_asked == [2]
-    assert session.commits == 3
-    assert before <= doc.embedding_next_retry_at <= datetime.now(UTC)
+    # A guarded write on the row, never the in-memory document the commit left stale.
+    assert retried.await_args.args == (session, doc.id)
+    assert doc.embedding_next_retry_at is None
 
 
 @pytest.mark.asyncio
