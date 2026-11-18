@@ -319,7 +319,7 @@ function PdfPage({
       aria-label={t_i18n("Page {page} of {count}", { page: index + 1, count })}
       className={cn("relative mx-auto grid w-full max-w-5xl items-start gap-6", withMargin && "lg:grid-cols-[minmax(0,1fr)_13rem]")}
     >
-      <div ref={sheetRef} className="relative min-h-96 rounded-sm border border-elevation-subtle bg-elevation-default px-8 pb-10 pt-8 shadow-overlay">
+      <div ref={sheetRef} className="relative min-h-96 rounded-sm border border-elevation-subtle bg-elevation-default px-8 pb-10 pt-8">
         <p className={cn("whitespace-pre-wrap break-words content-compact", arcsOn ? "leading-loose pt-4" : "leading-relaxed")}>{body}</p>
         <p className="absolute bottom-3 right-4 content-caption text-default-secondary tabular-nums">
           {index + 1} / {count}
