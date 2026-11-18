@@ -169,19 +169,20 @@ function FacetCheckbox({
           )}
         />
       )}
-      <span
+      {/* One line per facet, as in OpenCTI and OpenAEV (Sam, 18 Nov 2026): a label too long for the
+          fixed aside is cut with an ellipsis and named whole by the design-system tooltip, on hover
+          and on keyboard focus, so every row keeps the same height and the count stays right-aligned. */}
+      <TruncatedText
+        text={label}
         className={cn(
-          // Wraps rather than truncates: a long translated label (es, ja) stays readable in the fixed aside.
-          "min-w-0 flex-1 whitespace-normal break-words content-compact transition-colors",
+          "flex-1 content-compact transition-colors",
           checked
             ? "font-medium text-default-primary"
             : disabled
               ? "text-default-disabled"
               : "text-default-secondary group-hover:text-default-primary",
         )}
-      >
-        {label}
-      </span>
+      />
       <span
         className={cn(
           "shrink-0 rounded-sm bg-elevation-hover px-1.5 py-px content-compact tabular-nums",
@@ -195,10 +196,11 @@ function FacetCheckbox({
   );
 }
 
-function FacetGroupLabel({ children }: { children: React.ReactNode }) {
+function FacetGroupLabel({ text }: { text: string }) {
+  // One line too: a long group name ("Engineering & Operations") is cut and named whole by the tooltip.
   return (
-    <p className="px-2 font-sans-geologica content-compact font-semibold uppercase tracking-[0.12em] text-default-secondary">
-      {children}
+    <p className="flex min-w-0 px-2 font-sans-geologica content-compact font-semibold uppercase tracking-[0.12em] text-default-secondary">
+      <TruncatedText text={text} className="flex-1" />
     </p>
   );
 }
@@ -730,7 +732,7 @@ export function IntegrationCatalogBrowser({
 
             {installState && (
               <div className="space-y-1">
-                <FacetGroupLabel>{t_i18n("Status")}</FacetGroupLabel>
+                <FacetGroupLabel text={t_i18n("Status")} />
                 <div className="space-y-px">
                   {INSTALL_FACETS.map((facet) => (
                     <FacetCheckbox
@@ -747,7 +749,7 @@ export function IntegrationCatalogBrowser({
 
             {categoryGroups.map((group) => (
               <div key={group.id} className="space-y-1">
-                <FacetGroupLabel>{t_i18n(group.label)}</FacetGroupLabel>
+                <FacetGroupLabel text={t_i18n(group.label)} />
                 <div className="space-y-px">
                   {group.categories.map((cat) => (
                     <FacetCheckbox
@@ -764,7 +766,7 @@ export function IntegrationCatalogBrowser({
             ))}
 
             <div className="space-y-1 border-t border-elevation-subtle-soft pt-4">
-              <FacetGroupLabel>{t_i18n("Connection")}</FacetGroupLabel>
+              <FacetGroupLabel text={t_i18n("Connection")} />
               <div className="space-y-px">
                 {authOptions.map((mode) => (
                   <FacetCheckbox
@@ -779,7 +781,7 @@ export function IntegrationCatalogBrowser({
             </div>
 
             <div className="space-y-1 border-t border-elevation-subtle-soft pt-4">
-              <FacetGroupLabel>{t_i18n("Availability")}</FacetGroupLabel>
+              <FacetGroupLabel text={t_i18n("Availability")} />
               <div className="space-y-px">
                 {AVAILABILITY_FACETS.map((facet) => (
                   <FacetCheckbox
