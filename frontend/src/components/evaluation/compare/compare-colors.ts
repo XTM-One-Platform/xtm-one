@@ -22,3 +22,14 @@ export const EVALUATION_COLORS = [
   "var(--color-filigran-ia-primary)",
   "var(--color-feedback-info-primary)",
 ];
+
+/** A launch's kind, as the Leaderboard's bars and legend colour it: an experiment (launched
+ *  by hand or by the API) in the accent, a scheduled rerun neutral. */
+export const LAUNCH_KIND_SWATCHES = { experiment: "bg-accent", scheduled: "bg-feedback-neutral-primary" } as const;
+
+/** Expected items found in every rerun, in some, never (the Results consistency legend). */
+export const FOUND_SWATCHES = {
+  every: "bg-feedback-success-primary",
+  some: "bg-feedback-warning-primary",
+  never: "bg-feedback-error-primary",
+} as const;

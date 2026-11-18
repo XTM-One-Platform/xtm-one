@@ -91,8 +91,14 @@ const typeRank = (t: string) => {
   return i < 0 ? 99 : i;
 };
 
-/** The groups and relationship rows of a review, built once per answer. */
-export function buildModel(review: Pick<BundleReview, "objects" | "groups" | "sources" | "relationships">): ReviewModel {
+/**
+ * The groups and relationship rows of a review, built once per answer. With `only`, just
+ * those sources (and the expected bundle) are read: a run review loads the run's other
+ * answers for its history, yet its views draw the pair alone. Group and relationship ids
+ * stay those of the whole review, so two models of one review name the same object alike.
+ */
+export function buildModel(review: Pick<BundleReview, "objects" | "groups" | "sources" | "relationships">, only?: readonly string[]): ReviewModel {
+  const keep = (s: string) => !only || s === EXPECTED || only.includes(s);
   const objs: StixObject[] = review.objects.map((o) => ({
     name: o.n,
     cid: o.c,
@@ -104,7 +110,9 @@ export function buildModel(review: Pick<BundleReview, "objects" | "groups" | "so
   const count = review.groups.length ? Math.max(...review.groups) + 1 : 0;
   const slots: ObjectGroup[] = Array.from({ length: count }, (_, k) => ({ id: `g${k}`, type: "", by: {}, all: {}, extra: {} }));
   // The expected bundle first: an answer's object with the expected canonical id wins its group.
-  const order = Object.keys(review.sources).sort((x, y) => (x === EXPECTED ? -1 : y === EXPECTED ? 1 : 0));
+  const order = Object.keys(review.sources)
+    .filter(keep)
+    .sort((x, y) => (x === EXPECTED ? -1 : y === EXPECTED ? 1 : 0));
   for (const s of order) {
     for (const oi of review.sources[s]) {
       const g = slots[review.groups[oi]];
@@ -121,15 +129,18 @@ export function buildModel(review: Pick<BundleReview, "objects" | "groups" | "so
   }
   const groups = slots.filter((g) => Object.keys(g.all).length > 0);
   for (const g of groups) g.type = (g.by[EXPECTED] ?? Object.values(g.all)[0][0]).type;
-  const rels: RelationshipRow[] = review.relationships.map(([a, b, cells], k) => {
-    const r: RelationshipRow = { id: `r${k}`, src: `g${a}`, tgt: `g${b}`, kinds: {}, ends: {}, dup: {} };
-    for (const [s, [kind, si, ti, dup]] of Object.entries(cells)) {
-      r.kinds[s] = kind;
-      r.ends[s] = [objs[si], objs[ti]];
-      if (dup) r.dup[s] = dup;
-    }
-    return r;
-  });
+  const rels: RelationshipRow[] = review.relationships
+    .map(([a, b, cells], k) => {
+      const r: RelationshipRow = { id: `r${k}`, src: `g${a}`, tgt: `g${b}`, kinds: {}, ends: {}, dup: {} };
+      for (const [s, [kind, si, ti, dup]] of Object.entries(cells)) {
+        if (!keep(s)) continue;
+        r.kinds[s] = kind;
+        r.ends[s] = [objs[si], objs[ti]];
+        if (dup) r.dup[s] = dup;
+      }
+      return r;
+    })
+    .filter((r) => Object.keys(r.kinds).length > 0);
   const types = [...new Set(groups.map((g) => g.type))].sort((x, y) => typeRank(x) - typeRank(y) || x.localeCompare(y));
   return {
     groups,
@@ -212,7 +223,7 @@ export function entityVerdict(g: ObjectGroup, a: string, b: string, whatIf: bool
   return verdict(!!g.by[a], !!g.by[b], entityOk(g, a, whatIf), entityOk(g, b, whatIf), !!g.by[EXPECTED]);
 }
 
-function relationshipVerdict(model: ReviewModel, r: RelationshipRow, a: string, b: string, whatIf: boolean): Verdict | null {
+export function relationshipVerdict(model: ReviewModel, r: RelationshipRow, a: string, b: string, whatIf: boolean): Verdict | null {
   return verdict(!!r.kinds[a], !!r.kinds[b], relationshipOk(model, r, a, whatIf), relationshipOk(model, r, b, whatIf), !!r.kinds[EXPECTED]);
 }
 

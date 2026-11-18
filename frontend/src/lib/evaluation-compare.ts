@@ -241,3 +241,35 @@ export function comparisonEligibility(
   if (new Set(selected.map((e) => e.family)).size > 1) return { canCompare: false, reason: NOT_COMPARABLE.families };
   return { canCompare: true, reason: null };
 }
+
+/** Metrics a family's pages derive from two of its pooled metrics: one micro F1 over
+ *  both item sets together (their numerators and denominators added up), listed first.
+ *  STIX: Bundle F1, the objects and the relationships a bundle should hold, counted
+ *  together, so relationships weigh by their number. */
+const DERIVED_METRICS: Record<string, Array<{ key: string; label: string; parts: [string, string] }>> = {
+  STIX_BUNDLE: [{ key: "stix.bundle_f1", label: "Bundle F1", parts: ["stix.entity_prf", "stix.relationship_prf"] }],
+};
+
+/** The comparison with its family's derived metrics added to `metrics` and to every cell
+ *  that holds both parts (counts and tp/fp/fn summed). */
+export function withDerivedMetrics(comparison: EvaluationComparison): EvaluationComparison {
+  const derived = (DERIVED_METRICS[comparison.family] ?? []).filter(
+    (d) => d.parts.every((p) => comparison.metrics.some((m) => m.key === p)) && !comparison.metrics.some((m) => m.key === d.key),
+  );
+  if (!derived.length) return comparison;
+  return {
+    ...comparison,
+    metrics: [...derived.map((d) => ({ key: d.key, label: d.label, direction: "higher_is_better" })), ...comparison.metrics],
+    cells: comparison.cells.map((cell) => {
+      const metrics = { ...cell.metrics };
+      const counts = { ...(cell.counts ?? {}) };
+      for (const d of derived) {
+        const [a, b] = d.parts.map((p) => cell.metrics[p]);
+        if (a && b) metrics[d.key] = [a[0] + b[0], a[1] + b[1]];
+        const [ca, cb] = d.parts.map((p) => cell.counts?.[p]);
+        if (ca && cb) counts[d.key] = [ca[0] + cb[0], ca[1] + cb[1], ca[2] + cb[2]];
+      }
+      return { ...cell, metrics, counts };
+    }),
+  };
+}

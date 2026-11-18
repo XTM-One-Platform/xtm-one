@@ -24,6 +24,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { Switch } from "@/components/ui/switch";
 import { useFormatter } from "@/i18n";
+import { Button } from "@/components/ui/button";
 import {
   EXPECTED,
   NONE,
@@ -33,9 +34,14 @@ import {
   f1,
   formatScore,
   relationshipCounts,
+  typeCounts,
+  type Counts,
   type DisplayStatus,
+  type ReviewModel,
   type ReviewPair,
 } from "@/lib/evaluation-bundle-review";
+import { ENTITY_F1, ENTITY_F1_BY_TYPE, RELATIONSHIP_F1, precision, recall } from "@/lib/evaluation-run-review";
+import { Delta, Tile } from "./figures";
 import { cn, formatModelLabel } from "@/lib/utils";
 import type { BundleReviewAnswer } from "@/types";
 import { STATUS_DOT } from "./labels";
@@ -177,7 +183,7 @@ function Count({ status, value, label }: { status: DisplayStatus; value: number;
 }
 
 /** What the pair says in numbers: the objects per status, and the what-if's figures. */
-export function PairCounts({ ctx }: { ctx: ReviewContext }) {
+function PairCounts({ ctx }: { ctx: ReviewContext }) {
   const { t_i18n } = useFormatter();
   const { model, mode, pair, whatIf, derived } = ctx;
   const B = pair.under;
@@ -211,8 +217,6 @@ export function PairCounts({ ctx }: { ctx: ReviewContext }) {
       : whatIf
         ? t_i18n("{count, plural, one {# near-miss counted as a match} other {# near-misses counted as matches}}.", { count: nNear })
         : t_i18n("{count, plural, one {# near-miss counts as 1 missing + 1 spurious} other {# near-misses count as # missing + # spurious}}.", { count: nNear });
-  const shift = (official: number | null | undefined, sim: number, raw: number) => (official == null ? null : official + sim - raw);
-  const answer = ctx.review.answers.find((a) => a.key === B);
   return (
     <div className="space-y-1">
       <ul className="flex flex-wrap gap-x-4 gap-y-1" aria-label={t_i18n("Objects by status")}>
@@ -220,21 +224,144 @@ export function PairCounts({ ctx }: { ctx: ReviewContext }) {
           <Count key={label} status={st} value={value} label={label} />
         ))}
       </ul>
-      <p className="content-caption text-default-secondary">
-        {foot}
-        {whatIf && mode !== "runs" && answer && (
-          <>
-            {" "}
-            {t_i18n("With the what-if, {letter} would score Entity F1 {entity} and Relationship F1 {relationship}.", {
-              letter: ctx.letter(B),
-              entity: formatScore(shift(answer.metrics["stix.entity_prf"], f1(entityCounts(model, B, true)), f1(entityCounts(model, B, false)))),
-              relationship: formatScore(
-                shift(answer.metrics["stix.relationship_prf"], f1(relationshipCounts(model, B, true)), f1(relationshipCounts(model, B, false))),
-              ),
-            })}
-          </>
-        )}
-      </p>
+      <p className="content-caption text-default-secondary">{foot}</p>
     </div>
+  );
+}
+
+/** The mean of each object type's Entity F1 (types the answer or the expected bundle hold). */
+function macroF1(model: ReviewModel, s: string, whatIf: boolean): number {
+  const v = model.types.map((t) => typeCounts(model, s, whatIf, t)).filter((c) => c.tp + c.fp + c.fn > 0).map(f1);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 100;
+}
+
+/**
+ * The scores on this report: Entity F1, Relationship F1, Entity F1 per type and the judge
+ * score of the answer under review, each with its change against the comparator, then its
+ * objects by status. The official figure is the scorer's; the what-if adds the change the
+ * page computes, and the official one stays, struck through.
+ */
+export function ScoreCards({ ctx, onOpenJudge }: { ctx: ReviewContext; onOpenJudge: () => void }) {
+  const { t_i18n } = useFormatter();
+  const { fullModel, mode, pair, whatIf, review } = ctx;
+  const B = pair.under;
+  const answerOf = (s: string | null | undefined) => (s ? review.answers.find((a) => a.key === s) : undefined);
+  const answer = answerOf(B);
+  const readable = (s: string) => !review.unreadable.includes(s) && !!answerOf(s);
+  const prev = ctx.comparator && readable(ctx.comparator.key) ? ctx.comparator : null;
+  const bOk = readable(B);
+  const card = (
+    label: string,
+    official: (s: string) => number | null | undefined,
+    js: (s: string, sim: boolean) => number,
+    sub: (v: number | null, pv: number | null) => string,
+  ) => {
+    if (!bOk) return <Tile key={label} label={label} value="—" sub={t_i18n("No readable answer")} />;
+    const val = (s: string, sim: boolean) => {
+      const o = official(s);
+      return o == null ? null : o + (sim ? js(s, true) - js(s, false) : 0);
+    };
+    const v = val(B, whatIf);
+    const raw = val(B, false);
+    const pv = prev ? val(prev.key, whatIf) : null;
+    const shifted = whatIf && v != null && raw != null && Math.abs(v - raw) > 0.05;
+    return (
+      <Tile
+        key={label}
+        label={label}
+        value={formatScore(v)}
+        was={shifted ? formatScore(raw) : null}
+        highlight={shifted}
+        delta={prev ? <Delta now={v} was={pv} vs={prev.name} /> : null}
+        sub={sub(v, pv)}
+      />
+    );
+  };
+  const official = (key: string, s: string): number | null | undefined => answerOf(s)?.metrics[key];
+  const prf = (key: string, js: Counts) => {
+    // The scorer's own counts when the what-if is off; the page's counts with it.
+    const served = answer?.counts?.[key];
+    const c = !whatIf && served ? { tp: served[0], fp: served[1], fn: served[2] } : js;
+    return t_i18n("P {precision} · R {recall}", { precision: formatScore(precision(c)), recall: formatScore(recall(c)) });
+  };
+  const sub = (key: string, js: Counts) => (v: number | null, pv: number | null) =>
+    mode === "runs"
+      ? `${ctx.letter(pair.ref)} ${formatScore(pv)} → ${ctx.letter(B)} ${formatScore(v)}`
+      : prf(key, js) + (prev && pv != null ? ` · ${prev.name} ${formatScore(pv)}` : "");
+  const types = fullModel.types.filter((t) => {
+    const c = typeCounts(fullModel, B, whatIf, t);
+    return c.tp + c.fp + c.fn > 0;
+  }).length;
+  const judge = answer?.judge_score ?? null;
+  const prevAnswer = answerOf(prev?.key);
+  const prevJudge = prevAnswer && prevAnswer.evaluation_id === answer?.evaluation_id ? prevAnswer.judge_score : null;
+  return (
+    <section aria-label={t_i18n("Scores on this report")} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {card(
+        t_i18n("Entity F1"),
+        (s) => official(ENTITY_F1, s),
+        (s, x) => f1(entityCounts(fullModel, s, x)),
+        sub(ENTITY_F1, entityCounts(fullModel, B, whatIf)),
+      )}
+      {card(
+        t_i18n("Relationship F1"),
+        (s) => official(RELATIONSHIP_F1, s),
+        (s, x) => f1(relationshipCounts(fullModel, s, x)),
+        sub(RELATIONSHIP_F1, relationshipCounts(fullModel, B, whatIf)),
+      )}
+      {card(
+        t_i18n("Entity F1 per type"),
+        // Before the scorer served the per-type figure, the page's own reading stands in.
+        (s) => official(ENTITY_F1_BY_TYPE, s) ?? macroF1(fullModel, s, false),
+        (s, x) => macroF1(fullModel, s, x),
+        (v, pv) =>
+          mode === "runs"
+            ? `${ctx.letter(pair.ref)} ${formatScore(pv)} → ${ctx.letter(B)} ${formatScore(v)}`
+            : t_i18n("{count, plural, =0 {no type} one {# type} other {# types}}", { count: types }) + (prev && pv != null ? ` · ${prev.name} ${formatScore(pv)}` : ""),
+      )}
+      <Tile
+        label={t_i18n("Judge score")}
+        value={bOk ? formatScore(judge) : "—"}
+        delta={bOk && prev && prevJudge != null ? <Delta now={judge} was={prevJudge} vs={prev.name} /> : null}
+        sub={
+          answer?.judge_reasoning ? (
+            <Button variant="link" size="sm" className="h-auto p-0" onClick={onOpenJudge}>
+              {t_i18n("Read the judge’s reasoning")}
+            </Button>
+          ) : judge != null ? (
+            t_i18n("LLM judge, weighted sub-scores")
+          ) : (
+            t_i18n("No judge verdict on this answer")
+          )
+        }
+      />
+      <Tile label={mode === "runs" ? t_i18n("Objects · A → B") : t_i18n("Objects")}>
+        <PairCounts ctx={ctx} />
+      </Tile>
+    </section>
+  );
+}
+
+/** The judge's reasoning on the answer under review, opened from its score card. */
+export function JudgePanel({ ctx, onClose }: { ctx: ReviewContext; onClose: () => void }) {
+  const { t_i18n } = useFormatter();
+  const answer = ctx.review.answers.find((a) => a.key === ctx.pair.under);
+  if (!answer?.judge_reasoning) return null;
+  return (
+    <section aria-label={t_i18n("What the judge said")} className="space-y-2 rounded-sm border border-elevation-subtle bg-elevation-default p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="content-compact">
+          <span className="font-semibold">{t_i18n("What the judge said")}</span>
+          <span className="text-default-secondary">
+            {" "}
+            · {ctx.sourceName(answer.key)} · {ctx.review.entry.label}
+          </span>
+        </p>
+        <Button variant="link" size="sm" className="h-auto p-0" onClick={onClose}>
+          {t_i18n("Close")}
+        </Button>
+      </div>
+      <p className="whitespace-pre-wrap content-compact">{answer.judge_reasoning}</p>
+    </section>
   );
 }

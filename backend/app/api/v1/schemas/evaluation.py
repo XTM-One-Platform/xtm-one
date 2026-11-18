@@ -1321,6 +1321,7 @@ class ComparedDataset(BaseModel):
     name: str
     entry_count: int
     instructions_digest: str | None = None
+    description: str | None = None
 
 
 class ComparedRun(BaseModel):
@@ -1337,11 +1338,19 @@ class ComparedRun(BaseModel):
     quality_score: float | None = None
     completed_entries: int = 0
     total_entries: int = 0
+    completed_at: str | None = None
+    #: The judge's run score; None when the run's judge was off.
+    judge_score: float | None = None
+    #: Runs with one key ran one setup (subject version, prompts, skills, settings, mode).
+    setup_key: str | None = None
+    setup: dict[str, Any] = {}
+    rescore_error: str | None = None
 
 
 class ComparedEvaluation(BaseModel):
     id: str
     name: str
+    created_at: str | None = None
     family: str | None = None
     execution_mode: str | None = None
     timeout_seconds: int | None = None
@@ -1379,10 +1388,17 @@ class ComparedCell(BaseModel):
     metrics: dict[str, list[float]] = {}
     cost: float | None = None
     seconds: float | None = None
+    #: ``[tp, fp, fn]`` of the metrics that report them (counted results only).
+    counts: dict[str, list[float]] = {}
+    #: The scorer could not read the answer.
+    unreadable: bool = False
+    judge_score: float | None = None
 
 
 class EvaluationComparisonResponse(BaseModel):
     family: str
+    #: The metric suite this platform scores with now.
+    metric_suite_version: str | None = None
     metrics: list[ComparedMetric]
     evaluations: list[ComparedEvaluation]
     entries: list[ComparedEntry]
@@ -1391,6 +1407,12 @@ class EvaluationComparisonResponse(BaseModel):
 
 class BundleReviewEntry(BaseModel):
     label: str
+    #: The entry's reference key, as ``GET /compare`` names its entries.
+    key: str | None = None
+    position: int = 0
+    entry_count: int | None = None
+    dataset_name: str | None = None
+    dataset_description: str | None = None
     pages: list[str] = []
     file_name: str | None = None
     text_source: str | None = None
@@ -1407,17 +1429,35 @@ class BundleReviewAnswer(BaseModel):
     subject_name: str | None = None
     created_at: str | None = None
     judge_score: float | None = None
+    judge_reasoning: str | None = None
+    #: The suite the answer's run was scored by.
+    metric_suite_version: str | None = None
     anomaly: str | None = None
     metrics: dict[str, float | None] = {}
+    counts: dict[str, list[float]] = {}
+    unreadable: bool = False
+    cost: float | None = None
+    seconds: float | None = None
 
 
 class BundleReviewResponse(BaseModel):
     """An entry's expected STIX bundle against answers; shapes in ``services/evaluation/bundle_review.py``."""
 
     entry: BundleReviewEntry
+    #: The suite this review reads the answers with (the platform's current one).
+    metric_suite_version: str | None = None
     answers: list[BundleReviewAnswer]
     objects: list[dict[str, Any]]
     groups: list[int]
     sources: dict[str, list[int]]
     relationships: list[list[Any]]
     unreadable: list[str] = []
+
+
+class BundleReviewsRequest(BaseModel):
+    """Several entries' reviews at once: one group of result ids per entry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[list[str]] = Field(min_length=1, max_length=200)
+    include_text: bool = False

@@ -23,25 +23,26 @@ import { useFormatter } from "@/i18n";
 import {
   EXPECTED,
   displayStatus,
-  endName,
+  entityVerdict,
   entityVisible,
   f1,
   formatScore,
-  nearKind,
   relationshipCounts,
+  relationshipVerdict,
   relationshipVisible,
   tripleText,
   typeCounts,
   wordDiff,
+  type DisplayStatus,
   type EntityItem,
   type RelationshipItem,
 } from "@/lib/evaluation-bundle-review";
 import { cn } from "@/lib/utils";
-import { NEAR_KIND_LABELS, STATUS_SURFACE, statusLabel } from "./labels";
+import { STATUS_SURFACE, statusLabel } from "./labels";
+import { noteFor } from "./graph-text";
 import { OkMark } from "./ReviewInspector";
 import { isSelected, type ReviewContext } from "./context";
 
-type Translate = ReturnType<typeof useFormatter>["t_i18n"];
 export type DiffLayout = "split" | "unified";
 
 interface Side {
@@ -58,39 +59,17 @@ function sideOf(it: EntityItem | RelationshipItem, s: string): Side | null {
   return o ? { text: o.name + (o.type !== it.g.type ? ` (${o.type})` : ""), sub: o.cid } : null;
 }
 
-function noteFor(ctx: ReviewContext, it: EntityItem | RelationshipItem, t_i18n: Translate): string {
-  const { ref: A, under: B } = ctx.pair;
-  if (!("r" in it)) {
-    const n = it.g.extra[B];
-    const ex = n ? t_i18n("+{count, plural, one {# duplicate} other {# duplicates}} in {answer}", { count: n, answer: ctx.letter(B) }) : "";
-    if (it.a && it.b && it.a.cid !== it.b.cid) {
-      const kind = t_i18n(NEAR_KIND_LABELS[nearKind(it.a, it.b)]);
-      const tail =
-        ctx.mode === "score"
-          ? ctx.whatIf
-            ? t_i18n("{kind}: different canonical IDs, counted as a match in the what-if", { kind })
-            : t_i18n("{kind}: different canonical IDs, counts as 1 missing + 1 spurious", { kind })
-          : t_i18n("{kind}: different canonical IDs", { kind });
-      return ex ? `${tail} · ${ex}` : tail;
-    }
-    const exp = it.g.by[EXPECTED];
-    if (ctx.mode === "alone" && it.st === "near" && exp && it.b) {
-      const tail = t_i18n("{kind}: the expected bundle has “{name}”", { kind: t_i18n(NEAR_KIND_LABELS[nearKind(exp, it.b)]), name: exp.name });
-      return ex ? `${tail} · ${ex}` : tail;
-    }
-    return ex;
+/** What changed on this row from the comparator (the previous run) to the answer under review. */
+function historyVerdict(ctx: ReviewContext, it: EntityItem | RelationshipItem): DisplayStatus | null {
+  const prev = ctx.comparator?.key;
+  if (!prev || ctx.mode === "runs" || ctx.review.unreadable.includes(prev)) return null;
+  const B = ctx.pair.under;
+  if ("r" in it) {
+    const r = ctx.fullModel.relById.get(it.r.id);
+    return r ? relationshipVerdict(ctx.fullModel, r, prev, B, ctx.whatIf) : null;
   }
-  const X = ctx.mode === "runs" ? A : EXPECTED;
-  const c = it.cause ? ctx.model.byId.get(it.cause) : undefined;
-  if (it.pairSt === "cascade" && c) return t_i18n("follows from the {type} named differently: {a} ≈ {b}", { type: c.type, a: endName(c, X), b: endName(c, B) });
-  if (it.pairSt === "type") return t_i18n("same endpoints, relationship type {a} ≠ {b}", { a: it.r.kinds[X] ?? "", b: it.r.kinds[B] ?? "" });
-  if (it.pairSt === "fn" && c) return t_i18n("its endpoint, the {type}, is absent from {answer}", { type: c.type, answer: ctx.letter(B) });
-  if (it.pairSt === "fp" && c) {
-    return ctx.mode === "runs"
-      ? t_i18n("its endpoint, the {type}, is absent from {answer}", { type: c.type, answer: ctx.letter(A) })
-      : t_i18n("its endpoint, the {type}, is not expected", { type: c.type });
-  }
-  return "";
+  const g = ctx.fullModel.byId.get(it.g.id);
+  return g ? entityVerdict(g, prev, B, ctx.whatIf) : null;
 }
 
 /** A side's text, with the part that differs from the other side marked. */
@@ -128,9 +107,18 @@ function DiffRow({ ctx, it, layout }: { ctx: ReviewContext; it: EntityItem | Rel
   const selected = isSelected(ctx, kind, id);
   const select = () => ctx.select({ kind, id });
   const label = t_i18n(statusLabel(st, ctx.mode));
-  const chip = ctx.mode === "runs" && st !== "same" ? (
-    <span className={cn("rounded-full border px-1.5 content-caption text-default-primary", STATUS_SURFACE[st])}>{label}</span>
-  ) : null;
+  // Against the reference in a comparison of two runs; else, what changed since the
+  // previous run of the same agent and model on this report.
+  const verdict = ctx.mode === "runs" ? st : historyVerdict(ctx, it);
+  const chip =
+    verdict && verdict !== "same" ? (
+      <span
+        title={ctx.mode === "runs" ? undefined : t_i18n("vs {label}", { label: ctx.comparator?.name ?? "" })}
+        className={cn("rounded-full border px-1.5 content-caption text-default-primary", STATUS_SURFACE[verdict])}
+      >
+        {t_i18n(statusLabel(verdict, "runs"))}
+      </span>
+    ) : null;
   const gone = ctx.mode !== "alone" && !b;
   const rowClass = cn(
     "w-full rounded-sm border-l-2 px-2 py-1 text-left content-compact transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus",
@@ -215,7 +203,13 @@ export function DiffView({
       const head =
         mode === "runs"
           ? t_i18n("F1 {from} → {to}", { from: formatScore(f1(typeCounts(model, A, whatIf, type))), to: formatScore(under) })
-          : t_i18n("expected {expected} · {answer} {count} · F1 {value}", {
+          : mode === "alone"
+            ? t_i18n("{count} in {answer} · F1 {value}", {
+                count: model.groups.filter((g) => g.type === type && g.by[B]).length,
+                answer: ctx.letter(B),
+                value: formatScore(under),
+              })
+            : t_i18n("expected {expected} · {answer} {count} · F1 {value}", {
               expected: model.groups.filter((g) => g.type === type && g.by[EXPECTED]).length,
               answer: ctx.letter(B),
               count: model.groups.filter((g) => g.type === type && g.by[B]).length,
@@ -227,7 +221,7 @@ export function DiffView({
   const relRows = derived.relItems.filter((it) => relationshipVisible(model, it, filters, mode) && keep(it));
   const help =
     mode === "runs"
-      ? t_i18n("What changed between the two answers, each judged against the expected bundle: ✓ expected, ≈ expected in another form, ✗ not expected.")
+      ? t_i18n("What changed between the two answers, each judged against the expected bundle: ✓ expected, ≈ expected in another form, ✗ not expected. Green rows gain points, red rows lose them.")
       : mode === "alone"
         ? t_i18n("Everything the answer extracted, checked against the expected bundle: ✓ expected, ≈ expected in another form, ✗ not expected.")
         : t_i18n("Objects are paired by canonical ID. A near-miss pairs two IDs that differ only by an alias, a wording, a type or a defanged value.");
@@ -260,7 +254,7 @@ export function DiffView({
           <span>{A === EXPECTED ? t_i18n("Expected") : `${ctx.letter(A)} · ${ctx.sourceName(A)}`}</span>
           <span />
           <span>{`${ctx.letter(B)} · ${ctx.sourceName(B)}`}</span>
-          <span>{mode === "runs" ? t_i18n("Verdict") : ""}</span>
+          <span>{mode === "runs" ? t_i18n("Verdict") : ctx.comparator ? t_i18n("vs {label}", { label: ctx.comparator.name }) : ""}</span>
         </div>
       )}
       {hunks.map((h) => (

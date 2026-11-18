@@ -21,6 +21,7 @@ import { saveBlobAs } from "@/lib/utils";
 import { evaluationRunPollTier } from "@/lib/held";
 import { entityListKey, entityListPath } from "@/lib/entity-list-scope";
 import { useEntityListScope } from "@/hooks/useEntityListScope";
+import { withDerivedMetrics } from "@/lib/evaluation-compare";
 import type {
   AgentTagsResponse,
   AvailableModel,
@@ -467,6 +468,8 @@ export function useEvaluationComparison(evaluationIds: string[], runIds: string[
     queryKey: ["evaluation-comparison", ids, runs],
     queryFn: () =>
       api.get(`/evaluations/compare?ids=${encodeURIComponent(ids)}${runs ? `&run_ids=${encodeURIComponent(runs)}` : ""}`),
+    // Derived metrics (STIX: Bundle F1) are added once, so every page reads them alike.
+    select: withDerivedMetrics,
     enabled: evaluationIds.length >= 1,
     // A refusal (another family, an unknown id) is the page's own message, not the boundary's.
     retry: false,
@@ -474,13 +477,27 @@ export function useEvaluationComparison(evaluationIds: string[], runIds: string[
   });
 }
 
-/** One STIX entry's expected bundle against one to four answers. */
+/** One STIX entry's expected bundle against 1 to 32 answers. */
 export function useBundleReview(resultIds: string[]) {
   const ids = resultIds.join(",");
   return useQuery<BundleReview>({
     queryKey: ["evaluation-bundle-review", ids],
     queryFn: () => api.get(`/evaluations/bundle-review?result_ids=${encodeURIComponent(ids)}`),
     enabled: resultIds.length > 0,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Several entries' bundle reviews at once (one group of result ids per entry), without
+ *  the report text unless asked: a run's figures, causes and history over every entry. */
+export function useBundleReviews(groups: string[][], { includeText = false, enabled = true }: { includeText?: boolean; enabled?: boolean } = {}) {
+  const key = groups.map((g) => g.join(",")).join(";");
+  return useQuery<BundleReview[]>({
+    queryKey: ["evaluation-bundle-reviews", key, includeText],
+    queryFn: () => api.post("/evaluations/bundle-reviews", { groups, include_text: includeText }),
+    enabled: enabled && groups.length > 0,
+    staleTime: 5 * 60_000,
     retry: false,
     throwOnError: false,
   });

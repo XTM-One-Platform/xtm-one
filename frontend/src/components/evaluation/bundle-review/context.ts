@@ -40,6 +40,17 @@ export interface ReviewContext {
   sourceName: (source: string) => string;
   /** The sources on screen: the expected bundle, then the pair's answers. */
   shown: string[];
+  /** The answers Coverage lays side by side: every loaded answer, or the pair of a run review. */
+  columns: string[];
+  /** Every loaded source's groups (the run's other answers on this entry included), with
+   *  the same group and relationship ids as `model`: what the history and the comparator read. */
+  fullModel: ReviewModel;
+  /** The answer the reviewed one is measured against on this entry (the reference run, or
+   *  the previous run of its agent and model), its name; null without one. */
+  comparator: { key: string; name: string } | null;
+  /** The reviewed answer's agent and model on every run of theirs that answered this entry,
+   *  oldest first (a run review only): what the inspector's history line reads. */
+  history: { label: string; runs: { key: string; code: string }[] } | null;
 }
 
 export function isSelected(ctx: ReviewContext, kind: ReviewSelection["kind"], id: string): boolean {
