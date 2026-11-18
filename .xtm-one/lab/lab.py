@@ -4485,6 +4485,49 @@ def seed_custom_integration_provider(token: str, base: str) -> dict[str, dict[st
     return {"custom integration provider": {"id": LAB_CUSTOM_PROVIDER, "url": url}}
 
 
+def seed_a2a_partner(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One inbound OAuth A2A partner integration with three partner runs (#71).
+
+    ``POST /integrations`` creates the ``oauth_a2a`` integration (``a2a_direction`` inbound), ``POST
+    /integrations/{id}/a2a-credential`` mints its partner registration, and a seeded agent binds it.
+    ``seed_a2a_partner_runs.py`` writes a completed, a failed and a running run of that agent through
+    the backend's model, each stamped with the partner's client id and ``a2a_provider`` (no API
+    creates an A2A run with a given registration). Read back: ``GET /assignments/runs/all`` narrowed
+    by ``a2a_integration_id`` lists the three. Logged ``seeded A2A integration with partner runs:
+    <base>/integrations/<id>/activity``. May raise: the caller logs and skips.
+    """
+    integration = _created(api("POST", "/integrations", token, {
+        "provider": "oauth_a2a", "name": f"{SEED_NAME} A2A partner", "auth_type": "none",
+        "a2a_direction": "inbound", "description": "Seeded by the lab: an inbound A2A partner, nothing calls it.",
+    }))
+    credential = api("POST", f"/integrations/{integration}/a2a-credential", token)
+    client_id = credential.get("client_id") if isinstance(credential, dict) else None
+    if not client_id:
+        raise RuntimeError(f"POST /integrations/{integration}/a2a-credential answered no client id")
+    agent = _seed_agent(token, "A2A partner desk")
+    try:
+        api("PUT", f"/agents/{agent}", token, {"integration_bindings": {"oauth_a2a": [integration]}})
+    except RuntimeError as exc:  # the runs still list without the binding
+        log(f"A2A partner: binding refused, runs seeded unbound: {exc}")
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "a2a_partner_runs.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_a2a_partner_runs.py"), agent, admin, client_id,
+         str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_a2a_partner_runs.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    seeded_runs = set(json.loads(out.read_text()))
+    listed = api("GET", f"/assignments/runs/all?a2a_integration_id={integration}&limit=50", token)
+    shown = {str(r.get("id")) for r in (listed if isinstance(listed, list) else []) if isinstance(r, dict)}
+    if not seeded_runs <= shown:
+        raise RuntimeError(f"GET /assignments/runs/all?a2a_integration_id= lists {len(shown & seeded_runs)} of {len(seeded_runs)} runs")
+    url = f"{base}/integrations/{integration}/activity"
+    log(f"seeded A2A integration with partner runs: {url}")
+    return {"A2A partner integration": {"id": integration, "url": url}}
+
+
 def seed_oauth_missing_scopes(token: str, base: str) -> dict[str, dict[str, str]]:
     """A connected Google OAuth integration whose token was granted all but one requested scope (#9813).
 
@@ -7148,6 +7191,10 @@ def seed_entities() -> None:
         seeded.update(seed_custom_integration_provider(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["custom integration provider"] = str(exc)[:600]
+    try:
+        seeded.update(seed_a2a_partner(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["A2A partner integration"] = str(exc)[:600]
     # Before the AI switches (Enable fleet is refused while AI is off).
     if peer_id and "opencti" in suite:
         try:
