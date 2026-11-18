@@ -3785,7 +3785,10 @@ def seed_trace_sessions(base: str, peer_id: str | None) -> dict[str, dict[str, s
 
 
 def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, str]]:
-    """Five background tasks and two worksets of the administrator, so the two Operations lists render.
+    """Five background tasks and four worksets of the administrator, so the two Operations lists render.
+
+    The worksets: active, resolved, the seeded agent's implicit chat corpus (Rolling, one item
+    evicted) and a sealed one (#73).
 
     No API creates a background task or a workset row: ``seed_operations.py`` writes them through
     the backend's own models and services, with its interpreter and environment. May raise: the
@@ -3802,7 +3805,9 @@ def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, st
     rows = json.loads(out.read_text())
     return {
         "background tasks (5)": {"id": ",".join(rows["tasks"]), "url": f"{base}/operations/background-tasks"},
-        "worksets (active, resolved)": {"id": ",".join(rows["worksets"]), "url": f"{base}/operations/worksets"},
+        "worksets (active, resolved, rolling, sealed)": {
+            "id": ",".join(rows["worksets"]), "url": f"{base}/operations/worksets",
+        },
     }
 
 
