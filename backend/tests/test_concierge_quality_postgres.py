@@ -30,8 +30,8 @@ from app.models.group import Group, GroupMember
 from app.models.health_finding import ConciergeFinding
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
-from app.services.builtin_tools.concierge_experiments import build_concierge_experiment_tools
-from app.services.builtin_tools.concierge_quality import build_concierge_diagnosis_tools
+from app.services.builtin_tools.health_experiments import build_concierge_experiment_tools
+from app.services.builtin_tools.health_quality import build_concierge_diagnosis_tools
 from app.services.health import availability
 from app.services.health.access import NOT_IN_REACH, WRITE_REFUSED
 from app.services.health.findings import Evidence, record_finding

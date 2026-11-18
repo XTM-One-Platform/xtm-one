@@ -18,7 +18,7 @@ One access rule (``services/health/access.py``) read on the rows at every
 call, on every surface (agent tools, ``/mcp/xtm``). The ``concierge_diagnosis``
 group: ``get_quality_signals``, ``list_findings`` (reads), ``record_finding``,
 ``draft_variant`` (the Concierge's Quality Analyst only). The Experimenter's
-group is ``concierge_experiments.py``, on the same helpers.
+group is ``health_experiments.py``, on the same helpers.
 
 No tool here writes an agent, a skill or an assignment: a variant lives in its
 experiment row and in sandbox copies, and the only path to production is the
@@ -472,7 +472,7 @@ def add_concierge_quality_tools(
     (an assignment run) names the Concierge cycle an experiment's spend is
     booked on.
     """
-    from .concierge_experiments import EXPERIMENTS_GROUP_ID, build_concierge_experiment_tools
+    from .health_experiments import EXPERIMENTS_GROUP_ID, build_concierge_experiment_tools
 
     if not any(gid in builtin_tool_ids for gid in (DIAGNOSIS_GROUP_ID, EXPERIMENTS_GROUP_ID)):
         return

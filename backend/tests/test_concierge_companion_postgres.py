@@ -27,7 +27,7 @@ from PIL import Image
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.api import deps
-from app.api.v1 import concierge_companion as routes
+from app.api.v1 import platform_health_companion as routes
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.assignment import Assignment, AssignmentRun

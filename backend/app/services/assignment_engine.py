@@ -6397,7 +6397,7 @@ async def execute_assignment_run(
                 # The run's Concierge cycle pays for the pass's model calls.
                 composite.add_tools(*build_memory_steward_tools(run_id=str(run.id)))
             # --- Platform Concierge (#8259): the run acts as its principal, user or not ---
-            from app.services.builtin_tools.concierge_quality import add_concierge_quality_tools
+            from app.services.builtin_tools.health_quality import add_concierge_quality_tools
 
             add_concierge_quality_tools(
                 composite,
@@ -6415,7 +6415,7 @@ async def execute_assignment_run(
             # --- Concierge orchestrator (#8261): read-only in a run, so a
             # cycle's own run never starts another cycle ---
             if "concierge_orchestrator" in agent_builtin_tool_ids:
-                from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+                from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
 
                 co_defs, co_exec = build_concierge_orchestrator_tools(
                     str(effective_user_id) if effective_user_id else None, allow_requests=False

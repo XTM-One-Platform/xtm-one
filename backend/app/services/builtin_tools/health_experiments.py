@@ -17,7 +17,7 @@ The ``concierge_experiments`` group: ``list_experiments``, ``get_experiment``
 (reads), ``run_experiment``, ``propose_from_experiment`` (the Concierge's
 Experimenter only: the one actor that launches an experiment and files a
 proposal). Same access rule and helpers as the Quality Analyst's
-(``concierge_quality.py``).
+(``health_quality.py``).
 
 No tool here writes an agent, a skill or an assignment: a variant lives in its
 experiment row and in sandbox copies, and the only path to production is the
@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 from app.services.health import text_kinds  # noqa: F401 - registers level 6's kinds
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from .concierge_quality import RefusalError, build_group, finding_for, parse_uuid, untrusted_json
+from .health_quality import RefusalError, build_group, finding_for, parse_uuid, untrusted_json
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

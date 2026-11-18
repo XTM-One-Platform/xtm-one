@@ -13,7 +13,7 @@
 
 """Who may read a Concierge cycle, ask for one, and follow a proposal's evidence (#8261).
 
-One rule for every surface - REST (``api/v1/concierge_cycles.py``), the
+One rule for every surface - REST (``api/v1/platform_health_cycles.py``), the
 orchestrator's tools and the platform MCP server - checked on the database
 rows at every call:
 

@@ -301,7 +301,7 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     catalog["improvement_proposals"] = _extract(proposal_defs)
 
     # Concierge orchestrator (#8261): every call opens its own session.
-    from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
 
     co_defs, _ = build_concierge_orchestrator_tools("")
     catalog["concierge_orchestrator"] = _extract(co_defs)

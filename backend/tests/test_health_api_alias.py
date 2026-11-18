@@ -16,12 +16,12 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from app.api.v1 import concierge, concierge_companion, concierge_cycles
+from app.api.v1 import platform_health, platform_health_companion, platform_health_cycles
 from app.main import CONCIERGE_ALIAS_PREFIX, HEALTH_API_PREFIX, DeprecatedAliasMiddleware, application
 
 
 def _suffixes() -> set[str]:
-    routers = (concierge.router, concierge_cycles.router, concierge_companion.router)
+    routers = (platform_health.router, platform_health_cycles.router, platform_health_companion.router)
     return {route.path for router in routers for route in router.routes if isinstance(route, APIRoute)}
 
 

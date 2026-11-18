@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.api import deps
-from app.api.v1 import concierge as concierge_api
+from app.api.v1 import platform_health as concierge_api
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.agent import Agent

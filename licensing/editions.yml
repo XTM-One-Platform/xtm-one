@@ -456,7 +456,7 @@ ee:
   - backend/app/api/v1/workspace_knowledge.py
   - backend/app/api/v1/fleet*.py
   - backend/app/api/v1/schemas/fleet.py
-  - backend/app/api/v1/concierge*.py
+  - backend/app/api/v1/platform_health*.py
   - backend/app/api/v1/memory_consolidations.py
   - backend/app/api/v1/evaluation*.py
   - backend/app/api/v1/schemas/extension.py

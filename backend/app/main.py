@@ -69,9 +69,6 @@ from app.api.v1 import (
     chat_continuation,
     chat_export,
     chat_web_stream,
-    concierge,
-    concierge_companion,
-    concierge_cycles,
     csp_reports,
     ctem_cases,
     ctem_metrics,
@@ -129,6 +126,9 @@ from app.api.v1 import (
     platform,
     platform_access_notices,
     platform_chat_workspaces,
+    platform_health,
+    platform_health_companion,
+    platform_health_cycles,
     presentation_public,
     presentations,
     prompts,
@@ -4394,7 +4394,7 @@ application.include_router(agents.router, prefix="/api/v1/agents", tags=["agents
 # /api/v1/concierge prefix answers the same handlers as a deprecated alias
 # (DeprecatedAliasMiddleware, dev-docs/reference/api-routes.md).
 for _health_prefix, _in_schema in ((HEALTH_API_PREFIX, True), (CONCIERGE_ALIAS_PREFIX, False)):
-    for _health_router in (concierge.router, concierge_cycles.router, concierge_companion.router):
+    for _health_router in (platform_health.router, platform_health_cycles.router, platform_health_companion.router):
         application.include_router(_health_router, prefix=_health_prefix, tags=["health"], include_in_schema=_in_schema)
 
 application.include_router(

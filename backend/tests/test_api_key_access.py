@@ -190,7 +190,7 @@ def test_the_xtm_read_list_names_tools_the_server_offers_and_reads_only():
     from app.services.builtin_tools import build_flow_lab_tools
 
     offered |= {d.name for d in build_flow_lab_tools("", read_only=True)[0]}
-    from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
 
     offered |= {d.name for d in build_concierge_orchestrator_tools("")[0]}
     assert mcp_xtm.XTM_MCP_READ_TOOLS.issubset(offered)

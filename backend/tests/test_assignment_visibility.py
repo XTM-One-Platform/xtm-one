@@ -312,23 +312,23 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     # The Concierge fleet seed (#8261) finds its own rows: the fleet's agents,
     # assignments, fleet and skills are company-managed by construction, and a
     # personal row holding a fleet slug or role is never adopted. No caller's read.
-    ("services/concierge/fleet_seed.py", "_skill_ids_by_slug"): (
+    ("services/health/fleet_seed.py", "_skill_ids_by_slug"): (
         "the seeded skills the fleet carries are company-managed ones; a personal skill with the slug is not one"
     ),
-    ("services/concierge/fleet_seed.py", "_ensure_fleet"): (
+    ("services/health/fleet_seed.py", "_ensure_fleet"): (
         "the seeded fleet and workspace are company-managed; a personal fleet of the same name is not adopted"
     ),
-    ("services/concierge/fleet_seed.py", "fleet_assignment"): (
+    ("services/health/fleet_seed.py", "fleet_assignment"): (
         "the fleet assignment a cycle starts runs on a company-managed fleet agent, never a personal look-alike"
     ),
-    ("services/concierge/fleet_seed.py", "fleet_agent_ids"): (
+    ("services/health/fleet_seed.py", "fleet_agent_ids"): (
         "the digest's 'by the Concierge' counts the fleet's own agents, company-managed by construction"
     ),
-    ("services/concierge/naming.py", "rename_concierge"): (
+    ("services/health/naming.py", "rename_concierge"): (
         "the orchestrator, fleet and workspace the seed made are company-managed; a personal look-alike keeps its name"
     ),
     # (b) not a read offered to the caller, SQL unchanged
-    ("services/concierge/sandbox/side_effects.py", "company_mcp_server_ids"): (
+    ("services/health/sandbox/side_effects.py", "company_mcp_server_ids"): (
         "the flag IS the policy: a sandbox trusts a tool name only from a server an "
         "administrator vouched for, the set the HITL derivation trusts (#8255)"
     ),

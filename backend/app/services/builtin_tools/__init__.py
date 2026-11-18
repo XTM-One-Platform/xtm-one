@@ -112,12 +112,6 @@ from .agent_builder import (
 from .computer_use import (
     build_computer_use_tools,
 )
-from .concierge_experiments import (
-    build_concierge_experiment_tools,
-)
-from .concierge_quality import (
-    build_concierge_diagnosis_tools,
-)
 from .ctem_cases import (
     CTEM_CASE_TOOL_NAMES,
     build_ctem_case_tools,
@@ -199,6 +193,12 @@ from .handover import (
     resolve_handover_agent,
     resolve_owned_delegation_target,
     self_fanout_enabled,
+)
+from .health_experiments import (
+    build_concierge_experiment_tools,
+)
+from .health_quality import (
+    build_concierge_diagnosis_tools,
 )
 from .html_render import (
     build_render_html_tool,

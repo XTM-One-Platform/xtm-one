@@ -474,7 +474,7 @@ def test_every_caller_of_create_flow_run_is_known():
         "services/flow_runner.py:_exec_flow_call",
         "api/v1/flow_runs.py:run_flow",
         "services/builtin_tools/flow_builder.py:_run_flow",
-        "services/concierge/sandbox/runs.py:start_sandbox_flow_run",
+        "services/health/sandbox/runs.py:start_sandbox_flow_run",
         # An evaluation's flow subject (#8257): the entry is left out, with the reason.
         "services/evaluation/flow_subject.py:run_flow_for_entry",
     }

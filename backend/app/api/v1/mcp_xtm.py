@@ -360,7 +360,7 @@ async def _build_xtm_tools(
     composite.add_tools(*build_improvement_tools(db, user_id))
 
     # Concierge (#8261): a person's reach - the targets they manage - on every call.
-    from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
 
     composite.add_tools(*build_concierge_orchestrator_tools(user_id))
 
@@ -399,8 +399,8 @@ async def _build_xtm_tools(
 
     # Platform Concierge (#8259): the read half only - a person is never the
     # Concierge, whose agents alone write findings and run experiments.
-    from app.services.builtin_tools.concierge_experiments import build_concierge_experiment_tools
-    from app.services.builtin_tools.concierge_quality import build_concierge_diagnosis_tools, concierge_tools_offered
+    from app.services.builtin_tools.health_experiments import build_concierge_experiment_tools
+    from app.services.builtin_tools.health_quality import build_concierge_diagnosis_tools, concierge_tools_offered
 
     if concierge_tools_offered():
         composite.add_tools(*build_concierge_diagnosis_tools(user_id, read_only=True))

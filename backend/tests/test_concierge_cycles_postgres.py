@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.api import deps
-from app.api.v1 import concierge_cycles as routes
+from app.api.v1 import platform_health_cycles as routes
 from app.core.database import get_db
 from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun

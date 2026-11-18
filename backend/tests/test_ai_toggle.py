@@ -234,7 +234,7 @@ def test_the_ai_gate_is_read_at_entry_only_never_mid_execution():
         # ``budget_refusal`` ask before a cycle starts any work. ``reserve`` and
         # ``remaining``, read by a run in flight, check the Concierge's own caps
         # only.
-        "services/concierge/budget.py",
+        "services/health/budget.py",
         # A new fleet's first documentation (#10316): asked once at creation,
         # before the background generation is scheduled; never mid-generation.
         "services/fleet_doc_on_create.py",

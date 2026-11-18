@@ -1433,7 +1433,7 @@ def _add_platform_builder_tools(
         )
         composite.add_tools(pi_defs, pi_exec)
     if concierge_actor is not None:
-        from app.services.builtin_tools.concierge_quality import add_concierge_quality_tools
+        from app.services.builtin_tools.health_quality import add_concierge_quality_tools
 
         add_concierge_quality_tools(
             composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id, run_id=run_id
@@ -1442,7 +1442,7 @@ def _add_platform_builder_tools(
 
         add_flow_lab_tools(composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id)
     if "concierge_orchestrator" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+        from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
 
         # Acts as the Concierge in an administrator's chat with a fleet agent,
         # as the person otherwise (``concierge.cycle_access``, #8261). Work a

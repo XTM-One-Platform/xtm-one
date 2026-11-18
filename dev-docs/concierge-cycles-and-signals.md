@@ -1,6 +1,6 @@
 # Concierge cycles, signals and digests (#8261)
 
-Level 8 of the Platform Concierge (PRD `platform-concierge.md`, sections 6.1, 6.3, 6.11; decisions B10, B13, B18, B22). Code: `backend/app/services/concierge/` (`fleet_seed.py`, `cycles.py`, `signals.py`, `digest.py`, `cycle_access.py`, `turns.py`), `api/v1/concierge_cycles.py`, `services/builtin_tools/concierge_orchestrator.py`; migrations `c8cnc8254081` (cycle runs, schedule marks, the one-open-cycle index) and `c8cnc8254082` (signal states).
+Level 8 of the Platform Concierge (PRD `platform-concierge.md`, sections 6.1, 6.3, 6.11; decisions B10, B13, B18, B22). Code: `backend/app/services/concierge/` (`fleet_seed.py`, `cycles.py`, `signals.py`, `digest.py`, `cycle_access.py`, `turns.py`), `api/v1/platform_health_cycles.py`, `services/builtin_tools/health_orchestrator.py`; migrations `c8cnc8254081` (cycle runs, schedule marks, the one-open-cycle index) and `c8cnc8254082` (signal states).
 
 ## The fleet
 
