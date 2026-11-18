@@ -170,6 +170,69 @@ def test_the_repository_declares_tsc_and_knip_as_guards() -> None:
     }
 
 
+STAND_IN = b"""
+[check.frontend-bump-knip]
+argv = ["yarn", "knip"]
+cwd = "frontend"
+image = "toolchain-node"
+stands_for = ["frontend-knip"]
+"""
+
+
+def _with_stand_in(session: _Session) -> None:
+    session.files[f"repo/{CHECKS_FILE}"] = CHECKS + STAND_IN
+
+
+@pytest.mark.asyncio
+async def test_a_bump_knip_run_on_toolchain_node_counts_as_the_knip_guard() -> None:
+    session = _Session()
+    _with_stand_in(session)
+    session.edit("frontend/src/a.ts", b"export const a = 2;\n")
+    assert await _run(session, "frontend-bump-knip", ("yarn", "knip"), 0)
+    text = await prepush.commit_warning(session, session.record, await session.changes())
+    assert "frontend-knip" not in text
+    assert "frontend-types never ran on this checkout" in text
+
+
+@pytest.mark.asyncio
+async def test_a_failed_stand_in_run_is_named_as_the_guard_failing() -> None:
+    session = _Session()
+    _with_stand_in(session)
+    session.edit("frontend/src/a.ts", b"export const a = 1;\nexport const unused = 2;\n")
+    assert await _run(session, "frontend-bump-knip", ("yarn", "knip"), 1)
+    text = await prepush.commit_warning(session, session.record, await session.changes())
+    assert "frontend-knip failed (exit 1) on this tree" in text
+
+
+@pytest.mark.asyncio
+async def test_a_stand_in_run_on_some_files_is_not_kept() -> None:
+    session = _Session()
+    _with_stand_in(session)
+    session.edit("frontend/src/a.ts", b"export const a = 2;\n")
+    assert not await _run(session, "frontend-bump-knip", ("yarn", "knip", "src/a.ts"), 0)
+    text = await prepush.commit_warning(session, session.record, await session.changes())
+    assert "frontend-knip never ran" in text
+
+
+def test_stands_for_must_name_other_checks() -> None:
+    with pytest.raises(ChecksError, match="stands_for"):
+        load_checks('[check.x]\nargv = ["true"]\nstands_for = "y"\n')
+    with pytest.raises(ChecksError, match="stands_for"):
+        load_checks('[check.x]\nargv = ["true"]\nstands_for = ["x"]\n')
+    specs = load_checks((CHECKS + STAND_IN).decode())
+    assert [g.name for g in prepush.recorded_guards(specs["frontend-bump-knip"], specs)] == ["frontend-knip"]
+    assert prepush.recorded_guards(specs["backend-lint"], specs) == []
+
+
+def test_the_repository_declares_bump_stand_ins_for_tsc_and_knip() -> None:
+    from pathlib import Path
+
+    declared = load_checks((Path(__file__).resolve().parents[2] / CHECKS_FILE).read_text())
+    assert declared["frontend-bump-knip"].stands_for == ("frontend-knip",)
+    assert declared["frontend-bump-knip"].image == declared["frontend-bump-types"].image == "toolchain-node"
+    assert declared["frontend-bump-types"].stands_for == ("frontend-types",)
+
+
 def test_a_class_change_names_verify_classes_and_a_backend_or_test_change_does_not() -> None:
     """verify-classes guards the frontend sources and stylesheets, under any folder, never a backend file."""
     from pathlib import Path
