@@ -548,6 +548,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   adversarial_validation: "Adversarial Validation",
   ctem: "Continuous Threat Exposure Management",
   clm: "Contract Management",
+  legal: "Legal",
   automation: "Automation",
   social: "Social Media",
   ats: "ATS",
