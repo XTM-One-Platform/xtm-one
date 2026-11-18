@@ -1093,10 +1093,11 @@ async def _run_embedding_reset_background(target_embedding_model: str | None) ->
 async def _legacy_embedding_config_id(db: AsyncSession, provider: str | None) -> uuid.UUID | None:
     """The config an embedding provider stored without an id runs on: the newest
     of its type, as ``get_embedding_provider`` picks it."""
-    from app.llm.router import select_provider_configs
+    from app.llm.router import newest_config, select_provider_configs
 
-    configs = (await db.execute(select_provider_configs())).scalars().all()
-    return next((c.id for c in reversed(configs) if c.provider == provider), None)
+    same_type = select_provider_configs().where(LLMProviderConfig.provider == provider)
+    config = newest_config((await db.execute(same_type)).scalars().all())
+    return config.id if config else None
 
 
 def _build_probe_candidates(

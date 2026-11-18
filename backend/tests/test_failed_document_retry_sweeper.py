@@ -183,6 +183,24 @@ def test_schedule_retry_allows_unlimited_when_cap_is_zero(fake_settings):
 # ---------------------------------------------------------------------------
 
 
+def test_schedule_retry_immediately_makes_a_non_retryable_failure_due_now(fake_settings):
+    doc = KnowledgeDocument(embedding_retry_count=0)
+    now = datetime(2026, 11, 18, 12, tzinfo=UTC)
+
+    kb_helpers.schedule_embedding_retry(doc, retryable=True, immediately=True, now=now)
+
+    assert doc.embedding_next_retry_at == now
+
+
+def test_schedule_retry_immediately_keeps_the_attempt_cap(fake_settings):
+    fake_settings.embedding_auto_retry_max_attempts = 2
+    doc = KnowledgeDocument(embedding_retry_count=2)
+
+    kb_helpers.schedule_embedding_retry(doc, retryable=True, immediately=True)
+
+    assert doc.embedding_next_retry_at is None
+
+
 def test_backoff_is_exponential_and_capped(fake_settings):
     base = fake_settings.embedding_auto_retry_base_delay_seconds
     assert kb_helpers._embedding_retry_delay_seconds(0) == base

@@ -10,6 +10,12 @@ from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
 from app.services import document_processor
 
 
+@pytest.fixture(autouse=True)
+def _embedding_config_not_moved(monkeypatch):
+    """The platform embedding config is the one each job embedded with."""
+    monkeypatch.setattr(document_processor, "embedding_config_moved", AsyncMock(return_value=False))
+
+
 class _ScalarResult:
     """Minimal stand-in for ``Result``'s ``scalar_one_or_none()`` API.
 
@@ -298,6 +304,57 @@ async def test_dimension_mismatch_marks_non_retryable_error(monkeypatch):
     assert session.commits == 2
     log_mock.assert_awaited_once()
     assert log_mock.await_args.args[2] == "embedding_failed"
+
+
+@pytest.mark.asyncio
+async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(monkeypatch):
+    """The job embedded on the old provider while an admin switched to another
+    one: the new provider may produce the right size, so the failure is retried
+    at once instead of left for good."""
+    from datetime import UTC, datetime
+
+    doc, kb = _build_doc_and_kb()
+    session = _FakeSession(doc=doc, kb=kb)
+    provider = SimpleNamespace(
+        embed=AsyncMock(return_value=[0.1, 0.2, 0.3]), provider_name="test", embedding_dimensions=1536
+    )
+    used_config = str(uuid.uuid4())
+    moved = AsyncMock(return_value=True)
+    monkeypatch.setattr(document_processor, "async_session", lambda: session)
+    monkeypatch.setattr(
+        document_processor, "chunk_text", lambda *_a, **_kw: ["This chunk has enough content to be embedded."]
+    )
+    monkeypatch.setattr(document_processor, "log_kb_activity", AsyncMock())
+    monkeypatch.setattr(document_processor, "embedding_config_moved", moved)
+    monkeypatch.setattr(
+        "app.llm.router.get_embedding_provider",
+        AsyncMock(return_value=(provider, "text-embedding-3-large", used_config)),
+    )
+    before = datetime.now(UTC)
+
+    await document_processor._process_document_impl(str(doc.id))
+
+    assert doc.status == "error"
+    assert "dimension" in doc.error_message
+    assert moved.await_args.args[1] == used_config
+    assert before <= doc.embedding_next_retry_at <= datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_content_failure_never_asks_whether_the_config_moved(monkeypatch):
+    doc, kb = _build_doc_and_kb()
+    session = _FakeSession(doc=doc, kb=kb)
+    moved = AsyncMock(return_value=True)
+    monkeypatch.setattr(document_processor, "async_session", lambda: session)
+    monkeypatch.setattr(document_processor, "chunk_text", lambda *_a, **_kw: [])
+    monkeypatch.setattr(document_processor, "log_kb_activity", AsyncMock())
+    monkeypatch.setattr(document_processor, "embedding_config_moved", moved)
+
+    await document_processor._process_document_impl(str(doc.id))
+
+    assert doc.status == "error"
+    assert doc.embedding_next_retry_at is None
+    moved.assert_not_awaited()
 
 
 @pytest.mark.asyncio

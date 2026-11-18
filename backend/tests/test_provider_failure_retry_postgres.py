@@ -4,6 +4,7 @@ that re-queues them."""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -26,7 +27,7 @@ from tests.scratch_database import ALL_TABLES, scratch_database
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 11, 18, 12, tzinfo=UTC)
-_DUE = {"dims", "provider", "timeout", "legacy"}
+_DUE = {"dims", "provider", "timeout", "legacy", "no_reason", "locked"}
 
 
 @pytest.mark.asyncio
@@ -55,6 +56,7 @@ async def test_provider_failures_become_due_and_the_sweeper_requeues_them(monkey
                 "timeout": doc("timeout", error=TIMEOUT_MESSAGE),
                 # Raw exception text from a row older than the fixed sentences.
                 "legacy": doc("legacy", error="Error code: 401 - Incorrect API key provided"),
+                "no_reason": doc("no_reason"),
                 "content": doc("content", error=NO_CHUNKS_MESSAGE),
                 "internal": doc("internal", error=INTERNAL_ERROR_MESSAGE),
                 "worker": doc("worker", error=worker_timeout_message(600)),
@@ -65,16 +67,19 @@ async def test_provider_failures_become_due_and_the_sweeper_requeues_them(monkey
             db.add_all(docs.values())
             await db.commit()
 
-            assert await kb_helpers.count_provider_failures(db) == len(_DUE) + 1
+            assert await kb_helpers.count_provider_failures(db) == len(_DUE)
 
-        # A sweeper tick holding a row is skipped, not waited on; batches of one
-        # still reach every other row.
+        # A row someone holds is waited on, not skipped; batches of one still
+        # reach every row of the pass.
         async with scratch.sessions() as holder:
             await holder.execute(
                 select(KnowledgeDocument).where(KnowledgeDocument.id == docs["locked"].id).with_for_update()
             )
-            assert await kb_helpers.retry_provider_failures_now(now=_NOW, batch_size=1) == len(_DUE)
+            retry = asyncio.create_task(kb_helpers.retry_provider_failures_now(now=_NOW, batch_size=1))
+            await asyncio.sleep(1)
+            assert not retry.done()
             await holder.rollback()
+            assert await retry == len(_DUE)
 
         async with scratch.sessions() as db:
             rows = {r.filename[:-3]: r for r in (await db.execute(select(KnowledgeDocument))).scalars()}
@@ -145,3 +150,27 @@ async def test_a_legacy_row_runs_on_the_config_the_save_compares_with(monkeypatc
 
 async def _noop():
     return None
+
+
+@pytest.mark.asyncio
+async def test_a_job_sees_the_embedding_config_it_used_was_switched():
+    from app.models.platform_settings import PlatformSettings
+
+    used, other = uuid.uuid4(), uuid.uuid4()
+    async with (
+        scratch_database("provmoved", tables=ALL_TABLES, extensions=("vector",)) as scratch,
+        scratch.sessions() as db,
+    ):
+        ps = PlatformSettings(embedding_provider="openai", embedding_provider_id=None)
+        db.add(ps)
+        await db.commit()
+        # A row with no id names no config: nothing to compare.
+        assert await kb_helpers.embedding_config_moved(db, used) is False
+
+        ps.embedding_provider_id = used
+        await db.commit()
+        assert await kb_helpers.embedding_config_moved(db, str(used)) is False
+
+        ps.embedding_provider_id = other
+        await db.commit()
+        assert await kb_helpers.embedding_config_moved(db, used) is True

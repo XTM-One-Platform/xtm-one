@@ -1382,6 +1382,7 @@ def schedule_embedding_retry(
     doc: KnowledgeDocument,
     *,
     retryable: bool,
+    immediately: bool = False,
     now: datetime | None = None,
 ) -> None:
     """Schedule (or clear) the next automatic embedding retry for a document.
@@ -1397,7 +1398,8 @@ def schedule_embedding_retry(
       * the per-document attempt cap has been reached
         (``embedding_auto_retry_max_attempts > 0`` and exhausted).
 
-    Otherwise it is set to ``now + backoff(retry_count) + jitter``. The
+    Otherwise it is set to ``now + backoff(retry_count) + jitter``, or to ``now``
+    when *immediately* (the embedding config changed while the job ran). The
     ``embedding_retry_count`` is *not* incremented here — the sweeper
     increments it when it actually re-enqueues the document, so the count
     reflects the number of retries initiated.
@@ -1411,21 +1413,21 @@ def schedule_embedding_retry(
         doc.embedding_next_retry_at = None
         return
     now = now or datetime.now(UTC)
-    doc.embedding_next_retry_at = now + timedelta(
-        seconds=_embedding_retry_delay_seconds(count)
-    )
+    delay = 0 if immediately else _embedding_retry_delay_seconds(count)
+    doc.embedding_next_retry_at = now + timedelta(seconds=delay)
 
 
 def _provider_failure_conditions() -> list:
     """Documents in error another embedding provider can fix, within the attempt cap.
 
-    Any stored reason that is no fixed sentence counts: a dimension mismatch, or
-    raw text from a row older than the sentences, which may be a provider failure.
+    Any reason that is no fixed sentence counts: a dimension mismatch, raw text
+    from a row older than the sentences or none, which may be a provider failure.
     """
     conditions = [
         KnowledgeDocument.status == "error",
         or_(
             KnowledgeDocument.error_message.in_(PROVIDER_FAILURE_SENTENCES),
+            KnowledgeDocument.error_message.is_(None),
             and_(
                 KnowledgeDocument.error_message.not_in(PLATFORM_SENTENCES),
                 ~KnowledgeDocument.error_message.startswith(WORKER_TIMEOUT_OPENING, autoescape=True),
@@ -1450,9 +1452,10 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
     """Make the provider failures due now, for :func:`recover_failed_documents`.
 
     Run after a switch to another provider of the same model, which keeps the
-    vectors; a dimension mismatch is otherwise never retried. Its own session,
-    in committed batches that skip the rows a sweeper tick holds. Returns the
-    row count.
+    vectors; a dimension mismatch is otherwise never retried. One pass over the
+    rows that qualify when it starts, in committed batches on its own session; a
+    locked row is waited on. A job still on the old provider is covered by
+    :func:`embedding_config_moved`. Returns the row count.
     """
     if not app_settings.embedding_auto_retry_enabled:
         return 0
@@ -1463,33 +1466,37 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
     total = 0
     try:
         async with async_session() as db:
-            while True:
-                batch = (
-                    select(KnowledgeDocument.id)
-                    .where(
-                        *_provider_failure_conditions(),
-                        or_(
-                            KnowledgeDocument.embedding_next_retry_at.is_(None),
-                            KnowledgeDocument.embedding_next_retry_at > now,
-                        ),
-                    )
-                    .limit(limit)
-                    .with_for_update(skip_locked=True)
-                )
+            snapshot = select(KnowledgeDocument.id).where(*_provider_failure_conditions())
+            ids = (await db.execute(snapshot)).scalars().all()
+            await db.commit()
+            for start in range(0, len(ids), limit):
                 result = await db.execute(
                     update(KnowledgeDocument)
-                    .where(KnowledgeDocument.id.in_(batch.scalar_subquery()))
+                    .where(KnowledgeDocument.id.in_(ids[start : start + limit]), *_provider_failure_conditions())
                     .values(embedding_next_retry_at=now)
                     .execution_options(synchronize_session=False)
                 )
                 await db.commit()
-                if not result.rowcount:
-                    break
-                total += result.rowcount
+                total += result.rowcount or 0
     except Exception:
         logger.error("Retry of provider failures after an embedding provider switch failed", exc_info=True)
     logger.info("Embedding provider switch: %d failed document(s) due for retry", total)
     return total
+
+
+async def embedding_config_moved(db: AsyncSession, used_config_id: uuid.UUID | str) -> bool:
+    """Whether the platform embedding config is no longer the one a job embedded
+    with: a provider switch while it ran. A row with no id names none."""
+    from app.models.platform_settings import PlatformSettings
+
+    current = (
+        await db.execute(
+            select(PlatformSettings.embedding_provider_id)
+            .order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return current is not None and str(current) != str(used_config_id)
 
 
 async def recover_failed_documents(

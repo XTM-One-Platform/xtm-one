@@ -20,6 +20,13 @@ import pytest
 from app.llm import identity
 from app.llm.gateway_provider import StaticTokenAuth, XtmJwtAuth, _gateway_http_client
 
+
+@pytest.fixture(autouse=True)
+def _embedding_config_not_moved(monkeypatch):
+    """The platform embedding config is the one each document job embedded with."""
+    monkeypatch.setattr("app.services.document_processor.embedding_config_moved", AsyncMock(return_value=False))
+
+
 ADMIN_ID = uuid.uuid4()
 GATEWAY_URL = "http://gateway.local:8080"
 
