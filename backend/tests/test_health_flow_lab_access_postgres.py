@@ -29,7 +29,7 @@ pytestmark = pytest.mark.integration
 
 async def _caller(db, user_id) -> access.FlowLabCaller:
     caller = await access.resolve_caller(db, user_id)
-    assert caller is not None and caller.is_concierge is False
+    assert caller is not None and caller.is_health_principal is False
     return caller
 
 
@@ -179,7 +179,7 @@ async def test_the_concierge_reaches_what_its_scope_admits(concierge):
         with acting():
             async with sessions() as db:
                 caller = await access.resolve_caller(db, None, agent_id=state["agent_id"])
-                assert caller.is_concierge
+                assert caller.is_health_principal
                 assert await access.resolve_flow(db, caller, str(seeded["flow"])) is not None
                 assert await access.resolve_sandbox_flow(db, caller, str(seeded["sandbox"])) is not None
                 # A proposal's copy is what was approved: no tool reaches it.

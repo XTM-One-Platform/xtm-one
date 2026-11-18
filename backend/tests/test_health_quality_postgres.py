@@ -406,7 +406,7 @@ async def test_a_concierge_run_s_experiment_is_sized_on_its_cycle(monkeypatch):
             )
             async with sessions() as db:
                 reader = await load_reader(db, "", run_id="not-a-run", agent_id=str(world.experimenter.id))
-                assert (reader.is_concierge, reader.cycle_id) == (True, None)
+                assert (reader.is_health_principal, reader.cycle_id) == (True, None)
         (call,) = seen
         assert call["cycle_id"] == cycle
         assert call["experiment"].id == experiment_id

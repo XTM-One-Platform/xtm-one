@@ -12,8 +12,8 @@ import pytest
 @pytest.mark.parametrize(
     "caller",
     [
-        SimpleNamespace(is_concierge=False, concierge=None),
-        SimpleNamespace(is_concierge=True, concierge=SimpleNamespace(role="quality_analyst", agent_id=None)),
+        SimpleNamespace(is_health_principal=False, principal=None),
+        SimpleNamespace(is_health_principal=True, principal=SimpleNamespace(role="quality_analyst", agent_id=None)),
     ],
     ids=["person", "other-concierge-role"],
 )

@@ -15,7 +15,7 @@ async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch)
     principal = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
     with acting_as_health_principal(principal):
         caller = await resolve_caller(None, None, agent_id=str(principal.agent_id))
-        assert caller is not None and caller.concierge is principal
+        assert caller is not None and caller.principal is principal
         # No user to read for: the runner here is nobody.
         assert await resolve_caller(None, None, agent_id=str(uuid.uuid4())) is None
         assert await resolve_caller(None, None) is None

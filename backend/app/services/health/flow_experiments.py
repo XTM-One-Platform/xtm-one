@@ -287,19 +287,19 @@ async def flow_target_access(db: AsyncSession, reader: Any, flow_id: uuid.UUID) 
     flow = await db.get(Flow, flow_id)
     if flow is None:
         return None
-    if reader.is_concierge:
-        caller = FlowLabCaller(concierge=reader.principal, user=None)
+    if reader.is_health_principal:
+        caller = FlowLabCaller(principal=reader.principal, user=None)
     elif reader.user is not None:
         from app.api.v1.helpers import get_user_group_ids
 
         caller = FlowLabCaller(
-            concierge=None, user=reader.user, group_ids=tuple(await get_user_group_ids(db, reader.user.id))
+            principal=None, user=reader.user, group_ids=tuple(await get_user_group_ids(db, reader.user.id))
         )
     else:
         return None
     if not await flow_reachable(db, caller, flow):
         return None
-    content = await content_readable(db, flow_id=flow.id) if reader.is_concierge else True
+    content = await content_readable(db, flow_id=flow.id) if reader.is_health_principal else True
     return quality_access.AgentAccess(agent=None, content=bool(content))
 
 

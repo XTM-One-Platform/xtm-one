@@ -137,7 +137,7 @@ async def finding_for(db: AsyncSession, reader: Reader, finding_id: Any):
     access = await target_access(db, reader, finding.target_type, finding.target_id)
     if access is None:
         # The same answer as a missing finding would leak its existence.
-        raise RefusalError("Error: finding not found." if not reader.is_concierge else NOT_IN_REACH)
+        raise RefusalError("Error: finding not found." if not reader.is_health_principal else NOT_IN_REACH)
     return finding, access
 
 
@@ -186,7 +186,7 @@ async def _list_findings(
     target_ids: list[uuid.UUID] | None = None
     if (target_id or "").strip():
         target_ids = [parse_uuid(target_id, "target_id")]
-    elif not reader.is_concierge:
+    elif not reader.is_health_principal:
         raise RefusalError("Error: name the agent or assignment whose findings to list (target_id).")
     shown: list[dict[str, Any]] = []
     access_by_target: dict[tuple[str, uuid.UUID], Any] = {}

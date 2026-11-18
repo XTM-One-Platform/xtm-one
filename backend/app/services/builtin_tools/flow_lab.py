@@ -349,7 +349,7 @@ async def _create_sandbox_flow(
     from app.services.health import flow_lab_access as access
     from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return _CONCIERGE_ONLY
     checked, refusal = _checked_graph(graph)
     if checked is None:
@@ -395,7 +395,7 @@ async def _create_sandbox_flow(
         source_type="flow",
         source_id=source.id if source else None,
         created_for=f"{access.BASIS_AGENT_PREFIX}{agent.id}" if agent else access.FLOW_LAB_COPY,
-        created_by_agent_id=caller.concierge.agent_id,
+        created_by_agent_id=caller.principal.agent_id,
         overrides=SandboxOverrides(graph=checked),
         source_run_ids=replay_from,
     )
@@ -408,7 +408,7 @@ async def _create_sandbox_flow(
 
 def _flow_lab_refusal(caller: Any) -> str | None:
     """Findings and drafts are the Flow Lab agent's own writes (level 1's role on the agent row)."""
-    if not caller.is_concierge or getattr(caller.concierge, "role", None) != "flow_lab":
+    if not caller.is_health_principal or getattr(caller.principal, "role", None) != "flow_lab":
         return "Error: only the Concierge's Flow Lab can do this."
     return None
 
@@ -487,7 +487,7 @@ async def _record_flow_finding(
             # A run id leads to its payloads: content evidence, redacted when
             # the opt-in is revoked (level 6).
             content_evidence=bool(checked),
-            author_agent_id=caller.concierge.agent_id,
+            author_agent_id=caller.principal.agent_id,
         )
     except FindingError as exc:
         return f"Error: {exc}"
@@ -527,7 +527,7 @@ async def _draft_flow_variant(
             change_type=change_type,
             target_id=finding.target_id,
             payload={"sandbox_flow_id": sandbox_flow_id, "summary": summary},
-            author_agent_id=caller.concierge.agent_id,
+            author_agent_id=caller.principal.agent_id,
         )
     except ExperimentError as exc:
         return f"Error: {exc}"
@@ -538,7 +538,7 @@ async def _draft_flow_variant(
 async def _update_sandbox_flow(db: AsyncSession, caller: Any, sandbox_flow_id: str = "", graph: Any = None) -> str:
     from app.services.health import flow_lab_access as access
 
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return _CONCIERGE_ONLY
     flow = await access.resolve_sandbox_flow(db, caller, sandbox_flow_id)
     if flow is None:
@@ -568,7 +568,7 @@ async def _run_flow_shadow(db: AsyncSession, caller: Any, assignment: str = "", 
     from app.services.health import flow_lab_access as access
     from app.services.health.flow_shadow import ShadowError, start_shadow
 
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return _CONCIERGE_ONLY
     target = await access.resolve_assignment(db, caller, assignment)
     flow = await access.resolve_sandbox_flow(db, caller, sandbox_flow_id)

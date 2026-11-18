@@ -225,7 +225,7 @@ async def _comment_readable(db: AsyncSession, reader: Reader, access: AgentAcces
     A person's read is their own REST-equivalent read (``get_agent_feedback``):
     nothing to audit as Platform Health.
     """
-    if not reader.is_concierge:
+    if not reader.is_health_principal:
         return True
     from app.services.health.consent import ConsentDeniedError, require_content_read
 

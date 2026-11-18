@@ -56,13 +56,13 @@ MAX_NAMESAKES = 200
 class FlowLabCaller:
     """Who is asking: the Platform Health principal, or a person."""
 
-    concierge: Any | None
+    principal: Any | None
     user: Any | None
     group_ids: tuple[str, ...] = ()
 
     @property
-    def is_concierge(self) -> bool:
-        return self.concierge is not None
+    def is_health_principal(self) -> bool:
+        return self.principal is not None
 
 
 async def resolve_caller(
@@ -74,7 +74,7 @@ async def resolve_caller(
 
     principal = calling_health_principal(agent_id)
     if principal is not None:
-        return FlowLabCaller(concierge=principal, user=None)
+        return FlowLabCaller(principal=principal, user=None)
     if user_id is None:
         return None
     from app.api.v1.helpers import get_user_group_ids
@@ -87,7 +87,7 @@ async def resolve_caller(
     user = await db.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
     if user is None:
         return None
-    return FlowLabCaller(concierge=None, user=user, group_ids=tuple(await get_user_group_ids(db, user.id)))
+    return FlowLabCaller(principal=None, user=user, group_ids=tuple(await get_user_group_ids(db, user.id)))
 
 
 def parse_id(ref: str) -> uuid.UUID | None:
@@ -137,7 +137,7 @@ def is_sandbox_flow(flow: Flow) -> bool:
 async def flow_reachable(db: AsyncSession, caller: FlowLabCaller, flow: Flow) -> bool:
     """Whether *caller* may diagnose and experiment on *flow* (read the row; metrics)."""
     sandbox = is_sandbox_flow(flow)
-    if caller.is_concierge:
+    if caller.is_health_principal:
         if sandbox:
             return True
         from app.services.health.consent import in_supervision_scope
@@ -164,7 +164,7 @@ async def resolve_sandbox_flow(db: AsyncSession, caller: FlowLabCaller, ref: str
     """
     from app.services.health.sandbox.copies import sandbox_copy_of
 
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return None
     rid = parse_id(ref)
     flow = await db.get(Flow, rid) if rid else None
@@ -180,7 +180,7 @@ async def assignment_reachable(db: AsyncSession, caller: FlowLabCaller, assignme
     agent = await db.get(Agent, assignment.agent_id)
     if agent is None:
         return False
-    if caller.is_concierge:
+    if caller.is_health_principal:
         from app.services.health.consent import in_supervision_scope
 
         return await in_supervision_scope(db, "agent", agent.id)
@@ -222,7 +222,7 @@ async def flow_run_content_allowed(db: AsyncSession, caller: FlowLabCaller, flow
     follows that run's consent (the agent's opt-in, the user's opt-out), not
     the sandbox flow's.
     """
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         # ``flow_reachable`` already holds: a person who manages the flow reads its journal.
         return True
     from app.services.health.consent import content_readable
@@ -238,7 +238,7 @@ async def flow_run_content_allowed(db: AsyncSession, caller: FlowLabCaller, flow
 
 async def audit_flow_run_read(db: AsyncSession, caller: FlowLabCaller, flow: Flow, run: Any) -> None:
     """Level 1's audit entry for content Platform Health is about to hand to a model."""
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return
     from app.services.health.consent import audit_content_read
 
@@ -253,7 +253,7 @@ async def audit_flow_run_read(db: AsyncSession, caller: FlowLabCaller, flow: Flo
 async def assignment_run_content_allowed(
     db: AsyncSession, caller: FlowLabCaller, assignment: Assignment, run: Any
 ) -> bool:
-    if not caller.is_concierge:
+    if not caller.is_health_principal:
         return True
     from app.services.health.consent import content_readable
 
@@ -264,7 +264,7 @@ async def resolve_agent(db: AsyncSession, caller: FlowLabCaller, ref: str) -> Ag
     """The one agent *ref* names whose usage *caller* may mine (new-flow mode)."""
 
     async def reachable(agent: Agent) -> bool:
-        if caller.is_concierge:
+        if caller.is_health_principal:
             from app.services.health.consent import in_supervision_scope
 
             return await in_supervision_scope(db, "agent", agent.id)

@@ -198,7 +198,7 @@ class TestReadRules:
         scope = SimpleNamespace(opted_out_user_ids=frozenset())
         reader = Reader(user=None, principal=principal, scope=scope)
         assert reader.write_refusal(role) == (WRITE_REFUSED if refused else None)
-        assert reader.is_concierge is (principal is not None)
+        assert reader.is_health_principal is (principal is not None)
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,7 @@ _MAX_SINCE_HOURS = 24 * 31
 _REFUSAL = "Error: the memory tools are reserved to the Platform Concierge."
 
 
-def _caller_is_concierge() -> bool:
+def _caller_is_health_principal() -> bool:
     """Whether the running work acts as Platform Health: a run of a fleet agent,
     flag on (``identity.current_health_principal`` re-checks it). A login, an
     administrator included, never is."""
@@ -90,7 +90,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
                 return "Error: agent_id must be a UUID."
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 lanes = await steward.list_eligible_lanes(
                     db, agent_id=agent, limit=_bounded(limit, default=_DEFAULT_LANES, maximum=_MAX_LANES)
@@ -124,7 +124,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
                 return "Error: user_id must be a UUID."
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 if await db.get(Agent, agent) is None or (
                     lane_user is not None and await db.get(User, lane_user) is None
@@ -166,7 +166,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
         since = datetime.now(UTC) - timedelta(hours=hours)
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 counts = await memory_history.consolidation_counts(db, since=since, agent_id=agent)
         except Exception as e:

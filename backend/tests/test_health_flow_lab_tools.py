@@ -29,7 +29,7 @@ def test_the_mcp_tool_set_registers_the_reads_only():
 async def test_a_person_never_writes_through_the_flow_lab(handler):
     from app.services.builtin_tools import flow_lab as tools
 
-    answer = await getattr(tools, handler)(None, SimpleNamespace(is_concierge=False))
+    answer = await getattr(tools, handler)(None, SimpleNamespace(is_health_principal=False))
     assert answer == tools._CONCIERGE_ONLY
 
 
@@ -69,7 +69,7 @@ async def test_a_sandbox_flow_shadows_only_an_assignment_whose_agent_reaches_wha
     monkeypatch.setattr(access, "sandbox_reach", sandbox_reach)
     monkeypatch.setattr(consent, "content_readable", readable)
     monkeypatch.setattr(flow_shadow, "start_shadow", start_shadow)
-    caller = SimpleNamespace(is_concierge=True)
+    caller = SimpleNamespace(is_health_principal=True)
 
     flow.graph = {"nodes": [{"id": "t", "kind": "trigger.work_item", "config": {"owner_agent_id": foreign}}]}
     assert await tools._run_flow_shadow(Db(), caller, "a", "f") == (
@@ -163,7 +163,7 @@ async def test_a_sandbox_flow_needs_the_consent_of_what_it_stands_for(monkeypatc
     monkeypatch.setattr(access, "resolve_flow", resolve_flow)
     monkeypatch.setattr(sandbox_tools, "subject_refusal", refused)
     monkeypatch.setattr(copies, "create_sandbox_copy", never)
-    caller = SimpleNamespace(is_concierge=True, concierge=SimpleNamespace(agent_id=uuid.uuid4()))
+    caller = SimpleNamespace(is_health_principal=True, principal=SimpleNamespace(agent_id=uuid.uuid4()))
 
     answer = await tools._create_sandbox_flow(None, caller, graph={}, from_flow=from_flow, basis_agent="a")
     assert answer == tools._not_found("flow" if from_flow else "agent")

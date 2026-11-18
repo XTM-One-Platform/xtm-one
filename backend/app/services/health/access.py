@@ -99,7 +99,7 @@ class Reader:
     cycle_id: uuid.UUID | None = None
 
     @property
-    def is_concierge(self) -> bool:
+    def is_health_principal(self) -> bool:
         return self.principal is not None
 
     @property
@@ -188,7 +188,7 @@ async def load_reader(
 async def _agent_access(db: AsyncSession, reader: Reader, agent_id: uuid.UUID) -> AgentAccess | None:
     from app.models.agent import Agent
 
-    if reader.is_concierge:
+    if reader.is_health_principal:
         # No admin bypass: the supervision scope alone (the fleet is never in it).
         if not reader.scope.allows_metrics(agent_id=agent_id):
             return None
