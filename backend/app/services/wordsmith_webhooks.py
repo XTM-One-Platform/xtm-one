@@ -21,7 +21,8 @@ resolves for the assignment's acting user:
   (``/api/hooks/integrations/{integration_id}``), subscribed to the trigger's
   event type, ``integration`` ``{"platform": "other", "flow_name": <assignment>}``
   and ``audience`` from ``trigger_config.audience`` (``user`` by default,
-  ``customer`` for an organisation endpoint); the secret Wordsmith returns once
+  ``customer`` for an organisation endpoint, forced for an organisation-only
+  event such as ``alert.triggered``); the secret Wordsmith returns once
   is stored encrypted in the state, never shown;
 * checked every :data:`RECHECK_SECONDS` (``GET``): a disabled or failing endpoint
   is turned back on, a missing or revoked one is created again;
@@ -203,6 +204,9 @@ def subscribed_types(event_type: str) -> list[str]:
 
 
 def audience_of(config: Mapping[str, Any]) -> str:
+    """The endpoint audience: forced to ``customer`` for an organisation-only event, so no form asks for it."""
+    if str(config.get("event") or "") in ORGANISATION_ONLY:
+        return "customer"
     return "customer" if str(config.get("audience") or "").strip().lower() == "customer" else "user"
 
 

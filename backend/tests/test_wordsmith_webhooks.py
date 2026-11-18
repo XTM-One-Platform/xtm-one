@@ -118,6 +118,29 @@ def test_the_audience_rules_of_wordsmith(event, audience, refused):
     assert (ws.audience_error(event, audience) is not None) is refused
 
 
+@pytest.mark.parametrize(
+    "config, audience",
+    [
+        ({"event": "alert.triggered"}, "customer"),
+        ({"event": "alert.triggered", "audience": "user"}, "customer"),
+        ({"event": "task.created"}, "user"),
+        ({"event": "task.created", "audience": "customer"}, "customer"),
+    ],
+)
+def test_an_organisation_only_event_needs_no_audience_setting(config, audience):
+    assert ws.audience_of(config) == audience
+    assert ws.audience_error(config["event"], ws.audience_of(config)) is None
+
+
+def test_every_wordsmith_event_has_its_own_picker_sentence():
+    from app.api.v1 import integration_catalog as catalog
+
+    sentences = catalog._WORDSMITH_EVENT_DESCRIPTIONS
+    assert set(sentences) == set(ws.EVENTS)
+    assert len(set(sentences.values())) == len(sentences)
+    assert all(len(text) <= 140 and text.startswith("Triggers when") for text in sentences.values())
+
+
 def test_the_catalog_lists_every_event_as_a_webhook_and_the_provisioner_is_registered():
     events = {e["event"]: e for e in PROVIDER_CATALOG["wordsmith"]["available_events"]}
     assert set(events) == set(ws.EVENTS)

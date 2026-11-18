@@ -58,15 +58,27 @@ _WORDSMITH_EVENT_LABELS: dict[str, str] = {
     "alert.triggered": "Wordsmith alert triggered",
     "webhook_endpoint.test": "Wordsmith webhook test event",
 }
-_WORDSMITH_EVENT_DESCRIPTION = (
-    "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted "
-    "with it; missed deliveries are read back from the event log. The event carries IDs only: the run "
-    "payload names the read tool."
-)
-_WORDSMITH_ALERT_DESCRIPTION = (
-    "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the "
-    "trigger's audience to customer (webhooks:admin scope)."
-)
+#: One event-specific sentence per Wordsmith event type, as the GitHub and Jira pickers give.
+_WORDSMITH_EVENT_DESCRIPTIONS: dict[str, str] = {
+    "operation.succeeded": "Triggers when a Wordsmith operation succeeds.",
+    "operation.failed": "Triggers when a Wordsmith operation fails.",
+    "operation.cancelled": "Triggers when a Wordsmith operation is cancelled.",
+    "task.created": "Triggers when a Wordsmith task is created.",
+    "task.assigned": "Triggers when a Wordsmith task is assigned.",
+    "task.status_changed": "Triggers when a Wordsmith task changes status.",
+    "task.comment_added": "Triggers when a comment is added to a Wordsmith task.",
+    "review.completed": "Triggers when a Wordsmith review is completed.",
+    "input_request.created": "Triggers when a Wordsmith agent asks for input.",
+    "input_request.resolved": "Triggers when a Wordsmith input request is resolved.",
+    "repository.documents_added": "Triggers when documents are added to a Wordsmith repository.",
+    "repository.indexing_completed": "Triggers when a Wordsmith repository finishes indexing.",
+    "report.run_completed": "Triggers when a Wordsmith report run is completed.",
+    "alert.triggered": (
+        "Triggers when a Wordsmith audit alert rule fires. The Wordsmith key must be allowed to manage "
+        "the organisation's webhooks."
+    ),
+    "webhook_endpoint.test": "Triggers when Wordsmith sends a test event to the webhook.",
+}
 
 #: Providers an XTM One instance only ever gets through a platform
 #: registration, which creates and rewrites them: never created by hand, and
@@ -4682,9 +4694,7 @@ PROVIDER_CATALOG = {
             {
                 "event": event,
                 "label": _WORDSMITH_EVENT_LABELS[event],
-                "description": (
-                    _WORDSMITH_ALERT_DESCRIPTION if event == "alert.triggered" else _WORDSMITH_EVENT_DESCRIPTION
-                ),
+                "description": _WORDSMITH_EVENT_DESCRIPTIONS[event],
                 "mechanism": "webhook",
                 "filter_keys": _WORDSMITH_FILTER_KEYS,
             }
