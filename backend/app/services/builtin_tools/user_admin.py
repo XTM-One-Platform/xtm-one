@@ -452,12 +452,20 @@ def build_user_admin_tools(
                 return _json({"dry_run": True, "users": await _preview(db, admin, users), "unknown": missing})
             label = (admin.full_name or "").strip() or admin.email
             results: list[dict[str, Any]] = list(missing)
-            for user in users:
+            # rollback() expires every instance of the session (expire_on_commit
+            # does not apply to it): the ids and emails answered are read up
+            # front, and after a rollback ``admin`` and the next account are
+            # refreshed with an awaited load before any attribute is read.
+            targets = [(user, user.id, user.email) for user in users]
+            rolled_back = False
+            for user, user_id, email in targets:
+                if rolled_back:
+                    await db.refresh(admin)
+                    await db.refresh(user)
+                    rolled_back = False
                 refusal = await deactivation_refusal(db, user, admin)
                 if refusal:
-                    results.append(
-                        {"user": user.email, "user_id": str(user.id), "status": "refused", "reason": refusal}
-                    )
+                    results.append({"user": email, "user_id": str(user_id), "status": "refused", "reason": refusal})
                     continue
                 try:
                     outcome = await user_deactivation.deactivate_user(
@@ -469,27 +477,27 @@ def build_user_admin_tools(
                         action="update",
                         entity_type="user",
                         entity=user,
-                        summary=f"Deactivated {user.email} through the user-admin tools: {reason}",
+                        summary=f"Deactivated {email} through the user-admin tools: {reason}",
                         details={"tool": "deactivate_platform_users", "reason": reason, "cascade": outcome.as_dict()},
                     )
                     await db.commit()
                 except user_deactivation.DeactivationError as exc:
                     await db.rollback()
-                    results.append(
-                        {"user": user.email, "user_id": str(user.id), "status": "refused", "reason": str(exc)}
-                    )
+                    rolled_back = True
+                    results.append({"user": email, "user_id": str(user_id), "status": "refused", "reason": str(exc)})
                     continue
                 except Exception:
                     await db.rollback()
+                    rolled_back = True
                     logger.warning("User-admin deactivation failed", exc_info=True)
                     results.append(
-                        {"user": user.email, "user_id": str(user.id), "status": "error", "reason": "not deactivated"}
+                        {"user": email, "user_id": str(user_id), "status": "error", "reason": "not deactivated"}
                     )
                     continue
                 await user_deactivation.after_commit(async_session, user, outcome, label)
                 results.append(
                     {
-                        "user": user.email,
+                        "user": email,
                         "status": "already_inactive" if outcome.already else "done",
                         **outcome.as_dict(),
                         "review_items": outcome.review_items,

@@ -190,6 +190,41 @@ async def test_refusals_self_last_admin_protected_and_non_admin(monkeypatch: pyt
         assert (await _tools(plain.id)("list_platform_users")).startswith("Refused")
 
 
+async def test_batch_goes_on_after_a_failed_account_rolled_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rollback expires every instance: the next account and the answer still read."""
+    from app.services import user_deactivation
+
+    async with (
+        scratch_database("useradminrb", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
+        db.sessions() as session,
+    ):
+        admin = _user("rbadmin", role="admin")
+        failing = _user("failing")
+        leaving = _user("leaving")
+        session.add_all([admin, failing, leaving])
+        await session.commit()
+        _point_sessions_at(monkeypatch, db)
+        real = user_deactivation.deactivate_user
+        failing_id, leaving_id = failing.id, leaving.id
+
+        async def _deactivate(db: Any, user: Any, **kwargs: Any) -> Any:
+            if user.id == failing_id:
+                raise RuntimeError("cascade failed")
+            return await real(db, user, **kwargs)
+
+        monkeypatch.setattr(user_deactivation, "deactivate_user", _deactivate)
+        answer = json.loads(
+            await _tools(admin.id)(
+                "deactivate_platform_users", users=[failing.email, leaving.email], reason="test", dry_run=False
+            )
+        )
+        statuses = {row["user"]: row["status"] for row in answer["results"]}
+        assert statuses == {failing.email: "error", leaving.email: "done"}
+        session.expire_all()
+        assert (await session.get(User, failing_id)).is_active is True
+        assert (await session.get(User, leaving_id)).is_active is False
+
+
 async def test_group_members_and_a_scim_group_stays_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
     async with (
         scratch_database("useradmingrp", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
