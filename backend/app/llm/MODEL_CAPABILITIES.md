@@ -162,9 +162,9 @@ on the same 400 without sending them for 10 minutes: the AI Gateway passes
 chat completions through to OpenAI (XTM-One-Platform/ai-gateway#354).
 
 Models sent through the Responses API with tools, on the native OpenAI
-provider: `gpt-6-astra`, `gpt-6.2-sol`, `gpt-6.2-astra` (dated ids included).
+provider: `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.2-sol`, `gpt-6.2-astra` (dated ids included).
 
-These three models also set `omit_temperature`: gpt-6-astra answers
+These models also set `omit_temperature`: gpt-6-astra answers
 `temperature` with HTTP 400 "Unsupported parameter" on chat completions and
 the Responses API alike, the gpt-6.2 models refuse any but the default 1, so
 neither request carries it (`build_openai_generation_params`,
@@ -181,7 +181,7 @@ Declared today:
 
 | Models | Levels |
 |--------|--------|
-| gpt-6-astra, gpt-6.2-sol, gpt-6.2-astra | `low` to `max`; `none` refused (sent as `low`), tools or not |
+| gpt-6-astra, gpt-6.1-sol, gpt-6.2-sol, gpt-6.2-astra | `low` to `max`; `none` refused (sent as `low`), tools or not |
 | other gpt-6 | `low` to `max`; `none` with tools |
 | gpt-5.6 | `low` to `max` |
 | gpt-5.2 to gpt-5.5 | `low` to `xhigh` |

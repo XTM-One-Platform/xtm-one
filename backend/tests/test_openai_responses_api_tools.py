@@ -123,6 +123,8 @@ _NO_CHAT_TOOLS_MODELS = [
     "openai/gpt-6.2-sol",
     "gpt-6.2-astra",
     "openrouter/openai/gpt-6.2-astra",
+    "gpt-6.1-sol",
+    "openai/gpt-6.1-sol",
 ]
 
 
@@ -136,7 +138,7 @@ def test_other_models_are_not_flagged(model):
     assert not uses_responses_api_with_tools(model)
 
 
-@pytest.mark.parametrize("model", [_ASTRA, "gpt-6.2-sol", "gpt-6.2-astra"])
+@pytest.mark.parametrize("model", [_ASTRA, "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.2-astra"])
 @pytest.mark.parametrize("effort", ["none", "minimal", None])
 async def test_a_leg_with_tools_sends_a_responses_request_with_low(effort, model):
     endpoints = _Endpoints()
