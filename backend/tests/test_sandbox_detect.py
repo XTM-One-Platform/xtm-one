@@ -109,6 +109,21 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
+    # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
+    # that carries its own dependencies); before, only the pytest line of the job was detected.
+    wf = (
+        "jobs:\n  lint:\n    steps:\n"
+        "      - run: uv run plugin/scripts/flow_lint.py --format github\n"
+        "      - run: uv run plugin/scripts/flow_index.py --check\n"
+        "      - run: uv run --with pytest pytest plugin/tests -q\n"
+    )
+    argv = _argv(_detect({".github/workflows/flow.yml": wf}))
+    assert argv["python-lint"] == ("uv", "run", "plugin/scripts/flow_lint.py", "--format", "github")
+    assert argv["python-unit"] == ("uv", "run", "--with", "pytest", "pytest", "plugin/tests", "-q")
+    assert not any("flow_index" in " ".join(a) for a in argv.values())
+
+
 def test_a_workflow_wins_over_the_manifest_for_the_same_check():
     pkg = json.dumps({"scripts": {"lint": "eslint src", "test": "vitest"}})
     wf = "jobs:\n  a:\n    steps:\n      - run: yarn lint --max-warnings 0\n"
@@ -138,6 +153,10 @@ def test_a_workflow_wins_over_the_manifest_for_the_same_check():
         ("dbt parse", ("dbt", "parse")),
         ("sqlfluff lint models", ("dbt", "lint")),
         ("make test", ("make", "unit")),
+        ("uv run plugin/scripts/flow_lint.py --format github", ("python", "lint")),
+        ("python3 scripts/run_tests.py -q", ("python", "unit")),
+        ("uv run plugin/scripts/flow_index.py --check", None),
+        ("python scripts/release.py", None),
         ("docker build .", None),
         ("echo hi", None),
     ],
