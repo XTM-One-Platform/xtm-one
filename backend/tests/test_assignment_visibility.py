@@ -303,6 +303,11 @@ _SERVICES = _APP_ROOT / "services"
 # that is not a read offered to a caller with no account. Anything else is
 # routed through ``caller_visible_filter`` / ``assignment_visible_filter``.
 _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
+    ("services/stix_extraction/knowledge.py", "_configured_source"): (
+        "the deployment's ATT&CK source (mirror URL, pinned release) an administrator "
+        "configured on a company-managed MITRE ATT&CK integration, read for no acting user; "
+        "lists nothing to a caller (#9126)"
+    ),
     # A company-managed agent's key lookup ORDERS the rows it already sees,
     # company-managed first, so one key never splits by run context. The
     # visible set is decided by the caller filter above it, not by the flag.

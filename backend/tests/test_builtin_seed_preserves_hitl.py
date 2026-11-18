@@ -193,3 +193,28 @@ def test_no_builtin_assignment_seed_entry_declares_human_in_the_loop():
         f"{offenders}. The sync ignores the key, so this has no effect — "
         "either wire it in deliberately or drop it"
     )
+
+
+def test_a_new_builtin_agent_carries_every_synced_field():
+    """Creation writes what the update writes: a built-in's ``config`` (its
+    ``finalize_on_builtin_tool`` fast path) and ``tool_deny_list`` are on the row
+    from the first boot, not only after a restart."""
+    from app.agents.seed import _new_builtin_agent
+
+    data = {
+        **_seed_entry(),
+        "config": {"finalize_on_builtin_tool": {"tool_name": "t", "valid_key": "valid", "output_key": "bundle"}},
+        "tool_deny_list": ["web_fetch"],
+        "max_iterations": 4,
+        "output_format": "json",
+    }
+    owner = uuid.uuid4()
+    agent = _new_builtin_agent(data, owner, anthropic_enabled=False)
+
+    assert agent.config == data["config"]
+    assert agent.tool_deny_list == ["web_fetch"]
+    assert agent.max_iterations == 4
+    assert agent.output_format == "json"
+    assert agent.is_builtin is True and agent.is_company_managed is True
+    assert agent.user_id == owner
+    assert agent.available_channel_types == ["web"]

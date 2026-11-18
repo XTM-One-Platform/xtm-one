@@ -97,7 +97,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: list_work_items (#12105: coordination +~300 on 15 Nov 2026). Raised to 461,000 when the
 #: catalog counted workset_resolve, offered on every implicit corpus since #12168 (#12218:
 #: coordination +279, total 460,976 on 16 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 461_000
+#: Raised to 461,700 for ``extract_stix_from_document``, the ``stix_extractor`` group's grounded
+#: extraction (#9126: +629, total 461,605 on 16 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 461_700
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

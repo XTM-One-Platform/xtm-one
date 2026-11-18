@@ -5,6 +5,14 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## STIX scores before and after metric suite 16.0 are not comparable
+
+**No migration. Rescore stored STIX baselines before comparing them with new runs.**
+
+- **Changed**: `stix.entity_prf` and `stix.relationship_prf` now identify an object as OpenCTI's import does. An attack pattern without `x_mitre_id` takes the ATT&CK id of its last `mitre-*` external reference, and a location without `x_opencti_location_type` is a city, a country or a region by the property it carries. Two objects that were two identifiers (a technique with only its reference, the same technique with `x_mitre_id`) are now one, as OpenCTI merges them.
+- **Effect**: a run scored before 16.0 and one scored after can differ on the same answers wherever a bundle omits those properties. Evaluation results keep the suite version they were scored with; a comparison across the boundary rescores the older run's stored answers with the current suite.
+- **New, additive**: `stix.entity_prf.aligned`, `stix.entity_prf.soft`, `stix.relationship_prf.aligned` and, for a dataset whose references annotate a known set of types, `stix.entity_prf.aligned.closed` and `stix.relationship_prf.aligned.closed`. None is a default score of an evaluation.
+
 ## The chat WebSocket is removed: the web chat streams over HTTP
 
 **No migration. Serve HTTP/2 to browsers at the reverse proxy, and move any script that opened the chat WebSocket.**

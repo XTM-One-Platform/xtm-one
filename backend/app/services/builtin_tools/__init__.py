@@ -59,6 +59,7 @@ from . import (
     skills,
     stix,
     stix_comparator,
+    stix_extraction,
     timeline_diff,
     wait,
     web,
@@ -347,6 +348,9 @@ from .stix import (
 from .stix_comparator import (
     build_stix_comparator_tool,
 )
+from .stix_extraction import (
+    build_stix_extraction_tool,
+)
 from .template_authoring import (
     build_template_authoring_tools,
 )
@@ -480,6 +484,7 @@ __all__ = [
     "build_skills_catalog_prompt",
     "build_stix_bundle_validator_tool",
     "build_stix_comparator_tool",
+    "build_stix_extraction_tool",
     "build_sub_agent_tools",
     "build_template_authoring_tools",
     "build_template_search_tools",
@@ -573,6 +578,7 @@ _SUBMODULES: tuple[ModuleType, ...] = (
     _shared,
     stix,
     stix_comparator,
+    stix_extraction,
     timeline_diff,
     fimi_math,
     fimi_metrics,

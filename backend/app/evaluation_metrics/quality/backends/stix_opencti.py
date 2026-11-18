@@ -171,7 +171,7 @@ class OpenCtiCanonicalizer:
         if not all(isinstance(obj, Mapping) and isinstance(obj.get("type"), str) for obj in objects):
             return bundle
 
-        canonical = _latest_versions([_normalized(obj) for obj in objects])
+        canonical = _latest_versions([_as_imported(_normalized(obj)) for obj in objects])
         position = {obj["id"]: i for i, obj in enumerate(canonical) if isinstance(obj.get("id"), str)}
         refers_to = [
             sorted({position[ref] for ref in _references(obj) if ref in position})
@@ -225,6 +225,26 @@ def _normalized(obj: Mapping[str, object]) -> dict[str, object]:
             value = _observable_value(str(obj.get("type")), value)
         copied[key] = value
     return copied
+
+
+def _as_imported(obj: dict[str, object]) -> dict[str, object]:
+    """The properties OpenCTI's import fills in before it identifies an object (pycti's
+    ``import_from_stix2``), so that two objects OpenCTI merges get one identifier: an
+    attack-pattern without ``x_mitre_id`` takes the ``external_id`` of its last ``mitre-*``
+    external reference; a location without ``x_opencti_location_type`` is a City, a Country or a
+    Region by the property it carries, else a Position."""
+    if obj.get("type") == "attack-pattern" and "x_mitre_id" not in obj:
+        mitre_id = None
+        for reference in obj.get("external_references") or []:
+            if isinstance(reference, Mapping) and str(reference.get("source_name", "")).startswith("mitre-"):
+                mitre_id = reference.get("external_id")
+        if isinstance(mitre_id, str) and mitre_id:
+            return {**obj, "x_mitre_id": mitre_id}
+    if obj.get("type") == "location" and "x_opencti_location_type" not in obj:
+        kind = next((label for key, label in (("city", "City"), ("country", "Country"), ("region", "Region"))
+                     if key in obj), "Position")
+        return {**obj, "x_opencti_location_type": kind}
+    return obj
 
 
 def _hashes(hashes: Mapping[str, object]) -> dict[str, object]:

@@ -387,6 +387,8 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         "workset",
         "observability",
         "deep_investigation",
+        # The grounded STIX extraction: its own group, for agents built to extract.
+        "stix_extractor",
         # The Concierge's sandbox acts for its fleet agents, never on the General Assistant (#8255).
         "concierge_sandbox",
         "improvement_proposals",

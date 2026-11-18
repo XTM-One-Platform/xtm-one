@@ -106,6 +106,9 @@ BUILTIN_ROI_EXEMPT: dict[str, str] = {
     "cti-stix-transformer": EXEMPT_TRANSFORMER,
     "aev-detection-rules-generator": EXEMPT_TRANSFORMER,
     "opencti-nlq": EXEMPT_UTILITY,
+    # The grounded extraction (#9126): one tool's bundle, bound to no intent and with
+    # no output schema to read a count from until it is evaluated against the harvester.
+    "cti-stix-extractor": EXEMPT_UTILITY,
     "opencti-dashboard-widget-creator": EXEMPT_UTILITY,
     "opencti-dashboard-creator": EXEMPT_UTILITY,
     "opencti-detection-rule-converter": EXEMPT_UTILITY,

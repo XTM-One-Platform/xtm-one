@@ -67,6 +67,11 @@ from app.evaluation_metrics.quality.families.stix_bundle import (
     stix_relationship_scores,
     stix_semantic_validity,
 )
+from app.evaluation_metrics.quality.families.stix_bundle.alignment import (
+    stix_aligned_scores,
+    stix_closed_world_scores,
+)
+from app.evaluation_metrics.quality.families.stix_bundle.envelope import BundleStructureError
 from app.evaluation_metrics.quality.families.stix_bundle.metrics import stix_expected_scores
 from app.evaluation_metrics.quality.families.structured_json import (
     json_field_accuracy,
@@ -126,6 +131,9 @@ class FamilyConfig(BaseModel):
     canonicalizer: Canonicalizer | None = None
     selection: StixObjectTypeSelection | None = None
     stix_validator: StixValidator | None = None
+    # The object types the run's dataset references annotate: with them, the aligned
+    # scores are also read in that closed world (``stix_closed_world_scores``).
+    reference_types: frozenset[str] | None = None
     # PROSE
     prose: ProseConfig | None = None
 
@@ -245,10 +253,13 @@ def _run_stix_bundle(
             for key, value in envelope.detail.items()
             if key not in (POOLED_NUMERATOR, POOLED_DENOMINATOR)
         }
-        for expected in stix_expected_scores(
-            reference, canonicalizer, config.selection
-        ).values():
-            results[expected.metadata.key] = unreadable_answer(expected, reason)
+        expectations = list(stix_expected_scores(reference, canonicalizer, config.selection).values())
+        if config.reference_types:
+            expectations += _closed_expected(reference, canonicalizer, config)
+        for expectation in expectations:
+            results[expectation.metadata.key] = unreadable_answer(
+                expectation, reason, limited=_too_large(expectation)
+            )
         return results
 
     results.update(
@@ -256,7 +267,36 @@ def _run_stix_bundle(
     )
     relationship = stix_relationship_scores(reference, prediction, canonicalizer)
     results[relationship.metadata.key] = relationship
+    try:
+        # One canonicalization for both readings (the dataset's types computed with them).
+        results.update(
+            stix_aligned_scores(
+                reference, prediction, canonicalizer, config.selection, types=config.reference_types or None
+            )
+        )
+    except BundleStructureError as exc:
+        # Malformed only once canonicalized: scored 0 as the exact scores are.
+        reason = {"reason": "prediction_not_well_formed", "error_message": exc.message}
+        expected = stix_aligned_scores(
+            reference, reference, canonicalizer, config.selection, types=config.reference_types or None
+        )
+        for key, result in expected.items():
+            results[key] = unreadable_answer(result, reason, limited=_too_large(result))
     return results
+
+
+def _closed_expected(reference: object, canonicalizer: Canonicalizer, config: FamilyConfig) -> list[ScoreResult]:
+    """The closed-world scores of the reference given as the answer."""
+    return list(
+        stix_closed_world_scores(reference, reference, config.reference_types or frozenset(), canonicalizer, config.selection).values()
+    )
+
+
+def _too_large(expected: ScoreResult) -> bool:
+    """*expected* is not scored only because the reference is too large to align with
+    itself: an unreadable answer is at fault all the same and scores 0, as
+    structured_json's does, instead of dropping out of the run aggregate."""
+    return expected.status is MetricStatus.skipped and expected.detail.get("reason") == "too_many_objects"
 
 
 def _run_prose(
