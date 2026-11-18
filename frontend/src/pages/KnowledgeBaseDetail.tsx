@@ -40,7 +40,7 @@ import {
 import { useGeneralAssistantConfig } from "@/hooks/api/useSettingsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/api";
-import { isWorksetStorage } from "@/lib/workset-storage";
+import { worksetLink, worksetStorageOf } from "@/lib/workset-storage";
 import { downloadErrorDescription } from "@/lib/download-error";
 import { withBasePath } from "@/lib/base-path";
 import { REFETCH_INTERVAL_FAST, REFETCH_INTERVAL_SLOW } from "@/lib/constants";
@@ -161,13 +161,15 @@ export default function KnowledgeBaseDetail() {
   }, [showExportPackages, displayedPackages.length]);
 
   if (isLoading) return <DetailPageSkeleton backTo="/knowledge" backLabel="Back to Knowledge Bases" tabs={5} descriptionLines={1} actions={2} />;
-  if (!kb && isWorksetStorage(kbError)) return (
+  const storageOwner = kb ? null : worksetStorageOf(kbError);
+  if (storageOwner) return (
     <NotFoundState
       icon={Database}
       title="Internal storage of a workset"
-      description="This knowledge base holds the documents of a workset. It has no page of its own: open the workset in Operations."
-      actionLabel="View Worksets"
-      onAction={() => navigate("/operations/worksets")}
+      description="This knowledge base holds the documents of the workset {name}. It has no page of its own: open the workset in Operations."
+      descriptionValues={{ name: storageOwner.name }}
+      actionLabel="View the workset"
+      onAction={() => navigate(worksetLink(storageOwner))}
       backTo="/knowledge"
       backLabel="Back to Knowledge Bases"
     />
