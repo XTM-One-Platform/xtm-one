@@ -18960,5 +18960,16 @@
   "Copy both": "両方をコピー",
   "The partner pastes the client ID and the secret together, as one pair.": "パートナーはクライアント ID とシークレットを 1 組として一緒に貼り付けます。",
   "Last refused token request": "最後に拒否されたトークン要求",
-  "Rotate client ID and secret": "クライアント ID とシークレットをローテーション"
+  "Rotate client ID and secret": "クライアント ID とシークレットをローテーション",
+  "Regenerate the secret?": "シークレットを再生成しますか?",
+  "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.": "クライアント ID は変わりません。現在のシークレットは、この統合がバインドされているすべてのエージェントで直ちに無効になります。パートナーは新しいシークレットを貼り付ける必要があります。",
+  "Rotate the client ID and the secret?": "クライアント ID とシークレットを更新しますか?",
+  "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID and the new secret.": "両方が変わります。現在のクライアント ID とシークレットは、この統合がバインドされているすべてのエージェントで直ちに無効になります。パートナーは新しいクライアント ID と新しいシークレットを貼り付ける必要があります。",
+  "Rotate both": "両方を更新",
+  "Wrong secret for the current client ID": "現在のクライアント ID に対するシークレットが正しくありません",
+  "The partner must paste the latest secret.": "パートナーは最新のシークレットを貼り付ける必要があります。",
+  "Client ID rotated away": "クライアント ID は更新済み",
+  "The partner must paste the current client ID and secret.": "パートナーは現在のクライアント ID とシークレットを貼り付ける必要があります。",
+  "No agent exposed": "公開されているエージェントがありません",
+  "The credential is valid, but no agent bound to this integration is exposed.": "認証情報は有効ですが、この統合にバインドされたエージェントは公開されていません。"
 }

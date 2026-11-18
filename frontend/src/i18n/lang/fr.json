@@ -18960,5 +18960,16 @@
   "Copy both": "Copier les deux",
   "The partner pastes the client ID and the secret together, as one pair.": "Le partenaire colle l'ID client et le secret ensemble, comme une seule paire.",
   "Last refused token request": "Dernière demande de jeton refusée",
-  "Rotate client ID and secret": "Renouveler l'ID client et le secret"
+  "Rotate client ID and secret": "Renouveler l'ID client et le secret",
+  "Regenerate the secret?": "Régénérer le secret ?",
+  "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.": "L’ID client reste le même. Le secret actuel cesse de fonctionner immédiatement, sur chaque agent auquel cette intégration est liée. Le partenaire doit coller le nouveau secret.",
+  "Rotate the client ID and the secret?": "Renouveler l’ID client et le secret ?",
+  "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID and the new secret.": "Les deux changent. L’ID client et le secret actuels cessent de fonctionner immédiatement, sur chaque agent auquel cette intégration est liée. Le partenaire doit coller le nouvel ID client et le nouveau secret.",
+  "Rotate both": "Renouveler les deux",
+  "Wrong secret for the current client ID": "Secret erroné pour l’ID client actuel",
+  "The partner must paste the latest secret.": "Le partenaire doit coller le dernier secret.",
+  "Client ID rotated away": "ID client renouvelé depuis",
+  "The partner must paste the current client ID and secret.": "Le partenaire doit coller l’ID client et le secret actuels.",
+  "No agent exposed": "Aucun agent exposé",
+  "The credential is valid, but no agent bound to this integration is exposed.": "L’identifiant est valide, mais aucun agent lié à cette intégration n’est exposé."
 }
