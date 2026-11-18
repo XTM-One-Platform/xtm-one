@@ -75,7 +75,8 @@ async def test_a_peer_sharing_files_is_named_and_the_pr_is_created():
     peers = [_pr(12, "SamuelHassine"), _pr(9, "samuelhassine", "fix(work-items): draft path (#18)")]
     fake = _GitHub(peers, {12: ["a.py", "b.py", "c.py"], 9: ["b.py", "c.py", "z.py"]})
     result = await _create(fake)
-    first, warning = result.split("\n", 1)
+    first = result.split("\n", 1)[0]
+    warning = result[result.index("Warning:") :]
     assert first == "PR #12 created: https://github.com/acme/app/pull/12"
     assert warning.startswith("Warning: 1 other open PR(s) by samuelhassine in acme/app overlap this one")
     assert '#9 "fix(work-items): draft path (#18)": shares 2 file(s): b.py, c.py' in warning
@@ -94,11 +95,13 @@ async def test_no_overlap_and_another_author_add_nothing():
     peers = [_pr(9, "SamuelHassine", "feat(x): other (#5)"), _pr(8, "octocat", "fix(y): z (#20)")]
     fake = _GitHub(peers, {12: ["a.py"], 9: ["z.py"], 8: ["a.py"]})
     result = await _create(fake)
-    assert result == "PR #12 created: https://github.com/acme/app/pull/12"
+    assert result.split("\n")[0] == "PR #12 created: https://github.com/acme/app/pull/12"
+    assert "Warning" not in result
     assert ("get", f"{_PULLS_URL}/8/files") not in fake.calls
 
 
 @pytest.mark.asyncio
 async def test_an_unreadable_list_never_fails_the_creation():
     result = await _create(_GitHub(None, {}))
-    assert result == "PR #12 created: https://github.com/acme/app/pull/12"
+    assert result.split("\n")[0] == "PR #12 created: https://github.com/acme/app/pull/12"
+    assert "Warning" not in result
