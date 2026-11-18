@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
+import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import {
   useCreateScimToken,
   useDeactivations,
@@ -154,6 +154,7 @@ function ScimCard() {
           <div className="flex flex-wrap items-start gap-2">
             <Input
               id="scim-token-name"
+              aria-labelledby={settingsFieldLabelId("scim-token-name")}
               aria-describedby={settingsFieldHintId("scim-token-name")}
               className="max-w-xs"
               value={name}
