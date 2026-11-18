@@ -99,7 +99,7 @@ class Agent(Base):
 
     # A sandbox copy the Concierge experiments on (#8255): hidden from every
     # library, picker, analytics view and map, and every run of it has its
-    # writes intercepted (``services/concierge/sandbox``).
+    # writes intercepted (``services/health/sandbox``).
     is_sandbox: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     # Hide this company-managed agent's runs, traces, work items and shared
@@ -622,7 +622,7 @@ class Agent(Base):
         JSON, nullable=True, default=list
     )
 
-    # Platform Concierge (#8254, ``services/concierge/``). The improvement
+    # Platform Concierge (#8254, ``services/health/``). The improvement
     # opt-in: whoever may manage the agent lets the Concierge read its
     # memories and conversation content (``consent.py``). Off by default.
     health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")

@@ -77,10 +77,10 @@ from app.models.flow_run import (
 from app.models.user import User
 from app.services.assignment_pause import refuse_flow_if_owner_deactivated
 from app.services.audit import log_audit
-from app.services.concierge.sandbox.flows import production_runs_only
 from app.services.flow_access import get_visible_run
 from app.services.flow_graph import validate_graph
 from app.services.flow_runner import create_flow_run, find_trigger_nodes
+from app.services.health.sandbox.flows import production_runs_only
 from app.services.visibility import SegmentCounts, Visibility, segment_counts
 
 router = APIRouter()

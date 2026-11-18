@@ -87,9 +87,9 @@ from app.models.agent import Agent
 from app.models.sub_agent_task import SubAgentTask
 from app.services.attempt_charges import credit_lost_attempts, task_receipt_token
 from app.services.channel_notices import DEFAULT_LANGUAGE, notice, user_notice_language
-from app.services.concierge.identity import CONCIERGE_ALONE_KEY
 from app.services.element_scope import ENFORCED_SCOPE_MARKER_KEY, INHERITED_SCOPE_KEY
 from app.services.failure_causes import FailureCause, FailureDetermination
+from app.services.health.identity import CONCIERGE_ALONE_KEY
 from app.services.orchestration_engine import (
     bound_by_deadline,
     deadline_cut_budget,
@@ -819,7 +819,7 @@ async def create_sub_agent_task(
         )
 
     from app.core.database import async_session
-    from app.services.concierge.identity import concierge_acts_alone
+    from app.services.health.identity import concierge_acts_alone
 
     # Delegated by the Concierge acting alone (read on the server's own
     # context, never on an argument): the task's run and turn act with no
@@ -881,7 +881,7 @@ async def create_sub_agent_task(
                     own_db, parent_run_id, fallback=not user_id
                 )
 
-                from app.services.concierge.cycles import inherited_cycle_context
+                from app.services.health.cycles import inherited_cycle_context
 
                 child_run = AssignmentRun(
                     assignment_id=None,

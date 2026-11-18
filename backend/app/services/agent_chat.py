@@ -95,14 +95,14 @@ from app.services.budget_policy import (
 )
 from app.services.chat_turn_guard import ApprovalAbandonedError
 from app.services.chat_turn_stream import AGENTIC_ACTION_STATUS
-from app.services.concierge.identity import concierge_delegation_owner_id
-from app.services.concierge.sandbox.turns import intercepted_agent_turn
-from app.services.concierge.turns import concierge_turn_scoped
 from app.services.element_scope import agent_run_scope
 from app.services.event_bus import AGENT_CHAT_RESPONSE, event_bus
 from app.services.failure_causes import PipelineToolFailedError
 from app.services.frictions import binding_friction_scope, current_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
+from app.services.health.identity import concierge_delegation_owner_id
+from app.services.health.sandbox.turns import intercepted_agent_turn
+from app.services.health.turns import concierge_turn_scoped
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.interrupted_turn import TurnProgress, interrupted_memory_note, interrupted_memory_prefix
 from app.services.run_ledger import (
@@ -1417,7 +1417,7 @@ def _add_platform_builder_tools(
     works in, whose Concierge cycle books what the Concierge tools spend.
     """
     from app.services.builtin_tool_aliases import caller_may_run
-    from app.services.concierge.identity import concierge_acts_alone
+    from app.services.health.identity import concierge_acts_alone
 
     actor_id, read_only = _platform_builder_actor(user_id)
     # A turn of the Concierge acting alone (a task a fleet run delegated) has
@@ -1463,12 +1463,12 @@ def _add_platform_builder_tools(
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
     if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.concierge.sandbox.tools import build_sandbox_tools
+        from app.services.health.sandbox.tools import build_sandbox_tools
 
         # Its own access rule (the Concierge or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
     if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+        from app.services.health.evaluation_tools import build_concierge_evaluation_tools
 
         # Its own access rule (the Concierge, or an administrator where evaluation is on).
         composite.add_tools(*build_concierge_evaluation_tools(db, concierge_actor or None, run_id=run_id))
@@ -4273,7 +4273,7 @@ async def run_agent_chat(
             agent_builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None)
         )
         if getattr(agent, "is_sandbox", False):
-            from app.services.concierge.sandbox.copies import sandbox_tool_ids
+            from app.services.health.sandbox.copies import sandbox_tool_ids
 
             agent_builtin_tool_ids = sandbox_tool_ids(agent_builtin_tool_ids)
 

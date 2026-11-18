@@ -2013,8 +2013,8 @@ class FlowWalker:
 
     async def _dispatch_or_intercept(self, node: dict, kind: str, step_input: dict | None) -> _NodeResult:
         """Run the node, unless the run's sandbox session answers it (#8255)."""
-        from app.services.concierge.sandbox.flows import STATE_KEY, flow_burst_session, intercept_flow_node
-        from app.services.concierge.sandbox.session import sandbox_session
+        from app.services.health.sandbox.flows import STATE_KEY, flow_burst_session, intercept_flow_node
+        from app.services.health.sandbox.session import sandbox_session
 
         if not self._sandbox_read:
             self._sandbox_read = True
@@ -2044,7 +2044,7 @@ class FlowWalker:
         the mark that keeps it out of production listings and recordings."""
         if self._sandbox is None:
             return {}
-        from app.services.concierge.sandbox.flows import SANDBOX_RUN_SOURCE
+        from app.services.health.sandbox.flows import SANDBOX_RUN_SOURCE
 
         return {"source": SANDBOX_RUN_SOURCE}
 
@@ -2052,7 +2052,7 @@ class FlowWalker:
         """Carry the burst's sandbox counts onto the run and its report row."""
         if self._sandbox is None:
             return
-        from app.services.concierge.sandbox.flows import STATE_KEY, burst_report, record_flow_report
+        from app.services.health.sandbox.flows import STATE_KEY, burst_report, record_flow_report
 
         self.state[STATE_KEY] = burst_report(self._sandbox_base, self._sandbox)
         self._persist_state()

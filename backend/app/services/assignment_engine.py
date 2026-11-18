@@ -132,7 +132,6 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
-from app.services.concierge.identity import concierge_delegation_owner_id, is_concierge_agent, mark_concierge_run
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
     ASSIGNMENT_RUN_COMPLETED,
@@ -149,6 +148,7 @@ from app.services.failure_causes import (
 )
 from app.services.frictions import binding_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
+from app.services.health.identity import concierge_delegation_owner_id, is_concierge_agent, mark_concierge_run
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.orchestration_engine import (
     bound_by_deadline,
@@ -6442,14 +6442,14 @@ async def execute_assignment_run(
             # --- Concierge sandbox (#8255): a Concierge run has no user of its
             # own; the tools apply their own rule (the Concierge or an admin).
             if "concierge_sandbox" in agent_builtin_tool_ids:
-                from app.services.concierge.sandbox.tools import build_sandbox_tools
+                from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Concierge evaluation (#8257): the same rule, the tools' own.
             if "concierge_evaluation" in agent_builtin_tool_ids:
-                from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+                from app.services.health.evaluation_tools import build_concierge_evaluation_tools
 
                 composite.add_tools(
                     *build_concierge_evaluation_tools(
@@ -7995,7 +7995,7 @@ async def execute_assignment_run(
                 # A message of the same conversation and sender arriving while
                 # this chat turn runs is injected as a user steer.
                 from app.services import chat_turn_steering
-                from app.services.concierge.sandbox.turns import agent_turn_session, turn_binding
+                from app.services.health.sandbox.turns import agent_turn_session, turn_binding
 
                 # The loop runs here, not through ``run_agent_chat``: a Concierge
                 # run binds its dry-run session itself (#8255).

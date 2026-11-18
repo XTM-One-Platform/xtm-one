@@ -1917,8 +1917,8 @@ def as_concierge(monkeypatch, request):
     owns; or it is a sandbox copy's turn with no principal (an evaluation case
     of an admin-owned agent's copy, which keeps that agent's supervision list)."""
     from app.core.config import settings
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
-    from app.services.concierge.sandbox.session import SandboxSession, sandbox_session
+    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health.sandbox.session import SandboxSession, sandbox_session
 
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     if request.param == "sandbox_turn":

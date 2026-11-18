@@ -5497,7 +5497,7 @@ def _inbox_run_identity(assignment: Any, agent: Any) -> tuple[str | None, bool]:
     """
     from app.services.assignment_helpers import resolve_hide_runs
     from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
-    from app.services.concierge.identity import is_concierge_agent
+    from app.services.health.identity import is_concierge_agent
 
     tool_ids = runtime_builtin_tool_ids(
         list(getattr(agent, "builtin_tool_ids", None) or []), getattr(agent, "builtin_allowed_tools", None)

@@ -29,18 +29,18 @@ from app.api.v1 import concierge_cycles as routes
 from app.core.database import get_db
 from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun
-from app.models.concierge import ConciergeCycle
-from app.models.concierge_cycle import ConciergeCycleRun, ConciergeSignalState
 from app.models.fleet import Fleet, FleetMember
 from app.models.group import Group, GroupMember
+from app.models.health import ConciergeCycle
+from app.models.health_cycle import ConciergeCycleRun, ConciergeSignalState
 from app.models.llm_trace import LLMDailyStats, LLMTrace
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.services import assignment_engine
-from app.services.concierge import budget, cycles, fleet_seed, signals
-from app.services.concierge.settings import ConciergeSettings
 from app.services.fleets import FLEET_HEALTH_CHECK_NAME
+from app.services.health import budget, cycles, fleet_seed, signals
+from app.services.health.settings import ConciergeSettings
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
@@ -207,7 +207,7 @@ async def test_a_cycle_run_has_no_user_and_acts_as_the_concierge_alone(concierge
     from unittest.mock import AsyncMock
 
     from app.api.v1 import helpers
-    from app.services.concierge.identity import mark_concierge_run
+    from app.services.health.identity import mark_concierge_run
 
     monkeypatch.setattr(assignment_engine, "trigger_assignment", _REAL_TRIGGER)
     monkeypatch.setattr(assignment_engine, "_refuse_if_ai_disabled", AsyncMock())
@@ -253,7 +253,7 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
     user, and the worker runs its turn with none. An administrator's own chat
     with the orchestrator delegates as that administrator, as before."""
     from app.models.sub_agent_task import SubAgentTask
-    from app.services.concierge.identity import (
+    from app.services.health.identity import (
         CONCIERGE_ALONE_KEY,
         acting_as_concierge,
         concierge_delegation_owner_id,
@@ -401,7 +401,7 @@ async def _delegated(db, started) -> AssignmentRun:
 async def test_a_cycle_books_its_whole_run_tree_and_closes_once_every_run_ended(concierge_on):
     from decimal import Decimal
 
-    from app.models.concierge import ConciergeBudgetMonth
+    from app.models.health import ConciergeBudgetMonth
 
     async with _scratch("cc_book") as sessions:
         _admin, target = await _seeded_with_target(sessions)
@@ -470,7 +470,7 @@ async def test_a_target_outside_the_scope_starts_nothing(concierge_on):
 
 
 async def test_a_schedule_does_not_start_while_its_previous_cycle_is_open(concierge_on):
-    from app.models.concierge_cycle import ConciergeScheduleMark
+    from app.models.health_cycle import ConciergeScheduleMark
 
     now = datetime.now(UTC)
     async with _scratch("cc_schedule") as sessions:
@@ -673,7 +673,7 @@ async def test_the_concierge_s_sandbox_copies_raise_no_signal(concierge_on):
 
 async def test_a_failed_signal_evaluation_waits_for_its_cadence(concierge_on, monkeypatch):
     from app.core import database
-    from app.models.concierge_cycle import ConciergeScheduleMark
+    from app.models.health_cycle import ConciergeScheduleMark
 
     now = datetime.now(UTC)
     calls: list[str] = []

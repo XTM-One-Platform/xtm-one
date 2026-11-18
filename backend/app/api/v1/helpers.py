@@ -3341,7 +3341,7 @@ def hidden_rows_excluded(model_cls: Any):
         if hasattr(model_cls, column)
     ]
     if hasattr(model_cls, "health_role"):
-        from app.services.concierge.availability import concierge_enabled
+        from app.services.health.availability import concierge_enabled
 
         if not concierge_enabled():
             clauses.append(model_cls.health_role.is_(None))
@@ -3545,7 +3545,7 @@ def agent_tool_admin_bypass(user: HasIsAdmin | None) -> bool:
     work (PRD 9; ``identity.in_concierge_reach``).
     """
     from app.core.security_options import security_option
-    from app.services.concierge.identity import in_concierge_reach
+    from app.services.health.identity import in_concierge_reach
 
     if in_concierge_reach():
         return False
@@ -3605,7 +3605,7 @@ def company_managed_run_scoped[**P, R](
     @functools.wraps(fn)
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
         # The same scope bounds the Concierge mark (``mark_concierge_run``).
-        from app.services.concierge.identity import concierge_run_scope
+        from app.services.health.identity import concierge_run_scope
 
         token = _NO_ACCOUNT_PROVENANCE.set("")
         try:

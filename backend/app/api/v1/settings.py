@@ -7019,7 +7019,7 @@ async def purge_my_memory(
         )
         await db.flush()
     # The user's own deletion purges the consolidation history at once (B19).
-    from app.services.concierge.memory_history import purge_lane_consolidations
+    from app.services.health.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id)
 
@@ -7103,7 +7103,7 @@ async def purge_my_agent_memory(
             )
         )
         await db.flush()
-    from app.services.concierge.memory_history import purge_lane_consolidations
+    from app.services.health.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id, agent_id=agent_id)
 

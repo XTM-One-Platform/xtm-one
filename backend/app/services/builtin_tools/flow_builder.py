@@ -38,7 +38,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.concierge.sandbox.guards import guard_flow_builder, in_concierge_run
+from app.services.health.sandbox.guards import guard_flow_builder, in_concierge_run
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -465,7 +465,7 @@ def build_flow_builder_tool(
         if in_concierge_run():
             # A Concierge prototype lands in the sandbox (#8255): a production
             # flow comes only from an approved proposal.
-            from app.services.concierge.sandbox.copies import SandboxOverrides, create_sandbox_copy
+            from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 
             copy = await create_sandbox_copy(
                 db,

@@ -16173,6 +16173,6 @@ def build_agent_builder_tool(
     definitions.extend(intent_defs)
 
     # A Concierge run reads the platform here, never changes it (#8255).
-    from app.services.concierge.sandbox.guards import guard_agent_builder
+    from app.services.health.sandbox.guards import guard_agent_builder
 
     return guard_agent_builder(definitions, executor), executor

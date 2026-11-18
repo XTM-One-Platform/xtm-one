@@ -219,7 +219,7 @@ async def startup(ctx: dict) -> None:
     import app.models  # noqa: F401
 
     # A Concierge consent revocation made by a job runs all its handlers too.
-    from app.services.concierge.consent import register_revocation_handlers
+    from app.services.health.consent import register_revocation_handlers
 
     register_revocation_handlers()
 

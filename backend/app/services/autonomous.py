@@ -2301,7 +2301,7 @@ async def _run_autonomous_tick_inner() -> int:
             # Not AI work: the retention of consolidated-away memory (#8258)
             # holds whether AI is on or not.
             try:
-                from app.services.concierge.memory_history import purge_expired_consolidations
+                from app.services.health.memory_history import purge_expired_consolidations
 
                 purged = await purge_expired_consolidations(db)
                 await db.commit()
@@ -2551,7 +2551,7 @@ async def _run_autonomous_tick_inner() -> int:
         # --- 9c. Purge expired Concierge sandbox copies (#8255) ---
         # No model call; one indexed read when nothing has expired.
         try:
-            from app.services.concierge.sandbox.copies import purge_expired_sandbox_copies_tick
+            from app.services.health.sandbox.copies import purge_expired_sandbox_copies_tick
 
             await purge_expired_sandbox_copies_tick()
         except Exception as e:
@@ -2562,7 +2562,7 @@ async def _run_autonomous_tick_inner() -> int:
         # work needs agentic AI and the CONCIERGE flag (``cycles.concierge_tick``).
         # Signals make no model call.
         try:
-            from app.services.concierge.cycles import concierge_tick
+            from app.services.health.cycles import concierge_tick
 
             await concierge_tick(ai_on=_ai_on)
         except Exception as e:
@@ -2572,7 +2572,7 @@ async def _run_autonomous_tick_inner() -> int:
         # so a switch-over applied before is never left unwatched; pairing new
         # shadow runs waits on the Concierge's own gates (flow_shadow.pair_new_runs).
         try:
-            from app.services.concierge.flow_shadow import flow_shadow_tick
+            from app.services.health.flow_shadow import flow_shadow_tick
 
             shadows = await flow_shadow_tick()
             if shadows.failed:
