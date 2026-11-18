@@ -15,6 +15,11 @@ creates, updates, deactivates and deprovisions XTM One accounts and groups on
   revoked. `DELETE /api/v1/scim/tokens/{id}` revokes: the next call is refused.
 - A SCIM token opens `/api/v1/scim/v2` and nothing else; a session, an API key
   or an MCP credential never opens it.
+- `GET /api/v1/scim/tokens/activity` (admin) lists the latest SCIM writes from
+  the audit trail (actor `system:scim:<token name>`); the admin screen is
+  Settings > Access and security > Provisioning
+  (`frontend/src/pages/settings/ProvisioningSection.tsx`). User guide:
+  `docs/docs/deployment/scim-provisioning.md`.
 - Rate limit: `SCIM_RATE_LIMIT_PER_MINUTE` calls per token per minute (429 with
   `Retry-After`).
 - `last_used_at` is stamped in its own short transaction, so a read leaves

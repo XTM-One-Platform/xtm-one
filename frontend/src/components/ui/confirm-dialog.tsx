@@ -28,6 +28,8 @@ interface ConfirmDialogProps {
   variant?: "danger" | "warning" | "default";
   /** The confirm button enables only once a random code shown in the dialog is typed back (`lib/challenge-code.ts`). */
   challenge?: boolean;
+  /** Keeps the confirm button off while the decision cannot be made yet (a preview loading, a refusal shown). */
+  confirmDisabled?: boolean;
   /** Content drawn under the description (a short list the decision rests on); already translated by the caller. */
   children?: React.ReactNode;
   onConfirm: () => void;
@@ -42,6 +44,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "danger",
   challenge = false,
+  confirmDisabled = false,
   children,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -60,7 +63,7 @@ export function ConfirmDialog({
       setTyped("");
     }
   }, [open, challenge]);
-  const blocked = challenge && !challengeMatches(code, typed);
+  const blocked = confirmDisabled || (challenge && !challengeMatches(code, typed));
   const confirm = () => {
     if (blocked) return;
     onConfirm();

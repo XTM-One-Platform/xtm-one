@@ -374,6 +374,7 @@ The gate only applies where Agentic AI is licensed. Community Edition deployment
 | Admin invitation link | Single-use, email-bound link the invitee opens to set a password | `Users` → `Invite user` |
 | Self-registration | Users register with email and password (optionally domain-restricted) | Sign-in page, when **Local Registration** is enabled |
 | SSO auto-provisioning | Users are created on first OIDC or SAML login (optionally domain-restricted), linked by email | On first SSO login |
+| SCIM provisioning | An identity provider (Microsoft Entra) creates, updates and deactivates accounts; see [Provisioning with SCIM](scim-provisioning.md) | `Settings` → `Access and security` → `Provisioning` |
 
 ## Account hardening summary
 
