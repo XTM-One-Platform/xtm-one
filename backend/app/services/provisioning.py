@@ -95,8 +95,8 @@ async def provision_builtin_content(
             logger.info("Provisioned %d pre-packaged skill(s)", seeded_skills)
 
     # The Concierge fleet (#8261), after the skills it carries (seeded in every
-    # mode); CONCIERGE flag only. Copilot mode seeds it too, named "Alfred"
-    # there (``concierge.naming``).
+    # mode), built in since #101; named "Platform Health" in every mode
+    # (``concierge.naming``).
     if seed_mode in ("xtm_one", "dev", "copilot"):
         from app.services.concierge.fleet_seed import seed_concierge_fleet
 

@@ -40,7 +40,6 @@ import { useToast } from "@/components/ui/toast";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { useConciergeBudget, useConciergeName, useConciergeSettings, useSaveConciergeSettings } from "@/hooks/api/useConciergeApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
-import { usePlatformConfig } from "@/hooks/usePlatformConfig";
 import { defaultConciergeName } from "@/lib/concierge";
 import { useFormatter } from "@/i18n";
 import type { ConciergeBudgetCaps, ConciergeSettings } from "@/types";
@@ -84,7 +83,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
   const fieldId = useId();
   const nameId = `${fieldId}-name`;
-  const defaultName = defaultConciergeName(usePlatformConfig()?.platform_mode);
+  const defaultName = defaultConciergeName();
   return (
     <div>
       <BlockTitle

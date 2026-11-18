@@ -1,4 +1,4 @@
-"""The Concierge's name (#8261): validated as hostile text, defaulted by platform mode, never formatted."""
+"""Platform Health's name (#8261, #101): validated as hostile text, one default in every mode, never formatted."""
 
 from __future__ import annotations
 
@@ -13,9 +13,14 @@ from app.services.concierge.settings import MAX_NAME_LENGTH, ConciergeSettings
 
 @pytest.mark.parametrize(
     ("mode", "expected"),
-    [("copilot", "Alfred"), ("xtm_one", "Concierge"), ("dev", "Concierge"), ("ai_disabled", "Concierge")],
+    [
+        ("copilot", "Platform Health"),
+        ("xtm_one", "Platform Health"),
+        ("dev", "Platform Health"),
+        ("ai_disabled", "Platform Health"),
+    ],
 )
-def test_the_default_name_follows_the_platform_mode(monkeypatch, mode: str, expected: str) -> None:
+def test_the_default_name_is_platform_health_in_every_mode(monkeypatch, mode: str, expected: str) -> None:
     monkeypatch.setattr(settings, "platform_mode", mode)
     assert default_concierge_name() == expected
     assert concierge_name(ConciergeSettings()) == expected
@@ -23,7 +28,8 @@ def test_the_default_name_follows_the_platform_mode(monkeypatch, mode: str, expe
 
 
 def test_every_default_name_is_known() -> None:
-    assert frozenset({"Alfred", "Concierge"}) == DEFAULT_NAMES
+    # The former defaults stay known, so a row seeded under one is renamed at the next seed.
+    assert frozenset({"Platform Health", "Alfred", "Concierge"}) == DEFAULT_NAMES
 
 
 @pytest.mark.parametrize(

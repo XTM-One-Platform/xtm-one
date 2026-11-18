@@ -24,7 +24,7 @@ describe("useConciergeName", () => {
 
   it("asks nothing while the caller holds it back", () => {
     renderWithProviders(<Name enabled={false} />);
-    expect(screen.getByTestId("name")).toHaveTextContent("Concierge");
+    expect(screen.getByTestId("name")).toHaveTextContent("Platform Health");
     expect(api.get).not.toHaveBeenCalled();
   });
 
@@ -32,11 +32,11 @@ describe("useConciergeName", () => {
     api.get.mockRejectedValue(Object.assign(new Error("Forbidden"), { status: 403 }));
     renderWithProviders(<Name />);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/name"));
-    expect(screen.getByTestId("name")).toHaveTextContent("Concierge");
+    expect(screen.getByTestId("name")).toHaveTextContent("Platform Health");
   });
 
   it("shows the server's name once read", async () => {
-    api.get.mockResolvedValue({ name: "Jeeves", default_name: "Concierge" });
+    api.get.mockResolvedValue({ name: "Jeeves", default_name: "Platform Health" });
     renderWithProviders(<Name />);
     expect(await screen.findByText("Jeeves")).toBeInTheDocument();
   });

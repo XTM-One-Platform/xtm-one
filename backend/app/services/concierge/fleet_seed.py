@@ -107,7 +107,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
     FleetAgentSpec(
         slug=ORCHESTRATOR_SLUG,
         role="orchestrator",
-        name="Concierge",
+        name="Platform Health",
         description=(
             "Orchestrates the platform's improvement fleet: plans each cycle, hands the work to "
             "its specialists, reports every cycle, and answers administrators about agent health."
@@ -172,14 +172,14 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         key="memory",
         agent_slug="concierge-memory-steward",
         name="Concierge memory consolidation",
-        description="Consolidates every memory lane the Concierge may read. Started by its schedule in Settings > Agents and automations > Concierge.",
+        description="Consolidates every memory lane Platform Health may read. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=f"List the memory lanes you may consolidate, then consolidate each one. {_REPORT}",
     ),
     FleetAssignmentSpec(
         key="quality",
         agent_slug="concierge-quality-analyst",
         name="Concierge quality review",
-        description="Reviews the quality signals of the supervised agents. Started by its schedule in Settings > Agents and automations > Concierge.",
+        description="Reviews the quality signals of the enrolled agents. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
             "Review the quality signals of the agents you supervise, record the findings the evidence "
             f"supports, and hand the variants worth measuring to the Experimenter. {_REPORT}"
@@ -189,7 +189,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         key="flows",
         agent_slug="concierge-flow-lab",
         name="Concierge flow review",
-        description="Reviews the supervised flows and assignments. Started by its schedule in Settings > Agents and automations > Concierge.",
+        description="Reviews the enrolled flows and assignments. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
             "Diagnose the flows and assignments you supervise, author the candidates worth measuring on "
             f"sandbox copies, and hand them to the Experimenter. {_REPORT}"
@@ -210,7 +210,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         key="digest",
         agent_slug=ORCHESTRATOR_SLUG,
         name="Concierge weekly digest",
-        description="Summarizes the Concierge cycles closed since the last digest. Started by its schedule in Settings > Agents and automations > Concierge.",
+        description="Summarizes the Platform Health cycles closed since the last digest. Started by its schedule in Settings > Automations > Platform Health.",
         prompt=(
             "List the Concierge cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "

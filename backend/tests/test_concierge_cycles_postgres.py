@@ -848,7 +848,7 @@ async def test_a_second_request_answers_409_with_the_open_cycle(concierge_on):
     assert (first.status_code, second.status_code) == (202, 409)
     assert second.json()["detail"] == {
         "code": "cycle_open",
-        "message": "Concierge is already working on this target.",
+        "message": "Platform Health is already working on this target.",
         "open_cycle_id": first.json()["cycle_id"],
     }
 

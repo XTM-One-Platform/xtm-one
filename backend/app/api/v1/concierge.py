@@ -264,9 +264,9 @@ async def set_my_opt_out(
 
 
 class ConciergeNameResponse(BaseModel):
-    #: What people call it: Settings > Agents and automations > Concierge's name, else ``default_name``.
+    #: What people call it: the name set in Settings > Automations > Platform Health, else ``default_name``.
     name: str
-    #: The platform mode's name ("Alfred" in copilot mode, "Concierge" otherwise).
+    #: "Platform Health", the same in every platform mode (#101).
     default_name: str
 
 

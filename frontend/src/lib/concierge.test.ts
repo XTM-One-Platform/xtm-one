@@ -44,9 +44,6 @@ test("a target links to its own page", () => {
   );
 });
 
-test("the default name follows the platform mode, as the server's", () => {
-  assert.equal(defaultConciergeName("copilot"), "Alfred");
-  assert.equal(defaultConciergeName("xtm_one"), "Concierge");
-  assert.equal(defaultConciergeName("dev"), "Concierge");
-  assert.equal(defaultConciergeName(undefined), "Concierge");
+test("the default name is Platform Health in every mode, as the server's", () => {
+  assert.equal(defaultConciergeName(), "Platform Health");
 });

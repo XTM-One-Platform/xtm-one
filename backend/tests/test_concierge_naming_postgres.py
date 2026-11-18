@@ -2,8 +2,8 @@
 
 * ``GET /concierge/name`` answers every signed-in person, admin or not; a
   hostile name is a 422 from ``PUT /concierge/settings``, never a 500.
-* The fleet is seeded under the platform mode's name ("Alfred" in copilot
-  mode); a mode change renames what still carries a default name; a saved name
+* The fleet is seeded as "Platform Health" in every mode (#101); a row still
+  carrying a former default ("Alfred", "Concierge") is renamed; a saved name
   renames the orchestrator, its fleet and its workspace; a row an
   administrator renamed by hand keeps its name.
 
@@ -75,8 +75,8 @@ async def test_every_signed_in_person_reads_the_name(monkeypatch) -> None:
         await configure(sessions, world.admin, name="Jeeves")
         async with _client(sessions, world.reader) as client:
             named = await client.get("/api/v1/health/name")
-    assert default.json() == {"name": "Alfred", "default_name": "Alfred"}
-    assert named.json() == {"name": "Jeeves", "default_name": "Alfred"}
+    assert default.json() == {"name": "Platform Health", "default_name": "Platform Health"}
+    assert named.json() == {"name": "Jeeves", "default_name": "Platform Health"}
 
 
 async def test_the_name_route_is_dark_while_the_flag_is_off(monkeypatch) -> None:
@@ -110,19 +110,28 @@ async def test_a_non_admin_cannot_name_the_concierge() -> None:
     assert stored.name is None
 
 
-async def test_the_fleet_is_seeded_under_the_mode_name_and_follows_a_mode_change(monkeypatch) -> None:
+async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_renamed(monkeypatch) -> None:
     async with concierge_database() as sessions:
         await World().build(sessions)
         monkeypatch.setattr(settings, "platform_mode", "copilot")
         async with sessions() as db:
             await fleet_seed.seed_concierge_fleet(db)
         seeded = await _names(sessions)
+        # A deployment seeded before #101 carries the former copilot default.
+        async with sessions() as db:
+            orchestrator = (
+                await db.execute(select(Agent).where(Agent.slug == fleet_seed.ORCHESTRATOR_SLUG))
+            ).scalar_one()
+            fleet = (await db.execute(select(Fleet))).scalar_one()
+            workspace = await db.get(Workspace, fleet.workspace_id)
+            orchestrator.name = fleet.name = workspace.name = "Alfred"
+            await db.commit()
         monkeypatch.setattr(settings, "platform_mode", "xtm_one")
         async with sessions() as db:
             await fleet_seed.seed_concierge_fleet(db)
-        after_mode_change = await _names(sessions)
-    assert seeded == ("Alfred", "Alfred", "Alfred")
-    assert after_mode_change == ("Concierge", "Concierge", "Concierge")
+        reseeded = await _names(sessions)
+    assert seeded == ("Platform Health", "Platform Health", "Platform Health")
+    assert reseeded == ("Platform Health", "Platform Health", "Platform Health")
 
 
 async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeypatch) -> None:
@@ -146,7 +155,7 @@ async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeyp
     assert saved.status_code == 200 and saved.json()["name"] == "Jeeves"
     assert renamed == ("Jeeves", "Improvement crew", "Jeeves")
     assert reseeded == renamed
-    assert back_to_default == ("Alfred", "Improvement crew", "Alfred")
+    assert back_to_default == ("Platform Health", "Improvement crew", "Platform Health")
 
 
 async def test_the_budget_line_names_the_concierge_as_its_administrator_named_it(monkeypatch) -> None:

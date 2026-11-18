@@ -26,7 +26,6 @@ import { api } from "@/lib/api";
 import { defaultConciergeName } from "@/lib/concierge";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
-import { usePlatformConfig } from "@/hooks/usePlatformConfig";
 import type {
   ConciergeBudget,
   ConciergeCycle,
@@ -87,12 +86,11 @@ export function useSetConciergeOptOut() {
 }
 
 /**
- * The name the Concierge goes by with people (Settings > Agents and automations > Concierge, #8261).
+ * The name Platform Health goes by with people (Settings > Automations > Platform Health, #8261, #101).
  * It is an administrator's text: render it as text or pass it as an ICU
  * value (`t_i18n("{name} is on it", { name })`), never as a message id.
  */
 export function useConciergeName(enabled = true): string {
-  const platformMode = usePlatformConfig()?.platform_mode;
   const { data } = useQuery<ConciergeName>({
     queryKey: NAME_KEY,
     queryFn: () => api.get("/health/name"),
@@ -101,7 +99,7 @@ export function useConciergeName(enabled = true): string {
     // The default name stands in: a failed read never takes the page down.
     throwOnError: false,
   });
-  return data?.name ?? defaultConciergeName(platformMode);
+  return data?.name ?? defaultConciergeName();
 }
 
 export function useConciergeSettings(enabled = true) {

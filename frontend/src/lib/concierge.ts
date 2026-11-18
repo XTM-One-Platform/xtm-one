@@ -42,9 +42,9 @@ export const CONCIERGE_DIGEST_STATUS_VARIANTS: Record<string, BadgeVariant> = {
   cancelled: "outline",
 };
 
-/** The platform mode's name for the Concierge (`naming.default_concierge_name`): "Alfred" in copilot mode. */
-export function defaultConciergeName(platformMode: string | undefined): string {
-  return platformMode === "copilot" ? "Alfred" : "Concierge";
+/** Platform Health's default name (`naming.default_concierge_name`), the same in every platform mode (#101). */
+export function defaultConciergeName(): string {
+  return "Platform Health";
 }
 
 /** @i18n-keys */

@@ -33,7 +33,7 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ### Name
 
-The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Alfred** on a Filigran Copilot deployment and **Concierge** on every other. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
+The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Platform Health** on every deployment; an orchestrator, fleet or workspace still carrying a former default name (Concierge, or Alfred on Filigran Copilot) is renamed **Platform Health** at the next start, and a name set by hand is kept. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
 
 Saving a new name renames the orchestrator, the fleet and the workspace that still carry the previous one. A row an administrator renamed by hand keeps its own name. The agents' personas are not changed: the name is what people read, not an instruction to the model.
 

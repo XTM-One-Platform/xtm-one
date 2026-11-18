@@ -11,13 +11,16 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The name the Concierge goes by with people (#8261).
+"""The name Platform Health goes by with people (#8261, #101).
 
-An administrator names it in Settings > Agents and automations > Concierge (``ConciergeSettings.name``);
-left empty, the name is the platform mode's default: "Alfred" on a copilot
-deployment, "Concierge" on every other. The name is what people read: the
-Concierge page, the inbox, the entry points, the refusals the REST API sends,
+An administrator may still name it in Settings > Automations > Platform Health
+(``ConciergeSettings.name``) until the S1 migration drops the setting; left
+empty, the name is "Platform Health" in every platform mode (#101, decided
+18 Nov 2026: no mode-specific name). The name is what people read: the
+Health page, the inbox, the entry points, the refusals the REST API sends,
 and the display name of the orchestrator agent, its fleet and its workspace.
+The former defaults ("Concierge", "Alfred") are still known, so a row seeded
+under one of them is renamed at the next seed and a hand-renamed row is kept.
 
 It is never written into a system prompt (invariant 16): the personas stay as
 seeded, and what a model reads of the platform's Concierge is unchanged.
@@ -39,18 +42,17 @@ from app.services.concierge.settings import ConciergeSettings, load_concierge_se
 
 logger = logging.getLogger(__name__)
 
-#: The name on a deployment whose mode has none of its own.
-DEFAULT_NAME: Final = "Concierge"
-_DEFAULT_BY_MODE: Final[dict[str, str]] = {"copilot": "Alfred"}
-#: Every name the platform gives by itself: a row still carrying one of them was never renamed by hand.
-DEFAULT_NAMES: Final[frozenset[str]] = frozenset({DEFAULT_NAME, *_DEFAULT_BY_MODE.values()})
+#: The name in every platform mode.
+DEFAULT_NAME: Final = "Platform Health"
+#: The defaults of the former Concierge ("Alfred" was the copilot mode's).
+_FORMER_DEFAULT_NAMES: Final = frozenset({"Concierge", "Alfred"})
+#: Every name the platform gives or gave by itself: a row still carrying one of them was never renamed by hand.
+DEFAULT_NAMES: Final[frozenset[str]] = frozenset({DEFAULT_NAME, *_FORMER_DEFAULT_NAMES})
 
 
 def default_concierge_name() -> str:
-    """The name of this deployment's ``PLATFORM_MODE``."""
-    from app.core.config import settings
-
-    return _DEFAULT_BY_MODE.get(settings.platform_mode, DEFAULT_NAME)
+    """The default name, the same in every platform mode."""
+    return DEFAULT_NAME
 
 
 def concierge_name(value: ConciergeSettings) -> str:
