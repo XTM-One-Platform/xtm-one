@@ -46,9 +46,9 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
   const onChange = async (next: boolean) => {
     if (next) {
       const ok = await confirm({
-        title: t_i18n("Opt out of the Concierge?"),
+        title: t_i18n("Opt out of Platform Health?"),
         description: t_i18n(
-          "The Concierge will no longer read your memories and conversations, and the evaluation cases built from them are deleted now. Opting back in later does not bring them back.",
+          "Platform Health will no longer read your memories and conversations, and the evaluation cases built from them are deleted now. Opting back in later does not bring them back.",
         ),
         confirmLabel: t_i18n("Opt out"),
         variant: "warning",
@@ -58,12 +58,12 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
     save.mutate(next, {
       onSuccess: () =>
         toast({
-          title: next ? t_i18n("You opted out of the Concierge") : t_i18n("You opted back in to the Concierge"),
+          title: next ? t_i18n("You opted out of Platform Health") : t_i18n("You opted back in to Platform Health"),
           variant: "success",
         }),
       onError: (err) =>
         toast({
-          title: t_i18n("Your Concierge choice was not changed"),
+          title: t_i18n("Your Platform Health choice was not changed"),
           description: err instanceof Error ? err.message : undefined,
           variant: "error",
         }),
@@ -79,16 +79,16 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
           {t_i18n("Platform Health")}
         </CardTitle>
         <CardDescription className="content-compact">
-          {t_i18n("The platform's Concierge improves the agents their managers opted in.")}
+          {t_i18n("Platform Health improves the agents their managers opted in.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
         <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle-soft bg-elevation-hover px-3 py-2.5">
           <div className="min-w-0">
-            <p className="content-base font-medium">{t_i18n("Opt out of the Concierge")}</p>
+            <p className="content-base font-medium">{t_i18n("Opt out of Platform Health")}</p>
             <p className="content-compact text-default-secondary">
               {optOut
-                ? t_i18n("The Concierge reads none of your memories and conversations.")
+                ? t_i18n("Platform Health reads none of your memories and conversations.")
                 : t_i18n("Your memories and conversations with opted-in agents may be read.")}
             </p>
           </div>
@@ -98,7 +98,7 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
               checked={optOut}
               onCheckedChange={(next) => void onChange(next)}
               disabled={save.isPending}
-              aria-label={t_i18n("Opt out of the Concierge")}
+              aria-label={t_i18n("Opt out of Platform Health")}
             />
           </div>
         </div>

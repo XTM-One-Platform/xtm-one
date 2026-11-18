@@ -48,18 +48,18 @@ const SCHEDULE_LABELS = {
 
 /** @i18n-keys */
 const SCHEDULE_HINTS = {
-  memory: "Memory Steward, every lane the Concierge may consolidate.",
+  memory: "Memory Steward, every lane Platform Health may consolidate.",
   quality: "Quality Analyst, every supervised agent.",
   flows: "Flow Lab, every supervised flow and assignment.",
-  digest: "Concierge, a summary of the cycles closed since the last one.",
+  digest: "Platform Health, a summary of the cycles closed since the last one.",
 } as const;
 
 /** @i18n-keys */
 const SCHEDULE_INFO = {
-  memory: "On: the Memory Steward consolidates the memories of every lane the Concierge may touch, on the cron expression below. Off: it never runs on a schedule.",
+  memory: "On: the Memory Steward consolidates the memories of every lane Platform Health may touch, on the cron expression below. Off: it never runs on a schedule.",
   quality: "On: the Quality Analyst reviews every supervised agent on the cron expression below. Off: it never runs on a schedule.",
   flows: "On: the Flow Lab reviews every supervised flow and assignment on the cron expression below. Off: it never runs on a schedule.",
-  digest: "On: the Concierge writes a summary of the cycles closed since the last one, on the cron expression below. Off: no digest is written.",
+  digest: "On: Platform Health writes a summary of the cycles closed since the last one, on the cron expression below. Off: no digest is written.",
 } as const;
 
 function NumberField({
@@ -198,7 +198,7 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
           <SettingsReadField
             className="max-w-xs"
             label={t_i18n("Timezone")}
-            info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of the Concierge uses it. UTC unless chosen.")}
+            info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.")}
             value={draft.schedules.timezone.replace(/_/g, " ")}
           />
         ) : (
@@ -206,7 +206,7 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
           id={timezoneId}
           className="max-w-xs"
           label={t_i18n("Timezone")}
-          info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of the Concierge uses it. UTC unless chosen.")}
+          info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.")}
           helper={t_i18n("The cron expressions above run in this timezone.")}
         >
           <SearchableSelect
@@ -278,7 +278,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
         <SwitchRow
           title={t_i18n("Feedback drop")}
           description={t_i18n("An agent's weighted feedback score falls over a window, against the window before.")}
-          info={t_i18n("On: the Concierge opens an investigation on an agent whose feedback score falls by the drop below. Off: feedback is not watched.")}
+          info={t_i18n("On: Platform Health opens an investigation on an agent whose feedback score falls by the drop below. Off: feedback is not watched.")}
           checked={s.feedback_enabled}
           editing={editing}
           onToggle={(on) => set({ feedback_enabled: on })}
@@ -290,7 +290,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
         <SwitchRow
           title={t_i18n("Failure spike")}
           description={t_i18n("A flow's or an assignment's failure rate over its last runs.")}
-          info={t_i18n("On: the Concierge opens an investigation on a flow or an assignment whose failure rate rises above the threshold below. Off: failures are not watched.")}
+          info={t_i18n("On: Platform Health opens an investigation on a flow or an assignment whose failure rate rises above the threshold below. Off: failures are not watched.")}
           checked={s.failure_enabled}
           editing={editing}
           onToggle={(on) => set({ failure_enabled: on })}
@@ -301,7 +301,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
         <SwitchRow
           title={t_i18n("Cost drift")}
           description={t_i18n("An agent's cost per assignment run over a window, against the window before.")}
-          info={t_i18n("On: the Concierge opens an investigation on an agent whose cost per assignment run rises by the threshold below. Off: cost is not watched.")}
+          info={t_i18n("On: Platform Health opens an investigation on an agent whose cost per assignment run rises by the threshold below. Off: cost is not watched.")}
           checked={s.cost_enabled}
           editing={editing}
           onToggle={(on) => set({ cost_enabled: on })}
@@ -313,7 +313,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
         <SwitchRow
           title={t_i18n("Model change")}
           description={t_i18n("The model a supervised agent resolves to changes.")}
-          info={t_i18n("On: the Concierge opens an investigation when the model a supervised agent resolves to changes. Off: model changes are not watched.")}
+          info={t_i18n("On: Platform Health opens an investigation when the model a supervised agent resolves to changes. Off: model changes are not watched.")}
           checked={s.model_change_enabled}
           editing={editing}
           onToggle={(on) => set({ model_change_enabled: on })}
@@ -351,12 +351,12 @@ export function DryRunBlock({ draft, editing, onChange }: BlockProps) {
       <BlockTitle
         icon={FlaskConical}
         title={t_i18n("Dry-run")}
-        hint={t_i18n("Every write of every Concierge agent - memory, proposals, sandbox copies - is logged, not executed. Digests count what was logged.")}
+        hint={t_i18n("Every write of every Platform Health agent - memory, proposals, sandbox copies - is logged, not executed. Digests count what was logged.")}
       />
       <SwitchRow
         title={t_i18n("Log every write instead of executing it")}
-        description={t_i18n("Use it to see what the Concierge would do before letting it act.")}
-        info={t_i18n("On: every write of every Concierge agent is logged and not executed; digests count them. Off: the Concierge acts within its scope and budget.")}
+        description={t_i18n("Use it to see what Platform Health would do before letting it act.")}
+        info={t_i18n("On: every write of every Platform Health agent is logged and not executed; digests count them. Off: Platform Health acts within its scope and budget.")}
         checked={draft.dry_run}
         editing={editing}
         onToggle={(on) => onChange({ ...draft, dry_run: on })}

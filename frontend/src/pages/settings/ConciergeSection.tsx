@@ -62,10 +62,10 @@ const CAP_LABELS = {
 
 /** What each budget cap counts and what reaching it does. @i18n-keys */
 const CAP_INFO = {
-  cycle_tokens: "The most tokens one Concierge cycle may spend, every specialist included, e.g. 200000. A cycle that reaches it stops starting work. Empty: no cap.",
-  cycle_cost_usd: "The most one Concierge cycle may cost, in US dollars, e.g. 2.50. A cycle that reaches it stops starting work. Empty: no cap.",
-  month_tokens: "The most tokens the Concierge may spend in a calendar month, e.g. 5000000. Once reached, it starts no new work until the next month. Empty: no cap.",
-  month_cost_usd: "The most the Concierge may cost in a calendar month, in US dollars, e.g. 50. Once reached, it starts no new work until the next month. Empty: no cap.",
+  cycle_tokens: "The most tokens one Platform Health cycle may spend, every specialist included, e.g. 200000. A cycle that reaches it stops starting work. Empty: no cap.",
+  cycle_cost_usd: "The most one Platform Health cycle may cost, in US dollars, e.g. 2.50. A cycle that reaches it stops starting work. Empty: no cap.",
+  month_tokens: "The most tokens Platform Health may spend in a calendar month, e.g. 5000000. Once reached, it starts no new work until the next month. Empty: no cap.",
+  month_cost_usd: "The most Platform Health may cost in a calendar month, in US dollars, e.g. 50. Once reached, it starts no new work until the next month. Empty: no cap.",
 } as const;
 
 const CAP_KEYS = Object.keys(CAP_LABELS) as (keyof ConciergeBudgetCaps)[];
@@ -90,20 +90,20 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
       <BlockTitle
         icon={Power}
         title={t_i18n("Platform Health")}
-        hint={t_i18n("While it is off, the Concierge reads nothing and starts no work.")}
+        hint={t_i18n("While it is off, Platform Health reads nothing and starts no work.")}
       />
       <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
         {!editing ? (
           // At rest (#10855): read tiles, never disabled controls.
           <SettingsReadGrid data-testid="concierge.read.enable">
             <SettingsReadField
-              label={t_i18n("Enable the Concierge")}
-              info={t_i18n("On: the Concierge watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
+              label={t_i18n("Enable Platform Health")}
+              info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
               value={draft.enabled ? t_i18n("On") : t_i18n("Off")}
             />
             <SettingsReadField
               label={t_i18n("Name")}
-              info={t_i18n("The name shown on the Concierge's page, in the inbox and on its agent, e.g. Jeeves. Up to {max} characters. Left empty: {name}.", { max: MAX_NAME_LENGTH, name: defaultName })}
+              info={t_i18n("The name shown on Platform Health's page, in the inbox and on its agent, e.g. Jeeves. Up to {max} characters. Left empty: {name}.", { max: MAX_NAME_LENGTH, name: defaultName })}
               value={draft.name?.trim() || defaultName}
               data-testid="concierge.name"
             />
@@ -112,8 +112,8 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
         <>
         <SettingsSwitchField
           id={`${fieldId}-enabled`}
-          label={t_i18n("Enable the Concierge")}
-          info={t_i18n("On: the Concierge watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
+          label={t_i18n("Enable Platform Health")}
+          info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
           checked={draft.enabled}
           onCheckedChange={(enabled) => onChange({ ...draft, enabled })}
         />
@@ -121,7 +121,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
           id={nameId}
           className="max-w-md"
           label={t_i18n("Name")}
-          info={t_i18n("The name shown on the Concierge's page, in the inbox and on its agent, e.g. Jeeves. Up to {max} characters. Left empty: {name}.", { max: MAX_NAME_LENGTH, name: defaultName })}
+          info={t_i18n("The name shown on Platform Health's page, in the inbox and on its agent, e.g. Jeeves. Up to {max} characters. Left empty: {name}.", { max: MAX_NAME_LENGTH, name: defaultName })}
           helper={t_i18n("What people call it on its page, in the inbox and on its agent. Left empty: {name}.", { name: defaultName })}
         >
           <Input
@@ -152,7 +152,7 @@ function ScopeBlock({ draft, editing, onChange }: BlockProps) {
         icon={Radar}
         title={t_i18n("Supervision scope")}
         hint={t_i18n(
-          "What the Concierge observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.",
+          "What Platform Health observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.",
         )}
       />
       <div className="space-y-3 rounded-sm bg-elevation-default p-3.5 content-compact">
@@ -160,7 +160,7 @@ function ScopeBlock({ draft, editing, onChange }: BlockProps) {
           <SettingsReadField
             className="max-w-md"
             label={t_i18n("Supervise")}
-            info={t_i18n("All: every agent and flow whose managers opted in. Selected: only the agents and flows picked below. The Concierge's sweeps and schedules read it.")}
+            info={t_i18n("All: every agent and flow whose managers opted in. Selected: only the agents and flows picked below. Platform Health's sweeps and schedules read it.")}
             value={selected ? t_i18n("Selected agents and flows") : t_i18n("All agents and flows")}
             data-testid="concierge.read.scope-mode"
           />
@@ -169,8 +169,8 @@ function ScopeBlock({ draft, editing, onChange }: BlockProps) {
           id={`${fieldId}-mode`}
           className="max-w-md"
           label={t_i18n("Supervise")}
-          info={t_i18n("All: every agent and flow whose managers opted in. Selected: only the agents and flows picked below. The Concierge's sweeps and schedules read it.")}
-          helper={t_i18n("Which agents and flows the Concierge observes.")}
+          info={t_i18n("All: every agent and flow whose managers opted in. Selected: only the agents and flows picked below. Platform Health's sweeps and schedules read it.")}
+          helper={t_i18n("Which agents and flows Platform Health observes.")}
         >
           <Select
             value={draft.scope_mode}
@@ -256,7 +256,7 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
         icon={Gauge}
         title={t_i18n("Budget")}
         hint={t_i18n(
-          "The Concierge's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.",
+          "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.",
         )}
       />
       <div className="space-y-2 rounded-sm bg-elevation-default p-3.5">
@@ -329,11 +329,11 @@ export function ConciergeSection() {
     save.mutate(draft, {
       onSuccess: () => {
         setDraft(null);
-        toast({ title: t_i18n("Concierge settings saved"), variant: "success" });
+        toast({ title: t_i18n("Platform Health settings saved"), variant: "success" });
       },
       onError: (err) =>
         toast({
-          title: t_i18n("The Concierge settings were not saved"),
+          title: t_i18n("Platform Health settings were not saved"),
           description: err instanceof Error ? err.message : undefined,
           variant: "error",
         }),
@@ -345,7 +345,7 @@ export function ConciergeSection() {
       <div className="flex items-center justify-between">
         <p className="content-compact text-default-secondary">
           {t_i18n(
-            "The Concierge consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.",
+            "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.",
           )}
         </p>
         <div className="ml-4 flex shrink-0 gap-3">

@@ -65,7 +65,7 @@ const REASON_META: Partial<Record<AssignmentPauseReason, { icon: LucideIcon; hea
   panic_stop: { icon: OctagonX, headline: "Stopped by an emergency stop", severity: "error" },
   // A flow took its trigger over (#8260). Resuming it does not deactivate the
   // flow: both then run, and the Concierge's watch leaves that choice alone.
-  concierge_switch_over: { icon: Workflow, headline: "Replaced by a flow after an approved Concierge proposal", severity: "info" },
+  concierge_switch_over: { icon: Workflow, headline: "Replaced by a flow after an approved Platform Health proposal", severity: "info" },
 };
 
 export function PausedBanner({ assignment, onResume, resuming = false }: PausedBannerProps) {

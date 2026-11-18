@@ -33,16 +33,16 @@ import { Spinner } from "@filigran/design-system";
 const TEXTS = {
   agent: {
     description:
-      "Let the Concierge consolidate this agent's memories, diagnose it from its conversations and propose improvements. Every proposal waits for approval by the agent's managers.",
-    on: "The Concierge may now improve this agent",
-    off: "The Concierge no longer reads this agent's content",
+      "Let Platform Health consolidate this agent's memories, diagnose it from its conversations and propose improvements. Every proposal waits for approval by the agent's managers.",
+    on: "Platform Health may now improve this agent",
+    off: "Platform Health no longer reads this agent's content",
     readOnly: "Only the agent's managers can change this.",
   },
   flow: {
     description:
-      "Let the Concierge diagnose this flow from the journals of its runs and propose improvements. Every proposal waits for approval by the flow's managers.",
-    on: "The Concierge may now improve this flow",
-    off: "The Concierge no longer reads this flow's content",
+      "Let Platform Health diagnose this flow from the journals of its runs and propose improvements. Every proposal waits for approval by the flow's managers.",
+    on: "Platform Health may now improve this flow",
+    off: "Platform Health no longer reads this flow's content",
     readOnly: "Only the flow's managers can change this.",
   },
 } as const satisfies Record<OptInTarget, Record<string, string>>;
@@ -73,7 +73,7 @@ function OptInCard({
       onSuccess: () => toast({ title: t_i18n(next ? texts.on : texts.off), variant: "success" }),
       onError: (err) =>
         toast({
-          title: t_i18n("The Concierge opt-in was not changed"),
+          title: t_i18n("Platform Health opt-in was not changed"),
           description: err instanceof Error ? err.message : undefined,
           variant: "error",
         }),
@@ -84,7 +84,7 @@ function OptInCard({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 content-base">
           <Sparkles className="size-4 text-accent" />
-          {t_i18n("Improvement by the Concierge")}
+          {t_i18n("Improvement by Platform Health")}
         </CardTitle>
         <CardDescription className="content-compact">{t_i18n(texts.description)}</CardDescription>
       </CardHeader>

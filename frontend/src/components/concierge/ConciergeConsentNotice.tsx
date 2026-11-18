@@ -25,8 +25,8 @@ import { useFormatter } from "@/i18n";
 /** The notice per target. @i18n-keys */
 const NOTICES = {
   agent:
-    "When an agent is opted in, the Concierge reads its memories and the content of its conversations to improve it. Conversation excerpts become evaluation cases, unredacted, visible to the agent's managers and to administrators. Anyone can opt out in their profile: their memories and conversations are then never read, and the cases already built from them are deleted.",
-  flow: "When a flow is opted in, the Concierge reads the journals of its runs to improve it. Run excerpts become evaluation cases, unredacted, visible to the flow's managers and to administrators. Anyone can opt out in their profile: their content is then never read, and the cases already built from it are deleted.",
+    "When an agent is opted in, Platform Health reads its memories and the content of its conversations to improve it. Conversation excerpts become evaluation cases, unredacted, visible to the agent's managers and to administrators. Anyone can opt out in their profile: their memories and conversations are then never read, and the cases already built from them are deleted.",
+  flow: "When a flow is opted in, Platform Health reads the journals of its runs to improve it. Run excerpts become evaluation cases, unredacted, visible to the flow's managers and to administrators. Anyone can opt out in their profile: their content is then never read, and the cases already built from it are deleted.",
 } as const;
 
 export function ConciergeConsentNotice({ targetType = "agent" }: { targetType?: keyof typeof NOTICES }) {

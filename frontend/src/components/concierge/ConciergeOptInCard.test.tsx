@@ -24,7 +24,7 @@ describe("the Concierge opt-in of a flow", () => {
 
     expect(api.get).toHaveBeenCalledWith("/health/flows/f-1/opt-in");
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/flows/f-1/opt-in", { opt_in: true }));
-    expect(await screen.findByText("The Concierge may now improve this flow")).toBeTruthy();
+    expect(await screen.findByText("Platform Health may now improve this flow")).toBeTruthy();
   });
 
   it("is read only for a viewer who cannot manage the flow", async () => {
