@@ -316,7 +316,10 @@ async def _seeded_with_target(sessions, **settings_fields):
         await db.commit()
         await _enable(db, **settings_fields)
         await fleet_seed.seed_concierge_fleet(db)
-        target = Agent(id=uuid.uuid4(), name="Invoice agent", user_id=admin.id, persona="You answer.")
+        # Enrolled: Platform Health supervises opted-in targets only (consent.py).
+        target = Agent(
+            id=uuid.uuid4(), name="Invoice agent", user_id=admin.id, persona="You answer.", health_enrolled=True
+        )
         db.add(target)
         await db.commit()
         return admin, target
@@ -746,8 +749,16 @@ async def _access_matrix(sessions):
             },
             shared_group_ids=[str(group.id)],
             shared_group_permissions={str(group.id): "config"},
+            health_enrolled=True,
         )
-        company = Agent(id=uuid.uuid4(), name="Company agent", user_id=admin.id, persona="p", is_company_managed=True)
+        company = Agent(
+            id=uuid.uuid4(),
+            name="Company agent",
+            user_id=admin.id,
+            persona="p",
+            is_company_managed=True,
+            health_enrolled=True,
+        )
         db.add_all([private, company])
         await db.commit()
         # The share is revoked: the next request reads the row as it is now.

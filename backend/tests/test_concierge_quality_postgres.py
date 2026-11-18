@@ -4,7 +4,8 @@ Pinned here:
 
 * the Concierge reads an agent of its scope and writes only with the role the
   tool needs; it reads nothing of an agent out of scope;
-* a revoked opt-in redacts a content finding at the next read;
+* a revoked enrolment takes the agent out of the supervision scope: its
+  findings are no longer listed to Platform Health at the next read;
 * a person reads the findings of an agent they manage - owner, admin,
   ``config`` and ``config_with_chats`` grantees, a group grant - its content
   only with the chats right, and nothing as ``read_only``, after a revoked
@@ -238,7 +239,7 @@ async def test_the_concierge_reads_its_scope_and_writes_with_its_role(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_a_revoked_opt_in_redacts_a_content_finding_at_the_next_read(monkeypatch):
+async def test_a_revoked_enrolment_hides_the_findings_at_the_next_read(monkeypatch):
     async with _world(monkeypatch, "cq_revoked") as (world, sessions):
         async with sessions() as db:
             agent = await db.get(Agent, world.agent.id)
@@ -246,13 +247,8 @@ async def test_a_revoked_opt_in_redacts_a_content_finding_at_the_next_read(monke
             await db.commit()
         with _as(world.analyst, "quality_analyst"):
             listed = _parsed(await _call("", "list_findings", target_id=str(world.agent.id)))
-        (finding,) = listed["findings"]
-        assert finding["redacted"] is True
-        assert finding["hypothesis"] == ""
-        assert finding["suggested_experiment"] == ""
-        assert finding["evidence"]["trace_ids"] == []
-        assert finding["evidence"]["counts"] == {"errors": 7}
-        assert (finding["pattern_kind"], finding["pattern_key"]) == ("tool_errors", "search_knowledge")
+        # Enrolled targets only (consent.py): an unenrolled agent is out of scope, metrics and content alike.
+        assert (listed["count"], listed["findings"]) == (0, [])
 
 
 @pytest.mark.asyncio
