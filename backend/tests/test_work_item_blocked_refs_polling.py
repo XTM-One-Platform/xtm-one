@@ -154,6 +154,24 @@ async def test_an_open_or_unreadable_reference_keeps_the_item_blocked(harness):
     assert harness["applied"] == []
 
 
+async def test_an_unreadable_reference_is_handed_to_its_item_note(harness, monkeypatch):
+    user, failing = uuid.uuid4(), uuid.uuid4()
+    harness["candidates"] = [(uuid.uuid4(), user, [_ref(301)]), (failing, user, [_ref(302)])]
+    harness["tokens"] = {str(user): "tok"}
+    harness["answers"] = {(REPO, "pull_request", 302): RuntimeError("GitHub down")}
+    handed: list = []
+
+    async def note(unread, now):
+        handed.append(unread)
+        return 1
+
+    monkeypatch.setattr(refs_mod, "note_unread_references", note)
+    out = await refs_mod.poll_blocked_on_refs(NOW)
+
+    assert out["read_failed"] == 1 and out["failure_noted"] == 1 and "_unread" not in out
+    assert list(handed[0]) == [failing] and "GitHub down" in handed[0][failing][0]
+
+
 async def test_satisfied_references_are_not_read_and_one_read_serves_every_item(harness):
     user = uuid.uuid4()
     merged = PullRequestEvent(kind="closed", repo=REPO, pr_numbers=(303,), merged=True)

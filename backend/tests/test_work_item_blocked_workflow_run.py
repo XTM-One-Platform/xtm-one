@@ -314,6 +314,82 @@ async def test_no_run_yet_keeps_it_blocked(poll):
     assert poll["item"].status == "blocked" and poll["commits"] == 0
 
 
+# -- the release by the workflow_run delivery --------------------------------------
+
+
+def _delivery(**extra) -> Any:
+    from app.integrations.pull_request_events import PullRequestEvent
+
+    fields: dict[str, Any] = {
+        "kind": "ci",
+        "repo": REPO,
+        "head_branch": "main",
+        "run_key": "workflow:4242",
+        "run_id": 9,
+        "status": "completed",
+        "conclusion": "success",
+        "extra": {"base_run": True, "workflow_file": "release.yml"},
+    }
+    fields.update(extra)
+    return PullRequestEvent(**fields)
+
+
+def test_a_successful_run_names_its_file_and_its_id() -> None:
+    assert refs_mod.delivered_workflow_names(_delivery()) == frozenset({"4242", "release.yml"})
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"conclusion": "failure"}, {"status": "in_progress", "conclusion": None}, {"run_key": "check_suite:1"}],
+)
+def test_a_run_not_successful_or_not_a_workflow_names_nothing(extra: dict) -> None:
+    assert refs_mod.delivered_workflow_names(_delivery(**extra)) == frozenset()
+    assert refs_mod.named_by_workflow_run([_wf()], _delivery(**extra)) == []
+
+
+def test_the_delivery_names_the_reference_of_its_repo_workflow_and_branch() -> None:
+    event = _delivery()
+    assert refs_mod.named_by_workflow_run([_wf()], event) == [_wf()]
+    assert refs_mod.named_by_workflow_run([_wf(workflow="4242")], event) == [_wf(workflow="4242")]
+    assert refs_mod.named_by_workflow_run([_wf(branch="main")], event) == [_wf(branch="main")]
+    assert refs_mod.named_by_workflow_run([_wf(branch="release/1")], event) == []
+    assert refs_mod.named_by_workflow_run([_wf(workflow="ci.yml")], event) == []
+    assert refs_mod.named_by_workflow_run([_wf(repo="o/other")], event) == []
+    assert refs_mod.named_by_workflow_run([_wf(state="succeeded")], event) == []
+
+
+async def test_a_successful_run_delivery_releases_the_item_after_its_read_back(poll):
+    counts = await refs_mod.release_from_workflow_run_delivery(_delivery())
+    item = poll["item"]
+    assert counts == {"read": 1, "released": 1, "noted": 0}
+    assert poll["reads"] == [(REPO, "release.yml", AFTER, None, None)]
+    assert item.status == "open" and item.blocked_on_refs is None
+    assert len(poll["published"]) == 1
+
+
+async def test_the_read_back_decides_not_the_delivery(poll):
+    # The delivery says a run succeeded, the code host knows none after the time: nothing moves.
+    poll["run"] = None
+    counts = await refs_mod.release_from_workflow_run_delivery(_delivery())
+    assert counts == {"read": 1, "released": 0, "noted": 0}
+    assert poll["item"].status == "blocked" and poll["commits"] == 0
+
+
+async def test_a_failed_run_delivery_reads_nothing(poll):
+    counts = await refs_mod.release_from_workflow_run_delivery(_delivery(conclusion="failure"))
+    assert counts["read"] == 0 and poll["reads"] == [] and poll["item"].status == "blocked"
+
+
+async def test_a_read_failure_of_the_delivery_is_counted_and_never_raises(poll, monkeypatch):
+    async def broken(*args: Any) -> None:
+        raise RuntimeError("401 bad credentials")
+
+    monkeypatch.setattr(reference_state, "_WORKFLOW_RUN_READERS", {"github": broken})
+    counts = await refs_mod.release_from_workflow_run_delivery(_delivery())
+    assert counts == {"read": 1, "released": 0, "noted": 0, "read_failed": 1}
+    assert poll["item"].status == "blocked"
+
+
 async def test_one_satisfied_reference_of_two_leaves_it_waiting(poll):
     item = poll["item"]
     item.blocked_on_refs = [_wf(), {"repo": "o/r", "kind": "issue", "number": 3, "release_on": "closed"}]

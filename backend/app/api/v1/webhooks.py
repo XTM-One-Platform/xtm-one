@@ -2656,6 +2656,12 @@ async def _route_pull_request_event(
     event = parse_pull_request_event(provider, event_key, payload)
     if event is None:
         return
+    if event.kind == "ci":
+        # A successful workflow run may meet a blocked item's workflow_run reference:
+        # read back from the code host in the background, signed or not.
+        from app.services.work_item_blocked_refs import schedule_workflow_run_release
+
+        schedule_workflow_run_release(event)
     if not _signed_with_webhook_secret(extra_config_enc):
         if event.kind not in ("closed", "issue_closed"):
             return
