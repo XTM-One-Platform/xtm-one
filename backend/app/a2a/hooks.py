@@ -238,6 +238,21 @@ def _after_transaction_end(session: Session, transaction: SessionTransaction) ->
         )
 
 
+def _run_as_inactive(session: Session, exposure: A2AExposure) -> bool:
+    """Whether *exposure*'s run-as account is deactivated, pending change included.
+
+    ``get`` answers from the identity map first, so an account deactivated
+    earlier in the same unit of work reads as such before it is flushed.
+    """
+    from app.models.user import User
+
+    if exposure.run_as_user_id is None:
+        return False
+    with session.no_autoflush:
+        user = session.get(User, exposure.run_as_user_id)
+    return user is not None and user.is_active is False
+
+
 def _revoke_live_exposures(session: Session, agent: Agent, reason: str) -> bool:
     """Revoke *agent*'s live exposures. True when any actually were.
 
@@ -270,6 +285,13 @@ def _revoke_live_exposures(session: Session, agent: Agent, reason: str) -> bool:
         if reason == REVOKED_OWNER_CHANGE and not exposure_invalidated(
             exposure, agent
         ):
+            continue
+        # A disable whose run-as account is deactivated keeps the exposure:
+        # ``resolvable_exposures`` already stops resolving it on ``is_active``
+        # (FR-007 says "cease resolving", not "revoke"), and the deactivation
+        # is reversible, so revoking would hand the partner a new card URL
+        # when the account and its agents come back.
+        if reason == REVOKED_AGENT_DISABLED and _run_as_inactive(session, exposure):
             continue
         exposure.revoked_at = now
         exposure.revoked_reason = reason

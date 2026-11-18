@@ -515,6 +515,11 @@ class TestOwnerChangeConfirmsTheMismatch:
         def add(self, obj):
             self.new.append(obj)
 
+        def get(self, _model: object, ident: object) -> object:
+            return self.users.get(ident)
+
+        users: dict[object, object] = {}
+
     @staticmethod
     def _exposure(run_as_user_id, agent_id):
         from app.models.a2a import A2AExposure
@@ -562,6 +567,37 @@ class TestOwnerChangeConfirmsTheMismatch:
 
         hooks._revoke_live_exposures(session, agent, REVOKED_AGENT_DISABLED)
 
+        assert exposure.revoked_reason == REVOKED_AGENT_DISABLED
+
+    def test_disable_of_a_deactivated_run_as_keeps_the_exposure(self) -> None:
+        """The deactivation cascade disables a departed account's private
+        agents. Its exposures stop resolving through the ``is_active`` join
+        already, and revoking them would change the card URL a partner holds
+        when the account is reactivated (FR-007: cease resolving)."""
+        from app.models.user import User
+
+        owner = uuid.uuid4()
+        agent = Agent(name="a", user_id=owner, is_company_managed=False)
+        agent.id = uuid.uuid4()
+        exposure = self._exposure(owner, agent.id)
+        session = self._Session([exposure])
+        session.users = {owner: User(id=owner, email="gone@test.local", is_active=False)}
+
+        assert hooks._revoke_live_exposures(session, agent, REVOKED_AGENT_DISABLED) is False
+        assert exposure.revoked_at is None
+        assert session.new == []
+
+    def test_disable_of_an_active_run_as_still_revokes(self) -> None:
+        from app.models.user import User
+
+        owner = uuid.uuid4()
+        agent = Agent(name="a", user_id=owner, is_company_managed=False)
+        agent.id = uuid.uuid4()
+        exposure = self._exposure(owner, agent.id)
+        session = self._Session([exposure])
+        session.users = {owner: User(id=owner, email="here@test.local", is_active=True)}
+
+        assert hooks._revoke_live_exposures(session, agent, REVOKED_AGENT_DISABLED) is True
         assert exposure.revoked_reason == REVOKED_AGENT_DISABLED
 
 
@@ -676,6 +712,10 @@ class TestRevocationAndRebindingInOneFlush:
             # revoked moments ago in this flush, and only the in-memory value
             # says otherwise.
             return TestRevocationAndRebindingInOneFlush._Result(self._exposures)
+
+        def get(self, _model: object, _ident: object) -> None:
+            # The run-as account lookup of a disable: not loaded, so active.
+            return None
 
         def add(self, obj):
             self.added.append(obj)

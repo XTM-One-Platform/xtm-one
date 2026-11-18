@@ -120,6 +120,7 @@ import app.models.task
 import app.models.template_container
 import app.models.tool_approval
 import app.models.user
+import app.models.user_deactivation
 import app.models.variable
 import app.models.video_studio
 import app.models.whatsapp_inbound_message
