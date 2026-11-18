@@ -33,7 +33,7 @@ import { useFormatter } from "@/i18n";
 
 type Tab = "improvements" | "cycles" | "signals";
 
-export default function Concierge() {
+export default function Health() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<Tab>("improvements");
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
