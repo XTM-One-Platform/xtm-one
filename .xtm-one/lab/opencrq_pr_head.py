@@ -18,12 +18,18 @@ migrations and seeded data, not a stub (xtm-one #11799, item 5):
    ``/lab/sign-in`` sets its cookie (named after the backend port in development, ``trpc.ts``), then opens ``/``.
 5. This script listens on ``PORT``, the preview port: ``/lab/*`` here, everything else (websockets included) to
    Vite, which proxies ``/trpc`` and ``/api`` to the backend. Theme: ``/lab/theme/dark`` or
-   ``/lab/theme/light`` sets the admin's theme in the database, then opens ``/``.
+   ``/lab/theme/light`` sets the admin's theme in the database. Language: ``/lab/locale/en`` or ``/lab/locale/fr``
+   sets the admin's ``users.locale`` (what ``getUserLocale`` answers and the front applies on load);
+   ``/lab/locale/default`` clears it (the tenant's language, then the browser's). Every ``/lab/`` switch then opens
+   ``?next=<path>`` (a local path), else ``/``.
 6. Without XTM One the backend runs in Community Edition, where a user reaches one tenant: the first of their
    memberships by id (``visibleTenants``, ``back/src/features/app-router/tenant-edition-utils.ts``), Acme Bank
    for the seeded administrator. ``/lab/tenant/<name>`` (case-insensitive, e.g. ``Tarnwick Industries``, the
    seeded tenant with no asset groups, or ``Fresh Start``, the one with no organization) makes that tenant the one
    shown (:func:`select_tenant`), then opens ``/``; an unknown name answers 404 with the seeded names.
+7. Feature flags (``feature_flags``, the closed registry of ``utils/src/feature-flags.ts``): every flag on by
+   default (``*``), so a screen behind a development flag renders; ``LAB_OPENCRQ_FEATURE_FLAGS`` narrows them
+   (comma-separated names, ``none`` for none). The lab-up line names them.
 """
 
 from __future__ import annotations
@@ -54,6 +60,10 @@ LAB_ADMIN_EMAIL = "lab@filigran.io"
 #: Never a person's: the lab's database lives and dies with the lab container.
 LAB_ADMIN_PASSWORD = "Lab-Admin-1234!"
 SESSION_DAYS = 7
+#: ``module/src/modules/users/validation.ts`` supportedLocaleSchema; ``default`` clears the user's choice.
+LOCALES = ("en", "fr")
+#: ``FEATURE_FLAG_ALL`` of ``utils/src/feature-flags.ts``: every flag of the registry at once.
+ALL_FEATURE_FLAGS = "*"
 #: The root yarn project, the root TypeScript configs and every workspace the backend and front build with.
 OPENCRQ_SUB_PATHS = (
     "package.json",
@@ -98,6 +108,23 @@ def session_cookie_name(port: int = BACKEND_PORT) -> str:
     return f"app::auth_session::{port}"
 
 
+def feature_flags(value: str | None = None) -> list[str]:
+    """The ``feature_flags`` the backend boots with: ``LAB_OPENCRQ_FEATURE_FLAGS`` or every flag.
+
+    The backend refuses an unknown name at boot (``config-schema.ts``), so a typo shows in its log at once.
+    """
+    raw = os.environ.get("LAB_OPENCRQ_FEATURE_FLAGS", ALL_FEATURE_FLAGS) if value is None else value
+    if raw.strip().lower() == "none":
+        return []
+    return [name.strip() for name in raw.split(",") if name.strip()] or [ALL_FEATURE_FLAGS]
+
+
+def next_path(query: str) -> str:
+    """The ``next`` of a ``/lab/`` switch: a local path only (never ``//host``), else ``/``."""
+    wanted = urllib.parse.parse_qs(query).get("next", ["/"])[0]
+    return wanted if wanted.startswith("/") and not wanted.startswith("//") and "\\" not in wanted else "/"
+
+
 def local_config(admin_email: str = LAB_ADMIN_EMAIL) -> dict:
     """``back/config/development.local.json`` for the lab's PostgreSQL and ports, the platform seed on."""
     return {
@@ -120,6 +147,7 @@ def local_config(admin_email: str = LAB_ADMIN_EMAIL) -> dict:
         "healthcheck_http_server": {"port": HEALTH_PORT},
         "dev_server": {"port": VITE_PORT},
         "platform_seed": {"enabled": True, "admin": {"email": admin_email, "password": LAB_ADMIN_PASSWORD}},
+        "feature_flags": feature_flags(),
         # Required by the config parse; nothing answers there, so the Ask Ariane launcher reads unavailable.
         "xtm_one": {"url": "http://127.0.0.1:9", "token": "lab", "platform_url": f"http://localhost:{PORT}"},
     }
@@ -193,6 +221,17 @@ def select_tenant(name: str, user: str) -> str | None:
     return tenant
 
 
+def set_locale(locale: str, user: str) -> bool:
+    """Write *user*'s language (``en``, ``fr``; ``default`` clears it); ``False`` for any other value."""
+    if locale == "default":
+        psql("UPDATE users SET locale = NULL WHERE id = :'user'::uuid", user=user)
+        return True
+    if locale not in LOCALES:
+        return False
+    psql("UPDATE users SET locale = :'locale' WHERE id = :'user'::uuid", locale=locale, user=user)
+    return True
+
+
 def tenant_names() -> str:
     return psql("SELECT coalesce(string_agg(name, ', ' ORDER BY id), '') FROM tenants")
 
@@ -212,7 +251,7 @@ class Front(proxy.Front):
         self.send_response(302)
         if cookie:
             self.send_header("Set-Cookie", cookie)
-        self.send_header("Location", "/")
+        self.send_header("Location", next_path(urllib.parse.urlsplit(self.path).query))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -240,6 +279,12 @@ class Front(proxy.Front):
             elif path in ("/lab/theme/dark", "/lab/theme/light"):
                 psql("UPDATE users SET theme = :'theme' WHERE id = :'user'::uuid", theme=path.rsplit("/", 1)[-1], user=SESSION.get("user", ""))
                 self._redirect()
+            elif path.startswith("/lab/locale/"):
+                locale = path[len("/lab/locale/"):].strip("/").lower()
+                if set_locale(locale, SESSION.get("user", "")):
+                    self._redirect()
+                else:
+                    self._not_found(f"no language {locale!r}; use one of {', '.join(LOCALES)} or default\n")
             elif path.startswith("/lab/tenant/"):
                 name = urllib.parse.unquote(path[len("/lab/tenant/"):]).strip()
                 if select_tenant(name, SESSION.get("user", "")) is None:
@@ -281,7 +326,9 @@ def main() -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     lab.log(
         f"lab up: http://localhost:{PORT}/lab/sign-in signs in as {LAB_ADMIN_EMAIL} (OpenCRQ built from {root.name}/, "
-        f"seeded); theme at /lab/theme/dark or /lab/theme/light; tenant at /lab/tenant/<name> ({tenant_names()})"
+        f"seeded); theme at /lab/theme/dark or /lab/theme/light; language at /lab/locale/<{'|'.join(LOCALES)}|default>; "
+        f"tenant at /lab/tenant/<name> ({tenant_names()}); ?next=<path> after a switch; "
+        f"feature flags: {', '.join(feature_flags()) or 'none'}"
     )
     while True:
         for child in lab.CHILDREN:
