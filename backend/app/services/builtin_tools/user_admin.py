@@ -453,16 +453,16 @@ def build_user_admin_tools(
             label = (admin.full_name or "").strip() or admin.email
             results: list[dict[str, Any]] = list(missing)
             # rollback() expires every instance of the session (expire_on_commit
-            # does not apply to it): the ids and emails answered are read up
-            # front, and after a rollback ``admin`` and the next account are
-            # refreshed with an awaited load before any attribute is read.
+            # does not apply to it), the accounts not processed yet included:
+            # the ids and emails answered are read up front, and once a rollback
+            # happened ``admin`` and every later account are refreshed with an
+            # awaited load before any attribute is read, for the rest of the batch.
             targets = [(user, user.id, user.email) for user in users]
             rolled_back = False
             for user, user_id, email in targets:
                 if rolled_back:
                     await db.refresh(admin)
                     await db.refresh(user)
-                    rolled_back = False
                 refusal = await deactivation_refusal(db, user, admin)
                 if refusal:
                     results.append({"user": email, "user_id": str(user_id), "status": "refused", "reason": refusal})
