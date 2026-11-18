@@ -303,6 +303,11 @@ _SERVICES = _APP_ROOT / "services"
 # that is not a read offered to a caller with no account. Anything else is
 # routed through ``caller_visible_filter`` / ``assignment_visible_filter``.
 _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
+    ("services/stix_extraction/knowledge.py", "_configured_source"): (
+        "the deployment's ATT&CK source (mirror URL, pinned release) an administrator "
+        "configured on a company-managed MITRE ATT&CK integration, read for no acting user; "
+        "lists nothing to a caller (#9126)"
+    ),
     # A company-managed agent's key lookup ORDERS the rows it already sees,
     # company-managed first, so one key never splits by run context. The
     # visible set is decided by the caller filter above it, not by the flag.
@@ -312,23 +317,23 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     # The Concierge fleet seed (#8261) finds its own rows: the fleet's agents,
     # assignments, fleet and skills are company-managed by construction, and a
     # personal row holding a fleet slug or role is never adopted. No caller's read.
-    ("services/health/fleet_seed.py", "_skill_ids_by_slug"): (
+    ("services/concierge/fleet_seed.py", "_skill_ids_by_slug"): (
         "the seeded skills the fleet carries are company-managed ones; a personal skill with the slug is not one"
     ),
-    ("services/health/fleet_seed.py", "_ensure_fleet"): (
+    ("services/concierge/fleet_seed.py", "_ensure_fleet"): (
         "the seeded fleet and workspace are company-managed; a personal fleet of the same name is not adopted"
     ),
-    ("services/health/fleet_seed.py", "fleet_assignment"): (
+    ("services/concierge/fleet_seed.py", "fleet_assignment"): (
         "the fleet assignment a cycle starts runs on a company-managed fleet agent, never a personal look-alike"
     ),
-    ("services/health/fleet_seed.py", "fleet_agent_ids"): (
+    ("services/concierge/fleet_seed.py", "fleet_agent_ids"): (
         "the digest's 'by the Concierge' counts the fleet's own agents, company-managed by construction"
     ),
-    ("services/health/naming.py", "rename_health_agents"): (
+    ("services/concierge/naming.py", "rename_concierge"): (
         "the orchestrator, fleet and workspace the seed made are company-managed; a personal look-alike keeps its name"
     ),
     # (b) not a read offered to the caller, SQL unchanged
-    ("services/health/sandbox/side_effects.py", "company_mcp_server_ids"): (
+    ("services/concierge/sandbox/side_effects.py", "company_mcp_server_ids"): (
         "the flag IS the policy: a sandbox trusts a tool name only from a server an "
         "administrator vouched for, the set the HITL derivation trusts (#8255)"
     ),

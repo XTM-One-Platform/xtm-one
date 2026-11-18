@@ -55,8 +55,9 @@ def test_one_group_per_catalog_id():
     # flow_builder into platform; 17 with the Concierge sandbox, 18 with its
     # improvement proposals, 19 with Concierge evaluation, 20 with its memory
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
-    # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594).
-    assert len(_IDS) == len(set(_IDS)) == 25
+    # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
+    # the grounded STIX extraction, its own group so Threat Intelligence never carries it.
+    assert len(_IDS) == len(set(_IDS)) == 26
     assert set(_IDS) == set(catalog)
 
 
@@ -70,7 +71,7 @@ def test_audience_flags_match_the_backend_sets():
 
 def test_concierge_only_groups_are_the_specialists_suites():
     """A chat's session tools never offer a suite that only a Concierge specialist's run may use."""
-    from app.services.health.fleet_seed import FLEET_AGENTS
+    from app.services.concierge.fleet_seed import FLEET_AGENTS
 
     concierge_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.concierge_only}
     assert concierge_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
@@ -140,8 +141,8 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "concierge_diagnosis": bt.build_health_diagnosis_tools("")[0],
-        "concierge_experiments": bt.build_health_experiment_tools("")[0],
+        "concierge_diagnosis": bt.build_concierge_diagnosis_tools("")[0],
+        "concierge_experiments": bt.build_concierge_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
     }
     for group_id, definitions in built.items():

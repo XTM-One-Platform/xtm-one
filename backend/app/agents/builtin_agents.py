@@ -1619,6 +1619,47 @@ BUILTIN_AGENTS: list[dict] = [
         },
     },
     {
+        # The grounded extraction pipeline (app/services/stix_extraction): a
+        # multi-step annotation method run as one tool on the turn's own model;
+        # the agent only decides what to extract.
+        # Kept off the cti.stix_harvester intent until it is evaluated against
+        # the harvesters on a held-out set (dev-docs/stix-grounded-extraction.md).
+        "slug": "cti-stix-extractor",
+        "persona": "cti-stix-extractor",
+        "name": "CTI STIX Extractor (Grounded)",
+        "description": (
+            "Extract cyber threat intelligence from a report as a STIX 2.1 bundle with "
+            "a multi-step grounded pipeline: every object and relationship is checked "
+            "against the text and the STIX relationship rules."
+        ),
+        "icon": "ScanSearch",
+        "output_format": "json",
+        "disable_chat": False,
+        # Bounded on purpose: the extraction is the tool's own pipeline (about six
+        # to seven model calls per chunk with its shipped options, plus per-batch
+        # steps; up to its 30-minute timeout), and the loop needs one tool call
+        # and, on a tool error, one answer.
+        "max_iterations": 4,
+        "temperature": 0.0,
+        "tags": ["builtin", "filigran", "cti", "extractor", "stix"],
+        "memory_short_term_enabled": False,
+        "memory_medium_term_enabled": False,
+        "memory_persistent_enabled": False,
+        "memory_user_enabled": False,
+        "builtin_tool_ids": ["stix_extractor"],
+        "integration_template_bindings": [],
+        "supported_intents": {},
+        # A valid bundle from the tool is the answer: no final model call
+        # re-typing (and possibly altering) thousands of tokens of JSON.
+        "config": {
+            "finalize_on_builtin_tool": {
+                "tool_name": "extract_stix_from_document",
+                "valid_key": "valid",
+                "output_key": "bundle",
+            }
+        },
+    },
+    {
         "slug": "cti-stix-transformer",
         "persona": "cti-stix-transformer",
         "name": "CTI STIX Transformer",
@@ -2415,6 +2456,10 @@ FEATURE_GATED_BUILTIN_AGENTS: dict[str, FeatureFlag] = {
 # the flag was on (``seed.seed_builtin_skills``).
 FEATURE_GATED_BUILTIN_SKILLS: dict[str, FeatureFlag] = {
     "video-production": "VIDEO_STUDIO",
+    "memory-steward": "CONCIERGE",
+    "concierge-quality-analyst": "CONCIERGE",
+    "concierge-experimenter": "CONCIERGE",
+    "concierge-flow-lab": "CONCIERGE",
 }
 
 
@@ -3419,8 +3464,8 @@ BUILTIN_SKILLS: list[dict] = [
         "bind_to_agent_slugs": ["deck-importer"],
     },
     {
-        # Platform Health (#8258): the Memory Steward's working method. The
-        # Platform Health fleet's seed (level 8, #8261) binds it to the Memory Steward.
+        # Platform Concierge (#8258): the Memory Steward's working method. The
+        # Concierge fleet's seed (level 8, #8261) binds it to the Memory Steward.
         "slug": "memory-steward",
         "name": "Memory Steward",
         "description": (
@@ -3628,7 +3673,7 @@ BUILTIN_SKILLS: list[dict] = [
         ],
     },
     {
-        # Platform Health (#8259): the Quality Analyst's working method. Seeded
+        # Platform Concierge (#8259): the Quality Analyst's working method. Seeded
         # unbound; level 8 binds it to the Quality Analyst it seeds.
         "slug": "concierge-quality-analyst",
         "name": "Concierge Quality Analyst",
@@ -3643,7 +3688,7 @@ BUILTIN_SKILLS: list[dict] = [
         "platform_targets": ["global"],
     },
     {
-        # Platform Health (#8259): the Experimenter's working method. Seeded
+        # Platform Concierge (#8259): the Experimenter's working method. Seeded
         # unbound; level 8 binds it to the Experimenter it seeds.
         "slug": "concierge-experimenter",
         "name": "Concierge Experimenter",
@@ -3658,7 +3703,7 @@ BUILTIN_SKILLS: list[dict] = [
         "platform_targets": ["global"],
     },
     {
-        # Platform Health (#8260): the Flow Lab's working method. Seeded
+        # Platform Concierge (#8260): the Flow Lab's working method. Seeded
         # unbound; level 8 binds it to the Flow Lab agent it seeds.
         "slug": "concierge-flow-lab",
         "name": "Concierge Flow Lab",

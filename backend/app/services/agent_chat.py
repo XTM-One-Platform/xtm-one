@@ -95,14 +95,14 @@ from app.services.budget_policy import (
 )
 from app.services.chat_turn_guard import ApprovalAbandonedError
 from app.services.chat_turn_stream import AGENTIC_ACTION_STATUS
+from app.services.concierge.identity import concierge_delegation_owner_id
+from app.services.concierge.sandbox.turns import intercepted_agent_turn
+from app.services.concierge.turns import concierge_turn_scoped
 from app.services.element_scope import agent_run_scope
 from app.services.event_bus import AGENT_CHAT_RESPONSE, event_bus
 from app.services.failure_causes import PipelineToolFailedError
 from app.services.frictions import binding_friction_scope, current_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
-from app.services.health.identity import health_delegation_owner_id
-from app.services.health.sandbox.turns import intercepted_agent_turn
-from app.services.health.turns import health_turn_scoped
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.interrupted_turn import TurnProgress, interrupted_memory_note, interrupted_memory_prefix
 from app.services.run_ledger import (
@@ -628,6 +628,9 @@ async def load_conversation_files(
     # docstring: "files are handed to the agent run in memory").
     for ref in current_turn_files or []:
         file_context.add(ref)
+    file_context.current_turn_ids = {
+        str(getattr(ref, "file_id", "") or "").removeprefix("file-") for ref in current_turn_files or []
+    } - {""}
     return file_context
 
 
@@ -1413,17 +1416,17 @@ def _add_platform_builder_tools(
     (``builtin_tool_aliases.PLATFORM_ADMIN_FUNCTIONS``) is wired for them
     alone (Sam's decision 2): anyone else is never offered it.
     *agent_id*: the agent the turn runs, which the improvement tools compare
-    with the Platform Health principal's own. *run_id*: the delegated run the turn
-    works in, whose Platform Health cycle books what the Platform Health tools spend.
+    with the Concierge principal's own. *run_id*: the delegated run the turn
+    works in, whose Concierge cycle books what the Concierge tools spend.
     """
     from app.services.builtin_tool_aliases import caller_may_run
-    from app.services.health.identity import health_acts_alone
+    from app.services.concierge.identity import concierge_acts_alone
 
     actor_id, read_only = _platform_builder_actor(user_id)
-    # A turn of Platform Health acting alone (a task a fleet run delegated) has
+    # A turn of the Concierge acting alone (a task a fleet run delegated) has
     # no user: its own groups, which act as its principal, are wired as the
     # assignment engine wires them for a run with no user; nothing else.
-    concierge_alone = read_only and not user_id and health_acts_alone()
+    concierge_alone = read_only and not user_id and concierge_acts_alone()
     concierge_actor: str | None = "" if concierge_alone else (None if read_only else actor_id)
     if "platform_insights" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools import build_platform_insights_tools
@@ -1433,21 +1436,25 @@ def _add_platform_builder_tools(
         )
         composite.add_tools(pi_defs, pi_exec)
     if concierge_actor is not None:
-        from app.services.builtin_tools.health_quality import add_health_quality_tools
+        from app.services.builtin_tools.concierge_quality import add_concierge_quality_tools
 
-        add_health_quality_tools(
+        add_concierge_quality_tools(
             composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id, run_id=run_id
         )
         from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
         add_flow_lab_tools(composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id)
-    if "concierge_orchestrator" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
+    if (
+        "concierge_orchestrator" in agent_builtin_tool_ids
+        and concierge_actor is not None
+        and is_feature_enabled("CONCIERGE")
+    ):
+        from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
 
-        # Acts as Platform Health in an administrator's chat with a fleet agent,
+        # Acts as the Concierge in an administrator's chat with a fleet agent,
         # as the person otherwise (``concierge.cycle_access``, #8261). Work a
         # cycle delegated never starts another cycle.
-        co_defs, co_exec = build_health_orchestrator_tools(
+        co_defs, co_exec = build_concierge_orchestrator_tools(
             concierge_actor or None, allow_requests=not concierge_alone
         )
         composite.add_tools(co_defs, co_exec)
@@ -1462,20 +1469,24 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.health.sandbox.tools import build_sandbox_tools
+    if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
+        from app.services.concierge.sandbox.tools import build_sandbox_tools
 
-        # Its own access rule (Platform Health or an administrator) on every call.
+        # Its own access rule (the Concierge or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
-    if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.health.evaluation_tools import build_health_evaluation_tools
+    if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
+        from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
 
-        # Its own access rule (Platform Health, or an administrator where evaluation is on).
-        composite.add_tools(*build_health_evaluation_tools(db, concierge_actor or None, run_id=run_id))
-    if "improvement_proposals" in agent_builtin_tool_ids and concierge_actor is not None:
+        # Its own access rule (the Concierge, or an administrator where evaluation is on).
+        composite.add_tools(*build_concierge_evaluation_tools(db, concierge_actor or None, run_id=run_id))
+    if (
+        "improvement_proposals" in agent_builtin_tool_ids
+        and concierge_actor is not None
+        and is_feature_enabled("CONCIERGE")
+    ):
         from app.services.builtin_tools.improvements import build_improvement_tools
 
-        # Its own access rule (scope in a Platform Health run, the target's managers
+        # Its own access rule (scope in a Concierge run, the target's managers
         # otherwise; filing by the Experimenter only) on every call.
         composite.add_tools(*build_improvement_tools(db, concierge_actor or None, agent_id))
     if "flow_builder" in agent_builtin_tool_ids and not read_only:
@@ -1653,7 +1664,7 @@ def _coalesced_trace_metadata(context: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @known_secrets_scoped("conversation_id")
-@health_turn_scoped
+@concierge_turn_scoped
 @intercepted_agent_turn
 async def run_agent_chat(
     db: AsyncSession,
@@ -4083,11 +4094,11 @@ async def run_agent_chat(
         )
 
         # The background-task block below skips anonymous users, except the
-        # Platform Health acting alone, whose tasks are recorded under its agent's
-        # owner and act with no user (``identity.health_delegation_owner_id``).
+        # Concierge acting alone, whose tasks are recorded under its agent's
+        # owner and act with no user (``identity.concierge_delegation_owner_id``).
         _delegation_user_id: str | None = None if is_anonymous_user else user_id
         if not user_id:
-            _concierge_owner = await health_delegation_owner_id(db, agent)
+            _concierge_owner = await concierge_delegation_owner_id(db, agent)
             _delegation_user_id = str(_concierge_owner) if _concierge_owner else None
         _offered_types = offered_handover_types(
             allowed_types=allowed_handover_types,
@@ -4273,7 +4284,7 @@ async def run_agent_chat(
             agent_builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None)
         )
         if getattr(agent, "is_sandbox", False):
-            from app.services.health.sandbox.copies import sandbox_tool_ids
+            from app.services.concierge.sandbox.copies import sandbox_tool_ids
 
             agent_builtin_tool_ids = sandbox_tool_ids(agent_builtin_tool_ids)
 
@@ -4517,7 +4528,7 @@ async def run_agent_chat(
                     )
                 )
             # The write-proposal tool of the profile (#9484, S-a2): the CTEM
-            # Assistant and Platform Health, for an administrator only; it
+            # Assistant and the Concierge, for an administrator only; it
             # stores a pending proposal and never writes the profile.
             from app.services.builtin_tools import build_organization_proposal_tool, offers_organization_proposals
 
@@ -4795,6 +4806,23 @@ async def run_agent_chat(
 
             sv_defs, sv_exec = build_stix_bundle_validator_tool(strict_refs=stix_validator_strict_refs(agent))
             composite.add_tools(sv_defs, sv_exec)
+
+        # --- Grounded STIX extraction (built-in, opt-in) ---
+        # On the turn's own provider and model, so an evaluation comparing models
+        # compares the whole extraction pipeline on each. It names its objects as
+        # the agent's one bound platform names them: the integrations built below
+        # fill the list (integration_tools.PLATFORM_NAMES_CONTEXT_KEY).
+        _platform_names: list = []
+        # It reads ATT&CK from the run's bound MITRE ATT&CK integration, through its
+        # relay route (integration_tools.ATTACK_SOURCES_CONTEXT_KEY).
+        _attack_sources: list = []
+        if "stix_extractor" in agent_builtin_tool_ids:
+            from app.services.builtin_tools import build_stix_extraction_tool
+
+            sx_defs, sx_exec = build_stix_extraction_tool(
+                llm, resolved_model, platform_names=_platform_names, attack_sources=_attack_sources
+            )
+            composite.add_tools(sx_defs, sx_exec)
 
         # --- Skill loader (built-in, IMPLICIT when skills are attached) ---
         # Deliberately not in ``builtin_tool_ids``: the catalog in the system
@@ -5391,9 +5419,17 @@ async def run_agent_chat(
         _turn_stages.mark("scope_and_bindings")
         _invalid_integration_note = ""
         if prebuilt_integration_tools is not None:
-            integ_defs, integ_exec = prebuilt_integration_tools
+            integ_defs, integ_exec = prebuilt_integration_tools[0], prebuilt_integration_tools[1]
             if integ_defs:
                 composite.add_tools(integ_defs, integ_exec)
+            # What that build collected for the built-in tools (the bound platform's names,
+            # its ATT&CK source): the extraction an evaluation runs is the one a chat runs.
+            from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY as _ATTACK_KEY
+            from app.services.integration_tools import PLATFORM_NAMES_CONTEXT_KEY as _NAMES_KEY
+
+            _prebuilt_context = getattr(prebuilt_integration_tools, "context", None) or {}
+            _platform_names.extend(_prebuilt_context.get(_NAMES_KEY, []))
+            _attack_sources.extend(_prebuilt_context.get(_ATTACK_KEY, []))
         elif effective_bindings:
             from app.services.integration_tools import build_integration_tools
 
@@ -5406,6 +5442,7 @@ async def run_agent_chat(
                 READ_ONLY_CONTEXT_KEY,
                 read_only_integration_ids,
             )
+            from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY, PLATFORM_NAMES_CONTEXT_KEY
 
             _integration_build_context: dict = {
                     "source": "agent_chat",
@@ -5425,6 +5462,8 @@ async def run_agent_chat(
                     READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, effective_bindings),
                     SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
                     LIVE_WRITES_CONTEXT_KEY: live_writes_overrides(agent, effective_bindings),
+                    PLATFORM_NAMES_CONTEXT_KEY: _platform_names,
+                    ATTACK_SOURCES_CONTEXT_KEY: _attack_sources,
             }
             integ_defs, integ_exec = await build_integration_tools(
                 db,

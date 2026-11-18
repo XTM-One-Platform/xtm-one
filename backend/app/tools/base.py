@@ -1407,6 +1407,12 @@ class ToolDefinition:
         default=None, compare=False, repr=False
     )
     landed_key: Callable[[Mapping[str, Any]], str | None] | None = field(default=None, compare=False, repr=False)
+    #: The tool's own execution timeout in seconds, for a tool whose one call
+    #: does long work by design (many model calls on one document): it
+    #: replaces the loop's per-tool timeout, still capped by what remains of
+    #: the run's wall-clock budget (``agent_loop._tool_timeout_for``). ``0``:
+    #: the loop's per-tool timeout.
+    execution_timeout: int = 0
     #: The tool reads the running agent's own configuration (its skills, its
     #: memory) and nothing else: a sandbox run executes it live, never from a
     #: recording of another configuration, whatever its name reads as (#8255).
@@ -1639,7 +1645,7 @@ def consent_approved() -> bool:
 
 class DispatchInterceptor(Protocol):
     """Decides how a call runs instead of the executor (#8255): the sandbox and
-    Platform Health's dry-run replay, run or intercept it."""
+    the Concierge's dry-run replay, run or intercept it."""
 
     async def intercept(
         self,
@@ -1837,6 +1843,11 @@ class FileContext:
     #: (:meth:`add_produced`). One context per turn, so a file written in an
     #: earlier turn is never in it.
     produced_ids: list[str] = field(default_factory=list)
+    #: The files attached to the turn's own message, when the caller knows them (a chat
+    #: turn, possibly none); ``None`` where the context holds only the run's own files
+    #: (an assignment, a delegated task). A tool told to read "the attached report"
+    #: reads these, not every file of the conversation's earlier turns.
+    current_turn_ids: set[str] | None = None
     #: Extra files ``code_interpreter`` mounts under ``attachments/`` for the
     #: run, mount name -> bytes: the run's input document detached from the
     #: prompt (``session_input.detach_input_document``). Never listed as a
@@ -3952,6 +3963,27 @@ def tool_result_char_cap() -> int | None:
     return _tool_result_char_cap.get()
 
 
+#: The timeout the running loop applies to the tool call in progress (seconds), which is the
+#: tool's declared ``execution_timeout`` or less when the run's wall-clock budget has less
+#: left: a tool that answers with what it finished keeps inside it. ``None`` outside a loop.
+_tool_call_timeout: ContextVar[float | None] = ContextVar("tool_call_timeout", default=None)
+
+
+def tool_call_timeout() -> float | None:
+    """The running loop's timeout for the tool call in progress, or ``None`` when unknown."""
+    return _tool_call_timeout.get()
+
+
+@contextmanager
+def timing_tool_call(seconds: float | None) -> Iterator[None]:
+    """Bind *seconds* as the timeout of the body (one tool call)."""
+    token = _tool_call_timeout.set(seconds)
+    try:
+        yield
+    finally:
+        _tool_call_timeout.reset(token)
+
+
 @contextmanager
 def limiting_tool_results(max_chars: int | None) -> Iterator[None]:
     """Bind *max_chars* as the tool-result cap for the body (one tool call)."""
@@ -3960,6 +3992,40 @@ def limiting_tool_results(max_chars: int | None) -> Iterator[None]:
         yield
     finally:
         _tool_result_char_cap.reset(token)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolModelSpend:
+    """How a tool that calls a model itself spends the run's allowance.
+
+    ``reserve(estimated_input_tokens, max_output_tokens)`` holds a call's worst-case
+    spend against the run before it is made and returns what releases it, or ``None``
+    when the run can no longer pay for a call of that size; ``record(usage, served_model)``
+    counts the call's usage as the run's (its token total, its per-run budget, its token
+    ceiling), priced as the model that served it, then the caller releases the reservation. Calls the tool makes at once each hold
+    their own, so several cannot pass a gate the run has room behind for one only.
+    """
+
+    record: Callable[[dict, str | None], None]
+    reserve: Callable[[int, int], Callable[[], None] | None]
+
+
+_tool_model_spend: ContextVar[ToolModelSpend | None] = ContextVar("tool_model_spend", default=None)
+
+
+def current_tool_model_spend() -> ToolModelSpend | None:
+    """The spend of the tool call running now, ``None`` outside an agent loop."""
+    return _tool_model_spend.get()
+
+
+@contextmanager
+def spending_for_tool(spend: ToolModelSpend | None) -> Iterator[None]:
+    """Bind *spend* as the model spend of the body (one tool call)."""
+    token = _tool_model_spend.set(spend)
+    try:
+        yield
+    finally:
+        _tool_model_spend.reset(token)
 
 
 #: The share of a cut text kept from its end: a log, a command's output or an
