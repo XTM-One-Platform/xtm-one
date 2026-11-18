@@ -41,15 +41,15 @@ from app.api.deps import get_current_user, require_admin
 from app.api.v1.helpers import can_manage, get_user_agent, get_user_group_ids, parse_path_id, user_visible_filter
 from app.core.database import get_db
 from app.models.flow import Flow
-from app.models.health import ConciergeBudgetMonth, ConciergeCycle
+from app.models.health import HealthBudgetMonth, HealthCycle
 from app.models.user import User
 from app.services.audit import log_audit
 from app.services.health import budget as concierge_budget
 from app.services.health.consent import Revocation, apply_revocation
 from app.services.health.naming import default_concierge_name, load_concierge_name
 from app.services.health.settings import (
-    ConciergeBudgetCaps,
-    ConciergeSettings,
+    HealthBudgetCaps,
+    HealthSettings,
     load_concierge_settings,
     save_concierge_settings,
     scope_narrowed,
@@ -95,7 +95,7 @@ class BudgetUsage(BaseModel):
 
 class BudgetResponse(BaseModel):
     month: str
-    caps: ConciergeBudgetCaps
+    caps: HealthBudgetCaps
     used: BudgetUsage
     remaining_tokens: int | None
     remaining_cost_usd: Decimal | None
@@ -263,40 +263,40 @@ async def set_my_opt_out(
 # ── The Concierge's name ───────────────────────────────────────────────────
 
 
-class ConciergeNameResponse(BaseModel):
+class HealthNameResponse(BaseModel):
     #: What people call it: the name set in Settings > Automations > Platform Health, else ``default_name``.
     name: str
     #: "Platform Health", the same in every platform mode (#101).
     default_name: str
 
 
-@router.get("/name", response_model=ConciergeNameResponse)
+@router.get("/name", response_model=HealthNameResponse)
 async def get_concierge_name(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> ConciergeNameResponse:
+) -> HealthNameResponse:
     """The name every signed-in person sees the Concierge under."""
-    return ConciergeNameResponse(name=await load_concierge_name(db), default_name=default_concierge_name())
+    return HealthNameResponse(name=await load_concierge_name(db), default_name=default_concierge_name())
 
 
 # ── Settings > Agents and automations > Concierge ──────────────────────────────────────────────────
 
 
-@router.get("/settings", response_model=ConciergeSettings)
+@router.get("/settings", response_model=HealthSettings)
 async def get_concierge_settings(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> ConciergeSettings:
+) -> HealthSettings:
     return await load_concierge_settings(db)
 
 
-@router.put("/settings", response_model=ConciergeSettings)
+@router.put("/settings", response_model=HealthSettings)
 async def put_concierge_settings(
-    body: ConciergeSettings,
+    body: HealthSettings,
     request: Request,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> ConciergeSettings:
+) -> HealthSettings:
     before, after = await save_concierge_settings(db, body, actor=admin, request=request)
     revocation = Revocation(kind="scope_narrowed") if scope_narrowed(before, after) else None
     await _commit_with_revocation(db, revocation)
@@ -310,13 +310,11 @@ async def get_budget(
 ) -> BudgetResponse:
     month = concierge_budget.current_month()
     caps = (await load_concierge_settings(db)).budget
-    row = (
-        await db.execute(select(ConciergeBudgetMonth).where(ConciergeBudgetMonth.month == month))
-    ).scalar_one_or_none()
+    row = (await db.execute(select(HealthBudgetMonth).where(HealthBudgetMonth.month == month))).scalar_one_or_none()
     left = await concierge_budget.remaining(db)
     refusal = await concierge_budget.budget_refusal(db)
     open_cycles = (
-        await db.execute(select(func.count(ConciergeCycle.id)).where(ConciergeCycle.status == "open"))
+        await db.execute(select(func.count(HealthCycle.id)).where(HealthCycle.status == "open"))
     ).scalar_one()
     return BudgetResponse(
         month=month,

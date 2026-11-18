@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.services.health.cycles import CycleStart
 from app.services.health.naming import DEFAULT_NAMES, concierge_name, default_concierge_name
-from app.services.health.settings import MAX_NAME_LENGTH, ConciergeSettings
+from app.services.health.settings import MAX_NAME_LENGTH, HealthSettings
 
 
 @pytest.mark.parametrize(
@@ -23,8 +23,8 @@ from app.services.health.settings import MAX_NAME_LENGTH, ConciergeSettings
 def test_the_default_name_is_platform_health_in_every_mode(monkeypatch, mode: str, expected: str) -> None:
     monkeypatch.setattr(settings, "platform_mode", mode)
     assert default_concierge_name() == expected
-    assert concierge_name(ConciergeSettings()) == expected
-    assert concierge_name(ConciergeSettings(name="Jeeves")) == "Jeeves"
+    assert concierge_name(HealthSettings()) == expected
+    assert concierge_name(HealthSettings(name="Jeeves")) == "Jeeves"
 
 
 def test_every_default_name_is_known() -> None:
@@ -48,7 +48,7 @@ def test_every_default_name_is_known() -> None:
     ],
 )
 def test_a_valid_name_is_stored_trimmed(value, stored) -> None:
-    assert ConciergeSettings(name=value).name == stored
+    assert HealthSettings(name=value).name == stored
 
 
 @pytest.mark.parametrize(
@@ -74,7 +74,7 @@ def test_a_valid_name_is_stored_trimmed(value, stored) -> None:
 )
 def test_a_hostile_name_is_refused(value) -> None:
     with pytest.raises(ValidationError):
-        ConciergeSettings(name=value)
+        HealthSettings(name=value)
 
 
 def test_a_refusal_carries_the_name_as_written() -> None:

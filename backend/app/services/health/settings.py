@@ -14,7 +14,7 @@
 """Settings > Agents and automations > Concierge: the one reader and writer of ``PlatformSettings.health_settings`` (#8254).
 
 One JSON column, one model. Later levels add fields with defaults to
-:class:`ConciergeSettings` (schedule, signal thresholds, shadow and watch
+:class:`HealthSettings` (schedule, signal thresholds, shadow and watch
 durations, dry-run), so a stored value written before them still reads and no
 migration is needed. A stored value that does not validate reads as the
 defaults: the Concierge off, which fails closed.
@@ -45,7 +45,7 @@ MAX_TOKENS = 10_000_000_000
 MAX_COST_USD = Decimal("1000000")
 
 
-class ConciergeBudgetCaps(BaseModel):
+class HealthBudgetCaps(BaseModel):
     """Caps per cycle and per month, in tokens and in dollars. ``None`` sets no cap on that dimension."""
 
     model_config = ConfigDict(extra="forbid")
@@ -69,7 +69,7 @@ def _valid_cron(value: str) -> str:
     return value
 
 
-class ConciergeSchedules(BaseModel):
+class HealthSchedules(BaseModel):
     """When each specialist's fleet-wide cycle starts (#8261), cron in ``timezone``."""
 
     model_config = ConfigDict(extra="forbid")
@@ -101,7 +101,7 @@ class ConciergeSchedules(BaseModel):
         return value
 
 
-class ConciergeSignalSettings(BaseModel):
+class HealthSignalSettings(BaseModel):
     """The signal thresholds (#8261, PRD 6.3); the defaults are decision B18's."""
 
     model_config = ConfigDict(extra="forbid")
@@ -142,7 +142,7 @@ def _valid_name(value: str | None) -> str | None:
 _REFUSED_NAME_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 
 
-class ConciergeSettings(BaseModel):
+class HealthSettings(BaseModel):
     """What an administrator sets in Settings > Agents and automations > Concierge."""
 
     model_config = ConfigDict(extra="forbid")
@@ -155,12 +155,12 @@ class ConciergeSettings(BaseModel):
     scope_mode: Literal["all", "selected"] = "all"
     scope_agent_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
     scope_flow_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
-    budget: ConciergeBudgetCaps = Field(default_factory=ConciergeBudgetCaps)
+    budget: HealthBudgetCaps = Field(default_factory=HealthBudgetCaps)
     #: Every write of every Concierge agent is logged, not executed (#8255).
     dry_run: bool = False
     # Level 8 (#8261): schedule, signals and the durations levels 3 and 7 read.
-    schedules: ConciergeSchedules = Field(default_factory=ConciergeSchedules)
-    signals: ConciergeSignalSettings = Field(default_factory=ConciergeSignalSettings)
+    schedules: HealthSchedules = Field(default_factory=HealthSchedules)
+    signals: HealthSignalSettings = Field(default_factory=HealthSignalSettings)
     #: Watch window of an applied proposal (decision B18), ``ProposalSpec.watch_days``.
     proposal_watch_days: int = Field(default=7, ge=1, le=MAX_DURATION_DAYS)
     #: Agent to flow after approval (decision B12): shadow, then watch.
@@ -179,25 +179,25 @@ class ConciergeSettings(BaseModel):
         return list(dict.fromkeys(ids))
 
 
-def _read(stored: object) -> ConciergeSettings:
+def _read(stored: object) -> HealthSettings:
     if not isinstance(stored, dict):
-        return ConciergeSettings()
+        return HealthSettings()
     # A key no field reads any more (a removed setting) is dropped, not refused.
-    known = {key: value for key, value in stored.items() if key in ConciergeSettings.model_fields}
-    for key, field in ConciergeSettings.model_fields.items():
+    known = {key: value for key, value in stored.items() if key in HealthSettings.model_fields}
+    for key, field in HealthSettings.model_fields.items():
         nested = field.annotation
         if isinstance(known.get(key), dict) and isinstance(nested, type) and issubclass(nested, BaseModel):
             known[key] = {k: v for k, v in known[key].items() if k in nested.model_fields}
     try:
-        return ConciergeSettings.model_validate(known)
+        return HealthSettings.model_validate(known)
     except ValidationError as exc:
         # A value a later level's field no longer accepts, or a hand edit: the
         # defaults, the Concierge off. The reason stays in the logs.
         logger.warning("Stored Concierge settings do not validate, using the defaults: %s", exc.errors()[:3])
-        return ConciergeSettings()
+        return HealthSettings()
 
 
-async def load_concierge_settings(db: AsyncSession) -> ConciergeSettings:
+async def load_concierge_settings(db: AsyncSession) -> HealthSettings:
     """The stored settings, their defaults when none (read on every call: no cache)."""
     from app.models.platform_settings import PlatformSettings
 
@@ -212,8 +212,8 @@ async def load_concierge_settings(db: AsyncSession) -> ConciergeSettings:
 
 
 async def save_concierge_settings(
-    db: AsyncSession, new: ConciergeSettings, *, actor: User, request: Request | None = None
-) -> tuple[ConciergeSettings, ConciergeSettings]:
+    db: AsyncSession, new: HealthSettings, *, actor: User, request: Request | None = None
+) -> tuple[HealthSettings, HealthSettings]:
     """Store *new*; ``(before, after)``. Audited, flushed, not committed.
 
     The caller applies the revocation a narrowed scope implies, in the same
@@ -241,7 +241,7 @@ async def save_concierge_settings(
     return before, new
 
 
-def scope_narrowed(before: ConciergeSettings, after: ConciergeSettings) -> bool:
+def scope_narrowed(before: HealthSettings, after: HealthSettings) -> bool:
     """Whether *after* lets the Concierge read less than *before*.
 
     Switching the Concierge off is not one: it stops every read (the consent

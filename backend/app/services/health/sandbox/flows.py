@@ -147,13 +147,13 @@ ENTRY_KEY = "evaluation_entry_id"
 async def _entry_source_run(db: AsyncSession, entry_id: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID | None] | None:
     """``(flow run, its flow)`` an entry was built from, ``None`` for an entry
     built from anything else."""
-    from app.models.health_dataset import SOURCE_FLOW_RUN, ConciergeDatasetEntrySource
+    from app.models.health_dataset import SOURCE_FLOW_RUN, HealthDatasetEntrySource
 
     row = (
         await db.execute(
-            select(ConciergeDatasetEntrySource.source_id, ConciergeDatasetEntrySource.source_flow_id).where(
-                ConciergeDatasetEntrySource.entry_id == entry_id,
-                ConciergeDatasetEntrySource.source_kind == SOURCE_FLOW_RUN,
+            select(HealthDatasetEntrySource.source_id, HealthDatasetEntrySource.source_flow_id).where(
+                HealthDatasetEntrySource.entry_id == entry_id,
+                HealthDatasetEntrySource.source_kind == SOURCE_FLOW_RUN,
             )
         )
     ).first()

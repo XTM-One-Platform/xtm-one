@@ -94,7 +94,7 @@ async def _call(db, name, args, *, principal=None, user_id=None, agent_id=None):
 
 
 def _principal(agent, role=None):
-    return identity.ConciergePrincipal(agent_id=agent.id, role=role or agent.health_role)
+    return identity.HealthPrincipal(agent_id=agent.id, role=role or agent.health_role)
 
 
 async def test_the_experimenter_files_with_itself_as_author(filed):

@@ -15,7 +15,7 @@ from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.group import Group, GroupMember
 from app.models.user import User
-from app.services.health.settings import ConciergeSettings, save_concierge_settings
+from app.services.health.settings import HealthSettings, save_concierge_settings
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 
@@ -81,7 +81,7 @@ class World:
 
 async def configure(sessions, admin: User, **values) -> None:
     async with sessions() as db:
-        await save_concierge_settings(db, ConciergeSettings(**values), actor=admin)
+        await save_concierge_settings(db, HealthSettings(**values), actor=admin)
         await db.commit()
 
 

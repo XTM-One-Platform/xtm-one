@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.core.config import settings
-from app.models.health import ConciergeBudgetMonth, ConciergeCycle
+from app.models.health import HealthBudgetMonth, HealthCycle
 from app.services import agentic_gate
 from app.services.health import budget
 from app.services.health.settings import load_concierge_settings
@@ -60,7 +60,7 @@ async def test_no_cycle_opens_while_the_concierge_is_off_or_unlicensed(monkeypat
             with pytest.raises(budget.BudgetRefusedError) as unlicensed:
                 await budget.open_cycle(db, specialist="experimenter", trigger="schedule")
             assert unlicensed.value.message == "Agentic AI is not licensed on this platform."
-            assert (await db.execute(select(sa.func.count(ConciergeCycle.id)))).scalar_one() == 0
+            assert (await db.execute(select(sa.func.count(HealthCycle.id)))).scalar_one() == 0
 
 
 async def test_reserve_charge_release_and_close(licensed) -> None:
@@ -83,8 +83,8 @@ async def test_reserve_charge_release_and_close(licensed) -> None:
             await budget.close_cycle(db, cycle, status="completed")
             await budget.close_cycle(db, cycle, status="failed")
             await db.commit()
-            row = await db.get(ConciergeCycle, cycle)
-            month = await db.get(ConciergeBudgetMonth, budget.current_month())
+            row = await db.get(HealthCycle, cycle)
+            month = await db.get(HealthBudgetMonth, budget.current_month())
             assert (row.status, row.spent_tokens, row.reserved_tokens) == ("completed", 30, 0)
             assert (month.spent_tokens, month.reserved_tokens, month.spent_cost_usd) == (30, 0, Decimal("0.1"))
             with pytest.raises(budget.BudgetRefusedError) as closed:
@@ -120,7 +120,7 @@ async def test_two_concurrent_reservations_never_pass_the_cap_together(licensed)
         outcomes = await asyncio.gather(*(_try(c) for c in cycles))
         assert sorted(outcomes) == ["month_budget_reached", "reserved"]
         async with sessions() as db:
-            assert (await db.get(ConciergeBudgetMonth, budget.current_month())).reserved_tokens == 60
+            assert (await db.get(HealthBudgetMonth, budget.current_month())).reserved_tokens == 60
 
 
 async def test_a_stale_cycle_is_closed_and_gives_its_reservation_back(licensed) -> None:
@@ -131,13 +131,13 @@ async def test_a_stale_cycle_is_closed_and_gives_its_reservation_back(licensed) 
             stale = await budget.open_cycle(db, specialist="flow_lab", trigger="on_demand")
             fresh = await budget.open_cycle(db, specialist="flow_lab", trigger="on_demand")
             await budget.reserve(db, stale, tokens=10, cost_usd=Decimal("0"))
-            (await db.get(ConciergeCycle, stale)).opened_at = datetime.now(UTC) - timedelta(days=2)
+            (await db.get(HealthCycle, stale)).opened_at = datetime.now(UTC) - timedelta(days=2)
             await db.commit()
             assert await budget.close_stale_cycles(db, older_than=timedelta(days=1)) == 1
             await db.commit()
-            assert (await db.get(ConciergeCycle, stale)).status == "failed"
-            assert (await db.get(ConciergeCycle, fresh)).status == "open"
-            assert (await db.get(ConciergeBudgetMonth, budget.current_month())).reserved_tokens == 0
+            assert (await db.get(HealthCycle, stale)).status == "failed"
+            assert (await db.get(HealthCycle, fresh)).status == "open"
+            assert (await db.get(HealthBudgetMonth, budget.current_month())).reserved_tokens == 0
             assert (await load_concierge_settings(db)).enabled is True
 
 
@@ -155,7 +155,7 @@ async def test_a_late_charge_after_close_keeps_the_other_cycles_reservations(lic
             await budget.charge(db, stale, tokens=10, cost_usd=Decimal("0"), reservation=held)
             await budget.release(db, held)
             await db.commit()
-            month = await db.get(ConciergeBudgetMonth, budget.current_month())
+            month = await db.get(HealthBudgetMonth, budget.current_month())
             assert (month.reserved_tokens, month.spent_tokens) == (30, 10)
             with pytest.raises(budget.BudgetRefusedError) as over:
                 await budget.reserve(db, other, tokens=61, cost_usd=Decimal("0"))
@@ -176,9 +176,9 @@ async def test_work_that_outlives_its_cycle_keeps_its_reservation_until_charged_
             await budget.reserve(db, cycle, tokens=20, cost_usd=Decimal("0"))
             await budget.close_cycle(db, cycle, status="completed")
             await db.commit()
-            month = await db.get(ConciergeBudgetMonth, budget.current_month())
+            month = await db.get(HealthBudgetMonth, budget.current_month())
             # The evaluation still runs: its 50 stay set aside, the other 20 go back.
-            assert (month.reserved_tokens, (await db.get(ConciergeCycle, cycle)).reserved_tokens) == (50, 50)
+            assert (month.reserved_tokens, (await db.get(HealthCycle, cycle)).reserved_tokens) == (50, 50)
             other = await budget.open_cycle(db, specialist="experimenter", trigger="signal")
             with pytest.raises(budget.BudgetRefusedError):
                 await budget.reserve(db, other, tokens=51, cost_usd=Decimal("0"))

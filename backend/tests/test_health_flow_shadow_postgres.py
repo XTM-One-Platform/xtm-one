@@ -319,7 +319,7 @@ async def test_a_shadow_that_did_not_hold_creates_no_flow(sandbox):
 
 async def test_a_shadow_runs_content_follows_the_assignment_run_it_copied(sandbox, monkeypatch):
     from app.services.health import consent, flow_lab_access, identity
-    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health.identity import HealthPrincipal, acting_as_concierge
 
     calls: list[dict] = []
     withdrawn = False
@@ -339,7 +339,7 @@ async def test_a_shadow_runs_content_follows_the_assignment_run_it_copied(sandbo
         await _advance(sessions, shadow_id)
         withdrawn = True
         calls.clear()
-        principal = ConciergePrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
+        principal = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
         with acting_as_concierge(principal):
             async with sessions() as db:
                 caller = await flow_lab_access.resolve_caller(db, None, agent_id=str(principal.agent_id))

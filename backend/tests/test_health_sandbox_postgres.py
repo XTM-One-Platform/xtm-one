@@ -624,14 +624,14 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
     from app.core.config import settings
     from app.models.platform_settings import PlatformSettings
     from app.services.health.flow_lab_access import BASIS_AGENT_PREFIX
-    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
-    from app.services.health.settings import ConciergeSettings
+    from app.services.health.identity import HealthPrincipal, acting_as_concierge
+    from app.services.health.settings import HealthSettings
 
     monkeypatch.setattr(sandbox_tools, "subject_refusal", _REAL_SUBJECT_REFUSAL)
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     graph = {"nodes": [_node("start", "trigger.manual")], "edges": []}
     async with sessions() as session:
-        session.add(PlatformSettings(health_settings=ConciergeSettings(enabled=True).model_dump(mode="json")))
+        session.add(PlatformSettings(health_settings=HealthSettings(enabled=True).model_dump(mode="json")))
         owner = await _user(session)
         admin = await _user(session, admin=True)
         opted_in = await _agent(session, owner, health_enrolled=True)
@@ -652,7 +652,7 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
         agent_copy = await copies.create_sandbox_copy(session, source_type="agent", source_id=opted_out.id, created_for="x")
         await session.commit()
 
-        principal = ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter", on_behalf_of_admin_id=admin.id)
+        principal = HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter", on_behalf_of_admin_id=admin.id)
         with acting_as_concierge(principal):
             for copy in (flow_copy, refused, standing_for_nothing):
                 with pytest.raises(runs.SandboxRunError):

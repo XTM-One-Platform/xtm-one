@@ -23,7 +23,7 @@ from app.core.database import Base
 _COST = Numeric(16, 6)
 
 
-class ConciergeCycle(Base):
+class HealthCycle(Base):
     """One unit of Concierge work and the budget it holds.
 
     A cycle is opened before a specialist starts work (a schedule, a signal or
@@ -46,7 +46,7 @@ class ConciergeCycle(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # ``identity.ConciergeRole`` of the specialist the cycle is for.
+    # ``identity.HealthRole`` of the specialist the cycle is for.
     specialist: Mapped[str] = mapped_column(String(32), nullable=False)
     # ``schedule`` | ``signal`` | ``on_demand``.
     trigger: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -67,7 +67,7 @@ class ConciergeCycle(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class ConciergeBudgetMonth(Base):
+class HealthBudgetMonth(Base):
     """The Concierge's spend of one month, the row every reservation locks first."""
 
     __tablename__ = "health_budget_months"
@@ -86,7 +86,7 @@ class ConciergeBudgetMonth(Base):
     )
 
 
-class ConciergeBudgetWork(Base):
+class HealthBudgetWork(Base):
     """One piece of Concierge work the ledger knows by its id: what it still
     holds in reservation past its cycle's close, or that its spend is booked.
 

@@ -25,7 +25,7 @@ from app.models.assignment import Assignment, AssignmentRun
 from app.models.flow import Flow
 from app.models.flow_run import FlowRun
 from app.models.flow_shadow import PAIR_STATUS_SKIPPED, SHADOW_STATUS_RUNNING, FlowShadow, FlowShadowPair
-from app.models.health import ConciergeBudgetMonth, ConciergeCycle
+from app.models.health import HealthBudgetMonth, HealthCycle
 from app.models.llm_trace import LLMTrace
 from app.services.health import flow_shadow
 from tests.test_health_flow_shadow_postgres import (
@@ -67,10 +67,10 @@ async def test_each_paired_run_is_reserved_on_the_concierge_budget_and_charged_w
 
         async with sessions() as db:
             shadow = await db.get(FlowShadow, shadow_id)
-            cycle = await db.get(ConciergeCycle, shadow.cycle_id)
+            cycle = await db.get(HealthCycle, shadow.cycle_id)
             # Sized on the live run each copies: 1 500 tokens apiece.
             assert (cycle.specialist, cycle.status, cycle.reserved_tokens) == ("flow_lab", "open", 3_000)
-            assert (await db.get(ConciergeBudgetMonth, cycle.month)).reserved_tokens == 3_000
+            assert (await db.get(HealthBudgetMonth, cycle.month)).reserved_tokens == 3_000
             for run in (await db.execute(select(FlowRun))).scalars():
                 run.status, run.completed_at = "completed", datetime.now(UTC)
                 db.add(
@@ -89,7 +89,7 @@ async def test_each_paired_run_is_reserved_on_the_concierge_budget_and_charged_w
         assert await _advance(sessions, shadow_id) == SHADOW_STATUS_RUNNING
 
         async with sessions() as db:
-            cycle = await db.get(ConciergeCycle, (await db.get(FlowShadow, shadow_id)).cycle_id)
+            cycle = await db.get(HealthCycle, (await db.get(FlowShadow, shadow_id)).cycle_id)
             assert (cycle.reserved_tokens, cycle.spent_tokens, cycle.spent_cost_usd) == (0, 1_600, Decimal("0.04"))
             assert {p.reservation for p in (await db.execute(select(FlowShadowPair))).scalars()} == {None}
 
@@ -105,7 +105,7 @@ async def test_rotating_a_shadow_s_cycle_keeps_the_reservations_of_runs_still_go
             await db.commit()
         assert await _advance(sessions, shadow_id) == SHADOW_STATUS_RUNNING
         async with sessions() as db:
-            first = await db.get(ConciergeCycle, (await db.get(FlowShadow, shadow_id)).cycle_id)
+            first = await db.get(HealthCycle, (await db.get(FlowShadow, shadow_id)).cycle_id)
             first.opened_at = datetime.now(UTC) - flow_shadow.SHADOW_CYCLE_SPAN - timedelta(minutes=1)
             db.add(_sized_run(seeded, created_at=start + timedelta(hours=3)))
             await db.commit()
@@ -114,10 +114,10 @@ async def test_rotating_a_shadow_s_cycle_keeps_the_reservations_of_runs_still_go
         assert await _advance(sessions, shadow_id) == SHADOW_STATUS_RUNNING
 
         async with sessions() as db:
-            first = await db.get(ConciergeCycle, first_id)
+            first = await db.get(HealthCycle, first_id)
             assert first.status == "completed"
             # The two runs still going keep their 3 000 tokens past the rotation.
-            assert (await db.get(ConciergeBudgetMonth, month)).reserved_tokens == 4_500
+            assert (await db.get(HealthBudgetMonth, month)).reserved_tokens == 4_500
             for run in (await db.execute(select(FlowRun))).scalars():
                 run.status, run.completed_at = "completed", datetime.now(UTC)
             await db.commit()
@@ -125,18 +125,18 @@ async def test_rotating_a_shadow_s_cycle_keeps_the_reservations_of_runs_still_go
         assert await _advance(sessions, shadow_id) == SHADOW_STATUS_RUNNING
 
         async with sessions() as db:
-            assert (await db.get(ConciergeBudgetMonth, month)).reserved_tokens == 0
+            assert (await db.get(HealthBudgetMonth, month)).reserved_tokens == 0
 
 
 async def test_a_spent_budget_stops_the_pairing_and_keeps_the_cursor(sandbox, monkeypatch):
     from app.services.health import budget
-    from app.services.health.settings import ConciergeBudgetCaps
+    from app.services.health.settings import HealthBudgetCaps
 
     real_settings = budget.load_concierge_settings
 
     async def tight(db):
         settings = await real_settings(db)
-        return settings.model_copy(update={"budget": ConciergeBudgetCaps(month_tokens=1_000)})
+        return settings.model_copy(update={"budget": HealthBudgetCaps(month_tokens=1_000)})
 
     monkeypatch.setattr(budget, "load_concierge_settings", tight)
     async with _database() as sessions:

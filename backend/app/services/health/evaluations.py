@@ -74,12 +74,12 @@ _ACTIVE_RUN_STATUSES = ("pending", "queued", "running")
 BUDGET_STOP_ERROR = "Stopped: the Concierge's budget is reached."
 
 
-class ConciergeEvaluationError(Exception):
+class HealthEvaluationError(Exception):
     """A launch or a comparison refused; the message is generic."""
 
 
 @dataclass
-class ConciergeLaunch:
+class HealthLaunch:
     evaluation_id: uuid.UUID
     run_ids: list[uuid.UUID]
 
@@ -146,11 +146,11 @@ async def launch_concierge_evaluation(
     cycle_id: uuid.UUID | None = None,
     reserve_tokens: int | None = None,
     reserve_cost_usd: Decimal = Decimal(0),
-) -> ConciergeLaunch:
+) -> HealthLaunch:
     """Create and launch a Concierge evaluation on *dataset_id*. Commits, then wakes the engine.
 
     *model_ids* empty: each agent runs on its own model; a flow always runs on
-    its nodes' models. Raises :class:`ConciergeEvaluationError` (generic),
+    its nodes' models. Raises :class:`HealthEvaluationError` (generic),
     ``launch.LaunchRefusedError`` (the launch checks' own message) or
     ``budget.BudgetRefusedError``. Inside *cycle_id* it reserves
     *reserve_tokens* / *reserve_cost_usd* (by default its entries at
@@ -163,13 +163,13 @@ async def launch_concierge_evaluation(
         ("flow", s) for s in dict.fromkeys(subject_flow_ids)
     ]
     if not subjects or len(subjects) > MAX_SUBJECTS:
-        raise ConciergeEvaluationError(f"Name between 1 and {MAX_SUBJECTS} subjects.")
+        raise HealthEvaluationError(f"Name between 1 and {MAX_SUBJECTS} subjects.")
     dataset = await db.get(Dataset, dataset_id)
     if dataset is None or not dataset.concierge_built:
-        raise ConciergeEvaluationError("The dataset is not available.")
+        raise HealthEvaluationError("The dataset is not available.")
     for kind, subject_id in subjects:
         if await evaluation_subject_refusal(db, kind, subject_id) is not None:
-            raise ConciergeEvaluationError("A subject is not available.")
+            raise HealthEvaluationError("A subject is not available.")
     if cycle_id is None and (refusal := await budget.budget_refusal(db)) is not None:
         raise budget.BudgetRefusedError(refusal)
 
@@ -180,7 +180,7 @@ async def launch_concierge_evaluation(
         )
     await db.commit()
     await notify_orchestration_wake()
-    return ConciergeLaunch(evaluation.id, [run.id for run in runs])
+    return HealthLaunch(evaluation.id, [run.id for run in runs])
 
 
 async def _create_and_reserve(
@@ -218,7 +218,7 @@ async def _create_and_reserve(
     )
     await db.flush()
     if not await engine_accepts(db, evaluation.id):
-        raise ConciergeEvaluationError("Evaluation is not available.")
+        raise HealthEvaluationError("Evaluation is not available.")
     await check_launchable(db, evaluation)
     plan = await plan_launch(db, evaluation, model_ids=list(model_ids), use_default=not model_ids)
     execution = await stage_evaluation_execution(db, str(evaluation.id))
@@ -235,7 +235,7 @@ async def concierge_evaluation_runs(db: AsyncSession, evaluation_id: uuid.UUID) 
     """The runs of a Concierge evaluation; refused for any other evaluation."""
     evaluation = await db.get(Evaluation, evaluation_id)
     if evaluation is None or not evaluation.concierge_built:
-        raise ConciergeEvaluationError("The evaluation is not available.")
+        raise HealthEvaluationError("The evaluation is not available.")
     return list(
         (
             await db.execute(
@@ -261,7 +261,7 @@ async def compare_concierge_runs(
     from app.services.evaluation.metrics import get_run_aggregates
 
     if baseline_run_id == candidate_run_id:
-        raise ConciergeEvaluationError("Compare two different runs.")
+        raise HealthEvaluationError("Compare two different runs.")
     runs = {
         run.id: run
         for run in (
@@ -270,10 +270,10 @@ async def compare_concierge_runs(
     }
     baseline, candidate = runs.get(baseline_run_id), runs.get(candidate_run_id)
     if baseline is None or candidate is None or baseline.evaluation_id != candidate.evaluation_id:
-        raise ConciergeEvaluationError("The runs are not available.")
+        raise HealthEvaluationError("The runs are not available.")
     evaluation = await db.get(Evaluation, baseline.evaluation_id)
     if evaluation is None or not evaluation.concierge_built:
-        raise ConciergeEvaluationError("The runs are not available.")
+        raise HealthEvaluationError("The runs are not available.")
 
     quality = QUALITY_METRIC
     metrics = [

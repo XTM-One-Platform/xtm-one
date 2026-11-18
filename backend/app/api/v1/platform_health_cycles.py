@@ -35,8 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin, require_agentic_ai
 from app.api.v1.helpers import get_user_group_ids, parse_path_id
 from app.core.database import get_db
-from app.models.health import ConciergeCycle
-from app.models.health_cycle import ConciergeCycleRun, ConciergeScheduleMark
+from app.models.health import HealthCycle
+from app.models.health_cycle import HealthCycleRun, HealthScheduleMark
 from app.models.user import User
 from app.services.health.cycle_access import (
     TARGET_NOT_FOUND,
@@ -131,7 +131,7 @@ class ImprovementListResponse(BaseModel):
 
 
 def _cycle_response(
-    cycle: ConciergeCycle, record: ConciergeCycleRun | None, user: User, *, narrative_readable: bool
+    cycle: HealthCycle, record: HealthCycleRun | None, user: User, *, narrative_readable: bool
 ) -> CycleResponse:
     digest = record.digest if record else None
     if digest and not narrative_readable:
@@ -233,14 +233,12 @@ async def list_cycles(
     """The cycles the caller may read, newest first: all for an administrator, one managed target's otherwise."""
     group_ids = await get_user_group_ids(db, user.id)
     await _require_target_reader(db, user, group_ids, target_type, target_id)
-    query = select(ConciergeCycle, ConciergeCycleRun).outerjoin(
-        ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id
-    )
+    query = select(HealthCycle, HealthCycleRun).outerjoin(HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id)
     if target_id is not None:
-        query = query.where(ConciergeCycle.target_type == target_type, ConciergeCycle.target_id == target_id)
+        query = query.where(HealthCycle.target_type == target_type, HealthCycle.target_id == target_id)
     if cycle_status:
-        query = query.where(ConciergeCycle.status == cycle_status)
-    rows = await db.execute(query.order_by(ConciergeCycle.opened_at.desc()).limit(limit).offset(offset))
+        query = query.where(HealthCycle.status == cycle_status)
+    rows = await db.execute(query.order_by(HealthCycle.opened_at.desc()).limit(limit).offset(offset))
     # A non-admin lists one target's cycles (``_require_target_reader``): one check covers every row.
     readable = await may_read_cycle_narrative(db, user, group_ids, target_type, target_id)
     return [_cycle_response(cycle, record, user, narrative_readable=readable) for cycle, record in rows.all()]
@@ -251,9 +249,9 @@ async def get_cycle(cycle_id: str, user: User = Depends(get_current_user), db: A
     cid = parse_path_id(cycle_id, not_found_detail=CYCLE_NOT_FOUND)
     row = (
         await db.execute(
-            select(ConciergeCycle, ConciergeCycleRun)
-            .outerjoin(ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id)
-            .where(ConciergeCycle.id == cid)
+            select(HealthCycle, HealthCycleRun)
+            .outerjoin(HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id)
+            .where(HealthCycle.id == cid)
         )
     ).first()
     group_ids = await get_user_group_ids(db, user.id)
@@ -319,7 +317,7 @@ async def list_signals(
 @router.get("/schedules", response_model=list[ScheduleMarkResponse], dependencies=[Depends(require_admin)])
 async def list_schedule_marks(db: AsyncSession = Depends(get_db)):
     """When each schedule and signal pass last fired, and what came of it (Settings > Agents and automations > Concierge)."""
-    rows = (await db.execute(select(ConciergeScheduleMark).order_by(ConciergeScheduleMark.schedule))).scalars()
+    rows = (await db.execute(select(HealthScheduleMark).order_by(HealthScheduleMark.schedule))).scalars()
     return [
         ScheduleMarkResponse(schedule=m.schedule, fired_at=m.fired_at, cycle_id=m.cycle_id, refusal=m.refusal)
         for m in rows

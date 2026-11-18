@@ -31,8 +31,8 @@ from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun
 from app.models.fleet import Fleet, FleetMember
 from app.models.group import Group, GroupMember
-from app.models.health import ConciergeCycle
-from app.models.health_cycle import ConciergeCycleRun, ConciergeSignalState
+from app.models.health import HealthCycle
+from app.models.health_cycle import HealthCycleRun, HealthSignalState
 from app.models.llm_trace import LLMDailyStats, LLMTrace
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
@@ -40,7 +40,7 @@ from app.models.workspace import Workspace
 from app.services import assignment_engine
 from app.services.fleets import FLEET_HEALTH_CHECK_NAME
 from app.services.health import budget, cycles, fleet_seed, signals
-from app.services.health.settings import ConciergeSettings
+from app.services.health.settings import HealthSettings
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
@@ -89,7 +89,7 @@ def _user(role: str = "user") -> User:
 
 
 async def _enable(db, **fields) -> None:
-    db.add(PlatformSettings(health_settings=ConciergeSettings(enabled=True, **fields).model_dump(mode="json")))
+    db.add(PlatformSettings(health_settings=HealthSettings(enabled=True, **fields).model_dump(mode="json")))
     await db.commit()
 
 
@@ -338,7 +338,7 @@ async def test_two_racing_requests_open_one_cycle(concierge_on):
         first, second = await asyncio.gather(request(), request())
         async with sessions() as db:
             open_cycles = (
-                await db.execute(select(ConciergeCycle).where(ConciergeCycle.target_id == target.id))
+                await db.execute(select(HealthCycle).where(HealthCycle.target_id == target.id))
             ).scalars().all()
 
     results = sorted([first, second], key=lambda r: r.started, reverse=True)
@@ -362,8 +362,8 @@ async def test_a_closed_cycle_frees_its_target_and_gets_a_truthful_digest(concie
             run.status = "failed"
             await db.commit()
             assert await cycles.settle_cycles(db) == 1
-            cycle = await db.get(ConciergeCycle, started.cycle_id)
-            record = await db.get(ConciergeCycleRun, started.cycle_id)
+            cycle = await db.get(HealthCycle, started.cycle_id)
+            record = await db.get(HealthCycleRun, started.cycle_id)
             again = await cycles.start_cycle(
                 db, key="investigation", trigger="on_demand", target_type="agent", target_id=target.id
             )
@@ -401,7 +401,7 @@ async def _delegated(db, started) -> AssignmentRun:
 async def test_a_cycle_books_its_whole_run_tree_and_closes_once_every_run_ended(concierge_on):
     from decimal import Decimal
 
-    from app.models.health import ConciergeBudgetMonth
+    from app.models.health import HealthBudgetMonth
 
     async with _scratch("cc_book") as sessions:
         _admin, target = await _seeded_with_target(sessions)
@@ -415,7 +415,7 @@ async def test_a_cycle_books_its_whole_run_tree_and_closes_once_every_run_ended(
             await db.commit()
             # The orchestrator ended, its delegated specialist still works: booked, not closed.
             assert await cycles.settle_cycles(db) == 0
-            cycle = await db.get(ConciergeCycle, started.cycle_id)
+            cycle = await db.get(HealthCycle, started.cycle_id)
             first = (cycle.status, cycle.spent_tokens)
             child.status = "completed"
             db.add(_trace(child.id, 400, "0.1"))
@@ -423,7 +423,7 @@ async def test_a_cycle_books_its_whole_run_tree_and_closes_once_every_run_ended(
             assert await cycles.settle_cycles(db) == 1
             await cycles.settle_cycles(db)
             await db.refresh(cycle)
-            month = await db.get(ConciergeBudgetMonth, cycle.month)
+            month = await db.get(HealthBudgetMonth, cycle.month)
             await db.refresh(month)
 
     assert first == ("open", 1_000)
@@ -451,7 +451,7 @@ async def test_a_cycle_past_its_cap_stops_its_runs_and_closes_budget_reached(con
             await db.refresh(child)
             stopped = (child.status, child.error)
             assert await cycles.settle_cycles(db) == 1
-            cycle = await db.get(ConciergeCycle, started.cycle_id)
+            cycle = await db.get(HealthCycle, started.cycle_id)
             await db.refresh(cycle)
 
     assert stopped == ("cancelled", budget.REFUSAL_MESSAGES["cycle_budget_reached"])
@@ -465,23 +465,23 @@ async def test_a_target_outside_the_scope_starts_nothing(concierge_on):
             result = await cycles.start_cycle(
                 db, key="investigation", trigger="on_demand", target_type="agent", target_id=target.id
             )
-            count = await db.scalar(select(func.count()).select_from(ConciergeCycle))
+            count = await db.scalar(select(func.count()).select_from(HealthCycle))
     assert (result.refusal, count, concierge_on) == ("not_in_scope", 0, [])
 
 
 async def test_a_schedule_does_not_start_while_its_previous_cycle_is_open(concierge_on):
-    from app.models.health_cycle import ConciergeScheduleMark
+    from app.models.health_cycle import HealthScheduleMark
 
     now = datetime.now(UTC)
     async with _scratch("cc_schedule") as sessions:
         await _seeded_with_target(sessions)
         async with sessions() as db:
             for key in cycles.SCHEDULE_KEYS:
-                db.add(ConciergeScheduleMark(schedule=key, fired_at=now - timedelta(days=8)))
+                db.add(HealthScheduleMark(schedule=key, fired_at=now - timedelta(days=8)))
             await db.commit()
             first = await cycles.run_due_schedules(db, now=now)
             second = await cycles.run_due_schedules(db, now=now + timedelta(days=8))
-            refusals = {m.schedule: m.refusal for m in (await db.execute(select(ConciergeScheduleMark))).scalars()}
+            refusals = {m.schedule: m.refusal for m in (await db.execute(select(HealthScheduleMark))).scalars()}
             for run in (await db.execute(select(AssignmentRun))).scalars():
                 run.status = "completed"
             await db.commit()
@@ -557,7 +557,7 @@ async def test_a_failure_spike_fires_once_and_rearms_when_it_clears(concierge_on
                 db, await signals.evaluate_signal(db, "failure_spike", now=later, since=now), now=later
             )
             await db.commit()
-            state = (await db.execute(select(ConciergeSignalState))).scalar_one()
+            state = (await db.execute(select(HealthSignalState))).scalar_one()
 
     assert [(r.target_type, r.target_id, r.crossed, r.value) for r in first] == [
         ("assignment", assignment.id, True, 10.0)
@@ -625,7 +625,7 @@ async def test_a_model_change_refused_for_a_passing_reason_fires_on_the_next_pas
                 db, await signals.evaluate_signal(db, "model_change", now=now, since=now), now=now
             )
             state = (
-                await db.execute(select(ConciergeSignalState).where(ConciergeSignalState.target_id == target.id))
+                await db.execute(select(HealthSignalState).where(HealthSignalState.target_id == target.id))
             ).scalar_one()
 
     assert sighting == []
@@ -673,7 +673,7 @@ async def test_the_concierge_s_sandbox_copies_raise_no_signal(concierge_on):
 
 async def test_a_failed_signal_evaluation_waits_for_its_cadence(concierge_on, monkeypatch):
     from app.core import database
-    from app.models.health_cycle import ConciergeScheduleMark
+    from app.models.health_cycle import HealthScheduleMark
 
     now = datetime.now(UTC)
     calls: list[str] = []
@@ -690,7 +690,7 @@ async def test_a_failed_signal_evaluation_waits_for_its_cadence(concierge_on, mo
         await signals.signals_tick(now=now)
         await signals.signals_tick(now=now + timedelta(minutes=1))
         async with sessions() as db:
-            marks = {m.schedule for m in (await db.execute(select(ConciergeScheduleMark))).scalars()}
+            marks = {m.schedule for m in (await db.execute(select(HealthScheduleMark))).scalars()}
 
     assert calls == list(signals.SIGNAL_KINDS)
     assert marks == {"signal:feedback", "signal:failure", "signal:cost", "signal:model"}
@@ -816,7 +816,7 @@ async def test_the_digest_narrative_follows_the_chat_read_rule(concierge_on, who
     async with _scratch("cc_routes_narrative") as sessions:
         users, private, _company = await _access_matrix(sessions)
         async with sessions() as db:
-            cycle = ConciergeCycle(
+            cycle = HealthCycle(
                 specialist="investigation",
                 trigger="on_demand",
                 target_type="agent",
@@ -826,7 +826,7 @@ async def test_the_digest_narrative_follows_the_chat_read_rule(concierge_on, who
             )
             db.add(cycle)
             await db.flush()
-            db.add(ConciergeCycleRun(cycle_id=cycle.id, digest={"status": "completed", "narrative": "quoted"}))
+            db.add(HealthCycleRun(cycle_id=cycle.id, digest={"status": "completed", "narrative": "quoted"}))
             await db.commit()
         async with _client(sessions, users[who]) as client:
             listing = await client.get(
@@ -856,7 +856,7 @@ async def test_a_signal_names_its_target_and_a_deleted_target_has_no_name(concie
         async with sessions() as db:
             for target_id in (private.id, gone):
                 db.add(
-                    ConciergeSignalState(
+                    HealthSignalState(
                         target_type="agent", target_id=target_id, kind="feedback_drop", active=True, last_value={}
                     )
                 )

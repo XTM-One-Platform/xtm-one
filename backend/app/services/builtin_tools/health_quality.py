@@ -128,10 +128,10 @@ async def agent_access_or_refuse(db: AsyncSession, reader: Reader, agent_id: uui
 
 
 async def finding_for(db: AsyncSession, reader: Reader, finding_id: Any):
-    from app.models.health_finding import ConciergeFinding
+    from app.models.health_finding import HealthFinding
     from app.services.health.access import NOT_IN_REACH, target_access
 
-    finding = await db.get(ConciergeFinding, parse_uuid(finding_id, "finding_id"))
+    finding = await db.get(HealthFinding, parse_uuid(finding_id, "finding_id"))
     if finding is None:
         raise RefusalError("Error: finding not found.")
     access = await target_access(db, reader, finding.target_type, finding.target_id)
@@ -306,7 +306,7 @@ _EVIDENCE_SCHEMA = {
         "trace_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
         "rating_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
         "run_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "Assignment run ids."},
-        "counts": {"type": "object", "description": "Numeric figures, e.g. {\"failed\": 7, \"runs\": 40}."},
+        "counts": {"type": "object", "description": 'Numeric figures, e.g. {"failed": 7, "runs": 40}.'},
     },
 }
 

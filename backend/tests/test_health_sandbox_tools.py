@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+from app.services.health.identity import HealthPrincipal, acting_as_concierge
 from app.services.health.sandbox import tools
 from app.tools.base import ToolCall
 
@@ -117,7 +117,7 @@ async def test_one_access_rule(world, case, allowed):
     db = _db(caller=None if case in ("unknown_caller", "concierge", "not_consented") else caller, source=source)
     user_id = None if case in ("concierge", "not_consented") else str(caller.id)
     if case in ("concierge", "not_consented"):
-        with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
+        with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter")):
             result = await _create_copy(db, user_id)
     else:
         result = await _create_copy(db, user_id)
@@ -139,7 +139,7 @@ async def test_a_run_of_a_copy_is_refused_once_its_source_is_no_longer_readable(
     monkeypatch.setattr("app.services.health.sandbox.runs.run_sandbox_agent", ran)
     world["readable"] = False
     _, executor = tools.build_sandbox_tools(_db(source=_agent()), None)
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
+    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter")):
         result = await executor.execute_tool(
             ToolCall(id="r", name="run_sandbox", arguments={"copy_id": str(copy.id), "input": "hi"})
         )
@@ -173,7 +173,7 @@ async def test_a_run_of_a_copy_that_does_not_exist_is_refused_like_any_other(wor
 )
 async def test_the_tool_makes_no_copy_standing_for_nothing_nor_one_naming_a_server_marker(world, arguments):
     _, executor = tools.build_sandbox_tools(_db(source=_agent()), None)
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
+    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter")):
         result = await executor.execute_tool(ToolCall(id="c", name="create_sandbox_copy", arguments=arguments))
     assert "copy_id" not in result.content
     assert world["created"] == []
@@ -202,7 +202,7 @@ async def test_a_prototype_runs_only_while_its_recorded_basis_agent_is_in_reach(
     monkeypatch.setattr("app.services.orchestration_engine.notify_orchestration_wake", AsyncMock())
     world["readable"] = readable
     _, executor = tools.build_sandbox_tools(_db(source=basis), None)
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
+    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter")):
         result = await executor.execute_tool(ToolCall(id="r", name="run_sandbox", arguments={"copy_id": str(copy.id)}))
     assert world["read_as"] == [{"agent_id": basis.id, "user_id": basis.user_id}]
     assert (result.content != tools.REFUSED) is allowed
@@ -215,7 +215,7 @@ async def test_a_prototype_with_no_recorded_basis_never_runs(world, monkeypatch)
     started = AsyncMock()
     monkeypatch.setattr("app.services.health.sandbox.runs.start_sandbox_flow_run", started)
     _, executor = tools.build_sandbox_tools(_db(source=_agent()), None)
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter")):
+    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter")):
         result = await executor.execute_tool(ToolCall(id="r", name="run_sandbox", arguments={"copy_id": str(copy.id)}))
     assert result.content == tools.REFUSED
     started.assert_not_awaited()
@@ -243,7 +243,7 @@ async def test_the_concierge_never_runs_an_ownerless_copy_as_the_admin_it_acts_f
     db = MagicMock()
     db.scalar = AsyncMock(return_value=None)
     copy = _prototype(f"flow_lab:agent:{uuid.uuid4()}")
-    on_behalf = ConciergePrincipal(agent_id=uuid.uuid4(), role="experimenter", on_behalf_of_admin_id=admin)
+    on_behalf = HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter", on_behalf_of_admin_id=admin)
     with acting_as_concierge(on_behalf):
         assert await runs.runner_user_id(db, copy, requested_by=admin) is None
     assert await runs.runner_user_id(db, copy, requested_by=admin) == admin

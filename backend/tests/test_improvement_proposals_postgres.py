@@ -45,7 +45,7 @@ from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.services import improvement_proposals as proposals
 from app.services import persona_improvement as loop
-from app.services.health.settings import ConciergeSettings
+from app.services.health.settings import HealthSettings
 from app.services.improvement_proposals import lifecycle, registry
 from tests.scratch_database import scratch_database
 from tests.test_persona_improvement_postgres import BASE_PERSONA, REWRITE, _propose, _seed
@@ -421,7 +421,7 @@ async def test_an_agent_change_is_watched_for_the_set_window(monkeypatch, live_w
     async with _temp_database(f"proposal_watch_{int(live_watcher)}") as sessionmaker:
         seeded = await _seed(sessionmaker)
         async with sessionmaker() as db:
-            db.add(PlatformSettings(health_settings=ConciergeSettings(proposal_watch_days=3).model_dump(mode="json")))
+            db.add(PlatformSettings(health_settings=HealthSettings(proposal_watch_days=3).model_dump(mode="json")))
             await db.commit()
         if live_watcher:
 

@@ -47,9 +47,9 @@ EXPERIMENTS_READ_TOOLS: frozenset[str] = frozenset({"list_experiments", "get_exp
 
 
 async def _experiment_for(db: AsyncSession, reader: Reader, experiment_id: Any):
-    from app.models.health_experiment import ConciergeExperiment
+    from app.models.health_experiment import HealthExperiment
 
-    experiment = await db.get(ConciergeExperiment, parse_uuid(experiment_id, "experiment_id"))
+    experiment = await db.get(HealthExperiment, parse_uuid(experiment_id, "experiment_id"))
     if experiment is None:
         raise RefusalError("Error: experiment not found.")
     try:
@@ -64,19 +64,24 @@ async def _list_experiments(
 ) -> str:
     from sqlalchemy import select
 
-    from app.models.health_experiment import EXPERIMENT_STATUSES, ConciergeExperiment
+    from app.models.health_experiment import EXPERIMENT_STATUSES, HealthExperiment
     from app.services.health.experiments import experiment_payload
 
     finding, access = await finding_for(db, reader, finding_id)
-    query = select(ConciergeExperiment).where(ConciergeExperiment.finding_id == finding.id)
+    query = select(HealthExperiment).where(HealthExperiment.finding_id == finding.id)
     if status:
         if status not in EXPERIMENT_STATUSES:
             raise RefusalError(f"Error: status must be one of: {', '.join(EXPERIMENT_STATUSES)}.")
-        query = query.where(ConciergeExperiment.status == status)
+        query = query.where(HealthExperiment.status == status)
     rows = (
-        await db.execute(query.order_by(ConciergeExperiment.created_at.desc()).limit(max(1, min(int(limit or 20), 50))))
-    ).scalars().all()
-    return untrusted_json({"count": len(rows), "experiments": [experiment_payload(e, content=access.content) for e in rows]}, "Concierge experiments")
+        (await db.execute(query.order_by(HealthExperiment.created_at.desc()).limit(max(1, min(int(limit or 20), 50)))))
+        .scalars()
+        .all()
+    )
+    return untrusted_json(
+        {"count": len(rows), "experiments": [experiment_payload(e, content=access.content) for e in rows]},
+        "Concierge experiments",
+    )
 
 
 async def _get_experiment(db: AsyncSession, reader: Reader, experiment_id: str = "") -> str:
@@ -245,5 +250,3 @@ def build_concierge_experiment_tools(
         run_id=run_id,
         agent_id=agent_id,
     )
-
-

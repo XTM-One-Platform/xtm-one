@@ -47,8 +47,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health import ConciergeCycle
-from app.models.health_cycle import ConciergeCycleRun, ConciergeScheduleMark
+from app.models.health import HealthCycle
+from app.models.health_cycle import HealthCycleRun, HealthScheduleMark
 from app.services.health.fleet_seed import AssignmentKey, fleet_assignment
 
 logger = logging.getLogger(__name__)
@@ -168,10 +168,10 @@ async def _target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.U
 
 
 async def _open_cycle_id(db: AsyncSession, *, target_type: str | None, target_id: uuid.UUID | None) -> uuid.UUID | None:
-    query = select(ConciergeCycle.id).where(
-        ConciergeCycle.status == "open",
-        ConciergeCycle.target_type == target_type,
-        ConciergeCycle.target_id == target_id,
+    query = select(HealthCycle.id).where(
+        HealthCycle.status == "open",
+        HealthCycle.target_type == target_type,
+        HealthCycle.target_id == target_id,
     )
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
@@ -228,7 +228,7 @@ async def start_cycle(
         return CycleStart(refusal="cycle_open", open_cycle_id=open_id)
 
     db.add(
-        ConciergeCycleRun(
+        HealthCycleRun(
             cycle_id=cycle_id,
             agent_id=agent.id,
             assignment_id=assignment.id,
@@ -267,7 +267,7 @@ async def start_cycle(
         await close_cycle(db, cycle_id, status="cancelled", reason="The run was not started.")
         await db.commit()
         return CycleStart(cycle_id=cycle_id, refusal="start_failed")
-    record = await db.get(ConciergeCycleRun, cycle_id)
+    record = await db.get(HealthCycleRun, cycle_id)
     if record is not None:
         record.run_id = uuid.UUID(str(run_id))
     await db.commit()
@@ -320,9 +320,9 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
     started = 0
     for key in SCHEDULE_KEYS:
         enabled, cron = _schedule_cron(settings, key)
-        mark = await db.get(ConciergeScheduleMark, key)
+        mark = await db.get(HealthScheduleMark, key)
         if mark is None:
-            db.add(ConciergeScheduleMark(schedule=key, fired_at=now))
+            db.add(HealthScheduleMark(schedule=key, fired_at=now))
             await db.commit()
             continue
         if not enabled:
@@ -330,13 +330,13 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
         due = next_cron_run(cron, mark.fired_at, tz=tz)
         if due is None or due > now:
             continue
-        previous = await db.get(ConciergeCycle, mark.cycle_id) if mark.cycle_id else None
+        previous = await db.get(HealthCycle, mark.cycle_id) if mark.cycle_id else None
         if previous is not None and previous.status == "open":
             result = CycleStart(refusal="cycle_open", open_cycle_id=previous.id)
         else:
             payload = {"since": mark.fired_at.isoformat()} if key == "digest" else None
             result = await start_cycle(db, key=_SCHEDULE_ASSIGNMENT[key], trigger="schedule", payload=payload)
-        mark = await db.get(ConciergeScheduleMark, key)
+        mark = await db.get(HealthScheduleMark, key)
         mark.fired_at = now
         mark.cycle_id = result.cycle_id if result.started else result.open_cycle_id
         mark.refusal = result.refusal
@@ -479,10 +479,10 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
 
     rows = (
         await db.execute(
-            select(ConciergeCycle.id, ConciergeCycleRun.run_id)
-            .join(ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id)
-            .where(ConciergeCycle.status == "open", ConciergeCycleRun.run_id.is_not(None))
-            .order_by(ConciergeCycle.opened_at)
+            select(HealthCycle.id, HealthCycleRun.run_id)
+            .join(HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id)
+            .where(HealthCycle.status == "open", HealthCycleRun.run_id.is_not(None))
+            .order_by(HealthCycle.opened_at)
             .limit(limit)
         )
     ).all()
@@ -500,11 +500,11 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
     pending = (
         (
             await db.execute(
-                select(ConciergeCycle)
-                .join(ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id)
-                .where(ConciergeCycle.status != "open", ConciergeCycleRun.digest_built_at.is_(None))
+                select(HealthCycle)
+                .join(HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id)
+                .where(HealthCycle.status != "open", HealthCycleRun.digest_built_at.is_(None))
                 # Newest first: a digest that keeps failing never holds back the next ones.
-                .order_by(ConciergeCycle.closed_at.desc().nulls_last())
+                .order_by(HealthCycle.closed_at.desc().nulls_last())
                 .limit(limit)
             )
         )

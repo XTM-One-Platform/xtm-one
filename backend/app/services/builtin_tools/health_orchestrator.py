@@ -163,30 +163,28 @@ def build_concierge_orchestrator_tools(
 
     async def list_concierge_cycles(target_type: str = "", target: str = "", status: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
-        from app.models.health import ConciergeCycle
-        from app.models.health_cycle import ConciergeCycleRun
+        from app.models.health import HealthCycle
+        from app.models.health_cycle import HealthCycleRun
 
         try:
             async with async_session() as db:
                 principal, user = await _caller(db, user_id)
                 group_ids = await _group_ids(db, user)
-                query = select(ConciergeCycle, ConciergeCycleRun).outerjoin(
-                    ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id
+                query = select(HealthCycle, HealthCycleRun).outerjoin(
+                    HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id
                 )
                 if target:
                     resolved = await _find_target(db, principal, user, group_ids, target_type or "agent", target)
                     if resolved is None:
                         return _NOT_FOUND
-                    query = query.where(
-                        ConciergeCycle.target_type == resolved[0], ConciergeCycle.target_id == resolved[1]
-                    )
+                    query = query.where(HealthCycle.target_type == resolved[0], HealthCycle.target_id == resolved[1])
                 elif principal is None and not (user is not None and agent_tool_admin_bypass(user)):
                     return "Name the agent or flow whose Platform Health cycles to list."
                 if status:
-                    query = query.where(ConciergeCycle.status == str(status)[:16])
+                    query = query.where(HealthCycle.status == str(status)[:16])
                 rows = (
                     await db.execute(
-                        query.order_by(ConciergeCycle.opened_at.desc()).limit(max(1, min(int(limit or 20), _MAX_LIMIT)))
+                        query.order_by(HealthCycle.opened_at.desc()).limit(max(1, min(int(limit or 20), _MAX_LIMIT)))
                     )
                 ).all()
                 items = [_cycle_item(cycle, record, full=False) for cycle, record in rows]
@@ -199,8 +197,8 @@ def build_concierge_orchestrator_tools(
 
     async def get_concierge_cycle(cycle_id: str = "") -> str:
         from app.core.database import async_session
-        from app.models.health import ConciergeCycle
-        from app.models.health_cycle import ConciergeCycleRun
+        from app.models.health import HealthCycle
+        from app.models.health_cycle import HealthCycleRun
         from app.services.health.cycle_access import may_read_cycle
 
         cid = _uuid(cycle_id)
@@ -210,7 +208,7 @@ def build_concierge_orchestrator_tools(
             async with async_session() as db:
                 principal, user = await _caller(db, user_id)
                 group_ids = await _group_ids(db, user)
-                cycle = await db.get(ConciergeCycle, cid)
+                cycle = await db.get(HealthCycle, cid)
                 readable = cycle is not None and (
                     principal is not None
                     or (
@@ -227,7 +225,7 @@ def build_concierge_orchestrator_tools(
                 )
                 if not readable:
                     return "No such cycle."
-                item = _cycle_item(cycle, await db.get(ConciergeCycleRun, cid), full=True)
+                item = _cycle_item(cycle, await db.get(HealthCycleRun, cid), full=True)
         except Exception:
             logger.exception("get_concierge_cycle failed")
             return _GENERIC_ERROR

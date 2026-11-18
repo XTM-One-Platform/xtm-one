@@ -192,7 +192,7 @@ async def launch(
     from app.models.evaluation import EvaluationRun
     from app.services.evaluation.launch import LaunchRefusedError
     from app.services.health.budget import BudgetRefusedError
-    from app.services.health.evaluations import ConciergeEvaluationError, launch_concierge_evaluation
+    from app.services.health.evaluations import HealthEvaluationError, launch_concierge_evaluation
 
     if (baseline.overrides or variant.overrides) and not SUBJECT_OVERLAYS_AVAILABLE:
         raise EvaluationUnavailableError("per-arm overlay")
@@ -210,7 +210,7 @@ async def launch(
         )
     except BudgetRefusedError as exc:
         raise BudgetUnavailableError(exc.code) from exc
-    except (ConciergeEvaluationError, LaunchRefusedError) as exc:
+    except (HealthEvaluationError, LaunchRefusedError) as exc:
         raise EvaluationUnavailableError(str(exc)) from exc
     runs = (
         await db.execute(select(EvaluationRun).where(EvaluationRun.id.in_(launched.run_ids)))

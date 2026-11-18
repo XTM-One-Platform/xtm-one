@@ -15,7 +15,7 @@ from app.api.v1.helpers import agent_tool_admin_bypass
 from app.core.config import settings
 from app.core.feature_flags import KNOWN_FEATURE_FLAGS
 from app.services.health import identity
-from app.services.health.settings import ConciergeBudgetCaps, ConciergeSettings, _read, scope_narrowed
+from app.services.health.settings import HealthBudgetCaps, HealthSettings, _read, scope_narrowed
 
 
 @pytest.fixture
@@ -217,19 +217,19 @@ def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> N
 
 
 def test_stored_settings_read_fail_closed() -> None:
-    assert _read(None) == ConciergeSettings()
+    assert _read(None) == HealthSettings()
     assert _read({"enabled": "maybe"}).enabled is False
     assert _read({"enabled": True, "removed_setting": 3}).enabled is True
     assert _read({"enabled": True, "budget": {"month_tokens": 5, "gone": 1}}).budget.month_tokens == 5
-    assert ConciergeSettings().enabled is False
-    assert ConciergeSettings().scope_mode == "all"
+    assert HealthSettings().enabled is False
+    assert HealthSettings().scope_mode == "all"
 
 
 def test_a_request_body_with_an_unknown_key_or_a_negative_cap_is_refused() -> None:
     with pytest.raises(ValueError):
-        ConciergeSettings.model_validate({"enabled": True, "dry_run_typo": True})
+        HealthSettings.model_validate({"enabled": True, "dry_run_typo": True})
     with pytest.raises(ValueError):
-        ConciergeBudgetCaps.model_validate({"cycle_tokens": -1})
+        HealthBudgetCaps.model_validate({"cycle_tokens": -1})
 
 
 @pytest.mark.parametrize(
@@ -254,7 +254,7 @@ def test_a_request_body_with_an_unknown_key_or_a_negative_cap_is_refused() -> No
     ],
 )
 def test_a_narrowed_scope_is_told_apart(before: dict, after: dict, narrowed: bool) -> None:
-    assert scope_narrowed(ConciergeSettings(**before), ConciergeSettings(**after)) is narrowed
+    assert scope_narrowed(HealthSettings(**before), HealthSettings(**after)) is narrowed
 
 
 

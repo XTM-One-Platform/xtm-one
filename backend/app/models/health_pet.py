@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 
-class ConciergePet(Base):
+class HealthPet(Base):
     __tablename__ = "health_pets"
     __table_args__ = (UniqueConstraint("slug", name="uq_concierge_pets_slug"),)
 

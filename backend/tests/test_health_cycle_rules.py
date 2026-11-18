@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from app.services.health import fleet_seed
 from app.services.health.digest import digest_status
-from app.services.health.settings import ConciergeSettings, ConciergeSignalSettings, _read
+from app.services.health.settings import HealthSettings, HealthSignalSettings, _read
 from app.services.health.signals import (
     SignalReading,
     cost_crossed,
@@ -23,7 +23,7 @@ from app.services.health.signals import (
     feedback_crossed,
 )
 
-DEFAULTS = ConciergeSignalSettings()
+DEFAULTS = HealthSignalSettings()
 
 
 # ── Feedback drop: -10 points over 3 days, at least 10 ratings ──────────────
@@ -124,7 +124,7 @@ def test_digest_status_never_shows_a_non_success_as_completed(cycle_status, run_
 
 
 def test_settings_defaults_are_decision_b18():
-    s = ConciergeSettings()
+    s = HealthSettings()
     assert (
         s.signals.feedback_drop_points,
         s.signals.feedback_window_days,
@@ -155,7 +155,7 @@ def test_settings_defaults_are_decision_b18():
 )
 def test_settings_refuse_out_of_bounds_values(payload):
     with pytest.raises(ValidationError):
-        ConciergeSettings.model_validate(payload)
+        HealthSettings.model_validate(payload)
 
 
 def test_stored_settings_drop_a_removed_nested_key():
@@ -165,7 +165,7 @@ def test_stored_settings_drop_a_removed_nested_key():
 
 
 def test_stored_settings_that_do_not_validate_read_as_the_defaults():
-    assert _read({"enabled": True, "schedules": {"memory": "nope"}}) == ConciergeSettings()
+    assert _read({"enabled": True, "schedules": {"memory": "nope"}}) == HealthSettings()
 
 
 # ── Seeded fleet ────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
     async def turn(db, user_id, agent):
         seen.append(identity.current_concierge())
 
-    with identity.acting_as_concierge(identity.ConciergePrincipal(orchestrator.id, "orchestrator")):
+    with identity.acting_as_concierge(identity.HealthPrincipal(orchestrator.id, "orchestrator")):
         await turn(None, None, specialist)
         await turn(None, None, personal)
         after = identity.current_concierge()

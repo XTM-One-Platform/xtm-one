@@ -65,7 +65,7 @@ from app.models.health_dataset import (
     SOURCE_ASSIGNMENT_RUN,
     SOURCE_FLOW_RUN,
     SOURCE_MESSAGE,
-    ConciergeDatasetEntrySource,
+    HealthDatasetEntrySource,
 )
 from app.services.health.consent import (
     ConsentDeniedError,
@@ -505,8 +505,8 @@ async def build_dataset_from_traces(
     present = set(
         (
             await db.execute(
-                select(ConciergeDatasetEntrySource.source_kind, ConciergeDatasetEntrySource.source_id).where(
-                    ConciergeDatasetEntrySource.dataset_id == dataset.id
+                select(HealthDatasetEntrySource.source_kind, HealthDatasetEntrySource.source_id).where(
+                    HealthDatasetEntrySource.dataset_id == dataset.id
                 )
             )
         ).tuples()
@@ -570,7 +570,7 @@ async def build_dataset_from_traces(
         db.add(entry)
         await db.flush()
         db.add(
-            ConciergeDatasetEntrySource(
+            HealthDatasetEntrySource(
                 entry_id=entry.id,
                 dataset_id=dataset.id,
                 case_kind=case.case_kind,
@@ -602,8 +602,8 @@ async def entry_recordings(db: AsyncSession, entry_ids: Iterable[uuid.UUID]) -> 
         return {}
     known = {f.name for f in dataclasses.fields(RecordedCall)}
     rows = await db.execute(
-        select(ConciergeDatasetEntrySource.entry_id, ConciergeDatasetEntrySource.recorded_calls).where(
-            ConciergeDatasetEntrySource.entry_id.in_(ids)
+        select(HealthDatasetEntrySource.entry_id, HealthDatasetEntrySource.recorded_calls).where(
+            HealthDatasetEntrySource.entry_id.in_(ids)
         )
     )
     return {
@@ -696,20 +696,20 @@ async def withdraw_entries(
     matches = []
     if user_id is not None:
         matches += [
-            ConciergeDatasetEntrySource.source_user_id == user_id,
-            ConciergeDatasetEntrySource.source_rater_id == user_id,
+            HealthDatasetEntrySource.source_user_id == user_id,
+            HealthDatasetEntrySource.source_rater_id == user_id,
         ]
     if agent_id is not None:
-        matches.append(ConciergeDatasetEntrySource.source_agent_id == agent_id)
+        matches.append(HealthDatasetEntrySource.source_agent_id == agent_id)
         # A flow run whose agent node it ran: its content is in the entry.
-        matches.append(ConciergeDatasetEntrySource.source_node_agent_ids.contains([agent_id]))
+        matches.append(HealthDatasetEntrySource.source_node_agent_ids.contains([agent_id]))
     if flow_id is not None:
-        matches.append(ConciergeDatasetEntrySource.source_flow_id == flow_id)
+        matches.append(HealthDatasetEntrySource.source_flow_id == flow_id)
         # A flow run that called it: the called flow's content is in the entry.
-        matches.append(ConciergeDatasetEntrySource.source_node_flow_ids.contains([flow_id]))
+        matches.append(HealthDatasetEntrySource.source_node_flow_ids.contains([flow_id]))
     if not matches:
         return 0
-    entry_ids = list((await db.execute(select(ConciergeDatasetEntrySource.entry_id).where(or_(*matches)))).scalars())
+    entry_ids = list((await db.execute(select(HealthDatasetEntrySource.entry_id).where(or_(*matches)))).scalars())
     return await _withdraw(db, entry_ids)
 
 
@@ -721,13 +721,13 @@ async def withdraw_out_of_scope(db: AsyncSession) -> int:
     if settings.scope_mode != "selected":
         return 0
     outside = or_(
-        ConciergeDatasetEntrySource.source_agent_id.not_in(settings.scope_agent_ids or [uuid.UUID(int=0)]),
-        ConciergeDatasetEntrySource.source_flow_id.not_in(settings.scope_flow_ids or [uuid.UUID(int=0)]),
+        HealthDatasetEntrySource.source_agent_id.not_in(settings.scope_agent_ids or [uuid.UUID(int=0)]),
+        HealthDatasetEntrySource.source_flow_id.not_in(settings.scope_flow_ids or [uuid.UUID(int=0)]),
         # A flow run's agent node that left the scope takes the entry with it.
-        ~ConciergeDatasetEntrySource.source_node_agent_ids.contained_by(list(settings.scope_agent_ids)),
-        ~ConciergeDatasetEntrySource.source_node_flow_ids.contained_by(list(settings.scope_flow_ids)),
+        ~HealthDatasetEntrySource.source_node_agent_ids.contained_by(list(settings.scope_agent_ids)),
+        ~HealthDatasetEntrySource.source_node_flow_ids.contained_by(list(settings.scope_flow_ids)),
     )
-    entry_ids = list((await db.execute(select(ConciergeDatasetEntrySource.entry_id).where(outside))).scalars())
+    entry_ids = list((await db.execute(select(HealthDatasetEntrySource.entry_id).where(outside))).scalars())
     return await _withdraw(db, entry_ids)
 
 

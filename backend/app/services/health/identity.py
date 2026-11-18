@@ -60,12 +60,12 @@ CONCIERGE_ACTOR: Final = "concierge"
 #: The principal's stable id. Never a ``users`` row.
 CONCIERGE_PRINCIPAL_ID: Final[uuid.UUID] = uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
 
-ConciergeRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter"]
-CONCIERGE_ROLES: Final[frozenset[str]] = frozenset(get_args(ConciergeRole))
+HealthRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter"]
+CONCIERGE_ROLES: Final[frozenset[str]] = frozenset(get_args(HealthRole))
 
 
 @dataclass(frozen=True, slots=True)
-class ConciergePrincipal:
+class HealthPrincipal:
     """The Concierge, acting through one fleet agent.
 
     ``on_behalf_of_admin_id`` is the administrator whose chat or on-demand
@@ -79,7 +79,7 @@ class ConciergePrincipal:
     on_behalf_of_admin_id: uuid.UUID | None = None
 
 
-_CURRENT: ContextVar[ConciergePrincipal | None] = ContextVar("concierge_principal", default=None)
+_CURRENT: ContextVar[HealthPrincipal | None] = ContextVar("concierge_principal", default=None)
 # Whether a run scope is open, so a mark never outlives the run that set it.
 _RUN_SCOPE_OPEN: ContextVar[bool] = ContextVar("concierge_run_scope_open", default=False)
 
@@ -91,7 +91,7 @@ def concierge_identity_id() -> uuid.UUID:
 
 def is_concierge_identity(value: object) -> bool:
     """Whether *value* names the Concierge: a principal, or its id as UUID or string."""
-    if isinstance(value, ConciergePrincipal):
+    if isinstance(value, HealthPrincipal):
         return True
     if isinstance(value, uuid.UUID):
         return value == CONCIERGE_PRINCIPAL_ID
@@ -113,7 +113,7 @@ def is_concierge_agent(agent: Any) -> bool:
     return role in CONCIERGE_ROLES and getattr(agent, "is_company_managed", False) is True
 
 
-def concierge_principal_for(agent: Any, user: Any | None) -> ConciergePrincipal | None:
+def concierge_principal_for(agent: Any, user: Any | None) -> HealthPrincipal | None:
     """The principal a run of *agent* for *user* acts as, or ``None``.
 
     ``None`` while the flag is off, for an agent outside the fleet, and for a
@@ -122,17 +122,17 @@ def concierge_principal_for(agent: Any, user: Any | None) -> ConciergePrincipal 
     if not concierge_enabled() or not is_concierge_agent(agent):
         return None
     if user is None:
-        return ConciergePrincipal(agent_id=agent.id, role=agent.health_role)
+        return HealthPrincipal(agent_id=agent.id, role=agent.health_role)
     if getattr(user, "role", None) != "admin" or getattr(user, "is_active", True) is False:
         return None
-    return ConciergePrincipal(agent_id=agent.id, role=agent.health_role, on_behalf_of_admin_id=user.id)
+    return HealthPrincipal(agent_id=agent.id, role=agent.health_role, on_behalf_of_admin_id=user.id)
 
 
 @contextlib.contextmanager
-def acting_as_concierge(principal: ConciergePrincipal) -> Iterator[None]:
+def acting_as_concierge(principal: HealthPrincipal) -> Iterator[None]:
     """Scope in which the current work acts as *principal*."""
-    if not isinstance(principal, ConciergePrincipal):
-        raise TypeError("acting_as_concierge needs a ConciergePrincipal")
+    if not isinstance(principal, HealthPrincipal):
+        raise TypeError("acting_as_concierge needs a HealthPrincipal")
     token = _CURRENT.set(principal)
     try:
         yield
@@ -140,7 +140,7 @@ def acting_as_concierge(principal: ConciergePrincipal) -> Iterator[None]:
         _CURRENT.reset(token)
 
 
-def current_concierge() -> ConciergePrincipal | None:
+def current_concierge() -> HealthPrincipal | None:
     """The principal the current work acts as, or ``None``.
 
     Re-checks the flag: switching it off stops a run in flight from acting
@@ -218,7 +218,7 @@ def concierge_run_scope() -> Iterator[None]:
         _CURRENT.reset(principal_token)
 
 
-async def mark_concierge_run(db: AsyncSession, agent: Any, user_id: uuid.UUID | None) -> ConciergePrincipal | None:
+async def mark_concierge_run(db: AsyncSession, agent: Any, user_id: uuid.UUID | None) -> HealthPrincipal | None:
     """Mark the run in scope as the Concierge's when *agent* and *user_id* make it one.
 
     Called by the assignment engine beside ``mark_company_managed_run``. Outside

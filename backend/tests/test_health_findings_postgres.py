@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.agent import Agent
-from app.models.health_finding import STATUS_DISMISSED, STATUS_OPEN, STATUS_RESOLVED, ConciergeFinding
+from app.models.health_finding import STATUS_DISMISSED, STATUS_OPEN, STATUS_RESOLVED, HealthFinding
 from app.models.user import User
 from app.services.health.findings import Evidence, FindingError, list_findings, record_finding, window_counts
 from tests.test_provisioning_postgres import _temp_database
@@ -68,7 +68,7 @@ async def test_a_pattern_is_recorded_once_and_a_resolved_one_reopens():
         assert again.finding.suggested_experiment == "Shorten the queries."
         assert again.finding.content_evidence is True
         assert again.finding.reported_at == T0
-        assert await db.scalar(select(func.count()).select_from(ConciergeFinding)) == 1
+        assert await db.scalar(select(func.count()).select_from(HealthFinding)) == 1
 
         again.finding.status = STATUS_RESOLVED
         await db.flush()

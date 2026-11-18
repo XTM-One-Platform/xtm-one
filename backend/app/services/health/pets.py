@@ -42,7 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health_pet import ConciergePet
+from app.models.health_pet import HealthPet
 
 logger = logging.getLogger(__name__)
 
@@ -296,12 +296,12 @@ async def list_pets(db: AsyncSession) -> list[PetInfo]:
     """The built-in pets, then the uploaded ones by name."""
     rows = await db.execute(
         select(
-            ConciergePet.slug,
-            ConciergePet.display_name,
-            ConciergePet.description,
-            ConciergePet.sprite_version,
-            ConciergePet.spritesheet_sha256,
-        ).order_by(ConciergePet.display_name, ConciergePet.slug)
+            HealthPet.slug,
+            HealthPet.display_name,
+            HealthPet.description,
+            HealthPet.sprite_version,
+            HealthPet.spritesheet_sha256,
+        ).order_by(HealthPet.display_name, HealthPet.slug)
     )
     uploaded = [
         PetInfo(slug=slug, display_name=name, description=text, sprite_version=version, builtin=False, sha256=sha)
@@ -313,7 +313,7 @@ async def list_pets(db: AsyncSession) -> list[PetInfo]:
 async def pet_exists(db: AsyncSession, slug: str) -> bool:
     if slug in BUILTIN_SLUGS:
         return True
-    return (await db.execute(select(ConciergePet.id).where(ConciergePet.slug == slug))).scalar_one_or_none() is not None
+    return (await db.execute(select(HealthPet.id).where(HealthPet.slug == slug))).scalar_one_or_none() is not None
 
 
 async def load_spritesheet(db: AsyncSession, slug: str) -> tuple[bytes, str] | None:
@@ -323,17 +323,17 @@ async def load_spritesheet(db: AsyncSession, slug: str) -> tuple[bytes, str] | N
         return sheet, hashlib.sha256(sheet).hexdigest()
     row = (
         await db.execute(
-            select(ConciergePet.spritesheet, ConciergePet.spritesheet_sha256).where(ConciergePet.slug == slug)
+            select(HealthPet.spritesheet, HealthPet.spritesheet_sha256).where(HealthPet.slug == slug)
         )
     ).first()
     return (row[0], row[1]) if row is not None else None
 
 
-async def add_pet(db: AsyncSession, parsed: ParsedPet, *, actor_id) -> ConciergePet:
+async def add_pet(db: AsyncSession, parsed: ParsedPet, *, actor_id) -> HealthPet:
     """Store *parsed* in the library. Flushed, not committed; ``slug_taken`` when its id is in use."""
     if await pet_exists(db, parsed.manifest.id):
         raise PetPackageError("slug_taken", parsed.manifest.id)
-    pet = ConciergePet(
+    pet = HealthPet(
         slug=parsed.manifest.id,
         display_name=parsed.manifest.display_name,
         description=parsed.manifest.description,
@@ -352,9 +352,9 @@ async def add_pet(db: AsyncSession, parsed: ParsedPet, *, actor_id) -> Concierge
     return pet
 
 
-async def remove_pet(db: AsyncSession, slug: str) -> ConciergePet | None:
+async def remove_pet(db: AsyncSession, slug: str) -> HealthPet | None:
     """Delete the uploaded pet *slug*; ``None`` when there is none (a built-in is never one). Flushed."""
-    pet = (await db.execute(select(ConciergePet).where(ConciergePet.slug == slug))).scalar_one_or_none()
+    pet = (await db.execute(select(HealthPet).where(HealthPet.slug == slug))).scalar_one_or_none()
     if pet is not None:
         await db.delete(pet)
         await db.flush()

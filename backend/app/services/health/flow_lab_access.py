@@ -395,9 +395,9 @@ async def copy_subject(db: AsyncSession, copy: Any) -> tuple[str, uuid.UUID] | N
     basis = basis_agent_of(copy.created_for)
     created_for = copy.created_for or ""
     if basis is None and created_for.startswith(EXPERIMENT_COPY_PREFIX):
-        from app.models.health_experiment import ConciergeExperiment
+        from app.models.health_experiment import HealthExperiment
 
         experiment_id = parse_id(created_for.removeprefix(EXPERIMENT_COPY_PREFIX))
-        experiment = await db.get(ConciergeExperiment, experiment_id) if experiment_id else None
+        experiment = await db.get(HealthExperiment, experiment_id) if experiment_id else None
         basis = experiment.subject_agent_id if experiment is not None else None
     return ("agent", basis) if basis is not None else None

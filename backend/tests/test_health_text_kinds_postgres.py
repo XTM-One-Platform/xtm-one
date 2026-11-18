@@ -16,7 +16,7 @@ from app.models.health_experiment import (
     STATUS_RUNNING,
     STATUS_SKIPPED,
     STATUS_STALE,
-    ConciergeExperiment,
+    HealthExperiment,
 )
 from app.services.health import (
     experiments,
@@ -115,7 +115,7 @@ async def test_an_assignment_prompt_variant_is_not_measured_yet(monkeypatch):
         await run_experiment(db, agent, experiment)
         assert (experiment.status, experiment.status_reason) == (STATUS_SKIPPED, "evaluation_unavailable")
         assert "launch" not in deps.calls
-        rows = (await db.execute(select(ConciergeExperiment))).scalars().all()
+        rows = (await db.execute(select(HealthExperiment))).scalars().all()
         assert [r.id for r in rows] == [experiment.id]
 
 

@@ -53,10 +53,10 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health import ConciergeBudgetMonth, ConciergeBudgetWork, ConciergeCycle
+from app.models.health import HealthBudgetMonth, HealthBudgetWork, HealthCycle
 from app.services.health.availability import concierge_active
 from app.services.health.identity import CONCIERGE_ROLES
-from app.services.health.settings import ConciergeBudgetCaps, load_concierge_settings
+from app.services.health.settings import HealthBudgetCaps, load_concierge_settings
 
 logger = logging.getLogger(__name__)
 
@@ -179,30 +179,30 @@ async def _gate(db: AsyncSession) -> BudgetRefusalCode | None:
     return verdict.refusal if verdict.refusal in REFUSAL_MESSAGES else "ai_disabled"
 
 
-async def _month_row(db: AsyncSession, month: str) -> ConciergeBudgetMonth | None:
+async def _month_row(db: AsyncSession, month: str) -> HealthBudgetMonth | None:
     """The month's row as it is, ``None`` before its first reservation. Reads only."""
-    query = select(ConciergeBudgetMonth).where(ConciergeBudgetMonth.month == month)
+    query = select(HealthBudgetMonth).where(HealthBudgetMonth.month == month)
     return (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
 
 
-async def _locked_month(db: AsyncSession, month: str) -> ConciergeBudgetMonth:
+async def _locked_month(db: AsyncSession, month: str) -> HealthBudgetMonth:
     """The month's row, created when missing, locked for the transaction: what every write locks first."""
-    await db.execute(pg_insert(ConciergeBudgetMonth).values(month=month).on_conflict_do_nothing())
-    query = select(ConciergeBudgetMonth).where(ConciergeBudgetMonth.month == month).with_for_update()
+    await db.execute(pg_insert(HealthBudgetMonth).values(month=month).on_conflict_do_nothing())
+    query = select(HealthBudgetMonth).where(HealthBudgetMonth.month == month).with_for_update()
     return (await db.execute(query.execution_options(populate_existing=True))).scalar_one()
 
 
-async def _cycle_row(db: AsyncSession, cycle_id: uuid.UUID, *, lock: bool) -> ConciergeCycle | None:
-    query = select(ConciergeCycle).where(ConciergeCycle.id == cycle_id)
+async def _cycle_row(db: AsyncSession, cycle_id: uuid.UUID, *, lock: bool) -> HealthCycle | None:
+    query = select(HealthCycle).where(HealthCycle.id == cycle_id)
     if lock:
         query = query.with_for_update()
     return (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
 
 
 def _cap_refusal(
-    caps: ConciergeBudgetCaps,
-    month: ConciergeBudgetMonth | None,
-    cycle: ConciergeCycle | None,
+    caps: HealthBudgetCaps,
+    month: HealthBudgetMonth | None,
+    cycle: HealthCycle | None,
     *,
     tokens: int = 0,
     cost: Decimal = Decimal(0),
@@ -264,7 +264,7 @@ async def open_cycle(
     refusal = await budget_refusal(db)
     if refusal is not None:
         raise BudgetRefusedError(refusal)
-    cycle = ConciergeCycle(
+    cycle = HealthCycle(
         specialist=specialist,
         trigger=trigger,
         target_type=target_type,
@@ -307,13 +307,13 @@ async def reserve(
     cycle.reserved_cost_usd += cost
     if hold is not None:
         db.add(
-            ConciergeBudgetWork(kind=hold[0], ref_id=hold[1], cycle_id=cycle_id, held_tokens=tokens, held_cost_usd=cost)
+            HealthBudgetWork(kind=hold[0], ref_id=hold[1], cycle_id=cycle_id, held_tokens=tokens, held_cost_usd=cost)
         )
     await db.flush()
     return Reservation(cycle_id=cycle_id, tokens=tokens, cost_usd=cost, hold=hold)
 
 
-def _unreserve(month: ConciergeBudgetMonth, cycle: ConciergeCycle, tokens: int, cost: Decimal) -> None:
+def _unreserve(month: HealthBudgetMonth, cycle: HealthCycle, tokens: int, cost: Decimal) -> None:
     """Give back what *cycle* still holds of a reservation, from the cycle and the month alike.
 
     Never more than the cycle holds: a cycle closed meanwhile already gave its
@@ -326,7 +326,7 @@ def _unreserve(month: ConciergeBudgetMonth, cycle: ConciergeCycle, tokens: int, 
         row.reserved_cost_usd = max(row.reserved_cost_usd - cost, Decimal(0))
 
 
-async def _locked_pair(db: AsyncSession, cycle_id: uuid.UUID) -> tuple[ConciergeBudgetMonth, ConciergeCycle]:
+async def _locked_pair(db: AsyncSession, cycle_id: uuid.UUID) -> tuple[HealthBudgetMonth, HealthCycle]:
     peek = await _cycle_row(db, cycle_id, lock=False)
     if peek is None:
         raise ValueError(f"no Concierge cycle {cycle_id}")
@@ -337,8 +337,8 @@ async def _locked_pair(db: AsyncSession, cycle_id: uuid.UUID) -> tuple[Concierge
     return month, cycle
 
 
-async def _work_row(db: AsyncSession, ref: WorkRef) -> ConciergeBudgetWork | None:
-    query = select(ConciergeBudgetWork).where(ConciergeBudgetWork.kind == ref[0], ConciergeBudgetWork.ref_id == ref[1])
+async def _work_row(db: AsyncSession, ref: WorkRef) -> HealthBudgetWork | None:
+    query = select(HealthBudgetWork).where(HealthBudgetWork.kind == ref[0], HealthBudgetWork.ref_id == ref[1])
     return (await db.execute(query.with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
 
 
@@ -372,7 +372,7 @@ async def charge(
         row.spent_cost_usd += cost
     if ref is not None:
         if work is None:
-            work = ConciergeBudgetWork(kind=ref[0], ref_id=ref[1], cycle_id=cycle_id)
+            work = HealthBudgetWork(kind=ref[0], ref_id=ref[1], cycle_id=cycle_id)
             db.add(work)
         work.held_tokens, work.held_cost_usd, work.charged_at = 0, Decimal(0), datetime.now(UTC)
     await db.flush()
@@ -392,10 +392,10 @@ async def charged_refs(db: AsyncSession, kind: str, ref_ids: list[uuid.UUID]) ->
     """Which of *ref_ids* (work of *kind*) already had their spend charged."""
     if not ref_ids:
         return set()
-    query = select(ConciergeBudgetWork.ref_id).where(
-        ConciergeBudgetWork.kind == kind,
-        ConciergeBudgetWork.ref_id.in_(ref_ids),
-        ConciergeBudgetWork.charged_at.is_not(None),
+    query = select(HealthBudgetWork.ref_id).where(
+        HealthBudgetWork.kind == kind,
+        HealthBudgetWork.ref_id.in_(ref_ids),
+        HealthBudgetWork.charged_at.is_not(None),
     )
     return set((await db.execute(query)).scalars())
 
@@ -404,9 +404,9 @@ async def held_reservations(db: AsyncSession, kind: str, *, limit: int = 100) ->
     """The reservations work of *kind* still holds (not charged yet), oldest first."""
     rows = (
         await db.execute(
-            select(ConciergeBudgetWork)
-            .where(ConciergeBudgetWork.kind == kind, ConciergeBudgetWork.charged_at.is_(None))
-            .order_by(ConciergeBudgetWork.created_at)
+            select(HealthBudgetWork)
+            .where(HealthBudgetWork.kind == kind, HealthBudgetWork.charged_at.is_(None))
+            .order_by(HealthBudgetWork.created_at)
             .limit(limit)
         )
     ).scalars()
@@ -448,9 +448,9 @@ async def close_cycle(db: AsyncSession, cycle_id: uuid.UUID, *, status: CycleEnd
     held_tokens, held_cost = (
         await db.execute(
             select(
-                func.coalesce(func.sum(ConciergeBudgetWork.held_tokens), 0),
-                func.coalesce(func.sum(ConciergeBudgetWork.held_cost_usd), 0),
-            ).where(ConciergeBudgetWork.cycle_id == cycle_id, ConciergeBudgetWork.charged_at.is_(None))
+                func.coalesce(func.sum(HealthBudgetWork.held_tokens), 0),
+                func.coalesce(func.sum(HealthBudgetWork.held_cost_usd), 0),
+            ).where(HealthBudgetWork.cycle_id == cycle_id, HealthBudgetWork.charged_at.is_(None))
         )
     ).one()
     _unreserve(
@@ -469,11 +469,7 @@ async def close_stale_cycles(db: AsyncSession, *, older_than: timedelta) -> int:
     """Close every cycle still open after *older_than* (its work died). Flushed; the count."""
     cutoff = datetime.now(UTC) - older_than
     stale = (
-        (
-            await db.execute(
-                select(ConciergeCycle.id).where(ConciergeCycle.status == "open", ConciergeCycle.opened_at < cutoff)
-            )
-        )
+        (await db.execute(select(HealthCycle.id).where(HealthCycle.status == "open", HealthCycle.opened_at < cutoff)))
         .scalars()
         .all()
     )

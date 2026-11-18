@@ -4,9 +4,9 @@
 
 Level 1's ``concierge_cycles`` is the budget unit; these tables hold what
 level 8 adds around it: the run a cycle started and its digest
-(:class:`ConciergeCycleRun`), the edge-triggered state of every signal
-(:class:`ConciergeSignalState`) and when each fleet-wide schedule last fired
-(:class:`ConciergeScheduleMark`). Read and written only by
+(:class:`HealthCycleRun`), the edge-triggered state of every signal
+(:class:`HealthSignalState`) and when each fleet-wide schedule last fired
+(:class:`HealthScheduleMark`). Read and written only by
 ``services/health/cycles.py``, ``signals.py`` and ``digest.py``.
 """
 
@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 
-class ConciergeCycleRun(Base):
+class HealthCycleRun(Base):
     """The assignment run a cycle started, who asked for it, and its digest."""
 
     __tablename__ = "health_cycle_runs"
@@ -52,7 +52,7 @@ class ConciergeCycleRun(Base):
     )
 
 
-class ConciergeSignalState(Base):
+class HealthSignalState(Base):
     """One signal on one target: whether it is crossed, and what it last read.
 
     Signals are edge-triggered: a crossing (``active`` false -> true) starts a
@@ -84,7 +84,7 @@ class ConciergeSignalState(Base):
     )
 
 
-class ConciergeScheduleMark(Base):
+class HealthScheduleMark(Base):
     """When a fleet-wide schedule last fired, and what came of it."""
 
     __tablename__ = "health_schedule_marks"

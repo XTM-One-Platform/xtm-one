@@ -29,7 +29,7 @@ async def test_the_tools_refuse_anything_but_a_concierge_run(monkeypatch) -> Non
     async with pass_world(monkeypatch) as world:
         await seed_owner_lane(world)
         _defs, executor = build_memory_steward_tools()
-        principal = identity.ConciergePrincipal(agent_id=world.agent, role="memory_steward")
+        principal = identity.HealthPrincipal(agent_id=world.agent, role="memory_steward")
 
         for inside, flag in ((False, True), (True, False)):
             monkeypatch.setattr(identity, "concierge_enabled", lambda flag=flag: flag)
@@ -55,7 +55,7 @@ async def test_a_concierge_run_lists_passes_and_counts_without_content(monkeypat
         await seed_owner_lane(world)
         world.readable.discard((world.agent, world.other))
         _defs, executor = build_memory_steward_tools()
-        principal = identity.ConciergePrincipal(agent_id=world.agent, role="memory_steward")
+        principal = identity.HealthPrincipal(agent_id=world.agent, role="memory_steward")
         lane = {"agent_id": str(world.agent), "user_id": str(world.owner)}
 
         with identity.acting_as_concierge(principal):

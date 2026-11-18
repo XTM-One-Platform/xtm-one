@@ -245,7 +245,7 @@ async def quality_signals(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """The signals of *access*'s agent over the last *days* and the *days* before."""
-    from app.models.health_finding import STATUS_DISMISSED, STATUS_RESOLVED, ConciergeFinding
+    from app.models.health_finding import STATUS_DISMISSED, STATUS_RESOLVED, HealthFinding
 
     days = max(1, min(int(days or DEFAULT_PERIOD_DAYS), MAX_PERIOD_DAYS))
     now = now or datetime.now(UTC)
@@ -287,13 +287,13 @@ async def quality_signals(
     findings = (
         (
             await db.execute(
-                select(ConciergeFinding)
+                select(HealthFinding)
                 .where(
-                    ConciergeFinding.target_type == "agent",
-                    ConciergeFinding.target_id == agent.id,
-                    ConciergeFinding.status.not_in((STATUS_RESOLVED, STATUS_DISMISSED)),
+                    HealthFinding.target_type == "agent",
+                    HealthFinding.target_id == agent.id,
+                    HealthFinding.status.not_in((STATUS_RESOLVED, STATUS_DISMISSED)),
                 )
-                .order_by(ConciergeFinding.last_seen_at.desc())
+                .order_by(HealthFinding.last_seen_at.desc())
                 .limit(20)
             )
         )

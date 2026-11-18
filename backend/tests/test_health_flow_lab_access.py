@@ -9,10 +9,10 @@ async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch)
     """Only the principal's own agent is the Concierge; a sandbox copy's turn or a consulted agent is not."""
     from app.services.health import identity
     from app.services.health.flow_lab_access import resolve_caller
-    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health.identity import HealthPrincipal, acting_as_concierge
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
-    principal = ConciergePrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
+    principal = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
     with acting_as_concierge(principal):
         caller = await resolve_caller(None, None, agent_id=str(principal.agent_id))
         assert caller is not None and caller.concierge is principal

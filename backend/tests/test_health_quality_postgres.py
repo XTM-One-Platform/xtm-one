@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 import app.core.database as database
 from app.models.agent import Agent
 from app.models.group import Group, GroupMember
-from app.models.health_finding import ConciergeFinding
+from app.models.health_finding import HealthFinding
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.services.builtin_tools.health_experiments import build_concierge_experiment_tools
@@ -35,7 +35,7 @@ from app.services.builtin_tools.health_quality import build_concierge_diagnosis_
 from app.services.health import availability
 from app.services.health.access import NOT_IN_REACH, WRITE_REFUSED
 from app.services.health.findings import Evidence, record_finding
-from app.services.health.identity import ConciergePrincipal, acting_as_concierge, current_concierge
+from app.services.health.identity import HealthPrincipal, acting_as_concierge, current_concierge
 from app.tools.base import ToolCall
 from tests.test_provisioning_postgres import _temp_database
 
@@ -189,7 +189,7 @@ def _parsed(text: str) -> dict:
 
 
 def _as(agent: Agent, role: str):
-    return acting_as_concierge(ConciergePrincipal(agent_id=agent.id, role=role))
+    return acting_as_concierge(HealthPrincipal(agent_id=agent.id, role=role))
 
 
 @pytest.mark.asyncio
@@ -322,7 +322,7 @@ async def test_a_person_never_writes_admin_included(monkeypatch, name, arguments
                 args["experiment_id"] = str(uuid.uuid4())
             assert await _call(str(user.id), name, **args) == WRITE_REFUSED
         async with sessions() as db:
-            assert await db.scalar(select(func.count()).select_from(ConciergeFinding)) == 2
+            assert await db.scalar(select(func.count()).select_from(HealthFinding)) == 2
 
 
 @pytest.mark.asyncio
@@ -340,7 +340,7 @@ async def _drafted(sessions, world: World) -> uuid.UUID:
     from app.services.health import experiments, text_kinds  # noqa: F401 - registers the text kinds
 
     async with sessions() as db:
-        finding = await db.get(ConciergeFinding, world.finding_id)
+        finding = await db.get(HealthFinding, world.finding_id)
         experiment, _ = await experiments.draft(
             db,
             finding=finding,
@@ -450,7 +450,7 @@ async def test_a_finding_recorded_with_content_access_is_content_whatever_it_cit
                 )
             )
         async with sessions() as db:
-            row = await db.get(ConciergeFinding, uuid.UUID(recorded["finding_id"]))
+            row = await db.get(HealthFinding, uuid.UUID(recorded["finding_id"]))
             assert (row.content_evidence, row.evidence["trace_ids"], row.evidence["rating_ids"]) == (True, [], [])
 
 

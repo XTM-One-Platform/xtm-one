@@ -40,8 +40,8 @@ from typing import Any, Final
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health import ConciergeCycle
-from app.models.health_cycle import ConciergeCycleRun
+from app.models.health import HealthCycle
+from app.models.health_cycle import HealthCycleRun
 
 logger = logging.getLogger(__name__)
 
@@ -207,13 +207,13 @@ def digest_status(cycle_status: str, run_status: str | None, skipped: list[dict]
     return "partial" if skipped else "completed"
 
 
-async def build_digest(db: AsyncSession, cycle: ConciergeCycle) -> CycleDigest:
+async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
     """Build and store the digest of a closed *cycle*. Flushed, not committed."""
     from app.models.assignment import AssignmentRun
     from app.services.health.fleet_seed import fleet_agent_ids
     from app.services.health.settings import load_concierge_settings
 
-    record = await db.get(ConciergeCycleRun, cycle.id)
+    record = await db.get(HealthCycleRun, cycle.id)
     run = await db.get(AssignmentRun, record.run_id) if record is not None and record.run_id else None
     until = cycle.closed_at or datetime.now(UTC)
     window = Window(
@@ -269,7 +269,7 @@ async def build_digest(db: AsyncSession, cycle: ConciergeCycle) -> CycleDigest:
         digest.narrative = run.result_summary[:NARRATIVE_MAX_CHARS]
 
     if record is None:
-        record = ConciergeCycleRun(cycle_id=cycle.id, target_type=cycle.target_type, target_id=cycle.target_id)
+        record = HealthCycleRun(cycle_id=cycle.id, target_type=cycle.target_type, target_id=cycle.target_id)
         db.add(record)
     record.digest = asdict(digest)
     record.digest_built_at = datetime.now(UTC)

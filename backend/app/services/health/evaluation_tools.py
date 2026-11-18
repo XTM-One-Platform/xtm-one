@@ -189,7 +189,7 @@ def build_concierge_evaluation_tools(
         except budget.BudgetRefusedError as exc:
             await db.rollback()
             return f"Not launched: {exc.message}"
-        except evaluations.ConciergeEvaluationError as exc:
+        except evaluations.HealthEvaluationError as exc:
             await db.rollback()
             logger.info("run_concierge_evaluation refused: %s", exc)
             return REFUSED
@@ -210,7 +210,7 @@ def build_concierge_evaluation_tools(
             return REFUSED
         try:
             runs = await evaluations.concierge_evaluation_runs(db, evaluation)
-        except evaluations.ConciergeEvaluationError:
+        except evaluations.HealthEvaluationError:
             return REFUSED
         return json.dumps(
             {
@@ -244,7 +244,7 @@ def build_concierge_evaluation_tools(
             comparison = await evaluations.compare_concierge_runs(
                 db, baseline_run_id=baseline, candidate_run_id=candidate
             )
-        except evaluations.ConciergeEvaluationError:
+        except evaluations.HealthEvaluationError:
             return REFUSED
         return json.dumps(comparison.to_dict())
 

@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.models.audit_log import AuditLog
 from app.services.health.availability import concierge_active
 from app.services.health.identity import concierge_run_scope, current_concierge, mark_concierge_run
-from app.services.health.settings import ConciergeSettings, load_concierge_settings
+from app.services.health.settings import HealthSettings, load_concierge_settings
 from tests.health_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration
@@ -32,7 +32,7 @@ async def test_settings_are_saved_audited_and_switch_the_concierge_on(monkeypatc
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
-            assert await load_concierge_settings(db) == ConciergeSettings()
+            assert await load_concierge_settings(db) == HealthSettings()
             assert await concierge_active(db) is False
         await configure(sessions, world.admin, enabled=True, scope_mode="selected", scope_agent_ids=[world.private.id])
         async with sessions() as db:

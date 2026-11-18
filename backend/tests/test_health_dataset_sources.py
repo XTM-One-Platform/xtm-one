@@ -12,7 +12,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import func, select
 
-from app.models.health_dataset import CASE_TO_FIX, SOURCE_FLOW_RUN, ConciergeDatasetEntrySource
+from app.models.health_dataset import CASE_TO_FIX, SOURCE_FLOW_RUN, HealthDatasetEntrySource
 
 pytestmark = pytest.mark.integration
 
@@ -27,7 +27,7 @@ async def _entry(s, dataset, position):
 
 
 def _source(entry, source_id, **overrides):
-    return ConciergeDatasetEntrySource(
+    return HealthDatasetEntrySource(
         entry_id=entry.id,
         dataset_id=entry.dataset_id,
         case_kind=overrides.pop("case_kind", CASE_TO_FIX),
@@ -88,6 +88,6 @@ async def test_a_source_is_added_once_per_dataset_and_goes_with_its_entry():
                 await s.flush()
         await s.execute(sa.delete(DatasetEntry).where(DatasetEntry.id == first_id))
         await s.commit()
-        left = await s.scalar(select(func.count()).select_from(ConciergeDatasetEntrySource))
+        left = await s.scalar(select(func.count()).select_from(HealthDatasetEntrySource))
 
     assert left == 0

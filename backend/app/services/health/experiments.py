@@ -60,14 +60,14 @@ from app.models.health_experiment import (
     STATUS_RUNNING,
     STATUS_SKIPPED,
     STATUS_STALE,
-    ConciergeExperiment,
+    HealthExperiment,
 )
 from app.models.health_finding import (
     STATUS_DISMISSED,
     STATUS_EXPERIMENTING,
     STATUS_PROPOSED,
     STATUS_RESOLVED,
-    ConciergeFinding,
+    HealthFinding,
 )
 from app.services.health import quality_deps as deps
 from app.services.health.flow_lab_access import EXPERIMENT_COPY_PREFIX
@@ -131,26 +131,26 @@ class ExperimentKind(Protocol):
     """
 
     async def prepare_draft(
-        self, db: AsyncSession, *, finding: ConciergeFinding, target_id: uuid.UUID, payload: dict[str, Any]
+        self, db: AsyncSession, *, finding: HealthFinding, target_id: uuid.UUID, payload: dict[str, Any]
     ) -> DraftSpec:
         """Check a draft request for *finding* and read the base it changes; ``ExperimentError`` / ``VariantError``."""
         ...
 
-    async def check_stale(self, db: AsyncSession, experiment: ConciergeExperiment) -> bool:
+    async def check_stale(self, db: AsyncSession, experiment: HealthExperiment) -> bool:
         """Whether the target no longer holds the base the variant was drafted on."""
         ...
 
-    async def dataset_target(self, db: AsyncSession, experiment: ConciergeExperiment) -> tuple[str, uuid.UUID] | None:
+    async def dataset_target(self, db: AsyncSession, experiment: HealthExperiment) -> tuple[str, uuid.UUID] | None:
         """``(target_type, target_id)`` level 4 builds the dataset from; ``None``: not measurable yet."""
         ...
 
     async def subjects(
-        self, db: AsyncSession, experiment: ConciergeExperiment, *, created_for: str, author_agent_id: uuid.UUID | None
+        self, db: AsyncSession, experiment: HealthExperiment, *, created_for: str, author_agent_id: uuid.UUID | None
     ) -> tuple[deps.Subject, deps.Subject]:
         """The baseline and variant arms, as sandbox subjects (level 2): never a production row."""
         ...
 
-    def proposal_content(self, experiment: ConciergeExperiment) -> dict[str, Any]:
+    def proposal_content(self, experiment: HealthExperiment) -> dict[str, Any]:
         """``base_content`` / ``proposed_content`` / ``change`` of the proposal (level 3's ``ProposalSpec``)."""
         ...
 
@@ -178,12 +178,12 @@ def experiment_kind(change_type: str) -> ExperimentKind:
 async def draft(
     db: AsyncSession,
     *,
-    finding: ConciergeFinding,
+    finding: HealthFinding,
     change_type: str,
     target_id: uuid.UUID,
     payload: dict[str, Any],
     author_agent_id: uuid.UUID | None,
-) -> tuple[ConciergeExperiment, bool]:
+) -> tuple[HealthExperiment, bool]:
     """Store a checked variant for *finding* (the caller commits): ``(experiment, created)``.
 
     *payload* is the kind's: ``{"text", "summary"}`` for a text variant. An
@@ -194,16 +194,16 @@ async def draft(
         raise ExperimentError("This finding is closed: record it again if the pattern is back.")
     spec = await experiment_kind(change_type).prepare_draft(db, finding=finding, target_id=target_id, payload=payload)
     existing = await db.scalar(
-        select(ConciergeExperiment).where(
-            ConciergeExperiment.finding_id == finding.id,
-            ConciergeExperiment.change_type == change_type,
-            ConciergeExperiment.target_id == target_id,
-            ConciergeExperiment.status.in_(OPEN_STATUSES),
+        select(HealthExperiment).where(
+            HealthExperiment.finding_id == finding.id,
+            HealthExperiment.change_type == change_type,
+            HealthExperiment.target_id == target_id,
+            HealthExperiment.status.in_(OPEN_STATUSES),
         )
     )
     if existing is not None:
         return existing, False
-    experiment = ConciergeExperiment(
+    experiment = HealthExperiment(
         finding_id=finding.id,
         change_type=change_type,
         target_type=spec.target_type,
@@ -290,7 +290,7 @@ def size_to_budget(
 # ── Run ──────────────────────────────────────────────────────────────────────
 
 
-def _skip(experiment: ConciergeExperiment, reason: str) -> ConciergeExperiment:
+def _skip(experiment: HealthExperiment, reason: str) -> HealthExperiment:
     experiment.status = STATUS_SKIPPED
     experiment.status_reason = reason
     experiment.completed_at = datetime.now(UTC)
@@ -300,13 +300,13 @@ def _skip(experiment: ConciergeExperiment, reason: str) -> ConciergeExperiment:
 async def run(
     db: AsyncSession,
     *,
-    experiment: ConciergeExperiment,
+    experiment: HealthExperiment,
     content_readable: bool,
     signals: dict[str, Any],
     requested_cases: int,
     author_agent_id: uuid.UUID | None,
     cycle_id: uuid.UUID | None = None,
-) -> ConciergeExperiment:
+) -> HealthExperiment:
     """Launch *experiment* (a draft) or say why it is not launched (the caller commits;
     level 4 commits the launch itself).
 
@@ -396,7 +396,7 @@ async def run(
 # ── Settle ───────────────────────────────────────────────────────────────────
 
 
-async def settle(db: AsyncSession, experiment: ConciergeExperiment) -> ConciergeExperiment:
+async def settle(db: AsyncSession, experiment: HealthExperiment) -> HealthExperiment:
     """Record the measurement of a running experiment whose arms ended (the caller commits)."""
     if experiment.status != STATUS_RUNNING:
         return experiment
@@ -458,9 +458,9 @@ async def settle_running_experiments(db: AsyncSession, *, limit: int = 50) -> in
     running = (
         (
             await db.execute(
-                select(ConciergeExperiment)
-                .where(ConciergeExperiment.status == STATUS_RUNNING)
-                .order_by(ConciergeExperiment.launched_at)
+                select(HealthExperiment)
+                .where(HealthExperiment.status == STATUS_RUNNING)
+                .order_by(HealthExperiment.launched_at)
                 .limit(limit)
             )
         )
@@ -478,7 +478,7 @@ async def settle_running_experiments(db: AsyncSession, *, limit: int = 50) -> in
 # ── File ─────────────────────────────────────────────────────────────────────
 
 
-def filing_verdict(experiment: ConciergeExperiment) -> tuple[str | None, str | None]:
+def filing_verdict(experiment: HealthExperiment) -> tuple[str | None, str | None]:
     """``(experiment_verdict, refusal)`` for filing *experiment* (pure: unit-tested).
 
     A completed experiment files its measured verdict when it earned it:
@@ -521,8 +521,8 @@ def filing_verdict(experiment: ConciergeExperiment) -> tuple[str | None, str | N
 async def propose(
     db: AsyncSession,
     *,
-    experiment: ConciergeExperiment,
-    finding: ConciergeFinding,
+    experiment: HealthExperiment,
+    finding: HealthFinding,
     author_agent: Agent,
     content_readable: bool = True,
     evidence: dict[str, Any] | None = None,
@@ -610,7 +610,7 @@ async def propose(
     return proposal_id, created
 
 
-def experiment_payload(experiment: ConciergeExperiment, *, content: bool = True) -> dict[str, Any]:
+def experiment_payload(experiment: HealthExperiment, *, content: bool = True) -> dict[str, Any]:
     """One experiment as the tools serve it. The variant text is the Concierge's own; no source content.
 
     Without *content* access its summary, written from the finding's evidence,
@@ -655,10 +655,10 @@ async def status_counts(
     folded into ``completed``.
     """
     until = until or datetime.now(UTC)
-    query = select(ConciergeExperiment.status, func.count()).where(
-        ConciergeExperiment.created_at >= since, ConciergeExperiment.created_at < until
+    query = select(HealthExperiment.status, func.count()).where(
+        HealthExperiment.created_at >= since, HealthExperiment.created_at < until
     )
     if target is not None:
-        query = query.where(ConciergeExperiment.target_type == target[0], ConciergeExperiment.target_id == target[1])
-    rows = (await db.execute(query.group_by(ConciergeExperiment.status))).all()
+        query = query.where(HealthExperiment.target_type == target[0], HealthExperiment.target_id == target[1])
+    rows = (await db.execute(query.group_by(HealthExperiment.status))).all()
     return {status: int(count) for status, count in rows}

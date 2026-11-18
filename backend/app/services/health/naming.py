@@ -14,7 +14,7 @@
 """The name Platform Health goes by with people (#8261, #101).
 
 An administrator may still name it in Settings > Automations > Platform Health
-(``ConciergeSettings.name``) until the S1 migration drops the setting; left
+(``HealthSettings.name``) until the S1 migration drops the setting; left
 empty, the name is "Platform Health" in every platform mode (#101, decided
 18 Nov 2026: no mode-specific name). The name is what people read: the
 Health page, the inbox, the entry points, the refusals the REST API sends,
@@ -38,7 +38,7 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.settings import ConciergeSettings, load_concierge_settings
+from app.services.health.settings import HealthSettings, load_concierge_settings
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def default_concierge_name() -> str:
     return DEFAULT_NAME
 
 
-def concierge_name(value: ConciergeSettings) -> str:
+def concierge_name(value: HealthSettings) -> str:
     """The name *value* gives, its default when it gives none."""
     return value.name or default_concierge_name()
 

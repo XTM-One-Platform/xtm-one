@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.models.health_dataset import CASE_NON_REGRESSION, CASE_TO_FIX, ConciergeDatasetEntrySource
+from app.models.health_dataset import CASE_NON_REGRESSION, CASE_TO_FIX, HealthDatasetEntrySource
 from app.services.health.datasets import WITHDRAWN_RUN_ERROR, DatasetBuildError, _Case, _judge_instructions
 
 pytestmark = pytest.mark.integration
@@ -117,7 +117,7 @@ async def _world(s):
 
 
 async def _sources(s):
-    return (await s.execute(select(ConciergeDatasetEntrySource))).scalars().all()
+    return (await s.execute(select(HealthDatasetEntrySource))).scalars().all()
 
 
 @pytest.mark.usefixtures("concierge_on")
@@ -474,7 +474,7 @@ async def _flow_entries(s, flow_id, node_agents):
         s.add(entry)
         await s.flush()
         s.add(
-            ConciergeDatasetEntrySource(
+            HealthDatasetEntrySource(
                 entry_id=entry.id,
                 dataset_id=dataset.id,
                 case_kind=CASE_NON_REGRESSION,

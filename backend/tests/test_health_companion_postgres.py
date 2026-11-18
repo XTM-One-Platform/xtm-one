@@ -31,8 +31,8 @@ from app.api.v1 import platform_health_companion as routes
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.assignment import Assignment, AssignmentRun
-from app.models.health import ConciergeCycle
-from app.models.health_cycle import ConciergeCycleRun
+from app.models.health import HealthCycle
+from app.models.health_cycle import HealthCycleRun
 from app.models.improvement_proposal import ImprovementProposal
 from app.models.user import User
 from tests.health_support import World, concierge_database
@@ -140,7 +140,7 @@ async def test_every_companion_route_is_served_without_any_flag(monkeypatch) -> 
 
 
 async def _cycle(db, *, status: str, requested_by: uuid.UUID | None, closed_ago: timedelta | None = None) -> None:
-    cycle = ConciergeCycle(
+    cycle = HealthCycle(
         id=uuid.uuid4(),
         specialist="orchestrator",
         trigger="on_demand",
@@ -150,7 +150,7 @@ async def _cycle(db, *, status: str, requested_by: uuid.UUID | None, closed_ago:
     )
     db.add(cycle)
     await db.flush()
-    db.add(ConciergeCycleRun(cycle_id=cycle.id, requested_by_user_id=requested_by))
+    db.add(HealthCycleRun(cycle_id=cycle.id, requested_by_user_id=requested_by))
 
 
 async def _run(db, world: World, user: User, status: str) -> None:

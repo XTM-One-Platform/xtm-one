@@ -47,7 +47,7 @@ from app.models.health_finding import (
     STATUS_OPEN,
     STATUS_RESOLVED,
     TARGET_TYPES,
-    ConciergeFinding,
+    HealthFinding,
 )
 
 if TYPE_CHECKING:
@@ -93,7 +93,7 @@ class Evidence:
 
 @dataclass(frozen=True, slots=True)
 class RecordResult:
-    finding: ConciergeFinding
+    finding: HealthFinding
     #: First time this pattern is recorded, or a resolved one recurring.
     new: bool
     reopened: bool
@@ -202,7 +202,7 @@ async def record_finding(
         raise FindingError("hypothesis must state what explains the pattern.")
 
     inserted = await db.execute(
-        insert(ConciergeFinding)
+        insert(HealthFinding)
         .values(
             id=uuid.uuid4(),
             target_type=target_type,
@@ -222,14 +222,14 @@ async def record_finding(
             reported_at=now,
             updated_at=now,
         )
-        .on_conflict_do_nothing(index_elements=[ConciergeFinding.fingerprint])
-        .returning(ConciergeFinding.id)
+        .on_conflict_do_nothing(index_elements=[HealthFinding.fingerprint])
+        .returning(HealthFinding.id)
     )
     inserted_id = inserted.scalar_one_or_none()
     finding = (
         await db.execute(
-            select(ConciergeFinding)
-            .where(ConciergeFinding.fingerprint == finding_print)
+            select(HealthFinding)
+            .where(HealthFinding.fingerprint == finding_print)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -261,7 +261,7 @@ async def list_findings(
     target_ids: list[uuid.UUID] | None,
     status: str | None = None,
     limit: int = 20,
-) -> list[ConciergeFinding]:
+) -> list[HealthFinding]:
     """Findings on *target_ids* (``None``: every target), latest seen first.
 
     The caller decides which targets it may read (``services/health/access.py``)
@@ -269,14 +269,14 @@ async def list_findings(
     """
     if status is not None and status not in FINDING_STATUSES:
         raise FindingError(f"status must be one of: {', '.join(FINDING_STATUSES)}.")
-    query = select(ConciergeFinding)
+    query = select(HealthFinding)
     if target_ids is not None:
         if not target_ids:
             return []
-        query = query.where(ConciergeFinding.target_id.in_(target_ids))
+        query = query.where(HealthFinding.target_id.in_(target_ids))
     if status is not None:
-        query = query.where(ConciergeFinding.status == status)
-    query = query.order_by(ConciergeFinding.last_seen_at.desc(), ConciergeFinding.id).limit(max(1, min(limit, 100)))
+        query = query.where(HealthFinding.status == status)
+    query = query.order_by(HealthFinding.last_seen_at.desc(), HealthFinding.id).limit(max(1, min(limit, 100)))
     return list((await db.execute(query)).scalars().all())
 
 
@@ -293,10 +293,10 @@ async def window_counts(
     seen again in the window but reported before it.
     """
     until = until or datetime.now(UTC)
-    clauses = [ConciergeFinding.last_seen_at >= since, ConciergeFinding.last_seen_at < until]
+    clauses = [HealthFinding.last_seen_at >= since, HealthFinding.last_seen_at < until]
     if target is not None:
-        clauses += [ConciergeFinding.target_type == target[0], ConciergeFinding.target_id == target[1]]
-    new = func.count().filter(and_(ConciergeFinding.reported_at >= since, ConciergeFinding.reported_at < until))
-    known = func.count().filter(ConciergeFinding.reported_at < since)
+        clauses += [HealthFinding.target_type == target[0], HealthFinding.target_id == target[1]]
+    new = func.count().filter(and_(HealthFinding.reported_at >= since, HealthFinding.reported_at < until))
+    known = func.count().filter(HealthFinding.reported_at < since)
     row = (await db.execute(select(new, known).where(*clauses))).one()
     return {"new": int(row[0] or 0), "known": int(row[1] or 0)}

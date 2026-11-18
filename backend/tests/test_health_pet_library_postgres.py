@@ -27,7 +27,7 @@ from app.api.v1 import platform_health_companion as routes
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
-from app.models.health_pet import ConciergePet
+from app.models.health_pet import HealthPet
 from app.models.user import User
 from tests.health_support import World, concierge_database
 
@@ -108,7 +108,7 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
             listing = await client.get("/api/v1/health/pets")
             sheet = await client.get("/api/v1/health/pets/owl/spritesheet")
         async with sessions() as db:
-            rows = (await db.execute(select(ConciergePet))).scalars().all()
+            rows = (await db.execute(select(HealthPet))).scalars().all()
             audits = (
                 (await db.execute(select(AuditLog.action).where(AuditLog.entity_type == "concierge_pet")))
                 .scalars()
@@ -160,7 +160,7 @@ async def test_a_hostile_upload_is_a_422_and_stores_nothing(files, code) -> None
         async with _client(sessions, world.admin) as client:
             response = await client.post("/api/v1/health/pets", files=files)
         async with sessions() as db:
-            count = await db.scalar(select(func.count()).select_from(ConciergePet))
+            count = await db.scalar(select(func.count()).select_from(HealthPet))
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == code
     assert count == 0

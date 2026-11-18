@@ -92,7 +92,7 @@ class Reader:
 
     #: The person calling (platform MCP, a chat), or the run's admin; ``None`` in a scheduled Concierge run.
     user: User | None
-    #: Level 1's ``ConciergePrincipal`` when the call runs as the Concierge.
+    #: Level 1's ``HealthPrincipal`` when the call runs as the Concierge.
     principal: Any | None
     scope: ConsentScope
     #: The Concierge cycle the run works in, which books what an experiment spends; ``None`` outside one.

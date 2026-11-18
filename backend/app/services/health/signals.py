@@ -19,7 +19,7 @@ costs, model ids: no content is read, so no opt-in is needed and nothing is
 audited):
 
 ========================  ===============================================  ==================================
-Signal                    Rule (defaults, ``ConciergeSignalSettings``)     Reads
+Signal                    Rule (defaults, ``HealthSignalSettings``)     Reads
 ========================  ===============================================  ==================================
 ``feedback_drop``         weighted score of the last 3 days 10 points      ratings given or changed in the two
                           under the 3 days before, >= 10 ratings now       windows (``annotations``)
@@ -43,7 +43,7 @@ agent.
 The Concierge's own sandbox copies (``is_sandbox``) are never read: their
 runs are its experiments, not a target's health.
 
-**Edge-triggered** (``ConciergeSignalState``): a crossing starts one
+**Edge-triggered** (``HealthSignalState``): a crossing starts one
 investigation cycle on its target; staying crossed starts nothing; clearing
 re-arms it. A crossing refused for a passing reason (budget, licence) stays
 un-fired so the next pass tries again; one refused because a cycle is already
@@ -61,8 +61,8 @@ from typing import Any, Final, Literal, get_args
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health_cycle import ConciergeScheduleMark, ConciergeSignalState
-from app.services.health.settings import ConciergeSignalSettings
+from app.models.health_cycle import HealthScheduleMark, HealthSignalState
+from app.services.health.settings import HealthSignalSettings
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +136,14 @@ class SignalReading:
 # ── Pure rules (unit-tested on fixed numbers) ───────────────────────────────
 
 
-def feedback_crossed(current: float | None, previous: float | None, ratings: int, s: ConciergeSignalSettings) -> bool:
+def feedback_crossed(current: float | None, previous: float | None, ratings: int, s: HealthSignalSettings) -> bool:
     """Scores in 0..1; the drop is in points (x100)."""
     if current is None or previous is None or ratings < s.feedback_min_ratings:
         return False
     return round((previous - current) * 100, 6) >= s.feedback_drop_points
 
 
-def failure_crossed(statuses: list[str], s: ConciergeSignalSettings) -> tuple[bool, float | None]:
+def failure_crossed(statuses: list[str], s: HealthSignalSettings) -> tuple[bool, float | None]:
     """*statuses*: the last settled runs, newest first. Needs a full window."""
     window = statuses[: s.failure_last_runs]
     if len(window) < s.failure_last_runs:
@@ -153,7 +153,7 @@ def failure_crossed(statuses: list[str], s: ConciergeSignalSettings) -> tuple[bo
 
 
 def cost_crossed(
-    current_cost: float, current_runs: int, previous_cost: float, previous_runs: int, s: ConciergeSignalSettings
+    current_cost: float, current_runs: int, previous_cost: float, previous_runs: int, s: HealthSignalSettings
 ) -> tuple[bool, float | None, float | None]:
     """Cost per run of each window; crossed when up at least ``cost_increase_pct``."""
     if current_runs < s.cost_min_runs or previous_runs < s.cost_min_runs:
@@ -167,7 +167,7 @@ def cost_crossed(
 # ── Readers ─────────────────────────────────────────────────────────────────
 
 
-async def read_feedback(db: AsyncSession, scope, s: ConciergeSignalSettings, now: datetime) -> list[SignalReading]:
+async def read_feedback(db: AsyncSession, scope, s: HealthSignalSettings, now: datetime) -> list[SignalReading]:
     from app.models.annotation import Annotation
     from app.models.chat import Conversation, Message, MessageFeedback
     from app.services.annotations import agents_weighted_score_window
@@ -241,7 +241,7 @@ async def _last_statuses(
 
 
 async def read_failures(
-    db: AsyncSession, scope, s: ConciergeSignalSettings, now: datetime, since: datetime
+    db: AsyncSession, scope, s: HealthSignalSettings, now: datetime, since: datetime
 ) -> list[SignalReading]:
     """Assignments and flows with a run settled since *since* (the last pass)."""
     from app.models.agent import Agent
@@ -311,7 +311,7 @@ async def read_failures(
     return readings
 
 
-async def read_costs(db: AsyncSession, scope, s: ConciergeSignalSettings, now: datetime) -> list[SignalReading]:
+async def read_costs(db: AsyncSession, scope, s: HealthSignalSettings, now: datetime) -> list[SignalReading]:
     """Cost per assignment run from the daily rollup, whole days only (today is partial)."""
     from app.models.agent import Agent
     from app.models.llm_trace import LLMDailyStats
@@ -401,8 +401,8 @@ async def read_models(db: AsyncSession, scope) -> list[SignalReading]:
         state.target_id: state
         for state in (
             await db.execute(
-                select(ConciergeSignalState).where(
-                    ConciergeSignalState.kind == "model_change", ConciergeSignalState.target_type == "agent"
+                select(HealthSignalState).where(
+                    HealthSignalState.kind == "model_change", HealthSignalState.target_type == "agent"
                 )
             )
         ).scalars()
@@ -429,10 +429,10 @@ async def _active_targets(db: AsyncSession, kind: str, target_type: str) -> set[
     return set(
         (
             await db.execute(
-                select(ConciergeSignalState.target_id).where(
-                    ConciergeSignalState.kind == kind,
-                    ConciergeSignalState.target_type == target_type,
-                    ConciergeSignalState.active.is_(True),
+                select(HealthSignalState.target_id).where(
+                    HealthSignalState.kind == kind,
+                    HealthSignalState.target_type == target_type,
+                    HealthSignalState.active.is_(True),
                 )
             )
         ).scalars()
@@ -454,7 +454,7 @@ async def record_readings(db: AsyncSession, readings: list[SignalReading], *, no
     existing = {
         (state.kind, state.target_type, state.target_id): state
         for state in (
-            await db.execute(select(ConciergeSignalState).where(ConciergeSignalState.kind.in_(kinds)))
+            await db.execute(select(HealthSignalState).where(HealthSignalState.kind.in_(kinds)))
         ).scalars()
     }
     crossings = []
@@ -462,7 +462,7 @@ async def record_readings(db: AsyncSession, readings: list[SignalReading], *, no
         key = (reading.kind, reading.target_type, reading.target_id)
         state = existing.get(key)
         if state is None:
-            state = ConciergeSignalState(
+            state = HealthSignalState(
                 kind=reading.kind, target_type=reading.target_type, target_id=reading.target_id
             )
             db.add(state)
@@ -495,10 +495,10 @@ async def fire_signals(db: AsyncSession, crossings: list[SignalReading], *, now:
         )
         state = (
             await db.execute(
-                select(ConciergeSignalState).where(
-                    ConciergeSignalState.kind == reading.kind,
-                    ConciergeSignalState.target_type == reading.target_type,
-                    ConciergeSignalState.target_id == reading.target_id,
+                select(HealthSignalState).where(
+                    HealthSignalState.kind == reading.kind,
+                    HealthSignalState.target_type == reading.target_type,
+                    HealthSignalState.target_id == reading.target_id,
                 )
             )
         ).scalar_one()
@@ -556,7 +556,7 @@ async def signals_tick(*, now: datetime | None = None) -> int:
             settings = await load_concierge_settings(db)
             if not settings.enabled or not getattr(settings.signals, _ENABLED_FIELD[kind]):
                 continue
-            mark = await db.get(ConciergeScheduleMark, _MARK_KEYS[kind])
+            mark = await db.get(HealthScheduleMark, _MARK_KEYS[kind])
             if mark is not None and now - mark.fired_at < CADENCE[kind]:
                 continue
             since = mark.fired_at if mark is not None else now - CADENCE[kind]
@@ -577,9 +577,9 @@ async def signals_tick(*, now: datetime | None = None) -> int:
 
 
 async def _mark_pass(db: AsyncSession, kind: str, now: datetime) -> None:
-    mark = await db.get(ConciergeScheduleMark, _MARK_KEYS[kind])
+    mark = await db.get(HealthScheduleMark, _MARK_KEYS[kind])
     if mark is None:
-        db.add(ConciergeScheduleMark(schedule=_MARK_KEYS[kind], fired_at=now))
+        db.add(HealthScheduleMark(schedule=_MARK_KEYS[kind], fired_at=now))
     else:
         mark.fired_at = now
 
@@ -591,13 +591,13 @@ async def list_signal_states(
     target_type: str | None = None,
     target_id: uuid.UUID | None = None,
     limit: int = 200,
-) -> list[ConciergeSignalState]:
+) -> list[HealthSignalState]:
     """The stored signal states, newest evaluation first (the caller filters by its own access rule)."""
-    query = select(ConciergeSignalState)
+    query = select(HealthSignalState)
     if active_only:
-        query = query.where(ConciergeSignalState.active.is_(True))
+        query = query.where(HealthSignalState.active.is_(True))
     if target_id is not None:
         query = query.where(
-            and_(ConciergeSignalState.target_type == target_type, ConciergeSignalState.target_id == target_id)
+            and_(HealthSignalState.target_type == target_type, HealthSignalState.target_id == target_id)
         )
-    return list((await db.execute(query.order_by(ConciergeSignalState.evaluated_at.desc()).limit(limit))).scalars())
+    return list((await db.execute(query.order_by(HealthSignalState.evaluated_at.desc()).limit(limit))).scalars())

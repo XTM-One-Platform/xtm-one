@@ -127,19 +127,19 @@ async def _count_reviews(db: AsyncSession, user: User) -> int:
 
 async def companion_activity(db: AsyncSession, user: User) -> CompanionActivity:
     from app.models.assignment import AssignmentRun
-    from app.models.health import ConciergeCycle
-    from app.models.health_cycle import ConciergeCycleRun
+    from app.models.health import HealthCycle
+    from app.models.health_cycle import HealthCycleRun
 
     since = datetime.now(UTC) - FAILURE_WINDOW
-    cycles = select(ConciergeCycle.id).outerjoin(ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id)
+    cycles = select(HealthCycle.id).outerjoin(HealthCycleRun, HealthCycleRun.cycle_id == HealthCycle.id)
     if not user.is_admin:
-        cycles = cycles.where(ConciergeCycleRun.requested_by_user_id == user.id)
+        cycles = cycles.where(HealthCycleRun.requested_by_user_id == user.id)
     open_cycles = int(
-        await db.scalar(select(func.count()).select_from(cycles.where(ConciergeCycle.status == "open").subquery())) or 0
+        await db.scalar(select(func.count()).select_from(cycles.where(HealthCycle.status == "open").subquery())) or 0
     )
     failed_cycle_at = await db.scalar(
-        select(func.max(ConciergeCycle.closed_at)).where(
-            ConciergeCycle.id.in_(cycles.where(ConciergeCycle.status == "failed", ConciergeCycle.closed_at >= since)),
+        select(func.max(HealthCycle.closed_at)).where(
+            HealthCycle.id.in_(cycles.where(HealthCycle.status == "failed", HealthCycle.closed_at >= since)),
         )
     )
     own = AssignmentRun.user_id == user.id

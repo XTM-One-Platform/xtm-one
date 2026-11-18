@@ -12,12 +12,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+from app.services.health.identity import HealthPrincipal, acting_as_concierge
 from app.services.health.sandbox import guards
 from app.services.tool_classification import infer_tool_type
 from app.tools.base import ToolCall
 
-_PRINCIPAL = ConciergePrincipal(agent_id=uuid.uuid4(), role="flow_lab")
+_PRINCIPAL = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab")
 
 
 @pytest.fixture(autouse=True)
@@ -95,10 +95,10 @@ async def test_outside_a_concierge_run_nothing_is_refused():
 
 async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monkeypatch):
     from app.services.health.sandbox import turns
-    from app.services.health.settings import ConciergeSettings
+    from app.services.health.settings import HealthSettings
 
     async def _settings(_db):
-        return ConciergeSettings(dry_run=True)
+        return HealthSettings(dry_run=True)
 
     monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
     agent = MagicMock(is_sandbox=False)
@@ -110,10 +110,10 @@ async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monke
 
 async def test_dry_run_off_binds_nothing(monkeypatch):
     from app.services.health.sandbox import turns
-    from app.services.health.settings import ConciergeSettings
+    from app.services.health.settings import HealthSettings
 
     async def _settings(_db):
-        return ConciergeSettings()
+        return HealthSettings()
 
     monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
     with acting_as_concierge(_PRINCIPAL):
@@ -130,7 +130,7 @@ async def test_a_service_write_kept_by_dry_run_is_audited_as_the_concierge(monke
 
     monkeypatch.setattr("app.services.audit.log_system_audit", _audit)
     admin = uuid.uuid4()
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="memory_steward", on_behalf_of_admin_id=admin)):
+    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="memory_steward", on_behalf_of_admin_id=admin)):
         await dry_run.record_dry_run_write(MagicMock(), action="consolidate lane", target_type="memory", target_id="m1")
     await dry_run.record_dry_run_write(MagicMock(), action="consolidate lane", target_type="memory")
     assert [(e["actor"], e["anchor_user_id"], e["action"], e["entity_id"]) for e in entries] == [

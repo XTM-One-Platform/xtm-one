@@ -107,7 +107,7 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
         audited.append((kwargs["action"], kwargs["entity_type"], kwargs["entity_id"], kwargs["user"]))
 
     async def _launch(_db, **_kwargs):
-        return evaluations.ConciergeLaunch(evaluation_id, [run_id])
+        return evaluations.HealthLaunch(evaluation_id, [run_id])
 
     async def _build(_db, **kwargs):
         built.append(kwargs["since"])
@@ -263,7 +263,7 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
 async def test_a_launch_is_refused_before_anything_is_written(case):
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation
-    from app.services.health.evaluations import ConciergeEvaluationError, launch_concierge_evaluation
+    from app.services.health.evaluations import HealthEvaluationError, launch_concierge_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -273,7 +273,7 @@ async def test_a_launch_is_refused_before_anything_is_written(case):
         scope = [uuid.uuid4()] if case == "out-of-scope" else None
         agent, fleet, _flow, dataset, human, source = await _world(s, scope_agent_ids=scope)
         subjects = {"fleet-agent": [fleet.id], "no-subject": [], "production-agent": [source.id]}.get(case, [agent.id])
-        with pytest.raises(ConciergeEvaluationError):
+        with pytest.raises(HealthEvaluationError):
             await launch_concierge_evaluation(
                 s, dataset_id=(human if case == "human-dataset" else dataset).id, subject_agent_ids=subjects
             )
@@ -342,7 +342,7 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation, EvaluationRun
     from app.services.health.evaluations import (
-        ConciergeEvaluationError,
+        HealthEvaluationError,
         compare_concierge_runs,
         concierge_evaluation_runs,
     )
@@ -362,9 +362,9 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
         ]
         s.add_all(runs)
         await s.commit()
-        with pytest.raises(ConciergeEvaluationError):
+        with pytest.raises(HealthEvaluationError):
             await concierge_evaluation_runs(s, evaluation.id)
-        with pytest.raises(ConciergeEvaluationError):
+        with pytest.raises(HealthEvaluationError):
             await compare_concierge_runs(s, baseline_run_id=runs[0].id, candidate_run_id=runs[1].id)
 
 
@@ -396,7 +396,7 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
 
     import app.models  # noqa: F401
     from app.models.evaluation import EvaluationRun
-    from app.models.health import ConciergeBudgetMonth, ConciergeCycle
+    from app.models.health import HealthBudgetMonth, HealthCycle
     from app.services import orchestration_engine
     from app.services.health import budget
     from app.services.health.evaluations import (
@@ -417,19 +417,19 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
         await launch_concierge_evaluation(
             s, dataset_id=dataset.id, subject_agent_ids=[agent.id], subject_flow_ids=[flow.id], cycle_id=cycle_id
         )
-        reserved = (await s.get(ConciergeCycle, cycle_id)).reserved_tokens
+        reserved = (await s.get(HealthCycle, cycle_id)).reserved_tokens
         # The run that launched it ends first: the cycle closes, the evaluation keeps its share.
         await budget.close_cycle(s, cycle_id, status="completed")
         await s.commit()
-        month = (await s.execute(select(ConciergeBudgetMonth))).scalar_one()
-        held = ((await s.get(ConciergeCycle, cycle_id)).reserved_tokens, month.reserved_tokens)
+        month = (await s.execute(select(HealthBudgetMonth))).scalar_one()
+        held = ((await s.get(HealthCycle, cycle_id)).reserved_tokens, month.reserved_tokens)
         assert await settle_concierge_evaluations(s) == 0
         for run in (await s.execute(select(EvaluationRun))).scalars().all():
             await _measured(s, run, tokens=3_000, cost=0.01)
             run.status = "completed"
         await s.commit()
         charged, again = await settle_concierge_evaluations(s), await settle_concierge_evaluations(s)
-        cycle = await s.get(ConciergeCycle, cycle_id)
+        cycle = await s.get(HealthCycle, cycle_id)
         await s.refresh(cycle)
         await s.refresh(month)
 
@@ -445,7 +445,7 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
 async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monkeypatch):
     import app.models  # noqa: F401
     from app.models.evaluation import EvaluationRun
-    from app.models.health import ConciergeCycle
+    from app.models.health import HealthCycle
     from app.services import orchestration_engine
     from app.services.health import budget
     from app.services.health.evaluations import (
@@ -484,7 +484,7 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
         stopped = (cand.status, cand.error)
         assert await settle_concierge_evaluations(s) == 1
         comparison = await compare_concierge_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
-        cycle = await s.get(ConciergeCycle, cycle_id)
+        cycle = await s.get(HealthCycle, cycle_id)
         await s.refresh(cycle)
 
     assert stopped == ("cancelled", BUDGET_STOP_ERROR)

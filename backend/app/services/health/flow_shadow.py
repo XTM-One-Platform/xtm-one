@@ -318,10 +318,10 @@ async def _shadow_cycle(db: AsyncSession, shadow: FlowShadow, *, now: datetime) 
     Rotated before the stale-cycle sweep would close it as abandoned: a
     shadow outlives any one cycle.
     """
-    from app.models.health import ConciergeCycle
+    from app.models.health import HealthCycle
     from app.services.health.budget import close_cycle, open_cycle
 
-    cycle = await db.get(ConciergeCycle, shadow.cycle_id) if shadow.cycle_id else None
+    cycle = await db.get(HealthCycle, shadow.cycle_id) if shadow.cycle_id else None
     if cycle is not None and cycle.status == "open":
         if cycle.opened_at > now - SHADOW_CYCLE_SPAN:
             return cycle.id

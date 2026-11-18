@@ -71,7 +71,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-class ConciergeExperiment(Base):
+class HealthExperiment(Base):
     __tablename__ = "health_experiments"
     __table_args__ = (
         CheckConstraint(_in("status", EXPERIMENT_STATUSES), name="ck_concierge_experiments_status_valid"),

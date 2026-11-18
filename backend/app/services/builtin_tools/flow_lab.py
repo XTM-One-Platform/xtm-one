@@ -506,7 +506,7 @@ async def _record_flow_finding(
 async def _draft_flow_variant(
     db: AsyncSession, caller: Any, finding_id: str = "", change_type: str = "", sandbox_flow_id: str = "", summary: str = ""
 ) -> str:
-    from app.models.health_finding import ConciergeFinding
+    from app.models.health_finding import HealthFinding
     from app.services.health import flow_lab_access as access
     from app.services.health.experiments import ExperimentError, draft
     from app.services.health.flow_experiments import FLOW_CHANGE_TYPES
@@ -517,7 +517,7 @@ async def _draft_flow_variant(
     if change_type not in FLOW_CHANGE_TYPES:
         return f"Error: change_type must be one of: {', '.join(FLOW_CHANGE_TYPES)}."
     fid = access.parse_id(finding_id)
-    finding = await db.get(ConciergeFinding, fid) if fid else None
+    finding = await db.get(HealthFinding, fid) if fid else None
     if finding is None or not await _target_reachable(db, caller, finding.target_type, finding.target_id):
         return _not_found("finding")
     try:

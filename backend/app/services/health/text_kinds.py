@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.models.agent import Agent
-    from app.models.health_experiment import ConciergeExperiment
-    from app.models.health_finding import ConciergeFinding
+    from app.models.health_experiment import HealthExperiment
+    from app.models.health_finding import HealthFinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +138,7 @@ class _TextKind:
         return await db.get(Agent, agent_id) if agent_id is not None else None
 
     async def prepare_draft(
-        self, db: AsyncSession, *, finding: ConciergeFinding, target_id: uuid.UUID, payload: dict[str, Any]
+        self, db: AsyncSession, *, finding: HealthFinding, target_id: uuid.UUID, payload: dict[str, Any]
     ) -> DraftSpec:
         from app.services.health.access import agent_of_target
 
@@ -157,7 +157,7 @@ class _TextKind:
             summary=variant.summary,
         )
 
-    async def check_stale(self, db: AsyncSession, experiment: ConciergeExperiment) -> bool:
+    async def check_stale(self, db: AsyncSession, experiment: HealthExperiment) -> bool:
         agent = await self._agent(db, experiment.subject_agent_id)
         if agent is None:
             return True
@@ -167,7 +167,7 @@ class _TextKind:
             return True
         return base.text != experiment.base_text or base.version != experiment.base_version
 
-    async def dataset_target(self, db: AsyncSession, experiment: ConciergeExperiment) -> tuple[str, uuid.UUID] | None:
+    async def dataset_target(self, db: AsyncSession, experiment: HealthExperiment) -> tuple[str, uuid.UUID] | None:
         if self.change_type == "assignment_prompt":
             # Level 4 renders no per-subject input template yet: the variant cannot
             # run on the same cases as its baseline.
@@ -179,7 +179,7 @@ class _TextKind:
         return ("agent", experiment.subject_agent_id) if experiment.subject_agent_id else None
 
     async def subjects(
-        self, db: AsyncSession, experiment: ConciergeExperiment, *, created_for: str, author_agent_id: uuid.UUID | None
+        self, db: AsyncSession, experiment: HealthExperiment, *, created_for: str, author_agent_id: uuid.UUID | None
     ) -> tuple[deps.Subject, deps.Subject]:
         agent_id = experiment.subject_agent_id
         baseline_copy, baseline_agent = await deps.create_agent_copy(
@@ -199,7 +199,7 @@ class _TextKind:
             deps.Subject(kind="agent", id=variant_agent, copy_id=variant_copy, overrides=overrides),
         )
 
-    def proposal_content(self, experiment: ConciergeExperiment) -> dict[str, Any]:
+    def proposal_content(self, experiment: HealthExperiment) -> dict[str, Any]:
         return {"base_content": experiment.base_text, "proposed_content": experiment.variant_text}
 
 
@@ -207,7 +207,7 @@ for _type, _target in (("persona", "agent"), ("skill", "skill"), ("assignment_pr
     register_experiment_kind(_type, _TextKind(change_type=_type, target_type=_target))
 
 
-async def _skill_substitute(db: AsyncSession, experiment: ConciergeExperiment) -> dict[str, Any]:
+async def _skill_substitute(db: AsyncSession, experiment: HealthExperiment) -> dict[str, Any]:
     """The evaluation overlay standing the variant in for the skill (the placebo arms' mechanism, #6535)."""
     from app.models.agent_skill import AgentSkill
     from app.services.builtin_tools.skills import SkillSubstitute
