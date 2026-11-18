@@ -18989,5 +18989,8 @@
   "Asked its caller": "A interrogé son appelant",
   "Cancelled before an answer": "Annulée avant une réponse",
   "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.": "La tâche A2A attend la réponse de l'agent qui l'a soumise. Sa réponse poursuivra la tâche dans une nouvelle exécution, accessible depuis ici.",
-  "View the run that continued it": "Voir l'exécution qui l'a poursuivie"
+  "View the run that continued it": "Voir l'exécution qui l'a poursuivie",
+  "Internal storage of a workset": "Stockage interne d'un workset",
+  "This knowledge base holds the documents of a workset. It has no page of its own: open the workset in Operations.": "Cette base de connaissances contient les documents d'un workset. Elle n'a pas de page propre : ouvrez le workset dans Opérations.",
+  "View Worksets": "Voir les worksets"
 }
