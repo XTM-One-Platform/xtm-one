@@ -596,8 +596,28 @@ def service_chain(
     return order
 
 
-def describe_services(specs: dict[str, ServiceSpec]) -> str:
-    """One line per declared service, for a refusal or a listing."""
+#: The services part of a check listing longer than this is answered by name only.
+SERVICES_LISTING_MAX_CHARS = 2_000
+
+
+def describe_services(specs: dict[str, ServiceSpec], *, budget: int = 0) -> str:
+    """One line per declared service, for a refusal or a listing.
+
+    *budget* (the check listing): past that many characters the services are
+    named on one line, their descriptions one ``sandbox_start_service`` call
+    away; a check listing read for one check name stays short on a large lab.
+    """
+    full = _describe_services(specs)
+    if not budget or len(full) <= budget:
+        return full
+    names = ", ".join(spec.name for spec in specs.values())
+    return (
+        f"{len(specs)} services: {names}\n(sandbox_start_service without a service lists them with their "
+        "descriptions, ports and dependencies)"
+    )
+
+
+def _describe_services(specs: dict[str, ServiceSpec]) -> str:
     lines = []
     for spec in specs.values():
         what = f" ({spec.description})" if spec.description else ""

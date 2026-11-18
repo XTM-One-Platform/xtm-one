@@ -69,6 +69,7 @@ from app.services.sandbox_workspace.checks import (
     LISTING_MAX_CHARS,
     MAX_REPORT_BYTES,
     RUNS_DIR,
+    SERVICES_LISTING_MAX_CHARS,
     WHOLE_ARG,
     ChecksError,
     CheckSpec,
@@ -656,7 +657,10 @@ async def list_checks(session: WorkspaceSession, *, checkout: str, known_images:
             lines.append(f"Its [service.NAME] tables do not load: {exc}")
         else:
             if services:
-                lines += ["Services it declares (sandbox_start_service):", describe_services(services)]
+                lines += [
+                    "Services it declares (sandbox_start_service):",
+                    describe_services(services, budget=SERVICES_LISTING_MAX_CHARS),
+                ]
     lines.append("Run one with check=NAME (args are appended to its argv, replacing its default args).")
     return "\n".join(lines)
 
