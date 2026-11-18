@@ -520,6 +520,7 @@ async def _cancel_runs(
     owner: uuid.UUID | None,
     now: datetime,
     outcome: EmergencyStopOutcome,
+    message: str = STOP_MESSAGE,
 ) -> None:
     """Every non-terminal run in scope, then the tree under each.
 
@@ -550,7 +551,7 @@ async def _cancel_runs(
                 AssignmentRun.id.in_(batch),
                 AssignmentRun.status.in_(stoppable),
             )
-            .values(status="cancelled", completed_at=now, error=STOP_MESSAGE)
+            .values(status="cancelled", completed_at=now, error=message)
         )
         outcome.runs_cancelled += result.rowcount or 0
 
@@ -568,7 +569,7 @@ async def _cancel_runs(
                 AssignmentRun.id.in_(batch),
                 AssignmentRun.status.in_(stoppable),
             )
-            .values(status="cancelled", completed_at=now, error=STOP_MESSAGE)
+            .values(status="cancelled", completed_at=now, error=message)
         )
         outcome.runs_cancelled += result.rowcount or 0
         # The cascade already flipped the pending / running descendants; give
@@ -581,7 +582,7 @@ async def _cancel_runs(
                 AssignmentRun.error.is_(None),
                 AssignmentRun.completed_at >= now,
             )
-            .values(error=STOP_MESSAGE)
+            .values(error=message)
         )
     # The cascade cancels the DESCENDANTS' executions; the roots' own
     # executions (``assignment_run:<id>`` / ``payload.run_id``) are cancelled
@@ -595,12 +596,16 @@ async def _cancel_runs(
 
 
 async def _cancel_background_tasks(
-    db: AsyncSession, *, owner: uuid.UUID | None, outcome: EmergencyStopOutcome
+    db: AsyncSession,
+    *,
+    owner: uuid.UUID | None,
+    outcome: EmergencyStopOutcome,
+    message: str = STOP_MESSAGE,
 ) -> None:
     from app.services.sub_agent import cancel_sub_agent_tasks_for_scope
 
     tasks, executions = await cancel_sub_agent_tasks_for_scope(
-        db, user_id=owner, error=STOP_MESSAGE
+        db, user_id=owner, error=message
     )
     outcome.sub_agent_tasks_cancelled += tasks
     outcome.executions_cancelled += executions
@@ -670,6 +675,7 @@ async def _cancel_flow_runs(
     owner: uuid.UUID | None,
     now: datetime,
     outcome: EmergencyStopOutcome,
+    message: str = STOP_MESSAGE,
 ) -> None:
     """Same recipe as ``POST /flows/runs/{id}/cancel``, over the scope."""
     from app.models.flow_run import FLOW_RUN_ACTIVE_STATUSES, FlowRun
@@ -678,13 +684,15 @@ async def _cancel_flow_runs(
     if owner is not None:
         query = query.where(FlowRun.user_id == owner)
     runs = list((await db.execute(query)).scalars().all())
-    outcome.executions_cancelled += await _cancel_flow_run_rows(db, runs, now=now)
+    outcome.executions_cancelled += await _cancel_flow_run_rows(
+        db, runs, now=now, message=message
+    )
     outcome.flow_runs_cancelled += len(runs)
     outcome.cancelled_flow_runs.extend(runs)
 
 
 async def _cancel_flow_run_rows(
-    db: AsyncSession, runs: list[Any], *, now: datetime
+    db: AsyncSession, runs: list[Any], *, now: datetime, message: str = STOP_MESSAGE
 ) -> int:
     """Cancel *runs* and their executions. Returns the executions cancelled."""
     if not runs:
@@ -697,11 +705,11 @@ async def _cancel_flow_run_rows(
         run.status = FLOW_RUN_STATUS_CANCELLED
         run.completed_at = now
         # Per run: it takes one run_id and closes that run's journal rows.
-        await close_running_steps(db, run.id, error=STOP_MESSAGE)
+        await close_running_steps(db, run.id, error=message)
         # As the flow cancel endpoint does: nobody reads these results now, so
         # a queued command must not run later and a dispatched one is never
         # delivered again.
-        await release_runner_commands(db, run, reason=STOP_MESSAGE)
+        await release_runner_commands(db, run, reason=message)
     # One batched statement set for every run's executions, not one per run.
     executions = await cancel_executions_for_runs(db, [run.id for run in runs])
     await db.flush()
@@ -787,6 +795,7 @@ async def _cancel_runner_commands(
     *,
     owner: uuid.UUID | None,
     outcome: EmergencyStopOutcome,
+    message: str = STOP_MESSAGE,
 ) -> None:
     """Give up every open runner command in scope, through the transport.
 
@@ -806,12 +815,12 @@ async def _cancel_runner_commands(
     command_ids = list((await db.execute(query)).scalars().all())
     for command_id in command_ids:
         snapshot = await give_up_on_command(
-            command_id, STOP_MESSAGE, undelivered_status="cancelled", db=db
+            command_id, message, undelivered_status="cancelled", db=db
         )
         if (
             snapshot is not None
             and snapshot["status"] == "cancelled"
-            and snapshot["error"] == STOP_MESSAGE
+            and snapshot["error"] == message
         ):
             outcome.runner_commands_cancelled += 1
             outcome.finished_runner_command_ids.append(command_id)
@@ -1189,6 +1198,44 @@ async def after_commit(outcome: EmergencyStopOutcome) -> None:
     _spawn(_delayed_sweep(outcome, ai_state.CACHE_TTL_SECONDS + 1.0))
     # Everything below runs NOW — partners, conversations and the live UI must
     # not wait one cache TTL, and a detached task would not survive a restart.
+    await announce_stopped_work(outcome, conversation_ids=stopped_conversations)
+
+
+async def stop_owner_live_work(
+    db: AsyncSession, *, owner: uuid.UUID, message: str, now: datetime | None = None
+) -> EmergencyStopOutcome:
+    """Cancel the live work of *owner* alone: no pause, no AI switch, no stop trail.
+
+    The arms of :func:`emergency_stop` for one account, with *message* as the
+    cause each cancelled row shows. Used when an account is deactivated
+    (``services/user_deactivation.py``): its runs, background tasks, chat
+    turns, runner commands and flow runs end at once, the same way and with
+    the same records as stopping them one by one. Flushes, never commits;
+    the caller commits, then calls :func:`announce_stopped_work`.
+    """
+    outcome = EmergencyStopOutcome(
+        scope="self", stopped_at=now or datetime.now(UTC), owner_id=owner
+    )
+    stopped_at = outcome.stopped_at or datetime.now(UTC)
+    await _cancel_runs(db, owner=owner, now=stopped_at, outcome=outcome, message=message)
+    await _cancel_background_tasks(db, owner=owner, outcome=outcome, message=message)
+    await _cancel_chat_turns(db, owner=owner, outcome=outcome)
+    await _cancel_runner_commands(db, owner=owner, outcome=outcome, message=message)
+    await _cancel_flow_runs(db, owner=owner, now=stopped_at, outcome=outcome, message=message)
+    return outcome
+
+
+async def announce_stopped_work(
+    outcome: EmergencyStopOutcome, *, conversation_ids: list[str] | None = None
+) -> None:
+    """Tell partners, conversations, flow streams and runners what a committed stop ended.
+
+    *conversation_ids*: the conversations whose dependants to cancel, by
+    default every one the stop cancelled (a sweep cascades its own).
+    """
+    stopped_conversations = (
+        list(outcome.cancelled_conversation_ids) if conversation_ids is None else conversation_ids
+    )
     if outcome.partner_cancel_run_ids:
         from app.a2a.client.delegation import spawn_run_cancel
 
