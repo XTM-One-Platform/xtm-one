@@ -1430,8 +1430,10 @@ env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", S
 
 # args: a path to lint instead of the whole backend (a call's args replace
 # default_args, so a named file is linted alone with the backend's rules).
+# affected=true lints the changed Python files themselves (affected = "files"),
+# never the test files that mention them.
 [check.backend-lint]
-description = "ruff over the backend; args: a path (the whole backend without args)"
+description = "ruff over the backend; args: a path (the whole backend without args); affected=true: the changed .py files"
 argv = ["ruff", "check", "--output-format", "sarif", "-o", ".xtm/ruff.sarif"]
 default_args = ["."]
 cwd = "backend"
@@ -1439,6 +1441,8 @@ timeout = 300
 image = "python-dev"
 report = "sarif"
 report_path = ".xtm/ruff.sarif"
+affected = "files"
+affected_globs = ["*.py", "*.pyi"]
 
 # The lab scripts (.xtm-one/lab, .xtm-one/stores.py) are not under backend/ and
 # CI lints none of them: this check runs ruff's syntax and pyflakes rules on
@@ -1851,14 +1855,18 @@ timeout = 900
 image = "nodejs-dev"
 report = "lines"
 
+# affected=true lints the changed sources themselves (affected = "files"),
+# never the test files an i18n catalog or a module name selects.
 [check.frontend-lint]
-description = "oxlint over the frontend (after frontend-install); args: the files or directories to lint, instead of src/"
+description = "oxlint over the frontend (after frontend-install); args: the files or directories to lint, instead of src/; affected=true: the changed sources"
 argv = ["yarn", "oxlint"]
 default_args = ["src/"]
 cwd = "frontend"
 timeout = 900
 image = "nodejs-dev"
 report = "lines"
+affected = "files"
+affected_globs = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.mts", "*.cts"]
 
 [check.frontend-i18n]
 description = "validate the frontend i18n tables as CI does (scripts/validate-i18n.mjs; after frontend-install)"
