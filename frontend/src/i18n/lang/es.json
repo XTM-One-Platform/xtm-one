@@ -5518,7 +5518,7 @@
   "The owner of this server has to authorize it.": "El propietario de este servidor debe autorizarlo.",
   "The package has been imported successfully.": "El paquete se ha importado correctamente.",
   "The partner changed its card. Review and accept the change to resume.": "El socio cambió su tarjeta. Revise y acepte el cambio para reanudar.",
-  "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.": "El socio los intercambia por un token de corta duración en la URL de token de la tarjeta del agente. Una credencial por socio: funciona en todos los agentes a los que está vinculada esta integración, por lo que regenerarla los vuelve a codificar todos.",
+  "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.": "El socio los intercambia por un token de corta duración en la URL de token de la tarjeta del agente. Una credencial por socio: funciona en todos los agentes a los que está vinculada esta integración. Regenerar el secreto conserva el ID de cliente.",
   "The partner pastes it into Partner token endpoint.": "El socio la pega en Endpoint de token del socio.",
   "The token URL appears once an agent bound to this integration publishes its card.": "La URL del token aparece en cuanto un agente vinculado a esta integración publica su tarjeta.",
   "The partner fetches the agent card URL (shown on the agent's Channels & Bots tab once this integration is bound to it). The card is served anonymously and declares the agent's skills, the JSON-RPC endpoint and the accepted credentials.": "El socio obtiene la URL de la tarjeta del agente (visible en el agente, junto a esta integración en su pestaña Herramientas). La tarjeta se sirve de forma anónima y declara las capacidades del agente, el endpoint JSON-RPC y las credenciales aceptadas.",
@@ -5539,7 +5539,7 @@
   "The run's typed signature: each parameter is asked for at run time, becomes a pin on the node, and Call flow nodes expose it as an argument.": "La firma tipada de la ejecución: cada parámetro se solicita al lanzar, se convierte en un pin del nodo y los nodos Call flow lo exponen como argumento.",
   "The script becomes a platform Custom tool: reusable from agents, chat and other flows, editable later in Tools.": "El script se convierte en una herramienta personalizada de la plataforma: reutilizable desde agentes, chat y otros flujos, editable después en Herramientas.",
   "The secret and recovery codes are never readable: not even by administrators. If this user lost their device, reset their enrollment so they can set it up again.": "La clave secreta y los códigos de recuperación nunca son legibles, ni siquiera por los administradores. Si este usuario perdió su dispositivo, restablezca su registro para que pueda configurarlo de nuevo.",
-  "The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.": "El secreto se muestra solo una vez, al generarlo. Si se pierde, regenérelo: el anterior deja de funcionar de inmediato.",
+  "The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.": "El secreto se muestra solo una vez, al generarlo. Si se pierde, regenérelo: el ID de cliente se mantiene y el secreto anterior deja de funcionar de inmediato.",
   "The selected file is not a valid JSON payload.": "El archivo seleccionado no es un JSON válido.",
   "The server is authenticated. Tokens are refreshed automatically.": "El servidor está autenticado. Los tokens se renuevan automáticamente.",
   "The stored credentials cannot produce a token. Re-enter them.": "Las credenciales guardadas no pueden producir un token. Vuelva a introducirlas.",
@@ -18956,5 +18956,9 @@
   "Knowledge and sources": "Conocimiento y fuentes",
   "About the organization profile": "Acerca del perfil de la organización",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# propuesta} other {# propuestas}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# campo sin completar, señalado por cada agente que lo necesita} other {# campos sin completar, señalados por cada agente que los necesita}}"
+  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# campo sin completar, señalado por cada agente que lo necesita} other {# campos sin completar, señalados por cada agente que los necesita}}",
+  "Copy both": "Copiar ambos",
+  "The partner pastes the client ID and the secret together, as one pair.": "El socio pega el ID de cliente y el secreto juntos, como un solo par.",
+  "Last refused token request": "Última solicitud de token rechazada",
+  "Rotate client ID and secret": "Rotar ID de cliente y secreto"
 }
