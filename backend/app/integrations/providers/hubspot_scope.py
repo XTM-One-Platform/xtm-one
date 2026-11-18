@@ -13,6 +13,7 @@ guard (``providers/github/scope.py``):
 * the tools bound to one object type (contacts, companies, deals, tickets) are
   withdrawn when that type is not selected - they cannot be used on anything
   else;
+* a deal's line items go with the deal type;
 * the generic tools that name object types - associations (both ends),
   ``delete_hubspot_record`` and the record attachment tools - and the
   ``associations`` argument of the record reads are refused before any
@@ -80,6 +81,11 @@ TOOL_OBJECT_TYPE = {
     "search_hubspot_deals": "deal",
     "create_hubspot_deal": "deal",
     "update_hubspot_deal": "deal",
+    # A deal's line items go with the deal type: they are its products and make its ACV and TCV.
+    "list_hubspot_line_items": "deal",
+    "create_hubspot_line_item": "deal",
+    "update_hubspot_line_item": "deal",
+    "delete_hubspot_line_item": "deal",
     "search_hubspot_tickets": "ticket",
     "get_hubspot_ticket": "ticket",
     "create_hubspot_ticket": "ticket",
@@ -101,6 +107,7 @@ DROPPED_WHEN_SCOPED = frozenset(
 _TYPE_ARGUMENTS = {
     "get_hubspot_associations": ("object_type", "to_object_type"),
     "create_hubspot_association": ("from_type", "to_type"),
+    "delete_hubspot_association": ("from_type", "to_type"),
     "delete_hubspot_record": ("object_type",),
     "list_hubspot_attachments": ("object_type",),
     "download_hubspot_file": ("object_type",),

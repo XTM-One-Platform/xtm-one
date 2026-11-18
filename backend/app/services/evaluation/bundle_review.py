@@ -47,8 +47,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
 from app.models.evaluation_metric import EvaluationMetric
+from app.models.flow import Flow
 from app.services.evaluation.metric_package import (
     canonical_stix_bundle,
     is_pooled_key,
@@ -371,6 +373,15 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
     ).all():
         values[rid][metric] = value
 
+    # Each answer's agent (or flow) by name: two answers of one evaluation differ by it.
+    subject_names: dict[uuid.UUID, str] = {}
+    agent_ids = {run.agent_id for _, run, _ in ordered if run.agent_id}
+    flow_ids = {run.flow_id for _, run, _ in ordered if run.flow_id}
+    if agent_ids:
+        subject_names.update((await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))).tuples().all())
+    if flow_ids:
+        subject_names.update((await db.execute(select(Flow.id, Flow.name).where(Flow.id.in_(flow_ids)))).tuples().all())
+
     pages, file_name, text_source = await _entry_pages(db, entry)
     return {
         "entry": {
@@ -388,8 +399,9 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
                 "evaluation_name": evaluation.name,
                 "model_id": run.model_id,
                 "subject_id": str(run.agent_id or run.flow_id) if (run.agent_id or run.flow_id) else None,
+                "subject_name": subject_names.get(run.agent_id or run.flow_id) if (run.agent_id or run.flow_id) else None,
                 "created_at": run.created_at.isoformat() if run.created_at else None,
-                "judge_score": result.score,
+                "judge_score": _judge_score(result, run),
                 "anomaly": result.execution_anomaly_kind,
                 "metrics": values[result.id],
             }
@@ -397,6 +409,19 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
         ],
         **review,
     }
+
+
+#: Anomalies that leave an entry out of the judge's scores, as the run's pages read them.
+_JUDGE_EXCLUDED_ANOMALIES = frozenset({"transient_error", "platform_error"})
+
+
+def _judge_score(result: EvaluationResult, run: EvaluationRun) -> float | None:
+    """The judge's score of an answer, or None when there is none: the run's judge was off
+    (``score`` is NOT NULL and then holds 0.0), its verdict failed, or the entry was left out."""
+    judged = run.scorer_selection is None or "judge" in run.scorer_selection
+    if not judged or result.is_judge_failure or result.execution_anomaly_kind in _JUDGE_EXCLUDED_ANOMALIES:
+        return None
+    return result.score
 
 
 __all__ = [

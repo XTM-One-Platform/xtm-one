@@ -109,6 +109,21 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
+    # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
+    # that carries its own dependencies); before, only the pytest line of the job was detected.
+    wf = (
+        "jobs:\n  lint:\n    steps:\n"
+        "      - run: uv run plugin/scripts/flow_lint.py --format github\n"
+        "      - run: uv run plugin/scripts/flow_index.py --check\n"
+        "      - run: uv run --with pytest pytest plugin/tests -q\n"
+    )
+    argv = _argv(_detect({".github/workflows/flow.yml": wf}))
+    assert argv["python-lint"] == ("uv", "run", "plugin/scripts/flow_lint.py", "--format", "github")
+    assert argv["python-unit"] == ("uv", "run", "--with", "pytest", "pytest", "plugin/tests", "-q")
+    assert not any("flow_index" in " ".join(a) for a in argv.values())
+
+
 def test_a_workflow_wins_over_the_manifest_for_the_same_check():
     pkg = json.dumps({"scripts": {"lint": "eslint src", "test": "vitest"}})
     wf = "jobs:\n  a:\n    steps:\n      - run: yarn lint --max-warnings 0\n"
@@ -138,6 +153,10 @@ def test_a_workflow_wins_over_the_manifest_for_the_same_check():
         ("dbt parse", ("dbt", "parse")),
         ("sqlfluff lint models", ("dbt", "lint")),
         ("make test", ("make", "unit")),
+        ("uv run plugin/scripts/flow_lint.py --format github", ("python", "lint")),
+        ("python3 scripts/run_tests.py -q", ("python", "unit")),
+        ("uv run plugin/scripts/flow_index.py --check", None),
+        ("python scripts/release.py", None),
         ("docker build .", None),
         ("echo hi", None),
     ],
@@ -1531,6 +1550,51 @@ def test_a_narrow_checkout_keeps_the_root_requirements_and_python_tool_configs_i
     assert set(tree.named) == {"ci-requirements.txt", "shared/pylint_plugins/requirements.txt"}
     assert "shared/pylint_plugins/plugin.py" not in written
     assert "external-import/other/src/main.py" not in written
+
+
+def test_a_narrow_checkout_keeps_the_directory_a_ci_step_cds_into() -> None:
+    # connectors: the STIX ID lint job runs `cd ./shared/pylint_plugins/check_stix_plugin &&
+    # PYTHONPATH=. pylint ../../../ --load-plugins linter_stix_id_generator`; a checkout of one
+    # connector kept the plugin's requirements.txt but not the plugin, so the sandbox lint
+    # passed with "Plugin ... is impossible to load" and CI went red on the same files.
+    workflow = b"""
+on: pull_request
+jobs:
+  linter:
+    runs-on: ubuntu-latest
+    steps:
+      - run: uv pip install -r ./shared/pylint_plugins/check_stix_plugin/requirements.txt
+      - name: Run STIX ID pylint
+        run: |
+          cd ./shared/pylint_plugins/check_stix_plugin && \\
+            PYTHONPATH=. pylint ../../../ \\
+            --load-plugins linter_stix_id_generator
+"""
+    tree, written = _narrow_tree(
+        {
+            ".github/workflows/ci-lint-format.yml": workflow,
+            "shared/pylint_plugins/check_stix_plugin/requirements.txt": b"pylint\n",
+            "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py": b"",
+            "shared/pylint_plugins/check_stix_plugin/__init__.py": b"",
+            "shared/pylint_plugins/tests/test_plugin.py": b"",
+            "external-import/acme/src/main.py": b"",
+            "external-import/other/src/main.py": b"",
+        },
+        ["external-import/acme"],
+    )
+    plugin = "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py"
+    assert plugin in tree.named and plugin in written
+    assert "shared/pylint_plugins/check_stix_plugin/__init__.py" in written
+    # Only the directory the step runs from: neither its siblings nor the repository it lints.
+    assert "shared/pylint_plugins/tests/test_plugin.py" not in written
+    assert "external-import/other/src/main.py" not in written
+
+
+def test_a_step_that_cds_into_a_large_directory_keeps_none_of_it() -> None:
+    files = {f"tools/big/f{i}.py": b"" for i in range(detect.MAX_REFERENCED_DIR_FILES + 1)}
+    workflow = b"on: pull_request\njobs:\n  a:\n    steps:\n      - run: cd tools/big && python -m lint ../../src\n"
+    tree, _written = _narrow_tree({".github/workflows/ci.yml": workflow, **files, "src/a.py": b""}, ["src"])
+    assert not any(p.startswith("tools/big/") for p in tree.named)
 
 
 def test_a_job_running_two_formatters_gives_a_check_for_each():

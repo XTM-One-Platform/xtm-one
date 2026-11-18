@@ -156,14 +156,18 @@ tools stays on chat completions. Everywhere else (an OpenAI-compatible
 provider, a model the table does not flag yet), the two refusals in a row
 end the leg on one HTTP 400, code `function_tools_unsupported`, message
 "function tools unsupported on chat completions for <model>", marked
-`retryable: false`: two calls at most, never the raw second 400.
+`retryable: false`: two calls at most, never the raw second 400. That
+endpoint (the client's base URL and API key) then fails the model's requests with tools
+on the same 400 without sending them for 10 minutes: the AI Gateway passes
+chat completions through to OpenAI (XTM-One-Platform/ai-gateway#354).
 
 Models sent through the Responses API with tools, on the native OpenAI
-provider: `gpt-6-astra` (dated ids included).
+provider: `gpt-6-astra`, `gpt-6.2-sol`, `gpt-6.2-astra` (dated ids included).
 
-`gpt-6-astra` also sets `omit_temperature`: it answers `temperature` with
-HTTP 400 "Unsupported parameter" on chat completions and the Responses API
-alike, so neither request carries it (`build_openai_generation_params`,
+These three models also set `omit_temperature`: gpt-6-astra answers
+`temperature` with HTTP 400 "Unsupported parameter" on chat completions and
+the Responses API alike, the gpt-6.2 models refuse any but the default 1, so
+neither request carries it (`build_openai_generation_params`,
 `openai_responses.build_responses_params`). The other `gpt-6` models set it
 too: they refuse any `temperature` but the default 1 ("Unsupported value"). A 400 that names `temperature`
 all the same (a model the table does not flag yet) is retried once on the
@@ -177,7 +181,7 @@ Declared today:
 
 | Models | Levels |
 |--------|--------|
-| gpt-6-astra | `low` to `max`; `none` refused (sent as `low`), tools or not |
+| gpt-6-astra, gpt-6.2-sol, gpt-6.2-astra | `low` to `max`; `none` refused (sent as `low`), tools or not |
 | other gpt-6 | `low` to `max`; `none` with tools |
 | gpt-5.6 | `low` to `max` |
 | gpt-5.2 to gpt-5.5 | `low` to `xhigh` |

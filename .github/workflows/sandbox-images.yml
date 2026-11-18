@@ -620,7 +620,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           case "$TARGET" in
-            toolchain-python) cmd='python3.14 --version && python3.12 --version && uv --version && pip --version && python -m pytest --version && python -c "import pytest_asyncio, yaml" && actionlint -version && ansible --version && ansible-lint --version' ;;
+            toolchain-python) cmd='python3.14 --version && python3.12 --version && uv --version && pip --version && python -m pytest --version && python -c "import pytest_asyncio, yaml" && actionlint -version && ansible --version && ansible-lint --version && poetry --version' ;;
             toolchain-node) cmd='node --version && npm --version && corepack --version && PATH=/opt/node26/bin:$PATH node --version && PATH=/opt/node26/bin:$PATH npm --version' ;;
             toolchain-jvm) cmd='java -version && javac -version && mvn --version' ;;
             toolchain-rust) cmd='rustc --version && cargo --version && cargo clippy --version && cargo fmt --version && cc --version && pkg-config --exists gtk+-3.0 webkit2gtk-4.1 dbus-1' ;;

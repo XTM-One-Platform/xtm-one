@@ -1331,6 +1331,7 @@ class ComparedRun(BaseModel):
     model_id: str
     is_default_model: bool = False
     created_at: str | None = None
+    trigger_reason: str | None = None
     metric_suite_version: str | None = None
     execution_mode: str | None = None
     quality_score: float | None = None
@@ -1403,6 +1404,7 @@ class BundleReviewAnswer(BaseModel):
     evaluation_name: str
     model_id: str
     subject_id: str | None = None
+    subject_name: str | None = None
     created_at: str | None = None
     judge_score: float | None = None
     anomaly: str | None = None

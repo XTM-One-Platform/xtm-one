@@ -25,6 +25,21 @@ export const EXPECTED = "expected";
 /** The reference of a review that has none: the answer alone. */
 export const NONE = "none";
 
+/**
+ * How an answer is named: by its evaluation when the answers come from several, else by
+ * its agent, which is then what tells them apart. `detail` adds what the title leaves out.
+ * `model` formats a model id.
+ */
+export function answerName(
+  answers: ReadonlyArray<Pick<BundleReview["answers"][number], "evaluation_id" | "evaluation_name" | "subject_name" | "model_id">>,
+  answer: Pick<BundleReview["answers"][number], "evaluation_name" | "subject_name" | "model_id">,
+  model: (id: string) => string,
+): { title: string; detail: string } {
+  const oneEvaluation = new Set(answers.map((a) => a.evaluation_id)).size === 1;
+  if (oneEvaluation && answer.subject_name) return { title: answer.subject_name, detail: model(answer.model_id) };
+  return { title: answer.evaluation_name, detail: [answer.subject_name, model(answer.model_id)].filter(Boolean).join(" · ") };
+}
+
 export interface StixObject {
   name: string;
   cid: string;

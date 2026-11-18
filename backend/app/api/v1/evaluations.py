@@ -2767,8 +2767,8 @@ async def compare_evaluations_route(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Compare 2 to 4 evaluations of one family on the entries their datasets share
-    (``services/evaluation/cross_comparison.py``).
+    """Compare 1 to 4 evaluations of one family on the entries their datasets share
+    (``services/evaluation/cross_comparison.py``); one evaluation compares its own runs.
 
     ``ids`` lists the evaluations, each visible to the caller (else 404); ``run_ids``
     optionally picks the runs compared, an evaluation none of whose runs is named
