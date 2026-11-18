@@ -256,6 +256,10 @@ export interface UserListItem {
   is_active: boolean;
   is_platform_admin: boolean;
   sso_provider: string | null;
+  /** Who manages the account: an identity provider over SCIM, SSO, or local. */
+  provisioning_source?: ProvisioningSource;
+  /** Set when the identity provider removed the account (a SCIM DELETE). */
+  deprovisioned_at?: string | null;
   created_at: string;
   integration_count: number;
   mcp_server_count: number;
@@ -263,6 +267,8 @@ export interface UserListItem {
   knowledge_base_count: number;
   group_ids: string[];
 }
+
+export type ProvisioningSource = "scim" | "sso" | "local";
 
 /** A person as returned by the non-admin `/users/directory` search.
  *  Name and email only — deliberately far less than {@link UserListItem}. */
@@ -3801,6 +3807,11 @@ export interface UserDetail {
    *  action for a user who lost their device. */
   mfa_enabled?: boolean;
   mfa_confirmed_at?: string | null;
+  provisioning_source?: ProvisioningSource;
+  deactivated_at?: string | null;
+  /** admin, scim, sso or system: who deactivated the account. */
+  deactivation_source?: string | null;
+  deprovisioned_at?: string | null;
 }
 
 export interface UserStats {

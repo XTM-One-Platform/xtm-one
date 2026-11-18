@@ -40,4 +40,10 @@ The revoked keys, cleared tokens, cancelled timers and one-offs, and stopped run
 
 ## Review list
 
-`review_items` entries are `{key, kind, id, name, action, detail, reviewed_at, reviewed_by, resolution}`. `resolve_review_item(..., resolution="keep" | "reassign" | "delete")` stamps one. A reviewed transfer is never taken back on reactivation. The admin page that works the list is slice S3 of the SCIM program.
+`review_items` entries are `{key, kind, id, name, action, detail, reviewed_at, reviewed_by, resolution}`. `resolve_review_item(..., resolution="keep" | "reassign" | "delete")` stamps one. A reviewed transfer is never taken back on reactivation.
+
+Admin API (`backend/app/api/v1/users.py`): `GET /api/v1/users/deactivations?open=true` lists the episodes newest first with `open_review_count`; `POST /api/v1/users/deactivations/{id}/review` with `{key, resolution}` stamps one item and audits it. The screen is Settings > Access and security > Provisioning (`frontend/src/pages/settings/ProvisioningSection.tsx`).
+
+## Preview
+
+`preview_deactivation(db, user)` reads, without writing, what `deactivate_user` would do: `{refusal, successor, counts, kept_without_successor}`, the counts keyed as the cascade's own. `GET /api/v1/users/{id}/deactivation-preview` serves it to the **Disable** confirmation (`frontend/src/components/users/DeactivateUserDialog.tsx`). Figures the cascade learns only while acting (sub-agent tasks under a cancelled run, other people's agents bound to a private integration) are not previewed. `tests/test_user_deactivation_postgres.py::test_preview_matches_the_cascade_and_writes_nothing` keeps the preview equal to the cascade.
