@@ -234,7 +234,7 @@ function LegacyRedirect({ to }: { to: string }) {
 
 /** `/concierge...` (the former Concierge page) to `/health...`, the rest of the
  *  path, the query and the hash kept (#101 S1). */
-function ConciergeLegacyRedirect() {
+function HealthLegacyRedirect() {
   const { pathname, search, hash } = useLocation();
   return <Navigate to={`${pathname.replace(/^\/concierge/, "/health")}${search}${hash}`} replace />;
 }
@@ -696,7 +696,7 @@ export default function App() {
         <Route path="/agents/:id/:tab?/:section?" element={<Page><AgentDetail /></Page>} />
         <Route path="/health/:tab?" element={<AdminRoute><Page><Health /></Page></AdminRoute>} />
         {/* The former Concierge page (#101 S1): `/concierge[/tab]` opens Platform Health, the tab and query kept. */}
-        <Route path="/concierge/*" element={<ConciergeLegacyRedirect />} />
+        <Route path="/concierge/*" element={<HealthLegacyRedirect />} />
         <Route path="/evaluations" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Evaluations /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/new" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><NewEvaluation /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />

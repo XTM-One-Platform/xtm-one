@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { PET_ROW_FOR, PET_STATES, companionState, frameAt, framePosition } from "./concierge-pet.ts";
+import { PET_ROW_FOR, PET_STATES, companionState, frameAt, framePosition } from "./health-pet.ts";
 
 test("the states are the format's rows, with its frame counts", () => {
   assert.deepEqual(

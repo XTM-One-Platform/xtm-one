@@ -22,19 +22,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useRef } from "react";
 import { PawPrint, Trash2, Upload } from "lucide-react";
 
-import { PetSprite } from "@/components/concierge/PetSprite";
+import { PetSprite } from "@/components/health/PetSprite";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
-import { useDeletePet, usePetSpritesheet, usePets, useUploadPet } from "@/hooks/api/useConciergeCompanionApi";
+import { useDeletePet, usePetSpritesheet, usePets, useUploadPet } from "@/hooks/api/useHealthCompanionApi";
 import { useFormatter } from "@/i18n";
-import { petUploadErrorKey } from "@/lib/concierge-pet";
-import type { ConciergePet } from "@/types";
+import { petUploadErrorKey } from "@/lib/health-pet";
+import type { HealthPet } from "@/types";
 
-import { BlockTitle } from "./concierge-block";
+import { BlockTitle } from "./health-block";
 import { Spinner } from "@filigran/design-system";
 
-export function ConciergePetLibrary() {
+export function HealthPetLibrary() {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const input = useRef<HTMLInputElement>(null);
@@ -84,7 +84,7 @@ export function ConciergePetLibrary() {
   );
 }
 
-function LibraryPet({ pet }: { pet: ConciergePet }) {
+function LibraryPet({ pet }: { pet: HealthPet }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const [ConfirmEl, confirm] = useConfirm();

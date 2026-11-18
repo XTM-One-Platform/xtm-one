@@ -24,13 +24,13 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useConciergeName, useConciergeSignals } from "@/hooks/api/useConciergeApi";
+import { useHealthName, useHealthSignals } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
-import { CONCIERGE_SIGNAL_LABELS, conciergeRefusalKey, conciergeTargetHref, labelOf } from "@/lib/concierge";
+import { HEALTH_SIGNAL_LABELS, healthRefusalKey, healthTargetHref, labelOf } from "@/lib/health";
 import { cn } from "@/lib/utils";
-import type { ConciergeSignal } from "@/types";
+import type { HealthSignal } from "@/types";
 
-function reading(signal: ConciergeSignal): string {
+function reading(signal: HealthSignal): string {
   const value = signal.last_value?.value;
   const baseline = signal.last_value?.baseline;
   if (value === undefined || value === null) return "-";
@@ -38,12 +38,12 @@ function reading(signal: ConciergeSignal): string {
 }
 
 /** English label of the kind of object a signal reads. */
-function targetLabel(signal: ConciergeSignal): string {
+function targetLabel(signal: HealthSignal): string {
   return signal.target_type === "flow" ? "Flow" : signal.target_type === "assignment" ? "Assignment" : "Agent";
 }
 
 /** English wording of a target that no longer exists (the API answers no name for it). */
-function missingTargetLabel(signal: ConciergeSignal): string {
+function missingTargetLabel(signal: HealthSignal): string {
   return signal.target_type === "flow"
     ? "Flow no longer exists"
     : signal.target_type === "assignment"
@@ -52,50 +52,50 @@ function missingTargetLabel(signal: ConciergeSignal): string {
 }
 
 /** Whether the signal started a cycle, as the Cycle filter reads it. */
-const cycleState = (signal: ConciergeSignal) => (signal.cycle_id ? "started" : "not_started");
+const cycleState = (signal: HealthSignal) => (signal.cycle_id ? "started" : "not_started");
 
 /**
  * Column widths in px under the fixed layout (UX round 2 on #10066, B1): Target takes what is
  * left and cuts a long name with its tooltip, so the table never scrolls sideways at 1024 and
  * every row keeps one line.
  */
-const CONCIERGE_SIGNAL_COLUMN_WIDTHS = { signal: 144, reading: 112, cycle: 176, fired: 152 } as const;
+const HEALTH_SIGNAL_COLUMN_WIDTHS = { signal: 144, reading: 112, cycle: 176, fired: 152 } as const;
 
-export function ConciergeSignalsList() {
+export function HealthSignalsList() {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
-  const { data: signals = [], isLoading, isError, refetch } = useConciergeSignals();
+  const healthName = useHealthName();
+  const { data: signals = [], isLoading, isError, refetch } = useHealthSignals();
 
   const cycleLabel = useCallback(
-    (signal: ConciergeSignal) =>
+    (signal: HealthSignal) =>
       signal.cycle_id
         ? t_i18n("Started")
-        : t_i18n(conciergeRefusalKey({ detail: { code: signal.refusal } }), { name: conciergeName }),
-    [t_i18n, conciergeName],
+        : t_i18n(healthRefusalKey({ detail: { code: signal.refusal } }), { name: healthName }),
+    [t_i18n, healthName],
   );
 
   /** The target's name, or the named state of a target that no longer exists; never a raw id. */
   const targetName = useCallback(
-    (signal: ConciergeSignal) => signal.target_name || t_i18n(missingTargetLabel(signal)),
+    (signal: HealthSignal) => signal.target_name || t_i18n(missingTargetLabel(signal)),
     [t_i18n],
   );
 
-  const columns = useMemo<DataTableColumn<ConciergeSignal>[]>(
+  const columns = useMemo<DataTableColumn<HealthSignal>[]>(
     () => [
       {
         key: "signal",
         header: "Signal",
-        width: CONCIERGE_SIGNAL_COLUMN_WIDTHS.signal,
+        width: HEALTH_SIGNAL_COLUMN_WIDTHS.signal,
         cell: (signal) => {
-          const label = t_i18n(labelOf(CONCIERGE_SIGNAL_LABELS, signal.kind));
+          const label = t_i18n(labelOf(HEALTH_SIGNAL_LABELS, signal.kind));
           return (
             <span className="block truncate whitespace-nowrap" title={label}>
               {label}
             </span>
           );
         },
-        sortValue: (signal) => t_i18n(labelOf(CONCIERGE_SIGNAL_LABELS, signal.kind)),
-        csv: (signal) => t_i18n(labelOf(CONCIERGE_SIGNAL_LABELS, signal.kind)),
+        sortValue: (signal) => t_i18n(labelOf(HEALTH_SIGNAL_LABELS, signal.kind)),
+        csv: (signal) => t_i18n(labelOf(HEALTH_SIGNAL_LABELS, signal.kind)),
       },
       {
         key: "target",
@@ -124,7 +124,7 @@ export function ConciergeSignalsList() {
         key: "reading",
         header: "Reading",
         hideable: true,
-        width: CONCIERGE_SIGNAL_COLUMN_WIDTHS.reading,
+        width: HEALTH_SIGNAL_COLUMN_WIDTHS.reading,
         cell: (signal) => (
           <span className="block truncate whitespace-nowrap font-mono-plex" title={reading(signal)}>
             {reading(signal)}
@@ -136,7 +136,7 @@ export function ConciergeSignalsList() {
         key: "cycle",
         header: "Cycle",
         hideable: true,
-        width: CONCIERGE_SIGNAL_COLUMN_WIDTHS.cycle,
+        width: HEALTH_SIGNAL_COLUMN_WIDTHS.cycle,
         cell: (signal) => (
           <Badge variant={signal.cycle_id ? "cyan" : "warning"} className="max-w-full whitespace-nowrap" title={cycleLabel(signal)}>
             <span className="truncate">{cycleLabel(signal)}</span>
@@ -149,7 +149,7 @@ export function ConciergeSignalsList() {
         key: "fired",
         header: "Fired",
         hideable: true,
-        width: CONCIERGE_SIGNAL_COLUMN_WIDTHS.fired,
+        width: HEALTH_SIGNAL_COLUMN_WIDTHS.fired,
         cell: (signal) => <DateTimeCell value={signal.fired_at} />,
         sortValue: (signal) => signal.fired_at ?? "",
         csv: (signal) => signal.fired_at ?? "",
@@ -158,13 +158,13 @@ export function ConciergeSignalsList() {
     [t_i18n, cycleLabel, targetName],
   );
 
-  const filters = useMemo<DataTableFilter<ConciergeSignal>[]>(
+  const filters = useMemo<DataTableFilter<HealthSignal>[]>(
     () => [
       {
         key: "signal",
         label: "Signal",
         values: (signal) => [signal.kind],
-        options: Object.entries(CONCIERGE_SIGNAL_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+        options: Object.entries(HEALTH_SIGNAL_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
       },
       {
         key: "target",
@@ -203,11 +203,11 @@ export function ConciergeSignalsList() {
       rows={signals}
       columns={columns}
       rowKey={(signal) => `${signal.kind}-${signal.target_id}`}
-      rowHref={(signal) => (signal.target_name ? (conciergeTargetHref(signal.target_type, signal.target_id) ?? "") : "")}
+      rowHref={(signal) => (signal.target_name ? (healthTargetHref(signal.target_type, signal.target_id) ?? "") : "")}
       defaultSort={{ key: "fired", direction: "desc" }}
       layout="fixed"
       searchFields={(signal) => [
-        t_i18n(labelOf(CONCIERGE_SIGNAL_LABELS, signal.kind)),
+        t_i18n(labelOf(HEALTH_SIGNAL_LABELS, signal.kind)),
         targetName(signal),
         t_i18n(targetLabel(signal)),
         cycleLabel(signal),
@@ -219,7 +219,7 @@ export function ConciergeSignalsList() {
       storageKey="concierge-signals"
       isLoading={isLoading}
       isError={isError}
-      errorLabel={t_i18n("{name}'s signals could not be loaded.", { name: conciergeName })}
+      errorLabel={t_i18n("{name}'s signals could not be loaded.", { name: healthName })}
       onRetry={() => void refetch()}
       emptyLabel={t_i18n("No signal is crossed")}
     />

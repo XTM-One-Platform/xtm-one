@@ -15,14 +15,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /** The flow's Concierge panel (#8261): its improvement opt-in, its proposals and cycles, and "Improve with Concierge", for its managers. */
 import { Icon } from "@filigran/design-system";
-import { ConciergeCyclesList } from "@/components/concierge/ConciergeCyclesList";
-import { ConciergeOptInCard } from "@/components/concierge/ConciergeOptInCard";
-import { ImprovementsInbox } from "@/components/concierge/ImprovementsInbox";
-import { ImproveWithConciergeButton } from "@/components/concierge/ImproveWithConciergeButton";
+import { HealthCyclesList } from "@/components/health/HealthCyclesList";
+import { HealthOptInCard } from "@/components/health/HealthOptInCard";
+import { ImprovementsInbox } from "@/components/health/ImprovementsInbox";
+import { ImproveWithHealthButton } from "@/components/health/ImproveWithHealthButton";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/i18n";
 
-export function ConciergePanel({ flowId, canManage, onClose }: { flowId: string; canManage: boolean; onClose: () => void }) {
+export function HealthPanel({ flowId, canManage, onClose }: { flowId: string; canManage: boolean; onClose: () => void }) {
   const { t_i18n } = useFormatter();
   return (
     <aside className="flex w-96 shrink-0 flex-col border-l border-elevation-subtle layer-1 bg-elevation-default">
@@ -33,12 +33,12 @@ export function ConciergePanel({ flowId, canManage, onClose }: { flowId: string;
         </Button>
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
-        <ConciergeOptInCard targetType="flow" targetId={flowId} />
-        <ImproveWithConciergeButton targetType="flow" targetId={flowId} canManage={canManage} />
+        <HealthOptInCard targetType="flow" targetId={flowId} />
+        <ImproveWithHealthButton targetType="flow" targetId={flowId} canManage={canManage} />
         <ImprovementsInbox fixed={{ target_type: "flow", target_id: flowId }} />
         <div className="space-y-2">
           <p className="content-compact font-medium text-default-secondary">{t_i18n("Cycles")}</p>
-          <ConciergeCyclesList targetType="flow" targetId={flowId} />
+          <HealthCyclesList targetType="flow" targetId={flowId} />
         </div>
       </div>
     </aside>

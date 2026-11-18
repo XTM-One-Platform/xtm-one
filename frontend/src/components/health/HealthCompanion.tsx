@@ -26,22 +26,22 @@ import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
+import { useHealthName } from "@/hooks/api/useHealthApi";
 import {
   useCompanion,
   useCompanionActivity,
   usePetSpritesheet,
   usePets,
   useSaveCompanion,
-} from "@/hooks/api/useConciergeCompanionApi";
+} from "@/hooks/api/useHealthCompanionApi";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { useChatActivity } from "@/lib/companion-chat-activity";
-import { COMPANION_STATE_LABELS, PET_ROW_FOR, companionState } from "@/lib/concierge-pet";
+import { COMPANION_STATE_LABELS, PET_ROW_FOR, companionState } from "@/lib/health-pet";
 
 import { PetSprite } from "./PetSprite";
 
-export function ConciergeCompanion() {
+export function HealthCompanion() {
   const { data: companion } = useCompanion(true);
   if (!companion?.enabled) return null;
   return <FloatingPet slug={companion.pet} fallback={companion.default_pet} />;
@@ -50,7 +50,7 @@ export function ConciergeCompanion() {
 function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const { data: pets = [] } = usePets();
   // A pet removed since the companion was read shows the default one, as the server would.
   const pet = pets.find((candidate) => candidate.slug === slug) ?? pets.find((candidate) => candidate.slug === fallback);
@@ -65,7 +65,7 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
   const [open, setOpen] = useState(false);
   const save = useSaveCompanion();
   const onGreeted = useCallback(() => setGreeted(true), []);
-  const status = t_i18n(COMPANION_STATE_LABELS[state], { name: conciergeName });
+  const status = t_i18n(COMPANION_STATE_LABELS[state], { name: healthName });
 
   const hide = () =>
     save.mutate(
@@ -96,7 +96,7 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
           <div className="mt-3 flex items-center justify-between gap-2">
             <Button asChild size="sm" variant="secondary">
               <Link to="/health" onClick={() => setOpen(false)}>
-                {t_i18n("Open {name}", { name: conciergeName })}
+                {t_i18n("Open {name}", { name: healthName })}
               </Link>
             </Button>
             <Button size="sm" variant="ghost" onClick={hide} disabled={save.isPending}>

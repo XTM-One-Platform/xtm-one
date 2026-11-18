@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { ConciergeActivity, ConciergeCompanion, ConciergePet } from "@/types";
+import type { HealthActivity, HealthCompanion, HealthPet } from "@/types";
 
 const PETS_KEY = ["concierge", "pets"] as const;
 const COMPANION_KEY = ["concierge", "companion"] as const;
@@ -30,7 +30,7 @@ const COMPANION_KEY = ["concierge", "companion"] as const;
 const ACTIVITY_INTERVAL_MS = 30_000;
 
 export function usePets(enabled = true) {
-  return useQuery<ConciergePet[]>({ queryKey: PETS_KEY, queryFn: () => api.get("/health/pets"), enabled });
+  return useQuery<HealthPet[]>({ queryKey: PETS_KEY, queryFn: () => api.get("/health/pets"), enabled });
 }
 
 export function useUploadPet() {
@@ -39,7 +39,7 @@ export function useUploadPet() {
     mutationFn: (files: File[]) => {
       const form = new FormData();
       for (const file of files) form.append("files", file, file.name);
-      return api.postForm<ConciergePet>("/health/pets", form);
+      return api.postForm<HealthPet>("/health/pets", form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: PETS_KEY }),
   });
@@ -79,7 +79,7 @@ export function usePetSpritesheet(slug: string | undefined, sha256: string | und
 }
 
 export function useCompanion(enabled = true) {
-  return useQuery<ConciergeCompanion>({
+  return useQuery<HealthCompanion>({
     queryKey: COMPANION_KEY,
     queryFn: () => api.get("/health/me/companion"),
     enabled,
@@ -90,13 +90,13 @@ export function useSaveCompanion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { enabled: boolean; pet: string | null }) =>
-      api.put<ConciergeCompanion>("/health/me/companion", body),
+      api.put<HealthCompanion>("/health/me/companion", body),
     onSuccess: (data) => qc.setQueryData(COMPANION_KEY, data),
   });
 }
 
 export function useCompanionActivity(enabled: boolean) {
-  return useQuery<ConciergeActivity>({
+  return useQuery<HealthActivity>({
     queryKey: ["concierge", "activity"],
     queryFn: () => api.get("/health/me/activity"),
     enabled,

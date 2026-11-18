@@ -21,7 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useSyncExternalStore } from "react";
 
-import type { ChatActivity } from "@/lib/concierge-pet";
+import type { ChatActivity } from "@/lib/health-pet";
 
 let current: ChatActivity = "idle";
 const listeners = new Set<() => void>();

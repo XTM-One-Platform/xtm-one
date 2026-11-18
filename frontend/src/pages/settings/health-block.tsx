@@ -15,12 +15,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /** The frame every Settings > Agents and automations > Concierge block shares (#8254, #8261): one draft of the whole settings, one Edit / Save. */
 import { SettingsGroupDescription, SettingsGroupTitle } from "@/components/ui/settings-form";
-import type { ConciergeSettings } from "@/types";
+import type { HealthSettings } from "@/types";
 
 export type BlockProps = {
-  draft: ConciergeSettings;
+  draft: HealthSettings;
   editing: boolean;
-  onChange: (next: ConciergeSettings) => void;
+  onChange: (next: HealthSettings) => void;
 };
 
 export function BlockTitle({ icon: Icon, title, hint }: { icon: React.ComponentType<{ className?: string }>; title: string; hint: string }) {

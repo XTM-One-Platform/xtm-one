@@ -29,7 +29,7 @@ const NOTICES = {
   flow: "When a flow is opted in, Platform Health reads the journals of its runs to improve it. Run excerpts become evaluation cases, unredacted, visible to the flow's managers and to administrators. Anyone can opt out in their profile: their content is then never read, and the cases already built from it are deleted.",
 } as const;
 
-export function ConciergeConsentNotice({ targetType = "agent" }: { targetType?: keyof typeof NOTICES }) {
+export function HealthConsentNotice({ targetType = "agent" }: { targetType?: keyof typeof NOTICES }) {
   const { t_i18n } = useFormatter();
   return (
     <div

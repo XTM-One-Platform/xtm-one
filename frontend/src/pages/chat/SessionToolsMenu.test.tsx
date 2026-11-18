@@ -28,7 +28,7 @@ function suite(id: string, label: string, icon = Globe): BuiltinToolOption {
     available: true,
     agentOnly: false,
     assistantAdminOnly: false,
-    conciergeOnly: false,
+    healthOnly: false,
     known: true,
     functions: [],
   };

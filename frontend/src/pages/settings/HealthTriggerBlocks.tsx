@@ -27,14 +27,14 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { SettingsReadField } from "@/components/ui/settings-read-view";
-import { useConciergeScheduleMarks } from "@/hooks/api/useConciergeApi";
+import { useHealthScheduleMarks } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
-import { conciergeRefusalKey } from "@/lib/concierge";
+import { useHealthName } from "@/hooks/api/useHealthApi";
+import { healthRefusalKey } from "@/lib/health";
 import { COMMON_TIMEZONES } from "@/lib/constants";
 import { formatShortDateTime } from "@/lib/utils";
-import type { ConciergeSchedules, ConciergeSettings, ConciergeSignalSettings } from "@/types";
-import { BlockTitle, type BlockProps } from "./concierge-block";
+import type { HealthSchedules, HealthSettings, HealthSignalSettings } from "@/types";
+import { BlockTitle, type BlockProps } from "./health-block";
 
 const SCHEDULE_KEYS = ["memory", "quality", "flows", "digest"] as const;
 
@@ -154,10 +154,10 @@ function SwitchRow({
 
 export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
-  const { data: marks = [] } = useConciergeScheduleMarks();
+  const healthName = useHealthName();
+  const { data: marks = [] } = useHealthScheduleMarks();
   const timezoneId = useId();
-  const set = (patch: Partial<ConciergeSchedules>) => onChange({ ...draft, schedules: { ...draft.schedules, ...patch } });
+  const set = (patch: Partial<HealthSchedules>) => onChange({ ...draft, schedules: { ...draft.schedules, ...patch } });
   return (
     <div>
       <BlockTitle
@@ -177,18 +177,18 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
               info={t_i18n(SCHEDULE_INFO[key])}
               checked={draft.schedules[`${key}_enabled`]}
               editing={editing}
-              onToggle={(on) => set({ [`${key}_enabled`]: on } as Partial<ConciergeSchedules>)}
+              onToggle={(on) => set({ [`${key}_enabled`]: on } as Partial<HealthSchedules>)}
             >
               <CronField
                 schedule={label}
                 value={draft.schedules[key]}
                 editing={editing}
-                onChange={(value) => set({ [key]: value } as Partial<ConciergeSchedules>)}
+                onChange={(value) => set({ [key]: value } as Partial<HealthSchedules>)}
               />
               {last && (
                 <p className="self-end content-compact text-default-secondary">
                   {t_i18n("Last fired {when}", { when: formatShortDateTime(last.fired_at) })}
-                  {last.refusal && ` · ${t_i18n(conciergeRefusalKey({ detail: { code: last.refusal } }), { name: conciergeName })}`}
+                  {last.refusal && ` · ${t_i18n(healthRefusalKey({ detail: { code: last.refusal } }), { name: healthName })}`}
                 </p>
               )}
             </SwitchRow>
@@ -253,8 +253,8 @@ function CronField({ schedule, value, editing, onChange }: { schedule: string; v
 export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
   const s = draft.signals;
-  const set = (patch: Partial<ConciergeSignalSettings>) => onChange({ ...draft, signals: { ...s, ...patch } });
-  const field = (label: string, info: string, unit: string, key: keyof ConciergeSignalSettings, min: number, max: number, step = 1) => (
+  const set = (patch: Partial<HealthSignalSettings>) => onChange({ ...draft, signals: { ...s, ...patch } });
+  const field = (label: string, info: string, unit: string, key: keyof HealthSignalSettings, min: number, max: number, step = 1) => (
     <NumberField
       label={label}
       info={info}
@@ -264,7 +264,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
       max={max}
       step={step}
       editing={editing}
-      onChange={(value) => set({ [key]: value } as Partial<ConciergeSignalSettings>)}
+      onChange={(value) => set({ [key]: value } as Partial<HealthSignalSettings>)}
     />
   );
   return (
@@ -325,7 +325,7 @@ export function SignalsBlock({ draft, editing, onChange }: BlockProps) {
 
 export function DurationsBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
-  const set = (key: keyof ConciergeSettings) => (value: number) => onChange({ ...draft, [key]: value });
+  const set = (key: keyof HealthSettings) => (value: number) => onChange({ ...draft, [key]: value });
   return (
     <div>
       <BlockTitle

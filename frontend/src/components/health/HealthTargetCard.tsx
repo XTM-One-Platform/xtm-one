@@ -22,12 +22,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFormatter } from "@/i18n";
-import { ConciergeCyclesList } from "./ConciergeCyclesList";
+import { HealthCyclesList } from "./HealthCyclesList";
 import { ImprovementsInbox } from "./ImprovementsInbox";
-import { ImproveWithConciergeButton } from "./ImproveWithConciergeButton";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
+import { ImproveWithHealthButton } from "./ImproveWithHealthButton";
+import { useHealthName } from "@/hooks/api/useHealthApi";
 
-export function ConciergeTargetCard({
+export function HealthTargetCard({
   targetType,
   targetId,
   canManage,
@@ -37,7 +37,7 @@ export function ConciergeTargetCard({
   canManage: boolean;
 }) {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   if (!canManage) return null;
   const fixed = targetType === "agent" ? { agent_id: targetId } : { target_type: "flow" as const, target_id: targetId };
   return (
@@ -49,16 +49,16 @@ export function ConciergeTargetCard({
             {t_i18n("Improvements")}
           </CardTitle>
           <CardDescription>
-            {t_i18n("What {name} proposes for it, and its cycles. A change reaches production only once you approve it.", { name: conciergeName })}
+            {t_i18n("What {name} proposes for it, and its cycles. A change reaches production only once you approve it.", { name: healthName })}
           </CardDescription>
         </div>
-        <ImproveWithConciergeButton targetType={targetType} targetId={targetId} canManage={canManage} />
+        <ImproveWithHealthButton targetType={targetType} targetId={targetId} canManage={canManage} />
       </CardHeader>
       <CardContent className="space-y-4">
         <ImprovementsInbox fixed={fixed} />
         <div className="space-y-2">
           <p className="content-compact font-medium text-default-secondary">{t_i18n("Cycles")}</p>
-          <ConciergeCyclesList targetType={targetType} targetId={targetId} />
+          <HealthCyclesList targetType={targetType} targetId={targetId} />
         </div>
       </CardContent>
     </Card>

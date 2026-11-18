@@ -9,15 +9,15 @@ import { renderWithProviders } from "@/testing/providers";
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { petUploadErrorKey } from "@/lib/concierge-pet";
-import { ConciergeCompanionCard } from "./ConciergeCompanionCard";
+import { petUploadErrorKey } from "@/lib/health-pet";
+import { HealthCompanionCard } from "./HealthCompanionCard";
 
 const PETS = [
   { slug: "alfred", display_name: "Alfred", description: null, sprite_version: 1, builtin: true, sha256: "a" },
   { slug: "owl", display_name: "Owl", description: "A night owl.", sprite_version: 2, builtin: false, sha256: "b" },
 ];
 
-describe("ConciergeCompanionCard", () => {
+describe("HealthCompanionCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
@@ -35,7 +35,7 @@ describe("ConciergeCompanionCard", () => {
   });
 
   it("is off by default and turns on with the pet shown", async () => {
-    renderWithProviders(<ConciergeCompanionCard />);
+    renderWithProviders(<HealthCompanionCard />);
     const toggle = await screen.findByRole("switch", { name: "Show the companion" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
@@ -44,14 +44,14 @@ describe("ConciergeCompanionCard", () => {
   });
 
   it("picks a pet of the library", async () => {
-    renderWithProviders(<ConciergeCompanionCard />);
+    renderWithProviders(<HealthCompanionCard />);
     expect(await screen.findByRole("radio", { name: /Alfred/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(await screen.findByRole("radio", { name: /Owl/ }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "owl" }));
   });
 
   it("reads the companion with no feature flag (#101 S1)", async () => {
-    renderWithProviders(<ConciergeCompanionCard />);
+    renderWithProviders(<HealthCompanionCard />);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/me/companion"));
     expect(await screen.findByTestId("profile.concierge-companion")).toBeInTheDocument();
   });

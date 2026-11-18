@@ -24,7 +24,7 @@ const FLOATING: Record<string, number> = {
   "components/arcade/ArcadeOverlay.tsx": 3,
   "components/chat/MentionMenu.tsx": 1,
   // The Concierge companion's bubble (#8261), floating over the page.
-  "components/concierge/ConciergeCompanion.tsx": 1,
+  "components/health/HealthCompanion.tsx": 1,
   "components/dashboard-grid/DashboardGrid.tsx": 3,
   // The typeahead list under the top bar search field (#11201).
   "components/layout/GlobalSearch.tsx": 1,

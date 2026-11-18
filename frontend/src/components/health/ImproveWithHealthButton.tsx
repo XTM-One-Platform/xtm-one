@@ -24,10 +24,10 @@ import { Compass } from "lucide-react";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { useConciergeName, useRequestConciergeCycle } from "@/hooks/api/useConciergeApi";
+import { useHealthName, useRequestHealthCycle } from "@/hooks/api/useHealthApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
-import { conciergeRefusalKey } from "@/lib/concierge";
+import { healthRefusalKey } from "@/lib/health";
 import { Spinner } from "@filigran/design-system";
 
 interface Props {
@@ -37,12 +37,12 @@ interface Props {
   size?: "sm" | "default";
 }
 
-export function ImproveWithConciergeButton({ targetType, targetId, canManage, size = "sm" }: Props) {
+export function ImproveWithHealthButton({ targetType, targetId, canManage, size = "sm" }: Props) {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const { toast } = useToast();
   const aiOff = useAiActionDisabled();
-  const request = useRequestConciergeCycle();
+  const request = useRequestHealthCycle();
   if (!canManage) return null;
 
   const ask = () =>
@@ -51,12 +51,12 @@ export function ImproveWithConciergeButton({ targetType, targetId, canManage, si
       {
         onSuccess: () =>
           toast({
-            title: t_i18n("{name} is on it", { name: conciergeName }),
+            title: t_i18n("{name} is on it", { name: healthName }),
             description: t_i18n("Its findings and proposals will appear under Improvements."),
             variant: "success",
           }),
         onError: (error) =>
-          toast({ title: t_i18n("Not started"), description: t_i18n(conciergeRefusalKey(error), { name: conciergeName }), variant: "error" }),
+          toast({ title: t_i18n("Not started"), description: t_i18n(healthRefusalKey(error), { name: healthName }), variant: "error" }),
       },
     );
 
@@ -64,7 +64,7 @@ export function ImproveWithConciergeButton({ targetType, targetId, canManage, si
     <AiDisabledTip>
       <Button variant="outline" size={size} className="gap-1.5" onClick={ask} disabled={request.isPending || aiOff} aria-busy={request.isPending || undefined}>
         {request.isPending && <Spinner size="sm" tone="inherit" />}{!request.isPending && <Compass className="h-3.5 w-3.5" />}
-        {t_i18n("Improve with {name}", { name: conciergeName })}
+        {t_i18n("Improve with {name}", { name: healthName })}
       </Button>
     </AiDisabledTip>
   );

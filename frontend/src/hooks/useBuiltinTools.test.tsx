@@ -112,6 +112,6 @@ describe("useBuiltinTools session picker", () => {
     expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "concierge_orchestrator"]);
     expect(result.current.offeredInChat(false).map((tool) => tool.id)).toEqual(["web_fetch"]);
     expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "concierge_orchestrator"]);
-    expect(result.current.describe("memory_steward").conciergeOnly).toBe(true);
+    expect(result.current.describe("memory_steward").healthOnly).toBe(true);
   });
 });

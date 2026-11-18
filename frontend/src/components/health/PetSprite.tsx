@@ -20,7 +20,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useEffect, useState } from "react";
 
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { PET_CELL_HEIGHT, PET_CELL_WIDTH, PET_COLUMNS, PET_ROWS, PET_STATES, framePosition, type PetState } from "@/lib/concierge-pet";
+import { PET_CELL_HEIGHT, PET_CELL_WIDTH, PET_COLUMNS, PET_ROWS, PET_STATES, framePosition, type PetState } from "@/lib/health-pet";
 
 interface Props {
   url: string | null;

@@ -23,19 +23,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { hashKey, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { defaultConciergeName } from "@/lib/concierge";
+import { defaultHealthName } from "@/lib/health";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import type {
-  ConciergeBudget,
-  ConciergeCycle,
-  ConciergeCycleStart,
-  ConciergeName,
-  ConciergeOptIn,
-  ConciergeScheduleMark,
-  ConciergeSettings,
-  ConciergeSignal,
-  ConciergeTargetType,
+  HealthBudget,
+  HealthCycle,
+  HealthCycleStart,
+  HealthName,
+  HealthOptIn,
+  HealthScheduleMark,
+  HealthSettings,
+  HealthSignal,
+  HealthTargetType,
   ImprovementEvidenceLink,
   ImprovementProposal,
   ImprovementListFilters,
@@ -52,24 +52,24 @@ export type OptInTarget = "agent" | "flow";
 
 const optInKey = (targetType: OptInTarget, targetId: string) => ["concierge", `${targetType}-opt-in`, targetId] as const;
 
-export function useConciergeOptIn(targetType: OptInTarget, targetId: string, enabled = true) {
-  return useQuery<ConciergeOptIn>({
+export function useHealthOptIn(targetType: OptInTarget, targetId: string, enabled = true) {
+  return useQuery<HealthOptIn>({
     queryKey: optInKey(targetType, targetId),
     queryFn: () => api.get(`/health/${targetType}s/${targetId}/opt-in`),
     enabled: enabled && !!targetId,
   });
 }
 
-export function useSetConciergeOptIn(targetType: OptInTarget, targetId: string) {
+export function useSetHealthOptIn(targetType: OptInTarget, targetId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (optIn: boolean) =>
-      api.put<ConciergeOptIn>(`/health/${targetType}s/${targetId}/opt-in`, { opt_in: optIn }),
+      api.put<HealthOptIn>(`/health/${targetType}s/${targetId}/opt-in`, { opt_in: optIn }),
     onSuccess: (data) => queryClient.setQueryData(optInKey(targetType, targetId), { ...data, eligible: true }),
   });
 }
 
-export function useConciergeOptOut(enabled = true) {
+export function useHealthOptOut(enabled = true) {
   return useQuery<{ opt_out: boolean }>({
     queryKey: OPT_OUT_KEY,
     queryFn: () => api.get("/health/me/opt-out"),
@@ -77,7 +77,7 @@ export function useConciergeOptOut(enabled = true) {
   });
 }
 
-export function useSetConciergeOptOut() {
+export function useSetHealthOptOut() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (optOut: boolean) => api.put<{ opt_out: boolean }>("/health/me/opt-out", { opt_out: optOut }),
@@ -90,8 +90,8 @@ export function useSetConciergeOptOut() {
  * It is an administrator's text: render it as text or pass it as an ICU
  * value (`t_i18n("{name} is on it", { name })`), never as a message id.
  */
-export function useConciergeName(enabled = true): string {
-  const { data } = useQuery<ConciergeName>({
+export function useHealthName(enabled = true): string {
+  const { data } = useQuery<HealthName>({
     queryKey: NAME_KEY,
     queryFn: () => api.get("/health/name"),
     enabled,
@@ -99,21 +99,21 @@ export function useConciergeName(enabled = true): string {
     // The default name stands in: a failed read never takes the page down.
     throwOnError: false,
   });
-  return data?.name ?? defaultConciergeName();
+  return data?.name ?? defaultHealthName();
 }
 
-export function useConciergeSettings(enabled = true) {
-  return useQuery<ConciergeSettings>({
+export function useHealthSettings(enabled = true) {
+  return useQuery<HealthSettings>({
     queryKey: SETTINGS_KEY,
     queryFn: () => api.get("/health/settings"),
     enabled,
   });
 }
 
-export function useSaveConciergeSettings() {
+export function useSaveHealthSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (settings: ConciergeSettings) => api.put<ConciergeSettings>("/health/settings", settings),
+    mutationFn: (settings: HealthSettings) => api.put<HealthSettings>("/health/settings", settings),
     onSuccess: (data) => {
       qc.setQueryData(SETTINGS_KEY, data);
       void qc.invalidateQueries({ queryKey: BUDGET_KEY });
@@ -125,8 +125,8 @@ export function useSaveConciergeSettings() {
   });
 }
 
-export function useConciergeBudget(enabled = true) {
-  return useQuery<ConciergeBudget>({
+export function useHealthBudget(enabled = true) {
+  return useQuery<HealthBudget>({
     queryKey: BUDGET_KEY,
     queryFn: () => api.get("/health/budget"),
     enabled,
@@ -135,7 +135,7 @@ export function useConciergeBudget(enabled = true) {
 }
 
 interface TargetRef {
-  targetType?: ConciergeTargetType;
+  targetType?: HealthTargetType;
   targetId?: string;
 }
 
@@ -151,8 +151,8 @@ function targetParams({ targetType, targetId }: TargetRef, extra: Record<string,
 }
 
 /** The cycles the viewer may read, newest first; polled while one is open. */
-export function useConciergeCycles(target: TargetRef = {}, options: { status?: string; enabled?: boolean } = {}) {
-  return useQuery<ConciergeCycle[]>({
+export function useHealthCycles(target: TargetRef = {}, options: { status?: string; enabled?: boolean } = {}) {
+  return useQuery<HealthCycle[]>({
     queryKey: ["concierge-cycles", target.targetType ?? null, target.targetId ?? null, options.status ?? null],
     queryFn: () => api.get(`/health/cycles${targetParams(target, { status: options.status })}`),
     enabled: options.enabled ?? true,
@@ -162,8 +162,8 @@ export function useConciergeCycles(target: TargetRef = {}, options: { status?: s
   });
 }
 
-export function useConciergeSignals(target: TargetRef = {}, options: { enabled?: boolean } = {}) {
-  return useQuery<ConciergeSignal[]>({
+export function useHealthSignals(target: TargetRef = {}, options: { enabled?: boolean } = {}) {
+  return useQuery<HealthSignal[]>({
     queryKey: ["concierge-signals", target.targetType ?? null, target.targetId ?? null],
     queryFn: () => api.get(`/health/signals${targetParams(target)}`),
     enabled: options.enabled ?? true,
@@ -171,8 +171,8 @@ export function useConciergeSignals(target: TargetRef = {}, options: { enabled?:
   });
 }
 
-export function useConciergeScheduleMarks() {
-  return useQuery<ConciergeScheduleMark[]>({
+export function useHealthScheduleMarks() {
+  return useQuery<HealthScheduleMark[]>({
     queryKey: ["concierge-schedule-marks"],
     queryFn: () => api.get("/health/schedules"),
     throwOnError: false,
@@ -180,12 +180,12 @@ export function useConciergeScheduleMarks() {
 }
 
 /** "Improve with Concierge" on an agent or a flow. */
-export function useRequestConciergeCycle() {
+export function useRequestHealthCycle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { target_type: "agent" | "flow"; target_id: string }) =>
-      api.post<ConciergeCycleStart>("/health/cycles", body),
-    // The button says why nothing started (`conciergeRefusalKey`).
+      api.post<HealthCycleStart>("/health/cycles", body),
+    // The button says why nothing started (`healthRefusalKey`).
     meta: { suppressGlobalErrorToast: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["concierge-cycles"] }),
   });

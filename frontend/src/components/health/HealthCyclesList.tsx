@@ -18,25 +18,25 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Compass } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useConciergeCycles, useConciergeName } from "@/hooks/api/useConciergeApi";
+import { useHealthCycles, useHealthName } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import {
-  CONCIERGE_SIGNAL_LABELS,
-  CONCIERGE_SPECIALIST_LABELS,
-  CONCIERGE_TRIGGER_LABELS,
-  conciergeTargetHref,
+  HEALTH_SIGNAL_LABELS,
+  HEALTH_SPECIALIST_LABELS,
+  HEALTH_TRIGGER_LABELS,
+  healthTargetHref,
   labelOf,
-} from "@/lib/concierge";
+} from "@/lib/health";
 import { formatShortDateTime } from "@/lib/utils";
-import type { ConciergeCycle, ConciergeTargetType } from "@/types";
+import type { HealthCycle, HealthTargetType } from "@/types";
 import { CycleDigestView, DigestStatusBadge } from "./CycleDigestView";
 
-function CycleRow({ cycle }: { cycle: ConciergeCycle }) {
+function CycleRow({ cycle }: { cycle: HealthCycle }) {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const [open, setOpen] = useState(false);
   const status = cycle.status === "open" ? "open" : (cycle.digest?.status ?? cycle.status);
-  const href = conciergeTargetHref(cycle.target_type, cycle.target_id);
+  const href = healthTargetHref(cycle.target_type, cycle.target_id);
   return (
     <div className="rounded-sm border border-elevation-subtle-soft bg-elevation-default">
       <button
@@ -48,11 +48,11 @@ function CycleRow({ cycle }: { cycle: ConciergeCycle }) {
         {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
         <DigestStatusBadge status={status} />
         <span className="shrink-0 content-compact font-medium text-default-primary">
-          {cycle.specialist === "orchestrator" ? conciergeName : t_i18n(labelOf(CONCIERGE_SPECIALIST_LABELS, cycle.specialist))}
+          {cycle.specialist === "orchestrator" ? healthName : t_i18n(labelOf(HEALTH_SPECIALIST_LABELS, cycle.specialist))}
         </span>
         <span className="content-caption text-default-secondary">
-          {t_i18n(labelOf(CONCIERGE_TRIGGER_LABELS, cycle.trigger))}
-          {cycle.signal && ` · ${t_i18n(labelOf(CONCIERGE_SIGNAL_LABELS, cycle.signal.kind))}`}
+          {t_i18n(labelOf(HEALTH_TRIGGER_LABELS, cycle.trigger))}
+          {cycle.signal && ` · ${t_i18n(labelOf(HEALTH_SIGNAL_LABELS, cycle.signal.kind))}`}
         </span>
         <span className="ml-auto shrink-0 whitespace-nowrap content-caption text-default-secondary">
           {formatShortDateTime(cycle.opened_at)}
@@ -80,17 +80,17 @@ function CycleRow({ cycle }: { cycle: ConciergeCycle }) {
   );
 }
 
-export function ConciergeCyclesList({ targetType, targetId }: { targetType?: ConciergeTargetType; targetId?: string }) {
+export function HealthCyclesList({ targetType, targetId }: { targetType?: HealthTargetType; targetId?: string }) {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
-  const { data: cycles = [], isLoading, isError } = useConciergeCycles({ targetType, targetId });
+  const healthName = useHealthName();
+  const { data: cycles = [], isLoading, isError } = useHealthCycles({ targetType, targetId });
   if (isLoading) return null;
-  if (isError) return <p className="content-compact text-feedback-error-primary">{t_i18n("{name}'s cycles could not be loaded.", { name: conciergeName })}</p>;
+  if (isError) return <p className="content-compact text-feedback-error-primary">{t_i18n("{name}'s cycles could not be loaded.", { name: healthName })}</p>;
   if (!cycles.length) {
     return (
       <EmptyState
         icon={Compass}
-        title={t_i18n("{name} has run no cycle yet", { name: conciergeName })}
+        title={t_i18n("{name} has run no cycle yet", { name: healthName })}
         description={t_i18n("Cycles start on their schedule, on a signal, or when a manager asks.")}
       />
     );

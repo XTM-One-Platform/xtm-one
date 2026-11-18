@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tip } from "@/components/ui/tooltip";
-import { useConciergeName, useImprovements } from "@/hooks/api/useConciergeApi";
+import { useHealthName, useImprovements } from "@/hooks/api/useHealthApi";
 import { useClampPage } from "@/hooks/useLibraryParams";
 import { useFormatter } from "@/i18n";
 import {
@@ -39,9 +39,9 @@ import {
   IMPROVEMENT_TYPE_LABELS,
   IMPROVEMENT_VERDICT_LABELS,
   IMPROVEMENT_VERDICT_VARIANTS,
-  conciergeTargetHref,
+  healthTargetHref,
   labelOf,
-} from "@/lib/concierge";
+} from "@/lib/health";
 import { readTableState, writeTableState, type DataTableDefaults, type DataTableSort } from "@/lib/data-table-state";
 import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { toggleArrayItem } from "@/lib/utils";
@@ -99,7 +99,7 @@ function ProposalFacts({ item }: { item: ImprovementListItem }) {
 function ProposalDetail({ item }: { item: ImprovementListItem }) {
   const { t_i18n } = useFormatter();
   const simulated = item.experiment?.simulated_writes;
-  const href = conciergeTargetHref(
+  const href = healthTargetHref(
     item.target_type === "flow" ? "flow" : item.target_type === "assignment" ? "assignment" : "agent",
     item.target_type === "skill" ? item.agent_id : item.target_id,
   );
@@ -124,7 +124,7 @@ function ProposalDetail({ item }: { item: ImprovementListItem }) {
 
 export function ImprovementsInbox({ fixed }: { fixed?: ImprovementListFilters }) {
   const { t_i18n, intl } = useFormatter();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const [params, setParams] = useSearchParams();
   // The table keeps its state in the URL: read it here to ask the API for that page.
   const state = readTableState(params, URL_KEY, DEFAULTS);
@@ -269,7 +269,7 @@ export function ImprovementsInbox({ fixed }: { fixed?: ImprovementListFilters })
       <EmptyState
         icon={Lightbulb}
         title={t_i18n("No improvement proposal")}
-        description={t_i18n("Proposals {name} files appear here for who may approve them.", { name: conciergeName })}
+        description={t_i18n("Proposals {name} files appear here for who may approve them.", { name: healthName })}
       />
     );
   }

@@ -55,8 +55,8 @@ import {
   HANDOVER_TYPES, MAX_ITERATIONS_DEFAULT, clampMaxIterations, handoverTypeConfig, providerLogoSrc } from "@/lib/constants";
 import { shownHandoverType } from "@/lib/handover-types";
 import { AddAssignmentPanel } from "./AddAssignmentPanel";
-import { ConciergeOptInCard } from "@/components/concierge/ConciergeOptInCard";
-import { ConciergeTargetCard } from "@/components/concierge/ConciergeTargetCard";
+import { HealthOptInCard } from "@/components/health/HealthOptInCard";
+import { HealthTargetCard } from "@/components/health/HealthTargetCard";
 import { AgentFleetCard } from "./AgentFleetCard";
 import { ComingUpCard } from "./ComingUpCard";
 import { a2aBindingLabel } from "./a2a-binding-label";
@@ -253,10 +253,10 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
       <AgentFleetCard agent={agent} assignments={assignments} onAddAssignment={canManage ? openAddAssignment : undefined} />
 
       {/* ── Platform Concierge improvement opt-in (#8254) ── */}
-      <ConciergeOptInCard targetType="agent" targetId={agent.id} />
+      <HealthOptInCard targetType="agent" targetId={agent.id} />
 
       {/* ── Concierge: its proposals and cycles, for its managers (#8261) ── */}
-      <ConciergeTargetCard targetType="agent" targetId={agent.id} canManage={canManage} />
+      <HealthTargetCard targetType="agent" targetId={agent.id} canManage={canManage} />
 
       {/* ── General Assistant Badge ── */}
       {gaConfig?.linked_agent_id === agent.id && canStandInForGeneralAssistant(agent) && (

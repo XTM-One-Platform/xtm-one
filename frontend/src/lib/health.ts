@@ -19,12 +19,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * is shown as itself, never as a known one.
  */
 
-import type { ConciergeTargetType } from "@/types";
+import type { HealthTargetType } from "@/types";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "destructive" | "cyan";
 
 /** @i18n-keys */
-export const CONCIERGE_DIGEST_STATUS_LABELS = {
+export const HEALTH_DIGEST_STATUS_LABELS = {
   open: "In progress",
   completed: "Completed",
   partial: "Partly completed",
@@ -33,7 +33,7 @@ export const CONCIERGE_DIGEST_STATUS_LABELS = {
   cancelled: "Cancelled",
 } as const;
 
-export const CONCIERGE_DIGEST_STATUS_VARIANTS: Record<string, BadgeVariant> = {
+export const HEALTH_DIGEST_STATUS_VARIANTS: Record<string, BadgeVariant> = {
   open: "cyan",
   completed: "success",
   partial: "warning",
@@ -43,12 +43,12 @@ export const CONCIERGE_DIGEST_STATUS_VARIANTS: Record<string, BadgeVariant> = {
 };
 
 /** Platform Health's default name (`naming.default_concierge_name`), the same in every platform mode (#101). */
-export function defaultConciergeName(): string {
+export function defaultHealthName(): string {
   return "Platform Health";
 }
 
 /** @i18n-keys */
-export const CONCIERGE_SIGNAL_LABELS = {
+export const HEALTH_SIGNAL_LABELS = {
   feedback_drop: "Feedback drop",
   failure_spike: "Failure spike",
   cost_drift: "Cost drift",
@@ -56,7 +56,7 @@ export const CONCIERGE_SIGNAL_LABELS = {
 } as const;
 
 /** @i18n-keys */
-export const CONCIERGE_SPECIALIST_LABELS = {
+export const HEALTH_SPECIALIST_LABELS = {
   orchestrator: "Platform Health",
   memory_steward: "Memory Steward",
   quality_analyst: "Quality Analyst",
@@ -65,7 +65,7 @@ export const CONCIERGE_SPECIALIST_LABELS = {
 } as const;
 
 /** @i18n-keys */
-export const CONCIERGE_TRIGGER_LABELS = {
+export const HEALTH_TRIGGER_LABELS = {
   schedule: "Schedule",
   signal: "Signal",
   on_demand: "On demand",
@@ -108,11 +108,11 @@ const REASON_LABELS = {
   dry_run: "dry-run",
 } as const;
 
-export function conciergeSkipLabel(what: string): string {
+export function healthSkipLabel(what: string): string {
   return labelOf(SKIP_LABELS, what);
 }
 
-export function conciergeReasonLabel(reason: string): string {
+export function healthReasonLabel(reason: string): string {
   return labelOf(REASON_LABELS, reason);
 }
 
@@ -135,7 +135,7 @@ const REFUSAL_LABELS = {
 } as const;
 
 /** The i18n key of a refusal: by its code, else the generic one. */
-export function conciergeRefusalKey(error: unknown): string {
+export function healthRefusalKey(error: unknown): string {
   const detail = (error as { detail?: unknown } | null)?.detail;
   const code = detail && typeof detail === "object" ? (detail as { code?: unknown }).code : undefined;
   return typeof code === "string" && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, code)
@@ -198,7 +198,7 @@ export const EVIDENCE_KIND_LABELS = {
 } as const;
 
 /** The page of a cycle's, signal's or proposal's target. */
-export function conciergeTargetHref(type: ConciergeTargetType | null, id: string | null): string | null {
+export function healthTargetHref(type: HealthTargetType | null, id: string | null): string | null {
   if (!id) return null;
   if (type === "agent") return `/agents/${id}`;
   if (type === "flow") return `/flows/${id}/builder`;

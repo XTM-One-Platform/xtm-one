@@ -21,11 +21,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { Sparkles } from "lucide-react";
 
-import { ConciergeConsentNotice } from "@/components/concierge/ConciergeConsentNotice";
+import { HealthConsentNotice } from "@/components/health/HealthConsentNotice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { type OptInTarget, useConciergeOptIn, useSetConciergeOptIn } from "@/hooks/api/useConciergeApi";
+import { type OptInTarget, useHealthOptIn, useSetHealthOptIn } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { Spinner } from "@filigran/design-system";
 
@@ -47,8 +47,8 @@ const TEXTS = {
   },
 } as const satisfies Record<OptInTarget, Record<string, string>>;
 
-export function ConciergeOptInCard({ targetType, targetId }: { targetType: OptInTarget; targetId: string }) {
-  const { data, isLoading } = useConciergeOptIn(targetType, targetId);
+export function HealthOptInCard({ targetType, targetId }: { targetType: OptInTarget; targetId: string }) {
+  const { data, isLoading } = useHealthOptIn(targetType, targetId);
   if (isLoading || !data || !data.eligible) return null;
   return <OptInCard targetType={targetType} targetId={targetId} optIn={data.opt_in} canManage={data.can_manage} />;
 }
@@ -66,7 +66,7 @@ function OptInCard({
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const save = useSetConciergeOptIn(targetType, targetId);
+  const save = useSetHealthOptIn(targetType, targetId);
   const texts = TEXTS[targetType];
   const onChange = (next: boolean) =>
     save.mutate(next, {
@@ -106,7 +106,7 @@ function OptInCard({
             />
           </div>
         </div>
-        <ConciergeConsentNotice targetType={targetType} />
+        <HealthConsentNotice targetType={targetType} />
       </CardContent>
     </Card>
   );

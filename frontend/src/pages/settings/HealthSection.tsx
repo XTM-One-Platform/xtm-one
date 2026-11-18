@@ -38,18 +38,18 @@ import {
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { useToast } from "@/components/ui/toast";
 import { useAgents } from "@/hooks/api/useAgentApi";
-import { useConciergeBudget, useConciergeName, useConciergeSettings, useSaveConciergeSettings } from "@/hooks/api/useConciergeApi";
+import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
-import { defaultConciergeName } from "@/lib/concierge";
+import { defaultHealthName } from "@/lib/health";
 import { useFormatter } from "@/i18n";
-import type { ConciergeBudgetCaps, ConciergeSettings } from "@/types";
+import type { HealthBudgetCaps, HealthSettings } from "@/types";
 
-import { BlockTitle, type BlockProps } from "./concierge-block";
-import { ConciergePetLibrary } from "./ConciergePetLibrary";
-import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./ConciergeTriggerBlocks";
+import { BlockTitle, type BlockProps } from "./health-block";
+import { HealthPetLibrary } from "./HealthPetLibrary";
+import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
 import { Spinner } from "@filigran/design-system";
 
-type Draft = ConciergeSettings;
+type Draft = HealthSettings;
 
 /** The English label of each budget cap. @i18n-keys */
 const CAP_LABELS = {
@@ -67,10 +67,10 @@ const CAP_INFO = {
   month_cost_usd: "The most Platform Health may cost in a calendar month, in US dollars, e.g. 50. Once reached, it starts no new work until the next month. Empty: no cap.",
 } as const;
 
-const CAP_KEYS = Object.keys(CAP_LABELS) as (keyof ConciergeBudgetCaps)[];
-const TOKEN_CAPS: ReadonlySet<keyof ConciergeBudgetCaps> = new Set(["cycle_tokens", "month_tokens"]);
+const CAP_KEYS = Object.keys(CAP_LABELS) as (keyof HealthBudgetCaps)[];
+const TOKEN_CAPS: ReadonlySet<keyof HealthBudgetCaps> = new Set(["cycle_tokens", "month_tokens"]);
 
-function capValid(key: keyof ConciergeBudgetCaps, value: number | string | null): boolean {
+function capValid(key: keyof HealthBudgetCaps, value: number | string | null): boolean {
   if (value === null) return true;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 && (!TOKEN_CAPS.has(key) || Number.isInteger(n));
@@ -83,7 +83,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
   const fieldId = useId();
   const nameId = `${fieldId}-name`;
-  const defaultName = defaultConciergeName();
+  const defaultName = defaultHealthName();
   return (
     <div>
       <BlockTitle
@@ -244,8 +244,8 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n, intl } = useFormatter();
   const n = (value: number) => intl.formatNumber(value);
   const fieldId = useId();
-  const { data: budget } = useConciergeBudget();
-  const setCap = (key: keyof ConciergeBudgetCaps, raw: string) => {
+  const { data: budget } = useHealthBudget();
+  const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
     const value = raw.trim() === "" ? null : TOKEN_CAPS.has(key) ? Number(raw) : raw.trim();
     onChange({ ...draft, budget: { ...draft.budget, [key]: value } });
   };
@@ -312,12 +312,12 @@ const BLOCKS: ((props: BlockProps) => React.JSX.Element)[] = [
   DryRunBlock,
 ];
 
-export function ConciergeSection() {
+export function HealthSection() {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const { data: stored, isLoading } = useConciergeSettings();
-  const conciergeName = useConciergeName();
-  const save = useSaveConciergeSettings();
+  const { data: stored, isLoading } = useHealthSettings();
+  const healthName = useHealthName();
+  const save = useSaveHealthSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
   const editing = draft !== null;
   const shown = draft ?? stored;
@@ -354,7 +354,7 @@ export function ConciergeSection() {
                   (#9301 N4: the page and the setting link to each other). */}
               <Button variant="outline" size="sm" className="gap-1.5" asChild>
                 <Link to="/health">
-                  <Compass className="h-3 w-3" /> {t_i18n("Open {name}", { name: conciergeName })}
+                  <Compass className="h-3 w-3" /> {t_i18n("Open {name}", { name: healthName })}
                 </Link>
               </Button>
               <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => stored && setDraft(stored)} disabled={isLoading || !stored}>
@@ -377,7 +377,7 @@ export function ConciergeSection() {
       {shown &&
         BLOCKS.map((Block, index) => <Block key={index} draft={shown} editing={editing} onChange={setDraft} />)}
       {/* Saved by its own actions, not by the draft above. */}
-      <ConciergePetLibrary />
+      <HealthPetLibrary />
     </div>
   );
 }

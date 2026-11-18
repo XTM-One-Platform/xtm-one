@@ -27,7 +27,7 @@ export type AiSection = "models" | "media" | "assistant" | "knowledge";
 export type UsageSection = "quotas" | "observability" | "pricing";
 
 /** The Platform Health settings: the Platform Health page links here (#9301 N4, renamed #101 S1). */
-export const CONCIERGE_SETTINGS_PATH = "/settings/automations/health";
+export const HEALTH_SETTINGS_PATH = "/settings/automations/health";
 
 /** The old tab segment and where it lives now. */
 export const LEGACY_SETTINGS_ROUTES: Readonly<Record<string, string>> = {
@@ -39,7 +39,7 @@ export const LEGACY_SETTINGS_ROUTES: Readonly<Record<string, string>> = {
   quotas: "/settings/usage/quotas",
   observability: "/settings/usage/observability",
   quality: "/settings/automations/quality",
-  concierge: CONCIERGE_SETTINGS_PATH,
+  concierge: HEALTH_SETTINGS_PATH,
 };
 
 /**

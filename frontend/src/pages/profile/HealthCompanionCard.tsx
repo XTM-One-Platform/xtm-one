@@ -19,26 +19,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { Sparkles } from "lucide-react";
 
-import { PetSprite } from "@/components/concierge/PetSprite";
+import { PetSprite } from "@/components/health/PetSprite";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
-import { useCompanion, usePetSpritesheet, usePets, useSaveCompanion } from "@/hooks/api/useConciergeCompanionApi";
+import { useHealthName } from "@/hooks/api/useHealthApi";
+import { useCompanion, usePetSpritesheet, usePets, useSaveCompanion } from "@/hooks/api/useHealthCompanionApi";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
-import type { ConciergeCompanion, ConciergePet } from "@/types";
+import type { HealthCompanion, HealthPet } from "@/types";
 
-export function ConciergeCompanionCard() {
+export function HealthCompanionCard() {
   const { data } = useCompanion(true);
   if (!data) return null;
   return <CompanionCard companion={data} />;
 }
 
-function CompanionCard({ companion }: { companion: ConciergeCompanion }) {
+function CompanionCard({ companion }: { companion: HealthCompanion }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const { data: pets = [] } = usePets();
   const save = useSaveCompanion();
   const update = (next: { enabled: boolean; pet: string }) =>
@@ -54,7 +54,7 @@ function CompanionCard({ companion }: { companion: ConciergeCompanion }) {
         </CardTitle>
         <CardDescription className="content-compact">
           {t_i18n("A small pet in the corner of the screen shows what {name} and your runs are doing.", {
-            name: conciergeName,
+            name: healthName,
           })}
         </CardDescription>
       </CardHeader>
@@ -90,7 +90,7 @@ function PetChoice({
   disabled,
   onSelect,
 }: {
-  pet: ConciergePet;
+  pet: HealthPet;
   selected: boolean;
   disabled: boolean;
   onSelect: () => void;

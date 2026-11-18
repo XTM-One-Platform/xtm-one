@@ -44,9 +44,9 @@ import { BuiltinToolsPending } from "@/pages/tools/BuiltinToolsPending";
 import { CtemStageAgentsCard } from "@/pages/xtm-one/ctem/CtemStageAgentsCard";
 import { TwoFactorRow } from "@/pages/profile/TwoFactorRow";
 import { ToolApprovalsRow } from "@/pages/profile/ToolApprovalsRow";
-import { ConciergeCompanionCard } from "@/pages/profile/ConciergeCompanionCard";
+import { HealthCompanionCard } from "@/pages/profile/HealthCompanionCard";
 import { WaitingWorkItemsNotifyCard } from "@/pages/profile/WaitingWorkItemsNotifyCard";
-import { ConciergeOptOutRow } from "@/pages/profile/ConciergeOptOutRow";
+import { HealthOptOutRow } from "@/pages/profile/HealthOptOutRow";
 import { PersonalApiKeys } from "@/pages/profile/PersonalApiKeys";
 import { MyMemoryConsolidations } from "@/pages/profile/MemoryConsolidations";
 import { AgentAccountsSection } from "@/pages/profile/agent-accounts/AgentAccountsSection";
@@ -400,7 +400,7 @@ export default function Profile() {
           <WaitingWorkItemsNotifyCard />
 
           {/* The Concierge companion (#8261): off by default. */}
-          <ConciergeCompanionCard />
+          <HealthCompanionCard />
         </div>
       )}
 
@@ -552,7 +552,7 @@ function ProfileMemorySection() {
       </div>
 
       {/* Platform Concierge opt-out (#8254) */}
-      <ConciergeOptOutRow />
+      <HealthOptOutRow />
 
       <MyMemoryConsolidations />
 

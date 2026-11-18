@@ -23,14 +23,14 @@ import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { useFormatter } from "@/i18n";
 import {
-  CONCIERGE_DIGEST_STATUS_LABELS,
-  CONCIERGE_DIGEST_STATUS_VARIANTS,
-  conciergeReasonLabel,
-  conciergeSkipLabel,
+  HEALTH_DIGEST_STATUS_LABELS,
+  HEALTH_DIGEST_STATUS_VARIANTS,
+  healthReasonLabel,
+  healthSkipLabel,
   labelOf,
-} from "@/lib/concierge";
-import type { ConciergeDigest } from "@/types";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
+} from "@/lib/health";
+import type { HealthDigest } from "@/types";
+import { useHealthName } from "@/hooks/api/useHealthApi";
 
 function Figure({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -46,21 +46,21 @@ function counts(values: Record<string, number> | null, unavailable: boolean, t: 
   if (values === null) return "-";
   const entries = Object.entries(values).filter(([, n]) => n > 0);
   if (!entries.length) return "0";
-  return entries.map(([key, n]) => `${t(conciergeReasonLabel(key))} ${n}`).join(" · ");
+  return entries.map(([key, n]) => `${t(healthReasonLabel(key))} ${n}`).join(" · ");
 }
 
-export function DigestStatusBadge({ status }: { status: ConciergeDigest["status"] | "open" }) {
+export function DigestStatusBadge({ status }: { status: HealthDigest["status"] | "open" }) {
   const { t_i18n } = useFormatter();
   return (
-    <Badge variant={CONCIERGE_DIGEST_STATUS_VARIANTS[status] ?? "outline"} className="shrink-0 whitespace-nowrap">
-      {t_i18n(labelOf(CONCIERGE_DIGEST_STATUS_LABELS, status))}
+    <Badge variant={HEALTH_DIGEST_STATUS_VARIANTS[status] ?? "outline"} className="shrink-0 whitespace-nowrap">
+      {t_i18n(labelOf(HEALTH_DIGEST_STATUS_LABELS, status))}
     </Badge>
   );
 }
 
-export function CycleDigestView({ digest }: { digest: ConciergeDigest }) {
+export function CycleDigestView({ digest }: { digest: HealthDigest }) {
   const { t_i18n, intl } = useFormatter();
-  const conciergeName = useConciergeName();
+  const healthName = useHealthName();
   const n = (value: number) => intl.formatNumber(value);
   const missing = new Set(digest.unavailable);
   const proposals = digest.proposals;
@@ -115,7 +115,7 @@ export function CycleDigestView({ digest }: { digest: ConciergeDigest }) {
           <ul className="mt-1 list-disc pl-5 content-compact text-default-primary">
             {digest.skipped.map((skip, index) => (
               <li key={index}>
-                {t_i18n(conciergeSkipLabel(skip.what))}: {t_i18n(conciergeReasonLabel(skip.reason))}
+                {t_i18n(healthSkipLabel(skip.what))}: {t_i18n(healthReasonLabel(skip.reason))}
                 {skip.count !== undefined && ` (${n(skip.count)})`}
               </li>
             ))}
@@ -124,7 +124,7 @@ export function CycleDigestView({ digest }: { digest: ConciergeDigest }) {
       )}
       {digest.narrative && (
         <div className="rounded-sm bg-elevation-default p-3">
-          <p className="mb-1 content-caption text-default-secondary">{t_i18n("{name}'s report", { name: conciergeName })}</p>
+          <p className="mb-1 content-caption text-default-secondary">{t_i18n("{name}'s report", { name: healthName })}</p>
           <ChatMarkdown content={digest.narrative} />
         </div>
       )}

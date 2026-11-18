@@ -1,4 +1,4 @@
-// useConciergeName (#8261): built in since #101 (S1), so the name is asked
+// useHealthName (#8261): built in since #101 (S1), so the name is asked
 // with no feature flag; a caller may still hold it back with `enabled`, and a
 // failed read keeps the default name instead of reaching the error boundary
 // (the app runs its queries with throwOnError).
@@ -11,13 +11,13 @@ import { renderWithProviders } from "@/testing/providers";
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { useConciergeName } from "./useConciergeApi";
+import { useHealthName } from "./useHealthApi";
 
 function Name({ enabled }: { enabled?: boolean }) {
-  return <p data-testid="name">{useConciergeName(enabled)}</p>;
+  return <p data-testid="name">{useHealthName(enabled)}</p>;
 }
 
-describe("useConciergeName", () => {
+describe("useHealthName", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

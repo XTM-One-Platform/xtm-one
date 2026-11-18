@@ -23,7 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { useDecideImprovementProposal, useImprovementProposal } from "@/hooks/api/useConciergeApi";
+import { useDecideImprovementProposal, useImprovementProposal } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { ImprovementProposal } from "@/types";

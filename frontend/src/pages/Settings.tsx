@@ -46,7 +46,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { MusicGenerationSection } from "@/pages/settings/MusicGenerationSection";
 import { emptyChatProviders } from "@/pages/settings/emptyChatProviders";
 import { PronunciationLexiconSection } from "@/pages/settings/PronunciationLexiconSection";
-import { ConciergeSection } from "@/pages/settings/ConciergeSection";
+import { HealthSection } from "@/pages/settings/HealthSection";
 import { RenderRetentionSection } from "@/pages/settings/RenderRetentionSection";
 import { SpeechGenerationSection } from "@/pages/settings/SpeechGenerationSection";
 import { VideoGenerationSection } from "@/pages/settings/VideoGenerationSection";
@@ -2476,7 +2476,7 @@ function SettingsPage() {
       {/* Not wrapped: rating agent work and defining what it is scored on
           involve no model, so they stay available with AI off. */}
       {tab === "automations" && automations === "quality" && <FeedbackCriteriaSection />}
-      {tab === "automations" && automations === "health" && <ConciergeSection />}
+      {tab === "automations" && automations === "health" && <HealthSection />}
 
       {/* ================================================================ */}
       {/* Integrations: catalog, OAuth defaults, channels, MCP endpoint    */}

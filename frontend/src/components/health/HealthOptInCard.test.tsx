@@ -6,7 +6,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
-import { ConciergeOptInCard } from "./ConciergeOptInCard";
+import { HealthOptInCard } from "./HealthOptInCard";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -18,7 +18,7 @@ describe("the Concierge opt-in of a flow", () => {
   it("reads and writes the flow's opt-in", async () => {
     vi.mocked(api.get).mockResolvedValue({ opt_in: false, can_manage: true, eligible: true });
     vi.mocked(api.put).mockResolvedValue({ opt_in: true, can_manage: true });
-    renderWithProviders(<ConciergeOptInCard targetType="flow" targetId="f-1" />);
+    renderWithProviders(<HealthOptInCard targetType="flow" targetId="f-1" />);
 
     fireEvent.click(await screen.findByRole("switch", { name: "Opt in to improvement" }));
 
@@ -29,7 +29,7 @@ describe("the Concierge opt-in of a flow", () => {
 
   it("is read only for a viewer who cannot manage the flow", async () => {
     vi.mocked(api.get).mockResolvedValue({ opt_in: true, can_manage: false, eligible: true });
-    renderWithProviders(<ConciergeOptInCard targetType="flow" targetId="f-2" />);
+    renderWithProviders(<HealthOptInCard targetType="flow" targetId="f-2" />);
 
     const toggle = await screen.findByRole("switch", { name: "Opt in to improvement" });
     expect(toggle.hasAttribute("disabled")).toBe(true);

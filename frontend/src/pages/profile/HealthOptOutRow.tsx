@@ -22,17 +22,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { ShieldOff } from "lucide-react";
 
-import { ConciergeConsentNotice } from "@/components/concierge/ConciergeConsentNotice";
+import { HealthConsentNotice } from "@/components/health/HealthConsentNotice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { useConciergeOptOut, useSetConciergeOptOut } from "@/hooks/api/useConciergeApi";
+import { useHealthOptOut, useSetHealthOptOut } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { Spinner } from "@filigran/design-system";
 
-export function ConciergeOptOutRow() {
-  const { data } = useConciergeOptOut();
+export function HealthOptOutRow() {
+  const { data } = useHealthOptOut();
   if (!data) return null;
   return <OptOutCard optOut={data.opt_out} />;
 }
@@ -41,7 +41,7 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const [ConfirmEl, confirm] = useConfirm();
-  const save = useSetConciergeOptOut();
+  const save = useSetHealthOptOut();
 
   const onChange = async (next: boolean) => {
     if (next) {
@@ -102,7 +102,7 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
             />
           </div>
         </div>
-        <ConciergeConsentNotice />
+        <HealthConsentNotice />
       </CardContent>
     </Card>
   );

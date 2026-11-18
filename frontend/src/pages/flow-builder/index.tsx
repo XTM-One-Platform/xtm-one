@@ -79,7 +79,7 @@ import { NodeLibraryPanel } from "./NodeLibraryPanel";
 import { QuickAddMenu } from "./QuickAddMenu";
 import { defaultEdgeKind, findPort } from "./connection-rules";
 import { ActivationInfoDialog, RunParamsDialog } from "./RunDialogs";
-import { ConciergePanel } from "./ConciergePanel";
+import { HealthPanel } from "./HealthPanel";
 import { RunsPanel } from "./RunsPanel";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
@@ -152,7 +152,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
   const [showRuns, setShowRuns] = useState(false);
   const [showOwnership, setShowOwnership] = useState(false);
   // The Concierge panel (#8261), shown while no other side panel is.
-  const [showConcierge, setShowConcierge] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
   // The dotted guide grid: a per-user preference toggled from the toolbar
   // (off by default — the canvas reads cleaner without it).
   const [showGrid, setShowGrid] = useState<boolean>(
@@ -1688,10 +1688,10 @@ function BuilderInner({ flowId }: { flowId: string }) {
           setShowVersions(false);
           setShowOwnership(false);
         }}
-        onToggleConcierge={
+        onToggleHealth={
           canManage
             ? () => {
-                setShowConcierge((v) => !v);
+                setShowHealth((v) => !v);
                 setShowVersions(false);
                 setShowRuns(false);
                 setShowOwnership(false);
@@ -1822,7 +1822,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
           />
         </div>
 
-        {selectedEdge && !selectedNode && !showVersions && !showRuns && !showOwnership && !showConcierge && (
+        {selectedEdge && !selectedNode && !showVersions && !showRuns && !showOwnership && !showHealth && (
           <EdgeConfigPanel
             edge={selectedEdge}
             sourceLabel={
@@ -1855,7 +1855,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
           />
         )}
 
-        {selectedNode && !showVersions && !showRuns && !showOwnership && !showConcierge && (
+        {selectedNode && !showVersions && !showRuns && !showOwnership && !showHealth && (
           <NodeConfigPanel
             node={selectedNode}
             kindDef={kindsById.get(selectedNode.data.kind)}
@@ -1977,8 +1977,8 @@ function BuilderInner({ flowId }: { flowId: string }) {
           />
         )}
 
-        {showConcierge && !showVersions && !showRuns && !showOwnership && (
-          <ConciergePanel flowId={flow.id} canManage={canManage} onClose={() => setShowConcierge(false)} />
+        {showHealth && !showVersions && !showRuns && !showOwnership && (
+          <HealthPanel flowId={flow.id} canManage={canManage} onClose={() => setShowHealth(false)} />
         )}
 
         {showRuns && (

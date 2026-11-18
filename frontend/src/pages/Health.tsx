@@ -23,10 +23,10 @@ import { Link } from "react-router-dom";
 import { Activity, Compass, Lightbulb, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/ui/list-page-header";
-import { CONCIERGE_SETTINGS_PATH } from "@/pages/settings/settings-routes";
-import { ConciergeCyclesList } from "@/components/concierge/ConciergeCyclesList";
-import { ConciergeSignalsList } from "@/components/concierge/ConciergeSignalsList";
-import { ImprovementsInbox } from "@/components/concierge/ImprovementsInbox";
+import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
+import { HealthCyclesList } from "@/components/health/HealthCyclesList";
+import { HealthSignalsList } from "@/components/health/HealthSignalsList";
+import { ImprovementsInbox } from "@/components/health/ImprovementsInbox";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
@@ -52,7 +52,7 @@ export default function Health() {
         info={t_i18n("What Platform Health found, tried and proposes, cycle by cycle, and the signals it watches.")}
         actions={
           <Button variant="outline" className="gap-1.5" asChild>
-            <Link to={CONCIERGE_SETTINGS_PATH}>
+            <Link to={HEALTH_SETTINGS_PATH}>
               <Settings2 className="h-4 w-4" /> {t_i18n("Platform Health settings")}
             </Link>
           </Button>
@@ -60,8 +60,8 @@ export default function Health() {
       />
       <DetailTabs tabs={tabs} active={tab} />
       {tab === "improvements" && <ImprovementsInbox />}
-      {tab === "cycles" && <ConciergeCyclesList />}
-      {tab === "signals" && <ConciergeSignalsList />}
+      {tab === "cycles" && <HealthCyclesList />}
+      {tab === "signals" && <HealthSignalsList />}
     </div>
   );
 }

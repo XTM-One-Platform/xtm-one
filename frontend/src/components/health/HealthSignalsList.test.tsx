@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
-import { ConciergeSignalsList } from "./ConciergeSignalsList";
+import { HealthSignalsList } from "./HealthSignalsList";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -48,7 +48,7 @@ function answer(signals: unknown) {
 const renderList = () =>
   renderWithProviders(
     <MemoryRouter>
-      <ConciergeSignalsList />
+      <HealthSignalsList />
     </MemoryRouter>,
   );
 

@@ -15,9 +15,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /** A proposal's evidence (#8261): a link where the viewer may open it, "hidden" otherwise, never its id. */
 import { Link } from "react-router-dom";
-import { useImprovementEvidence } from "@/hooks/api/useConciergeApi";
+import { useImprovementEvidence } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
-import { EVIDENCE_KIND_LABELS, labelOf } from "@/lib/concierge";
+import { EVIDENCE_KIND_LABELS, labelOf } from "@/lib/health";
 
 export function ImprovementEvidence({ proposalId }: { proposalId: string }) {
   const { t_i18n } = useFormatter();
