@@ -1299,6 +1299,12 @@ def classify(tokens: list[str]) -> tuple[str, str] | None:
         return ("node", kind) if (kind := _script_kind(script)) else None
     if tool in ("python", "python3") and len(rest) >= 2 and rest[0] == "-m":
         return classify(rest[1:])
+    if tool in ("python", "python3") and rest and rest[0].endswith(".py"):
+        return classify(rest)
+    if tool.endswith(".py") and len(tool) > 3:
+        # A repository script (`uv run plugin/scripts/flow_lint.py`, `python scripts/lint_docs.py`): its
+        # name says the kind, as a package.json script name does; a PEP 723 header carries its dependencies.
+        return ("python", kind) if (kind := _script_kind(tool[:-3])) else None
     if tool in ("pip", "pip3"):
         return ("python", "install") if words[:1] == ["install"] and "--user" not in rest else None
     if tool in ("uv", "poetry"):
