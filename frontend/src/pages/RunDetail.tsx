@@ -78,6 +78,8 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useAssignmentRunDetail, useRespondToHumanInput, useDismissRun, useDeleteAssignmentRun, useFollowupRun, useFollowupChat, useDescendantRuns, useSubmitApprovalDecisions } from "@/hooks/api/useAssignmentApi";
 import { RunActionRequests } from "@/components/runs/RunActionRequests";
+import { A2ARunExchange } from "@/components/runs/A2ARunExchange";
+import { a2aNoResultText } from "@/components/runs/a2a-no-result-text";
 import { ActionProposalList } from "@/components/ui/action-proposal";
 import { useLangfuseConfig } from "@/hooks/api/useSettingsApi";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
@@ -93,7 +95,7 @@ import { cn, formatDateTime, formatCompactNumber, formatDurationShort, pluralize
 import { runErrorIsNeutral, runErrorText } from "@/lib/run-error-text";
 import { assignmentRunTracesPath } from "@/lib/trace-links";
 import { primeChatDraft } from "@/lib/chat-launch";
-import { ICON_MAP, runStatusConfig, TRIGGER_LABELS, REFETCH_INTERVAL_SLOW, DELEGATION_TOOL_NAMES, COPY_FEEDBACK_DELAY, HITL_CONTINUATION_MESSAGE } from "@/lib/constants";
+import { ICON_MAP, INTEGRATION_PROVIDER_NAMES, runStatusConfig, TRIGGER_LABELS, REFETCH_INTERVAL_SLOW, DELEGATION_TOOL_NAMES, COPY_FEEDBACK_DELAY, HITL_CONTINUATION_MESSAGE } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import type { AgenticStep, AssignmentRunAttachment, AssignmentRunDetail, HumanInputHistoryEntry } from "@/types";
 import { Spinner } from "@filigran/design-system";
@@ -144,6 +146,10 @@ const KEY_LABELS: Record<string, string> = {
   object_id: "Object ID",
   occurred_at: "Occurred at",
   once: "One-off watch",
+  // A2A runs: who submitted the task, and with which credential form.
+  source: "Source",
+  client_id: "Client ID",
+  a2a_provider: "A2A Provider",
 };
 
 // ── Key icon mapping for visual richness ───────────────────────────────────
@@ -528,6 +534,9 @@ function formatMetaValue(key: string, value: unknown): string {
     const d = parseFlexibleTimestamp(value);
     return d ? formatDateTime(d.toISOString()) : String(value);
   }
+  // An A2A run's origin and credential form, by their names rather than their codes.
+  if (key === "source" && value === "a2a") return "A2A";
+  if (key === "a2a_provider" && typeof value === "string") return INTEGRATION_PROVIDER_NAMES[value] ?? value;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -918,6 +927,9 @@ export default function RunDetail() {
   const unfinishedNotice = run.status === "completed" ? unfinishedRunNotice(run.stop_reason, t_i18n) : null;
   // Waiting while agentic AI is unavailable here: held, not failed.
   const heldReason = runHeldReason(run);
+  // A completed external run whose A2A task waits on its caller's answer.
+  const waitingOnCaller = run.a2a_exchange?.asked?.state === "waiting";
+  const a2aNoResult = a2aNoResultText(run.a2a_exchange, t_i18n);
   // Pending only while nobody has responded yet: the respond endpoint stores
   // the response immediately, so the panel flips to the answered state even
   // before the engine picks the run back up.
@@ -978,7 +990,7 @@ export default function RunDetail() {
           <div className="flex items-center gap-4">
             <div className={cn(
               "flex h-14 w-14 shrink-0 items-center justify-center rounded-sm",
-              isRunning ? "bg-accent/10" : unfinishedNotice ? "bg-feedback-warning-primary/10" : run.status === "completed" ? "bg-feedback-success-primary/10" : "bg-feedback-error-primary/10",
+              isRunning ? "bg-accent/10" : unfinishedNotice || waitingOnCaller ? "bg-feedback-warning-primary/10" : run.status === "completed" ? "bg-feedback-success-primary/10" : "bg-feedback-error-primary/10",
             )}>
               <AgentIcon className={cn("h-7 w-7", isRunning ? "text-accent" : unfinishedNotice ? "text-feedback-warning-primary" : statusCfg.color)} />
             </div>
@@ -1056,6 +1068,10 @@ export default function RunDetail() {
           balanced, equal-column grid (replaces the old 3-card row + separate
           Trigger Event card). */}
       <RunOverviewCard run={run} />
+
+      {/* An external run's exchange with the agent that submitted its A2A
+          task: the question it asked, and the run the answer started. */}
+      <A2ARunExchange exchange={run.a2a_exchange} />
 
       {/* Someone who cannot answer the run asked those who can, from the card of
           its pasted link. Listed to the people who may answer it. */}
@@ -1291,6 +1307,8 @@ export default function RunDetail() {
                 <><StatusIcon className={cn("h-4 w-4", statusCfg.color)} /> {t_i18n("Result")}</>
               ) : unfinishedNotice ? (
                 <><AlertTriangle className="h-4 w-4 text-feedback-warning-primary" /> {t_i18n("Result")}</>
+              ) : waitingOnCaller ? (
+                <><StatusIcon className={cn("h-4 w-4", statusCfg.color)} /> {t_i18n("Result")}</>
               ) : (
                 <><CheckCircle2 className="h-4 w-4 text-feedback-success-primary" /> {t_i18n("Result")}</>
               )}
@@ -1338,7 +1356,7 @@ export default function RunDetail() {
               <p className="content-compact text-default-secondary mt-1">{t_i18n("The agent is processing this assignment. Results will appear here automatically when complete.")}</p>
             </div>
           ) : (
-            <p className="content-base text-default-secondary italic py-4 text-center">{t_i18n("No result produced.")}</p>
+            <p className="content-base text-default-secondary italic py-4 text-center">{a2aNoResult ?? t_i18n("No result produced.")}</p>
           )}
           {/* The ROI review row: under the result, never beside the thumbs (#9365). */}
           <OutcomeReview block={run.roi} />

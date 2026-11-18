@@ -811,7 +811,11 @@ test.describe.serial('A2A handover from a tasked agent', () => {
       },
       { what: 'the cancellation reaching the child', timeoutMs: 30_000 },
     );
-    expect(child.error).toBe('Cancelled because its run was deleted.');
+    // The background task says who stopped it: the partner, not a deletion
+    // (`tasks.PARTNER_CANCEL_TASK_REASON`).
+    expect(child.error).toBe(
+      'Cancelled because the A2A partner that submitted its run cancelled the task.',
+    );
   });
 
   // -------------------------------------------------------------------------

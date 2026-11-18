@@ -886,6 +886,11 @@ class AssignmentRunDetailResponse(_RunOutcome, _ShownAsRead):
     #: forms. Resolved server-side so every surface labels a run identically,
     #: instead of each guessing from the registration id's shape and disagreeing.
     a2a_provider: str | None = None
+    #: Where an external run stands in its task's exchange with the caller
+    #: (``a2a.run_exchange.run_exchanges``): ``asked`` when it asked its caller
+    #: a question (waiting, answered or withdrawn), ``answers`` when it
+    #: continues the task after the answer. NULL on any other run.
+    a2a_exchange: dict | None = None
     actions_taken: list | None = None
     result_summary: str | None = None
     rendered_prompt: str | None = None

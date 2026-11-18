@@ -84,7 +84,9 @@ def _provider_capturing(model: str, refuse: set[str | None] | None = None) -> tu
     return provider, calls
 
 
-@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-astra-2026-09-01", "openai/gpt-6-astra"])
+@pytest.mark.parametrize(
+    "model", ["gpt-6-astra", "gpt-6-astra-2026-09-01", "openai/gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"]
+)
 def test_gpt6_astra_is_declared_without_none(model):
     assert refuses_effort_none(model)
     assert lowest_effort(model) == "low"
@@ -92,8 +94,9 @@ def test_gpt6_astra_is_declared_without_none(model):
 
 @pytest.mark.parametrize("effort", ["none", "minimal"])
 @pytest.mark.parametrize("has_tools", [False, True])
-def test_a_model_that_refuses_none_gets_its_lowest_level(effort, has_tools):
-    assert normalize_openai_reasoning_effort(effort, "gpt-6-astra", has_tools=has_tools) == "low"
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"])
+def test_a_model_that_refuses_none_gets_its_lowest_level(effort, has_tools, model):
+    assert normalize_openai_reasoning_effort(effort, model, has_tools=has_tools) == "low"
 
 
 @pytest.mark.parametrize("has_tools", [False, True])
