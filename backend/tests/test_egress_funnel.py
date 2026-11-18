@@ -45,6 +45,7 @@ ROUTED_TREES = (
 PLATFORM_INTERNAL = {
     "a2a/client/delegation.py": "A2A peers are reached from the platform (allow-listed, SSRF-checked)",
     "a2a/client/registration.py": "A2A agent-card discovery, from the platform",
+    "a2a/client/probe.py": "A2A Test Connection mints the partner's token from the platform, as registration does",
     "a2a/push.py": "A2A push notifications to registered webhooks, SSRF-checked",
     "api/auth_sso.py": "the platform's own SSO (OIDC discovery, token, userinfo)",
     "api/v1/channel_bots.py": "channel bot credentials checked against Slack / Teams / Telegram APIs",
