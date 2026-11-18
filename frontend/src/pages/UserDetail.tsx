@@ -79,6 +79,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne, useAgenticQuotas, useIsCommunityEdition } from "@/hooks/usePlatformConfig";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { DeactivateUserDialog } from "@/components/users/DeactivateUserDialog";
 import { startImpersonation } from "@/lib/api";
 import { cn, formatCompactNumber, formatKBStats, formatQuotaLimit, mergeSandboxIntoAgenticCount, pluralize, QUOTA_NOT_APPLICABLE_LABEL, validatePassword, MIN_PASSWORD_LENGTH } from "@/lib/utils";
 import { withBasePath } from "@/lib/base-path";
@@ -122,6 +123,7 @@ export default function UserDetail() {
   const deleteUser = useDeleteUser();
   const { user: currentUser, isImpersonating } = useAuth();
   const [ConfirmDialog, confirm] = useConfirm();
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
 
   if (isLoading) return <DetailPageSkeleton backTo="/users" backLabel="Back to Users" tabs={TABS.length} actions={3} />;
 
@@ -147,7 +149,9 @@ export default function UserDetail() {
 
   const handleToggleActive = () => {
     if (!id) return;
-    toggleActive.mutate(id);
+    // Disabling runs the whole cascade: the dialog previews it first (#122).
+    if (user.is_active) setDeactivateOpen(true);
+    else toggleActive.mutate(id);
   };
 
   const handleImpersonate = async () => {
@@ -181,6 +185,15 @@ export default function UserDetail() {
   return (
     <div className="space-y-6">
       {ConfirmDialog}
+      {id && (
+        <DeactivateUserDialog
+          userId={id}
+          userName={user.full_name || user.email}
+          open={deactivateOpen}
+          onOpenChange={setDeactivateOpen}
+          onConfirm={() => toggleActive.mutate(id)}
+        />
+      )}
 
       <EntityPageHeader
         backTo="/users"

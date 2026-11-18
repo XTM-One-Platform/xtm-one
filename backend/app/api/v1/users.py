@@ -85,6 +85,8 @@ class UserListItem(BaseModel):
     is_active: bool
     is_platform_admin: bool = False
     sso_provider: str | None = None
+    provisioning_source: str = "local"
+    deprovisioned_at: str | None = None
     created_at: str
     integration_count: int = 0
     mcp_server_count: int = 0
@@ -123,6 +125,19 @@ class UserDetailResponse(BaseModel):
     # their device.
     mfa_enabled: bool = False
     mfa_confirmed_at: str | None = None
+    # Provisioning (#122): "scim" when an identity provider manages the
+    # account, else "sso" or "local"; the deactivation state with its source.
+    provisioning_source: str = "local"
+    deactivated_at: str | None = None
+    deactivation_source: str | None = None
+    deprovisioned_at: str | None = None
+
+
+def provisioning_source(user: User) -> str:
+    """``scim`` for an account an identity provider manages, else ``sso`` or ``local``."""
+    if user.scim_external_id:
+        return "scim"
+    return "sso" if user.sso_provider else "local"
 
 
 class UserIntegrationItem(BaseModel):
@@ -631,6 +646,8 @@ async def list_users(
             is_active=u.is_active,
             is_platform_admin=is_platform_admin(u),
             sso_provider=u.sso_provider,
+            provisioning_source=provisioning_source(u),
+            deprovisioned_at=u.deprovisioned_at.isoformat() if u.deprovisioned_at else None,
             created_at=u.created_at.isoformat() if u.created_at else "",
             integration_count=ic or 0,
             mcp_server_count=mc or 0,
@@ -640,6 +657,108 @@ async def list_users(
         )
         for u, ic, mc, ac, kc in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Deactivation review (#122): the cascade's episodes and what an administrator
+# must look at. Declared before ``/{user_id}`` so the literal paths win.
+# ---------------------------------------------------------------------------
+
+
+class ReviewResolution(BaseModel):
+    key: str
+    resolution: str
+
+
+def _episode_dict(episode: Any, user: User | None) -> dict[str, Any]:
+    items = list(episode.review_items or [])
+    return {
+        "id": str(episode.id),
+        "user_id": str(episode.user_id),
+        "user_email": user.email if user is not None else None,
+        "user_name": user.full_name if user is not None else None,
+        "deprovisioned": bool(user is not None and user.deprovisioned_at is not None),
+        "source": episode.source,
+        "actor_label": episode.actor_label,
+        "successor_user_id": str(episode.successor_user_id) if episode.successor_user_id else None,
+        "counts": dict(episode.counts or {}),
+        "review_items": items,
+        "open_review_count": sum(1 for i in items if not i.get("reviewed_at")),
+        "deactivated_at": episode.deactivated_at.isoformat() if episode.deactivated_at else None,
+        "reactivated_at": episode.reactivated_at.isoformat() if episode.reactivated_at else None,
+    }
+
+
+@router.get("/deactivations")
+async def list_deactivations(
+    open_only: bool = Query(True, alias="open", description="Only the episodes of accounts still deactivated"),
+    limit: int = Query(100, ge=1, le=500),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """The deactivation episodes, newest first, with their review list."""
+    from app.models.user_deactivation import UserDeactivation
+
+    query = select(UserDeactivation, User).join(User, User.id == UserDeactivation.user_id)
+    if open_only:
+        query = query.where(UserDeactivation.reactivated_at.is_(None))
+    rows = (await db.execute(query.order_by(UserDeactivation.deactivated_at.desc()).limit(limit))).all()
+    return [_episode_dict(episode, user) for episode, user in rows]
+
+
+@router.post("/deactivations/{deactivation_id}/review")
+async def resolve_deactivation_review_item(
+    deactivation_id: str,
+    body: ReviewResolution,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Mark one review item done (``keep``, ``reassign`` or ``delete``)."""
+    from app.models.user_deactivation import UserDeactivation
+    from app.services import user_deactivation
+
+    episode = await db.get(UserDeactivation, parse_path_id(deactivation_id, not_found_detail="Deactivation not found"))
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Deactivation not found")
+    try:
+        item = await user_deactivation.resolve_review_item(
+            db, episode, body.key, resolution=body.resolution, admin=admin
+        )
+    except user_deactivation.DeactivationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    user = await db.get(User, episode.user_id)
+    await log_audit(
+        db,
+        user=admin,
+        action="update",
+        entity_type="user",
+        entity_id=episode.user_id,
+        entity_name=user.email if user is not None else None,
+        summary=f"Reviewed '{item.get('name')}' ({item.get('kind')}) after the deactivation: {body.resolution}",
+        details={"deactivation_id": str(episode.id), "key": body.key, "resolution": body.resolution},
+        request=request,
+    )
+    await db.commit()
+    return _episode_dict(episode, user)
+
+
+@router.get("/{user_id}/deactivation-preview")
+async def preview_user_deactivation(
+    user_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """What deactivating the account would do, read without writing."""
+    from app.services import user_deactivation
+
+    user = await db.get(User, parse_path_id(user_id, not_found_detail="User not found"))
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    preview = await user_deactivation.preview_deactivation(db, user)
+    if preview["refusal"] is None and user.id == admin.id:
+        preview["refusal"] = "Cannot deactivate yourself"
+    return preview
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)
@@ -696,6 +815,10 @@ async def get_user(
             if getattr(user, "mfa_confirmed_at", None)
             else None
         ),
+        provisioning_source=provisioning_source(user),
+        deactivated_at=user.deactivated_at.isoformat() if user.deactivated_at else None,
+        deactivation_source=user.deactivation_source,
+        deprovisioned_at=user.deprovisioned_at.isoformat() if user.deprovisioned_at else None,
     )
 
 

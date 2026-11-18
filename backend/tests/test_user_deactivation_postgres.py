@@ -229,6 +229,13 @@ async def test_deactivation_cascade_then_reactivation_round_trip() -> None:
         assert ("workspace", str(seed["workspace"]), "transferred") in actions
         assert ("integration", str(seed["oauth"]), "disconnected") in actions
         assert ("agent", str(seed["borrower"]), "bound_by_other_agent") in actions
+        # Each item carries the values the review screen renders in the
+        # reader's language (REVIEW_DETAIL_LABELS), never the English detail.
+        by_key = {(i["kind"], i["id"], i["action"]): i["params"] for i in outcome.review_items}
+        moved = by_key[("workspace", str(seed["workspace"]), "transferred")]
+        assert moved["successor"] and moved["paused"] == 0
+        assert by_key[("agent", str(seed["borrower"]), "bound_by_other_agent")]["count"] == 1
+        assert by_key[("integration", str(seed["oauth"]), "disconnected")]["provider"]
 
         # One episode and one audit row.
         episodes = (
@@ -323,6 +330,45 @@ async def test_reviewed_object_is_not_taken_back_and_deprovision_is_soft() -> No
         assert (await session.get(Agent, seed["shared"])).user_id == users["platform_admin"].id
         # Not reviewed: taken back.
         assert (await session.get(Agent, seed["company"])).user_id == users["departing"].id
+
+
+async def test_preview_matches_the_cascade_and_writes_nothing() -> None:
+    """The confirmation dialog's preview (S3) reads what the cascade then does."""
+    async with (
+        scratch_database("userdeact5", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
+        db.sessions() as session,
+    ):
+        seed = await _seed(session)
+        users = seed["users"]
+        departing = await session.get(User, users["departing"].id)
+        preview = await user_deactivation.preview_deactivation(session, departing)
+        assert preview["refusal"] is None
+        assert preview["successor"]["id"] == str(users["platform_admin"].id)
+        assert preview["kept_without_successor"] == 0
+        # Nothing written by the preview.
+        assert not session.dirty and not session.new
+        assert departing.is_active is True
+
+        admin = await session.get(User, users["older_admin"].id)
+        outcome = await user_deactivation.deactivate_user(
+            session, departing, source="admin", actor=admin, actor_label="Older"
+        )
+        await session.commit()
+        for key in (
+            "api_keys_revoked",
+            "timers_cancelled",
+            "private_agents_disabled",
+            "agents_transferred",
+            "assignments_paused",
+            "integrations_disconnected",
+            "workspaces_transferred",
+        ):
+            assert preview["counts"].get(key, 0) == outcome.counts.get(key, 0), key
+
+        session.expire_all()
+        departing = await session.get(User, users["departing"].id)
+        again = await user_deactivation.preview_deactivation(session, departing)
+        assert again["refusal"] == "The account is already deactivated"
 
 
 async def test_no_successor_keeps_objects_and_lists_them() -> None:

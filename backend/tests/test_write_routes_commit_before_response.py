@@ -95,6 +95,12 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
         "the import filter options' OpenCTI read: _drop_dead_draft marks the plain "
         "headers dict _user_creds builds, never a row of the request session",
     ),
+    # The Disable dialog's cascade preview (#122) counts what a deactivation would touch.
+    "GET /api/v1/users/{user_id}/deactivation-preview": (
+        frozenset({"app.services.user_deactivation.preview_deactivation.<count>"}),
+        "preview_deactivation's count() helper executes the select(func.count(...)) queries it is "
+        "given, one per cascade step; the preview writes nothing",
+    ),
     # The ROI ledger's figures (#12077 L4) read the open days' cost live from llm_traces.
     "GET /api/v1/roi": (
         frozenset({"app.services.roi_ledger.cost_facts"}),

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Brain, Key, KeyRound, OctagonX, ShieldCheck, SlidersHorizontal, Vault, type LucideIcon } from "lucide-react";
+import { Brain, Key, KeyRound, OctagonX, ShieldCheck, SlidersHorizontal, UserCog, Vault, type LucideIcon } from "lucide-react";
 import { SectionNav } from "@/components/ui/section-nav";
 import { useSectionParam } from "@/hooks/useSectionParam";
 import { hitlGlyph } from "@/lib/hitl";
 import { ApiKeysAdminSection } from "./ApiKeysAdminSection";
 import { EmergencyStopTokenSection } from "./EmergencyStopTokenSection";
 import { MemoryPurgeSection } from "./MemoryPurgeSection";
+import { ProvisioningSection } from "./ProvisioningSection";
 import { SecretVaultsSection } from "./SecretVaultsSection";
 import { SecurityAuditSection } from "./SecurityAuditSection";
 import { SecurityOptionsSection } from "./SecurityOptionsSection";
@@ -15,12 +16,13 @@ import { ToolApprovalsSection } from "./ToolApprovalsSection";
 
 // ---------------------------------------------------------------------------
 // Security Section – the security audit, the security options, the tool
-// approval switches, sign-in, the secret vaults, the platform's API keys, the
+// approval switches, sign-in, SCIM provisioning and the deactivation review,
+// the secret vaults, the platform's API keys, the
 // emergency stop API token and the emergency memory purge, one URL-backed
 // section each: /settings/security[/<section>]
 // ---------------------------------------------------------------------------
 
-type Section = "audit" | "options" | "approvals" | "authentication" | "vaults" | "api-keys" | "emergency" | "memory";
+type Section = "audit" | "options" | "approvals" | "authentication" | "provisioning" | "vaults" | "api-keys" | "emergency" | "memory";
 
 /** @i18n-keys */
 const SECTION_LABELS = {
@@ -28,6 +30,7 @@ const SECTION_LABELS = {
   options: "Security options",
   approvals: "Tool approvals",
   authentication: "Authentication",
+  provisioning: "Provisioning",
   vaults: "Secret vaults",
   "api-keys": "API keys",
   emergency: "Emergency stop",
@@ -39,6 +42,7 @@ const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
   { key: "options", label: SECTION_LABELS.options, icon: SlidersHorizontal },
   { key: "approvals", label: SECTION_LABELS.approvals, icon: hitlGlyph("topic") },
   { key: "authentication", label: SECTION_LABELS.authentication, icon: KeyRound },
+  { key: "provisioning", label: SECTION_LABELS.provisioning, icon: UserCog },
   { key: "vaults", label: SECTION_LABELS.vaults, icon: Vault },
   { key: "api-keys", label: SECTION_LABELS["api-keys"], icon: Key },
   { key: "emergency", label: SECTION_LABELS.emergency, icon: OctagonX },
@@ -64,6 +68,7 @@ export function SecuritySection() {
       {section === "options" && <SecurityOptionsSection />}
       {section === "approvals" && <ToolApprovalsSection />}
       {section === "authentication" && <SSOConfigSection />}
+      {section === "provisioning" && <ProvisioningSection />}
       {section === "vaults" && <SecretVaultsSection />}
       {section === "api-keys" && <ApiKeysAdminSection />}
       {section === "emergency" && <EmergencyStopTokenSection />}
