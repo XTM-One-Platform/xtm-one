@@ -1,6 +1,6 @@
 """keep the A2A client id across a secret rotation, record refused token requests (#105)
 
-``oauth_clients.secret_rotated_at``: when an ``oauth_a2a`` partner credential's
+``mcp_oauth_clients.secret_rotated_at``: when an ``oauth_a2a`` partner credential's
 secret was last rotated in place. A regenerate now keeps the client id and
 replaces the secret hash on the same row, so a bearer minted before the
 rotation is refused by comparing its ``iat`` with this stamp (it used to be
@@ -38,7 +38,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
-    "oauth_clients": (("secret_rotated_at", "TIMESTAMP WITH TIME ZONE"),),
+    "mcp_oauth_clients": (("secret_rotated_at", "TIMESTAMP WITH TIME ZONE"),),
     "a2a_integration_settings": (
         ("last_refused_token_at", "TIMESTAMP WITH TIME ZONE"),
         ("last_refused_client_id", "VARCHAR(255)"),
