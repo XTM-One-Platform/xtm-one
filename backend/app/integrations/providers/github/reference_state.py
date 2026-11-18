@@ -470,7 +470,9 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
     workflow runs (``GET /repos/{repo}/actions/runs?head_sha=``): it stays
     undecided until one check of its own CI passed (:func:`own_ci_passed`), so
     a ``pull_request_target`` run that completes before the pull request's own
-    workflows start never releases a parked item.
+    workflows start never releases a parked item. ``conflict`` says whether it
+    conflicts with its base (``mergeable`` false or ``mergeable_state`` dirty),
+    which no CI event reports.
     """
     owner, name, err = parse_repo(repo)
     if err or number <= 0:
@@ -536,7 +538,7 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
         if suites is not None and not own_ci_passed(checks, suites):
             conclusion, url, decider = None, None, None
     draft = pull.get("draft")
-    from .checks import coverage_pending
+    from .checks import coverage_pending, is_conflict
 
     listed = checks.get("check_runs") if isinstance(checks, dict) else None
     full_ci = None
@@ -548,6 +550,8 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
         "draft": draft if isinstance(draft, bool) else None,
         "conclusion": conclusion,
         "run_url": url,
+        # A conflict with the base sends no CI event: this read is its only wake.
+        "conflict": is_conflict(pull.get("mergeable"), pull.get("mergeable_state")),
         # A Codecov grade read before its uploads: its red is provisional (#12050).
         "coverage_pending": coverage_pending(
             latest_runs_by_name([r for r in listed if isinstance(r, dict)] if isinstance(listed, list) else [])

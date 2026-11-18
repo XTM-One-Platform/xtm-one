@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 #: commits were pushed to it, so the CI of the previous head no longer counts,
 #: or it was marked ready for review or converted to a draft (``draft``);
 #: ``issue_closed``: an issue was closed (``pr_numbers`` names the issue), which
-#: releases the work items blocked on it.
-PullRequestEventKind = Literal["ci", "closed", "head", "issue_closed"]
+#: releases the work items blocked on it; ``dequeued``: the code host removed
+#: the pull request from its merge queue without merging it (failed queue
+#: checks, a conflict in the group, a manual removal), ``conclusion`` naming why.
+PullRequestEventKind = Literal["ci", "closed", "head", "issue_closed", "dequeued"]
 
 
 @dataclass(frozen=True)
