@@ -100,6 +100,9 @@ NAVIGATION_TIMEOUT_MS = 30_000
 #: The longest a ``navigate`` may be asked to wait for its page (a dev server compiling a route on first visit).
 MAX_NAVIGATION_TIMEOUT_SECONDS = 120.0
 ACTION_TIMEOUT_MS = 10_000
+
+#: Playwright defaults the agent's browser leaves out of its launch: classic scrollbars stay painted.
+BROWSER_SHOWN_DEFAULT_ARGS: tuple[str, ...] = ("--hide-scrollbars",)
 #: How long an ``evaluate`` script may run before it is stopped, by default and at most: a page's long task
 #: (a canvas export) otherwise holds the session for the tool's whole budget.
 EVALUATE_TIMEOUT_SECONDS = 30.0
@@ -1317,6 +1320,9 @@ async def _launch_session(session_key: str, *, reopen_kept_page: bool = False) -
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
             ],
+            # Playwright adds --hide-scrollbars to every headless launch: a screenshot then paints no
+            # scrollbar, and a review cannot see one. The agent's browser keeps them classic.
+            ignore_default_args=list(BROWSER_SHOWN_DEFAULT_ARGS),
         )
         await redirects.attach(browser)
         kept_state: dict | None = None
@@ -2837,6 +2843,49 @@ _HOVER_POINT_JS = """(el) => {
 }"""
 
 
+#: The native tooltip the pointer shows over the element: its own ``title`` or the nearest ancestor's
+#: (an SVG ``<title>`` child counts), and whether the element's own text is cut. The browser draws that
+#: tooltip outside the page, so no screenshot shows it: the hover answer says it instead.
+_NATIVE_TOOLTIP_JS = """(el) => {
+  let node = el, text = '';
+  while (node && node.nodeType === 1 && !text) {
+    const own = node.getAttribute && node.getAttribute('title');
+    if (own && own.trim()) text = own.trim();
+    else {
+      const svgTitle = Array.from(node.children || []).find((c) => c.tagName && c.tagName.toLowerCase() === 'title');
+      if (svgTitle && svgTitle.textContent.trim()) text = svgTitle.textContent.trim();
+    }
+    node = node.parentElement;
+  }
+  const cut = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+  return {text: text, cut: !!cut && el.clientWidth > 0};
+}"""
+
+#: The longest native tooltip text the hover answer quotes.
+MAX_TOOLTIP_CHARS = 300
+
+
+async def _native_tooltip(page: Any, selector: str) -> str:
+    """What the hover answer says of the native tooltip over *selector*; empty when there is none."""
+    try:
+        found = await page.locator(selector).first.evaluate(_NATIVE_TOOLTIP_JS, timeout=ACTION_TIMEOUT_MS)
+    except Exception as exc:
+        logger.debug("No native tooltip read for %s: %s", selector, format_exception_message(exc))
+        return ""
+    if not isinstance(found, dict):
+        return ""
+    text = found.get("text")
+    if not isinstance(text, str) or not text:
+        return ""
+    if len(text) > MAX_TOOLTIP_CHARS:
+        text = text[:MAX_TOOLTIP_CHARS] + "..."
+    cut = " The element's own text is cut, so the tooltip carries the full text." if found.get("cut") else ""
+    return (
+        f" Native tooltip (title): {json.dumps(text, ensure_ascii=False)}; the browser draws it outside "
+        f"the page, so no screenshot shows it.{cut}"
+    )
+
+
 async def _reachable_hover_point(page: Any, selector: str) -> tuple[float, float] | None:
     """A viewport point the first match of *selector* receives the pointer at; ``None`` when none is found."""
     try:
@@ -2871,8 +2920,9 @@ async def browser_hover(session_key: str, selector: str) -> str:
         else:
             await session.page.mouse.move(*point)
             where = f" at ({point[0]:.0f}, {point[1]:.0f})"
+        tooltip = await _native_tooltip(session.page, selector)
         await _remember_state(session_key, session)  # as get_content
-        return f"Hovering '{selector}'{where} on {session.page.url}."
+        return f"Hovering '{selector}'{where} on {session.page.url}.{tooltip}"
 
 
 #: The farthest a drag moves on either axis, in CSS px, and the bounds of its intermediate pointer moves.
