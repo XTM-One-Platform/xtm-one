@@ -1061,6 +1061,17 @@ async def _changes_from_checkout(
     if changes.empty:
         note = f"Nothing to commit: {directory} is unchanged since its checkout of {origin}."
         return [], [], note + changes.untracked_note(record.path) + changes.ignored_note(), record
+    if changes.untracked and not paths:
+        # A commit of the rest would leave these behind without a word anyone reads (#237).
+        subs = ", ".join(f'"{s}"' for s in record.sub_paths)
+        return (
+            f"Error: from_checkout refused, nothing was committed: {changes.describe()}, and "
+            f"{len(changes.untracked)} file(s) changed since the checkout lie outside its record and sub_paths "
+            f"({', '.join(changes.untracked[:12])}{', ...' if len(changes.untracked) > 12 else ''}), so the commit "
+            f"would be partial. To commit them, pass paths=[{subs}, and those files or their directories]; to "
+            f"leave them out, pass paths=[{subs}]; or grow the checkout with "
+            f'materialize_repository(path="{record.path}", add_paths=[...]).'
+        )
     if changes.count > _MAX_CHECKOUT_SPLIT_CHANGES:
         return (
             f"Error: {changes.count} files changed under {directory}, over the {_MAX_CHECKOUT_SPLIT_CHANGES} one call "

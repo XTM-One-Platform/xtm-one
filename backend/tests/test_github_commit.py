@@ -205,7 +205,7 @@ class FakeGitHub:
         raise AssertionError(f"unexpected {method.upper()} {url}")
 
 
-def _commit_tool():
+def _commit_tool() -> tuple[MagicMock, object]:
     executor = MagicMock()
     executor.register = MagicMock()
     definitions = build_tools("fake-token", executor)
@@ -1598,6 +1598,25 @@ async def test_a_commit_given_files_never_touches_a_checkout_record():
 
     assert result.startswith("Committed 1 file change(s)")
     assert sink.advanced == []
+
+
+@pytest.mark.asyncio
+async def test_a_from_checkout_commit_refuses_to_leave_files_outside_the_sub_paths_behind() -> None:
+    """A change outside the sub_paths refuses the whole commit, nothing written; paths settles it (#237)."""
+    commit, _ = _commit_tool()
+    sink = _FakeCheckoutSink({"src/app.py": b"new\n", "src/old.py": b"gone\n", "lib/new.py": b"x = 1\n"})
+    fake = FakeGitHub()
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "current_workspace", return_value=sink):
+        refused = await commit(repo="acme/app", message="x", from_checkout="app", branch="feat/x")
+        text = refused.content if isinstance(refused, ToolResult) else refused
+        assert "nothing was committed" in text and "lib/new.py" in text, text
+        assert 'paths=["src"]' in text
+        assert sink.advanced == []
+        both = await commit(repo="acme/app", message="x", from_checkout="app", branch="feat/x", paths=["src", "lib"])
+
+    assert both.startswith("Committed 2 file change(s)"), both
+    [advanced] = sink.advanced
+    assert advanced["written"] == {"src/app.py": b"new\n", "lib/new.py": b"x = 1\n"}
 
 
 class _FilesAdvanceSink(_FakeCheckoutSink):
