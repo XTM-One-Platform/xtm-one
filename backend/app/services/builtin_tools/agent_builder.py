@@ -8139,6 +8139,10 @@ def build_agent_builder_tool(
                 return _delete_blocked_by_runs_message(
                     assignment_id, wf_name, blocking_runs
                 )
+            # A deleted seeded fleet health check stays deleted: its fleet opts out.
+            from app.services.fleets import record_health_check_deleted
+
+            await record_health_check_deleted(_db, assignment, actor=str(uid))
             await _db.delete(assignment)
             try:
                 await _db.commit()

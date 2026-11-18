@@ -215,6 +215,7 @@ from app.services.fleets import (
     remove_member,
     resolve_organization_scope,
     set_exposed_agents,
+    set_fleet_health_check,
     set_member_defaults,
     set_orchestrator,
     unique_fleet_slug,
@@ -363,6 +364,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             autonomy_level=effective_level(getattr(f, "autonomy_level", None)),
             gated_action_count=gated_counts.get(f.id, 0),
             instructions_position=getattr(f, "instructions_position", None),
+            health_check=f.health_check if isinstance(getattr(f, "health_check", None), dict) else None,
             forked_from=f.forked_from if isinstance(f.forked_from, dict) else None,
             automations=FleetAutomationsResponse(
                 total=facts[f.id].automations.total,
@@ -508,6 +510,8 @@ async def update_fleet(
                 else None
             )
             await set_orchestrator(db, fleet, orchestrator)
+        if body.health_check is not None:
+            await set_fleet_health_check(db, fleet, body.health_check, actor=str(user.id))
         if body.member_defaults is not None:
             changed = set_member_defaults(fleet, body.member_defaults.model_dump(exclude_unset=True))
             if "organization_scope" in changed:
