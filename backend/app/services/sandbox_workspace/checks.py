@@ -62,6 +62,9 @@ MAX_FINDINGS = 50
 #: Characters of stdout and of stderr kept in the result (head and tail each).
 OUTPUT_HEAD = 2_000
 OUTPUT_TAIL = 6_000
+#: Characters of each output stream a check that exited 0 keeps: its last lines, where a runner prints its
+#: totals (``Found 84 warnings and 0 errors``, ``5384 passed``); the rest stays in the run directory.
+GREEN_OUTPUT_CHARS = 1_500
 #: Longest block of lines whose back-to-back repeats are collapsed into one copy.
 REPEAT_BLOCK_MAX = 8
 #: A line seen this many times in one output is kept FREQUENT_KEEP times, the rest counted.
@@ -993,6 +996,30 @@ def clip(text: str, head: int = OUTPUT_HEAD, tail: int = OUTPUT_TAIL) -> str:
     return text[:head] + f"\n[... {len(text) - head - tail:,} characters elided; the whole output is in the run directory ...]\n" + text[-tail:]
 
 
+def green_tail(text: str, limit: int = GREEN_OUTPUT_CHARS) -> str:
+    """The last whole lines of *text* within *limit* characters, the lines left out counted in a marker.
+
+    A check that passed answers with its totals, not its progress or warnings: a linter's pre-existing
+    warnings and pytest's progress dots flooded the result of a green run (13k and 18k characters).
+    """
+    if len(text) <= limit:
+        return text
+    lines = text.splitlines()
+    kept: list[str] = []
+    size = 0
+    for line in reversed(lines):
+        if kept and size + len(line) + 1 > limit:
+            break
+        kept.append(line[-limit:])
+        size += len(line) + 1
+    kept.reverse()
+    left = len(lines) - len(kept)
+    return (
+        f"[... exit 0: {left:,} line(s) before the totals left out (warnings, progress); "
+        "the whole output is in the run directory, sandbox_grep reads it ...]\n" + "\n".join(kept)
+    )
+
+
 def format_result(
     *,
     check: str,
@@ -1007,8 +1034,13 @@ def format_result(
     report: ReportSummary | None,
     report_missing: str = "",
     failures_saved: bool = False,
+    green_summary: bool = False,
 ) -> str:
-    """What ``sandbox_run_command`` answers, bounded; the output condensed (:func:`condense`) then clipped."""
+    """What ``sandbox_run_command`` answers, bounded; the output condensed (:func:`condense`) then clipped.
+
+    *green_summary*: a declared or detected check (never the built-in script or an argv, whose output is
+    the answer) that exited 0 keeps only the end of each stream (:func:`green_tail`).
+    """
     status = "timed out" if timed_out else ("exit 0" if exit_code == 0 else f"exit {exit_code}")
     lines = [f"{check}: {status} in {seconds:.1f}s ({shown_argv(argv)} in {cwd}/)"]
     if report is not None:
@@ -1029,6 +1061,8 @@ def format_result(
     reported = bool(report is not None and report.findings and failures_saved and report.failures)
     out = clip(condense(stdout.strip(), reported=reported))
     err = clip(condense(stderr.strip(), reported=reported))
+    if green_summary and exit_code == 0 and not timed_out:
+        out, err = green_tail(out), green_tail(err)
     if out:
         lines.append("stdout:\n" + out)
     if err:
