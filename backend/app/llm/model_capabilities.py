@@ -144,10 +144,11 @@ MODEL_PARAMETER_RULES = (
     # tools (the tools refusal of #11571), so a request with tools goes
     # through the Responses API (#12205). It refuses ``temperature`` on both
     # endpoints ("Unsupported parameter", #12216), as the o-series does.
-    # gpt-6.2-sol and gpt-6.2-astra refuse ``none`` and effort+tools alike
-    # (XTM-One-Platform/xtm-one#133).
+    # gpt-6.1-sol, gpt-6.2-sol and gpt-6.2-astra refuse ``none`` and
+    # effort+tools alike (XTM-One-Platform/xtm-one#133,
+    # XTM-One-Platform/xtm-one#174).
     ModelParameterRule(
-        prefixes=("gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"),
+        prefixes=("gpt-6-astra", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.2-astra"),
         output_tokens="max_completion_tokens",
         omit_temperature=True,
         effort_levels=EFFORT_LEVELS,
