@@ -51,6 +51,7 @@ def _constant_named_tools() -> set[str]:
         APPLY_OAUTH_DEFAULT_TO_INTEGRATION,
         CREATE_INTEGRATION_APP_SECRET,
     )
+    from app.services.builtin_tools.stix_extraction import TOOL_NAME as EXTRACT_STIX_FROM_DOCUMENT
     from app.tools.wait_policy import CHECK_TASK_STATUS_TOOL_NAME, WAIT_TOOL_NAME
 
     return {
@@ -63,6 +64,7 @@ def _constant_named_tools() -> set[str]:
         DELETE_OAUTH_DEFAULT,
         CREATE_INTEGRATION_APP_SECRET,
         APPLY_OAUTH_DEFAULT_TO_INTEGRATION,
+        EXTRACT_STIX_FROM_DOCUMENT,
     }
 
 

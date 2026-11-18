@@ -78,10 +78,12 @@ The output family decides which metrics compare the answers, without an LLM:
 
 | Family | What it scores | Metrics, for example |
 | --- | --- | --- |
-| `STIX Bundle` | STIX 2.1 bundles, object by object and relationship by relationship | Entity F1, Relationship F1, Valid STIX 2.1 |
+| `STIX Bundle` | STIX 2.1 bundles, object by object and relationship by relationship | Entity F1, Relationship F1, Entity F1 Aligned, Relationship F1 Aligned, Entity F1 Soft, Valid STIX 2.1 |
 | `JSON` | Any JSON answer, field by field as its schema declares | Field Accuracy, Schema Validity |
 | `Classification` | A set of labels against the label vocabulary | Label F1, Exact Label Set, Only Known Labels |
 | `Prose` | Free text against a reference answer | Word Overlap F1, Word Sequence Overlap (ROUGE-L) |
+
+For a `STIX Bundle` evaluation, `Entity F1` and `Relationship F1` count an object only when the answer names it exactly as the expected bundle does (case and spacing aside), which is how OpenCTI recognises an object it already holds. The aligned metrics read the answer as an analyst would: each answer object is paired with the one expected object it names, through its aliases, ATT&CK id, spelling variants (`U.S.`, `USA`, `United States`) and close types (an intrusion set and a threat actor of one name), and a relationship counts whichever name of its two ends the answer used. `Entity F1 Soft` also gives part of a match to a close name or a confusable type (malware or tool, sector or organization, country or region, an ATT&CK technique and its sub-technique). The detail of an entry lists what was missed, what was extra, and the fragments of an object the answer split in two.
 
 For a `JSON` evaluation, `Per-Field Scoring` in `Configuration` changes how a field is scored, or how much it counts, where its schema's default does not fit. `Configuration` lists the fields you changed; select `Edit configuration` to change them.
 

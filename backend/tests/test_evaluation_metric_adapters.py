@@ -2081,3 +2081,22 @@ def test_a_long_chain_of_references_is_identified() -> None:
     chain = [_thing(1000 + k, f"link {k}", f"x-acme-thing--00000000-0000-4000-8000-{1001 + k:012d}") for k in range(3000)]
     outcomes = _stix(chain, chain[::-1])
     assert outcomes["stix.entity_prf"].value == 100.0
+
+
+def test_the_stix_dataset_types_come_from_every_reference_of_the_run() -> None:
+    """The closed-world reading takes its types from the dataset's references (their union,
+    ``relationship`` included when one reference holds one), never from the answer; without a
+    readable reference it is not scored."""
+    other = {"type": "bundle", "id": "bundle--2", "objects": [
+        {"type": "malware", "id": "malware--1", "name": "Emotet", "spec_version": "2.1"},
+        {"type": "relationship", "id": "relationship--1", "relationship_type": "uses",
+         "source_ref": "malware--1", "target_ref": "malware--1"},
+    ]}
+    config = build_quality_config("STIX_BUNDLE", _evaluation(), [json.dumps(_STIX_BUNDLE), json.dumps(other), "not json"])
+    assert config.stix_reference_types == frozenset(
+        {o["type"] for o in _STIX_BUNDLE["objects"]} | {"malware", "relationship"}
+    ) - {"report"}
+    outcomes = _by_key(run_quality(family="STIX_BUNDLE", reference=json.dumps(_STIX_BUNDLE),
+                                   prediction=json.dumps(_STIX_BUNDLE), output_schema=None, config=config))
+    assert outcomes["stix.entity_prf.aligned.closed"].value == 100.0
+    assert "stix.entity_prf.aligned.closed" not in _stix_outcomes(json.dumps(_STIX_BUNDLE))
