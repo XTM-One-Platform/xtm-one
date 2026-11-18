@@ -387,13 +387,13 @@ COVERED: dict[str, str] = {
     "registeredPlatforms": "list_xtm_hub_registered_platforms",
 }
 
-_PERSONAL_SECRET = "a person's own sign-in secret, never an agent's to set"
+_SIGN_IN_RESET_REASON = "a person's own sign-in secret, never an agent's to set"
 
 #: Hub operations never offered as a tool, with the reason.
 NOT_EXPOSED: dict[str, str] = {
     "login": "a browser session login; the integration authenticates with its API token",
     "logout": "ends a browser session the integration does not hold",
-    "resetPassword": _PERSONAL_SECRET,
+    "resetPassword": _SIGN_IN_RESET_REASON,
     "requestTransferPersonalSpace": "starts an e-mailed confirmation a person completes",
     "transferPersonalSpace": "completes an e-mailed confirmation of a person",
     "changeSelectedOrganization": "a browser session preference; the API token is bound to one organization",
