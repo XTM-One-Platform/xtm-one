@@ -109,6 +109,84 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+CIRCLECI = r"""
+version: 2.1
+jobs:
+  ensure_formatting:
+    docker:
+      - image: cimg/python:3.13
+      - image: redis:7
+        name: cache
+    working_directory: ~/repo
+    environment:
+      LANG: C.UTF-8
+    steps:
+      - checkout
+      - run:
+          name: install dependencies
+          command: pip install black isort --user
+      - run:
+          name: run isort check
+          command: isort --profile black --check .
+      - run: black --check .
+  linter:
+    docker:
+      - image: alpine/flake8
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run: flake8 --ignore=E,W ~/repo
+  test:
+    working_directory: ~/openaev
+    docker:
+      - image: cimg/python:3.13
+    parameters:
+      injector_name:
+        type: string
+    steps:
+      - checkout
+      - run:
+          working_directory: ~/openaev/<< parameters.injector_name >>
+          command: python -m unittest
+      - run:
+          working_directory: ~/
+          command: python -m pytest
+      - run:
+          working_directory: ~/openaev/client
+          command: python -m pytest tests
+  deploy_images:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - run: yarn build
+"""
+
+
+def test_circleci_run_lines_become_checks_at_the_checkout_root() -> None:
+    """isort --profile black ran from the root on CircleCI and no detected check reproduced it (gap sandbox-poetry-checks-and-root-format-checks)."""
+    found = _detect({".circleci/config.yml": CIRCLECI}, extra=("client/tests/test_x.py", "client/pyproject.toml"))
+    argv = _argv(found)
+    formats = {name: a for name, a in argv.items() if name.startswith("python-format")}
+    assert ("isort", "--profile", "black", "--check", ".") in formats.values()
+    assert ("black", "--check", ".") in formats.values()
+    # The job directory written in a line is the checkout root.
+    assert argv["python-lint"] == ("flake8", "--ignore=E,W", ".")
+    # A step below the job directory runs in that directory; a parameter or a directory outside the checkout is skipped.
+    assert argv["client:python-unit"] == ("python", "-m", "pytest", "tests")
+    assert not any("unittest" in a or a == ("python", "-m", "pytest") for a in argv.values())
+    # A deploy job ships the code: not a check.
+    assert not any("build" in a for a in argv.values())
+    assert found.checks["python-lint"].description == ".circleci/config.yml job linter: flake8 --ignore=E,W ."
+    assert ("LANG", "C.UTF-8") in found.checks["python-format"].env
+    assert detect.Infra("cache", "redis:7", ".circleci/config.yml job ensure_formatting") in found.infra
+
+
+def test_a_narrow_checkout_keeps_the_circleci_configuration() -> None:
+    sizes = {".circleci/config.yml": 900, "client/pyproject.toml": 100, "other/x.py": 10}
+    assert ".circleci/config.yml" in detect.companions(sizes, ["client"])
+    assert detect.candidates(["other/x.py", ".circleci/config.yml"])[0] == ".circleci/config.yml"
+
+
 def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
     # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
     # that carries its own dependencies); before, only the pytest line of the job was detected.
