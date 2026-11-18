@@ -34,6 +34,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/rea
 import { useChatSendEnabled } from "@/hooks/usePlatformConfig";
 import { api, unavailableIsOrdinary } from "@/lib/api";
 import type { A2ALiaisons } from "@/lib/agent-graph-a2a";
+import type { A2ARefusedTokenRequest, Integration } from "@/types";
 
 /** Provider keys of the integrations that carry an A2A partner relationship
  * (mirrors `app.a2a.providers.A2A_PROVIDERS`). Binding ANY of them to an
@@ -61,16 +62,36 @@ export function isA2AProvider(provider: string): boolean {
   return (A2A_PROVIDERS as readonly string[]).includes(provider);
 }
 
-/** Mint a fresh client id / secret for an `oauth_a2a` integration. The secret
- * comes back ONCE and is never retrievable again; regenerating retires the
- * previous one on every agent the integration is bound to. */
+/** Generate or rotate the credential of an `oauth_a2a` integration. The secret
+ * comes back ONCE and is never retrievable again. A regenerate rotates the
+ * secret and keeps the client id (#105); `{ rotateClientId: true }` is the
+ * explicit action that changes both. Either retires the previous secret on
+ * every agent the integration is bound to. */
 export function useRegenerateA2ACredential(integrationId: string) {
   const qc = useQueryClient();
-  return useMutation<{ client_id: string; client_secret: string }, Error, void>({
-    mutationFn: () => api.post(`/integrations/${integrationId}/a2a-credential`, {}),
+  return useMutation<{ client_id: string; client_secret: string }, Error, { rotateClientId?: boolean } | void>({
+    mutationFn: (options) =>
+      api.post(
+        `/integrations/${integrationId}/a2a-credential${options && options.rotateClientId ? "?rotate_client_id=true" : ""}`,
+        {},
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integrations"] });
     },
+  });
+}
+
+/** The last token request this inbound credential refused (#105), for its
+ * managers. Served by the single-integration read alone (`GET
+ * /integrations/{id}`): the list rows carry no `a2a_credential`, so the card
+ * reads it here rather than off the integration the page found in the list.
+ * Its key sits under `integrations`, so a regenerate refreshes it. */
+export function useA2ALastRefusal(integrationId: string, enabled = true) {
+  return useQuery<Integration, Error, A2ARefusedTokenRequest | null>({
+    queryKey: ["integrations", integrationId, "a2a-credential"],
+    queryFn: () => api.get(`/integrations/${integrationId}`),
+    select: (integration) => integration.a2a_credential?.last_refused_token_request ?? null,
+    enabled: enabled && !!integrationId,
   });
 }
 

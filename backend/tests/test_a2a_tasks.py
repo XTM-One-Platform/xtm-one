@@ -1066,14 +1066,15 @@ class TestACancelReachesEverythingTheRunHandedOff:
     def _arms(self, monkeypatch, *, children=()):
         from app.services import orchestration_engine, sub_agent
 
-        seen: dict[str, list] = {"children": [], "sub_agents": []}
+        seen: dict[str, list] = {"children": [], "sub_agents": [], "reasons": []}
 
         async def _children(_db, run_ids):
             seen["children"].append(list(run_ids))
             return list(children)
 
-        async def _sub_agents(_db, run_ids):
+        async def _sub_agents(_db, run_ids, **kwargs):
             seen["sub_agents"].append(list(run_ids))
+            seen["reasons"].append(kwargs.get("reason"))
             return 0
 
         monkeypatch.setattr(
@@ -1097,6 +1098,9 @@ class TestACancelReachesEverythingTheRunHandedOff:
         assert seen["children"] == [[run.id]]
         assert seen["sub_agents"] == [[run.id]]
         assert told == [run.id], "the caller was not told whom to stop"
+        # The background tasks say the partner stopped them: read as "its run
+        # was deleted", an operator went looking for a deletion that never was.
+        assert seen["reasons"] == [task_svc.PARTNER_CANCEL_TASK_REASON]
 
     async def test_a_child_s_own_sub_agents_and_partners_are_reached(
         self, monkeypatch
@@ -1138,7 +1142,7 @@ class TestACancelReachesEverythingTheRunHandedOff:
             order.append(("write child runs", list(run_ids)))
             return [child]
 
-        async def _sub_agents(_db, run_ids):
+        async def _sub_agents(_db, run_ids, **_kwargs):
             order.append(("write sub_agent_tasks", list(run_ids)))
             return 0
 
@@ -1205,7 +1209,7 @@ class TestACancelReachesEverythingTheRunHandedOff:
         await task_svc.request_cancel(
             _DB([None, None]), _Task(run_id=None), cancelled_out=told
         )
-        assert seen == {"children": [], "sub_agents": []}
+        assert seen == {"children": [], "sub_agents": [], "reasons": []}
         assert told == []
 
     async def test_the_partner_cancel_is_off_the_response_path(self, monkeypatch):
@@ -1255,7 +1259,7 @@ class TestACancelReachesEverythingTheRunHandedOff:
         import inspect
 
         src = inspect.getsource(task_svc.reap_stale_tasks)
-        assert "cascade_cancel(db, over_age_run_ids)" in src
+        assert "db, over_age_run_ids, reason=LIFETIME_CANCEL_TASK_REASON" in src
         # Guarded, and suppressed: the reap is a backstop, so one pathological
         # tree must not cost every other task the sweep already drove terminal.
         assert "if over_age_run_ids:" in src

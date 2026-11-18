@@ -416,7 +416,7 @@ async def _stop_runs(db: AsyncSession, run_ids: list[uuid.UUID], reason: str) ->
         .where(AssignmentRun.id.in_(run_ids), AssignmentRun.status.in_(stoppable))
         .values(status="cancelled", completed_at=datetime.now(UTC), error=reason)
     )
-    tree = await cascade_cancel(db, run_ids)
+    tree = await cascade_cancel(db, run_ids, reason=reason)
     await cancel_executions_for_runs(db, tree)
     await db.commit()
     spawn_run_cancel(list(dict.fromkeys(tree)))

@@ -76,7 +76,7 @@ Once connected, the partner can:
 
 The agent accepts text and structured data. A message with a file is refused before any work starts. Answers are not streamed, and the partner cannot list its tasks: it keeps the ID of each task it created. Submissions are rate-limited per partner.
 
-When the request is unclear, the agent can ask the calling agent a question. The task waits for the caller's answer, never for a person, and the agent asks at most three times.
+When the request is unclear, the agent can ask the calling agent a question. The task waits for the caller's answer, never for a person, and the agent asks at most three times. The run that asked reads `Waiting on caller` and shows the question; the caller's answer continues the task in a new run, and each of the two runs links to the other.
 
 Work a partner submits shows on the integration's `Activity` tab — only that partner's own — and in the agent's activity with a badge naming the A2A provider that submitted it.
 

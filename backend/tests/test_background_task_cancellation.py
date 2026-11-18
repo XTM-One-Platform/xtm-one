@@ -69,6 +69,27 @@ async def test_cascade_cancels_linked_pending_and_running_tasks():
 
 
 @pytest.mark.asyncio
+async def test_a_deletion_says_so_and_another_cause_says_its_own():
+    run_id = str(uuid.uuid4())
+    deleted = _task(run_id, status="running", link_key="assignment_run_id")
+    stopped = _task(run_id, status="running", link_key="assignment_run_id")
+    audit = AsyncMock()
+
+    with patch.object(sub_agent, "_update_task_delegation", new=audit):
+        await sub_agent.mark_sub_agent_tasks_cancelled_for_runs(_FakeDB([deleted]), [run_id])
+        await sub_agent.mark_sub_agent_tasks_cancelled_for_runs(
+            _FakeDB([stopped]), [run_id], reason="Cancelled because the partner cancelled the task."
+        )
+
+    assert deleted.error == sub_agent.RUN_DELETED_TASK_REASON
+    assert stopped.error == "Cancelled because the partner cancelled the task."
+    assert [call.kwargs["error"] for call in audit.await_args_list] == [
+        "Run deleted.",
+        "Cancelled because the partner cancelled the task.",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_cascade_empty_run_ids_is_noop():
     db = _FakeDB([])
     assert await sub_agent.mark_sub_agent_tasks_cancelled_for_runs(db, []) == 0

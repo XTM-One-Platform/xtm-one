@@ -22,7 +22,8 @@ def _detect(files: dict[str, str], extra: tuple[str, ...] = (), images=IMAGES) -
 
 
 def _argv(found: detect.Detection) -> dict[str, tuple[str, ...]]:
-    return {name: spec.argv for name, spec in found.checks.items()}
+    """What a call without args runs: each check's argv, then its default args."""
+    return {name: (*spec.argv, *spec.default_args) for name, spec in found.checks.items()}
 
 
 # -- the workflows: what CI runs is the source of truth ------------------------
@@ -67,6 +68,22 @@ jobs:
       - run: black --check .
       - run: black .
 """
+
+
+def test_a_detected_tree_target_is_a_default_arg_the_call_args_replace():
+    """black --check . named one file ran black --check . x.py: the whole tree again (gap run-command-args-keep-default-args)."""
+    from app.services.sandbox_workspace import checks
+
+    found = _detect({".github/workflows/ci.yml": WORKFLOW})
+    fmt = found.checks["client:python-format"]
+    assert fmt.argv == ("black", "--check") and fmt.default_args == (".",)
+    assert checks.command_argv(fmt) == ("black", "--check", ".")
+    assert checks.command_argv(fmt, ["x.py"]) == ("black", "--check", "x.py")
+    # Other kinds keep their argv whole: a test or an install target is no tree target.
+    assert found.checks["client:python-unit"].default_args == ()
+    assert detect._split_tree_target("unit", ["pytest", "."]) == (["pytest", "."], ())
+    assert detect._split_tree_target("format-black", ["black", "."]) == (["black"], (".",))
+    assert detect._split_tree_target("lint", ["."]) == (["."], ())
 
 
 def test_workflow_run_lines_become_checks_in_their_working_directory():
@@ -1300,10 +1317,11 @@ def test_a_lint_tool_the_job_installed_runs_in_an_ephemeral_environment_on_the_j
         images={*IMAGES, "toolchain-python"},
     )
     lint, fmt = found.checks["python-lint"], found.checks["python-format"]
-    assert lint.argv == ("uv", "run", "--no-project", "--with", "flake8", "flake8", "--ignore=E,W", ".")
+    assert lint.argv == ("uv", "run", "--no-project", "--with", "flake8", "flake8", "--ignore=E,W")
+    assert lint.default_args == (".",)
     assert fmt.argv == (
         "uv", "run", "--no-project", "--with-requirements", "ci-requirements.txt",
-        "isort", "--profile", "black", "--check-only", "--diff", ".",
+        "isort", "--profile", "black", "--check-only", "--diff",
     )  # fmt: skip
     assert dict(lint.env)["UV_PYTHON"] == "3.12" and dict(fmt.env)["UV_PYTHON"] == "3.12"
 
@@ -1311,10 +1329,10 @@ def test_a_lint_tool_the_job_installed_runs_in_an_ephemeral_environment_on_the_j
 def test_a_tool_line_with_no_install_before_it_is_kept_as_written():
     workflow = LINT_WORKFLOW.replace("      - run: uv pip install flake8\n", "")
     found = _detect({".github/workflows/ci-lint.yml": workflow}, images={*IMAGES, "toolchain-python"})
-    assert found.checks["python-lint"].argv == ("uv", "run", "flake8", "--ignore=E,W", ".")
+    assert found.checks["python-lint"].argv == ("uv", "run", "flake8", "--ignore=E,W")
     bare = LINT_WORKFLOW.replace("uv run flake8", "flake8")
     found = _detect({".github/workflows/ci-lint.yml": bare}, images={*IMAGES, "toolchain-python"})
-    assert found.checks["python-lint"].argv == ("flake8", "--ignore=E,W", "."), "only a uv run line gets the job's tools"
+    assert found.checks["python-lint"].argv == ("flake8", "--ignore=E,W"), "only a uv run line gets the job's tools"
 
 
 def test_a_project_requiring_an_older_python_runs_on_the_one_the_image_carries():

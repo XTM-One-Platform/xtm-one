@@ -283,7 +283,10 @@ class IntegrationResponse(BaseModel):
     a2a_direction: str | None = None
     #: Outbound A2A only: the partner credential's state (#12346): ``usable``,
     #: ``last_token_minted_at`` and ``last_error`` ({code, detail, at}). Never a
-    #: secret. Set by the single-integration read; None elsewhere.
+    #: secret. Set by the single-integration read; None elsewhere. On an
+    #: INBOUND oauth_a2a row, read by a manager, it carries
+    #: ``last_refused_token_request`` ({at, client_id, reason, what_to_do},
+    #: #105) instead.
     a2a_credential: dict | None = None
     tags: list[str] = []
     # Whether this integration's tools pause for human approval.

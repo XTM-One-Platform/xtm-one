@@ -663,8 +663,12 @@ test.describe.serial('The outbound partner registration', () => {
     const state = await verifyNow(one.rest, emptyPartnerId);
     expect(targetsOf(state)).toHaveLength(1);
     const target = targetFor(state, primaryCard);
-    expect(target.usability).toBe('usable');
-    expect(target.declared_name).toBe(primaryName);
+    // The card is still read (the target keeps its URL and row), but Verify
+    // also mints a token (#105), and a partner with no agent bound refuses
+    // this credential: the verdict says so instead of usable.
+    expect(target.usability).toBe('unusable');
+    expect(target.unusable_reason).toBe('credential_cannot_mint_token');
+    expect(String(target.last_verification_error)).toContain('invalid_client');
   });
 
   test('verifying one target names that target, or nothing', async ({ one }) => {

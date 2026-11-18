@@ -426,7 +426,8 @@ class TestRunTeardownCancelsOutstandingTasks:
     A partner that answered ``input-required`` is working toward an answer
     only this run can give. When the run ends — completed, failed or
     cancelled — whatever is still open is cancelled at the partner, best
-    effort, from ``run_agent_chat``'s teardown.
+    effort, from ``run_agent_chat``'s teardown. A chat turn ending is not
+    that: its user answers the question in the next turn.
     """
 
     @pytest.fixture
@@ -505,7 +506,7 @@ class TestRunTeardownCancelsOutstandingTasks:
             result=_result,
         )
 
-    async def _tool(self, rig):
+    async def _tool(self, rig, **context):
         from app.services.integration_tools import _SafeIntegrationExecutor
 
         executor = _SafeIntegrationExecutor()
@@ -514,7 +515,7 @@ class TestRunTeardownCancelsOutstandingTasks:
             "oauth_a2a",
             str(rig.integration.id),
             executor,
-            {"agent_id": str(uuid.uuid4()), "user_id": str(uuid.uuid4())},
+            {"agent_id": str(uuid.uuid4()), "user_id": str(uuid.uuid4()), **context},
         )
         return executor, defs[0].name
 
@@ -534,6 +535,26 @@ class TestRunTeardownCancelsOutstandingTasks:
         await integration_tools.cancel_outstanding_delegations(executor)
         assert rig.cancelled == [(rig.integration, rig.target, "t-1")]
         assert executor.a2a_outstanding == {}
+
+    async def test_an_assignment_run_s_question_is_cancelled_at_run_end(self, rig):
+        executor, name = await self._tool(rig, run_id=str(uuid.uuid4()))
+        rig.answers.append(rig.result(needs_input=True, task_id="t-1"))
+        await self._call(executor, name)
+
+        await integration_tools.cancel_outstanding_delegations(executor)
+        assert rig.cancelled == [(rig.integration, rig.target, "t-1")]
+
+    async def test_a_chat_turn_s_question_survives_the_turn(self, rig):
+        # The agent relays the partner's question to its user, and only the
+        # user's NEXT turn can answer it: ending this one is how it asks.
+        # Cancelled here, the answer resumes a task already ``canceled``.
+        executor, name = await self._tool(rig, conversation_id=str(uuid.uuid4()))
+        rig.answers.append(rig.result(needs_input=True, task_id="t-1"))
+        await self._call(executor, name)
+        assert executor.a2a_outstanding == {}
+
+        await integration_tools.cancel_outstanding_delegations(executor)
+        assert rig.cancelled == []
 
     async def test_a_continuation_that_terminates_retires_the_task(self, rig):
         executor, name = await self._tool(rig)

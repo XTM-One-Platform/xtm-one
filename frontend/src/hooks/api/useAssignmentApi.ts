@@ -196,6 +196,9 @@ export function useAssignmentRunDetail(runId: string) {
       if (status === "running" || status === "pending") return REFETCH_INTERVAL_FAST;
       if (status === "awaiting_human" || status === "queued")
         return REFETCH_INTERVAL_STANDARD;
+      // A completed external run whose A2A task waits on its caller: the
+      // answer links the run that continues it, so the page keeps checking.
+      if (query.state.data?.a2a_exchange?.asked?.state === "waiting") return REFETCH_INTERVAL_STANDARD;
       return false;
     },
   });

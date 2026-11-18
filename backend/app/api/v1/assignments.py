@@ -33,6 +33,7 @@ from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.providers import resolve_submitter_providers
+from app.a2a.run_exchange import run_exchanges
 from app.agents.builtin_agents import (
     ADMIN_OPT_IN_WRITABLE_FIELDS,
     is_admin_opt_in_builtin_assignment,
@@ -1135,6 +1136,9 @@ async def list_all_runs(
     a2a_providers = await resolve_submitter_providers(
         db, {r.id: r.trigger_context for r in runs}
     )
+    a2a_exchanges = await run_exchanges(
+        db, runs, user_id=user.id, is_admin=user.is_admin
+    )
 
     items: list[AssignmentRunDetailResponse] = []
     for r in runs:
@@ -1165,6 +1169,7 @@ async def list_all_runs(
                 ),
                 trigger_context=r.trigger_context,
                 a2a_provider=a2a_providers.get(r.id),
+                a2a_exchange=a2a_exchanges.get(r.id),
                 actions_taken=r.actions_taken,
                 result_summary=r.result_summary,
                 error=r.error,
@@ -1466,6 +1471,9 @@ async def get_run_descendants(
     a2a_providers = await resolve_submitter_providers(
         db, {r.id: r.trigger_context for r in runs}
     )
+    a2a_exchanges = await run_exchanges(
+        db, runs, user_id=user.id, is_admin=user.is_admin
+    )
 
     responses = []
     for r in runs:
@@ -1494,6 +1502,7 @@ async def get_run_descendants(
                 ),
                 trigger_context=r.trigger_context,
                 a2a_provider=a2a_providers.get(r.id),
+                a2a_exchange=a2a_exchanges.get(r.id),
                 actions_taken=r.actions_taken,
                 result_summary=r.result_summary,
                 error=r.error,
@@ -1726,6 +1735,9 @@ async def get_run_detail(
         trigger_context=r.trigger_context,
         a2a_provider=(
             await resolve_submitter_providers(db, {r.id: r.trigger_context})
+        ).get(r.id),
+        a2a_exchange=(
+            await run_exchanges(db, [r], user_id=user.id, is_admin=user.is_admin)
         ).get(r.id),
         actions_taken=r.actions_taken,
         result_summary=r.result_summary,

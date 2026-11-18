@@ -429,6 +429,8 @@ Three consequences for an operator:
   work still running: the run, the runs it transferred the turn to (recursively),
   every one of their sub-agent tasks, and every partner task any of them
   delegated onward. A running turn learns of the cancel within 15 seconds.
+  A background task stopped this way says the partner cancelled it
+  (`cascade_cancel(reason=...)`), never that its run was deleted.
 - **A run that exhausts its own budget FAILS** with "exceeded its execution
   budget", rather than completing with the agent loop's apology text as its
   result.
@@ -465,6 +467,13 @@ run-as user reaches.
 - **The answer replaces nothing.** A task waiting on its caller carries no
   result; whatever the agent wrote after asking is not sent, because it would
   read as one.
+- **The run pages show the exchange.** The run that asked is `completed`, so
+  the run responses carry `a2a_exchange` (`a2a/run_exchange.py`): the question
+  it asked and where it stands (`waiting`, `answered`, `withdrawn` by a cancel),
+  and, on the run an answer started, the question and answer. `answer_question`
+  stamps `a2a_previous_run_id` on the new run and `a2a_answered_by_run_id` on
+  the run that asked, so each links to the other; a linked run the viewer
+  cannot open is not linked. The status reads "Waiting on caller" while asking.
 
 ## A conversation spans tasks
 

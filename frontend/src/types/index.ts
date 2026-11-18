@@ -1011,6 +1011,16 @@ export interface AgentEmailSignatures {
   signature_integrations: SignatureIntegrationOption[];
 }
 
+/** The last token request an inbound `oauth_a2a` credential refused (#105).
+ *  `reason` is a code the UI translates: secret_mismatch, unknown_client or
+ *  no_reachable_agent; `what_to_do` is the backend's English fallback. */
+export interface A2ARefusedTokenRequest {
+  at: string;
+  client_id: string | null;
+  reason: string | null;
+  what_to_do: string | null;
+}
+
 export interface Integration {
   id: string;
   user_id: string | null;
@@ -1042,6 +1052,14 @@ export interface Integration {
   /** A2A only: which way the partner relationship points, from its settings
    *  row; absent or null for every other provider. */
   a2a_direction?: "inbound" | "outbound" | null;
+  /** A2A credential state, single-integration read only. Inbound, read by a
+   *  manager: the last token request the credential refused (#105). */
+  a2a_credential?: {
+    usable?: boolean;
+    last_token_minted_at?: string | null;
+    last_error?: { code: string; detail: string | null; at: string | null } | null;
+    last_refused_token_request?: A2ARefusedTokenRequest;
+  } | null;
   tags: string[];
   scopes: string | null;
   /** Latest scopes from the provider catalog (for drift detection). */
@@ -4575,6 +4593,27 @@ export interface RunFriction {
   disposed_at: string | null;
 }
 
+/**
+ * Where an external run stands in its A2A task's exchange with the caller
+ * (`a2a.run_exchange.run_exchanges`). A linked run id is null when the viewer
+ * cannot open that run, or for a run answered before the links were recorded.
+ */
+export interface A2AExchange {
+  /** This run asked its caller a question (`ask_the_caller`). */
+  asked?: {
+    question: string;
+    /** `waiting`: the task is input-required on it; `withdrawn`: cancelled before an answer. */
+    state: "waiting" | "answered" | "withdrawn";
+    answered_by_run_id: string | null;
+  };
+  /** This run continues the task after its caller answered. */
+  answers?: {
+    question: string;
+    answer: string;
+    previous_run_id: string | null;
+  };
+}
+
 export interface AssignmentRunDetail {
   id: string;
   assignment_id: string | null;
@@ -4595,6 +4634,8 @@ export interface AssignmentRunDetail {
   parent_agent_icon: string | null;
   trigger_payload: Record<string, unknown> | null;
   trigger_context: Record<string, unknown> | null;
+  /** The run's place in its A2A task's exchange with the caller; null on any other run. */
+  a2a_exchange?: A2AExchange | null;
   actions_taken: ActionTaken[] | null;
   result_summary: string | null;
   rendered_prompt: string | null;

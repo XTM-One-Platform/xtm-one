@@ -91,6 +91,16 @@ TIMEOUT_ERROR_TEXT = "External task exceeded its execution budget"
 #: the only thing that bounds one whose work never finishes.
 LIFETIME_ERROR_TEXT = "External task exceeded its maximum lifetime"
 
+#: What a background task of the run reads when the partner cancelled the
+#: A2A task: the operator sees who stopped it, not a deletion that never was.
+PARTNER_CANCEL_TASK_REASON = (
+    "Cancelled because the A2A partner that submitted its run cancelled the task."
+)
+#: The same, for a task stopped by the total-lifetime bound.
+LIFETIME_CANCEL_TASK_REASON = (
+    "Cancelled because its A2A task exceeded its maximum lifetime."
+)
+
 #: The reason a task fails with when a platform stop (a deployment, a
 #: scale-in, a node drain, a worker recycle) cut its run. Fixed text,
 #: read by the partner: the partner did not cancel it, so it is never
@@ -278,8 +288,11 @@ async def answer_question(
             "duplicate_message_id",
             "That messageId belongs to another task; use a new one.",
         )
+    from app.a2a.run_exchange import ANSWERED_BY_RUN_KEY, PREVIOUS_RUN_KEY
+
     asked = task.caller_question
     original = ""
+    prior = None
     if task.run_id is not None:
         prior = (
             await db.execute(
@@ -300,6 +313,9 @@ async def answer_question(
             # What the executor rebuilds the exchange from.
             "a2a_prior_message": original,
             "a2a_question": asked,
+            # The run that asked: the run pages link the two halves of one
+            # exchange (``run_exchange``), since ``run_id`` keeps only the last.
+            **({PREVIOUS_RUN_KEY: str(prior.id)} if prior is not None else {}),
         },
         trigger_context={
             "source": "a2a",
@@ -323,6 +339,16 @@ async def answer_question(
     task.reaped = False
     task.lease_heartbeat_at = datetime.now(UTC)
     await db.flush()
+    if prior is not None:
+        # The other direction of the same link, flushed after the task row so
+        # the locks are taken task first, run second, as the reaper takes them.
+        # Reassigned, not mutated: the column is plain JSON, which tracks no
+        # in-place change.
+        prior.trigger_payload = {
+            **(prior.trigger_payload or {}),
+            ANSWERED_BY_RUN_KEY: str(run.id),
+        }
+        await db.flush()
     return run
 
 
@@ -1117,7 +1143,9 @@ async def request_cancel(
         ):
             return False
     task.cancel_requested_at = datetime.now(UTC)
-    reached = await cascade_cancel(db, [task.run_id])
+    reached = await cascade_cancel(
+        db, [task.run_id], reason=PARTNER_CANCEL_TASK_REASON
+    )
     if cancelled_out is not None:
         cancelled_out.extend(reached)
     await db.flush()
@@ -1219,8 +1247,14 @@ async def lock_delegated_work(db: AsyncSession, run_ids) -> None:
     await lock_sub_agent_tasks_for_runs(db, roots + await find_child_runs(db, roots))
 
 
-async def cascade_cancel(db: AsyncSession, run_ids) -> list[uuid.UUID]:
+async def cascade_cancel(
+    db: AsyncSession, run_ids, *, reason: str | None = None
+) -> list[uuid.UUID]:
     """Stop the local half of everything *run_ids* handed off, and say what.
+
+    ``reason`` is what each background task it stops reads as its error: the
+    caller's own cause (a partner's cancel, the lifetime bound, an emergency
+    stop), a plain "its run was cancelled" without one.
 
     Reaching them is what makes a reported CANCELED true. A run hands off three
     ways: a transfer child run, a local sub-agent, and another deployment over
@@ -1242,7 +1276,10 @@ async def cascade_cancel(db: AsyncSession, run_ids) -> list[uuid.UUID]:
     """
     from app.a2a.client.delegation import mark_cancel_owed
     from app.services.orchestration_engine import cancel_child_runs
-    from app.services.sub_agent import mark_sub_agent_tasks_cancelled_for_runs
+    from app.services.sub_agent import (
+        RUN_CANCELLED_TASK_REASON,
+        mark_sub_agent_tasks_cancelled_for_runs,
+    )
 
     roots = [rid for rid in run_ids if rid is not None]
     if not roots:
@@ -1252,7 +1289,9 @@ async def cascade_cancel(db: AsyncSession, run_ids) -> list[uuid.UUID]:
     # its task row: a background task marks its own run, a descendant.
     await lock_delegated_work(db, roots)
     tree = roots + await cancel_child_runs(db, roots)
-    await mark_sub_agent_tasks_cancelled_for_runs(db, tree)
+    await mark_sub_agent_tasks_cancelled_for_runs(
+        db, tree, reason=reason or RUN_CANCELLED_TASK_REASON
+    )
     await mark_cancel_owed(db, run_refs=tree)
     return tree
 
@@ -1426,7 +1465,9 @@ async def reap_stale_tasks(
         # into nothing that would notice. Unguarded: the cascade shares this
         # session, so a database failure aborts the reap either way — the loop
         # retries next tick rather than losing the batch in silence.
-        reached = await cascade_cancel(db, over_age_run_ids)
+        reached = await cascade_cancel(
+            db, over_age_run_ids, reason=LIFETIME_CANCEL_TASK_REASON
+        )
         if cancelled_out is not None:
             cancelled_out.extend(reached)
 

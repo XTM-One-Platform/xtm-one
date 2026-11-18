@@ -27,7 +27,7 @@ import {
   Hammer, Key, Landmark, Leaf, Lightbulb, Map, Megaphone, Music, PenTool, PieChart,
   Radio, Radar, Satellite, Scale, SearchCheck, ShieldCheck, Stethoscope, Swords, Telescope,
   TreePine, Trophy, Tv, Wand2, FlaskConical, ScanEye, Crosshair, CircuitBoard, Layers,
-  Cpu, TextSearch, Tag, Workflow, ListChecks,
+  Cpu, TextSearch, Tag, Workflow, ListChecks, MessageCircleQuestion,
   // Integration catalog category icons
   Activity, Fingerprint, Share2, Gauge,
   // Icons the built-in agent seed names (backend/app/agents)
@@ -39,6 +39,7 @@ import { HEADLINE_LABELS } from "@/lib/evaluation-headlines";
 import { ALL_HANDOVER_TYPES } from "@/lib/handover-types";
 import { providerLogoSrcFrom } from "@/lib/provider-logo-src";
 import type {
+  A2AExchange,
   AnnotationTargetType,
   FeedbackCriterionType,
   KnowledgeDocumentErrorCode,
@@ -193,12 +194,22 @@ export const STATUS_CONFIG: Record<string, StatusConfig> = {
   // Not a status: the outcome of a failed run the platform ended (a rollout
   // cut, a restart). Neutral, never the error red: the agent did not fail.
   interrupted:     { icon: RotateCcw,    color: "text-default-secondary", badge: "outline", label: "Interrupted" },
+  // Not a status: a completed external run whose A2A task waits on the answer
+  // to the question it asked its caller (`a2a_exchange.asked.state`).
+  waiting_on_caller: { icon: MessageCircleQuestion, color: "text-feedback-warning-primary", badge: "outline", label: "Waiting on caller" },
 };
 
 /** How a run reads: its status, except a failed run the platform interrupted
- *  (server `outcome`, `run_outcome.run_outcome`), which reads "Interrupted". */
-export function runStatusConfig(run: { status: string; outcome?: string | null }): StatusConfig {
+ *  (server `outcome`, `run_outcome.run_outcome`), which reads "Interrupted",
+ *  and an external run whose task waits on its caller's answer, which reads
+ *  "Waiting on caller" rather than a "Completed" with no result. */
+export function runStatusConfig(run: {
+  status: string;
+  outcome?: string | null;
+  a2a_exchange?: A2AExchange | null;
+}): StatusConfig {
   if (run.outcome === "interrupted") return STATUS_CONFIG.interrupted;
+  if (run.a2a_exchange?.asked?.state === "waiting") return STATUS_CONFIG.waiting_on_caller;
   return STATUS_CONFIG[run.status] || STATUS_CONFIG.pending;
 }
 

@@ -616,7 +616,8 @@ async def _build_a2a_delegation_tool(
 
     # Tasks a partner reported ``input-required`` for, awaiting this run's
     # answer: task id -> (integration, target). Kept on the executor — built
-    # per run — so teardown can cancel whatever is still open (FR-025).
+    # per run — so teardown can cancel whatever is still open (FR-025). A
+    # conversation's turn tracks none: the conversation outlives the turn.
     outstanding = getattr(executor, "a2a_outstanding", None)
     if outstanding is None:
         outstanding = {}
@@ -639,6 +640,17 @@ async def _build_a2a_delegation_tool(
         # rather than offered-and-refusing, for the same reason the feature
         # switch keeps the tool out of the context entirely.
         if target.usability != USABILITY_USABLE:
+            # Said, not silent (#105): the run's log names the partner and the
+            # reason; the operator reads the same reason on the target. Not a
+            # notice in the run's context, which would put an operator's
+            # problem in front of every user's model turn.
+            logger.info(
+                "a2a: partner target %s of integration %s left out of the tools (%s: %s)",
+                target.declared_name or target.card_url,
+                integration_id,
+                target.usability,
+                target.unusable_reason or "not verified yet",
+            )
             continue
         definition = build_delegation_tool(integration, target, taken=taken)
         taken.add(definition.name)
@@ -695,9 +707,12 @@ async def _build_a2a_delegation_tool(
                 # A task the partner left awaiting input is OUTSTANDING: if this
                 # run ends without continuing it, teardown cancels it at the
                 # partner (FR-025, ``cancel_outstanding_delegations``). A terminal
-                # answer to a continuation retires the entry.
+                # answer to a continuation retires the entry. Not in a
+                # conversation: the agent relays the question to its user and
+                # ends the turn to get the answer, so the next turn is the one
+                # that continues the task.
                 if result.partner_task_id:
-                    if result.needs_input:
+                    if result.needs_input and calling.conversation_ref is None:
                         outstanding[result.partner_task_id] = (integration, _target)
                     else:
                         outstanding.pop(result.partner_task_id, None)
@@ -817,7 +832,8 @@ async def cancel_outstanding_delegations(executor: object) -> None:
 
     FR-025: a run that ends — completed, failed or cancelled — with a delegated
     task at ``input-required`` leaves a partner working toward an answer nobody
-    will give. Called from run teardown, best-effort.
+    will give. Called from run teardown, best-effort. A chat turn's executor
+    holds none of these: its user answers in a later turn.
 
     Reaches only what the executor holds, which is the tasks parked on a
     question. A task handed back as still running is scoped to the run or the
