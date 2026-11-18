@@ -398,7 +398,6 @@ ee:
   - frontend/src/lib/trace-list-paging.ts
   - frontend/src/lib/trace-utils.ts
   - frontend/src/lib/trigger-context.ts
-  - frontend/src/lib/workset-storage.ts
   - frontend/src/pages/agent-detail/config/BrowserProfileSelectorCard.tsx
   - frontend/src/pages/settings/VideoGenerationSection.tsx
 
@@ -723,6 +722,7 @@ ce:
   - frontend/src/components/dashboard-grid
   - frontend/src/components/integrations
   - frontend/src/components/ui/charts
+  - frontend/src/components/users
   - frontend/src/dev
   - frontend/src/i18n
   - frontend/src/lib/commands
