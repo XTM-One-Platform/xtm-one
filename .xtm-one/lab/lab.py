@@ -3820,6 +3820,48 @@ def seed_analytics_traces(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"analytics traces": {"id": str(counts["traces"]), "url": f"{base}/analytics"}}
 
 
+#: The production-shaped membership ``LAB_FIGURES_SCALE=large`` gives one analytics user (#87): as many groups as
+#: a large SAML directory hands one person; every third name is a bare id, as a directory without display names sends.
+ANALYTICS_WIDE_MEMBER_GROUPS = 90
+#: The analytics user who holds them: ``lab-analytics-01``, who owns traces, so the Users breakdown lists them.
+ANALYTICS_WIDE_MEMBER_EMAIL = "lab-analytics-01@filigran.io"
+
+
+def analytics_wide_group_names(count: int = ANALYTICS_WIDE_MEMBER_GROUPS) -> list[str]:
+    """The group names of the wide member (#87): every third one a bare UUID (``POST /groups`` strips spaces)."""
+    return [
+        f"3f1c2a8e-0000-4000-8000-{index:012d}" if index % 3 == 0 else f"Lab directory group {index:02d}"
+        for index in range(count)
+    ]
+
+
+def seed_analytics_wide_member(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One analytics user in :data:`ANALYTICS_WIDE_MEMBER_GROUPS` groups, under ``LAB_FIGURES_SCALE=large`` (#87).
+
+    A person in about ninety SAML groups crashed /analytics in production only: no lab row carried that shape.
+    Creates the groups of :func:`analytics_wide_group_names` through ``POST /groups`` and adds
+    :data:`ANALYTICS_WIDE_MEMBER_EMAIL` (seeded by :func:`seed_analytics_traces`, read from
+    ``analytics_ids.json``) to each. Read back: ``GET /traces/analytics/cost-by-user`` names that user with at
+    least that many ``group_names``. Logged ``seeded analytics wide member (<n> groups): <base>/analytics?
+    breakdown=users``. May raise: the caller logs and skips.
+    """
+    ids = json.loads((ROOT / "analytics_ids.json").read_text())
+    user = ids["users"][0]
+    names = analytics_wide_group_names()
+    for name in names:
+        group = _created(api("POST", "/groups", token, {"name": name}))
+        api("POST", f"/groups/{group}/members", token, {"user_ids": [user]})
+    answer = api("GET", "/traces/analytics/cost-by-user?period=30d", token)
+    items = answer.get("items", []) if isinstance(answer, dict) else []
+    row = next((item for item in items if item.get("user_email") == ANALYTICS_WIDE_MEMBER_EMAIL), None)
+    held = len(row.get("group_names") or []) if row else 0
+    if held < len(names):
+        raise RuntimeError(f"GET /traces/analytics/cost-by-user names {ANALYTICS_WIDE_MEMBER_EMAIL} in {held} groups")
+    url = f"{base}/analytics?breakdown=users"
+    log(f"seeded analytics wide member ({held} groups): {url}")
+    return {"analytics wide member": {"id": user, "url": url}}
+
+
 def seed_chat_layout(token: str, base: str, peer_id: str | None) -> dict[str, dict[str, str]]:
     """The chat-layout rows under ``LAB_CHAT_LAYOUT=on`` (#10910), for the chat-layout UX rounds.
 
@@ -7057,6 +7099,13 @@ def seed_entities() -> None:
             seeded.update(seed_large_roi(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["large ROI fleets"] = str(exc)[:600]
+        if "analytics traces" in skipped:
+            skipped["analytics wide member"] = "no analytics users: the groups go on lab-analytics-01"
+        else:
+            try:
+                seeded.update(seed_analytics_wide_member(token, base))
+            except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+                skipped["analytics wide member"] = str(exc)[:600]
     try:
         seeded.update(seed_handovers(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
