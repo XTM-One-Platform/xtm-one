@@ -22,8 +22,11 @@ What :func:`deactivate_user` does, each step in the caller's transaction:
    flow runs (``panic.stop_owner_live_work``). Armed timers cancelled,
    scheduled one-offs not yet run cancelled.
 3. Private agents (owned, not shared, not company-managed) disabled with their
-   web widget; their A2A exposures are revoked by ``a2a.hooks`` on the
-   ``enabled`` change. Their assignments stop with them (an assignment of a
+   web widget. Their A2A exposures stop resolving on the account's
+   ``is_active`` (``a2a.exposure.resolvable_exposures``) and are kept, not
+   revoked, so a reactivation serves the same card URL (``a2a.hooks`` skips
+   the disable revocation when the run-as account is inactive). Their
+   assignments stop with them (an assignment of a
    disabled agent never fires) and keep their own switch for the restore.
 4. Shared and company-managed agents, fleets, workspaces and integrations the
    account owns are transferred to the platform administrator: the
