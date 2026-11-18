@@ -163,16 +163,43 @@ _EFFORT_OFF_VALUES = frozenset({"none", "minimal"})
 _SUPPORTED_VALUES = re.compile(r"[Ss]upported values are:?([^.]*)")
 _QUOTED_VALUE = re.compile(r"'([a-z]+)'")
 _NO_RETRY = object()
+_TEMPERATURE_REFUSAL = re.compile(r"Unsupported (?:parameter|value): 'temperature'")
 
 
-def _effort_after_refusal(exc: openai.BadRequestError, sent: str | None) -> object:
+# The AI Gateway's 502 for an upstream 4xx: "... upstream returned status 400 Bad Request",
+# then ": <the provider's message>" since XTM-One-Platform/ai-gateway#348.
+_GATEWAY_UPSTREAM_REFUSAL = re.compile(r"upstream returned status (4\d\d)[^:]*(?:: (.+))?", re.DOTALL)
+
+
+def gateway_upstream_refusal(exc: BaseException) -> tuple[int, str | None] | None:
+    """The upstream status and the provider's message of the gateway's 502 for an upstream 4xx.
+
+    The message is ``None`` from an older gateway or one that withheld it; ``None`` for any other error.
+    """
+    if not (isinstance(exc, openai.APIStatusError) and exc.status_code == 502 and marked_not_retryable(exc.body)):
+        return None
+    match = _GATEWAY_UPSTREAM_REFUSAL.search(_error_message(exc))
+    return (int(match.group(1)), match.group(2)) if match else None
+
+
+def _refusal_message(exc: openai.APIStatusError) -> str | None:
+    """What a refused request says: a 400's message, or the provider's 400 behind the gateway."""
+    if isinstance(exc, openai.BadRequestError):
+        return str(getattr(exc, "message", "") or exc)
+    upstream = gateway_upstream_refusal(exc)
+    return upstream[1] if upstream and upstream[0] == 400 else None
+
+
+def _effort_after_refusal(exc: openai.APIStatusError, sent: str | None) -> object:
     """The ``reasoning_effort`` to retry with after *exc*, ``None`` to omit it, or ``_NO_RETRY``.
 
-    Only an HTTP 400 that names ``reasoning_effort`` is answered: the value the
+    Only a refusal (``_refusal_message``) that names ``reasoning_effort`` is answered: the value the
     error lists that is nearest below *sent* (the lowest when *sent* is not a
     platform level), ``none`` when the error asks for it, else no parameter.
     """
-    message = str(getattr(exc, "message", "") or exc)
+    message = _refusal_message(exc)
+    if message is None:
+        return _NO_RETRY
     if getattr(exc, "param", None) != "reasoning_effort" and "reasoning_effort" not in message:
         return _NO_RETRY
     if "reasoning_effort to 'none'" in message:
@@ -201,11 +228,13 @@ def _log_effort_refused(model: str | None, sent: str | None, retried: str | None
     )
 
 
-def _refuses_temperature(exc: openai.BadRequestError) -> bool:
-    """Whether *exc* is the 400 a model answers a ``temperature`` it does not take with."""
-    if getattr(exc, "param", None) == "temperature":
-        return True
-    return "Unsupported parameter: 'temperature'" in str(getattr(exc, "message", "") or exc)
+def _refuses_temperature(exc: openai.APIStatusError) -> bool:
+    """Whether *exc* is the refusal a model answers a ``temperature`` it does not take with."""
+    message = _refusal_message(exc)
+    if message is None:
+        return False
+    # Behind the gateway the 400's ``param`` is lost: its message names the parameter or the value.
+    return getattr(exc, "param", None) == "temperature" or _TEMPERATURE_REFUSAL.search(message) is not None
 
 
 @functools.lru_cache(maxsize=64)
@@ -217,7 +246,7 @@ def _log_temperature_refused(model: str | None) -> None:
 async def create_without_refused_temperature[T](
     create: Callable[[dict[str, Any]], Awaitable[T]], params: dict[str, Any], model: str | None
 ) -> T:
-    """Run ``create(params)``; on a 400 that refuses ``temperature``, retry once without it.
+    """Run ``create(params)``; on a refusal of ``temperature``, retry once without it.
 
     The capability table (``omit_temperature``) is the first line; this keeps
     a model the table does not flag yet on the same leg, on chat completions
@@ -225,7 +254,7 @@ async def create_without_refused_temperature[T](
     """
     try:
         return await create(params)
-    except openai.BadRequestError as exc:
+    except openai.APIStatusError as exc:
         if "temperature" not in params or not _refuses_temperature(exc):
             raise
         _log_temperature_refused(model)
@@ -235,7 +264,7 @@ async def create_without_refused_temperature[T](
 async def create_with_effort_retry[T](
     create: Callable[[dict[str, Any]], Awaitable[T]], params: dict[str, Any], model: str | None
 ) -> T:
-    """Run ``create(params)``; on a 400 that refuses ``reasoning_effort``, retry once corrected.
+    """Run ``create(params)``; on a refusal of ``reasoning_effort``, retry once corrected.
 
     The capability table (``normalize_openai_reasoning_effort``) is the first
     line; this answers a model the table does not know yet, or one whose
@@ -249,7 +278,7 @@ async def create_with_effort_retry[T](
 
     try:
         return await send(params)
-    except openai.BadRequestError as exc:
+    except openai.APIStatusError as exc:
         sent = params.get("reasoning_effort")
         retried = _effort_after_refusal(exc, sent)
         if retried is _NO_RETRY:
@@ -260,7 +289,7 @@ async def create_with_effort_retry[T](
         _log_effort_refused(model, sent, retried)
         try:
             return await send(corrected)
-        except openai.BadRequestError as second:
+        except openai.APIStatusError as second:
             if retried == "none" and _effort_after_refusal(second, "none") is not _NO_RETRY:
                 raise function_tools_unsupported(second, model) from second
             raise
@@ -271,7 +300,7 @@ async def create_with_effort_retry[T](
 FUNCTION_TOOLS_UNSUPPORTED = "function_tools_unsupported"
 
 
-def function_tools_unsupported(exc: openai.BadRequestError, model: str | None) -> openai.BadRequestError:
+def function_tools_unsupported(exc: openai.APIStatusError, model: str | None) -> openai.BadRequestError:
     """The one 400 a model with no valid chat-completions request with tools ends on.
 
     Its tools refusal asks for ``reasoning_effort: none`` and ``none`` is
@@ -282,7 +311,9 @@ def function_tools_unsupported(exc: openai.BadRequestError, model: str | None) -
     """
     message = f"function tools unsupported on chat completions for {model or 'this model'}"
     body = {"message": message, "param": "reasoning_effort", "code": FUNCTION_TOOLS_UNSUPPORTED, "retryable": False}
-    return openai.BadRequestError(message, response=exc.response, body=body)
+    # A 400 even after a gateway 502: the leg ends on the request, not on the gateway.
+    response = httpx.Response(400, headers=exc.response.headers, request=exc.request)
+    return openai.BadRequestError(message, response=response, body=body)
 
 
 def _coerce_usage_int(value: object) -> int | None:
@@ -447,13 +478,16 @@ def _refused(exc: Exception) -> bool:
 
 
 def _refuses_replay(exc: Exception) -> bool:
-    """A refusal the replayed thinking blocks may have caused. A 400 must say so;
-    the gateway's 502 drops the upstream message, so it cannot be told apart."""
+    """A refusal the replayed thinking blocks may have caused, the gateway's read as the upstream
+    status: a 400 must say so, a 413 cannot be told apart, another 4xx never is."""
     if not _refused(exc):
         return False
-    if exc.status_code != 400:
+    status, message = gateway_upstream_refusal(exc) or (exc.status_code, _error_message(exc))
+    if status != 400:
+        # 502: an upstream refusal the gateway named no status for.
+        return status in (413, 502)
+    if message is None:
         return True
-    message = _error_message(exc)
     return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)
 
 

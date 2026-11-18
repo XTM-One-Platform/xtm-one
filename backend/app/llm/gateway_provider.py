@@ -60,6 +60,7 @@ from app.llm.music import (
 from app.llm.openai_compat import (
     OpenAICompatibleProvider,
     declared_model_types,
+    gateway_upstream_refusal,
     marked_not_retryable,
 )
 from app.llm.system_prompt_split import split_system_prompt
@@ -499,13 +500,12 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         try:
             response = await self.client.embeddings.create(input=text, model=m, extra_headers=headers, **shorten)
         except openai.APIStatusError as exc:
-            # The gateway reports an upstream 400 as ``502 provider_error``; a size above
-            # the model's native one is refused that way, so ask again at the native size.
-            if not shorten or exc.status_code != 502 or "upstream returned status 400" not in str(exc):
+            # A size above the model's native one is refused: ask again at the native size.
+            if not shorten or not _may_refuse_dimensions(exc):
                 raise
             response = await self.client.embeddings.create(input=text, model=m, extra_headers=headers)
-            # Every upstream 400 looks alike; only a native vector smaller than ``dims``
-            # proves the size was refused (text-embedding-3 refuses only above native).
+            # Only a native vector smaller than ``dims`` proves the size was refused
+            # (text-embedding-3 refuses only above native): the message may not say why.
             if len(response.data[0].embedding) < dims:
                 self._refused_dimensions.add((m, dims))
         return list(response.data[0].embedding)
@@ -521,6 +521,16 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             model=m, prompt=prompt, n=1, size=size, extra_headers=await self._target_headers(m)
         )
         return base64.b64decode(response.data[0].b64_json)
+
+
+def _may_refuse_dimensions(exc: openai.APIStatusError) -> bool:
+    """The gateway's 502 for an upstream 400 that refuses ``dimensions``. Without the
+    provider's message (an older gateway), any upstream 400 may be that refusal."""
+    upstream = gateway_upstream_refusal(exc)
+    if upstream is None or upstream[0] != 400:
+        return False
+    # OpenAI: "Invalid value for 'dimensions'"; not one provider's exact wording.
+    return upstream[1] is None or "dimensions" in upstream[1].lower()
 
 
 def mark_claude_cache_breakpoints(params: dict, cache_control: dict | None) -> None:

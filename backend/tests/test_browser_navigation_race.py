@@ -562,6 +562,58 @@ async def test_a_navigate_timeout_before_any_document_arrived_stays_an_error(ins
     assert "Still loading" not in result.content
 
 
+async def test_a_navigate_timeout_argument_bounds_the_wait_for_the_page(install_page):
+    page = install_page(title=["B"], evaluate=[NEW_URL])
+    seen: dict = {}
+
+    async def goto(url, **kwargs):
+        seen.update(kwargs)
+        raise _navigation_timeout()
+
+    page.goto = AsyncMock(side_effect=goto)
+
+    await _call({"action": "navigate", "url": NEW_URL, "timeout": 90})
+
+    assert seen["timeout"] == 90_000
+
+
+async def test_a_navigate_without_timeout_keeps_the_default_wait(install_page):
+    page = install_page()
+    seen: dict = {}
+
+    async def goto(url, **kwargs):
+        seen.update(kwargs)
+        raise _navigation_timeout()
+
+    page.goto = AsyncMock(side_effect=goto)
+
+    await _call({"action": "navigate", "url": NEW_URL})
+
+    assert "timeout" not in seen
+
+
+async def test_a_still_loading_answer_names_the_asked_wait(install_page):
+    page = install_page()
+
+    async def goto(url, **_kwargs):
+        page.commit(url, loaded=False)
+        raise _navigation_timeout()
+
+    page.goto = AsyncMock(side_effect=goto)
+
+    result = await _call({"action": "navigate", "url": NEW_URL, "timeout": 75})
+
+    assert "within 75 s" in result.content
+
+
+def test_the_navigation_timeout_is_clamped():
+    assert browser_tool.navigation_timeout(None) == browser_tool.NAVIGATION_TIMEOUT_MS / 1000
+    assert browser_tool.navigation_timeout(0) == 1.0
+    assert browser_tool.navigation_timeout(10_000) == browser_tool.MAX_NAVIGATION_TIMEOUT_SECONDS
+    assert browser_tool.navigation_timeout("x") == browser_tool.NAVIGATION_TIMEOUT_MS / 1000
+    assert browser_tool.navigation_timeout(float("nan")) == browser_tool.NAVIGATION_TIMEOUT_MS / 1000
+
+
 # ── a click timeout says how far the click got ───────────────────────────────
 
 

@@ -97,6 +97,8 @@ MAX_PAGE_CONTENT_CHARS = 50_000
 #: image as a file instead.
 MAX_EVALUATE_RESULT_CHARS = 20_000
 NAVIGATION_TIMEOUT_MS = 30_000
+#: The longest a ``navigate`` may be asked to wait for its page (a dev server compiling a route on first visit).
+MAX_NAVIGATION_TIMEOUT_SECONDS = 120.0
 ACTION_TIMEOUT_MS = 10_000
 #: How long an ``evaluate`` script may run before it is stopped, by default and at most: a page's long task
 #: (a canvas export) otherwise holds the session for the tool's whole budget.
@@ -1361,6 +1363,8 @@ async def _launch_session(session_key: str, *, reopen_kept_page: bool = False) -
             **media,
         )
         await context.route("**/*", _route_filter)
+        if offline:
+            await context.route("**/*", _fail_offline)
         page = await context.new_page()
         await redirects.watch_main_frame(context, page)
         page.set_default_timeout(ACTION_TIMEOUT_MS)
@@ -1817,6 +1821,16 @@ async def _route_filter(route: Any) -> None:
         await route.continue_()
 
 
+async def _fail_offline(route: Any) -> None:
+    """Route handler of an offline session: every new request fails as a cut network would fail it.
+
+    ``BrowserContext.set_offline`` alone lets a request through on a connection already open (an HTTP keep-alive
+    or HTTP/2 connection to the same origin), so a page's error state could not be provoked. Registered after
+    :func:`_route_filter`, it runs first; removed when the session goes back online.
+    """
+    await route.abort("internetdisconnected")
+
+
 # ── Browser actions ──────────────────────────────────────────────────────────
 
 
@@ -2150,7 +2164,20 @@ async def _share_kept_offline(session_key: str, session: BrowserSession) -> None
     await _share_state(session_key, kept[0], page)
 
 
-def _still_loading(session: BrowserSession, committed: int) -> str | None:
+def navigation_timeout(asked: object) -> float:
+    """The seconds a ``navigate`` waits for its page: *asked* within 1 and :data:`MAX_NAVIGATION_TIMEOUT_SECONDS`,
+    else :data:`NAVIGATION_TIMEOUT_MS` in seconds."""
+    default = NAVIGATION_TIMEOUT_MS / 1000
+    try:
+        seconds = float(asked) if asked is not None else default
+    except (TypeError, ValueError):
+        seconds = default
+    if seconds != seconds:  # NaN
+        seconds = default
+    return min(MAX_NAVIGATION_TIMEOUT_SECONDS, max(1.0, seconds))
+
+
+def _still_loading(session: BrowserSession, committed: int, seconds: float | None = None) -> str | None:
     """The answer of a navigate whose document committed but did not reach DOMContentLoaded in time, else ``None``.
 
     A page that loads hundreds of unbundled modules (a Vite dev server on its first visit) commits at once and
@@ -2162,7 +2189,8 @@ def _still_loading(session: BrowserSession, committed: int) -> str | None:
         return None
     return (
         f"Navigated to: {session.page.url}\n"
-        f"Still loading: the document arrived but did not finish loading within {NAVIGATION_TIMEOUT_MS / 1000:g} s;"
+        f"Still loading: the document arrived but did not finish loading within "
+        f"{seconds if seconds is not None else NAVIGATION_TIMEOUT_MS / 1000:g} s;"
         " it keeps loading. Do not navigate again (that restarts the load): wait for the page with evaluate"
         " or snapshot."
     )
@@ -2399,8 +2427,12 @@ def _still_moving(settled: bool, landed: str) -> str:
     )
 
 
-async def browser_navigate(session_key: str, url: str) -> str:
+async def browser_navigate(session_key: str, url: str, timeout: float | None = None) -> str:
     """Navigate to a URL and return the page title + URL.
+
+    *timeout* is how long the navigation waits for the page, in seconds (:func:`navigation_timeout`): a dev server
+    that compiles a route on its first visit answers nothing for longer than the default, and a navigate that
+    timed out before any document arrived restarts that wait when it is called again.
 
     The navigate answers once the page settled (:func:`_settle_navigation`): its ``load`` event, a short quiet
     network window and ``location.href`` held still, so the next action reads the document the answer names. The
@@ -2435,13 +2467,17 @@ async def browser_navigate(session_key: str, url: str) -> str:
         session.console.clear()
         before = str(getattr(session.page, "url", "") or "")
         session.navigated_at = time.time() * 1000
+        bound = navigation_timeout(timeout)
         try:
-            response = await session.page.goto(safe_url, wait_until="domcontentloaded")
+            if timeout is None:
+                response = await session.page.goto(safe_url, wait_until="domcontentloaded")
+            else:
+                response = await session.page.goto(safe_url, wait_until="domcontentloaded", timeout=bound * 1000)
         except Exception as exc:
             refusal = session.redirects.refusal_since(mark)
             errors = _playwright_errors()
             if errors is not None and refusal is None and isinstance(exc, errors[1]):
-                loading = _still_loading(session, committed)
+                loading = _still_loading(session, committed, bound)
                 if loading is not None:
                     session.loading_mark = committed
                     _keep_landed_page(session_key, session, str(getattr(session.page, "url", "") or ""))
@@ -3127,8 +3163,9 @@ async def browser_emulate_media(
 async def browser_network(session_key: str, offline: object) -> str:
     """Cut the session's pages from the network or give it back (``BrowserContext.set_offline``), kept until changed.
 
-    Offline, ``navigator.onLine`` is false, the page gets its ``offline`` event and a new request fails with
-    ``net::ERR_INTERNET_DISCONNECTED``; a connection already open (an events stream) is not cut by Chromium's
+    Offline, ``navigator.onLine`` is false, the page gets its ``offline`` event and every new request fails with
+    ``net::ERR_INTERNET_DISCONNECTED``, one sent on a reused keep-alive connection included (:func:`_fail_offline`);
+    a connection already open (an events stream) is not cut by Chromium's
     emulation. Back online the page gets its ``online`` event. Kept with the session's state like the viewport, so
     a session re-created after a resume opens offline too.
     """
@@ -3139,13 +3176,17 @@ async def browser_network(session_key: str, offline: object) -> str:
         session.last_used = time.time()
         await _reopen_resumed_page(session_key, session)
         await session.context.set_offline(offline)
+        if offline and not session.offline:
+            await session.context.route("**/*", _fail_offline)
+        elif not offline:
+            await session.context.unroute("**/*", _fail_offline)
         session.offline = offline
         if await _remember_state(session_key, session) is None:
             await _share_kept_offline(session_key, session)
         if offline:
             return (
                 f"Network offline on {session.page.url}, kept until offline=false or close: navigator.onLine is "
-                "false, the 'offline' event fired, new requests fail with net::ERR_INTERNET_DISCONNECTED. A "
+                "false, the 'offline' event fired, every new request fails with net::ERR_INTERNET_DISCONNECTED. A "
                 "connection already open (an events stream) is not cut by the emulation: the page's own 'offline' "
                 "handling decides."
             )
