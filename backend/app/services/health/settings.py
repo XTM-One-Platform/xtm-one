@@ -193,7 +193,7 @@ def _read(stored: object) -> HealthSettings:
     except ValidationError as exc:
         # A value a later level's field no longer accepts, or a hand edit: the
         # defaults, Platform Health off. The reason stays in the logs.
-        logger.warning("Stored Concierge settings do not validate, using the defaults: %s", exc.errors()[:3])
+        logger.warning("Stored Platform Health settings do not validate, using the defaults: %s", exc.errors()[:3])
         return HealthSettings()
 
 
@@ -232,7 +232,7 @@ async def save_health_settings(
         user=actor,
         action="configure",
         entity_type="health_settings",
-        summary="Updated the Concierge settings",
+        summary="Updated the Platform Health settings",
         details={"before": before.model_dump(mode="json"), "after": new.model_dump(mode="json")},
         request=request,
     )

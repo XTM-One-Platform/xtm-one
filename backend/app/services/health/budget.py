@@ -258,7 +258,7 @@ async def open_cycle(
 ) -> uuid.UUID:
     """Open a cycle for *specialist*; raises :class:`BudgetRefusedError` when work may not start. Flushed."""
     if specialist not in HEALTH_ROLES:
-        raise ValueError(f"not a Concierge role: {specialist!r}")
+        raise ValueError(f"not a Platform Health role: {specialist!r}")
     if trigger not in _TRIGGERS:
         raise ValueError(f"not a cycle trigger: {trigger!r}")
     refusal = await budget_refusal(db)
@@ -329,11 +329,11 @@ def _unreserve(month: HealthBudgetMonth, cycle: HealthCycle, tokens: int, cost: 
 async def _locked_pair(db: AsyncSession, cycle_id: uuid.UUID) -> tuple[HealthBudgetMonth, HealthCycle]:
     peek = await _cycle_row(db, cycle_id, lock=False)
     if peek is None:
-        raise ValueError(f"no Concierge cycle {cycle_id}")
+        raise ValueError(f"no Platform Health cycle {cycle_id}")
     month = await _locked_month(db, peek.month)
     cycle = await _cycle_row(db, cycle_id, lock=True)
     if cycle is None:
-        raise ValueError(f"no Concierge cycle {cycle_id}")
+        raise ValueError(f"no Platform Health cycle {cycle_id}")
     return month, cycle
 
 
@@ -476,5 +476,5 @@ async def close_stale_cycles(db: AsyncSession, *, older_than: timedelta) -> int:
     for cycle_id in stale:
         await close_cycle(db, cycle_id, status="failed", reason="Abandoned: still open past its time.")
     if stale:
-        logger.warning("Closed %d abandoned Concierge cycle(s)", len(stale))
+        logger.warning("Closed %d abandoned Platform Health cycle(s)", len(stale))
     return len(stale)

@@ -103,7 +103,7 @@ async def provision_builtin_content(
         async with async_session() as db:
             seeded_fleet = await seed_health_fleet(db)
             if seeded_fleet:
-                logger.info("Provisioned %d Concierge fleet agent(s)", seeded_fleet)
+                logger.info("Provisioned %d Platform Health fleet agent(s)", seeded_fleet)
 
     # Built-in fleets (#8988), after the agents, assignments and skills they
     # reference; xtm_one and dev only, copilot sweeps any it finds.

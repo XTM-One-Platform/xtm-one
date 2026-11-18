@@ -194,7 +194,7 @@ def build_improvement_tools(
         concierge = calling_health_principal(agent_id) is not None
         user = None if concierge else await _caller(db, user_id)
         if not concierge and user is None:
-            logger.info("list_improvements refused: no Concierge run and no active user")
+            logger.info("list_improvements refused: no Platform Health run and no active user")
             return REFUSED
         query = select(ImprovementProposal).where(proposals.surface_filter())
         if target_type:
@@ -374,7 +374,7 @@ DEFINITIONS: tuple[ToolDefinition, ...] = (
         description=(
             "File an unmeasured improvement proposal for the target's managers to approve: the change "
             "(base and proposed text), the finding and its evidence. A measured change is filed with "
-            "`propose_from_experiment`. The Concierge's Experimenter only. Filing the same finding again "
+            "`propose_from_experiment`. Platform Health Experimenter only. Filing the same finding again "
             "returns the existing proposal."
         ),
         input_schema={

@@ -16,7 +16,7 @@
 Mounted under ``/api/v1/health`` beside level 1's routes, built in with no
 feature flag. Access is ``services/health/cycle_access.py``, the rule
 the orchestrator's tools share: a person reads the cycles of the targets they
-manage (administrators: all); "Improve with Concierge" needs the same right.
+manage (administrators: all); "Improve with Platform Health" needs the same right.
 Approve / Reject stay level 3's ``/api/v1/improvement-proposals`` routes.
 """
 
@@ -178,7 +178,7 @@ async def request_cycle(
     # Agentic work: refused while AI is off or unlicensed, before any cycle opens.
     _agentic_gate: None = Depends(require_agentic_ai),
 ):
-    """ "Improve with Concierge": an investigation of one agent or flow the caller manages."""
+    """ "Improve with Platform Health": an investigation of one agent or flow the caller manages."""
     from app.services.audit import log_audit
     from app.services.health.cycles import start_cycle
 

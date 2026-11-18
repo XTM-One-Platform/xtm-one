@@ -450,7 +450,7 @@ async def fleet_assignment(db: AsyncSession, key: AssignmentKey) -> tuple[Assign
 
 
 async def fleet_agent_ids(db: AsyncSession) -> list[uuid.UUID]:
-    """The ids of the agents holding a fleet role (the digest's "by the Concierge")."""
+    """The ids of the agents holding a fleet role (the digest's "by Platform Health")."""
     from app.services.health.identity import HEALTH_ROLES
 
     return list(

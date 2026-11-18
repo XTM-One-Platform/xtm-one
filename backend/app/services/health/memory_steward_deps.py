@@ -136,7 +136,7 @@ async def book_usage(
     call that reports no usage what was reserved for it. No cycle (a run the
     cycle runner did not start): nothing is charged."""
     if cycle_id is None:
-        logger.info("Memory Steward model call on %s outside a Concierge cycle: %s", model, usage)
+        logger.info("Memory Steward model call on %s outside a Platform Health cycle: %s", model, usage)
         return
     from app.services.tracing.cost_calculator import input_output_tokens, price_usage, resolve_model_price_any
 

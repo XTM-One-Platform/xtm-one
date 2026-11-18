@@ -247,8 +247,8 @@ async def set_health_role(db: AsyncSession, agent: Any, role: str | None) -> Non
     """
     if role is not None:
         if role not in HEALTH_ROLES:
-            raise ValueError(f"not a Concierge role: {role!r}")
+            raise ValueError(f"not a Platform Health role: {role!r}")
         if getattr(agent, "is_company_managed", False) is not True:
-            raise ValueError("a Concierge fleet agent must be company-managed")
+            raise ValueError("a Platform Health fleet agent must be company-managed")
     agent.health_role = role
     await db.flush()

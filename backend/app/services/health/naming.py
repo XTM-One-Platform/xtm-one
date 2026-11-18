@@ -105,5 +105,5 @@ async def rename_health_agents(db: AsyncSession, *, previous: Collection[str], n
             renamed += 1
     if renamed:
         await db.flush()
-        logger.info("The Concierge is now named %r (%d row(s) renamed)", name, renamed)
+        logger.info("Platform Health is now named %r (%d row(s) renamed)", name, renamed)
     return renamed

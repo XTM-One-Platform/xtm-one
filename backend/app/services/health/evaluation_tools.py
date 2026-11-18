@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 EVALUATION_SUITE_ID = "concierge_evaluation"
 _SOURCE = f"builtin:{EVALUATION_SUITE_ID}"
-REFUSED = "Refused: Concierge evaluation is not available to this caller for this target."
+REFUSED = "Refused: Platform Health evaluation is not available to this caller for this target."
 
 
 async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str | None:
@@ -197,7 +197,7 @@ def build_health_evaluation_tools(
             await db.rollback()
             return f"Not launched: {exc.detail}"
         await _audit_admin(
-            "concierge.evaluation_launch", "evaluation", launch.evaluation_id, "Launched a Concierge evaluation"
+            "concierge.evaluation_launch", "evaluation", launch.evaluation_id, "Launched a Platform Health evaluation"
         )
         await db.commit()
         return json.dumps({"evaluation_id": str(launch.evaluation_id), "run_ids": [str(r) for r in launch.run_ids]})
@@ -264,7 +264,7 @@ _DEFINITIONS = [
             "Build an evaluation dataset from a target's consented production work: negatively rated answers and "
             "failed runs become cases to fix, positively rated answers (completed runs for a flow) non-regression "
             "cases, each with the tool calls it recorded. Only opted-in targets of the supervision scope, never an "
-            "opted-out user's content. With dataset_id, adds the new cases to that Concierge dataset. Returns the "
+            "opted-out user's content. With dataset_id, adds the new cases to that Platform Health dataset. Returns the "
             "dataset id and the counts added and left out."
         ),
         input_schema={
@@ -286,7 +286,7 @@ _DEFINITIONS = [
     ToolDefinition(
         name="run_concierge_evaluation",
         description=(
-            "Evaluate sandbox copies of agents and flows (create_sandbox_copy; never production ones) on a Concierge dataset. "
+            "Evaluate sandbox copies of agents and flows (create_sandbox_copy; never production ones) on a Platform Health dataset. "
             "Without model_ids each agent runs on its own model; a flow runs on its nodes' models. Returns the "
             "evaluation id and its run ids; read them with get_concierge_evaluation."
         ),
@@ -305,14 +305,14 @@ _DEFINITIONS = [
     ),
     ToolDefinition(
         name="get_concierge_evaluation",
-        description="A Concierge evaluation's runs: subject, model, status, progress and headline scores.",
+        description="A Platform Health evaluation's runs: subject, model, status, progress and headline scores.",
         input_schema={"type": "object", "properties": {"evaluation_id": _ID}, "required": ["evaluation_id"]},
         source=_SOURCE,
     ),
     ToolDefinition(
         name="compare_concierge_runs",
         description=(
-            "Compare two completed runs of one Concierge evaluation: the quality verdict against the noise margin "
+            "Compare two completed runs of one Platform Health evaluation: the quality verdict against the noise margin "
             "(progression, neutral, regression, or none with the reason), every compared score, cost, tokens and "
             "latency, and how many writes a model simulated in each. State the simulated writes beside any verdict."
         ),

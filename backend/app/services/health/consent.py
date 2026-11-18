@@ -385,7 +385,7 @@ async def audit_content_read(
         action="concierge_content_read",
         entity_type=kind,
         entity_id=ref,
-        summary=f"The Concierge read a {kind.replace('_', ' ')}",
+        summary=f"Platform Health read a {kind.replace('_', ' ')}",
         details=details,
     )
 

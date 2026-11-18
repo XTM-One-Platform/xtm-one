@@ -182,7 +182,7 @@ AGENT_COPY_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         # --- Platform Health (#8254): consent and identity never travel ---
         "health_enrolled": "Consent is given by the managers of each agent, never inherited.",
         "health_content_opt_in": "Consent is given by the managers of each agent, never inherited.",
-        "health_role": "Only the seeded fleet acts as the Concierge identity; a copy never does.",
+        "health_role": "Only the seeded fleet acts as the Platform Health identity; a copy never does.",
         # --- Identity: the copy is a new row ---
         "id": "Primary key of a new row.",
         "created_at": "Timestamps belong to the copy's own lifecycle.",
@@ -427,7 +427,7 @@ AGENT_BUNDLE_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         # --- Platform Health (#8254): consent and identity never travel ---
         "health_enrolled": "Consent is given by the managers of each agent, never inherited.",
         "health_content_opt_in": "Consent is given by the managers of each agent, never inherited.",
-        "health_role": "Only the seeded fleet acts as the Concierge identity; a copy never does.",
+        "health_role": "Only the seeded fleet acts as the Platform Health identity; a copy never does.",
         # --- Identity / ownership / platform state, re-established on import ---
         "id": "Primary key of a new row.",
         "created_at": "Timestamps belong to the imported row's own lifecycle.",
@@ -789,7 +789,7 @@ AGENT_CATALOG_CLONE_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         # --- Platform Health (#8254): consent and identity never travel ---
         "health_enrolled": "Consent is given by the managers of each agent, never inherited.",
         "health_content_opt_in": "Consent is given by the managers of each agent, never inherited.",
-        "health_role": "Only the seeded fleet acts as the Concierge identity; a copy never does.",
+        "health_role": "Only the seeded fleet acts as the Platform Health identity; a copy never does.",
         # --- Identity ---
         "id": "Primary key of a new row.",
         "created_at": "Timestamps belong to the clone's own lifecycle.",

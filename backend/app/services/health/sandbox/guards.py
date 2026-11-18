@@ -35,11 +35,11 @@ from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 logger = logging.getLogger(__name__)
 
 BUILDER_REFUSAL = (
-    "Refused: a Concierge agent does not change platform configuration directly. "
+    "Refused: a Platform Health agent does not change platform configuration directly. "
     "Experiment on a sandbox copy and file an improvement proposal."
 )
 PRODUCTION_FLOW_REFUSAL = (
-    "Refused: a Concierge agent changes, runs or activates only sandbox flows. "
+    "Refused: a Platform Health agent changes, runs or activates only sandbox flows. "
     "Make a sandbox copy of this flow and file an improvement proposal."
 )
 

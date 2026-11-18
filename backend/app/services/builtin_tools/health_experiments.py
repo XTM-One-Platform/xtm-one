@@ -198,7 +198,7 @@ def _experiment_definitions() -> list[ToolDefinition]:
         ToolDefinition(
             name="run_experiment",
             description=(
-                "Launch a drafted experiment: the remaining Concierge budget is read first and the number of cases "
+                "Launch a drafted experiment: the remaining Platform Health budget is read first and the number of cases "
                 "sized to it; the dataset is built from the target's consented production cases; the current "
                 "configuration and the variant run as sandbox copies on the same cases, each case once. Skipped, "
                 "with the reason, when the budget, the consent, the dataset or the evaluation engine does not "

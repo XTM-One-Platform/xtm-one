@@ -115,7 +115,7 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
     executor = CallableToolExecutor()
 
     async def _refused(reason: str) -> str:
-        logger.info("Sandbox tool refused for %s: %s", user_id or "the Concierge", reason)
+        logger.info("Sandbox tool refused for %s: %s", user_id or "Platform Health", reason)
         return REFUSED
 
     async def _copy_for_run(copy_id: str) -> tuple[Any, str | None]:

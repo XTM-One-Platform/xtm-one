@@ -318,7 +318,7 @@ async def run(
     if experiment.status != STATUS_DRAFT:
         raise ExperimentError(f"This experiment is {experiment.status}: only a draft is launched.")
     if cycle_id is None:
-        raise ExperimentError("An experiment runs inside a Concierge cycle, which books what it spends.")
+        raise ExperimentError("An experiment runs inside a Platform Health cycle, which books what it spends.")
     kind = experiment_kind(experiment.change_type)
     if await kind.check_stale(db, experiment):
         experiment.status = STATUS_STALE
@@ -542,7 +542,7 @@ async def propose(
         raise ExperimentError(refusal)
     if finding.content_evidence and not content_readable:
         raise ExperimentError(
-            "This finding was drawn from conversations the Concierge may no longer read: nothing is filed."
+            "This finding was drawn from conversations Platform Health may no longer read: nothing is filed."
         )
     kind = experiment_kind(experiment.change_type)
     if await kind.check_stale(db, experiment):

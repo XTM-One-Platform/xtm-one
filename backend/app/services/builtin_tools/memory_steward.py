@@ -179,7 +179,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
             name="list_memory_lanes",
             source=_SOURCE,
             description=(
-                "List the memory lanes the Concierge may consolidate: one per agent (its own memory) and "
+                "List the memory lanes Platform Health may consolidate: one per agent (its own memory) and "
                 "one per user of an agent (that user's memory with it), only for agents opted in and users "
                 "who did not opt out. Lanes never passed come first. Counts only, never memory content."
             ),
