@@ -155,13 +155,13 @@ from app.services.branding import (
 )
 from app.services.builtin_tool_catalog import (
     build_builtin_tool_catalog,
+    withhold_concierge_tools,
     withhold_evaluation_tools,
     withhold_flow_builder_tools,
-    withhold_health_tools,
 )
 from app.services.ctem_verticals import normalize_vertical
 from app.services.handover_types import with_added_handover_targets
-from app.services.kb_helpers import enqueue_reembedding
+from app.services.kb_helpers import count_provider_failures, enqueue_reembedding, retry_provider_failures_now
 from app.services.llm_provider_deletion import (
     DeletionImpact,
     ReplacementError,
@@ -1088,6 +1088,16 @@ async def _run_embedding_reset_background(target_embedding_model: str | None) ->
             "document-recovery sweeps will recover the affected documents.",
             exc_info=True,
         )
+
+
+async def _legacy_embedding_config_id(db: AsyncSession, provider: str | None) -> uuid.UUID | None:
+    """The config an embedding provider stored without an id runs on: the newest
+    of its type, as ``get_embedding_provider`` picks it."""
+    from app.llm.router import newest_config, select_provider_configs
+
+    same_type = select_provider_configs().where(LLMProviderConfig.provider == provider)
+    config = newest_config((await db.execute(same_type)).scalars().all())
+    return config.id if config else None
 
 
 def _build_probe_candidates(
@@ -3522,12 +3532,8 @@ async def update_general_assistant_config(
         await require_agentic_ai(db)
 
     previous_model_defaults = _model_defaults_snapshot(ps)
-    previous_embedding_signature = (
-        ps.embedding_provider,
-        ps.embedding_provider_id,
-        ps.embedding_model,
-        ps.embedding_dimensions,
-    )
+    previous_embedding_vectors = (ps.embedding_model, ps.embedding_dimensions)
+    previous_embedding_provider = (ps.embedding_provider, ps.embedding_provider_id)
 
     # ── GA-only fields ──
     if "linked_agent_id" in body.model_fields_set:
@@ -3861,17 +3867,33 @@ async def update_general_assistant_config(
         clear_license_cache("copilot")
         clear_license_cache("xtm")
 
-    current_embedding_signature = (
-        ps.embedding_provider,
-        ps.embedding_provider_id,
-        ps.embedding_model,
-        ps.embedding_dimensions,
+    current_embedding_provider = (ps.embedding_provider, ps.embedding_provider_id)
+    # A row stored without an id runs on the newest config of its type: naming
+    # that config is no change.
+    if (
+        previous_embedding_provider == (ps.embedding_provider, None)
+        and ps.embedding_provider_id is not None
+        and await _legacy_embedding_config_id(db, ps.embedding_provider) == ps.embedding_provider_id
+    ):
+        previous_embedding_provider = current_embedding_provider
+    provider_changed = current_embedding_provider != previous_embedding_provider
+    # Another provider of the same model and dimensions keeps the vectors valid,
+    # as the stale sweepers and provider deletion already assume. Without a
+    # model, each provider embeds with its own default, so the switch resets.
+    kb_reset_scheduled = (ps.embedding_model, ps.embedding_dimensions) != previous_embedding_vectors or (
+        provider_changed and not ps.embedding_model
     )
-    embedding_config_changed = (
-        current_embedding_signature != previous_embedding_signature
-    )
+    embedding_config_changed = kb_reset_scheduled or provider_changed
+    provider_failures: int | None = None
+    if provider_changed and not kb_reset_scheduled:
+        from app.core.config import settings as app_settings
 
-    if embedding_config_changed:
+        provider_failures = await count_provider_failures(db)
+        provider_failures_retried = app_settings.embedding_auto_retry_enabled
+        if provider_failures_retried:
+            background_tasks.add_task(retry_provider_failures_now)
+
+    if kb_reset_scheduled:
         # The embedding-config write itself is tiny and is committed atomically
         # with the audit log before this handler returns: FastAPI runs the task
         # below before the ``get_db`` teardown, so a commit left to it would
@@ -3924,10 +3946,13 @@ async def update_general_assistant_config(
         "llm_model": config.llm_model,
         "agent_default_model": ps.agent_default_model,
         "embedding_config_changed": embedding_config_changed,
-        "kb_reset_scheduled": embedding_config_changed,
+        "kb_reset_scheduled": kb_reset_scheduled,
     }
     if default_model_announced is not None:
         audit_details["default_model_announced"] = default_model_announced
+    if provider_failures is not None:
+        audit_details["provider_failures"] = provider_failures
+        audit_details["provider_failures_retried"] = provider_failures_retried
     # Every change of a platform model default (embedding, routing, fallback,
     # decision, ...) is recorded with its value before and after, as the
     # provider deletion records where it moved them.
@@ -6345,7 +6370,7 @@ async def _scannable_tool_groups(db: AsyncSession) -> list[ScannableToolGroup]:
         catalog.pop("deep_investigation", None)
     if not is_feature_enabled("MOBILE_COMPANION"):
         catalog.pop("phone", None)
-    withhold_health_tools(catalog)
+    withhold_concierge_tools(catalog)
     if not is_feature_enabled("DASHBOARD_STUDIO"):
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
@@ -7019,7 +7044,7 @@ async def purge_my_memory(
         )
         await db.flush()
     # The user's own deletion purges the consolidation history at once (B19).
-    from app.services.health.memory_history import purge_lane_consolidations
+    from app.services.concierge.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id)
 
@@ -7103,7 +7128,7 @@ async def purge_my_agent_memory(
             )
         )
         await db.flush()
-    from app.services.health.memory_history import purge_lane_consolidations
+    from app.services.concierge.memory_history import purge_lane_consolidations
 
     await purge_lane_consolidations(db, user_id=user.id, agent_id=agent_id)
 
@@ -8129,7 +8154,7 @@ async def get_builtin_tool_catalog(
     ``deep_investigation`` is withheld the same way while "DEEP_INVESTIGATION"
     is off, ``video_studio`` while "VIDEO_STUDIO" is off and ``phone`` while
     "MOBILE_COMPANION" is off, and every ``gate="concierge"`` group while
-    Platform Health is not available; they stay registry keys for the same reason, and the
+    "CONCIERGE" is off; they stay registry keys for the same reason, and the
     flags also withhold the tool at run time. The evaluation tools leave the ``agent_builder``
     alias the same way while evaluation is off.
     """
@@ -8149,7 +8174,7 @@ def _offered_builtin_tool_catalog() -> dict[str, list[dict]]:
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
         catalog.pop("video_studio", None)
-    withhold_health_tools(catalog)
+    withhold_concierge_tools(catalog)
     return withhold_evaluation_tools(catalog)
 
 
