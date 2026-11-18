@@ -17,7 +17,7 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _normalize_output_parsers, _search_body
+from ._common import _api, _normalize_output_parsers, _search_body, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -243,7 +243,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "update":
             if not payload_id:

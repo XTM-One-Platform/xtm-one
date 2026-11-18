@@ -19,7 +19,6 @@ Simulations EXECUTE against live assets - launch/status are real actions.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from urllib.parse import quote
@@ -50,6 +49,7 @@ from ._common import (
     _scope_path,
     _search_body,
     _with_scope_hint,
+    json_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -367,7 +367,7 @@ def register(
             )
             if err:
                 return err
-            return f"Scenario {scenario_id} healthchecks:\n{json.dumps(resp.json(), default=str)[:2000]}"
+            return f"Scenario {scenario_id} healthchecks:\n{json_answer(resp.json(), 2000)}"
 
         if action in ("add_teams", "remove_teams"):
             # `team_ids=[]` is meaningful for add_teams (maps to /teams/replace,
@@ -527,7 +527,7 @@ def register(
             # missingActions[].name is author-authored text from a shared archive
             # (importing someone else's scenario is the use case), so it only reaches
             # the model inside a quarantine block (repo rule).
-            listed = json.dumps(missing, default=str)[:1500]
+            listed = json_answer(missing, 1500)
             return (
                 "Imported the scenario. The target platform is MISSING "
                 f"{len(missing)} capability/capabilities needed by the scenario "

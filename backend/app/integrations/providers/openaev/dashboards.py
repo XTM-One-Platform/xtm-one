@@ -26,7 +26,7 @@ from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, _validate_filter_group
+from ._common import _api, _search_body, _validate_filter_group, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "for_resource":
             if not resource_id:
@@ -276,7 +276,7 @@ def register(
             items = resp.json() or []
             if not items:
                 return f"No dashboards can be bound to resource {resource_id}."
-            return json.dumps(items, default=str)[:2000]
+            return json_answer(items)
 
         if action in ("create", "update"):
             ignored = sorted(set(extra) - set(_DASHBOARD_WRITABLE_FIELDS))
@@ -387,7 +387,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "get_widget":
             if not dashboard_id or not widget_id:
@@ -399,7 +399,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("run_count", "run_average", "run_series", "run_entities"):
             if not widget_id:
@@ -419,7 +419,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json())
 
         if action == "search_engine":
             if not search:
@@ -430,7 +430,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, for_resource, "

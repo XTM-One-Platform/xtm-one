@@ -20,12 +20,11 @@ precise explanation instead of letting the agent chase a phantom id:
 
 from __future__ import annotations
 
-import json
 import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import PlatformCapabilities, _api
+from ._common import PlatformCapabilities, _api, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +137,7 @@ def register(
                     "executed simulation data, so only simulations that have "
                     "actually run appear here."
                 )
-            return json.dumps(rows, default=str)[:3000]
+            return json_answer(rows, 3000)
 
         if not simulation_id:
             return f"simulation_id is required for action '{action}'."
@@ -163,7 +162,7 @@ def register(
                 "Note the attack-path DTOs use camelCase field names, unlike the "
                 "snake_case entity fields elsewhere in the API."
             )
-            summary.append(json.dumps(graph, default=str)[:4000])
+            summary.append(json_answer(graph, 4000))
             return "\n".join(summary)
 
         if action in ("endpoint_findings", "endpoint_relations"):
@@ -182,7 +181,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         if action == "findings":
             resolved = next(
@@ -206,7 +205,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         if action == "execution":
             if not ref:
@@ -222,7 +221,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         return (
             f"Unknown action '{action}'. Valid actions: list_simulations, graph, "
@@ -277,7 +276,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         if action == "steps":
             id_err = _placeholder_id_error("workflow_id", workflow_id, workflow_hint)
@@ -290,7 +289,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         if action == "step":
             id_err = _placeholder_id_error("step_id", step_id, step_hint)
@@ -302,7 +301,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json(), 3000)
 
         if action == "conditions":
             id_err = _placeholder_id_error("workflow_id", workflow_id, workflow_hint)
@@ -315,7 +314,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json(), 4000)
 
         if action == "condition":
             id_err = _placeholder_id_error("condition_id", condition_id, condition_hint)
@@ -327,7 +326,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json(), 3000)
 
         return (
             f"Unknown action '{action}'. Valid actions: workflow_config, "

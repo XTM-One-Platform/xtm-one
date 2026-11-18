@@ -9,12 +9,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body
+from ._common import _api, _search_body, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "upsert"):
             if not name:

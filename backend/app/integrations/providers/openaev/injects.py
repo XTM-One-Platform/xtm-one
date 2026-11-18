@@ -20,7 +20,12 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _fmt_expectation_results_by_type, _search_body
+from ._common import (
+    _api,
+    _fmt_expectation_results_by_type,
+    _search_body,
+    json_answer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +85,7 @@ def register(
                 )
                 if err:
                     return err
-                return json.dumps(resp.json(), default=str)[:3000]
+                return json_answer(resp.json())
             if action == "status":
                 if not inject_id:
                     return "inject_id is required."
@@ -90,7 +95,7 @@ def register(
                 )
                 if err:
                     return err
-                return json.dumps(resp.json(), default=str)[:2000]
+                return json_answer(resp.json())
             return "For scope 'global', valid actions are: get, status."
 
         base = _base(scope, parent_id)
@@ -194,7 +199,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
