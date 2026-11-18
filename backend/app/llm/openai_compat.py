@@ -16,16 +16,18 @@ Custom OpenAI.
 from __future__ import annotations
 
 import functools
+import hashlib
 import logging
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 import openai
 from openai import AsyncOpenAI
 
+from app.core.url_identity import redact_url
 from app.llm.anthropic_thinking_replay import refuses_replayed_blocks, says_prompt_too_long
 from app.llm.base import (
     BaseLLMProvider,
@@ -267,16 +269,42 @@ async def create_without_refused_temperature[T](
         return await create({k: v for k, v in params.items() if k != "temperature"})
 
 
-# (endpoint, model) -> monotonic time until which a request with tools there
-# fails without being sent: it ended on ``function_tools_unsupported``.
-_TOOLS_REFUSED_UNTIL: dict[tuple[str, str | None], float] = {}
+class Endpoint(NamedTuple):
+    """Where a chat-completions request goes: base URL and a hash of its key, never the key."""
+
+    url: str
+    credential: str
+
+
+def endpoint_of(client: object, credential: str | None = None) -> Endpoint | None:
+    """*client*'s endpoint; *credential* when its ``api_key`` is not what authenticates it."""
+    base_url = getattr(client, "base_url", None)
+    if not base_url:
+        return None
+    key = credential if credential is not None else str(getattr(client, "api_key", "") or "")
+    return Endpoint(str(base_url), hashlib.sha256(key.encode()).hexdigest()[:16])
+
+
+# Stop-gap until XTM-One-Platform/ai-gateway#354: the gateway cannot take these
+# requests, and an OpenAI-compatible endpoint is not known to serve /v1/responses.
+# (endpoint, model) -> time until which a request with tools fails unsent.
+_TOOLS_REFUSED_UNTIL: dict[tuple[Endpoint, str | None], float] = {}
 #: Long enough to spare the doomed pair on every tool call, short enough to
-#: pick up an endpoint that starts taking them (ai-gateway#354) without a restart.
+#: pick up an endpoint that starts taking them without a restart.
 _TOOLS_REFUSAL_TTL_SECONDS = 600.0
+_monotonic = time.monotonic
 
 
 def forget_tools_refusals() -> None:
     _TOOLS_REFUSED_UNTIL.clear()
+
+
+def _remember_tools_refused(key: tuple[Endpoint, str | None]) -> None:
+    # Expired entries go here, so the map holds only the last TTL's refusals.
+    now = _monotonic()
+    for expired in [k for k, until in _TOOLS_REFUSED_UNTIL.items() if until <= now]:
+        del _TOOLS_REFUSED_UNTIL[expired]
+    _TOOLS_REFUSED_UNTIL[key] = now + _TOOLS_REFUSAL_TTL_SECONDS
 
 
 async def create_with_effort_retry[T](
@@ -284,7 +312,7 @@ async def create_with_effort_retry[T](
     params: dict[str, Any],
     model: str | None,
     *,
-    endpoint: str | None = None,
+    endpoint: Endpoint | None = None,
 ) -> T:
     """Run ``create(params)``; on a refusal of ``reasoning_effort``, retry once corrected.
 
@@ -293,12 +321,14 @@ async def create_with_effort_retry[T](
     accepted values moved, on the same leg instead of failing over. A refused
     ``temperature`` is retried once without it on each request
     (``create_without_refused_temperature``). With *endpoint*, a request with
-    tools that ended on ``function_tools_unsupported`` there fails without
-    being sent for :data:`_TOOLS_REFUSAL_TTL_SECONDS`.
+    tools that ended on ``function_tools_unsupported`` there fails unsent for
+    :data:`_TOOLS_REFUSAL_TTL_SECONDS`, even behind a gateway that balances
+    the model over upstreams of which only some refuse: accepted, as one
+    refusal costs two requests on every tool call otherwise.
     """
     refusal_key = (endpoint, model) if endpoint and params.get("tools") else None
-    if refusal_key and _TOOLS_REFUSED_UNTIL.get(refusal_key, 0.0) > time.monotonic():
-        request = httpx.Request("POST", f"{endpoint.rstrip('/')}/chat/completions")
+    if refusal_key and _TOOLS_REFUSED_UNTIL.get(refusal_key, 0.0) > _monotonic():
+        request = httpx.Request("POST", redact_url(f"{endpoint.url.split('?')[0].rstrip('/')}/chat/completions"))
         raise _function_tools_unsupported(model, request, httpx.Headers())
 
     async def send(request: dict[str, Any]) -> T:
@@ -320,10 +350,10 @@ async def create_with_effort_retry[T](
         except openai.APIStatusError as second:
             if retried == "none" and _effort_after_refusal(second, "none") is not _NO_RETRY:
                 if refusal_key:
-                    _TOOLS_REFUSED_UNTIL[refusal_key] = time.monotonic() + _TOOLS_REFUSAL_TTL_SECONDS
+                    _remember_tools_refused(refusal_key)
                     logger.warning(
                         "%s refuses function tools on chat completions at %s: failing fast for %ds",
-                        model, endpoint, _TOOLS_REFUSAL_TTL_SECONDS,
+                        model, redact_url(endpoint.url), _TOOLS_REFUSAL_TTL_SECONDS,
                     )
                 raise function_tools_unsupported(second, model) from second
             raise
@@ -533,19 +563,16 @@ def _refuses_replay(exc: Exception) -> bool:
     )
 
 
-def endpoint_of(client: object) -> str | None:
-    base_url = getattr(client, "base_url", None)
-    return str(base_url) if base_url else None
-
-
-async def _create_completion(client, params: dict, model: str | None, replay: BlocksReplay | None):
+async def _create_completion(
+    client, params: dict, model: str | None, replay: BlocksReplay | None, endpoint: Endpoint | None = None
+):
     """``chat.completions.create`` with the effort / temperature retries, sent
     once more without the replayed thinking blocks when a request carrying them
     is refused."""
 
     def send():
         return create_with_effort_retry(
-            lambda p: client.chat.completions.create(**p), params, model, endpoint=endpoint_of(client)
+            lambda p: client.chat.completions.create(**p), params, model, endpoint=endpoint or endpoint_of(client)
         )
 
     try:
@@ -755,6 +782,7 @@ async def consume_openai_stream_with_tools(
     shape_request: Callable[[dict], Awaitable[None]] | None = None,
     replay: BlocksReplay | None = None,
     tools_upstream: str | None = None,
+    endpoint: Endpoint | None = None,
     **kwargs,
 ) -> ChatResponse:
     """Consume an OpenAI-format streaming response, handling both text and tool calls.
@@ -816,7 +844,7 @@ async def consume_openai_stream_with_tools(
 
         if usage_sink is not None:
             usage_sink.restart()
-        stream = await _create_completion(client, params, model, replay)
+        stream = await _create_completion(client, params, model, replay, endpoint)
 
         content_chunks: list[str] = []
         thinking_chunks: list[str] = []
@@ -974,6 +1002,10 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         """The ``reasoning_effort`` the caller asked for, before normalization."""
         return kwargs.get("reasoning_effort")
 
+    def refusal_endpoint(self) -> Endpoint | None:
+        """Where a tools refusal is remembered (``create_with_effort_retry``)."""
+        return endpoint_of(self.client)
+
     async def _shape_request(self, params: dict, kwargs: dict) -> None:
         """Last edit of a chat-completions request before it is sent; *kwargs* are the caller's."""
 
@@ -1069,7 +1101,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         await self._shape_request(params, kwargs)
 
         response = await retry_llm_call(
-            lambda: _create_completion(self.client, params, model, replay),
+            lambda: _create_completion(self.client, params, model, replay, self.refusal_endpoint()),
             is_retryable=is_retryable_openai,
         )
 
@@ -1183,7 +1215,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         # Retry transient errors on stream establishment only — nothing has
         # been yielded to the caller until the create() call returns.
         stream = await retry_llm_call(
-            lambda: _create_completion(self.client, params, model, replay),
+            lambda: _create_completion(self.client, params, model, replay, self.refusal_endpoint()),
             is_retryable=is_retryable_openai,
         )
         on_thinking = kwargs.get("on_thinking")
@@ -1250,6 +1282,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
             include_usage=self.supports_stream_usage, replay=replay,
             shape_request=lambda params: self._shape_request(params, kwargs),
             tools_upstream=await self._upstream_of(model) if tools else None,
+            endpoint=self.refusal_endpoint(),
             **{**kwargs, "reasoning_effort": self._reasoning_effort(model, kwargs)},
         )
 

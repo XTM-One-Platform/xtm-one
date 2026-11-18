@@ -157,7 +157,7 @@ provider, a model the table does not flag yet), the two refusals in a row
 end the leg on one HTTP 400, code `function_tools_unsupported`, message
 "function tools unsupported on chat completions for <model>", marked
 `retryable: false`: two calls at most, never the raw second 400. That
-endpoint (the client's base URL) then fails the model's requests with tools
+endpoint (the client's base URL and API key) then fails the model's requests with tools
 on the same 400 without sending them for 10 minutes: the AI Gateway passes
 chat completions through to OpenAI (XTM-One-Platform/ai-gateway#354).
 
