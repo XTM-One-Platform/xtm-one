@@ -115,7 +115,7 @@ _PROJECT_RUNNERS = (("uv", "run"), ("poetry", "run"))
 SCRIPT_LISTING = (
     f"Built in: {SCRIPT_CHECK}: args = one workspace file ({', '.join(SCRIPT_RUNNERS)}; relative to the checkout "
     "or workspace/...) then its own args; run with python or node on the image of the nearest check of its "
-    "directory (its install bound), the checkout root as cwd."
+    "directory (its install bound, the `uv run --with` deps of its checks added), the checkout root as cwd."
 )
 #: What a command builds in the container and the workspace never records
 #: (``fnmatch`` over the workspace path; a directory as ``dir/``): the
@@ -900,8 +900,10 @@ async def _script_command(
             if spec.cwd.strip("/") == anchor.cwd.strip("/") and tuple(spec.argv[:2]) in _PROJECT_RUNNERS
         ]
         if stack == "python" and runners:
-            # The project's environment lives in the runner's venv, not in the image's python.
-            program = (*runners[0], *program)
+            # The project's environment lives in the runner's venv, not in the image's python; the `uv run --with`
+            # dependencies the directory's checks add (`uv run --with pyyaml pytest`) are the script's too.
+            withs = _uv_with_args(specs, anchor.cwd) if runners[0] == ("uv", "run") else ()
+            program = (*runners[0], *withs, *program)
         elif stack == "python":
             # The install of a project pinned to another interpreter (``python3.12 -m pip install``)
             # writes that interpreter's site-packages: the script runs on the same one.
@@ -926,6 +928,40 @@ async def _script_command(
         install=install,
     )
     return bind_fallback(resolved, specs.get(install.check) if install else None, known_images=known_images)
+
+
+#: The ``uv run`` options that add a dependency to the run's environment, then whether their value is a path.
+_UV_WITH_OPTIONS = {"--with": False, "--with-requirements": True, "--with-editable": True}
+
+
+def _uv_with_args(specs: dict[str, CheckSpec], cwd: str) -> tuple[str, ...]:
+    """The ``--with`` options the ``uv run`` checks of directory *cwd* pass before their command, each once.
+
+    Read in check-name order; a path value (``--with-requirements requirements.txt``) is rewritten relative
+    to the checkout root, where :data:`SCRIPT_CHECK` runs. Reading stops at the first word that is not an
+    option, so the command's own arguments are never taken.
+    """
+    out: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    directory = cwd.strip("/")
+    for name in sorted(specs):
+        spec = specs[name]
+        if spec.cwd.strip("/") != directory or tuple(spec.argv[:2]) != ("uv", "run"):
+            continue
+        words = list(spec.argv[2:])
+        while words and words[0].startswith("-"):
+            option, _, inline = words.pop(0).partition("=")
+            if option not in _UV_WITH_OPTIONS:
+                continue
+            value = inline or (words.pop(0) if words else "")
+            if not value:
+                break
+            if _UV_WITH_OPTIONS[option] and directory and not posixpath.isabs(value):
+                value = posixpath.normpath(posixpath.join(directory, value))
+            if (option, value) not in seen:
+                seen.add((option, value))
+                out += [option, value]
+    return tuple(out)
 
 
 #: A versioned interpreter of a detected Python check's argv (``python3.12``), the one its install used.
