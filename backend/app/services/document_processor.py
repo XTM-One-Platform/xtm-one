@@ -69,7 +69,7 @@ from app.services.kb_embedding_text import resolve_embedding_text_async
 from app.services.kb_helpers import (
     embedding_config_moved,
     log_kb_activity,
-    retry_provider_failure_now,
+    retry_document_after_switch,
     schedule_embedding_retry,
 )
 
@@ -646,7 +646,7 @@ async def _process_document_impl(
                 # retry now. Asked after the commit, holding no connection: a
                 # switch committed later has its retry pass see this error.
                 if provider_config_id is not None and await embedding_config_moved(provider_config_id):
-                    await retry_provider_failure_now(db, doc.id)
+                    await retry_document_after_switch(db, doc.id)
                 return 0
 
             if not chunks:

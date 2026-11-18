@@ -331,7 +331,7 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
     )
     monkeypatch.setattr(document_processor, "log_kb_activity", AsyncMock())
     monkeypatch.setattr(document_processor, "embedding_config_moved", moved)
-    monkeypatch.setattr(document_processor, "retry_provider_failure_now", retried)
+    monkeypatch.setattr(document_processor, "retry_document_after_switch", retried)
     monkeypatch.setattr(
         "app.llm.router.get_embedding_provider",
         AsyncMock(return_value=(provider, "text-embedding-3-large", used_config)),

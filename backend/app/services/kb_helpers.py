@@ -26,7 +26,7 @@ import logging
 import random
 import time
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -1447,6 +1447,19 @@ async def count_provider_failures(db: AsyncSession) -> int:
     return int(result.scalar_one())
 
 
+async def _make_provider_failures_due(db: AsyncSession, ids: Sequence[uuid.UUID], now: datetime) -> int:
+    """The guarded write: *ids* that still are provider failures under the cap
+    become due *now*; a row re-queued meanwhile is left alone. Commits."""
+    result = await db.execute(
+        update(KnowledgeDocument)
+        .where(KnowledgeDocument.id.in_(ids), *_provider_failure_conditions())
+        .values(embedding_next_retry_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return result.rowcount or 0
+
+
 async def retry_provider_failures_now(*, now: datetime | None = None, batch_size: int | None = None) -> int:
     """Make the provider failures due now, for :func:`recover_failed_documents`.
 
@@ -1454,7 +1467,7 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
     vectors; a dimension mismatch is otherwise never retried. One pass over the
     rows that qualify when it starts, in committed batches on its own session; a
     locked row is waited on. A job still on the old provider is covered by
-    :func:`embedding_config_moved`. Returns the row count.
+    :func:`retry_document_after_switch`. Returns the row count.
     """
     if not app_settings.embedding_auto_retry_enabled:
         return 0
@@ -1469,40 +1482,26 @@ async def retry_provider_failures_now(*, now: datetime | None = None, batch_size
             ids = (await db.execute(snapshot)).scalars().all()
             await db.commit()
             for start in range(0, len(ids), limit):
-                result = await db.execute(
-                    update(KnowledgeDocument)
-                    .where(KnowledgeDocument.id.in_(ids[start : start + limit]), *_provider_failure_conditions())
-                    .values(embedding_next_retry_at=now)
-                    .execution_options(synchronize_session=False)
-                )
-                await db.commit()
-                total += result.rowcount or 0
+                total += await _make_provider_failures_due(db, ids[start : start + limit], now)
     except Exception:
         logger.error("Retry of provider failures after an embedding provider switch failed", exc_info=True)
     logger.info("Embedding provider switch: %d failed document(s) due for retry", total)
     return total
 
 
-
-async def retry_provider_failure_now(db: AsyncSession, doc_id: uuid.UUID, *, now: datetime | None = None) -> bool:
-    """Make one document's provider failure due now, while the row still is that
-    failure under the cap: a guarded write, as it may have been re-queued since.
-    Never raises; returns whether the row was written."""
+async def retry_document_after_switch(db: AsyncSession, doc_id: uuid.UUID, *, now: datetime | None = None) -> bool:
+    """Make one job's provider failure due now, the embedding config having
+    moved while it ran (:func:`embedding_config_moved`). Never raises; returns
+    whether the row was written."""
     if not app_settings.embedding_auto_retry_enabled:
         return False
     try:
-        result = await db.execute(
-            update(KnowledgeDocument)
-            .where(KnowledgeDocument.id == doc_id, *_provider_failure_conditions())
-            .values(embedding_next_retry_at=now or datetime.now(UTC))
-            .execution_options(synchronize_session=False)
-        )
-        await db.commit()
+        return bool(await _make_provider_failures_due(db, [doc_id], now or datetime.now(UTC)))
     except Exception:
         logger.warning("Could not retry document %s after an embedding provider switch", doc_id, exc_info=True)
-        await db.rollback()
+        with contextlib.suppress(Exception):
+            await db.rollback()
         return False
-    return bool(result.rowcount)
 
 
 async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:

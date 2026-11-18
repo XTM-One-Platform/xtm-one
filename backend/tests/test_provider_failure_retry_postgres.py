@@ -218,9 +218,9 @@ async def test_one_failure_is_made_due_only_while_it_is_still_that_failure(monke
         db.add_all([failed, requeued, spent])
         await db.commit()
 
-        assert await kb_helpers.retry_provider_failure_now(db, failed.id, now=_NOW) is True
-        assert await kb_helpers.retry_provider_failure_now(db, requeued.id, now=_NOW) is False
-        assert await kb_helpers.retry_provider_failure_now(db, spent.id, now=_NOW) is False
+        assert await kb_helpers.retry_document_after_switch(db, failed.id, now=_NOW) is True
+        assert await kb_helpers.retry_document_after_switch(db, requeued.id, now=_NOW) is False
+        assert await kb_helpers.retry_document_after_switch(db, spent.id, now=_NOW) is False
 
         due = (
             (
@@ -244,10 +244,11 @@ async def test_one_failure_retry_never_raises():
 
         async def rollback(self):
             self.rolled_back = True
+            raise RuntimeError("connection dead")
 
     db = _Broken()
 
-    assert await kb_helpers.retry_provider_failure_now(db, uuid.uuid4()) is False
+    assert await kb_helpers.retry_document_after_switch(db, uuid.uuid4()) is False
     assert db.rolled_back is True
 
 
