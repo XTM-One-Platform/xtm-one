@@ -3378,6 +3378,18 @@ InboxSettlement = Literal["completed", "kept", "blocked", "parked", "deferred", 
 
 #: The ending runs a released item remembers, for the blocked reason at the cap.
 _RELEASED_BY_RUNS_KEPT = 10
+#: First delay before the inbox takes again an item released a second time in a
+#: row by runs that ended without completing it and without naming a pull request
+#: (doubled at each further release, capped at :data:`RELEASE_BACKOFF_MAX`): the
+#: runs dispatched seconds apart on the same unchanged state are what loops.
+RELEASE_BACKOFF_BASE = timedelta(minutes=2)
+RELEASE_BACKOFF_MAX = timedelta(minutes=30)
+#: What the release note tells the next run when the item names no pull request.
+NO_PULL_REQUEST_NAMED_HINT = (
+    "it names no pull request, so neither a CI completion nor a merge dispatches it: "
+    "name an open one with create_github_pr(work_item_id=THIS_ITEM_ID) on its head branch "
+    "(answers 'already open' and names it), or block it with blocked_on_refs"
+)
 
 #: Payload flag of an item whose deliverable is its pull requests open (and
 #: green), not merged: the run end never blocks it on their merge.
@@ -4016,6 +4028,7 @@ async def settle_inbox_work_item(
                 reason=release_reason,
                 now=now,
                 progress=merged_during_claim(item),
+                backoff=True,
             )
         else:
             outcome = "completed"
@@ -4073,6 +4086,7 @@ def _release_unfinished(
     reason: str | None,
     now: datetime,
     progress: list[str] | None = None,
+    backoff: bool = False,
 ) -> bool:
     """Put back in the queue an item its inbox run ended on without completing it.
 
@@ -4086,6 +4100,11 @@ def _release_unfinished(
     with no release condition is never left blocked unheard (#9540).
     A run that made *progress* (pull requests it merged, see
     :func:`merged_during_claim`) restarts the count at zero instead (#10161).
+    With *backoff* (the item names no open pull request, so no CI completion
+    or merge would wake it), a second release in a row sets ``not_before``
+    :data:`RELEASE_BACKOFF_BASE` ahead, doubled at each further one up to
+    :data:`RELEASE_BACKOFF_MAX`, and the note tells how to name a pull request:
+    runs dispatched seconds apart on an unchanged item are not re-run at once.
     The caller clears the claim.
     """
     max_attempts = max(int(getattr(settings, "work_item_max_dispatch_attempts", 5) or 0), 1)
@@ -4126,6 +4145,8 @@ def _release_unfinished(
             ),
         },
     ]
+    if backoff:
+        item.claim_notes[-1]["text"] = f"{item.claim_notes[-1]['text']}; {NO_PULL_REQUEST_NAMED_HINT}"
     if attempts >= max_attempts:
         item.status = "blocked"
         if not release_conditions(item) and (kept := payload.get(RESUME_WAIT_REFS_KEY)):
@@ -4144,7 +4165,22 @@ def _release_unfinished(
         )
         return True
     item.status = "open"
+    if backoff and attempts >= 2:
+        delay = release_backoff(attempts)
+        item.not_before = now + delay
+        item.claim_notes[-1]["text"] = (
+            f"{item.claim_notes[-1]['text']}; release {attempts} in a row: back in the queue from "
+            f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')}, not at once"
+        )
     return False
+
+
+def release_backoff(attempts: int) -> timedelta:
+    """The delay before the inbox takes again an item at its *attempts*-th release in a row. Pure."""
+    if attempts < 2:
+        return timedelta(0)
+    delay: timedelta = RELEASE_BACKOFF_BASE * (1 << min(attempts - 2, 10))
+    return min(delay, RELEASE_BACKOFF_MAX)
 
 
 #: Payload key of the pull request waits an item had when a run took it out of ``blocked``.
