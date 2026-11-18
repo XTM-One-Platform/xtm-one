@@ -2141,6 +2141,7 @@ def test_the_repository_declares_its_own_checks():
         "frontend-bump-build",
         "frontend-bump-classes",
         "frontend-bump-unit",
+        "frontend-bump-knip",
         "office-addin-lock-update",
         "office-addin-install",
         "office-addin-check",
