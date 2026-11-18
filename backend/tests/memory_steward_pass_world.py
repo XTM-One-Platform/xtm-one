@@ -88,7 +88,7 @@ def _stub(monkeypatch, world: PassWorld) -> None:
             if held:
                 world.busy.discard(lane.key)
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     monkeypatch.setattr(deps, "audit_lane_read", audit_read)
     monkeypatch.setattr(deps, "memory_lane_readable", readable)
     monkeypatch.setattr(deps, "ensure_budget", no_budget_check)

@@ -400,9 +400,9 @@ async def _build_xtm_tools(
     # Platform Concierge (#8259): the read half only - a person is never the
     # Concierge, whose agents alone write findings and run experiments.
     from app.services.builtin_tools.health_experiments import build_health_experiment_tools
-    from app.services.builtin_tools.health_quality import build_health_diagnosis_tools, concierge_tools_offered
+    from app.services.builtin_tools.health_quality import build_health_diagnosis_tools, health_tools_offered
 
-    if concierge_tools_offered():
+    if health_tools_offered():
         composite.add_tools(*build_health_diagnosis_tools(user_id, read_only=True))
         composite.add_tools(*build_health_experiment_tools(user_id, read_only=True))
         from app.services.builtin_tools.flow_lab import build_flow_lab_tools

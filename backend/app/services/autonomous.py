@@ -2559,12 +2559,12 @@ async def _run_autonomous_tick_inner() -> int:
 
         # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
-        # work needs agentic AI and Platform Health switched on (``cycles.concierge_tick``).
+        # work needs agentic AI and Platform Health switched on (``cycles.health_tick``).
         # Signals make no model call.
         try:
-            from app.services.health.cycles import concierge_tick
+            from app.services.health.cycles import health_tick
 
-            await concierge_tick(ai_on=_ai_on)
+            await health_tick(ai_on=_ai_on)
         except Exception as e:
             logger.error("Concierge tick error: %s", format_exception_message(e), exc_info=True)
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---

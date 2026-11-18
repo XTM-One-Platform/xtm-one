@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.feature_flags import feature_disabled_detail, is_feature_enabled, require_feature
 from app.models.evaluation import Evaluation, EvaluationRun
-from app.services.health.availability import concierge_active
+from app.services.health.availability import health_active
 
 DISABLED_DETAIL = feature_disabled_detail("EVALUATION")
 
@@ -56,7 +56,7 @@ async def engine_accepts(db: AsyncSession, evaluation_id: uuid.UUID | str) -> bo
     """The engine gate for one evaluation: the surface gate, or a Concierge launch."""
     if evaluation_enabled():
         return True
-    if not await concierge_active(db):
+    if not await health_active(db):
         return False
     try:
         evaluation_uuid = uuid.UUID(str(evaluation_id))
@@ -70,7 +70,7 @@ async def engine_accepts_runs(db: AsyncSession, run_ids: Iterable[uuid.UUID | st
     """The engine gate for a rescore batch: every run's evaluation must pass it."""
     if evaluation_enabled():
         return True
-    if not await concierge_active(db):
+    if not await health_active(db):
         return False
     try:
         ids = {uuid.UUID(str(run_id)) for run_id in run_ids}

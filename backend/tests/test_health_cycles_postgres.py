@@ -256,8 +256,8 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
     from app.services.health.identity import (
         CONCIERGE_ALONE_KEY,
         acting_as_concierge,
-        concierge_delegation_owner_id,
-        concierge_principal_for,
+        health_delegation_owner_id,
+        health_principal_for,
     )
     from app.services.sub_agent import create_sub_agent_task
 
@@ -275,8 +275,8 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
             orchestrator, analyst = agents["orchestrator"], agents["quality_analyst"]
             tasks = []
             for who in (None, admin):
-                with acting_as_concierge(concierge_principal_for(orchestrator, who)):
-                    owner = await concierge_delegation_owner_id(db, orchestrator) or (who.id if who else None)
+                with acting_as_concierge(health_principal_for(orchestrator, who)):
+                    owner = await health_delegation_owner_id(db, orchestrator) or (who.id if who else None)
                     tasks.append(
                         await create_sub_agent_task(
                             db,

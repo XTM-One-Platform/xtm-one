@@ -65,7 +65,7 @@ from app.models.improvement_proposal import (
 )
 from app.services.audit import log_audit, log_system_audit
 from app.services.evaluation_comparison import NOISE_MARGIN_POINTS, compare_metric
-from app.services.health.availability import concierge_enabled
+from app.services.health.availability import health_enabled
 from app.services.improvement_proposals.dedup import dedup_key, evidence_fingerprint
 from app.services.improvement_proposals.registry import (
     ProposalHandler,
@@ -157,14 +157,14 @@ def surface_enabled(proposal: ImprovementProposal) -> bool:
         from app.services.evaluation.availability import evaluation_enabled
 
         return evaluation_enabled()
-    return concierge_enabled()
+    return health_enabled()
 
 
 def any_surface_enabled() -> bool:
     """Whether any proposal is reachable at all: the routes are served and published only then."""
     from app.services.evaluation.availability import evaluation_enabled
 
-    return evaluation_enabled() or concierge_enabled()
+    return evaluation_enabled() or health_enabled()
 
 
 def surface_filter() -> Any:
@@ -175,7 +175,7 @@ def surface_filter() -> Any:
 
     return or_(
         and_(ImprovementProposal.author_agent_id.is_(None), true() if evaluation_enabled() else false()),
-        and_(ImprovementProposal.author_agent_id.is_not(None), true() if concierge_enabled() else false()),
+        and_(ImprovementProposal.author_agent_id.is_not(None), true() if health_enabled() else false()),
     )
 
 

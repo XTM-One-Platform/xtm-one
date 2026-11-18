@@ -356,7 +356,7 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
     from app.services.health.evaluations import (
         HealthEvaluationError,
         compare_concierge_runs,
-        concierge_evaluation_runs,
+        health_evaluation_runs,
     )
     from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -377,7 +377,7 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
         s.add_all(runs)
         await s.commit()
         with pytest.raises(HealthEvaluationError):
-            await concierge_evaluation_runs(s, evaluation.id)
+            await health_evaluation_runs(s, evaluation.id)
         with pytest.raises(HealthEvaluationError):
             await compare_concierge_runs(s, baseline_run_id=runs[0].id, candidate_run_id=runs[1].id)
 

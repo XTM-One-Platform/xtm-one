@@ -128,7 +128,7 @@ def test_a_persons_request_follows_evaluation_and_an_agents_the_concierge(
     monkeypatch, by_agent, evaluation, concierge, reachable
 ):
     monkeypatch.setattr("app.services.evaluation.availability.evaluation_enabled", lambda: evaluation)
-    monkeypatch.setattr(lifecycle, "concierge_enabled", lambda: concierge)
+    monkeypatch.setattr(lifecycle, "health_enabled", lambda: concierge)
     proposal = SimpleNamespace(author_agent_id=uuid.uuid4() if by_agent else None)
 
     assert proposals.surface_enabled(proposal) is reachable

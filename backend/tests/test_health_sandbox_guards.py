@@ -22,7 +22,7 @@ _PRINCIPAL = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab")
 
 @pytest.fixture(autouse=True)
 def _flag_on(monkeypatch):
-    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.health_enabled", lambda: True)
 
 
 def _agent_builder():

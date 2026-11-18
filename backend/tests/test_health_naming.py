@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.services.health.cycles import CycleStart
-from app.services.health.naming import DEFAULT_NAMES, concierge_name, default_concierge_name
+from app.services.health.naming import DEFAULT_NAMES, default_health_agent_name, health_agent_name
 from app.services.health.settings import MAX_NAME_LENGTH, HealthSettings
 
 
@@ -22,9 +22,9 @@ from app.services.health.settings import MAX_NAME_LENGTH, HealthSettings
 )
 def test_the_default_name_is_platform_health_in_every_mode(monkeypatch, mode: str, expected: str) -> None:
     monkeypatch.setattr(settings, "platform_mode", mode)
-    assert default_concierge_name() == expected
-    assert concierge_name(HealthSettings()) == expected
-    assert concierge_name(HealthSettings(name="Jeeves")) == "Jeeves"
+    assert default_health_agent_name() == expected
+    assert health_agent_name(HealthSettings()) == expected
+    assert health_agent_name(HealthSettings(name="Jeeves")) == "Jeeves"
 
 
 def test_every_default_name_is_known() -> None:

@@ -50,21 +50,21 @@ _FORMER_DEFAULT_NAMES: Final = frozenset({"Concierge", "Alfred"})
 DEFAULT_NAMES: Final[frozenset[str]] = frozenset({DEFAULT_NAME, *_FORMER_DEFAULT_NAMES})
 
 
-def default_concierge_name() -> str:
+def default_health_agent_name() -> str:
     """The default name, the same in every platform mode."""
     return DEFAULT_NAME
 
 
-def concierge_name(value: HealthSettings) -> str:
+def health_agent_name(value: HealthSettings) -> str:
     """The name *value* gives, its default when it gives none."""
-    return value.name or default_concierge_name()
+    return value.name or default_health_agent_name()
 
 
-async def load_concierge_name(db: AsyncSession) -> str:
-    return concierge_name(await load_health_settings(db))
+async def load_health_agent_name(db: AsyncSession) -> str:
+    return health_agent_name(await load_health_settings(db))
 
 
-async def rename_concierge(db: AsyncSession, *, previous: Collection[str], name: str) -> int:
+async def rename_health_agents(db: AsyncSession, *, previous: Collection[str], name: str) -> int:
     """Give the orchestrator, its fleet and its workspace *name* where they still carry one of *previous*.
 
     A row an administrator renamed by hand carries another name and is left

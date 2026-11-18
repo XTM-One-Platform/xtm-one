@@ -177,7 +177,7 @@ def build_improvement_tools(
         ImprovementProposal,
     )
     from app.services import improvement_proposals as proposals
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
 
     executor = CallableToolExecutor()
 
@@ -188,7 +188,7 @@ def build_improvement_tools(
         proposal_type: str | None = None,
         limit: int = 20,
     ) -> str:
-        if not concierge_enabled():
+        if not health_enabled():
             logger.info("list_improvements refused: Platform Health is not available")
             return REFUSED
         concierge = calling_concierge(agent_id) is not None

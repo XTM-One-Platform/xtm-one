@@ -46,7 +46,7 @@ from app.models.user import User
 from app.services.audit import log_audit
 from app.services.health import budget as concierge_budget
 from app.services.health.consent import Revocation, apply_revocation
-from app.services.health.naming import default_concierge_name, load_concierge_name
+from app.services.health.naming import default_health_agent_name, load_health_agent_name
 from app.services.health.settings import (
     HealthBudgetCaps,
     HealthSettings,
@@ -276,7 +276,7 @@ async def get_concierge_name(
     db: AsyncSession = Depends(get_db),
 ) -> HealthNameResponse:
     """The name every signed-in person sees the Concierge under."""
-    return HealthNameResponse(name=await load_concierge_name(db), default_name=default_concierge_name())
+    return HealthNameResponse(name=await load_health_agent_name(db), default_name=default_health_agent_name())
 
 
 # ── Settings > Agents and automations > Concierge ──────────────────────────────────────────────────
@@ -329,5 +329,7 @@ async def get_budget(
         remaining_cost_usd=left.month_cost_usd,
         open_cycles=open_cycles,
         refusal=refusal,
-        refusal_message=concierge_budget.refusal_message(refusal, await load_concierge_name(db)) if refusal else None,
+        refusal_message=concierge_budget.refusal_message(refusal, await load_health_agent_name(db))
+        if refusal
+        else None,
     )

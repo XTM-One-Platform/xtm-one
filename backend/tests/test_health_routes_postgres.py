@@ -33,7 +33,7 @@ from app.models.user import User
 from app.services import agentic_gate
 from app.services.health import consent
 from app.services.health.consent import Revocation
-from tests.health_support import World, concierge_database
+from tests.health_support import World, health_database
 
 pytestmark = pytest.mark.integration
 
@@ -99,7 +99,7 @@ async def _opt_in(sessions, model, row_id) -> bool:
     ],
 )
 async def test_the_agent_opt_in_is_written_by_whoever_may_manage_it(who: str, status: int, handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, getattr(world, who)) as client:
             response = await client.put(f"/api/v1/health/agents/{world.private.id}/opt-in", json={"opt_in": True})
@@ -114,7 +114,7 @@ async def test_the_agent_opt_in_is_written_by_whoever_may_manage_it(who: str, st
 
 
 async def test_a_revoked_share_loses_the_opt_in_at_once(handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         url = f"/api/v1/health/agents/{world.private.id}/opt-in"
         async with _client(sessions, world.configurer) as client:
@@ -130,7 +130,7 @@ async def test_a_revoked_share_loses_the_opt_in_at_once(handlers) -> None:
 
 
 async def test_a_company_managed_agent_is_opted_in_by_admins_only(handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         url = f"/api/v1/health/agents/{world.company.id}/opt-in"
         async with _client(sessions, world.stranger) as client:
@@ -141,7 +141,7 @@ async def test_a_company_managed_agent_is_opted_in_by_admins_only(handlers) -> N
 
 
 async def test_a_fleet_agent_has_no_opt_in(handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         url = f"/api/v1/health/agents/{world.fleet.id}/opt-in"
         async with _client(sessions, world.admin) as client:
@@ -152,7 +152,7 @@ async def test_a_fleet_agent_has_no_opt_in(handlers) -> None:
 
 @pytest.mark.parametrize(("who", "status"), [("owner", 200), ("member", 200), ("reader", 403), ("stranger", 404)])
 async def test_the_flow_opt_in_follows_the_same_rule(who: str, status: int, handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, getattr(world, who)) as client:
             response = await client.put(f"/api/v1/health/flows/{world.flow.id}/opt-in", json={"opt_in": True})
@@ -161,7 +161,7 @@ async def test_the_flow_opt_in_follows_the_same_rule(who: str, status: int, hand
 
 
 async def test_turning_an_opt_in_off_revokes_in_the_same_transaction(handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.owner) as client:
             agent_url = f"/api/v1/health/agents/{world.private.id}/opt-in"
@@ -182,7 +182,7 @@ async def test_a_failing_revocation_changes_nothing(monkeypatch) -> None:
         raise RuntimeError("datasets unreachable")
 
     monkeypatch.setattr(consent, "_HANDLERS", [_boom])
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             (await db.get(Agent, world.private.id)).health_enrolled = True
@@ -195,7 +195,7 @@ async def test_a_failing_revocation_changes_nothing(monkeypatch) -> None:
 
 
 async def test_the_opt_out_is_the_users_own(handlers) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.reader) as client:
             assert (await client.get("/api/v1/health/me/opt-out")).json() == {"opt_out": False}
@@ -210,7 +210,7 @@ async def test_the_opt_out_is_the_users_own(handlers) -> None:
 
 
 async def test_settings_and_budget_are_for_admins(handlers, licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.configurer) as client:
             assert (await client.get("/api/v1/health/settings")).status_code == 403
@@ -232,7 +232,7 @@ async def test_settings_and_budget_are_for_admins(handlers, licensed) -> None:
 async def test_every_route_is_served_without_any_flag(monkeypatch, handlers) -> None:
     """The capability is built in: no feature flag darkens a route."""
     monkeypatch.setattr(settings, "enabled_features", "")
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             for method, url in [

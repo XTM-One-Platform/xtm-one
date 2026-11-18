@@ -46,7 +46,7 @@ from app.services.health.cycle_access import (
     readable_proposals,
     resolve_target,
 )
-from app.services.health.naming import load_concierge_name
+from app.services.health.naming import load_health_agent_name
 
 router = APIRouter()
 
@@ -199,7 +199,7 @@ async def request_cycle(
         requested_by_user_id=user.id,
     )
     if not result.started:
-        detail: dict[str, Any] = {"code": result.refusal, "message": result.message(await load_concierge_name(db))}
+        detail: dict[str, Any] = {"code": result.refusal, "message": result.message(await load_health_agent_name(db))}
         if result.open_cycle_id is not None and await may_read_cycle(
             db, user, group_ids, body.target_type, body.target_id
         ):

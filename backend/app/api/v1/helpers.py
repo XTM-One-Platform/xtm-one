@@ -3341,9 +3341,9 @@ def hidden_rows_excluded(model_cls: Any):
         if hasattr(model_cls, column)
     ]
     if hasattr(model_cls, "health_role"):
-        from app.services.health.availability import concierge_enabled
+        from app.services.health.availability import health_enabled
 
-        if not concierge_enabled():
+        if not health_enabled():
             clauses.append(model_cls.health_role.is_(None))
     return and_(*clauses) if clauses else None
 
@@ -3605,11 +3605,11 @@ def company_managed_run_scoped[**P, R](
     @functools.wraps(fn)
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
         # The same scope bounds the Concierge mark (``mark_health_run``).
-        from app.services.health.identity import concierge_run_scope
+        from app.services.health.identity import health_run_scope
 
         token = _NO_ACCOUNT_PROVENANCE.set("")
         try:
-            with concierge_run_scope():
+            with health_run_scope():
                 return await fn(*args, **kwargs)
         finally:
             _NO_ACCOUNT_PROVENANCE.reset(token)

@@ -32,7 +32,7 @@ def concierge(monkeypatch):
     async def _active(_db) -> bool:
         return state.enabled
 
-    monkeypatch.setattr(availability, "concierge_active", _active)
+    monkeypatch.setattr(availability, "health_active", _active)
     return state
 
 

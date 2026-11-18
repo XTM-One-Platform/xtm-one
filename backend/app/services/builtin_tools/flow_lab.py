@@ -82,9 +82,9 @@ _LISTED_CASES = 20
 
 
 def _enabled() -> bool:
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
 
-    return bool(concierge_enabled())
+    return bool(health_enabled())
 
 
 def _untrusted(text: str, source: str) -> str:

@@ -35,7 +35,7 @@ from app.models.health import HealthCycle
 from app.models.health_cycle import HealthCycleRun
 from app.models.improvement_proposal import ImprovementProposal
 from app.models.user import User
-from tests.health_support import World, concierge_database
+from tests.health_support import World, health_database
 
 pytestmark = pytest.mark.integration
 
@@ -84,7 +84,7 @@ async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
 
 
 async def test_a_removed_pet_falls_back_to_alfred_for_who_picked_it() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             await _upload(client, _package())
@@ -100,7 +100,7 @@ async def test_a_removed_pet_falls_back_to_alfred_for_who_picked_it() -> None:
 
 
 async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.member) as client:
             default = await client.get("/api/v1/health/me/companion")
@@ -124,7 +124,7 @@ async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
 
 async def test_every_companion_route_is_served_without_any_flag(monkeypatch) -> None:
     """The capability is built in: no feature flag darkens a route."""
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
@@ -176,7 +176,7 @@ async def _activity(sessions, user: User) -> dict:
 
 
 async def test_the_activity_reads_only_what_the_user_may_see() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         idle = await _activity(sessions, world.stranger)
         async with sessions() as db:
@@ -201,7 +201,7 @@ async def test_the_activity_reads_only_what_the_user_may_see() -> None:
 
 
 async def test_a_proposal_is_review_for_who_may_decide_it_only() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             db.add(
@@ -232,7 +232,7 @@ async def test_a_proposal_is_review_for_who_may_decide_it_only() -> None:
 
 
 async def test_a_recent_failure_shows_and_an_old_one_does_not() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             await _cycle(db, status="failed", requested_by=world.owner.id, closed_ago=timedelta(hours=2))
@@ -249,7 +249,7 @@ async def test_a_recent_failure_shows_and_an_old_one_does_not() -> None:
 
 
 async def test_a_failed_run_without_its_end_time_still_shows() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             await _run(db, world, world.owner, "failed")
@@ -270,7 +270,7 @@ async def test_the_review_count_is_reused_for_a_minute(monkeypatch) -> None:
 
     monkeypatch.setattr(companion, "_count_reviews", _count)
     monkeypatch.setattr(companion, "_review_cache", {})
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         first = await _activity(sessions, world.owner)
         second = await _activity(sessions, world.owner)

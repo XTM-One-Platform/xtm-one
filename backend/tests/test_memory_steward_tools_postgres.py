@@ -32,7 +32,7 @@ async def test_the_tools_refuse_anything_but_a_concierge_run(monkeypatch) -> Non
         principal = identity.HealthPrincipal(agent_id=world.agent, role="memory_steward")
 
         for inside, flag in ((False, True), (True, False)):
-            monkeypatch.setattr(identity, "concierge_enabled", lambda flag=flag: flag)
+            monkeypatch.setattr(identity, "health_enabled", lambda flag=flag: flag)
             with identity.acting_as_concierge(principal) if inside else contextlib.nullcontext():
                 for name, arguments in (
                     ("list_memory_lanes", {}),

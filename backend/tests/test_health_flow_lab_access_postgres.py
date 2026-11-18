@@ -158,7 +158,7 @@ def concierge(monkeypatch):
 
     from app.services.health import identity
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     monkeypatch.setattr(consent, "in_supervision_scope", in_supervision_scope)
     monkeypatch.setattr(consent, "content_readable", content_readable)
 

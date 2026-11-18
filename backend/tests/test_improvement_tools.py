@@ -79,7 +79,7 @@ def filed(monkeypatch):
 
     monkeypatch.setattr(proposals, "file_proposal", _file)
     monkeypatch.setattr(tools, "target_in_scope", _in_scope)
-    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.health_enabled", lambda: True)
     return calls
 
 
@@ -299,7 +299,7 @@ async def test_another_agent_in_a_concierge_run_lists_as_its_user(readable, monk
         return True
 
     monkeypatch.setattr(tools, "target_in_scope", _everything_in_scope)
-    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.health_enabled", lambda: True)
     db = _Db(rows=[mine, theirs], users={user.id: user})
 
     answer = json.loads(

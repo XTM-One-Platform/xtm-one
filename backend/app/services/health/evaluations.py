@@ -231,7 +231,7 @@ async def _create_and_reserve(
     return evaluation, list(runs)
 
 
-async def concierge_evaluation_runs(db: AsyncSession, evaluation_id: uuid.UUID) -> list[EvaluationRun]:
+async def health_evaluation_runs(db: AsyncSession, evaluation_id: uuid.UUID) -> list[EvaluationRun]:
     """The runs of a Concierge evaluation; refused for any other evaluation."""
     evaluation = await db.get(Evaluation, evaluation_id)
     if evaluation is None or not evaluation.concierge_built:

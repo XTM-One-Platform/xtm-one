@@ -11,7 +11,7 @@ async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch)
     from app.services.health.flow_lab_access import resolve_caller
     from app.services.health.identity import HealthPrincipal, acting_as_concierge
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     principal = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
     with acting_as_concierge(principal):
         caller = await resolve_caller(None, None, agent_id=str(principal.agent_id))

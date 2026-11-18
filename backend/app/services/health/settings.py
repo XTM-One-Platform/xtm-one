@@ -149,7 +149,7 @@ class HealthSettings(BaseModel):
 
     enabled: bool = False
     #: The name the Concierge goes by with people; ``None`` is the platform mode's default
-    #: (``naming.default_concierge_name``).
+    #: (``naming.default_health_agent_name``).
     name: str | None = Field(default=None, max_length=200)
     #: ``all``: every agent and flow but the Concierge fleet; ``selected``: the lists below.
     scope_mode: Literal["all", "selected"] = "all"
@@ -222,7 +222,7 @@ async def save_health_settings(
     """
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.services.audit import log_audit
-    from app.services.health.naming import concierge_name, rename_concierge
+    from app.services.health.naming import health_agent_name, rename_health_agents
 
     row = await get_platform_settings(db)
     before = _read(row.health_settings)
@@ -236,8 +236,8 @@ async def save_health_settings(
         details={"before": before.model_dump(mode="json"), "after": new.model_dump(mode="json")},
         request=request,
     )
-    if concierge_name(before) != concierge_name(new):
-        await rename_concierge(db, previous={concierge_name(before)}, name=concierge_name(new))
+    if health_agent_name(before) != health_agent_name(new):
+        await rename_health_agents(db, previous={health_agent_name(before)}, name=health_agent_name(new))
     return before, new
 
 

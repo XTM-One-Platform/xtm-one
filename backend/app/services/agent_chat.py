@@ -100,9 +100,9 @@ from app.services.event_bus import AGENT_CHAT_RESPONSE, event_bus
 from app.services.failure_causes import PipelineToolFailedError
 from app.services.frictions import binding_friction_scope, current_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
-from app.services.health.identity import concierge_delegation_owner_id
+from app.services.health.identity import health_delegation_owner_id
 from app.services.health.sandbox.turns import intercepted_agent_turn
-from app.services.health.turns import concierge_turn_scoped
+from app.services.health.turns import health_turn_scoped
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.interrupted_turn import TurnProgress, interrupted_memory_note, interrupted_memory_prefix
 from app.services.run_ledger import (
@@ -1417,13 +1417,13 @@ def _add_platform_builder_tools(
     works in, whose Concierge cycle books what the Concierge tools spend.
     """
     from app.services.builtin_tool_aliases import caller_may_run
-    from app.services.health.identity import concierge_acts_alone
+    from app.services.health.identity import health_acts_alone
 
     actor_id, read_only = _platform_builder_actor(user_id)
     # A turn of the Concierge acting alone (a task a fleet run delegated) has
     # no user: its own groups, which act as its principal, are wired as the
     # assignment engine wires them for a run with no user; nothing else.
-    concierge_alone = read_only and not user_id and concierge_acts_alone()
+    concierge_alone = read_only and not user_id and health_acts_alone()
     concierge_actor: str | None = "" if concierge_alone else (None if read_only else actor_id)
     if "platform_insights" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools import build_platform_insights_tools
@@ -1653,7 +1653,7 @@ def _coalesced_trace_metadata(context: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @known_secrets_scoped("conversation_id")
-@concierge_turn_scoped
+@health_turn_scoped
 @intercepted_agent_turn
 async def run_agent_chat(
     db: AsyncSession,
@@ -4084,10 +4084,10 @@ async def run_agent_chat(
 
         # The background-task block below skips anonymous users, except the
         # Concierge acting alone, whose tasks are recorded under its agent's
-        # owner and act with no user (``identity.concierge_delegation_owner_id``).
+        # owner and act with no user (``identity.health_delegation_owner_id``).
         _delegation_user_id: str | None = None if is_anonymous_user else user_id
         if not user_id:
-            _concierge_owner = await concierge_delegation_owner_id(db, agent)
+            _concierge_owner = await health_delegation_owner_id(db, agent)
             _delegation_user_id = str(_concierge_owner) if _concierge_owner else None
         _offered_types = offered_handover_types(
             allowed_types=allowed_handover_types,

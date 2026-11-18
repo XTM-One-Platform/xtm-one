@@ -54,7 +54,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health import HealthBudgetMonth, HealthBudgetWork, HealthCycle
-from app.services.health.availability import concierge_active
+from app.services.health.availability import health_active
 from app.services.health.identity import CONCIERGE_ROLES
 from app.services.health.settings import HealthBudgetCaps, load_health_settings
 
@@ -167,7 +167,7 @@ def _reached(cap: int | Decimal | None, used: int | Decimal) -> bool:
 
 async def _gate(db: AsyncSession) -> BudgetRefusalCode | None:
     """The switches and the licence, before any cap."""
-    if not await concierge_active(db):
+    if not await health_active(db):
         return "concierge_disabled"
     from app.services.agentic_gate import agentic_verdict
 
@@ -238,7 +238,7 @@ async def budget_refusal(db: AsyncSession, cycle_id: uuid.UUID | None = None) ->
 
 async def _cap_state(db: AsyncSession, cycle_id: uuid.UUID | None) -> BudgetRefusalCode | None:
     """The Concierge's own switch and caps, without the AI gate."""
-    if not await concierge_active(db):
+    if not await health_active(db):
         return "concierge_disabled"
     caps = (await load_health_settings(db)).budget
     cycle = await _cycle_row(db, cycle_id, lock=False) if cycle_id is not None else None
@@ -288,7 +288,7 @@ async def reserve(
     reservation past the cycle's close, until its charge or release.
     """
     tokens, cost = _tokens(tokens), _cost(cost_usd)
-    if not await concierge_active(db):
+    if not await health_active(db):
         raise BudgetRefusedError("concierge_disabled")
     caps = (await load_health_settings(db)).budget
     peek = await _cycle_row(db, cycle_id, lock=False)

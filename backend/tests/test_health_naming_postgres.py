@@ -31,7 +31,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.health import fleet_seed
 from app.services.health.settings import load_health_settings
-from tests.health_support import World, concierge_database, configure
+from tests.health_support import World, configure, health_database
 
 pytestmark = pytest.mark.integration
 
@@ -68,7 +68,7 @@ async def _names(sessions) -> tuple[str, str, str]:
 
 async def test_every_signed_in_person_reads_the_name(monkeypatch) -> None:
     monkeypatch.setattr(settings, "platform_mode", "copilot")
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.stranger) as client:
             default = await client.get("/api/v1/health/name")
@@ -81,7 +81,7 @@ async def test_every_signed_in_person_reads_the_name(monkeypatch) -> None:
 
 async def test_the_name_route_is_served_without_any_flag(monkeypatch) -> None:
     """The capability is built in: no feature flag darkens the route."""
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
@@ -90,7 +90,7 @@ async def test_the_name_route_is_served_without_any_flag(monkeypatch) -> None:
 
 @pytest.mark.parametrize("name", ["Al\nfred", "x" * 41, "Al‮fred", "Al\x00fred", 7])
 async def test_a_hostile_name_is_a_422_and_nothing_is_saved(name) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             response = await client.put("/api/v1/health/settings", json={"enabled": True, "name": name})
@@ -101,7 +101,7 @@ async def test_a_hostile_name_is_a_422_and_nothing_is_saved(name) -> None:
 
 
 async def test_a_non_admin_cannot_name_the_concierge() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.configurer) as client:
             response = await client.put("/api/v1/health/settings", json={"name": "Mine"})
@@ -112,7 +112,7 @@ async def test_a_non_admin_cannot_name_the_concierge() -> None:
 
 
 async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_renamed(monkeypatch) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         await World().build(sessions)
         monkeypatch.setattr(settings, "platform_mode", "copilot")
         async with sessions() as db:
@@ -137,7 +137,7 @@ async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_re
 
 async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeypatch) -> None:
     monkeypatch.setattr(settings, "platform_mode", "copilot")
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             await fleet_seed.seed_health_fleet(db)
@@ -166,7 +166,7 @@ async def test_the_budget_line_names_the_concierge_as_its_administrator_named_it
         return agentic_gate.AgenticVerdict(refusal=None)
 
     monkeypatch.setattr(agentic_gate, "agentic_verdict", _verdict)
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=False, name="{Jeeves}")
         async with _client(sessions, world.admin) as client:

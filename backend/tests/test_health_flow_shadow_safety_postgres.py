@@ -218,7 +218,7 @@ async def test_with_the_concierge_off_a_held_switch_over_waits_then_is_given_up(
             await db.commit()
         # Paired while on; switched off before the take-over.
         await _advance(sessions, shadow_id)
-        monkeypatch.setattr(availability, "concierge_active", off)
+        monkeypatch.setattr(availability, "health_active", off)
         async with sessions() as db:
             shadow = await db.get(FlowShadow, shadow_id)
             shadow.ends_at = now - timedelta(minutes=1)
@@ -244,8 +244,8 @@ async def test_with_the_concierge_off_a_regressing_watch_still_rolls_back(sandbo
     async def off(_db):
         return False
 
-    monkeypatch.setattr(availability, "concierge_active", off)
-    monkeypatch.setattr(availability, "concierge_enabled", lambda: False)
+    monkeypatch.setattr(availability, "health_active", off)
+    monkeypatch.setattr(availability, "health_enabled", lambda: False)
     async with _database() as sessions:
         seeded = await _seed(sessions, sandbox)
         shadow_id = await _watching(sessions, seeded, failed=3, completed=7)

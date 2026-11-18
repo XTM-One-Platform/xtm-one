@@ -78,7 +78,7 @@ def _install(monkeypatch, traces, *, is_admin: bool = False):
     audits: list[dict] = []
     monkeypatch.setattr(traces_module, "async_session", lambda: _SessionCtx())
     monkeypatch.setattr(traces_module, "build_trace_read_store", lambda: store)
-    monkeypatch.setattr(traces_module, "_concierge_refuses_other_agents", lambda: False)
+    monkeypatch.setattr(traces_module, "_health_refuses_other_agents", lambda: False)
     monkeypatch.setattr(traces_module, "_own_live_run", lambda _agent: None)
 
     async def _user(_db, _uid):

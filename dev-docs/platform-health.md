@@ -139,9 +139,9 @@ alias for one minor release (section 2.3).
 The flag is gone from `FeatureFlag` / `KNOWN_FEATURE_FLAGS` (backend and
 `frontend/src/lib/utils.ts`). `ENABLED_FEATURES=CONCIERGE` left in an environment is an
 unknown id: logged and ignored at startup like any unknown flag, never an error.
-`services/concierge/availability.concierge_enabled` answers `True`; whether the fleet
+`services/health/availability.health_enabled` answers `True`; whether the fleet
 works is the admin switch alone (`concierge_settings.enabled`, off by default,
-`concierge_active`). Every gate the flag held is now open: the identity, consent reads
+`health_active`). Every gate the flag held is now open: the identity, consent reads
 (enrolled targets only, section 1.2), the budget, `/api/v1/concierge/*`, the agent, flow
 and profile cards, the Settings section, the fleet seeding, the scheduler, the
 `gate="concierge"` tool groups and `/api/v1/improvement-proposals`. Kept as they were:

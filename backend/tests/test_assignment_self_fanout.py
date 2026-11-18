@@ -54,10 +54,10 @@ def test_engine_gate_does_not_require_peer_handover_agents():
     user to record the tasks under (``SubAgentTask.user_id`` is a users FK, so
     an ownerless run could never spawn; don't advertise a broken tool): the
     effective user, or for the Concierge acting alone its agent's owner of
-    record (``identity.concierge_delegation_owner_id``)."""
+    record (``identity.health_delegation_owner_id``)."""
     source = _engine_source()
     block = _background_task_block(source)
-    assert "_delegation_user_id = effective_user_id or await concierge_delegation_owner_id(db, agent)" in source
+    assert "_delegation_user_id = effective_user_id or await health_delegation_owner_id(db, agent)" in source
     assert re.search(
         r"if \(\s*_self_fanout_allowed or _needs_delegate"
         r"(?: or _owned_resolver is not None)?\s*\) "

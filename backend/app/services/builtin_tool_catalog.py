@@ -51,9 +51,9 @@ def withhold_health_tools(catalog: dict[str, list[dict]]) -> dict[str, list[dict
     already carrying one stays valid.
     """
     from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
 
-    if concierge_enabled():
+    if health_enabled():
         return catalog
     for group in BUILTIN_TOOL_GROUPS:
         if group.gate == "concierge":

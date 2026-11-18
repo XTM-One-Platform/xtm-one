@@ -22,7 +22,7 @@ from app.models.health import HealthBudgetMonth, HealthCycle
 from app.services import agentic_gate
 from app.services.health import budget
 from app.services.health.settings import load_health_settings
-from tests.health_support import World, concierge_database, configure
+from tests.health_support import World, configure, health_database
 
 pytestmark = pytest.mark.integration
 
@@ -44,7 +44,7 @@ def licensed(monkeypatch):
 
 
 async def test_no_cycle_opens_while_the_concierge_is_off_or_unlicensed(monkeypatch) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             with pytest.raises(budget.BudgetRefusedError) as off:
@@ -65,7 +65,7 @@ async def test_no_cycle_opens_while_the_concierge_is_off_or_unlicensed(monkeypat
 
 
 async def test_reserve_charge_release_and_close(licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         caps = {"cycle_tokens": 100, "cycle_cost_usd": "1", "month_tokens": 150, "month_cost_usd": "10"}
         await configure(sessions, world.admin, enabled=True, budget=caps)
@@ -100,7 +100,7 @@ async def test_reserve_charge_release_and_close(licensed) -> None:
 
 
 async def test_two_concurrent_reservations_never_pass_the_cap_together(licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         caps = {"cycle_tokens": None, "cycle_cost_usd": None, "month_tokens": 100, "month_cost_usd": None}
         await configure(sessions, world.admin, enabled=True, budget=caps)
@@ -125,7 +125,7 @@ async def test_two_concurrent_reservations_never_pass_the_cap_together(licensed)
 
 
 async def test_a_stale_cycle_is_closed_and_gives_its_reservation_back(licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=True)
         async with sessions() as db:
@@ -143,7 +143,7 @@ async def test_a_stale_cycle_is_closed_and_gives_its_reservation_back(licensed) 
 
 
 async def test_a_late_charge_after_close_keeps_the_other_cycles_reservations(licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         caps = {"cycle_tokens": None, "cycle_cost_usd": None, "month_tokens": 100, "month_cost_usd": None}
         await configure(sessions, world.admin, enabled=True, budget=caps)
@@ -166,7 +166,7 @@ async def test_a_late_charge_after_close_keeps_the_other_cycles_reservations(lic
 async def test_work_that_outlives_its_cycle_keeps_its_reservation_until_charged_once(licensed) -> None:
     import uuid
 
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         caps = {"cycle_tokens": None, "cycle_cost_usd": None, "month_tokens": 100, "month_cost_usd": None}
         await configure(sessions, world.admin, enabled=True, budget=caps)
@@ -194,7 +194,7 @@ async def test_work_that_outlives_its_cycle_keeps_its_reservation_until_charged_
 
 
 async def test_a_run_in_flight_reserves_without_asking_the_ai_gate(monkeypatch, licensed) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=True)
         async with sessions() as db:

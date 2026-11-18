@@ -368,7 +368,7 @@ async def pair_new_runs(
     Each run is reserved on the Concierge's budget first and charged when its
     pair settles; past *max_pairs* paired runs, later ones are passed over.
     """
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
     from app.services.health.budget import BudgetRefusedError, budget_refusal, release
     from app.services.health.consent import content_readable
     from app.services.health.sandbox.copies import sandbox_copy_of
@@ -378,8 +378,8 @@ async def pair_new_runs(
     # cursor kept, while the flag is off, the licence gate refuses or the
     # Concierge's budget is spent. The runs it could not pair in time end
     # ``incomplete``, never counted as agreement.
-    if not concierge_enabled() or (refusal := await budget_refusal(db)) is not None:
-        logger.debug("Shadow %s: pairing deferred (%s)", shadow.id, "flag off" if not concierge_enabled() else refusal)
+    if not health_enabled() or (refusal := await budget_refusal(db)) is not None:
+        logger.debug("Shadow %s: pairing deferred (%s)", shadow.id, "flag off" if not health_enabled() else refusal)
         return 0
     from app.models.agent import Agent
     from app.services.trigger_integration_access import assignment_acting_user_id
@@ -602,9 +602,9 @@ async def _advance(db: AsyncSession, shadow: FlowShadow, *, now: datetime) -> st
         if verdict.status != SHADOW_STATUS_HELD:
             # Nothing in production changed: no flow was created.
             return await _close(db, shadow, verdict.status, verdict.note, "failed", now=now)
-        from app.services.health.availability import concierge_active
+        from app.services.health.availability import health_active
 
-        if not await concierge_active(db):
+        if not await health_active(db):
             # Switched off, the Concierge changes nothing in production: the
             # take-over waits for it up to the deadline, then is given up.
             if not final:

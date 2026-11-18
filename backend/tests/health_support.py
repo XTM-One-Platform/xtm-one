@@ -20,7 +20,7 @@ from tests.scratch_database import ALL_TABLES, scratch_database
 
 
 @asynccontextmanager
-async def concierge_database() -> AsyncIterator[async_sessionmaker]:
+async def health_database() -> AsyncIterator[async_sessionmaker]:
     async with scratch_database(
         "concierge", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True
     ) as db:

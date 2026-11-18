@@ -148,7 +148,7 @@ from app.services.failure_causes import (
 )
 from app.services.frictions import binding_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
-from app.services.health.identity import concierge_delegation_owner_id, is_health_agent, mark_health_run
+from app.services.health.identity import health_delegation_owner_id, is_health_agent, mark_health_run
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.orchestration_engine import (
     bound_by_deadline,
@@ -6485,7 +6485,7 @@ async def execute_assignment_run(
             # The background-task block below needs a user to record its tasks
             # under: the acting user, or, for the Concierge acting alone, its
             # agent's owner as the row's owner only (the tasks act with no user).
-            _delegation_user_id = effective_user_id or await concierge_delegation_owner_id(db, agent)
+            _delegation_user_id = effective_user_id or await health_delegation_owner_id(db, agent)
             _offered_handover_types = offered_handover_types(
                 delegate_available=_delegation_user_id is not None,
                 tool_deny_list=agent.tool_deny_list,
@@ -7180,7 +7180,7 @@ async def execute_assignment_run(
                         # to the agent owner) — the same per-user resolution
                         # identity used for quota and the agent-builder tool;
                         # for the Concierge acting alone, the tasks' owner of
-                        # record (``identity.concierge_delegation_owner_id``).
+                        # record (``identity.health_delegation_owner_id``).
                         # Guaranteed non-None by the block gate above (the old
                         # delegate block's agent-id fallback could never
                         # actually create a task).

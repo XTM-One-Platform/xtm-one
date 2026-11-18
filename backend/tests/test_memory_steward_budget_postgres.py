@@ -107,7 +107,7 @@ async def test_the_model_call_is_charged_on_the_runs_cycle_only(monkeypatch, key
             return True
 
         monkeypatch.setattr("app.llm.router.get_llm_for_user", resolved)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
 
         async with db.sessions() as work:
             lane = Lane(world.agent, world.owner)
@@ -147,7 +147,7 @@ async def _call_on_a_cycle(monkeypatch, llm: _Llm) -> tuple[HealthCycle, int, Ba
             return True
 
         monkeypatch.setattr("app.llm.router.get_llm_for_user", resolved)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
         monkeypatch.setattr(deps, "reserve_model_call", recorded)
         async with db.sessions() as work:
             lane = Lane(world.agent, world.owner)
@@ -195,5 +195,5 @@ async def test_the_pass_in_flight_never_reads_the_ai_gate(monkeypatch) -> None:
             return True
 
         monkeypatch.setattr(budget, "_gate", gate_closed)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
         await deps.ensure_budget(session, None)

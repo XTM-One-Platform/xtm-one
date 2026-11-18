@@ -47,10 +47,10 @@ async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str 
     """Why the caller may not use the Concierge evaluation tools (logged), ``None`` when it may."""
     from app.models.user import User
     from app.services.evaluation.availability import evaluation_enabled
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
     from app.services.health.identity import in_health_run
 
-    if not concierge_enabled():
+    if not health_enabled():
         return "Platform Health is not available"
     if in_health_run():
         return None
@@ -209,7 +209,7 @@ def build_health_evaluation_tools(
         if evaluation is None:
             return REFUSED
         try:
-            runs = await evaluations.concierge_evaluation_runs(db, evaluation)
+            runs = await evaluations.health_evaluation_runs(db, evaluation)
         except evaluations.HealthEvaluationError:
             return REFUSED
         return json.dumps(

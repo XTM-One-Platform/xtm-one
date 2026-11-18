@@ -52,7 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.assignment import Assignment
 from app.models.fleet import Fleet, FleetMember
-from app.services.health.availability import concierge_enabled
+from app.services.health.availability import health_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -367,14 +367,14 @@ async def seed_health_fleet(db: AsyncSession) -> int:
     Idempotent. Called by ``provision_builtin_content`` after the skill seed, so
     the skills of levels 5-7 exist when they are attached.
     """
-    if not concierge_enabled():
+    if not health_enabled():
         return 0
     from app.api.v1.helpers import resolve_company_managed_owner_id
     from app.services.health.identity import set_health_role
-    from app.services.health.naming import DEFAULT_NAMES, load_concierge_name, rename_concierge
+    from app.services.health.naming import DEFAULT_NAMES, load_health_agent_name, rename_health_agents
 
     owner_id = await resolve_company_managed_owner_id(db)
-    name = await load_concierge_name(db)
+    name = await load_health_agent_name(db)
     by_slug = {
         agent.slug: agent
         for agent in (
@@ -424,7 +424,7 @@ async def seed_health_fleet(db: AsyncSession) -> int:
         await _ensure_fleet(db, by_slug, owner_id, name)
         # A deployment that changed mode, or seeded before the Concierge had a
         # name: rows still carrying a default name take this one's.
-        await rename_concierge(db, previous=DEFAULT_NAMES, name=name)
+        await rename_health_agents(db, previous=DEFAULT_NAMES, name=name)
     await db.commit()
     return created
 

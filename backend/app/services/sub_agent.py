@@ -819,12 +819,12 @@ async def create_sub_agent_task(
         )
 
     from app.core.database import async_session
-    from app.services.health.identity import concierge_acts_alone
+    from app.services.health.identity import health_acts_alone
 
     # Delegated by the Concierge acting alone (read on the server's own
     # context, never on an argument): the task's run and turn act with no
     # user, and ``user_id`` is the row's owner of record only.
-    _concierge_alone = concierge_acts_alone() or bool((extra_metadata or {}).get(CONCIERGE_ALONE_KEY))
+    _concierge_alone = health_acts_alone() or bool((extra_metadata or {}).get(CONCIERGE_ALONE_KEY))
 
     async with async_session() as own_db:
         # Atomic per-run cap: take a transaction-scoped advisory lock on the

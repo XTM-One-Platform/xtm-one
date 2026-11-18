@@ -43,7 +43,7 @@ the engine has a gate of its own:
 | Gate | Function | Holds when |
 | ---- | -------- | ---------- |
 | Surface | `evaluation_enabled()`, `require_evaluation` | `EVALUATION` is enabled in a mode where AI runs (`xtm_one`, `copilot`, `dev`) |
-| Engine | `engine_accepts(db, evaluation_id)`, `engine_accepts_runs(db, run_ids)` | The surface gate holds, **or** the Concierge is on (the `CONCIERGE` flag and Settings > Concierge, `concierge_active`) and built the evaluation (`Evaluation.concierge_built`, read on the row), whatever the mode |
+| Engine | `engine_accepts(db, evaluation_id)`, `engine_accepts_runs(db, run_ids)` | The surface gate holds, **or** the Concierge is on (the `CONCIERGE` flag and Settings > Concierge, `health_active`) and built the evaluation (`Evaluation.concierge_built`, read on the row), whatever the mode |
 
 The surface gate keeps every human surface of the table below exactly as it
 was: in XTM One mode no page, route, user tool, analytics source, Admin

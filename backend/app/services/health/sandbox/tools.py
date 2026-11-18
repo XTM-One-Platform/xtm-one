@@ -54,10 +54,10 @@ async def sandbox_access_refusal(
 ) -> str | None:
     """Why the caller may not use the sandbox on this source (logged), ``None`` when it may."""
     from app.models.user import User
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
     from app.services.health.identity import in_health_run
 
-    if not concierge_enabled():
+    if not health_enabled():
         return "Platform Health is not available"
     if not in_health_run():
         try:

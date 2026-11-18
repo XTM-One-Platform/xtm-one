@@ -67,7 +67,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.user import User
-from app.services.health.availability import concierge_enabled
+from app.services.health.availability import health_enabled
 from app.services.health.settings import HealthSettings, load_health_settings
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ def _uuid(value: object) -> uuid.UUID | None:
 
 async def _active_settings(db: AsyncSession) -> HealthSettings | None:
     """The settings when the Concierge is on (flag and Settings), else ``None``."""
-    if not concierge_enabled():
+    if not health_enabled():
         return None
     current = await load_health_settings(db)
     return current if current.enabled else None

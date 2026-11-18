@@ -341,7 +341,7 @@ async def test_a_person_never_writes_admin_included(monkeypatch, name, arguments
 @pytest.mark.asyncio
 async def test_the_tools_answer_off_while_the_capability_is_off(monkeypatch):
     async with _world(monkeypatch, "cq_off") as (world, _sessions):
-        monkeypatch.setattr(availability, "concierge_enabled", lambda: False)
+        monkeypatch.setattr(availability, "health_enabled", lambda: False)
         assert (
             await _call(str(world.admin.id), "list_findings", target_id=str(world.agent.id))
             == "Error: the Concierge is not enabled on this platform."

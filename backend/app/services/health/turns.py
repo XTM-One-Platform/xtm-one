@@ -16,7 +16,7 @@
 Level 1 marks an assignment run of a fleet agent as the Concierge
 (``identity.mark_health_run``, beside ``mark_company_managed_run``). A chat
 turn, and the turn of an agent another one delegated to or consulted, start in
-``agent_chat.run_agent_chat`` instead; :func:`concierge_turn_scoped` wraps it so
+``agent_chat.run_agent_chat`` instead; :func:`health_turn_scoped` wraps it so
 each turn acts as exactly what its own agent and user make it:
 
 * a fleet agent's turn for no user or an administrator acts as the Concierge,
@@ -40,10 +40,10 @@ import functools
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.services.health.identity import concierge_run_scope, in_sandbox_turn, mark_health_run
+from app.services.health.identity import health_run_scope, in_sandbox_turn, mark_health_run
 
 
-def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+def health_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     """Run ``fn(db, user_id, agent, ...)`` as the principal its agent and user make it."""
 
     @functools.wraps(fn)
@@ -53,7 +53,7 @@ def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, 
             # Kept as the runner holds it: a copy's own row never makes it the Concierge's agent.
             return await fn(*args, **kwargs)
         uid = _uuid(user_id)
-        with concierge_run_scope():
+        with health_run_scope():
             # An id that names no user is not "no user": such a turn never acts as the Concierge.
             if uid is not None or not user_id:
                 await mark_health_run(db, agent, uid)

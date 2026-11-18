@@ -29,7 +29,7 @@ from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.health_pet import HealthPet
 from app.models.user import User
-from tests.health_support import World, concierge_database
+from tests.health_support import World, health_database
 
 pytestmark = pytest.mark.integration
 
@@ -78,7 +78,7 @@ async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
 
 
 async def test_every_user_reads_the_library_and_alfred_comes_first() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.stranger) as client:
             listing = await client.get("/api/v1/health/pets")
@@ -95,7 +95,7 @@ async def test_every_user_reads_the_library_and_alfred_comes_first() -> None:
 
 
 async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         package = _package()
         async with _client(sessions, world.configurer) as client:
@@ -155,7 +155,7 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
     ids=["not-zip", "control-char", "traversal", "svg-path", "svg-content", "three-files"],
 )
 async def test_a_hostile_upload_is_a_422_and_stores_nothing(files, code) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             response = await client.post("/api/v1/health/pets", files=files)
@@ -167,7 +167,7 @@ async def test_a_hostile_upload_is_a_422_and_stores_nothing(files, code) -> None
 
 
 async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             await _upload(client, _package())
@@ -197,7 +197,7 @@ async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> No
 
 async def test_every_library_route_is_served_without_any_flag(monkeypatch) -> None:
     """The capability is built in: no feature flag darkens a route."""
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:

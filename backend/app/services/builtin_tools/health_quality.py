@@ -62,10 +62,10 @@ class RefusalError(Exception):
         self.message = message
 
 
-def concierge_enabled() -> bool:
-    from app.services.health.availability import concierge_enabled
+def health_enabled() -> bool:
+    from app.services.health.availability import health_enabled
 
-    return bool(concierge_enabled())
+    return bool(health_enabled())
 
 
 def untrusted_json(payload: Any, source: str) -> str:
@@ -97,7 +97,7 @@ async def run_tool(
     from app.services.health.quality_deps import ProposalRefusedError
     from app.services.health.variants import VariantError
 
-    if not concierge_enabled():
+    if not health_enabled():
         return _OFF
     try:
         async with database.async_session() as db:
@@ -450,9 +450,9 @@ def build_health_diagnosis_tools(
     )
 
 
-def concierge_tools_offered() -> bool:
+def health_tools_offered() -> bool:
     """Whether Platform Health's tools are offered at all: its availability (each call checks it again)."""
-    return concierge_enabled()
+    return health_enabled()
 
 
 def add_health_quality_tools(
@@ -476,7 +476,7 @@ def add_health_quality_tools(
 
     if not any(gid in builtin_tool_ids for gid in (DIAGNOSIS_GROUP_ID, EXPERIMENTS_GROUP_ID)):
         return
-    if not concierge_tools_offered():
+    if not health_tools_offered():
         return
     if DIAGNOSIS_GROUP_ID in builtin_tool_ids:
         composite.add_tools(*build_health_diagnosis_tools(user_id, run_id=run_id, agent_id=agent_id))

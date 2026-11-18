@@ -214,15 +214,15 @@ def test_every_persona_file_exists():
 async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch):
     """A specialist turn inside an orchestrator's scope acts with the specialist's role, then the scope is restored."""
     from app.services.health import identity
-    from app.services.health.turns import concierge_turn_scoped
+    from app.services.health.turns import health_turn_scoped
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
     specialist = SimpleNamespace(id=uuid.uuid4(), health_role="quality_analyst", is_company_managed=True)
     personal = SimpleNamespace(id=uuid.uuid4(), health_role=None, is_company_managed=False)
     seen: list = []
 
-    @concierge_turn_scoped
+    @health_turn_scoped
     async def turn(db, user_id, agent):
         seen.append(identity.current_concierge())
 
@@ -239,13 +239,13 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
 async def test_a_user_id_that_names_no_user_never_acts_as_the_concierge(monkeypatch):
     """Only a turn with no user at all acts as the Concierge; an id that parses to no user acts as no one."""
     from app.services.health import identity
-    from app.services.health.turns import concierge_turn_scoped
+    from app.services.health.turns import health_turn_scoped
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     orchestrator = SimpleNamespace(id=uuid.uuid4(), health_role="orchestrator", is_company_managed=True)
     seen: list = []
 
-    @concierge_turn_scoped
+    @health_turn_scoped
     async def turn(db, user_id, agent):
         seen.append(identity.current_concierge())
 
@@ -296,7 +296,7 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
     added: list[str] = []
     composite = SimpleNamespace(add_tools=lambda definitions, _executor: added.extend(d.name for d in definitions))
     experimenter = SimpleNamespace(id=uuid.uuid4(), health_role="experimenter", is_company_managed=True)
-    principal = identity.concierge_principal_for(experimenter, None)
+    principal = identity.health_principal_for(experimenter, None)
     groups = ["concierge_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
     if who == "concierge_alone":
         with identity.acting_as_concierge(principal):
@@ -314,18 +314,18 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
 def test_a_fleet_run_with_no_user_delegates_under_its_owner_of_record_and_its_tasks_act_with_none():
     """Source contracts on the two giant bodies (the repo's pattern for them):
     the engine offers delegation to the Concierge acting alone and records the
-    tasks under ``concierge_delegation_owner_id``; the worker runs a marked task's
+    tasks under ``health_delegation_owner_id``; the worker runs a marked task's
     turn with no user, never as that owner."""
     import inspect
 
     from app.services import assignment_engine, sub_agent
 
     engine = inspect.getsource(assignment_engine.execute_assignment_run)
-    assert "_delegation_user_id = effective_user_id or await concierge_delegation_owner_id(db, agent)" in engine
+    assert "_delegation_user_id = effective_user_id or await health_delegation_owner_id(db, agent)" in engine
     assert "delegate_available=_delegation_user_id is not None" in engine
     assert "user_id=str(_delegation_user_id)" in engine
     created = inspect.getsource(sub_agent.create_sub_agent_task)
-    assert "_concierge_alone = concierge_acts_alone()" in created
+    assert "_concierge_alone = health_acts_alone()" in created
     assert "user_id=uuid.UUID(user_id) if user_id and not _concierge_alone else None" in created
     executed = inspect.getsource(sub_agent._execute_sub_agent_task)
     assert "_turn_user_id = task_turn_user_id(task.metadata_json, user_id)" in executed

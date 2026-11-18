@@ -194,12 +194,12 @@ async def start_cycle(
     requester is recorded on the cycle.
     """
     from app.services.assignment_engine import trigger_assignment
-    from app.services.health.availability import concierge_active
+    from app.services.health.availability import health_active
     from app.services.health.budget import BudgetRefusedError, close_cycle, open_cycle
 
     if (target_type is None) != (target_id is None):
         raise ValueError("a target needs both its type and its id")
-    if not await concierge_active(db):
+    if not await health_active(db):
         return CycleStart(refusal="inactive")
     pair = await fleet_assignment(db, key)
     if pair is None:
@@ -521,7 +521,7 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
     return closed
 
 
-async def concierge_tick(*, ai_on: bool) -> None:
+async def health_tick(*, ai_on: bool) -> None:
     """The scheduler's Concierge step (``autonomous._run_autonomous_tick_inner``).
 
     Settling runs whatever the switches: a cycle opened before the flag or
@@ -529,7 +529,7 @@ async def concierge_tick(*, ai_on: bool) -> None:
     both, and the administrator's switch (``start_cycle``).
     """
     from app.core.database import async_session
-    from app.services.health.availability import concierge_enabled
+    from app.services.health.availability import health_enabled
     from app.services.health.evaluations import settle_health_evaluations
     from app.services.health.experiments import settle_running_experiments
 
@@ -543,7 +543,7 @@ async def concierge_tick(*, ai_on: bool) -> None:
             logger.exception("Concierge tick: %s failed", settle.__name__)
     async with async_session() as db:
         await settle_cycles(db)
-    if not ai_on or not concierge_enabled():
+    if not ai_on or not health_enabled():
         return
     async with async_session() as db:
         await run_due_schedules(db)

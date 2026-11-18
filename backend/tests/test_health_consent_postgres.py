@@ -25,8 +25,8 @@ from app.models.flow import Flow
 from app.models.user import User
 from app.services.health import consent
 from app.services.health.consent import ConsentDeniedError
-from app.services.health.identity import acting_as_concierge, concierge_principal_for
-from tests.health_support import World, concierge_database, configure, make_agent
+from app.services.health.identity import acting_as_concierge, health_principal_for
+from tests.health_support import World, configure, health_database, make_agent
 
 pytestmark = pytest.mark.integration
 
@@ -41,7 +41,7 @@ def _flag_on(monkeypatch):
 
 @pytest.mark.parametrize("scope", ["all", "selected", "disabled"])
 async def test_the_predicate_the_filter_and_the_snapshot_agree(scope: str) -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
             opted_in = make_agent(world.owner, "opted-in", health_enrolled=True)
@@ -97,7 +97,7 @@ async def test_the_predicate_the_filter_and_the_snapshot_agree(scope: str) -> No
 
 
 async def test_a_revocation_applies_to_the_next_read() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=True)
         async with sessions() as db:
@@ -120,7 +120,7 @@ async def test_a_revocation_applies_to_the_next_read() -> None:
 
 
 async def test_an_audited_read_names_the_concierge_and_a_refused_one_writes_nothing() -> None:
-    async with concierge_database() as sessions:
+    async with health_database() as sessions:
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=True)
         trace_id = uuid.uuid4()
@@ -128,7 +128,7 @@ async def test_an_audited_read_names_the_concierge_and_a_refused_one_writes_noth
             (await db.get(Agent, world.private.id)).health_enrolled = True
             (await db.get(User, world.revoked.id)).health_content_opt_out = True
             await db.commit()
-            principal = concierge_principal_for(await db.get(Agent, world.fleet.id), None)
+            principal = health_principal_for(await db.get(Agent, world.fleet.id), None)
             with acting_as_concierge(principal):
                 await consent.require_content_read(
                     db, kind="trace", ref_id=trace_id, agent_id=world.private.id, user_id=world.reader.id

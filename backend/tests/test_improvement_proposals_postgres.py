@@ -377,7 +377,7 @@ async def test_a_person_s_request_withdraws_an_agent_change_nobody_can_see(monke
     rejected: it must not block the #1044 request for good."""
     monkeypatch.setattr(settings, "enabled_features", "")
     # The capability is built in since the flag went: switch the surface off here.
-    monkeypatch.setattr(lifecycle, "concierge_enabled", lambda: False)
+    monkeypatch.setattr(lifecycle, "health_enabled", lambda: False)
     async with _temp_database("proposal_unseen") as sessionmaker:
         seeded = await _seed(sessionmaker)
         hidden = await _file(sessionmaker, seeded)

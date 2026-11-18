@@ -130,7 +130,7 @@ def install_fake_sandbox(monkeypatch) -> FakeSandbox:
     from app.services.health import availability, budget, consent
 
     stub_agentic_gate(monkeypatch)
-    monkeypatch.setattr(availability, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(availability, "health_enabled", lambda: True)
 
     async def no_refusal(_db, cycle_id=None):
         return None
@@ -142,8 +142,8 @@ def install_fake_sandbox(monkeypatch) -> FakeSandbox:
         return True
 
     monkeypatch.setattr(budget, "budget_refusal", no_refusal)
-    monkeypatch.setattr(availability, "concierge_active", active)
-    monkeypatch.setattr(budget, "concierge_active", active)
+    monkeypatch.setattr(availability, "health_active", active)
+    monkeypatch.setattr(budget, "health_active", active)
     monkeypatch.setattr(consent, "content_readable", readable)
 
     async def refuse(*_args, **_kwargs):
@@ -328,7 +328,7 @@ async def test_a_shadow_runs_content_follows_the_assignment_run_it_copied(sandbo
         calls.append({"agent_id": agent_id, "flow_id": flow_id, "user_id": user_id})
         return not withdrawn
 
-    monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
+    monkeypatch.setattr(identity, "health_enabled", lambda: True)
     monkeypatch.setattr(consent, "content_readable", content_readable)
     async with _database() as sessions:
         seeded = await _seed(sessions, sandbox)

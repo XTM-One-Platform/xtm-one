@@ -48,8 +48,8 @@ def _agent(**fields):
 @pytest.fixture
 def world(monkeypatch):
     state = {"flag": True, "scope": True, "created": []}
-    monkeypatch.setattr("app.services.health.availability.concierge_enabled", lambda: state["flag"])
-    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: state["flag"])
+    monkeypatch.setattr("app.services.health.availability.health_enabled", lambda: state["flag"])
+    monkeypatch.setattr("app.services.health.identity.health_enabled", lambda: state["flag"])
 
     async def _scope(_db, _type, _id):
         return state["scope"]
@@ -238,7 +238,7 @@ async def test_the_concierge_never_runs_an_ownerless_copy_as_the_admin_it_acts_f
     """Its subject's owner, else nobody; only an administrator's own call runs one as that administrator."""
     from app.services.health.sandbox import runs
 
-    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.health_enabled", lambda: True)
     admin, owner = uuid.uuid4(), uuid.uuid4()
     db = MagicMock()
     db.scalar = AsyncMock(return_value=None)

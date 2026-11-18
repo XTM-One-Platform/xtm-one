@@ -23,11 +23,11 @@ they already read with no account and no admin bypass
 
 * A run acts as the Concierge when its agent row carries a ``health_role``,
   is company-managed, Platform Health is available, and the run has no user or
-  an admin user (:func:`concierge_principal_for`). A non-admin chatting with a
+  an admin user (:func:`health_principal_for`). A non-admin chatting with a
   fleet agent gets no principal, so every Concierge tool refuses.
 * A fleet run nobody started by hand acts with no user at all: never as its
   agent's owner (``assignment_engine._acting_identity``), and the work it
-  delegates neither (:data:`CONCIERGE_ALONE_KEY`, :func:`concierge_acts_alone`).
+  delegates neither (:data:`CONCIERGE_ALONE_KEY`, :func:`health_acts_alone`).
   A sandbox copy's turn keeps the principal its runner holds, and with or
   without one reaches only what the Concierge may (:func:`in_health_reach`).
 * The principal is held in a context variable written by server code only
@@ -52,7 +52,7 @@ from typing import Any, Final, Literal, get_args
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.availability import concierge_enabled
+from app.services.health.availability import health_enabled
 
 #: ``log_system_audit(actor=...)``: audit rows read ``system:concierge``.
 CONCIERGE_ACTOR: Final = "concierge"
@@ -84,7 +84,7 @@ _CURRENT: ContextVar[HealthPrincipal | None] = ContextVar("concierge_principal",
 _RUN_SCOPE_OPEN: ContextVar[bool] = ContextVar("concierge_run_scope_open", default=False)
 
 
-def concierge_identity_id() -> uuid.UUID:
+def health_identity_id() -> uuid.UUID:
     """The principal's id (no row to read)."""
     return CONCIERGE_PRINCIPAL_ID
 
@@ -113,13 +113,13 @@ def is_health_agent(agent: Any) -> bool:
     return role in CONCIERGE_ROLES and getattr(agent, "is_company_managed", False) is True
 
 
-def concierge_principal_for(agent: Any, user: Any | None) -> HealthPrincipal | None:
+def health_principal_for(agent: Any, user: Any | None) -> HealthPrincipal | None:
     """The principal a run of *agent* for *user* acts as, or ``None``.
 
     ``None`` while the flag is off, for an agent outside the fleet, and for a
     run whose user is not an administrator.
     """
-    if not concierge_enabled() or not is_health_agent(agent):
+    if not health_enabled() or not is_health_agent(agent):
         return None
     if user is None:
         return HealthPrincipal(agent_id=agent.id, role=agent.health_role)
@@ -147,14 +147,14 @@ def current_concierge() -> HealthPrincipal | None:
     as the Concierge at its next check.
     """
     principal = _CURRENT.get()
-    return principal if principal is not None and concierge_enabled() else None
+    return principal if principal is not None and health_enabled() else None
 
 
 def in_health_run() -> bool:
     return current_concierge() is not None
 
 
-def concierge_acts_alone() -> bool:
+def health_acts_alone() -> bool:
     """Whether the current work acts as the Concierge with nobody behind it: a
     fleet run nobody started by hand, and the work it delegates. Such work
     acts with no user at all, never as its agents' owner (PRD 13)."""
@@ -183,12 +183,12 @@ def in_sandbox_turn() -> bool:
 
 
 #: Set by the server on a task the Concierge delegated with no user
-#: (:func:`concierge_acts_alone` at spawn): its run and its turn act with no
+#: (:func:`health_acts_alone` at spawn): its run and its turn act with no
 #: user. The task's ``user_id``, which the row needs, is its owner of record only.
 CONCIERGE_ALONE_KEY: Final = "concierge_alone"
 
 
-async def concierge_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UUID | None:
+async def health_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UUID | None:
     """The ``users`` row a delegation by *agent*'s Concierge run with no user is recorded under, else ``None``.
 
     ``sub_agent_tasks.user_id`` needs one: the delegating fleet agent's owner
@@ -196,7 +196,7 @@ async def concierge_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UU
     (its notices, its result files): the task is marked
     :data:`CONCIERGE_ALONE_KEY`, so its turn and its reach are no user's.
     """
-    if not concierge_acts_alone() or not is_health_agent(agent):
+    if not health_acts_alone() or not is_health_agent(agent):
         return None
     if getattr(agent, "user_id", None) is not None:
         return agent.user_id
@@ -206,7 +206,7 @@ async def concierge_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UU
 
 
 @contextlib.contextmanager
-def concierge_run_scope() -> Iterator[None]:
+def health_run_scope() -> Iterator[None]:
     """A run scope: nothing acts as the Concierge until :func:`mark_health_run`
     marks it, and the mark ends with the scope."""
     principal_token = _CURRENT.set(None)
@@ -222,7 +222,7 @@ async def mark_health_run(db: AsyncSession, agent: Any, user_id: uuid.UUID | Non
     """Mark the run in scope as the Concierge's when *agent* and *user_id* make it one.
 
     Called by the assignment engine beside ``mark_company_managed_run``. Outside
-    a :func:`concierge_run_scope` it marks nothing.
+    a :func:`health_run_scope` it marks nothing.
     """
     if not _RUN_SCOPE_OPEN.get():
         return None
@@ -234,7 +234,7 @@ async def mark_health_run(db: AsyncSession, agent: Any, user_id: uuid.UUID | Non
         if user is None:
             _CURRENT.set(None)
             return None
-    principal = concierge_principal_for(agent, user)
+    principal = health_principal_for(agent, user)
     _CURRENT.set(principal)
     return principal
 
