@@ -18,6 +18,11 @@ quiet). Each finding is then sorted by its line:
   never failing the check;
 - in a file the scope does not name: counted apart.
 
+A ``[syntax]`` error on a line holding a ``# type:`` comment is named for
+what it is: mypy reads such a comment (``# type: fail fast ...``) as a type
+comment and fails to parse it, though Python parses the file
+(``type_comment_causes``).
+
 The first line states the scope: the files, their ranges, and that the
 baseline is the file as checked out (the platform's selection line names the
 commit). Without a file argument mypy runs as configured (CI's gate, the
@@ -48,6 +53,8 @@ CONFIG = ("--config-file", "pyproject.toml")
 NAMED = ("--explicit-package-bases",)
 #: ``path:line[:col]: error|note|warning: message`` as mypy prints it.
 _FINDING = re.compile(r"^(?P<path>[^:\n]+):(?P<line>\d+)(?::\d+)?: (?P<kind>error|note|warning): ")
+#: A comment mypy parses as a type comment (PEP 484); ``# type: ignore`` is mypy's own and never a syntax cause.
+_TYPE_COMMENT = re.compile(r"#\s*type:(?!\s*ignore\b)")
 
 
 @dataclass
@@ -119,6 +126,36 @@ def sort_findings(output: str, files: dict[str, set[int] | None]) -> Sorted:
     return out
 
 
+def type_comment_causes(output: str) -> list[str]:
+    """One line per ``[syntax]`` finding of *output* whose source line holds a ``# type:`` comment.
+
+    mypy parses ``# type: <text>`` as a PEP 484 type comment: prose after it (``# type: fail fast on ...``)
+    is reported as a syntax error on that line while ``ast.parse`` accepts the file, which reads like a broken
+    file. The line names the comment as the cause so the fix is a reworded comment, not a hunt.
+    """
+    causes: list[str] = []
+    sources: dict[str, list[str]] = {}
+    for line in output.splitlines():
+        found = _FINDING.match(line)
+        if not found or found.group("kind") != "error" or not line.rstrip().endswith("[syntax]"):
+            continue
+        path, number = found.group("path"), int(found.group("line"))
+        if path not in sources:
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    sources[path] = handle.read().splitlines()
+            except (OSError, UnicodeDecodeError):
+                sources[path] = []
+        text = sources[path][number - 1] if 0 < number <= len(sources[path]) else ""
+        if _TYPE_COMMENT.search(text):
+            causes.append(
+                f"types_changed: {path}:{number} holds a '# type:' comment, which mypy parses as a type comment: "
+                "that is the cause of its [syntax] error (Python parses the file). Reword the comment so 'type:' "
+                "does not follow '#' directly."
+            )
+    return causes
+
+
 def summary(parts: Sorted) -> str:
     """The closing line: the change's own errors, then what was kept apart."""
     verdict = f"{parts.yours_errors} error(s) on your lines" if parts.yours_errors else "no error on your lines"
@@ -143,11 +180,15 @@ def main(argv: list[str] | None = None, *, mypy: str = "mypy") -> int:
     if done.returncode not in (0, 1):
         sys.stdout.write(done.stdout)
         sys.stderr.write(done.stderr)
+        for cause in type_comment_causes(done.stdout):
+            print(cause)
         print("types_changed: mypy could not run (output above).")
         return 2
     parts = sort_findings(done.stdout, files)
     for line in parts.yours:
         print(line)
+    for cause in type_comment_causes(done.stdout):
+        print(cause)
     print(summary(parts))
     return 1 if parts.yours_errors else 0
 
