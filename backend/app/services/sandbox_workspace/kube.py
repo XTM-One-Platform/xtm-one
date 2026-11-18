@@ -237,6 +237,7 @@ class KubeClient:
 
         try:
             from websockets.asyncio.client import connect
+            from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
             from websockets.typing import Subprotocol
         except ImportError as exc:  # shipped with uvicorn[standard]; say so rather than fail obscurely
             raise KubeError("running a command in a lab needs the 'websockets' package") from exc
@@ -273,7 +274,22 @@ class KubeClient:
             await asyncio.wait_for(_session(), timeout)
         except TimeoutError as exc:
             raise KubeError(f"the command did not finish within {timeout:g} s") from exc
-        return ExecResult(exit_code=exit_code_of(status), stdout=bytes(out), stderr=bytes(err), message=str(status.get("message") or ""))
+        except InvalidStatus as exc:
+            # The API server refused the upgrade: a 404 while it has not caught up with a new pod, a 5xx.
+            code = int(getattr(exc.response, "status_code", 0) or 0)
+            raise KubeError(f"the API server refused the exec stream (HTTP {code})", code) from exc
+        except (InvalidHandshake, ConnectionClosed, OSError) as exc:
+            # A stream lost before the status frame: as retryable as a stall, never an unknown type.
+            detail = str(exc).strip()
+            raise KubeError(
+                f"the exec stream was lost ({type(exc).__name__}{': ' + detail if detail else ''})"
+            ) from exc
+        return ExecResult(
+            exit_code=exit_code_of(status),
+            stdout=bytes(out),
+            stderr=bytes(err),
+            message=str(status.get("message") or ""),
+        )
 
 
 def exit_code_of(status: dict[str, Any]) -> int:
