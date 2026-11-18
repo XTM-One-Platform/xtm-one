@@ -34,8 +34,8 @@ Each call opens its own session and resolves its caller (the Concierge
 principal, else the user), and every target goes through
 ``services/health/flow_lab_access``: one rule on every path, by id and by
 name. Values read from runs come back inside untrusted-content blocks, never
-as instructions. Errors are generic, reasons in the logs. Gated by
-``CONCIERGE``, not by ``FLOW_BUILDER``, which hides the builder's UI only
+as instructions. Errors are generic, reasons in the logs. Built in with
+Platform Health, not gated by ``FLOW_BUILDER``, which hides the builder's UI only
 (``dev-docs/flow-builder-feature-flag.md``).
 """
 
@@ -763,7 +763,7 @@ def build_flow_lab_tools(
 
 
 def add_flow_lab_tools(composite: Any, user_id: str, builtin_tool_ids: list[str], *, agent_id: str | None) -> None:
-    """Wire the ``flow_lab`` group into a turn's *composite* when the agent carries it and ``CONCIERGE`` is on.
+    """Wire the ``flow_lab`` group into a turn's *composite* when the agent carries it and Platform Health is available.
 
     The one wiring of agent chat and the assignment engine; a Concierge run may
     have no user, the tools then act as its principal alone, and only for

@@ -13,8 +13,8 @@
 
 """The Concierge orchestrator's tools (#8261): signals, cycles, digests, requests.
 
-Group ``concierge_orchestrator``, agent-keyed, offered while ``CONCIERGE`` is
-on. One rule on every path (``services/health/cycle_access.py``), decided at
+Group ``concierge_orchestrator``, agent-keyed, offered while Platform Health
+is available. One rule on every path (``services/health/cycle_access.py``), decided at
 each call from the database rows:
 
 * as **the Concierge** (``identity.current_concierge()``: a scheduled run, an

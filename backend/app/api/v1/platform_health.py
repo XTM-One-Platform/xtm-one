@@ -13,7 +13,7 @@
 
 """Platform Concierge REST API (#8254): opt-in, opt-out, Settings > Agents and automations > Concierge, budget.
 
-Every route needs the ``CONCIERGE`` flag. The rules (PRD
+Platform Health is built in: no feature flag gates these routes. The rules (PRD
 ``dev-docs/platform-concierge.md`` 4 and 6.2):
 
 * The improvement opt-in of an agent or a flow: read by whoever sees the

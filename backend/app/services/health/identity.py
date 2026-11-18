@@ -22,7 +22,7 @@ they already read with no account and no admin bypass
 (``helpers.no_account_provenance``); this module adds which runs those are.
 
 * A run acts as the Concierge when its agent row carries a ``health_role``,
-  is company-managed, the ``CONCIERGE`` flag is on, and the run has no user or
+  is company-managed, Platform Health is available, and the run has no user or
   an admin user (:func:`concierge_principal_for`). A non-admin chatting with a
   fleet agent gets no principal, so every Concierge tool refuses.
 * A fleet run nobody started by hand acts with no user at all: never as its

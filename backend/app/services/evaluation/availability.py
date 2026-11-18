@@ -22,7 +22,7 @@ gates what people see and start: pages, REST, user agent tools, the schedule.
 
 The **engine gate**, :func:`engine_accepts`: the surface gate, or an evaluation
 the Concierge built (``Evaluation.concierge_built``, read on the row) while the
-Concierge is on (the ``CONCIERGE`` flag and Settings > Agents and automations > Concierge), whatever the mode (decision B9 of
+Platform Health is switched on (Settings > Automations > Platform Health), whatever the mode (decision B9 of
 ``dev-docs/platform-concierge.md``). The Concierge has no user row: its
 evaluations have no owner and carry that marker, which only server code sets
 (never REST, copy, export or import). It gates the work the engine does: the

@@ -23,7 +23,7 @@ on every surface, read on the database rows, never on the arguments:
   supervision scope; otherwise those on targets the caller manages
   (``improvement_proposals.can_read``, administrators included, as the REST
   list). A person's #1044 request is listed while ``EVALUATION`` is on, an
-  agent's proposal while ``CONCIERGE`` is (``surface_enabled``).
+  agent's proposal while Platform Health is available (``surface_enabled``).
 * ``propose_improvement``: only the Experimenter files. That is a property of
   the calling run, not a name: a Concierge principal whose agent is the one
   calling the tool and whose row, read again, is a fleet agent with the
@@ -35,7 +35,7 @@ on every surface, read on the database rows, never on the arguments:
   verdict comes from an experiment (``propose_from_experiment``), never from
   the model's say-so.
 
-Both refuse while ``CONCIERGE`` is off, whatever surface wired them.
+Both refuse while Platform Health is not available, whatever surface wired them.
 
 Every value a proposal carries (summary, finding, change) was written from
 traces and ratings: the list returns it inside an untrusted-data block.
@@ -189,7 +189,7 @@ def build_improvement_tools(
         limit: int = 20,
     ) -> str:
         if not concierge_enabled():
-            logger.info("list_improvements refused: the CONCIERGE flag is off")
+            logger.info("list_improvements refused: Platform Health is not available")
             return REFUSED
         concierge = calling_concierge(agent_id) is not None
         user = None if concierge else await _caller(db, user_id)

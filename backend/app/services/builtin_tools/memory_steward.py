@@ -19,7 +19,7 @@ tools return statuses and counts, never memory content: the pass reads the
 lane itself, and only counts go to the digest.
 
 One access rule: the caller is the Concierge, a run of one of its fleet
-agents while ``CONCIERGE`` is on (``identity.current_concierge``). Nobody
+agents while Platform Health is available (``identity.current_concierge``). Nobody
 else, an administrator included, may run or read a pass. The platform MCP
 server serves logins, which the Concierge never is, so it does not offer them.
 """

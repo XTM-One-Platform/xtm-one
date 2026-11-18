@@ -3333,8 +3333,8 @@ def hidden_rows_excluded(model_cls: Any):
     or ``None`` when *model_cls* has none: another primitive's internal storage
     (``is_internal``, #3074) and the Concierge's sandbox copies (``is_sandbox``,
     #8255). The owning primitive reads such a row by id; its own row is the
-    authorization. While "CONCIERGE" is off, the Concierge fleet
-    (``health_role``) too: it must not stay chattable once the flag is off."""
+    authorization. The Platform Health fleet (``health_role``) is never
+    chattable while Platform Health is not available."""
     clauses = [
         getattr(model_cls, column).is_(False)
         for column in ("is_internal", "is_sandbox")

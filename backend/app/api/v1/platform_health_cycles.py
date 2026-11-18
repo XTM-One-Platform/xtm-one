@@ -13,8 +13,8 @@
 
 """Concierge cycles, signals and the Improvements inbox (#8261).
 
-Mounted under ``/api/v1/health`` beside level 1's routes, behind the
-``CONCIERGE`` flag. Access is ``services/health/cycle_access.py``, the rule
+Mounted under ``/api/v1/health`` beside level 1's routes, built in with no
+feature flag. Access is ``services/health/cycle_access.py``, the rule
 the orchestrator's tools share: a person reads the cycles of the targets they
 manage (administrators: all); "Improve with Concierge" needs the same right.
 Approve / Reject stay level 3's ``/api/v1/improvement-proposals`` routes.

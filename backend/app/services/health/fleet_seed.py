@@ -34,9 +34,9 @@ Settings > Agents and automations > Concierge). The rows keep a real owner (inva
 nobody triggered takes no user: it acts as the Concierge identity, never as
 that owner (``assignment_engine._execution_identity``).
 
-Seeded only while the ``CONCIERGE`` flag is on. With the flag off nothing is
-created and nothing is deleted: the agents' runs stop acting as the Concierge
-(``identity.concierge_principal_for``) and the cycle runner starts nothing.
+Seeded on every deployment: Platform Health is built in (no feature flag since
+slice S1 of #101). Switched off in Settings, nothing is deleted: the cycle
+runner starts nothing until an administrator switches it on again.
 """
 
 from __future__ import annotations

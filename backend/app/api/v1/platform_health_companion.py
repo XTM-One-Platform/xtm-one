@@ -13,7 +13,7 @@
 
 """The Concierge companion REST API (#8261): the pet library, the user's companion, what it shows.
 
-Every route needs the ``CONCIERGE`` flag.
+Platform Health is built in: no feature flag gates these routes.
 
 * ``GET /pets``, ``GET /pets/{slug}/spritesheet``: every signed-in user.
 * ``POST /pets``, ``DELETE /pets/{slug}``: administrators. An upload is

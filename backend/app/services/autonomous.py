@@ -2557,9 +2557,9 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
-        # --- 9c. Concierge cycles, schedules and signals (#8261) ---
+        # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
-        # work needs agentic AI and the CONCIERGE flag (``cycles.concierge_tick``).
+        # work needs agentic AI and Platform Health switched on (``cycles.concierge_tick``).
         # Signals make no model call.
         try:
             from app.services.health.cycles import concierge_tick

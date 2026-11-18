@@ -17,7 +17,7 @@
 The built-in group ``concierge_sandbox`` for the Concierge's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
 every surface, read on the rows (:func:`sandbox_access_refusal`): the
-``CONCIERGE`` flag on, the caller the Concierge or an administrator, the copy's
+Platform Health available, the caller Platform Health or an administrator, the copy's
 subject - its source, else the agent whose usage it automates as the server
 recorded it (``flow_lab_access.copy_subject``) - in the supervision scope and
 not one of the fleet's agents, its content readable
@@ -58,7 +58,7 @@ async def sandbox_access_refusal(
     from app.services.health.identity import in_health_run
 
     if not concierge_enabled():
-        return "the CONCIERGE flag is off"
+        return "Platform Health is not available"
     if not in_health_run():
         try:
             caller = await db.get(User, uuid.UUID(str(user_id))) if user_id else None

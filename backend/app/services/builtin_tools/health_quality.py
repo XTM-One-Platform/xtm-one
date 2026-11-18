@@ -451,7 +451,7 @@ def build_health_diagnosis_tools(
 
 
 def concierge_tools_offered() -> bool:
-    """Whether the Concierge's tools are offered at all: the ``CONCIERGE`` flag (each call checks it again)."""
+    """Whether Platform Health's tools are offered at all: its availability (each call checks it again)."""
     return concierge_enabled()
 
 
@@ -463,7 +463,7 @@ def add_health_quality_tools(
     agent_id: str | None,
     run_id: str | None = None,
 ) -> None:
-    """Wire the groups *builtin_tool_ids* carries into a turn's *composite*, while ``CONCIERGE`` is on.
+    """Wire the groups *builtin_tool_ids* carries into a turn's *composite*, while Platform Health is available.
 
     The one wiring of agent chat and the assignment engine. A run of the
     Concierge may have no user (a company-managed scheduled run): the tools

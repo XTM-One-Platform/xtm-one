@@ -149,9 +149,9 @@ def surface_enabled(proposal: ImprovementProposal) -> bool:
     """Whether a proposal is reachable by people and agents right now.
 
     A person's persona rewrite (#1044) stays behind ``EVALUATION``, where it
-    always was; what an agent filed is the Concierge's, behind ``CONCIERGE``.
-    The scheduler settles both whatever the flags: a change applied before a
-    flag went off is still watched and rolled back.
+    always was; what an agent filed is Platform Health's, behind its
+    availability. The scheduler settles both whatever the switches: a change
+    applied before one went off is still watched and rolled back.
     """
     if proposal.author_agent_id is None:
         from app.services.evaluation.availability import evaluation_enabled
@@ -256,7 +256,7 @@ async def open_proposal_on(db: AsyncSession, target_type: str, target_id: uuid.U
 
 
 def _unseen(proposal: ImprovementProposal) -> bool:
-    """An agent's change waiting for a decision while ``CONCIERGE`` is off: nobody can see or reject it."""
+    """An agent's change waiting for a decision while Platform Health is not available: nobody can see or reject it."""
     return (
         proposal.author_agent_id is not None
         and proposal.status == STATUS_PENDING_APPROVAL

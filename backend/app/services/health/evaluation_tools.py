@@ -16,7 +16,7 @@
 
 The built-in group ``concierge_evaluation`` for the Concierge's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
-every surface (:func:`evaluation_tool_refusal`): the ``CONCIERGE`` flag on, and
+every surface (:func:`evaluation_tool_refusal`): Platform Health available, and
 the caller the Concierge, or an administrator while the evaluation surface is
 on (decision B9: in XTM One mode no person launches an evaluation). The
 targets' rule is the services' own, read on the rows: the supervision scope,
@@ -51,7 +51,7 @@ async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str 
     from app.services.health.identity import in_health_run
 
     if not concierge_enabled():
-        return "the CONCIERGE flag is off"
+        return "Platform Health is not available"
     if in_health_run():
         return None
     try:

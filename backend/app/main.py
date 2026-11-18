@@ -4411,8 +4411,8 @@ application.include_router(
     feedback_criteria.router, prefix="/api/v1/feedback-criteria", tags=["annotations"]
 )
 # Improvement proposals (#8256): a person's persona rewrite stays behind
-# "EVALUATION" (its POST /persona route and its rows), what the Concierge filed
-# behind "CONCIERGE"; with both off the router is neither served nor published.
+# "EVALUATION" (its POST /persona route and its rows), what Platform Health filed
+# behind its availability; with both off the router is neither served nor published.
 application.include_router(
     improvement_proposals.router,
     prefix="/api/v1/improvement-proposals",
