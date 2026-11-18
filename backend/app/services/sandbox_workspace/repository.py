@@ -42,11 +42,13 @@ from app.services.sandbox_workspace.detect import (
     install_lifecycle_paths,
     is_referencing_config,
     is_referencing_file,
+    is_relay_source,
     is_requirements,
     is_workflow,
     maven_reactor_paths,
     package_local_files,
     referenced_files,
+    relay_source_dirs,
     release_note_dirs,
     subdirectory_dependencies,
     widen_to_check_dirs,
@@ -81,6 +83,9 @@ class ExtractedTree:
     #: The workspace member directories added to the sub_paths because a package under them links it by the
     #: ``workspace:`` protocol (``detect.workspace_dependency_dirs``): its checks import the sibling's source.
     workspace_links: list[str] = field(default_factory=list)
+    #: The Relay ``src`` directories added to the sub_paths because a ``relay.config.*`` in or above them names
+    #: it (``detect.relay_source_dirs``): the compiler reads every fragment there.
+    relay_sources: list[str] = field(default_factory=list)
     #: The repository paths added to the sub_paths because a declared check of a directory they hold
     #: reads them (``needs`` of ``[check.NAME]``, ``detect.check_needs``).
     needed: list[str] = field(default_factory=list)
@@ -293,6 +298,8 @@ def extract_tree(
         wanted = [*wanted, *tree.lifecycle]
         tree.workspace_links = workspace_dependency_dirs({**others, **workspace_roots, **manifests}, wanted)
         wanted = [*wanted, *tree.workspace_links]
+        tree.relay_sources = relay_source_dirs(referencing, sizes, wanted)
+        wanted = [*wanted, *tree.relay_sources]
         tree.release_notes = release_note_dirs(sizes, wanted)
         wanted = [*wanted, *tree.release_notes]
         tree.sub_paths = list(wanted)
@@ -316,6 +323,19 @@ def extract_tree(
             if path not in tree.companions and not any(is_under(path, sub) for sub in wanted)
         ]
         tree.companions = [*tree.companions, *support]
+        if tree.relay_sources:
+            # The sources of an added Relay src import files outside it (../../lang/front/en.json): read them
+            # too, so the files they name are kept like those a test names.
+            for member, read in _members(data):
+                path = _relative(_clean(member.name), root) if member.is_file else ""
+                if (
+                    path
+                    and path not in referencing
+                    and member.size <= MAX_REQUIREMENTS_BYTES
+                    and is_relay_source(path)
+                    and any(is_under(path, sub) for sub in tree.relay_sources)
+                ):
+                    referencing[path] = read()
         referenced = [
             path
             for path in referenced_files(referencing, sizes, wanted)

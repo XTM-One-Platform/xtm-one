@@ -1815,6 +1815,43 @@ def test_a_narrow_checkout_follows_a_tsconfig_extends_and_never_leaves_the_repos
 def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_names():
     # opencti: a checkout of opencti-front/src/utils/hooks keeps relay.config.json (a companion) but its
     # schema ./src/schema/relay.schema.graphql was left out, so the Relay ESLint plugin failed before eslint.
+    _, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"",
+            "front/src/private/b.tsx": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert "front/src/schema/relay.schema.graphql" in written
+    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_a_narrow_checkout_of_a_relay_project_adds_its_src_and_the_files_its_sources_import() -> None:
+    # opencti #19969: node-unit-file failed on an undefined fragment until all of opencti-front/src was
+    # grown by hand; src then imports ../../lang/front/*.json outside it.
+    tree, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"import { b } from '../../private/b';",
+            "front/src/private/b.tsx": b"graphql`fragment b_x on Query { a }`;",
+            "front/src/components/Intl.tsx": b"import en from '../../lang/front/en.json';",
+            "front/lang/front/en.json": b"{}",
+            "front/lang/front/fr.json": b"{}",
+            "front/builder/big.js": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert tree.relay_sources == ["front/src"]
+    assert "front/src/private/b.tsx" in written and "front/src/components/Intl.tsx" in written
+    assert "front/lang/front/en.json" in tree.referenced and "front/lang/front/en.json" in written
+    assert "front/lang/front/fr.json" not in written and "front/builder/big.js" not in written
+
+
+def test_a_relay_src_past_its_bound_is_not_added_and_its_schema_still_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detect, "MAX_RELAY_SOURCE_BYTES", 10)
     tree, written = _narrow_tree(
         {
             "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
@@ -1824,9 +1861,21 @@ def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_na
         },
         ["front/src/utils/hooks"],
     )
+    assert tree.relay_sources == []
     assert "front/src/schema/relay.schema.graphql" in tree.referenced
     assert "front/src/schema/relay.schema.graphql" in written and "front/src/private/b.tsx" not in written
-    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_relay_source_dirs_reads_a_js_config_and_only_for_its_own_project() -> None:
+    sizes = {"web/app/a.ts": 3, "web/app/b.ts": 3, "other/x.ts": 1}
+    config = {"web/relay.config.js": b"module.exports = { src: './app', schema: './schema.graphql' };"}
+    assert detect.relay_source_dirs(config, sizes, ["web/app/hooks"]) == ["web/app"]
+    # A sub_path outside the config's project, or one already holding its src, adds nothing.
+    assert detect.relay_source_dirs(config, sizes, ["other"]) == []
+    assert detect.relay_source_dirs(config, sizes, ["web"]) == []
+    # A src out of the repository or at its root is never added.
+    assert detect.relay_source_dirs({"relay.config.json": b'{"src": "."}'}, sizes, ["web/app"]) == []
+    assert detect.relay_source_dirs({"web/relay.config.json": b'{"src": "../.."}'}, sizes, ["web/app"]) == []
 
 
 def test_a_directory_a_test_reads_whole_is_kept_only_within_its_bounds():
