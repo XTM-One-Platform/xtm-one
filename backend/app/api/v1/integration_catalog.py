@@ -1866,6 +1866,14 @@ PROVIDER_CATALOG = {
                     "description": "Create and update deals",
                 },
                 {
+                    "scope": "crm.objects.line_items.read",
+                    "description": "Read deal line items (price, quantity, term, ACV, TCV)",
+                },
+                {
+                    "scope": "crm.objects.line_items.write",
+                    "description": "Create, update and delete deal line items",
+                },
+                {
                     "scope": "crm.objects.owners.read",
                     "description": "Read owner (team member) records",
                 },
