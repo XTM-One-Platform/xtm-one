@@ -874,3 +874,32 @@ def format_outcome(o: InboundOutcome, *, now: datetime) -> str:
     if o.deal_created:
         parts.append("deal created")
     return " | ".join(parts)
+
+
+#: The categories of a HubSpot association type.
+ASSOCIATION_CATEGORIES = ("HUBSPOT_DEFINED", "USER_DEFINED", "INTEGRATOR_DEFINED")
+
+
+def association_label(labels: Any, name: str) -> dict[str, Any] | None:
+    """The association type of *labels* (a v4 ``/labels`` answer's results) labelled *name*, case-insensitive."""
+    wanted = " ".join(str(name or "").split()).casefold()
+    if not wanted or not isinstance(labels, list):
+        return None
+    for entry in labels:
+        if not isinstance(entry, dict) or entry.get("typeId") is None:
+            continue
+        if " ".join(str(entry.get("label") or "").split()).casefold() == wanted:
+            category = str(entry.get("category") or "HUBSPOT_DEFINED").upper()
+            return {
+                "associationCategory": category,
+                "associationTypeId": int(entry["typeId"]),
+                "label": entry.get("label"),
+            }
+    return None
+
+
+def association_type_text(typed: dict[str, Any]) -> str:
+    """How an association type is named in an answer: its label, then category and type id."""
+    ident = f"{typed.get('associationCategory')} type {typed.get('associationTypeId')}"
+    label = typed.get("label")
+    return f"the '{label}' label ({ident})" if label else ident

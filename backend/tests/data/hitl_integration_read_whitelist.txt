@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1778 tools across 110 providers; 51 held back by hand.
+# 1779 tools across 110 providers; 51 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -777,6 +777,7 @@ hubspot:list_hubspot_campaigns
 hubspot:list_hubspot_deals
 hubspot:list_hubspot_form_submissions
 hubspot:list_hubspot_forms
+hubspot:list_hubspot_line_items
 hubspot:list_hubspot_owners
 hubspot:list_hubspot_pipelines
 hubspot:list_hubspot_properties
