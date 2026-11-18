@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
@@ -112,7 +112,15 @@ async def require_scim_token(request: Request, db: AsyncSession = Depends(get_db
     await enforce_rate_limit(
         request, "scim", limit=SCIM_RATE_LIMIT_PER_MINUTE, window_seconds=60, bucket=f"scim:{token.id}"
     )
-    token.last_used_at = datetime.now(UTC)
+    # Stamped in its own short transaction, so the routes that only read
+    # leave nothing uncommitted on the request session.
+    from app.core.database import async_session
+
+    async with async_session() as stamp:
+        await stamp.execute(
+            update(ScimToken).where(ScimToken.id == token.id).values(last_used_at=datetime.now(UTC))
+        )
+        await stamp.commit()
     return token
 
 
@@ -230,9 +238,7 @@ async def _body(request: Request) -> Any:
         raise s.ScimError(400, "The body is not JSON", "invalidSyntax") from None
 
 
-async def _apply_user(
-    db: AsyncSession, user: User, changes: s.UserChanges, token: ScimToken
-) -> tuple[list[str], Any]:
+async def _apply_user(db: AsyncSession, user: User, changes: s.UserChanges, token: ScimToken) -> tuple[list[str], Any]:
     """Write *changes* on *user*: the changed field names, and the deactivation
     outcome when the account was deactivated (for ``after_commit``)."""
     from app.services import user_deactivation
@@ -287,7 +293,7 @@ async def _commit_user(db: AsyncSession, user: User, outcome: Any, token: ScimTo
 @scim_router.get("/Users")
 async def list_users(
     request: Request,
-    filter: str | None = None,  # noqa: A002 - the SCIM parameter's name
+    filter: str | None = None,
     startIndex: int | None = None,  # noqa: N803 - the SCIM parameter's name
     count: int | None = None,
     db: AsyncSession = Depends(get_db),
@@ -385,7 +391,9 @@ async def create_user(
     return _scim_json(s.user_resource(user, _base(request)), status.HTTP_201_CREATED)
 
 
-async def _write_user(request: Request, db: AsyncSession, token: ScimToken, user: User, changes: s.UserChanges) -> Response:
+async def _write_user(
+    request: Request, db: AsyncSession, token: ScimToken, user: User, changes: s.UserChanges
+) -> Response:
     changed, outcome = await _apply_user(db, user, changes, token)
     if changed:
         action = "update"
@@ -511,9 +519,7 @@ async def _change_members(
         to_remove |= set(current) - wanted
     to_add -= set(current)
     if to_add:
-        known = set(
-            (await db.execute(select(User.id).where(User.id.in_(to_add)))).scalars().all()
-        )
+        known = set((await db.execute(select(User.id).where(User.id.in_(to_add)))).scalars().all())
         unknown = to_add - known
         if unknown:
             raise s.ScimError(400, f"Unknown member {sorted(map(str, unknown))[0]}", "invalidValue")
@@ -548,7 +554,7 @@ def _wants_members(excluded: str | None) -> bool:
 @scim_router.get("/Groups")
 async def list_groups(
     request: Request,
-    filter: str | None = None,  # noqa: A002 - the SCIM parameter's name
+    filter: str | None = None,
     startIndex: int | None = None,  # noqa: N803 - the SCIM parameter's name
     count: int | None = None,
     excludedAttributes: str | None = None,  # noqa: N803 - the SCIM parameter's name
@@ -565,17 +571,13 @@ async def list_groups(
         query = query.where(Group.id == _uuid_or_404(wanted["id"], "Group"))
     if "members.value" in wanted:
         member = _uuid_or_404(wanted["members.value"], "User")
-        query = query.where(
-            Group.id.in_(select(GroupMember.group_id).where(GroupMember.user_id == member))
-        )
+        query = query.where(Group.id.in_(select(GroupMember.group_id).where(GroupMember.user_id == member)))
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     offset, limit = s.page(startIndex, count)
     rows = (await db.execute(query.order_by(Group.created_at, Group.id).offset(offset).limit(limit))).scalars().all()
     base = _base(request)
     with_members = _wants_members(excludedAttributes)
-    resources = [
-        s.group_resource(g, await _members(db, g.id) if with_members else None, base) for g in rows
-    ]
+    resources = [s.group_resource(g, await _members(db, g.id) if with_members else None, base) for g in rows]
     return _scim_json(s.list_response(resources, total, offset + 1))
 
 
@@ -635,9 +637,7 @@ async def _write_group(
     renamed = await _set_name(db, group, changes.display_name)
     if changes.external_id_set:
         group.scim_external_id = changes.external_id
-    added, removed = await _change_members(
-        db, group, add=changes.add, remove=changes.remove, replace=changes.replace
-    )
+    added, removed = await _change_members(db, group, add=changes.add, remove=changes.remove, replace=changes.replace)
     if renamed or added or removed or changes.external_id_set:
         await _audit(
             db,

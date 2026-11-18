@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 #: The prefix every raw SCIM token starts with, so a leaked one is recognisable.
-SCIM_TOKEN_PREFIX = "scim-"
+SCIM_TOKEN_PREFIX = "scim-"  # noqa: S105 - a public prefix, not a secret
 
 
 class ScimToken(Base):
