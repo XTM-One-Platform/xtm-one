@@ -493,10 +493,9 @@ def seed_tokens() -> list[str]:
         if created.get("errors"):
             lab.log(f"xtm-hub: token {name} refused ({json.dumps(created['errors'])[:200]})")
             continue
-        token_id = created["data"]["createApiToken"]["api_token"]["id"]
         if then == "revoked":
-            graphql("mutation LabRevoke($id: ApiTokenId!) { revokeApiToken(id: $id) { id } }", {"id": token_id},
-                    cookie=cookie)
+            # Set in the database like the other states, so the lab never depends on the revoke path under review.
+            psql("UPDATE \"ApiToken\" SET revoked_at = now() - interval '1 day' WHERE name = :'name'", name=name)
         elif then == "expired":
             psql("UPDATE \"ApiToken\" SET expires_at = now() - interval '3 days' WHERE name = :'name'", name=name)
         elif then == "used":
@@ -538,13 +537,6 @@ def locale_cookie(locale: str) -> str:
     morsel["NEXT_LOCALE"]["path"] = "/"
     morsel["NEXT_LOCALE"]["samesite"] = "Lax"
     return morsel["NEXT_LOCALE"].OutputString()
-
-
-def tunnel_request(command: str, path: str, version: str, headers) -> bytes:
-    """The websocket upgrade as the browser sent it, its Host kept: next dev refuses /_next/hmr to an Origin that is
-    not its Host (allowedDevOrigins), and without that socket Turbopack's dev client never hydrates the page."""
-    lines = [f"{command} {path} {version}"] + [f"{k}: {v}" for k, v in headers.items()]
-    return ("\r\n".join(lines) + "\r\n\r\n").encode()
 
 
 def preview_csp(policy: str) -> str:
@@ -618,27 +610,6 @@ class Front(proxy.Front):
     def _locale(self, locale: str) -> None:
         self._body()
         self._send(302, b"", "text/plain", [locale_cookie(locale)], next_path(self.path.partition("?")[2]))
-
-    def _tunnel(self) -> None:
-        """next dev's HMR websocket, the browser's Host kept (tunnel_request): the bytes, both ways."""
-        upstream = socket.create_connection(("127.0.0.1", NEXT_PORT), timeout=10)
-        upstream.sendall(tunnel_request(self.command, self.path, self.request_version, self.headers))
-        self.close_connection = True
-        sockets = [self.connection, upstream]
-        upstream.settimeout(None)
-        self.connection.settimeout(None)
-        try:
-            while True:
-                readable, _, _ = select.select(sockets, [], [], 300)
-                if not readable:
-                    return
-                for sock in readable:
-                    data = sock.recv(65536)
-                    if not data:
-                        return
-                    (upstream if sock is self.connection else self.connection).sendall(data)
-        finally:
-            upstream.close()
 
     def _forward(self, port: int) -> None:
         if "upgrade" in (self.headers.get("Connection") or "").lower():

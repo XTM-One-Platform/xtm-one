@@ -101,13 +101,6 @@ def test_a_switch_opens_a_local_path_only(query, target):
     assert _module().next_path(query) == target
 
 
-def test_the_hmr_tunnel_keeps_the_browser_host():
-    headers = {"Host": "10.0.51.1:3900", "Origin": "http://10.0.51.1:3900", "Upgrade": "websocket"}
-    request = _module().tunnel_request("GET", "/_next/hmr?id=x", "HTTP/1.1", headers).decode()
-    assert request.startswith("GET /_next/hmr?id=x HTTP/1.1\r\n") and request.endswith("\r\n\r\n")
-    assert "Host: 10.0.51.1:3900\r\n" in request and "127.0.0.1" not in request
-
-
 def test_the_preview_keeps_the_csp_but_never_upgrades_to_https():
     policy = "default-src 'self'; img-src 'self' data:; upgrade-insecure-requests; frame-ancestors 'none'"
     assert _module().preview_csp(policy) == "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'"
