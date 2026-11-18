@@ -134,7 +134,11 @@ guard fires at most once per run, only when `dispose_friction` is among the
 tools offered, the next round still has tools, and neither the token budget
 nor the tool-failure brake is engaged. No run scope bound, nothing
 undisposed, or an unreadable ledger: the loop ends exactly as before. This is
-the only prompt addition of the ledger.
+the only prompt addition of the ledger. When the scope names a work item (the
+run's trigger) that is already `done` or `cancelled`, the line adds one
+sentence saying so and telling the run to write nothing more on it, so a run
+that completed its item before its final answer does not write on it again
+and meet an "already done" refusal (#269).
 
 ## End of run
 
@@ -236,7 +240,8 @@ succeeds recorded undisposed).
 `backend/tests/test_frictions_nag.py`: one disposal round when the run ends
 with undisposed frictions, at most once, none without `dispose_friction`
 offered or with nothing undisposed, and the line itself (names, bound, None
-without a run, frictions or a readable store).
+without a run, frictions or a readable store; the finished-item sentence for a
+done or cancelled item, none for an open, unread or absent one).
 The run page read: `run_frictions` (rows, the bound, `None` without
 frictions, a run or a readable store) and the response fields, in
 `test_frictions.py`; the card in
