@@ -6,9 +6,9 @@
     "sandbox-nodejs": "615dd0a03104ee5549ef85f732fbe070b91e22c07ede7f4cd4626ad981dd5230"
   },
   "toolchain": {
-    "version": "0.6",
+    "version": "0.7",
     "inputs": {
-      "sandbox-toolchain": "98563e8f0521423fc41905e7a9e531131a6566df29baaa6af48e40427d9239c4"
+      "sandbox-toolchain": "535bcf83a11f05f16b1e53fcc1514dc92a92dd46c05be18987b39e1ad935835a"
     }
   },
   "dev": {
