@@ -17,6 +17,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { cn } from "@/lib/utils";
+import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 
@@ -198,6 +199,8 @@ export function OrganizationSection() {
   const navigate = useNavigate();
   const tab = profileTabOfPath(location.pathname);
   const [focusRetry, setFocusRetry] = useState(0);
+  // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
+  const endCardLanding = useRef<(() => void) | null>(null);
   const goToTab = (next: ProfileTab | null) => {
     if (!next || next === tab) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
@@ -344,8 +347,12 @@ export function OrganizationSection() {
       return () => cancelAnimationFrame(frame);
     }
     setFocusRetry(0);
-    // A card lands its title below the header and the tab bar (its scroll margin), a field mid-screen.
-    element.scrollIntoView?.({ block: element.dataset.anchor === "card" ? "start" : "center" });
+    // A card lands its title below the header and the tab bar (its scroll margin), kept there while the
+    // panel grows (UX r1 B1 on #108: the last card of a tab was left at the bottom); a field mid-screen.
+    endCardLanding.current?.();
+    endCardLanding.current = null;
+    if (element.dataset.anchor === "card") endCardLanding.current = landOnCard(element);
+    else element.scrollIntoView?.({ block: "center" });
     element.focus({ preventScroll: true });
     // A panel that just opened can take the focus back on its first frame: focus it again then.
     requestAnimationFrame(() => {
@@ -354,6 +361,7 @@ export function OrganizationSection() {
     setFocusTarget(null);
     return undefined;
   }, [focusTarget, editing, tab, focusRetry]);
+  useEffect(() => () => endCardLanding.current?.(), []);
   useEffect(() => {
     if (!focusAfter) return;
     // After the closed dialog's own focus return, which runs on the next tick (never cancelled by the reset below).
@@ -1852,9 +1860,8 @@ export function OrganizationSection() {
           </SettingsCard>
 
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}
-          <div id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1}>
-            <TrackedOrganizations />
-          </div>
+          {/* The landing anchor sits on the card root, so its focus ring keeps the card's radius (UX r1 B2 on #108). */}
+          <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} />
           </div>
           )}
 
