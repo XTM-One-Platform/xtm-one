@@ -2800,12 +2800,17 @@ async def _skip_by_activation_check(
         chained_checks,
         check_tool_label,
         describe_condition,
+        is_any_of,
         stored_activation_check,
     )
 
     stored = stored_activation_check(getattr(assignment, "activation_check", None))
     if stored is None:
         return False
+    if is_any_of(stored):
+        return await _skip_by_any_of_checks(
+            db, stored, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
+        )
     # The first check, then those its ``also`` chains (#10597): the run is
     # skipped at the first that fails, still with no model call.
     checks = chained_checks(stored)
@@ -2841,6 +2846,86 @@ async def _skip_by_activation_check(
         tool=check_tool_label(check),
         arguments=outcome.arguments,
     )
+    asked = (
+        f"Gate check: {check['tool']}({json.dumps(arguments)}), condition: {describe_condition(check.get('condition'))}"
+    )
+    return await _end_run_skipped_by_gate_check(
+        db,
+        run=run,
+        agent=agent,
+        assignment=assignment,
+        summary=summary,
+        asked=asked,
+        preview=outcome.preview,
+        live_holder=outcome.live_holder,
+    )
+
+
+async def _skip_by_any_of_checks(
+    db: AsyncSession,
+    stored: dict,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+) -> bool:
+    """The ``or`` form of the tool check: skipped only when EVERY check fails.
+
+    The checks run in order and the first that passes lets the run go ahead;
+    one that cannot be evaluated lets it go ahead too, named on the run as a
+    check passed over. ``True`` when the run ended as skipped.
+    """
+    from app.services.assignment_activation_check import (
+        any_of_skip_summary,
+        chained_checks,
+        check_tool_label,
+        describe_check,
+    )
+
+    failures: list[tuple[str, str, dict | None]] = []
+    previews: list[str] = []
+    live_holder: str | None = None
+    for position, check in enumerate(chained_checks(stored), start=1):
+        outcome = await _evaluate_one_gate_check(
+            db, check, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
+        )
+        if outcome is None or (outcome.passed and outcome.error):
+            reason = outcome.error if outcome is not None else "the check could not run"
+            await _record_unevaluated_gate_checks(
+                run, assignment, [{"position": position, "tool": check_tool_label(check), "reason": reason[:300]}]
+            )
+            return False
+        if outcome.passed:
+            return False
+        failures.append((check_tool_label(check), outcome.summary, outcome.arguments))
+        if outcome.preview:
+            previews.append(outcome.preview)
+        live_holder = live_holder or outcome.live_holder
+    return await _end_run_skipped_by_gate_check(
+        db,
+        run=run,
+        agent=agent,
+        assignment=assignment,
+        summary=any_of_skip_summary(failures),
+        asked=f"Gate check, {describe_check(stored)}",
+        preview="\n\n".join(previews),
+        live_holder=live_holder,
+    )
+
+
+async def _end_run_skipped_by_gate_check(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    summary: str,
+    asked: str,
+    preview: str,
+    live_holder: str | None,
+) -> bool:
+    """End *run* as skipped by its tool check, at zero tokens; ``False`` when it must proceed."""
     if await _run_holds_a_lease(db, run.id):
         # A run that already took a shared-state lease has started its work:
         # ending it skipped would release the hold with the work undone (#8831).
@@ -2853,22 +2938,16 @@ async def _skip_by_activation_check(
         return False
     # Taken over while the gate tool ran: the attempt that goes on owns the run's ending.
     await ensure_single_writer()
-    if outcome.live_holder and await _hold_event_for_lease(run, assignment, outcome.live_holder):
-        summary = f"{summary}; the event is delivered again once run {outcome.live_holder} ends"
+    if live_holder and await _hold_event_for_lease(run, assignment, live_holder):
+        summary = f"{summary}; the event is delivered again once run {live_holder} ends"
     now = datetime.now(UTC)
     run.status = "completed"
     run.result_summary = summary
     # As the LLM gate records its exchange: the run panel shows what was asked
     # and what came back, though no model was called.
     run.messages = [
-        {
-            "role": "user",
-            "content": (
-                f"Gate check: {check['tool']}({json.dumps(arguments)}), "
-                f"condition: {describe_condition(check.get('condition'))}"
-            ),
-        },
-        {"role": "assistant", "content": f"{summary}\n\n{outcome.preview}".strip()},
+        {"role": "user", "content": asked},
+        {"role": "assistant", "content": f"{summary}\n\n{preview}".strip()},
     ]
     run.total_input_tokens = 0
     run.total_output_tokens = 0

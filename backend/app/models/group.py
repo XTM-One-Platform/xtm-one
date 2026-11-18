@@ -60,6 +60,10 @@ class Group(Base):
         String(20), nullable=False, default="auto", server_default="auto"
     )
 
+    # The identity provider's id of the group when SCIM provisions it
+    # (``externalId``, ``api/v1/scim.py``); NULL for a group SCIM never saw.
+    scim_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -104,8 +108,9 @@ class GroupMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    # How this membership was created: "manual" (admin/API) or "saml" (SAML sync).
-    # SAML group sync only manages "saml"-sourced memberships, preserving manual ones.
+    # How this membership was created: "manual" (admin/API), "saml" (SAML sync)
+    # or "scim" (SCIM provisioning). SAML sync and SCIM each manage only their
+    # own memberships, preserving the others.
     source: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="manual", default="manual"
     )

@@ -1722,6 +1722,23 @@ def test_a_narrow_checkout_follows_a_tsconfig_extends_and_never_leaves_the_repos
     assert tree.referenced == ["configs/ts/base.json"] and "configs/ts/base.json" in written
 
 
+def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_names():
+    # opencti: a checkout of opencti-front/src/utils/hooks keeps relay.config.json (a companion) but its
+    # schema ./src/schema/relay.schema.graphql was left out, so the Relay ESLint plugin failed before eslint.
+    tree, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"",
+            "front/src/private/b.tsx": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert "front/src/schema/relay.schema.graphql" in tree.referenced
+    assert "front/src/schema/relay.schema.graphql" in written and "front/src/private/b.tsx" not in written
+    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
 def test_a_directory_a_test_reads_whole_is_kept_only_within_its_bounds():
     big = {f"backend/tests/data/many/{i}.json": b"{}" for i in range(detect.MAX_REFERENCED_DIR_FILES + 1)}
     tree, written = _narrow_tree(
@@ -1826,6 +1843,28 @@ async def test_a_checkout_without_checks_toml_runs_a_detected_check():
         await _resolve(workspace, check="nope")
     with pytest.raises(checks.ChecksError, match=r"(?s)check names the check to run.*front:node-unit"):
         await _resolve(workspace)
+
+
+async def test_a_services_only_checks_toml_is_named_in_the_detected_listing():
+    """A checks.toml with services and no check table: the header says so, never 'no .xtm-one/checks.toml'."""
+    workspace = _workspace()
+    pkg = json.dumps({"scripts": {"test": "vitest run"}})
+    services = b'[service.lab]\ndescription = "x"\ncommand = ["true"]\nport = 8080\n'
+    await workspace.put_tree(
+        [("co/front/package.json", pkg.encode()), ("co/front/yarn.lock", b""), ("co/.xtm-one/checks.toml", services)]
+    )
+    with pytest.raises(checks.ChecksError) as raised:
+        await _resolve(workspace, check="nope")
+    assert "checks.toml declares no [check.NAME] table" in str(raised.value)
+    assert "(no .xtm-one/checks.toml" not in str(raised.value)
+
+
+async def test_a_services_only_checks_toml_with_nothing_detected_says_why():
+    workspace = _workspace()
+    services = b'[service.lab]\ndescription = "x"\ncommand = ["true"]\nport = 8080\n'
+    await workspace.put_tree([("co/README.md", b"x"), ("co/.xtm-one/checks.toml", services)])
+    with pytest.raises(checks.ChecksError, match=r"has no \[check\.NAME\] table"):
+        await _resolve(workspace, check="nope")
 
 
 # -- pnpm: the release the checkout pins -----------------------------------------

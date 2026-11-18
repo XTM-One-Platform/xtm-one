@@ -320,10 +320,12 @@ def _companion_name(name: str) -> bool:
 
 
 #: The files whose relative path literals :func:`referenced_files` follows: the tests and the
-#: tool configuration of a JavaScript or TypeScript project (``tsconfig.json`` ``extends``).
-_REFERENCING_FILE = re.compile(
-    r"(\.(test|spec)\.(ts|tsx|mts|js|jsx|mjs|cjs)|^(tsconfig[\w.-]*|jsconfig)\.json|^(vite|vitest)\.config\.\w+)$"
+#: tool configuration of a JavaScript or TypeScript project (``tsconfig.json`` ``extends``, the
+#: ``relay.config.json`` ``schema`` the Relay compiler and its ESLint plugin read).
+_REFERENCING_CONFIG = re.compile(
+    r"^((tsconfig[\w.-]*|jsconfig)\.json|(vite|vitest)\.config\.\w+|relay\.config\.(json|js|cjs|mjs|ts))$"
 )
+_REFERENCING_FILE = re.compile(r"\.(test|spec)\.(ts|tsx|mts|js|jsx|mjs|cjs)$")
 _PATH_LITERAL = re.compile(r"[\"'`](\.{1,2}/[^\"'`\s$]*)[\"'`]")
 _RESOLVE_SUFFIXES = ("", ".ts", ".tsx", ".js", ".mjs", ".json", "/index.ts", "/index.tsx", "/index.js")
 #: A directory a test reads whole (``readdirSync``) is kept when it holds at most this many files and bytes.
@@ -337,8 +339,15 @@ def is_workflow(path: str) -> bool:
 
 
 def is_referencing_file(path: str) -> bool:
-    """Whether :func:`referenced_files` reads *path* (a test file or a TypeScript or Vite configuration)."""
-    return bool(_REFERENCING_FILE.search(posixpath.basename(path)))
+    """Whether :func:`referenced_files` reads *path* (a test file or a TypeScript, Vite or Relay configuration)."""
+    return is_referencing_config(path) or bool(_REFERENCING_FILE.search(posixpath.basename(path)))
+
+
+def is_referencing_config(path: str) -> bool:
+    """Whether *path* is a tool configuration :func:`referenced_files` reads (not a test): it is read in a
+    directory above a sub_path too, where the checks of the sub_path run from (``relay.config.json`` of a
+    frontend whose ``src/schema`` the sub_path leaves out)."""
+    return bool(_REFERENCING_CONFIG.match(posixpath.basename(path)))
 
 
 def referenced_files(sources: Mapping[str, bytes], sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:

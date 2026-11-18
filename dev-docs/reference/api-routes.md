@@ -50,6 +50,8 @@ The root `AGENTS.md` keeps one line per entry, because every agent session loads
 | `/api/v1/settings` | LLM providers, general assistant config, user preferences, SSO, OAuth defaults, Langfuse, disabled providers, tags, memory purge, workspace knowledge (`/workspace-knowledge`, admin), brand asset source (`/brand-asset-source`, `/brand-asset-source/sync`, admin) |
 | `/api/v1/auth` | Register, login, me, auth config |
 | `/api/v1/users` | User management (admin) |
+| `/api/v1/scim/v2` | SCIM 2.0 provisioning for an identity provider (Microsoft Entra): `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, `Users`, `Groups`; a SCIM bearer token only, SCIM error bodies ([scim.md](../scim.md)) |
+| `/api/v1/scim/tokens` | SCIM tokens (admin): generate (raw token shown once), list, revoke |
 | `/api/v1/groups` | Group CRUD, membership management (admin); `/{id}/managers` elects and removes a group's managers (admin); `/managed` lists the groups the caller manages (any user); `PUT /{id}` takes the group's `kind` |
 | `/api/v1/insights` | Department-grade LLM analytics: `/departments` (admin) GET / PUT the whole mapping - departments, ordered group rules, resolution settings - `/departments/preview` (who it resolves where), `/departments/directory` (import directory departments by email) and `/departments/history` (resolve the stored usage again); `/analytics/export` (any user, scoped like `query_platform_analytics` - an administrator the platform, a manager their team, anyone else their own usage) streams the CSV of a read, its arguments as query parameters |
 | `/api/v1/skills` | Agent skill CRUD, refresh from URL (incl. private-GitHub URLs via `source_integration_id` / `source_ref`) |

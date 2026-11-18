@@ -40,6 +40,7 @@ from app.services.sandbox_workspace.detect import (
     check_support_files,
     command_named_files,
     install_lifecycle_paths,
+    is_referencing_config,
     is_referencing_file,
     is_requirements,
     is_workflow,
@@ -246,7 +247,12 @@ def extract_tree(
                 path
                 and member.size <= MAX_REQUIREMENTS_BYTES
                 and is_referencing_file(path)
-                and any(is_under(path, sub) for sub in wanted)
+                and (
+                    any(is_under(path, sub) for sub in wanted)
+                    # A tool configuration above a sub_path (relay.config.json, tsconfig.json of the
+                    # project the sub_path is a part of): the checks of the sub_path read it.
+                    or (is_referencing_config(path) and path.rpartition("/")[0] in above)
+                )
             ):
                 referencing[path] = read()
             elif (

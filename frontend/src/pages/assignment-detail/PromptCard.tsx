@@ -120,7 +120,7 @@ export function PromptCard({ assignment, canManage, onUpdate, renderRight }: Pro
         : checkOperator === "contains"
           ? { path: checkPath.trim(), contains: checkValues.trim() }
           : { path: checkPath.trim(), [checkOperator]: checkValues.split(",").map((v) => v.trim()).filter(Boolean) };
-    // The card edits the first check only: the checks it chains (`also`) and
+    // The card edits the first check only: the checks it lists (`also`, `or`) and
     // its integration (while the tool is unchanged) are kept as stored, never
     // dropped by a save.
     const stored = assignment.activation_check;
@@ -131,6 +131,7 @@ export function PromptCard({ assignment, canManage, onUpdate, renderRight }: Pro
       condition,
       ...(stored?.integration_id && stored.tool === tool ? { integration_id: stored.integration_id } : {}),
       ...(stored?.also?.length ? { also: stored.also } : {}),
+      ...(stored?.or?.length ? { or: stored.or } : {}),
     };
   };
 
