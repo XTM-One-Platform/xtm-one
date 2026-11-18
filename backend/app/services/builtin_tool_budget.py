@@ -99,7 +99,8 @@ from app.services.builtin_tool_groups import schema_chars
 #: coordination +279, total 460,976 on 16 Nov 2026).
 #: Raised to 461,700 for ``extract_stix_from_document``, the ``stix_extractor`` group's grounded
 #: extraction (#9126: +629, total 461,605 on 16 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 461_700
+#: Raised to 461,800 for list_shared_state's key_prefix (coordination +~80 on 18 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 461_800
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -125,8 +126,9 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # complete_work_item (#11740: 36,805 on 14 Nov 2026); 37,200 with the
     # recipient of a needs_human item (#11893: 37,148 on 14 Nov 2026); 37,500 with
     # group_by on get_shared_state and list_work_items (#12105, 15 Nov 2026); 37,800 with
-    # workset_resolve counted (#12218: 37,779 on 16 Nov 2026).
-    "coordination": 37_800,
+    # workset_resolve counted (#12218: 37,779 on 16 Nov 2026); 37,900 with
+    # list_shared_state's key_prefix (about 37,870 on 18 Nov 2026).
+    "coordination": 37_900,
     "video_studio": 89_500,
 }
 

@@ -1526,6 +1526,7 @@ def build_shared_state_tools(
         limit: int = DEFAULT_PAGE_LIMIT,
         offset: int = 0,
         scope: str = "",
+        key_prefix: str = "",
     ) -> str:
         from app.services import coordination_scope
         from app.services.shared_state import count_states, list_states
@@ -1550,7 +1551,9 @@ def build_shared_state_tools(
             "status": status,
             "stale_only": stale_only,
             "reader": writer,
-            "key_prefix": _prefix or None,
+            # The caller's key_prefix narrows inside its namespace, in the query,
+            # so one family of keys (dev:green-claim:) answers without a page.
+            "key_prefix": f"{_prefix}{key_prefix or ''}" or None,
             "scope": resolved.shared_state_clause(),
         }
         try:
@@ -1803,6 +1806,7 @@ def build_shared_state_tools(
                 "properties": {
                     "include_resolved": {"type": "boolean", "description": "Also list resolved entries (default false)"},
                     "stale_only": {"type": "boolean", "description": "Only active entries that have gone quiet past the staleness window"},
+                    "key_prefix": {"type": "string", "description": "Only keys starting with it"},
                     "limit": {
                         "type": "integer",
                         "description": f"Entries per page (default {DEFAULT_PAGE_LIMIT}, max {MAX_PAGE_LIMIT})",
