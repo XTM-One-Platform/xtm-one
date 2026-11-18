@@ -122,7 +122,7 @@ import {
   History,
   Zap,
 } from "lucide-react";
-import { Spinner } from "@filigran/design-system";
+import { Icon, Spinner } from "@filigran/design-system";
 import { HEADLINE_LABELS, HEADLINE_NOTES, aggregateNaReason, isLegacyRun, judgeHeadline, judgeNaNote, legacyOverallNaNote, naReason, performanceHeadline, qualityHeadline } from "@/lib/evaluation-headlines";
 import { InfoLabel, InfoTip } from "@/components/ui/info-tip";
 import { NeedsFamilyBadge } from "@/components/ui/needs-family-badge";
@@ -326,6 +326,9 @@ const PAGE_NOTES = {
   runOptions: "Choose the models to run on, or run a placebo comparison.",
   runInProgress: "A launch of this evaluation is still running: wait for it to finish, or cancel it in the Activity tab.",
   familyMissing: "Set an output family in the Configuration tab before running this evaluation.",
+  compareModels:
+    "Compare this evaluation's runs on its entries: one run against another entry by entry, then every agent and model ranked with a 95% interval.",
+  compareModelsTooFew: "Compare the models once two runs have completed.",
   export:
     "Downloads a ZIP bundle with the evaluation's settings, its agents, its datasets and its runs with their results, to import elsewhere. Placebo comparison runs are left out.",
   selectAll:
@@ -2956,6 +2959,8 @@ export default function EvaluationDetail() {
   const triggerFailed = useTriggerFailedToast();
   const { data: activeRuns } = useEvaluationRuns(id || "", 10, 0, { refetchInterval: REFETCH_INTERVAL_FAST });
   const isRunning = activeRuns?.some((r) => r.status === "running" || r.status === "pending") ?? false;
+  // Two completed runs (of the newest ten) are enough to compare the evaluation's models.
+  const canCompareModels = (activeRuns?.filter((r) => r.status === "completed").length ?? 0) >= 2;
   /* An evaluation drives models, so it cannot start with AI off. */
   const [tab] = useTabParam<Tab>("overview");
   const [ConfirmEl, confirm] = useConfirm();
@@ -3186,6 +3191,17 @@ export default function EvaluationDetail() {
                 {t_i18n("Evaluating...")}
               </Badge>
             )}
+            <Tip content={t_i18n(canCompareModels ? PAGE_NOTES.compareModels : PAGE_NOTES.compareModelsTooFew)} wrap="auto">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                disabled={!canCompareModels}
+                onClick={() => navigate(`/evaluations/compare?ids=${evaluation.id}`)}
+              >
+                <Icon name="columns-3" size={16} /> {t_i18n("Compare models")}
+              </Button>
+            </Tip>
             <Tip content={t_i18n(PAGE_NOTES.export)}>
               <Button aria-label={t_i18n("Export evaluation bundle")}
                 variant="outline"

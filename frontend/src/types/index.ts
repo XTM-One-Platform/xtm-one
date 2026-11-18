@@ -8845,7 +8845,7 @@ export interface StixByTypePrfDetail {
 // ── Comparing evaluations of one family, and the STIX bundle review (#12282) ──
 
 /** A pooled quality metric of the compared family: its run figure adds entry counts up. */
-interface ComparedMetric {
+export interface ComparedMetric {
   key: string;
   label: string;
   direction: string | null;
@@ -8880,6 +8880,8 @@ export interface ComparedRun {
   model_id: string;
   is_default_model: boolean;
   created_at: string | null;
+  /** Why it ran (`manual`, `schedule`...): runs of one minute and one trigger are one launch. */
+  trigger_reason?: string | null;
   metric_suite_version: string | null;
   execution_mode: string | null;
   quality_score: number | null;
@@ -8965,7 +8967,10 @@ export interface BundleReviewAnswer {
   evaluation_name: string;
   model_id: string;
   subject_id: string | null;
+  /** The answer's agent (or flow), by name. */
+  subject_name: string | null;
   created_at: string | null;
+  /** Null when there is no judge verdict: the judge was off, failed, or the entry was left out. */
   judge_score: number | null;
   anomaly: string | null;
   metrics: Record<string, number | null>;

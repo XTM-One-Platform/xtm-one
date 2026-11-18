@@ -14,7 +14,8 @@
 """Compare evaluations of one family on the entries their datasets share (#12282).
 
 Two evaluations measure different things on overlapping data: another agent, another
-dataset, another scorer version. This module gathers what a page needs to say what can be
+dataset, another scorer version. One evaluation alone compares its own runs (its models
+and agents) on its entries, all of them shared. This module gathers what a page needs to say what can be
 compared and to compare it:
 
 * what each evaluation is (datasets, subjects, judge, scorer versions, limits), so the page
@@ -200,11 +201,11 @@ async def compare_evaluations(
     """The comparison of *evaluations*, visible to the caller already (see the module doc).
 
     Raises:
-        ComparisonRefusedError: fewer than two or more than :data:`MAX_COMPARED_EVALUATIONS`
-            evaluations, another family, or one never given a family.
+        ComparisonRefusedError: no evaluation or more than :data:`MAX_COMPARED_EVALUATIONS`,
+            another family, or one never given a family.
     """
-    if not 2 <= len(evaluations) <= MAX_COMPARED_EVALUATIONS:
-        raise ComparisonRefusedError(f"Compare 2 to {MAX_COMPARED_EVALUATIONS} evaluations")
+    if not 1 <= len(evaluations) <= MAX_COMPARED_EVALUATIONS:
+        raise ComparisonRefusedError(f"Compare 1 to {MAX_COMPARED_EVALUATIONS} evaluations")
     families = {e.family for e in evaluations}
     if None in families:
         raise ComparisonRefusedError("An evaluation without a family has never been run")
@@ -319,6 +320,7 @@ async def compare_evaluations(
             "subject_id": str(sid) if sid else None, "subject_name": subject_names.get(str(sid)) if sid else None,
             "model_id": run.model_id, "is_default_model": bool(run.is_default_model),
             "created_at": run.created_at.isoformat() if run.created_at else None,
+            "trigger_reason": run.trigger_reason,
             "metric_suite_version": run.metric_suite_version, "execution_mode": run.execution_mode,
             "quality_score": run.quality_score, "completed_entries": run.completed_entries,
             "total_entries": run.total_entries,

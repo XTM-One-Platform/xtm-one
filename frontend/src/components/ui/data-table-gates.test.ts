@@ -65,6 +65,8 @@ const CONTENT = [
   // ONE comparison's dimensions against its evaluations, and its runs' figures on three entry sets (#12282): a statistics grid, not a list of records.
   "components/evaluation/compare/comparability-table.tsx",
   "pages/EvaluationCompare.tsx",
+  // ONE evaluation's configurations against its launches, each cell one run's figure (#2): a statistics grid; its ranked runs list is a DataTable.
+  "components/evaluation/compare/leaderboard-tab.tsx",
   // A fleet's approval gates as a level matrix (#9769 S4, design round 2 A2): the grid is the content.
   "components/fleets/FleetAutonomyCatalog.tsx",
   "components/presentation/SchemaFieldControls.tsx",
