@@ -19,7 +19,7 @@ follows the lock-safe recipe (idempotency probe, ``terminate_lock_holders``,
 ``set_lock_timeout``, guarded DDL) both ways.
 
 Revision ID: a105a2arot1
-Revises: h114fhcheck01
+Revises: c122deact0001
 Create Date: 2026-11-18 08:10:00.000000
 """
 
@@ -33,7 +33,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "a105a2arot1"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "h114fhcheck01"
+down_revision: str | Sequence[str] | None = "c122deact0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
