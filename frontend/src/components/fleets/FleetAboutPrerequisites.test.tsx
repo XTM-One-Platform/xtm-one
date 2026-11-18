@@ -120,7 +120,7 @@ describe("FleetAboutPrerequisites", () => {
         label_key: "Sector in the organization profile",
         state: "not_met",
         reason_code: "not_filled",
-        fix_route: "/settings/organization/profile",
+        fix_route: "/settings/organization?card=identity",
         can_fix: false,
       }),
     ]);
