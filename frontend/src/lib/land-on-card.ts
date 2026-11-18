@@ -13,7 +13,7 @@
  */
 
 /** How long a landing keeps its card in place while the page settles. */
-export const CARD_LANDING_SETTLE_MS = 1500;
+const CARD_LANDING_SETTLE_MS = 1500;
 
 /** What the reader does that ends a landing: the page is theirs again. */
 const READER_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
