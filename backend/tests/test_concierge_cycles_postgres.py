@@ -26,7 +26,6 @@ from sqlalchemy import func, select
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.api import deps
 from app.api.v1 import concierge_cycles as routes
-from app.core import feature_flags
 from app.core.database import get_db
 from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun
@@ -39,7 +38,7 @@ from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.services import assignment_engine
-from app.services.concierge import availability, budget, cycles, fleet_seed, signals
+from app.services.concierge import budget, cycles, fleet_seed, signals
 from app.services.concierge.settings import ConciergeSettings
 from app.services.fleets import FLEET_HEALTH_CHECK_NAME
 from tests.scratch_database import ALL_TABLES, scratch_database
@@ -51,14 +50,7 @@ _REAL_TRIGGER = assignment_engine.trigger_assignment
 
 @pytest.fixture
 def concierge_on(monkeypatch):
-    """The ``CONCIERGE`` flag on, the licence gate open, no run really started."""
-    original = feature_flags.is_feature_enabled
-
-    def enabled(flag):
-        return True if flag == "CONCIERGE" else original(flag)
-
-    monkeypatch.setattr(feature_flags, "is_feature_enabled", enabled)
-    monkeypatch.setattr(availability, "is_feature_enabled", enabled)
+    """The licence gate open, no run really started (the capability is built in)."""
 
     async def _no_gate(_db):
         return None
@@ -306,13 +298,12 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
     assert child_users == [None, admin.id]
 
 
-async def test_nothing_is_seeded_while_the_flag_is_off():
-    async with _scratch("cc_seed_off") as sessions, sessions() as db:
+async def test_the_fleet_is_seeded_on_every_deployment_and_once():
+    async with _scratch("cc_seed_builtin") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
+        assert await fleet_seed.seed_concierge_fleet(db) > 0
         assert await fleet_seed.seed_concierge_fleet(db) == 0
-        agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
-    assert (len(agents), assignments, len(fleets), members, len(workspaces)) == (0, 0, 0, 0, 0)
 
 
 # ── One open cycle per target ───────────────────────────────────────────────

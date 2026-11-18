@@ -102,6 +102,7 @@ async def test_a_revocation_applies_to_the_next_read() -> None:
         await configure(sessions, world.admin, enabled=True)
         async with sessions() as db:
             (await db.get(Agent, world.private.id)).health_enrolled = True
+            (await db.get(Flow, world.flow.id)).health_enrolled = True
             await db.commit()
             assert await consent.content_readable(db, agent_id=world.private.id, user_id=world.reader.id) is True
             assert await consent.content_readable_agent_ids(db) == frozenset({world.private.id})

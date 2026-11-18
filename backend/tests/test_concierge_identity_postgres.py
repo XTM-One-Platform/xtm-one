@@ -45,8 +45,6 @@ async def test_settings_are_saved_audited_and_switch_the_concierge_on(monkeypatc
             assert [(r.action, r.user_id, r.details["after"]["enabled"]) for r in rows] == [
                 ("configure", world.admin.id, True)
             ]
-            monkeypatch.setattr(settings, "enabled_features", "")
-            assert await concierge_active(db) is False
 
 
 @pytest.mark.parametrize(("who", "acts"), [("nobody", True), ("admin", True), ("owner", False), ("unknown", False)])

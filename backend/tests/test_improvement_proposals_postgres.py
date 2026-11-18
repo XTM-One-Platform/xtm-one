@@ -373,9 +373,11 @@ async def test_one_open_change_per_target(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_person_s_request_withdraws_an_agent_change_nobody_can_see(monkeypatch):
-    """With ``CONCIERGE`` off, an agent's pending change is hidden and cannot be
+    """With the agents' surface off, an agent's pending change is hidden and cannot be
     rejected: it must not block the #1044 request for good."""
     monkeypatch.setattr(settings, "enabled_features", "")
+    # The capability is built in since the flag went: switch the surface off here.
+    monkeypatch.setattr(lifecycle, "concierge_enabled", lambda: False)
     async with _temp_database("proposal_unseen") as sessionmaker:
         seeded = await _seed(sessionmaker)
         hidden = await _file(sessionmaker, seeded)

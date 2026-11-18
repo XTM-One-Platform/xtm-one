@@ -164,7 +164,6 @@ async def _seed(sessions) -> World:
 async def _world(monkeypatch, prefix: str) -> AsyncIterator[tuple[World, object]]:
     async with _temp_database(prefix) as sessions:
         monkeypatch.setattr(database, "async_session", sessions)
-        monkeypatch.setattr(availability, "is_feature_enabled", lambda flag: flag == "CONCIERGE")
         yield await _seed(sessions), sessions
 
 
@@ -331,9 +330,9 @@ async def test_a_person_never_writes_admin_included(monkeypatch, name, arguments
 
 
 @pytest.mark.asyncio
-async def test_the_tools_answer_off_while_the_flag_is_off(monkeypatch):
+async def test_the_tools_answer_off_while_the_capability_is_off(monkeypatch):
     async with _world(monkeypatch, "cq_off") as (world, _sessions):
-        monkeypatch.setattr(availability, "is_feature_enabled", lambda flag: False)
+        monkeypatch.setattr(availability, "concierge_enabled", lambda: False)
         assert (
             await _call(str(world.admin.id), "list_findings", target_id=str(world.agent.id))
             == "Error: the Concierge is not enabled on this platform."

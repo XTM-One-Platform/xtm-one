@@ -122,7 +122,8 @@ async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
     assert others.json()["enabled"] is False
 
 
-async def test_every_companion_route_is_dark_while_the_flag_is_off(monkeypatch) -> None:
+async def test_every_companion_route_is_served_without_any_flag(monkeypatch) -> None:
+    """The capability is built in: no feature flag darkens a route."""
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
@@ -132,7 +133,7 @@ async def test_every_companion_route_is_dark_while_the_flag_is_off(monkeypatch) 
                 ("PUT", "/api/v1/health/me/companion"),
                 ("GET", "/api/v1/health/me/activity"),
             ]:
-                assert (await client.request(method, url, json={"enabled": True})).status_code == 403, url
+                assert (await client.request(method, url, json={"enabled": True})).status_code != 403, url
 
 
 # ── The activity ───────────────────────────────────────────────────────────

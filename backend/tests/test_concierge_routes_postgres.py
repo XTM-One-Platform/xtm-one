@@ -229,7 +229,8 @@ async def test_settings_and_budget_are_for_admins(handlers, licensed) -> None:
         assert handlers == [Revocation(kind="scope_narrowed")]
 
 
-async def test_every_route_is_dark_while_the_flag_is_off(monkeypatch, handlers) -> None:
+async def test_every_route_is_served_without_any_flag(monkeypatch, handlers) -> None:
+    """The capability is built in: no feature flag darkens a route."""
     monkeypatch.setattr(settings, "enabled_features", "")
     async with concierge_database() as sessions:
         world = await World().build(sessions)
@@ -241,5 +242,5 @@ async def test_every_route_is_dark_while_the_flag_is_off(monkeypatch, handlers) 
                 ("GET", "/api/v1/health/settings"),
                 ("GET", "/api/v1/health/budget"),
             ]:
-                assert (await client.request(method, url)).status_code == 403, url
+                assert (await client.request(method, url)).status_code != 403, url
 

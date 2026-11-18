@@ -79,12 +79,13 @@ async def test_every_signed_in_person_reads_the_name(monkeypatch) -> None:
     assert named.json() == {"name": "Jeeves", "default_name": "Platform Health"}
 
 
-async def test_the_name_route_is_dark_while_the_flag_is_off(monkeypatch) -> None:
+async def test_the_name_route_is_served_without_any_flag(monkeypatch) -> None:
+    """The capability is built in: no feature flag darkens the route."""
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
-            assert (await client.get("/api/v1/health/name")).status_code == 403
+            assert (await client.get("/api/v1/health/name")).status_code == 200
 
 
 @pytest.mark.parametrize("name", ["Al\nfred", "x" * 41, "Al‮fred", "Al\x00fred", 7])

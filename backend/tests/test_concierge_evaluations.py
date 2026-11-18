@@ -159,11 +159,16 @@ async def _world(s, *, scope_agent_ids: list | None = None, budget: dict | None 
     from app.models.flow import Flow
     from app.models.platform_settings import PlatformSettings
 
-    agent = Agent(name="Analyst", slug=f"a-{uuid.uuid4().hex[:6]}", skip_llm=True)
+    # Enrolled: the supervision scope only holds what its managers opted in.
+    agent = Agent(name="Analyst", slug=f"a-{uuid.uuid4().hex[:6]}", skip_llm=True, health_enrolled=True)
     fleet = Agent(
         name="Experimenter", slug=f"e-{uuid.uuid4().hex[:6]}", health_role="experimenter", is_company_managed=True
     )
-    flow = Flow(name="Triage", graph={"nodes": [{"id": "start", "kind": "trigger.manual", "config": {}}]})
+    flow = Flow(
+        name="Triage",
+        graph={"nodes": [{"id": "start", "kind": "trigger.manual", "config": {}}]},
+        health_enrolled=True,
+    )
     dataset = Dataset(name="Concierge - Analyst", family="PROSE", concierge_built=True)
     human = Dataset(name="People's", family="PROSE")
     s.add_all([agent, fleet, flow, dataset, human])
