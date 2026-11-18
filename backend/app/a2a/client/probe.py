@@ -26,6 +26,8 @@ written to the audit trail, a contract the probe seam already states.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.a2a.client import breaker
 from app.integrations.connectivity import ProbeContext, ProbeResult
 from app.models.a2a import DIRECTION_OUTBOUND, USABILITY_USABLE
@@ -51,6 +53,21 @@ _WHAT_TO_DO = {
     "signature_downgraded": "The partner stopped signing its card. Review and accept to resume.",
     "protocol_version_downgraded": "The partner stopped serving the agreed protocol version.",
 }
+
+
+async def _mint_refusal(integration: Any) -> str | None:
+    """Mint a fresh token for an OAuth partner; the refusal detail, or None."""
+    import httpx
+
+    from app.a2a.client.registration import _VERIFY_MINTS_CREDENTIALS, test_credential
+
+    if getattr(integration, "provider", None) not in _VERIFY_MINTS_CREDENTIALS:
+        return None
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+        verdict = await test_credential(integration, client)
+    if verdict is None:
+        return None
+    return verdict.error_detail or "The partner refused the credential."
 
 
 async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
@@ -87,6 +104,15 @@ async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
             "No partner agent is configured. Add at least one agent card URL "
             "in the configuration above."
         )
+
+    # Test Connection tests the credential (#105): an OAuth partner serves its
+    # card anonymously, so the stored verdicts below never tried the secret.
+    # The refusal leads while some agent is usable; when none is, the per-agent
+    # verdicts lead and the refusal is appended, so neither hides the other.
+    refused = await _mint_refusal(ctx.integration)
+    if refused is not None and any(t.usability == USABILITY_USABLE for t in targets):
+        return ProbeResult.failed(refused)
+    credential = f" Credential: {refused}" if refused is not None else ""
 
     # Aggregated across targets, and the arithmetic is the point: a partner
     # exposing three agents where one has stopped answering is neither
@@ -142,11 +168,14 @@ async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
 
     first = broken[0]
     return ProbeResult.failed(
-        _WHAT_TO_DO.get(
-            first.unusable_reason or "",
-            f"Not usable ({first.unusable_reason or 'unknown reason'}).",
+        (
+            _WHAT_TO_DO.get(
+                first.unusable_reason or "",
+                f"Not usable ({first.unusable_reason or 'unknown reason'}).",
+            )
+            if len(targets) == 1
+            else f"None of {len(targets)} agents is reachable. "
+            + "; ".join(f"{_name(t)}: {t.unusable_reason or 'unknown'}" for t in broken)
         )
-        if len(targets) == 1
-        else f"None of {len(targets)} agents is reachable. "
-        + "; ".join(f"{_name(t)}: {t.unusable_reason or 'unknown'}" for t in broken)
+        + credential
     )

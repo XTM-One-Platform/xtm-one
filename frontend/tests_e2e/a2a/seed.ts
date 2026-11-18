@@ -118,19 +118,21 @@ export async function createInboundIntegration(
 }
 
 /**
- * Mint the partner credential.
+ * Mint the partner credential, or rotate it.
  *
  * The secret is returned here and nowhere else — it is stored as a bcrypt
  * hash — so a spec that needs to authenticate must keep what this returns.
- * Calling it again REPLACES the previous credential, which is itself a branch
- * worth testing rather than an accident to avoid.
+ * Calling it again rotates the SECRET and keeps the client id (#105);
+ * `rotateClientId` is the explicit action that changes both.
  */
 export async function mintCredential(
   rest: APIRequestContext,
   integrationId: string,
+  options: { rotateClientId?: boolean } = {},
 ): Promise<{ clientId: string; clientSecret: string }> {
+  const query = options.rotateClientId ? '?rotate_client_id=true' : '';
   const body = await ok(
-    await rest.post(`/api/v1/integrations/${integrationId}/a2a-credential`),
+    await rest.post(`/api/v1/integrations/${integrationId}/a2a-credential${query}`),
     'mint A2A credential',
   );
   return { clientId: body.client_id, clientSecret: body.client_secret };

@@ -640,6 +640,17 @@ async def _build_a2a_delegation_tool(
         # rather than offered-and-refusing, for the same reason the feature
         # switch keeps the tool out of the context entirely.
         if target.usability != USABILITY_USABLE:
+            # Said, not silent (#105): the run's log names the partner and the
+            # reason; the operator reads the same reason on the target. Not a
+            # notice in the run's context, which would put an operator's
+            # problem in front of every user's model turn.
+            logger.info(
+                "a2a: partner target %s of integration %s left out of the tools (%s: %s)",
+                target.declared_name or target.card_url,
+                integration_id,
+                target.usability,
+                target.unusable_reason or "not verified yet",
+            )
             continue
         definition = build_delegation_tool(integration, target, taken=taken)
         taken.add(definition.name)
