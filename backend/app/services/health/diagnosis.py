@@ -220,10 +220,10 @@ async def _feedback(db: AsyncSession, reader: Reader, access: AgentAccess, days:
 
 
 async def _comment_readable(db: AsyncSession, reader: Reader, access: AgentAccess, entry: Any) -> bool:
-    """Audit a rating comment read by the Concierge before it reaches the model; ``False`` when refused.
+    """Audit a rating comment read by Platform Health before it reaches the model; ``False`` when refused.
 
     A person's read is their own REST-equivalent read (``get_agent_feedback``):
-    nothing to audit as the Concierge.
+    nothing to audit as Platform Health.
     """
     if not reader.is_concierge:
         return True

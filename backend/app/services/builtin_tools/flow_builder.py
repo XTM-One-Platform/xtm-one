@@ -199,7 +199,7 @@ def build_flow_builder_tool(
             )
         ).scalar_one_or_none()
         if flow is None and in_health_run():
-            # A Concierge run works on its sandbox copies, which no listing shows (#8255).
+            # A Platform Health run works on its sandbox copies, which no listing shows (#8255).
             flow = (
                 await db.execute(select(Flow).where(Flow.id == fid, Flow.is_sandbox.is_(True)))
             ).scalar_one_or_none()
@@ -463,7 +463,7 @@ def build_flow_builder_tool(
         if refused:
             return refused
         if in_health_run():
-            # A Concierge prototype lands in the sandbox (#8255): a production
+            # A Platform Health prototype lands in the sandbox (#8255): a production
             # flow comes only from an approved proposal.
             from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 

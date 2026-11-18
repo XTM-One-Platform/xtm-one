@@ -256,12 +256,12 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     oc_defs, _ = build_organization_context_write_tools(user_id=None, caller_is_admin=False)
     catalog["organization_context"] = _extract(oc_defs)
 
-    # Memory Steward (#8258): every call checks the work is the Concierge's.
+    # Memory Steward (#8258): every call checks the work is Platform Health's.
     from app.services.builtin_tools import build_memory_steward_tools
 
     ms_defs, _ = build_memory_steward_tools()
     catalog["memory_steward"] = _extract(ms_defs)
-    # Platform Concierge (#8259): every call opens its own session and resolves its caller.
+    # Platform Health (#8259): every call opens its own session and resolves its caller.
     from app.services.builtin_tools import build_health_diagnosis_tools, build_health_experiment_tools
 
     catalog["concierge_diagnosis"] = _extract(build_health_diagnosis_tools("")[0])
@@ -282,13 +282,13 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
 
     catalog["roi"] = _extract(build_roi_tools("")[0])
 
-    # Concierge sandbox (#8255): every call loads what it needs at execution.
+    # Platform Health sandbox (#8255): every call loads what it needs at execution.
     from app.services.health.sandbox.tools import build_sandbox_tools
 
     sandbox_defs, _ = build_sandbox_tools(None, None)  # type: ignore[arg-type]
     catalog["concierge_sandbox"] = _extract(sandbox_defs)
 
-    # Concierge evaluation (#8257): its own access rule at execution.
+    # Platform Health evaluation (#8257): its own access rule at execution.
     from app.services.health.evaluation_tools import build_health_evaluation_tools
 
     evaluation_defs, _ = build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
@@ -300,7 +300,7 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     proposal_defs, _ = build_improvement_tools(None, None)  # type: ignore[arg-type]
     catalog["improvement_proposals"] = _extract(proposal_defs)
 
-    # Concierge orchestrator (#8261): every call opens its own session.
+    # Platform Health orchestrator (#8261): every call opens its own session.
     from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
     co_defs, _ = build_health_orchestrator_tools("")

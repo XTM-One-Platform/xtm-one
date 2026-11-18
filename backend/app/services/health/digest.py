@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The digest of a Concierge cycle (#8261, PRD 6.11, decision B22).
+"""The digest of a Platform Health cycle (#8261, PRD 6.11, decision B22).
 
 Built by code when the cycle closes, from the rows the cycle's work left -
 the cycle's budget line, its run, the consolidations, findings, experiments

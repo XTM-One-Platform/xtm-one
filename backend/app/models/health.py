@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Platform Concierge budget ledger (#8254).
+"""Platform Health budget ledger (#8254).
 
-The Concierge's own line of the quota (PRD ``dev-docs/platform-concierge.md``
+Platform Health's own line of the quota (PRD ``dev-docs/platform-concierge.md``
 6.12): what each cycle and each month reserved and spent, in tokens and cost.
 Read and written only by ``services/health/budget.py``.
 """
@@ -24,7 +24,7 @@ _COST = Numeric(16, 6)
 
 
 class HealthCycle(Base):
-    """One unit of Concierge work and the budget it holds.
+    """One unit of Platform Health work and the budget it holds.
 
     A cycle is opened before a specialist starts work (a schedule, a signal or
     an on-demand request) and closed when it ends. ``reserved_*`` is what work
@@ -68,7 +68,7 @@ class HealthCycle(Base):
 
 
 class HealthBudgetMonth(Base):
-    """The Concierge's spend of one month, the row every reservation locks first."""
+    """Platform Health's spend of one month, the row every reservation locks first."""
 
     __tablename__ = "health_budget_months"
 
@@ -87,7 +87,7 @@ class HealthBudgetMonth(Base):
 
 
 class HealthBudgetWork(Base):
-    """One piece of Concierge work the ledger knows by its id: what it still
+    """One piece of Platform Health work the ledger knows by its id: what it still
     holds in reservation past its cycle's close, or that its spend is booked.
 
     An evaluation outlives the cycle that launched it: its reservation is held

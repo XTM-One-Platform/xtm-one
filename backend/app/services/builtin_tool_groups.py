@@ -73,9 +73,9 @@ class BuiltinToolGroup:
     bind_admin_only: bool = False
     #: Acts as the agent, never on the General Assistant (``AGENT_KEYED_BUILTIN_TOOL_IDS``).
     agent_keyed: bool = False
-    #: A Concierge specialist's suite, carried by the fleet's own agents
+    #: A Platform Health specialist's suite, carried by the fleet's own agents
     #: (``concierge.fleet_seed``), whose writes refuse anyone but the
-    #: Concierge: a chat's session tools never offer it.
+    #: Platform Health: a chat's session tools never offer it.
     concierge_only: bool = False
     #: Titled with the platform's own name.
     named_after_platform: bool = False

@@ -2537,7 +2537,7 @@ async def _run_autonomous_tick_inner() -> int:
 
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---
         # No model call: a verdict and, on a regression, a rollback. Runs with
-        # AI, evaluation or the Concierge off too (#5503), so a change applied
+        # AI, evaluation or Platform Health off too (#5503), so a change applied
         # before never stays unjudged.
         try:
             from app.services.improvement_proposals import settle_open_proposals
@@ -2548,7 +2548,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Improvement proposal settling error: %s", format_exception_message(e), exc_info=True)
 
-        # --- 9c. Purge expired Concierge sandbox copies (#8255) ---
+        # --- 9c. Purge expired Platform Health sandbox copies (#8255) ---
         # No model call; one indexed read when nothing has expired.
         try:
             from app.services.health.sandbox.copies import purge_expired_sandbox_copies_tick
@@ -2570,7 +2570,7 @@ async def _run_autonomous_tick_inner() -> int:
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new
-        # shadow runs waits on the Concierge's own gates (flow_shadow.pair_new_runs).
+        # shadow runs waits on Platform Health's own gates (flow_shadow.pair_new_runs).
         try:
             from app.services.health.flow_shadow import flow_shadow_tick
 

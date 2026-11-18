@@ -1413,14 +1413,14 @@ def _add_platform_builder_tools(
     (``builtin_tool_aliases.PLATFORM_ADMIN_FUNCTIONS``) is wired for them
     alone (Sam's decision 2): anyone else is never offered it.
     *agent_id*: the agent the turn runs, which the improvement tools compare
-    with the Concierge principal's own. *run_id*: the delegated run the turn
-    works in, whose Concierge cycle books what the Concierge tools spend.
+    with the Platform Health principal's own. *run_id*: the delegated run the turn
+    works in, whose Platform Health cycle books what the Platform Health tools spend.
     """
     from app.services.builtin_tool_aliases import caller_may_run
     from app.services.health.identity import health_acts_alone
 
     actor_id, read_only = _platform_builder_actor(user_id)
-    # A turn of the Concierge acting alone (a task a fleet run delegated) has
+    # A turn of Platform Health acting alone (a task a fleet run delegated) has
     # no user: its own groups, which act as its principal, are wired as the
     # assignment engine wires them for a run with no user; nothing else.
     concierge_alone = read_only and not user_id and health_acts_alone()
@@ -1444,7 +1444,7 @@ def _add_platform_builder_tools(
     if "concierge_orchestrator" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-        # Acts as the Concierge in an administrator's chat with a fleet agent,
+        # Acts as Platform Health in an administrator's chat with a fleet agent,
         # as the person otherwise (``concierge.cycle_access``, #8261). Work a
         # cycle delegated never starts another cycle.
         co_defs, co_exec = build_health_orchestrator_tools(
@@ -1465,17 +1465,17 @@ def _add_platform_builder_tools(
     if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.health.sandbox.tools import build_sandbox_tools
 
-        # Its own access rule (the Concierge or an administrator) on every call.
+        # Its own access rule (Platform Health or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
     if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.health.evaluation_tools import build_health_evaluation_tools
 
-        # Its own access rule (the Concierge, or an administrator where evaluation is on).
+        # Its own access rule (Platform Health, or an administrator where evaluation is on).
         composite.add_tools(*build_health_evaluation_tools(db, concierge_actor or None, run_id=run_id))
     if "improvement_proposals" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 
-        # Its own access rule (scope in a Concierge run, the target's managers
+        # Its own access rule (scope in a Platform Health run, the target's managers
         # otherwise; filing by the Experimenter only) on every call.
         composite.add_tools(*build_improvement_tools(db, concierge_actor or None, agent_id))
     if "flow_builder" in agent_builtin_tool_ids and not read_only:
@@ -4083,7 +4083,7 @@ async def run_agent_chat(
         )
 
         # The background-task block below skips anonymous users, except the
-        # Concierge acting alone, whose tasks are recorded under its agent's
+        # Platform Health acting alone, whose tasks are recorded under its agent's
         # owner and act with no user (``identity.health_delegation_owner_id``).
         _delegation_user_id: str | None = None if is_anonymous_user else user_id
         if not user_id:
@@ -4517,7 +4517,7 @@ async def run_agent_chat(
                     )
                 )
             # The write-proposal tool of the profile (#9484, S-a2): the CTEM
-            # Assistant and the Concierge, for an administrator only; it
+            # Assistant and Platform Health, for an administrator only; it
             # stores a pending proposal and never writes the profile.
             from app.services.builtin_tools import build_organization_proposal_tool, offers_organization_proposals
 

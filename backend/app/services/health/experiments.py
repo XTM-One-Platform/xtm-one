@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Concierge experiments: draft a variant, measure it, file what it earned (#8259).
+"""Platform Health experiments: draft a variant, measure it, file what it earned (#8259).
 
 * **Draft** (Quality Analyst; Flow Lab for a flow): a variant for a finding,
   checked by the kind of its change (:class:`ExperimentKind`: level 6's text
@@ -24,7 +24,7 @@
   agent (level 2) - the current configuration and the variant - are evaluated
   on it with the same model (level 4). Nothing here writes the agent, the skill
   or the assignment.
-* **Settle** (the Concierge's tick, or a read): once both arms ended, the
+* **Settle** (Platform Health's tick, or a read): once both arms ended, the
   comparison (quality with its 2-point noise margin, cost, latency) and the
   writes the sandbox answered with a model are recorded. A run stopped early
   gives ``incomplete``, never a verdict. The spend is the evaluation's own to
@@ -312,7 +312,7 @@ async def run(
 
     *signals* are the target's current window (``diagnosis.summarize_window``):
     its tokens and cost per run size the experiment (defaults without them).
-    *cycle_id* is the Concierge cycle the spend is reserved on and charged to:
+    *cycle_id* is the Platform Health cycle the spend is reserved on and charged to:
     without one nothing is launched, since nothing could book its spend.
     """
     if experiment.status != STATUS_DRAFT:
@@ -453,7 +453,7 @@ _NO_VERDICT: dict[str | None, tuple[str, str]] = {
 async def settle_running_experiments(db: AsyncSession, *, limit: int = 50) -> int:
     """Settle every running experiment whose arms ended, whoever reads it next; the number settled.
 
-    The Concierge's tick: an experiment outlives the run that launched it. Commits.
+    Platform Health's tick: an experiment outlives the run that launched it. Commits.
     """
     running = (
         (
@@ -611,7 +611,7 @@ async def propose(
 
 
 def experiment_payload(experiment: HealthExperiment, *, content: bool = True) -> dict[str, Any]:
-    """One experiment as the tools serve it. The variant text is the Concierge's own; no source content.
+    """One experiment as the tools serve it. The variant text is Platform Health's own; no source content.
 
     Without *content* access its summary, written from the finding's evidence,
     is redacted as the finding's hypothesis is (``access.redact_finding``).

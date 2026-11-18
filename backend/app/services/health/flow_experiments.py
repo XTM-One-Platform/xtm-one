@@ -30,7 +30,7 @@ source's recorded writes; a prototype has no recording, so its writes are
 simulated and counted.
 
 ``register_target_access("flow", ...)`` makes flow findings and experiments
-readable under the same rule as the Flow Lab's tools: the Concierge within
+readable under the same rule as the Flow Lab's tools: Platform Health within
 its supervision scope (content when the flow is opted in), a person who may
 manage the flow (content too: they read its run journal).
 """

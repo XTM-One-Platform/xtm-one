@@ -15,7 +15,7 @@
 
 :func:`intercepted_agent_turn` wraps ``run_agent_chat``: a turn of a sandbox
 copy, whoever started it (chat, assignment, evaluation, a consult), is bound to
-a ``sandbox`` session replaying the copy's source recordings; a Concierge turn
+a ``sandbox`` session replaying the copy's source recordings; a Platform Health turn
 while dry-run is on to a ``dry_run`` session. A turn inside an already bound
 session (a nested consult, a flow's agent node, an evaluation case) counts on
 that session. Nothing to intercept costs one attribute read.

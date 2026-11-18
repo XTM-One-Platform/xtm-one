@@ -11,16 +11,16 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge's evaluation tools (#8257, PRD section 8): ``build_dataset_from_traces``,
+"""Platform Health's evaluation tools (#8257, PRD section 8): ``build_dataset_from_traces``,
 ``run_concierge_evaluation``, ``get_concierge_evaluation``, ``compare_concierge_runs``.
 
-The built-in group ``concierge_evaluation`` for the Concierge's agents, and the
+The built-in group ``concierge_evaluation`` for Platform Health's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
 every surface (:func:`evaluation_tool_refusal`): Platform Health available, and
-the caller the Concierge, or an administrator while the evaluation surface is
+the caller Platform Health, or an administrator while the evaluation surface is
 on (decision B9: in XTM One mode no person launches an evaluation). The
 targets' rule is the services' own, read on the rows: the supervision scope,
-consent, a Concierge-built dataset or evaluation. Refusals are generic; the
+consent, a Platform Health-built dataset or evaluation. Refusals are generic; the
 reason is logged. Values read from production are data in the results.
 """
 
@@ -44,7 +44,7 @@ REFUSED = "Refused: Concierge evaluation is not available to this caller for thi
 
 
 async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str | None:
-    """Why the caller may not use the Concierge evaluation tools (logged), ``None`` when it may."""
+    """Why the caller may not use the Platform Health evaluation tools (logged), ``None`` when it may."""
     from app.models.user import User
     from app.services.evaluation.availability import evaluation_enabled
     from app.services.health.availability import health_enabled
@@ -90,8 +90,8 @@ def _uuids(value: Any) -> list[uuid.UUID] | None:
 def build_health_evaluation_tools(
     db: AsyncSession, user_id: str | None, *, run_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The Concierge evaluation functions acting for *user_id* (``None`` in a Concierge run),
-    in the assignment run *run_id*, if any: a launch in a Concierge run reserves on its cycle."""
+    """The Platform Health evaluation functions acting for *user_id* (``None`` in a Platform Health run),
+    in the assignment run *run_id*, if any: a launch in a Platform Health run reserves on its cycle."""
     from app.services.evaluation.launch import LaunchRefusedError
     from app.services.health import budget, datasets, evaluations
     from app.services.health.consent import ConsentDeniedError

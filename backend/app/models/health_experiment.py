@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Concierge experiments - one measured variant of a finding's target (#8259).
+"""Platform Health experiments - one measured variant of a finding's target (#8259).
 
 The Quality Analyst drafts a variant (a persona, a skill's content, an
 assignment's prompt; level 7's Flow Lab a flow graph) for a finding; the

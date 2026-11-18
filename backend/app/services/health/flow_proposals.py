@@ -101,7 +101,7 @@ async def check_writer_references(
     integrations, tools and other entities they may use themselves, and a
     Budget node above the platform ceiling only as an administrator - the
     rules of ``api/v1/flows`` for a person editing the canvas. A graph the
-    Concierge drafted gets no more reach than the person approving it.
+    Platform Health drafted gets no more reach than the person approving it.
     """
     from fastapi import HTTPException
 

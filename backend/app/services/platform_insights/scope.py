@@ -126,7 +126,7 @@ async def load_scope(db: AsyncSession, user_id: str, *, direct: bool = False) ->
 
     *direct* is a person's own REST call (the analytics export), not their
     agent's: an administrator reads the platform, as every admin REST route.
-    Refused inside a Concierge run or turn, or a sandbox copy's turn: these
+    Refused inside a Platform Health run or turn, or a sandbox copy's turn: these
     reads apply no consent rule.
     """
     from app.services.health.identity import in_health_reach

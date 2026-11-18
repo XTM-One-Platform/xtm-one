@@ -23,7 +23,7 @@ The former defaults ("Concierge", "Alfred") are still known, so a row seeded
 under one of them is renamed at the next seed and a hand-renamed row is kept.
 
 It is never written into a system prompt (invariant 16): the personas stay as
-seeded, and what a model reads of the platform's Concierge is unchanged.
+seeded, and what a model reads of the platform's Platform Health is unchanged.
 
 The name is an administrator's text, so every destination treats it as data:
 React renders it as text, never as a message id; logs format it with ``%r``.

@@ -29,7 +29,7 @@ changed entry is flagged superseded and held ``RETENTION_DAYS`` for the undo
 (``memory_holds``); each change is one ``MemoryConsolidation`` row. A pass
 over a lane unchanged since its last pass does nothing.
 
-Consent, identity, audit, budget and dry-run come from the lower Concierge
+Consent, identity, audit, budget and dry-run come from the lower Platform Health
 levels through ``memory_steward_deps``.
 """
 
@@ -361,7 +361,7 @@ return 0
 async def consolidate_lane(db: AsyncSession, lane: Lane, *, cycle_id: uuid.UUID | None = None) -> PassResult:
     """One consolidation pass over *lane*, applied (or, in dry-run, planned).
 
-    The caller has checked the Concierge identity; consent, budget and
+    The caller has checked the Platform Health identity; consent, budget and
     dry-run are checked here, consent again right before any write. The model
     call is charged on *cycle_id*, the cycle the calling run works in."""
     async with _lane_lease(lane) as held:

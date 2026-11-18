@@ -11,14 +11,14 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Platform Concierge REST API (#8254): opt-in, opt-out, Settings > Agents and automations > Concierge, budget.
+"""Platform Health REST API (#8254): opt-in, opt-out, Settings > Agents and automations > Platform Health, budget.
 
 Platform Health is built in: no feature flag gates these routes. The rules (PRD
 ``dev-docs/platform-concierge.md`` 4 and 6.2):
 
 * The improvement opt-in of an agent or a flow: read by whoever sees the
   target, written by whoever may manage it (``can_manage``: company-managed =
-  admins), shared or not (decision B21). A Concierge fleet agent has none.
+  admins), shared or not (decision B21). A Platform Health fleet agent has none.
 * The opt-out: the signed-in user's own, nobody else's.
 * Settings and budget: administrators.
 
@@ -66,7 +66,7 @@ NOT_APPLIED_DETAIL = "The change could not be applied. Nothing was changed."
 class OptInResponse(BaseModel):
     opt_in: bool
     can_manage: bool
-    #: False for a Concierge fleet agent: it is never a target.
+    #: False for a Platform Health fleet agent: it is never a target.
     eligible: bool = True
 
 
@@ -100,7 +100,7 @@ class BudgetResponse(BaseModel):
     remaining_tokens: int | None
     remaining_cost_usd: Decimal | None
     open_cycles: int
-    #: Why no new Concierge work starts now, or ``None``.
+    #: Why no new Platform Health work starts now, or ``None``.
     refusal: str | None
     refusal_message: str | None
 
@@ -260,7 +260,7 @@ async def set_my_opt_out(
     return OptOutResponse(opt_out=body.opt_out)
 
 
-# ── The Concierge's name ───────────────────────────────────────────────────
+# ── Platform Health's name ───────────────────────────────────────────────────
 
 
 class HealthNameResponse(BaseModel):
@@ -275,11 +275,11 @@ async def get_concierge_name(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HealthNameResponse:
-    """The name every signed-in person sees the Concierge under."""
+    """The name every signed-in person sees Platform Health under."""
     return HealthNameResponse(name=await load_health_agent_name(db), default_name=default_health_agent_name())
 
 
-# ── Settings > Agents and automations > Concierge ──────────────────────────────────────────────────
+# ── Settings > Agents and automations > Platform Health ──────────────────────────────────────────────────
 
 
 @router.get("/settings", response_model=HealthSettings)

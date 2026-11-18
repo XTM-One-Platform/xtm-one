@@ -92,13 +92,13 @@ TRACE_PAYLOAD_TOOL_NAME = "get_trace_payload"
 #: and the former ids of the same name are its [DEPRECATED] aliases.
 TRACE_SUITE_IDS: frozenset[str] = frozenset({"inspect_my_traces", "inspect_agent_traces"})
 
-#: What the Concierge is told for another agent's traces: these tools apply no
+#: What Platform Health is told for another agent's traces: these tools apply no
 #: consent rule, ``concierge_diagnosis`` does.
 CONCIERGE_TRACES_REFUSED = "Error: the Concierge reads other agents' traces through its diagnosis tools only."
 
 
 def _health_refuses_other_agents() -> bool:
-    """Whether the work acts as the Concierge, or a sandbox copy's turn, which never
+    """Whether the work acts as Platform Health, or a sandbox copy's turn, which never
     reads another agent's traces here: neither the admin bypass nor a supervision
     allow-list (a copy keeps its source's) checks consent."""
     from app.services.health.identity import in_health_reach

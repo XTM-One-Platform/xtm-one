@@ -11,13 +11,13 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Settings > Agents and automations > Concierge: the one reader and writer of ``PlatformSettings.health_settings`` (#8254).
+"""Settings > Agents and automations > Platform Health: the one reader and writer of ``PlatformSettings.health_settings`` (#8254).
 
 One JSON column, one model. Later levels add fields with defaults to
 :class:`HealthSettings` (schedule, signal thresholds, shadow and watch
 durations, dry-run), so a stored value written before them still reads and no
 migration is needed. A stored value that does not validate reads as the
-defaults: the Concierge off, which fails closed.
+defaults: Platform Health off, which fails closed.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ class HealthBudgetCaps(BaseModel):
     month_cost_usd: Decimal | None = Field(default=Decimal("100"), ge=0, le=MAX_COST_USD, decimal_places=6)
 
 
-#: The longest any Concierge duration (watch, shadow, signal window) may be set to.
+#: The longest any Platform Health duration (watch, shadow, signal window) may be set to.
 MAX_DURATION_DAYS = 90
 
 
@@ -120,7 +120,7 @@ class HealthSignalSettings(BaseModel):
     model_change_enabled: bool = True
 
 
-#: The longest name the Concierge may be given.
+#: The longest name Platform Health may be given.
 MAX_NAME_LENGTH = 40
 
 
@@ -143,20 +143,20 @@ _REFUSED_NAME_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 
 
 class HealthSettings(BaseModel):
-    """What an administrator sets in Settings > Agents and automations > Concierge."""
+    """What an administrator sets in Settings > Agents and automations > Platform Health."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    #: The name the Concierge goes by with people; ``None`` is the platform mode's default
+    #: The name Platform Health goes by with people; ``None`` is the platform mode's default
     #: (``naming.default_health_agent_name``).
     name: str | None = Field(default=None, max_length=200)
-    #: ``all``: every agent and flow but the Concierge fleet; ``selected``: the lists below.
+    #: ``all``: every agent and flow but the Platform Health fleet; ``selected``: the lists below.
     scope_mode: Literal["all", "selected"] = "all"
     scope_agent_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
     scope_flow_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
     budget: HealthBudgetCaps = Field(default_factory=HealthBudgetCaps)
-    #: Every write of every Concierge agent is logged, not executed (#8255).
+    #: Every write of every Platform Health agent is logged, not executed (#8255).
     dry_run: bool = False
     # Level 8 (#8261): schedule, signals and the durations levels 3 and 7 read.
     schedules: HealthSchedules = Field(default_factory=HealthSchedules)
@@ -192,7 +192,7 @@ def _read(stored: object) -> HealthSettings:
         return HealthSettings.model_validate(known)
     except ValidationError as exc:
         # A value a later level's field no longer accepts, or a hand edit: the
-        # defaults, the Concierge off. The reason stays in the logs.
+        # defaults, Platform Health off. The reason stays in the logs.
         logger.warning("Stored Concierge settings do not validate, using the defaults: %s", exc.errors()[:3])
         return HealthSettings()
 
@@ -242,9 +242,9 @@ async def save_health_settings(
 
 
 def scope_narrowed(before: HealthSettings, after: HealthSettings) -> bool:
-    """Whether *after* lets the Concierge read less than *before*.
+    """Whether *after* lets Platform Health read less than *before*.
 
-    Switching the Concierge off is not one: it stops every read (the consent
+    Switching Platform Health off is not one: it stops every read (the consent
     rule reads nothing while it is off) and takes back no consent, so what was
     derived stays for when it is switched on again.
     """

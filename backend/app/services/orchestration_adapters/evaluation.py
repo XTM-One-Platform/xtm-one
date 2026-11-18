@@ -91,7 +91,7 @@ class EvaluationAdapter(OrchestrationAdapter):
                     "rescore_runs payload missing run_ids", retryable=False
                 )
             # Evaluation off (#5503): no new work; each run goes back as it was.
-            # The engine gate (#8257): a Concierge launch runs whatever the mode.
+            # The engine gate (#8257): a Platform Health launch runs whatever the mode.
             if not await engine_accepts_runs(ctx.db, run_ids):
                 await _fail_rescore_runs(
                     run_ids, execution.id, DISABLED_DETAIL, _previous_statuses(execution, run_ids)
@@ -183,7 +183,7 @@ class EvaluationAdapter(OrchestrationAdapter):
             )
         # Evaluation off: a fresh evaluation does not start, its pending
         # runs failed with the reason. A resumed episode above is work in flight.
-        # The engine gate (#8257): a Concierge launch runs whatever the mode.
+        # The engine gate (#8257): a Platform Health launch runs whatever the mode.
         if not await engine_accepts(ctx.db, evaluation_id):
             await _fail_active_runs(
                 str(evaluation_id), execution.id, DISABLED_DETAIL, statuses=("pending",)

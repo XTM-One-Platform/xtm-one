@@ -216,7 +216,7 @@ async def materialize_flow(db: AsyncSession, shadow: FlowShadow, assignment: Ass
     """The production flow an approved replacement becomes: the sandbox copy's graph, owned like the assignment.
 
     Owned by the identity the assignment's automatic runs act as (never the
-    Concierge, which has no user row), company-managed when the assignment
+    Platform Health, which has no user row), company-managed when the assignment
     is, version 1 attributed to the approver.
     """
     from app.models.agent import Agent

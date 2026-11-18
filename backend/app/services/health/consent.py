@@ -11,11 +11,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""THE consent rule of the Platform Concierge (#8254): what it may read.
+"""THE consent rule of the Platform Health (#8254): what it may read.
 
     readable = supervision scope ∩ opted-in targets (for content) − opted-out users
 
-PRD ``dev-docs/platform-concierge.md`` 6.2. Every Concierge read path - trace
+PRD ``dev-docs/platform-concierge.md`` 6.2. Every Platform Health read path - trace
 tools, memory tools, dataset building, flow run journals - applies this module,
 never a re-spelling of it:
 
@@ -39,8 +39,8 @@ never a re-spelling of it:
   opt-out applies to the next read, including one by work already in flight.
   Content is checked again right before it goes to a model
   (:func:`require_content_read`), which also audits it.
-* The Concierge fleet is never in its own scope; nothing is readable while
-  the Concierge is off (flag or Settings), which fails closed.
+* The Platform Health fleet is never in its own scope; nothing is readable while
+  Platform Health is off (flag or Settings), which fails closed.
 * Content needs a target: a memory or a conversation tied to no agent or flow
   has nobody to have opted it in, and is not readable.
 
@@ -80,7 +80,7 @@ DENIED_MESSAGE = "This content is not available to the Concierge."
 
 
 class ConsentDeniedError(Exception):
-    """A Concierge read the consent rule refuses. Its message is generic."""
+    """A Platform Health read the consent rule refuses. Its message is generic."""
 
     def __init__(self) -> None:
         super().__init__(DENIED_MESSAGE)
@@ -96,7 +96,7 @@ def _uuid(value: object) -> uuid.UUID | None:
 
 
 async def _active_settings(db: AsyncSession) -> HealthSettings | None:
-    """The settings when the Concierge is on (flag and Settings), else ``None``."""
+    """The settings when Platform Health is on (flag and Settings), else ``None``."""
     if not health_enabled():
         return None
     current = await load_health_settings(db)
@@ -190,7 +190,7 @@ async def opted_out_user_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
 
 
 async def content_readable_agent_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
-    """The agents whose content the Concierge may read now: in scope and opted in."""
+    """The agents whose content Platform Health may read now: in scope and opted in."""
     return (await load_consent_scope(db)).content_agent_ids
 
 
@@ -198,7 +198,7 @@ async def content_readable_agent_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
 
 
 async def in_supervision_scope(db: AsyncSession, target_type: TargetType, target_id: object) -> bool:
-    """Whether the Concierge may read *target*'s metrics (no content)."""
+    """Whether Platform Health may read *target*'s metrics (no content)."""
     current = await _active_settings(db)
     target = _uuid(target_id)
     if current is None or target is None:
@@ -227,7 +227,7 @@ async def content_readable(
     user_id: object = None,
     user_ids: Iterable[object] = (),
 ) -> bool:
-    """THE predicate: may the Concierge read this content now?
+    """THE predicate: may Platform Health read this content now?
 
     *agent_id* / *flow_id*: the target the content belongs to (at least one;
     both when an agent's trace was recorded inside a flow run, and then both
@@ -354,7 +354,7 @@ async def audit_content_read(
     flow_id: object = None,
     user_id: object = None,
 ) -> None:
-    """Record one Concierge read of content: who (``system:concierge``), what
+    """Record one Platform Health read of content: who (``system:concierge``), what
     (*kind*, *ref_id*), whose (target, user lane). Flushed, not committed.
 
     Raises :class:`ConsentDeniedError` when the row cannot be written (no user

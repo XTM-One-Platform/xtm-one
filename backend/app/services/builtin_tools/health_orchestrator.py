@@ -11,13 +11,13 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge orchestrator's tools (#8261): signals, cycles, digests, requests.
+"""The Platform Health orchestrator's tools (#8261): signals, cycles, digests, requests.
 
 Group ``concierge_orchestrator``, agent-keyed, offered while Platform Health
 is available. One rule on every path (``services/health/cycle_access.py``), decided at
 each call from the database rows:
 
-* as **the Concierge** (``identity.current_concierge()``: a scheduled run, an
+* as **Platform Health** (``identity.current_concierge()``: a scheduled run, an
   administrator's chat) - every cycle, and the signals of the supervision scope;
 * as **a person** (a non-administrator chatting with the orchestrator, the
   platform MCP server) - the cycles and signals of the targets that person
@@ -66,7 +66,7 @@ def _data(payload: Any, label: str) -> str:
 
 
 async def _caller(db, user_id: str | None):
-    """``(principal, user)``: the Concierge principal when the work acts as it, else the person."""
+    """``(principal, user)``: the Platform Health principal when the work acts as it, else the person."""
     from app.models.user import User
     from app.services.health.identity import current_concierge
 
@@ -115,7 +115,7 @@ async def _find_target(db, principal, user, group_ids, target_type: str, target:
 def build_health_orchestrator_tools(
     user_id: str | None, *, allow_requests: bool = True
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The group's tools, acting for *user_id* unless the work acts as the Concierge.
+    """The group's tools, acting for *user_id* unless the work acts as Platform Health.
 
     *allow_requests* False (an assignment run) leaves ``request_concierge_cycle``
     out: a cycle's own run never starts another cycle, so a run cannot fan out.

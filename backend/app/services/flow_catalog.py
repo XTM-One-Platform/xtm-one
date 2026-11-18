@@ -438,7 +438,7 @@ class NodeKind:
     # this default is flipped.
     requires_ai: bool = True
     # What executing this node does outside the run (#8255): the sandbox and
-    # the Concierge's dry-run intercept a write and run the rest. ``None``
+    # Platform Health's dry-run intercept a write and run the rest. ``None``
     # (undeclared) is a write, for the reason ``requires_ai`` defaults to
     # True: a node added without thinking about it must be held back.
     side_effect: str | None = None

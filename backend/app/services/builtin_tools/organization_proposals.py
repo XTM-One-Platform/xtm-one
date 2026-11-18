@@ -13,7 +13,7 @@
 
 """``propose_organization_context_change``: a chat request becomes a reviewable proposal (#9484, S-a2).
 
-Wired by ``agent_chat`` for the built-in CTEM Assistant and the Concierge,
+Wired by ``agent_chat`` for the built-in CTEM Assistant and Platform Health,
 and only when the person the turn acts for is an administrator
 (``dev-docs/ctem-fleets.md`` section 6.1, "Chat"); anyone else is never
 offered it, and the executor refuses a non-administrator again. The tool

@@ -982,7 +982,7 @@ async def list_platform_agents(
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
 
-    # Hidden rows (sandbox copies; the Concierge fleet while its flag is off) are never a platform agent.
+    # Hidden rows (sandbox copies; the Platform Health fleet while its flag is off) are never a platform agent.
     result = await db.execute(select(Agent).where(hidden_rows_excluded(Agent)).order_by(Agent.name))
     agents = result.scalars().all()
 

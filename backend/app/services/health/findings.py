@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Concierge findings: record a diagnosed pattern once, keep it across cycles (#8259).
+"""Platform Health findings: record a diagnosed pattern once, keep it across cycles (#8259).
 
 A finding's identity is its **fingerprint**, ``sha256`` of the target and the
 pattern (kind and normalized key), never of its evidence: the trace and rating

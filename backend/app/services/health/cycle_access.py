@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Who may read a Concierge cycle, ask for one, and follow a proposal's evidence (#8261).
+"""Who may read a Platform Health cycle, ask for one, and follow a proposal's evidence (#8261).
 
 One rule for every surface - REST (``api/v1/platform_health_cycles.py``), the
 orchestrator's tools and the platform MCP server - checked on the database
@@ -22,7 +22,7 @@ rows at every call:
   for its owner, an admin or a ``config`` grantee); administrators read every
   cycle. Asking for an improvement needs the same right on the target; a
   target the person cannot see is "not found", never "forbidden".
-* **The Concierge** (``identity.current_concierge()``) reads its own cycles
+* **Platform Health** (``identity.current_concierge()``) reads its own cycles
   and signals within its supervision scope.
 * **Evidence** is linked only where the viewer may open it: a trace or a
   rating where they may read the agent's chats (``may_read_agent_traces``), a

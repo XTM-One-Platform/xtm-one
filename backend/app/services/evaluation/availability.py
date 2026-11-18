@@ -21,9 +21,9 @@ is the flag's condition in ``core/feature_flags.py`` (``FLAG_CONDITIONS``), so
 gates what people see and start: pages, REST, user agent tools, the schedule.
 
 The **engine gate**, :func:`engine_accepts`: the surface gate, or an evaluation
-the Concierge built (``Evaluation.concierge_built``, read on the row) while the
+Platform Health built (``Evaluation.concierge_built``, read on the row) while the
 Platform Health is switched on (Settings > Automations > Platform Health), whatever the mode (decision B9 of
-``dev-docs/platform-concierge.md``). The Concierge has no user row: its
+``dev-docs/platform-concierge.md``). Platform Health has no user row: its
 evaluations have no owner and carry that marker, which only server code sets
 (never REST, copy, export or import). It gates the work the engine does: the
 queued evaluation and rescore executions. See ``dev-docs/evaluation-feature-flag.md``.
@@ -53,7 +53,7 @@ def evaluation_enabled() -> bool:
 
 
 async def engine_accepts(db: AsyncSession, evaluation_id: uuid.UUID | str) -> bool:
-    """The engine gate for one evaluation: the surface gate, or a Concierge launch."""
+    """The engine gate for one evaluation: the surface gate, or a Platform Health launch."""
     if evaluation_enabled():
         return True
     if not await health_active(db):

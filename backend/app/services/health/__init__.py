@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Platform Concierge (#1783): its identity, consent rule, settings, budget and services.
+"""Platform Health (#1783): its identity, consent rule, settings, budget and services.
 
 This package imports nothing on purpose: a module of a later level registers
 its revocation handler when it is imported.

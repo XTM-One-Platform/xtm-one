@@ -14,7 +14,7 @@
 """The sandbox tools (#8255, PRD section 8): ``create_sandbox_copy``,
 ``run_sandbox``, ``get_sandbox_run``.
 
-The built-in group ``concierge_sandbox`` for the Concierge's agents, and the
+The built-in group ``concierge_sandbox`` for Platform Health's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
 every surface, read on the rows (:func:`sandbox_access_refusal`): the
 Platform Health available, the caller Platform Health or an administrator, the copy's
@@ -108,7 +108,7 @@ def _parse_ids(value: Any) -> list[str]:
 
 
 def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The sandbox functions acting for *user_id* (``None`` in a Concierge run)."""
+    """The sandbox functions acting for *user_id* (``None`` in a Platform Health run)."""
     from app.models.sandbox_copy import SandboxRun
     from app.services.health.sandbox import copies, runs
 
@@ -187,8 +187,8 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
         copy, refusal = await _copy_for_run(copy_id)
         if refusal is not None:
             return await _refused(refusal)
-        # Only an administrator calling outside a Concierge run is someone to
-        # run an owner-less copy as; the Concierge never borrows an admin.
+        # Only an administrator calling outside a Platform Health run is someone to
+        # run an owner-less copy as; Platform Health never borrows an admin.
         requested_by = None
         if not in_health_run():
             # An administrator runs a copy as its source's owner would run it

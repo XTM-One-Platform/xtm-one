@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""The Concierge companion's pet library (#8261).
+"""The Platform Health companion's pet library (#8261).
 
 A pet is a Codex-format package (``pet.json`` and an 8-column spritesheet)
 an administrator uploads; the platform stores the spritesheet it decoded and

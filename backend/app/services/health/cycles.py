@@ -11,9 +11,9 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge cycle runner (#8261, PRD 6.3).
+"""The Platform Health cycle runner (#8261, PRD 6.3).
 
-Every piece of Concierge work is a run of one of the fleet's assignments
+Every piece of Platform Health work is a run of one of the fleet's assignments
 (``fleet_seed.FLEET_ASSIGNMENTS``, invariant 1), and every such run starts
 here, inside a budget cycle (level 1's ``budget.open_cycle``):
 
@@ -21,7 +21,7 @@ here, inside a budget cycle (level 1's ``budget.open_cycle``):
   is opened first (licence gate, budget caps), then the run is started with
   ``trigger_context["concierge_cycle_id"]``, the key the engine reads to give
   the run's tools their cycle.
-* :func:`run_due_schedules` - the fleet-wide schedules of Settings > Agents and automations > Concierge.
+* :func:`run_due_schedules` - the fleet-wide schedules of Settings > Agents and automations > Platform Health.
 * :func:`settle_cycles` - books what each cycle's runs spent (their LLM
   traces, delegated runs included), stops a cycle's runs at a cap, closes the
   cycles whose whole run tree ended and builds their digest
@@ -77,7 +77,7 @@ CycleRefusal = Literal[
 ]
 
 #: What the caller of :func:`start_cycle` may be told for each refusal: generic,
-#: the reason stays in the logs. ``{name}`` is the Concierge's name (``naming``).
+#: the reason stays in the logs. ``{name}`` is Platform Health's name (``naming``).
 REFUSAL_MESSAGES: Final[dict[str, str]] = {
     "inactive": "{name} is not enabled.",
     "no_assignment": "{name}'s fleet is not set up yet.",
@@ -103,7 +103,7 @@ _SCHEDULE_ASSIGNMENT: Final[dict[str, AssignmentKey]] = {
     "digest": "digest",
 }
 
-#: The trigger-context key every Concierge run carries: the cycle it charges.
+#: The trigger-context key every Platform Health run carries: the cycle it charges.
 CYCLE_CONTEXT_KEY: Final = "concierge_cycle_id"
 
 #: A cycle still open this long after it opened lost its run: closed as failed.
@@ -126,7 +126,7 @@ class CycleStart:
         return self.refusal is None
 
     def message(self, name: str) -> str | None:
-        """The refusal told to the caller, the Concierge called *name*; ``None`` once started."""
+        """The refusal told to the caller, Platform Health called *name*; ``None`` once started."""
         if not self.refusal:
             return None
         # str.replace, not str.format: the name is an administrator's text, and
@@ -190,7 +190,7 @@ async def start_cycle(
     """Open a cycle and start its run; commits. Never raises for a refusal.
 
     The run is started with no ``triggered_by_user_id``, whoever asked: it is
-    the Concierge's work (its scope and consent), never the requester's. The
+    Platform Health's work (its scope and consent), never the requester's. The
     requester is recorded on the cycle.
     """
     from app.services.assignment_engine import trigger_assignment
@@ -522,7 +522,7 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
 
 
 async def health_tick(*, ai_on: bool) -> None:
-    """The scheduler's Concierge step (``autonomous._run_autonomous_tick_inner``).
+    """The scheduler's Platform Health step (``autonomous._run_autonomous_tick_inner``).
 
     Settling runs whatever the switches: a cycle opened before the flag or
     agentic AI went off still closes and gets its digest. Starting work needs

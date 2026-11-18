@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge companion's pets (#8261): the Codex pet package format, read as hostile input.
+"""The Platform Health companion's pets (#8261): the Codex pet package format, read as hostile input.
 
 ``pet.json`` and a spritesheet of :data:`COLUMNS` columns of
 :data:`CELL_WIDTH` x :data:`CELL_HEIGHT` cells, one state a row

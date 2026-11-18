@@ -3331,7 +3331,7 @@ def _company_managed_visible(model_cls: type[VisibilityQueryable]):
 def hidden_rows_excluded(model_cls: Any):
     """The clause excluding the rows no listing shows anyone, admins included,
     or ``None`` when *model_cls* has none: another primitive's internal storage
-    (``is_internal``, #3074) and the Concierge's sandbox copies (``is_sandbox``,
+    (``is_internal``, #3074) and Platform Health's sandbox copies (``is_sandbox``,
     #8255). The owning primitive reads such a row by id; its own row is the
     authorization. The Platform Health fleet (``health_role``) is never
     chattable while Platform Health is not available."""
@@ -3540,7 +3540,7 @@ def agent_tool_admin_bypass(user: HasIsAdmin | None) -> bool:
     gates either way (a company-managed write, the manual-trigger admin-only
     rule).
 
-    Never inside a Concierge run or turn, nor a sandbox copy's turn: its reach
+    Never inside a Platform Health run or turn, nor a sandbox copy's turn: its reach
     is its scope and consent alone, whoever owns its agent or asked for the
     work (PRD 9; ``identity.in_health_reach``).
     """
@@ -3604,7 +3604,7 @@ def company_managed_run_scoped[**P, R](
 
     @functools.wraps(fn)
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
-        # The same scope bounds the Concierge mark (``mark_health_run``).
+        # The same scope bounds the Platform Health mark (``mark_health_run``).
         from app.services.health.identity import health_run_scope
 
         token = _NO_ACCOUNT_PROVENANCE.set("")

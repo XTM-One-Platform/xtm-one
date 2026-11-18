@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Concierge findings - what the Quality Analyst diagnosed, kept across cycles (#8259).
+"""Platform Health findings - what the Quality Analyst diagnosed, kept across cycles (#8259).
 
 A finding names one pattern on one target (an agent, an assignment, a flow):
 its evidence (trace, rating and run ids, counts), the hypothesis that
@@ -9,7 +9,7 @@ pattern's identity - target, kind, key - and never its evidence, which changes
 every cycle: recording the same pattern again updates the row instead of
 reporting it twice (``services/health/findings.py``).
 
-Not a shareable entity: it belongs to the Concierge, and who may read it
+Not a shareable entity: it belongs to Platform Health, and who may read it
 follows its target (``services/health/access.py``). The target is recorded
 by id without a key, as it can be of several types; a finding whose target is
 gone is no longer listed.

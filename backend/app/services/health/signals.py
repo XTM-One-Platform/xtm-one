@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Concierge signals (#8261, PRD 6.3, decisions B13 and B18): thresholds read without a model call.
+"""Platform Health signals (#8261, PRD 6.3, decisions B13 and B18): thresholds read without a model call.
 
 Four signals, each evaluated by the scheduler on its own cadence and only on
 the targets of the supervision scope, at the metrics level (counts, rates,
@@ -40,7 +40,7 @@ last 90 days (``FAILURE_LOOKBACK``); cost and
 model passes run hourly, the cost one on at most ``2 x window`` daily rows per
 agent.
 
-The Concierge's own sandbox copies (``is_sandbox``) are never read: their
+Platform Health's own sandbox copies (``is_sandbox``) are never read: their
 runs are its experiments, not a target's health.
 
 **Edge-triggered** (``HealthSignalState``): a crossing starts one

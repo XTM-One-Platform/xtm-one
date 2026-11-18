@@ -11,23 +11,23 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Who an agent turn acts as, for the Concierge (#8261; level 1 left this wiring to level 8).
+"""Who an agent turn acts as, for Platform Health (#8261; level 1 left this wiring to level 8).
 
-Level 1 marks an assignment run of a fleet agent as the Concierge
+Level 1 marks an assignment run of a fleet agent as Platform Health
 (``identity.mark_health_run``, beside ``mark_company_managed_run``). A chat
 turn, and the turn of an agent another one delegated to or consulted, start in
 ``agent_chat.run_agent_chat`` instead; :func:`health_turn_scoped` wraps it so
 each turn acts as exactly what its own agent and user make it:
 
-* a fleet agent's turn for no user or an administrator acts as the Concierge,
+* a fleet agent's turn for no user or an administrator acts as Platform Health,
   with **that agent's** role (a specialist the orchestrator delegated to never
   inherits the orchestrator's role);
-* any other turn - a person's agent consulted by a Concierge run, a fleet agent
-  chatting with a non-administrator - acts as no principal, so the Concierge
+* any other turn - a person's agent consulted by a Platform Health run, a fleet agent
+  chatting with a non-administrator - acts as no principal, so Platform Health
   tools act as the person or refuse;
 * except a sandbox turn (a copy's, or any turn inside a sandbox case or a
   sandbox flow's burst), which keeps the principal its runner holds: the
-  copy runs as its source's owner, but its run is the Concierge's, so the
+  copy runs as its source's owner, but its run is Platform Health's, so the
   admin bypass stays off and no consent-free read serves it
   (``identity.in_health_reach`` holds there with no principal too).
 
@@ -50,11 +50,11 @@ def health_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awa
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
         db, user_id, agent = _turn_args(args, kwargs)
         if _sandbox_turn(agent):
-            # Kept as the runner holds it: a copy's own row never makes it the Concierge's agent.
+            # Kept as the runner holds it: a copy's own row never makes it Platform Health's agent.
             return await fn(*args, **kwargs)
         uid = _uuid(user_id)
         with health_run_scope():
-            # An id that names no user is not "no user": such a turn never acts as the Concierge.
+            # An id that names no user is not "no user": such a turn never acts as Platform Health.
             if uid is not None or not user_id:
                 await mark_health_run(db, agent, uid)
             return await fn(*args, **kwargs)

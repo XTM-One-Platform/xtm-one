@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge companion (#8261): a user's opt-in and pet, and what the pet shows.
+"""The Platform Health companion (#8261): a user's opt-in and pet, and what the pet shows.
 
 Off by default: a user turns it on in their profile and picks a pet of the
 library (``pets.py``); a stored value that does not validate reads as off.

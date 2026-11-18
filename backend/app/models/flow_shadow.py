@@ -139,12 +139,12 @@ class FlowShadow(Base):
     # The settlement's figures and, after a watch, its outcome.
     verdict: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    # The Concierge cycle its runs are reserved on and charged to: shadow
-    # runs spend the Concierge's own budget line, never only the user's.
+    # The Platform Health cycle its runs are reserved on and charged to: shadow
+    # runs spend Platform Health's own budget line, never only the user's.
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # The person who started it (a measure shadow from the platform MCP) or
-    # approved the proposal; NULL for one the Concierge started.
+    # approved the proposal; NULL for one Platform Health started.
     started_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -182,7 +182,7 @@ class FlowShadowPair(Base):
     comparison: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     intercepted_writes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     simulated_writes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    # What the flow run holds on the Concierge budget until its spend is
+    # What the flow run holds on the Platform Health budget until its spend is
     # charged: {"cycle_id", "tokens", "cost_usd"}; NULL once charged.
     reservation: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

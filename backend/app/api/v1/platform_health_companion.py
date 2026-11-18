@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge companion REST API (#8261): the pet library, the user's companion, what it shows.
+"""The Platform Health companion REST API (#8261): the pet library, the user's companion, what it shows.
 
 Platform Health is built in: no feature flag gates these routes.
 
@@ -227,7 +227,7 @@ async def put_companion(
 
 @router.get("/me/activity", response_model=ActivityResponse)
 async def get_activity(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """What the companion shows: the Concierge's work and the user's own runs, from what they may read."""
+    """What the companion shows: Platform Health's work and the user's own runs, from what they may read."""
     activity = await companion_activity(db, user)
     return ActivityResponse(
         state=activity.state,

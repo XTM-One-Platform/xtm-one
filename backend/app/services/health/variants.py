@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Variants: the targeted change a Concierge experiment measures (#8259).
+"""Variants: the targeted change a Platform Health experiment measures (#8259).
 
 The Quality Analyst writes the variant itself, in its agentic loop (invariant
 7): there is no nested model call here, only the rules a variant must keep

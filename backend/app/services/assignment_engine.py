@@ -4378,7 +4378,7 @@ async def execute_assignment_run(
         # A company-managed assignment run with no user keeps the tier its
         # automation always had in every read that has no account to go by.
         mark_company_managed_run(assignment, run)
-        # A run of a Concierge fleet agent acts as the Concierge identity (#8254).
+        # A run of a Platform Health fleet agent acts as the Platform Health identity (#8254).
         await mark_health_run(db, agent, run.user_id)
 
         # ── Owner deactivated ────────────────────────────────────
@@ -6390,13 +6390,13 @@ async def execute_assignment_run(
                 )
                 composite.add_tools(pi_defs, pi_exec)
 
-            # --- Memory Steward (#8258): refused to anyone but the Concierge ---
+            # --- Memory Steward (#8258): refused to anyone but Platform Health ---
             if "memory_steward" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
-                # The run's Concierge cycle pays for the pass's model calls.
+                # The run's Platform Health cycle pays for the pass's model calls.
                 composite.add_tools(*build_memory_steward_tools(run_id=str(run.id)))
-            # --- Platform Concierge (#8259): the run acts as its principal, user or not ---
+            # --- Platform Health (#8259): the run acts as its principal, user or not ---
             from app.services.builtin_tools.health_quality import add_health_quality_tools
 
             add_health_quality_tools(
@@ -6404,7 +6404,7 @@ async def execute_assignment_run(
                 str(effective_user_id) if effective_user_id else "",
                 agent_builtin_tool_ids,
                 agent_id=str(run.agent_id),
-                # The run's Concierge cycle books what its experiments spend.
+                # The run's Platform Health cycle books what its experiments spend.
                 run_id=str(run.id),
             )
             from app.services.builtin_tools.flow_lab import add_flow_lab_tools
@@ -6412,7 +6412,7 @@ async def execute_assignment_run(
             add_flow_lab_tools(
                 composite, str(effective_user_id) if effective_user_id else "", agent_builtin_tool_ids, agent_id=str(run.agent_id)
             )
-            # --- Concierge orchestrator (#8261): read-only in a run, so a
+            # --- Platform Health orchestrator (#8261): read-only in a run, so a
             # cycle's own run never starts another cycle ---
             if "concierge_orchestrator" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
@@ -6439,15 +6439,15 @@ async def execute_assignment_run(
 
                 composite.add_tools(*build_roi_tools(str(effective_user_id)))
 
-            # --- Concierge sandbox (#8255): a Concierge run has no user of its
-            # own; the tools apply their own rule (the Concierge or an admin).
+            # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
+            # own; the tools apply their own rule (Platform Health or an admin).
             if "concierge_sandbox" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
-            # --- Concierge evaluation (#8257): the same rule, the tools' own.
+            # --- Platform Health evaluation (#8257): the same rule, the tools' own.
             if "concierge_evaluation" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
@@ -6483,7 +6483,7 @@ async def execute_assignment_run(
             _visited_agents: list[str] = [str(agent.id)]
             _needs_delegate = False
             # The background-task block below needs a user to record its tasks
-            # under: the acting user, or, for the Concierge acting alone, its
+            # under: the acting user, or, for Platform Health acting alone, its
             # agent's owner as the row's owner only (the tasks act with no user).
             _delegation_user_id = effective_user_id or await health_delegation_owner_id(db, agent)
             _offered_handover_types = offered_handover_types(
@@ -7179,7 +7179,7 @@ async def execute_assignment_run(
                         # The run's effective identity (run owner, falling back
                         # to the agent owner) — the same per-user resolution
                         # identity used for quota and the agent-builder tool;
-                        # for the Concierge acting alone, the tasks' owner of
+                        # for Platform Health acting alone, the tasks' owner of
                         # record (``identity.health_delegation_owner_id``).
                         # Guaranteed non-None by the block gate above (the old
                         # delegate block's agent-id fallback could never
@@ -7997,7 +7997,7 @@ async def execute_assignment_run(
                 from app.services import chat_turn_steering
                 from app.services.health.sandbox.turns import agent_turn_session, turn_binding
 
-                # The loop runs here, not through ``run_agent_chat``: a Concierge
+                # The loop runs here, not through ``run_agent_chat``: a Platform Health
                 # run binds its dry-run session itself (#8255).
                 _turn_session = await agent_turn_session(
                     db, str(run.user_id) if run.user_id else "anonymous", agent
@@ -9216,8 +9216,8 @@ async def execute_assignment_run(
             if (
                 max_retries
                 and current_retries < max_retries
-                # A Concierge fleet run with no user is retried as what it ran
-                # as, the Concierge alone: there is no other user to check.
+                # A Platform Health fleet run with no user is retried as what it ran
+                # as, Platform Health alone: there is no other user to check.
                 and not (retry_identity is None and run.user_id is None and is_health_agent(agent))
                 and not await can_open_continued_run(db, run, retry_identity)
             ):
@@ -9588,7 +9588,7 @@ def _execution_identity(
 ) -> _uuid.UUID | None:
     """The ``user_id`` a run of *assignment* takes (precedence in ``trigger_assignment``).
 
-    A Concierge fleet run nobody started has no user: it acts as the Concierge
+    A Platform Health fleet run nobody started has no user: it acts as Platform Health
     identity, never as the assignment's owner or run-as user (PRD 13).
     """
     if triggered_by_user_id is None and is_health_agent(agent):
@@ -9599,9 +9599,9 @@ def _execution_identity(
 def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.UUID | None:
     """Who a run with this ``user_id`` acts as: that user, else its agent's owner.
 
-    A Concierge fleet agent's run with no user never falls back to its owner,
+    A Platform Health fleet agent's run with no user never falls back to its owner,
     the administrator its company-managed row keeps (invariant 9): it acts
-    with no user, as the Concierge alone (PRD 9, 13). Its tools, quota,
+    with no user, as Platform Health alone (PRD 9, 13). Its tools, quota,
     provider exclusions and variables are then those of a run with no account.
     """
     if user_id is None and is_health_agent(agent):

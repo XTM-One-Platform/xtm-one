@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Concierge cycles, signals and the Improvements inbox (#8261).
+"""Platform Health cycles, signals and the Improvements inbox (#8261).
 
 Mounted under ``/api/v1/health`` beside level 1's routes, built in with no
 feature flag. Access is ``services/health/cycle_access.py``, the rule
@@ -316,7 +316,7 @@ async def list_signals(
 
 @router.get("/schedules", response_model=list[ScheduleMarkResponse], dependencies=[Depends(require_admin)])
 async def list_schedule_marks(db: AsyncSession = Depends(get_db)):
-    """When each schedule and signal pass last fired, and what came of it (Settings > Agents and automations > Concierge)."""
+    """When each schedule and signal pass last fired, and what came of it (Settings > Agents and automations > Platform Health)."""
     rows = (await db.execute(select(HealthScheduleMark).order_by(HealthScheduleMark.schedule))).scalars()
     return [
         ScheduleMarkResponse(schedule=m.schedule, fired_at=m.fired_at, cycle_id=m.cycle_id, refusal=m.refusal)
@@ -350,7 +350,7 @@ async def list_improvements(
     """Proposals across targets, newest first, each kept only if the caller may read its target.
 
     The cross-target views level 3's per-target list has no room for: every
-    proposal (administrators' Concierge page) and an agent's with its skills'
+    proposal (administrators' Platform Health page) and an agent's with its skills'
     and assignments'. A non-administrator names an agent or a target. The diff
     and Approve / Reject are level 3's ``/improvement-proposals/{id}``.
     """

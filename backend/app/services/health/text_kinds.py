@@ -174,7 +174,7 @@ class _TextKind:
             return None
         if self.change_type == "skill" and not deps.SUBJECT_OVERLAYS_AVAILABLE:
             # The variant arm's skill stand-in is an evaluation overlay per subject,
-            # which a Concierge launch does not take yet.
+            # which a Platform Health launch does not take yet.
             return None
         return ("agent", experiment.subject_agent_id) if experiment.subject_agent_id else None
 

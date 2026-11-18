@@ -2102,7 +2102,7 @@ _ADMIN_BYPASS_SUITES: tuple[str, ...] = (
     "fleets",
     "work_items",
     "inspect_agent_traces",
-    # The Concierge orchestrator's tools (#8261) read cycles and start them as the REST routes do.
+    # The Platform Health orchestrator's tools (#8261) read cycles and start them as the REST routes do.
     "concierge_orchestrator",
     # The ROI tools (#10006) read reports and records past the caller's own as the REST routes do.
     "roi",

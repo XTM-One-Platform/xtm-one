@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""What the Memory Steward takes from the lower Concierge levels (#8258).
+"""What the Memory Steward takes from the lower Platform Health levels (#8258).
 
 Identity, consent, audit and budget belong to level 1 (#8254), dry-run to
 level 2 (#8255). The Steward reaches them through this module only.
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class BudgetExhaustedError(Exception):
-    """The Concierge may not start another model call (budget, licence, switch)."""
+    """Platform Health may not start another model call (budget, licence, switch)."""
 
 
 async def memory_lane_readable(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID | None) -> bool:
@@ -49,12 +49,12 @@ async def memory_lane_readable(db: AsyncSession, agent_id: uuid.UUID, user_id: u
 
 
 async def readable_scope(db: AsyncSession) -> tuple[frozenset[uuid.UUID], frozenset[uuid.UUID]]:
-    """The agents whose content the Concierge may read, and the users who
+    """The agents whose content Platform Health may read, and the users who
     opted out: a prefilter in SQL, before ``memory_lane_readable`` per lane."""
     return await consent.content_readable_agent_ids(db), await consent.opted_out_user_ids(db)
 
 
-#: The key level 8's cycle runner sets on a Concierge run's trigger context
+#: The key level 8's cycle runner sets on a Platform Health run's trigger context
 #: (#8261), after ``budget.open_cycle``.
 CYCLE_KEY = "concierge_cycle_id"
 #: How far up a delegation chain a run's cycle is looked for.
@@ -96,7 +96,7 @@ async def run_cycle_id(db: AsyncSession, run_id: uuid.UUID | None) -> uuid.UUID 
 
 
 async def ensure_budget(db: AsyncSession, cycle_id: uuid.UUID | None) -> None:
-    """Raise :class:`BudgetExhaustedError` when the Concierge may spend no more:
+    """Raise :class:`BudgetExhaustedError` when Platform Health may spend no more:
     its switch, the month's caps, the cycle's. The pass runs inside a run, so
     it asks what a run in flight asks (``budget.remaining``), never the AI
     gate the cycle passed when it opened."""

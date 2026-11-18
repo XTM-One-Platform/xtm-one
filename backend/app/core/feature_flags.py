@@ -76,7 +76,7 @@ from typing import Literal
 #   (``services/evaluation/availability.py``, dev-docs/mode-split.md S3): its
 #   API, pages, scheduled and automatic runs, persona rewrites, agent tools and
 #   seeded benchmark. Stored data is kept. The engine has a gate of its own
-#   (``engine_accepts``): a Concierge launch runs whatever the mode (#8257). See
+#   (``engine_accepts``): a Platform Health launch runs whatever the mode (#8257). See
 #   dev-docs/evaluation-feature-flag.md.
 #   Remove once evaluation ships on every deployment where AI runs.
 # owner: platform-core - AGENTIC_CODING gates the agentic coding labs: one

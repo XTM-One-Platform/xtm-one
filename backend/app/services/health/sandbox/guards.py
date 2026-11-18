@@ -11,9 +11,9 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""What a Concierge run may not do to production (#8255, PRD 6.6).
+"""What a Platform Health run may not do to production (#8255, PRD 6.6).
 
-The only path to production is an approved proposal, so a Concierge run gets
+The only path to production is an approved proposal, so a Platform Health run gets
 neither ``agent_builder``'s writes nor the flow builder's production writes.
 Enforced twice, never by prompt: where the tools are built (the definitions are
 withheld) and in the executor (a call that reaches the handler by name - a
@@ -70,11 +70,11 @@ def _refused_in_concierge_run(handler: Callable[..., Awaitable[Any]]) -> Callabl
 
 
 def guard_agent_builder(definitions: list[ToolDefinition], executor: CallableToolExecutor) -> list[ToolDefinition]:
-    """``agent_builder`` for a Concierge run: its reads only.
+    """``agent_builder`` for a Platform Health run: its reads only.
 
     Every write (the shared classifier on the name; an unknown verb is a
-    write) is withheld from a set built in a Concierge run, and refused at
-    call time in a Concierge run whatever set it came from.
+    write) is withheld from a set built in a Platform Health run, and refused at
+    call time in a Platform Health run whatever set it came from.
     """
     writes = [
         d.name
@@ -90,7 +90,7 @@ def guard_agent_builder(definitions: list[ToolDefinition], executor: CallableToo
 
 
 async def production_flow_refusal(db: Any, flow_id: Any) -> str | None:
-    """Why a Concierge run may not act on *flow_id* (``None`` outside one, or
+    """Why a Platform Health run may not act on *flow_id* (``None`` outside one, or
     for a sandbox flow)."""
     if not in_health_run():
         return None
@@ -108,7 +108,7 @@ async def production_flow_refusal(db: Any, flow_id: Any) -> str | None:
 
 
 def guard_flow_builder(db: Any, executor: CallableToolExecutor) -> None:
-    """Refuse the flow builder's production writes in a Concierge run, at call
+    """Refuse the flow builder's production writes in a Platform Health run, at call
     time, on the flow's row (``Flow.is_sandbox``)."""
 
     def _guard(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:

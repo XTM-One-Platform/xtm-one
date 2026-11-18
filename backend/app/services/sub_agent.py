@@ -525,7 +525,7 @@ async def _spawn_wait_budget_continuation(
             else {}
         ),
         "pending_task_ids": pending_ids,
-        # The same work: still the Concierge's with no user, if it was.
+        # The same work: still Platform Health's with no user, if it was.
         **({CONCIERGE_ALONE_KEY: True} if concierge_alone else {}),
         # And still answering in the shape its caller fixed.
         **({CALL_OUTPUT_SCHEMA_KEY: call_output_schema} if call_output_schema else {}),
@@ -821,7 +821,7 @@ async def create_sub_agent_task(
     from app.core.database import async_session
     from app.services.health.identity import health_acts_alone
 
-    # Delegated by the Concierge acting alone (read on the server's own
+    # Delegated by Platform Health acting alone (read on the server's own
     # context, never on an argument): the task's run and turn act with no
     # user, and ``user_id`` is the row's owner of record only.
     _concierge_alone = health_acts_alone() or bool((extra_metadata or {}).get(CONCIERGE_ALONE_KEY))
@@ -886,7 +886,7 @@ async def create_sub_agent_task(
                 child_run = AssignmentRun(
                     assignment_id=None,
                     agent_id=uuid.UUID(target_agent_id),
-                    # A Concierge cycle's delegated work charges the same cycle (#8261).
+                    # A Platform Health cycle's delegated work charges the same cycle (#8261).
                     trigger_context=await inherited_cycle_context(own_db, parent_run_id),
                     user_id=uuid.UUID(user_id) if user_id and not _concierge_alone else None,
                     is_company_managed=child_company_managed,
@@ -3272,7 +3272,7 @@ def _outcome_error_redacted(fn: Callable[..., Awaitable[SubAgentTaskOutcome]]) -
 
 def task_turn_user_id(metadata: dict | None, user_id: str) -> str:
     """Whom a task's turn acts as and sees with: its user, or no one (``""``)
-    for the Concierge's delegated work, never the row's owner of record
+    for Platform Health's delegated work, never the row's owner of record
     (``create_sub_agent_task``)."""
     return "" if (metadata or {}).get(CONCIERGE_ALONE_KEY) else user_id
 
@@ -3402,7 +3402,7 @@ async def _execute_sub_agent_task(
     _evaluation_tool_approval: bool | None = None
     # The answer shape the spawning call fixed (spawn_background_task output_schema).
     _call_output_schema: dict[str, Any] | None = None
-    # Whom the task's turn acts as: its user, or no one for the Concierge's work.
+    # Whom the task's turn acts as: its user, or no one for Platform Health's work.
     _turn_user_id = user_id
     loop_outcome: dict = {}
     _task_retry_meter: dict = {"retries": 0}
@@ -3665,7 +3665,7 @@ async def _execute_sub_agent_task(
             # group-shared peer agent (every run failed "not accessible").
             from app.api.v1.helpers import get_user_group_ids, user_visible_filter
 
-            # The Concierge's delegated work sees what its run with no user saw
+            # Platform Health's delegated work sees what its run with no user saw
             # at spawn, never what the row's owner of record sees.
             _target_user_uuid = uuid.UUID(_turn_user_id) if _turn_user_id else None
             _target_group_ids = (

@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The interception of a sandbox run or a Concierge dry-run (#8255, PRD 6.6).
+"""The interception of a sandbox run or a Platform Health dry-run (#8255, PRD 6.6).
 
 A :class:`SandboxSession` is bound to a turn with :func:`sandbox_session`; every
 call a composite executor dispatches in that context then goes through

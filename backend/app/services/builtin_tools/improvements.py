@@ -14,21 +14,21 @@
 """The improvement proposal tools (#8256, PRD section 8): ``list_improvements``
 and ``propose_improvement``.
 
-The built-in group ``improvement_proposals`` for the Concierge's agents, and
+The built-in group ``improvement_proposals`` for Platform Health's agents, and
 the same functions on the platform MCP server (``/mcp/xtm``). One access rule
 on every surface, read on the database rows, never on the arguments:
 
-* ``list_improvements``: in a Concierge run whose calling agent is the
+* ``list_improvements``: in a Platform Health run whose calling agent is the
   principal's own fleet agent, the proposals whose target is in the
   supervision scope; otherwise those on targets the caller manages
   (``improvement_proposals.can_read``, administrators included, as the REST
   list). A person's #1044 request is listed while ``EVALUATION`` is on, an
   agent's proposal while Platform Health is available (``surface_enabled``).
 * ``propose_improvement``: only the Experimenter files. That is a property of
-  the calling run, not a name: a Concierge principal whose agent is the one
+  the calling run, not a name: a Platform Health principal whose agent is the one
   calling the tool and whose row, read again, is a fleet agent with the
   ``experimenter`` role. Another agent run inside the principal's work (a
-  sandbox copy, a consulted agent) is not the Concierge. A person, an MCP
+  sandbox copy, a consulted agent) is not Platform Health. A person, an MCP
   caller or any other agent gets the same generic refusal; the reason is
   logged. The target must be in the supervision scope, and never a sandbox
   copy or one of the fleet's agents. It files ``unmeasured`` only: a measured
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 IMPROVEMENTS_SUITE_ID = "improvement_proposals"
 _SOURCE = f"builtin:{IMPROVEMENTS_SUITE_ID}"
-#: The Concierge role that files proposals (PRD 6.1: only the Experimenter).
+#: The Platform Health role that files proposals (PRD 6.1: only the Experimenter).
 FILING_ROLE = "experimenter"
 REFUSED = "Refused: improvement proposals are not available to this caller for this target."
 _LIST_LIMIT = 50
@@ -80,7 +80,7 @@ def _uuid(value: Any) -> uuid.UUID | None:
 
 
 async def target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.UUID) -> bool:
-    """Whether the Concierge supervises *target*: an agent or a flow in its
+    """Whether Platform Health supervises *target*: an agent or a flow in its
     scope, an assignment through its agent, a skill through an agent in scope
     that carries it."""
     from app.models.agent import Agent
@@ -104,10 +104,10 @@ async def target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.UU
 
 
 def calling_concierge(agent_id: str | None) -> Any | None:
-    """The Concierge principal, when the agent calling the tool is its own.
+    """The Platform Health principal, when the agent calling the tool is its own.
 
     A principal stays bound over everything its work runs inline (a sandbox
-    copy's turn, a consulted agent): those agents are not the Concierge and
+    copy's turn, a consulted agent): those agents are not Platform Health and
     read as their runner.
     """
     from app.services.health.identity import current_concierge
@@ -119,7 +119,7 @@ def calling_concierge(agent_id: str | None) -> Any | None:
 
 
 async def filing_agent(db: AsyncSession, agent_id: str | None) -> Any | None:
-    """The Experimenter agent calling the tool in its Concierge run, read again from its row, or ``None``."""
+    """The Experimenter agent calling the tool in its Platform Health run, read again from its row, or ``None``."""
     from app.models.agent import Agent
     from app.services.health.identity import is_health_agent
 
@@ -167,8 +167,8 @@ def _row(proposal: Any, target_name: str | None) -> dict[str, Any]:
 def build_improvement_tools(
     db: AsyncSession, user_id: str | None, agent_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The proposal functions acting for *user_id* (``None`` in a Concierge run),
-    called by *agent_id* (``None`` on the MCP server: never the Concierge)."""
+    """The proposal functions acting for *user_id* (``None`` in a Platform Health run),
+    called by *agent_id* (``None`` on the MCP server: never Platform Health)."""
     from app.api.v1.helpers import get_user_group_ids
     from app.models.improvement_proposal import (
         EXPERIMENT_UNMEASURED,

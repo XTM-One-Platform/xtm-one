@@ -17,17 +17,17 @@ Every Flow Lab tool, its platform MCP exposure and the proposal appliers
 resolve their targets here, on the database row, by id or by exact name, so
 the rule cannot drift between surfaces:
 
-* **The Concierge** (a run of a Concierge agent, level 1's
+* **Platform Health** (a run of a Platform Health agent, level 1's
   ``current_concierge()``, when the agent calling the tool is the
   principal's own; an agent its run executes inline reads as its runner):
   a flow or an assignment's agent in the supervision scope; content
   (trigger payloads, outputs) only where ``consent.content_readable``
-  admits it, audited when it is returned. No admin bypass: the Concierge
+  admits it, audited when it is returned. No admin bypass: Platform Health
   has no user row. Agents of the fleet itself are never in scope (level 1).
 * **A person** (the platform MCP server): a flow they may manage
   (``can_manage``), an assignment they may modify (``writable_assignment_error``);
   a person who manages a flow reads its run journal, as on the flow's page.
-* **Sandbox copies** (level 2): reachable by the Concierge only, which owns
+* **Sandbox copies** (level 2): reachable by Platform Health only, which owns
   them; a person never writes one through these tools.
 
 A target the caller may not reach answers exactly as a missing one, so the
@@ -54,7 +54,7 @@ MAX_NAMESAKES = 200
 
 @dataclass(frozen=True, slots=True)
 class FlowLabCaller:
-    """Who is asking: the Concierge principal, or a person."""
+    """Who is asking: the Platform Health principal, or a person."""
 
     concierge: Any | None
     user: Any | None
@@ -68,7 +68,7 @@ class FlowLabCaller:
 async def resolve_caller(
     db: AsyncSession, user_id: str | uuid.UUID | None, *, agent_id: str | None = None
 ) -> FlowLabCaller | None:
-    """The caller of a tool call: the Concierge when *agent_id*, the agent calling the tool, is its
+    """The caller of a tool call: Platform Health when *agent_id*, the agent calling the tool, is its
     principal's own (level 3's ``calling_concierge``), else the user row."""
     from app.services.builtin_tools.improvements import calling_concierge
 
@@ -156,7 +156,7 @@ async def resolve_flow(db: AsyncSession, caller: FlowLabCaller, ref: str) -> Flo
 
 
 async def resolve_sandbox_flow(db: AsyncSession, caller: FlowLabCaller, ref: str) -> Flow | None:
-    """A sandbox flow the Flow Lab authored, for the Concierge only.
+    """A sandbox flow the Flow Lab authored, for Platform Health only.
 
     Never another copy: an experiment's arms and an approved proposal's copy
     (``created_for`` ``proposal:...``) are what was measured or approved, so
@@ -237,7 +237,7 @@ async def flow_run_content_allowed(db: AsyncSession, caller: FlowLabCaller, flow
 
 
 async def audit_flow_run_read(db: AsyncSession, caller: FlowLabCaller, flow: Flow, run: Any) -> None:
-    """Level 1's audit entry for content the Concierge is about to hand to a model."""
+    """Level 1's audit entry for content Platform Health is about to hand to a model."""
     if not caller.is_concierge:
         return
     from app.services.health.consent import audit_content_read
@@ -385,7 +385,7 @@ async def copy_subject(db: AsyncSession, copy: Any) -> tuple[str, uuid.UUID] | N
 
     A copy's runs follow it: they run as its owner, within its scope and its
     consent, and name nothing it does not (PRD 9). A copy standing for nothing
-    has nobody to run as and no reach, so it does not run on the Concierge's
+    has nobody to run as and no reach, so it does not run on Platform Health's
     behalf.
     """
     if copy is None:

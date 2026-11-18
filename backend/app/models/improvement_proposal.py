@@ -6,7 +6,7 @@ approved by the people who manage it, watched, and rolled back on regression
 
 The persona self-improvement loop (#1044) is the ``persona`` type: its rows
 were migrated here from ``persona_improvements``. The other types are filed by
-the Concierge's Experimenter (``propose_improvement``).
+Platform Health's Experimenter (``propose_improvement``).
 
 Lifecycle::
 

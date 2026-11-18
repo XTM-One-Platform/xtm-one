@@ -90,7 +90,7 @@ async def simulate_write(
     description: str = "",
 ) -> tuple[str | None, int]:
     """The simulated result of the write (``None`` when no model answered) and
-    the tokens the call used, for the caller to charge to the Concierge budget.
+    the tokens the call used, for the caller to charge to the Platform Health budget.
 
     *recorded* are the consented recordings of the same tool, the grounding.
     A failure is logged with its reason and answered ``None``: the caller then

@@ -11,10 +11,10 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Experimenter's tools (Platform Concierge, #8259).
+"""The Experimenter's tools (Platform Health, #8259).
 
 The ``concierge_experiments`` group: ``list_experiments``, ``get_experiment``
-(reads), ``run_experiment``, ``propose_from_experiment`` (the Concierge's
+(reads), ``run_experiment``, ``propose_from_experiment`` (Platform Health's
 Experimenter only: the one actor that launches an experiment and files a
 proposal). Same access rule and helpers as the Quality Analyst's
 (``health_quality.py``).

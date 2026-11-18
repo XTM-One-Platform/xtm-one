@@ -17,7 +17,7 @@ One rule for every surface - the agent tools, the platform MCP server
 (``/mcp/xtm``), later the Improvements inbox - read on the database rows at
 every call, never cached across calls:
 
-* **The Concierge** (a call inside a Concierge run: level 1's
+* **Platform Health** (a call inside a Platform Health run: level 1's
   ``identity.current_concierge()``) reads an agent's rollups, counts, costs
   and ratings without comment while the agent is in its supervision scope,
   and its conversation content (trace ids, rating comments, content-derived
@@ -27,9 +27,9 @@ every call, never cached across calls:
 * **A person** reads the findings and signals of an agent whose feedback they
   may read (its managers: ``annotations.load_feedback_agent``), and their
   content only if they may also read its chats (``may_read_agent_traces``).
-  The users' opt-out applies to them too: what the Concierge derived from an
+  The users' opt-out applies to them too: what Platform Health derived from an
   opted-out user is dropped whoever reads it.
-* **Writes** are the Concierge's only, and each is held by one role read on
+* **Writes** are Platform Health's only, and each is held by one role read on
   the principal: recording a finding and drafting a variant by the
   ``quality_analyst``, running an experiment and filing its proposal by the
   ``experimenter``.
@@ -88,14 +88,14 @@ class AgentAccess:
 
 @dataclass(frozen=True, slots=True)
 class Reader:
-    """The caller of a Concierge tool, resolved once per call."""
+    """The caller of a Platform Health tool, resolved once per call."""
 
-    #: The person calling (platform MCP, a chat), or the run's admin; ``None`` in a scheduled Concierge run.
+    #: The person calling (platform MCP, a chat), or the run's admin; ``None`` in a scheduled Platform Health run.
     user: User | None
-    #: Level 1's ``HealthPrincipal`` when the call runs as the Concierge.
+    #: Level 1's ``HealthPrincipal`` when the call runs as Platform Health.
     principal: Any | None
     scope: ConsentScope
-    #: The Concierge cycle the run works in, which books what an experiment spends; ``None`` outside one.
+    #: The Platform Health cycle the run works in, which books what an experiment spends; ``None`` outside one.
     cycle_id: uuid.UUID | None = None
 
     @property
@@ -107,7 +107,7 @@ class Reader:
         return frozenset(self.scope.opted_out_user_ids or ())
 
     def write_refusal(self, role: str) -> str | None:
-        """Why this caller may not run a write reserved to the Concierge's *role*, or ``None``."""
+        """Why this caller may not run a write reserved to Platform Health's *role*, or ``None``."""
         if self.principal is None or getattr(self.principal, "role", None) != role:
             return WRITE_REFUSED
         return None
@@ -121,7 +121,7 @@ class Reader:
 
 
 def _current_principal(agent_id: str | None) -> Any | None:
-    """The Concierge principal when *agent_id*, the agent calling the tool, is its own.
+    """The Platform Health principal when *agent_id*, the agent calling the tool, is its own.
 
     A principal stays bound over what its run executes inline (a sandbox
     copy's turn, a consulted agent): those agents read as their runner.
@@ -138,7 +138,7 @@ async def _load_scope(db: AsyncSession) -> ConsentScope:
 
 
 async def _run_cycle(db: AsyncSession, run_id: str | uuid.UUID | None) -> uuid.UUID | None:
-    """The Concierge cycle *run_id* works in: the key level 8's cycle runner sets
+    """The Platform Health cycle *run_id* works in: the key level 8's cycle runner sets
     on the run's trigger context, read up its delegation chain (level 5's
     ``run_cycle_id``, the one reading); ``None`` outside a cycle."""
     from app.services.health.memory_steward_deps import run_cycle_id
@@ -157,11 +157,11 @@ async def load_reader(
     run_id: str | uuid.UUID | None = None,
     agent_id: str | None = None,
 ) -> Reader | None:
-    """The caller of a Concierge tool, or ``None``: nobody to read for, or the consent rows unreadable.
+    """The caller of a Platform Health tool, or ``None``: nobody to read for, or the consent rows unreadable.
 
-    *agent_id* is the agent calling the tool: the call is the Concierge's only
+    *agent_id* is the agent calling the tool: the call is Platform Health's only
     when it is the bound principal's own agent. *run_id* is the assignment run
-    the tool is called in: a Concierge run's cycle is read from it, never from
+    the tool is called in: a Platform Health run's cycle is read from it, never from
     an argument.
     """
     from app.models.user import User
@@ -178,7 +178,7 @@ async def load_reader(
     try:
         scope = await _load_scope(db)
     except Exception as exc:
-        # Fail closed: without the consent rows nobody reads Concierge data.
+        # Fail closed: without the consent rows nobody reads Platform Health data.
         logger.warning("Concierge consent scope unreadable: %s", format_exception_message(exc))
         return None
     cycle_id = await _run_cycle(db, run_id) if principal is not None else None

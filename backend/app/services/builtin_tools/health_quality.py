@@ -11,13 +11,13 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Quality Analyst's tools (Platform Concierge, #8259), and what the
-Concierge's tool groups share.
+"""The Quality Analyst's tools (Platform Health, #8259), and what the
+Platform Health's tool groups share.
 
 One access rule (``services/health/access.py``) read on the rows at every
 call, on every surface (agent tools, ``/mcp/xtm``). The ``concierge_diagnosis``
 group: ``get_quality_signals``, ``list_findings`` (reads), ``record_finding``,
-``draft_variant`` (the Concierge's Quality Analyst only). The Experimenter's
+``draft_variant`` (Platform Health's Quality Analyst only). The Experimenter's
 group is ``health_experiments.py``, on the same helpers.
 
 No tool here writes an agent, a skill or an assignment: a variant lives in its
@@ -466,10 +466,10 @@ def add_health_quality_tools(
     """Wire the groups *builtin_tool_ids* carries into a turn's *composite*, while Platform Health is available.
 
     The one wiring of agent chat and the assignment engine. A run of the
-    Concierge may have no user (a company-managed scheduled run): the tools
+    Platform Health may have no user (a company-managed scheduled run): the tools
     then act as its principal alone, and only for *agent_id*, the principal's
     own agent: an agent its run executes inline reads as its runner. *run_id*
-    (an assignment run) names the Concierge cycle an experiment's spend is
+    (an assignment run) names the Platform Health cycle an experiment's spend is
     booked on.
     """
     from .health_experiments import EXPERIMENTS_GROUP_ID, build_health_experiment_tools

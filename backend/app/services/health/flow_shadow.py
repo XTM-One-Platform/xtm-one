@@ -108,7 +108,7 @@ class ShadowDurations:
 
 
 async def shadow_durations(db: AsyncSession) -> ShadowDurations:
-    """The shadow and watch durations: Settings > Agents and automations > Concierge, else B18's defaults."""
+    """The shadow and watch durations: Settings > Agents and automations > Platform Health, else B18's defaults."""
     shadow_days, watch_days, min_pairs = DEFAULT_SHADOW_DAYS, DEFAULT_WATCH_DAYS, DEFAULT_MIN_PAIRS
     try:
         from app.services.health.settings import load_health_settings
@@ -313,7 +313,7 @@ def _reservation(stored: dict[str, Any]) -> Any:
 
 
 async def _shadow_cycle(db: AsyncSession, shadow: FlowShadow, *, now: datetime) -> uuid.UUID:
-    """The open Concierge cycle the shadow's runs are reserved on; ``BudgetRefusedError`` when none may open.
+    """The open Platform Health cycle the shadow's runs are reserved on; ``BudgetRefusedError`` when none may open.
 
     Rotated before the stale-cycle sweep would close it as abandoned: a
     shadow outlives any one cycle.
@@ -333,7 +333,7 @@ async def _shadow_cycle(db: AsyncSession, shadow: FlowShadow, *, now: datetime) 
 async def _reserve_run(
     db: AsyncSession, shadow: FlowShadow, run: AssignmentRun, pair_id: uuid.UUID, *, now: datetime
 ) -> dict[str, Any]:
-    """Reserve one shadow run on the Concierge budget, sized on the live run it copies.
+    """Reserve one shadow run on the Platform Health budget, sized on the live run it copies.
 
     Held by its pair: rotating the shadow's cycle keeps it until the run is charged.
     """
@@ -365,7 +365,7 @@ async def pair_new_runs(
 ) -> int:
     """Create the shadow flow runs of the assignment's live runs since the cursor.
 
-    Each run is reserved on the Concierge's budget first and charged when its
+    Each run is reserved on Platform Health's budget first and charged when its
     pair settles; past *max_pairs* paired runs, later ones are passed over.
     """
     from app.services.health.availability import health_enabled
@@ -376,7 +376,7 @@ async def pair_new_runs(
 
     # A shadow run is agentic work (agent nodes, simulated writes): it waits,
     # cursor kept, while the flag is off, the licence gate refuses or the
-    # Concierge's budget is spent. The runs it could not pair in time end
+    # Platform Health's budget is spent. The runs it could not pair in time end
     # ``incomplete``, never counted as agreement.
     if not health_enabled() or (refusal := await budget_refusal(db)) is not None:
         logger.debug("Shadow %s: pairing deferred (%s)", shadow.id, "flag off" if not health_enabled() else refusal)
@@ -605,7 +605,7 @@ async def _advance(db: AsyncSession, shadow: FlowShadow, *, now: datetime) -> st
         from app.services.health.availability import health_active
 
         if not await health_active(db):
-            # Switched off, the Concierge changes nothing in production: the
+            # Switched off, Platform Health changes nothing in production: the
             # take-over waits for it up to the deadline, then is given up.
             if not final:
                 return shadow.status
@@ -637,7 +637,7 @@ class ShadowTickResult:
 async def flow_shadow_tick(*, limit: int = SHADOWS_PER_TICK) -> ShadowTickResult:
     """The scheduler step: advance every open shadow, one transaction each, SKIP LOCKED.
 
-    Runs whatever the switches: with the Concierge off, pairing and the
+    Runs whatever the switches: with Platform Health off, pairing and the
     take-over wait, but a watch still rolls a regressing switch-over back.
     """
     from app.core.database import async_session

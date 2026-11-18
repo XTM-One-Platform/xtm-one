@@ -11,9 +11,9 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge's dry-run mode (#8255, PRD 6.6).
+"""Platform Health's dry-run mode (#8255, PRD 6.6).
 
-While Settings > Agents and automations > Concierge has dry-run on, every write of every Concierge agent
+While Settings > Agents and automations > Platform Health has dry-run on, every write of every Platform Health agent
 is logged and not executed: its tool writes through a ``dry_run``
 :class:`~app.services.health.sandbox.session.SandboxSession` bound to its
 turns (``turns.intercepted_agent_turn``), the writes a service makes without a
@@ -36,7 +36,7 @@ DRY_RUN_AUDIT_ACTION = "concierge.dry_run_write"
 
 
 async def dry_run_active(db: AsyncSession) -> bool:
-    """Whether the running work is the Concierge's and dry-run is on."""
+    """Whether the running work is Platform Health's and dry-run is on."""
     from app.services.health.identity import in_health_run
     from app.services.health.settings import load_health_settings
 
@@ -56,7 +56,7 @@ async def record_dry_run_write(
 ) -> None:
     """Record a write dry-run kept from happening (flushed; the caller commits).
 
-    Audited as the Concierge, anchored on *anchor_user_id* (whom the write
+    Audited as Platform Health, anchored on *anchor_user_id* (whom the write
     concerned) or the administrator the run acts for; logged only when there
     is neither, since an audit row needs a user to hang on.
     """

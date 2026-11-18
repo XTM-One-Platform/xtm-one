@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Flow Lab tools - the Concierge diagnoses flows and measures them in shadow (#8260).
+"""Flow Lab tools - Platform Health diagnoses flows and measures them in shadow (#8260).
 
 Built-in group ``flow_lab`` (PRD ``platform-concierge.md`` sections 6.9 and 8):
 
@@ -19,18 +19,18 @@ Built-in group ``flow_lab`` (PRD ``platform-concierge.md`` sections 6.9 and 8):
   ``get_flow_diagnosis`` (repair, optimize), ``get_assignment_path`` (agent to
   flow), ``find_flow_candidates`` (new flow), ``get_flow_shadow``,
   ``get_flow_run_comparison`` and ``get_flow_node_catalog``;
-* writes, for Concierge agents only and on sandbox copies only:
+* writes, for Platform Health agents only and on sandbox copies only:
   ``create_sandbox_flow`` / ``update_sandbox_flow`` (level 2's copy service,
   with the flow builder's validation) and ``run_flow_shadow`` (a sandbox flow
   measured on an assignment's live triggers, every write intercepted).
 
-``flow_builder`` acts as a user row, so a scheduled (ownerless) Concierge
+``flow_builder`` acts as a user row, so a scheduled (ownerless) Platform Health
 cycle cannot use it; these writes are its authoring path, and when an admin
 chats with the Flow Lab ``flow_builder`` lands on sandbox copies too
 (level 2). Nothing here writes a production flow: the only path to
 production is an approved proposal (level 3, ``services/health/flow_proposals``).
 
-Each call opens its own session and resolves its caller (the Concierge
+Each call opens its own session and resolves its caller (Platform Health
 principal, else the user), and every target goes through
 ``services/health/flow_lab_access``: one rule on every path, by id and by
 name. Values read from runs come back inside untrusted-content blocks, never
@@ -297,7 +297,7 @@ async def _get_flow_node_catalog(db: AsyncSession, caller: Any) -> str:
     )
 
 
-# ── Writes (the Concierge, sandbox copies only) ────────────────────────────
+# ── Writes (Platform Health, sandbox copies only) ────────────────────────────
 
 #: How many of a source flow's latest settled runs a copy may replay writes from.
 _REPLAY_RUNS = 50
@@ -741,7 +741,7 @@ _HANDLERS: dict[str, Callable[..., Awaitable[str]]] = {
 def build_flow_lab_tools(
     user_id: str, *, read_only: bool = False, agent_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The Flow Lab tools acting for *user_id*, or for the Concierge principal when *agent_id* is its own
+    """The Flow Lab tools acting for *user_id*, or for the Platform Health principal when *agent_id* is its own
     (``read_only``: the reads alone, ``/mcp/xtm``, where no agent calls).
 
     A function left out is not registered, so it cannot be called by guessing its name.
@@ -765,7 +765,7 @@ def build_flow_lab_tools(
 def add_flow_lab_tools(composite: Any, user_id: str, builtin_tool_ids: list[str], *, agent_id: str | None) -> None:
     """Wire the ``flow_lab`` group into a turn's *composite* when the agent carries it and Platform Health is available.
 
-    The one wiring of agent chat and the assignment engine; a Concierge run may
+    The one wiring of agent chat and the assignment engine; a Platform Health run may
     have no user, the tools then act as its principal alone, and only for
     *agent_id*, the principal's own agent: an agent its run executes inline
     reads as its runner.

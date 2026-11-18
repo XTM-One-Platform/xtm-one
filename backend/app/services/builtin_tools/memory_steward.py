@@ -11,17 +11,17 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Memory Steward tools (Platform Concierge, #8258).
+"""Memory Steward tools (Platform Health, #8258).
 
-The Concierge's Memory Steward works through the memory lanes it may read
+Platform Health's Memory Steward works through the memory lanes it may read
 and consolidates each one (``services/health/memory_steward.py``). The
 tools return statuses and counts, never memory content: the pass reads the
 lane itself, and only counts go to the digest.
 
-One access rule: the caller is the Concierge, a run of one of its fleet
+One access rule: the caller is Platform Health, a run of one of its fleet
 agents while Platform Health is available (``identity.current_concierge``). Nobody
 else, an administrator included, may run or read a pass. The platform MCP
-server serves logins, which the Concierge never is, so it does not offer them.
+server serves logins, which Platform Health never is, so it does not offer them.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ _REFUSAL = "Error: the memory tools are reserved to the Platform Concierge."
 
 
 def _caller_is_concierge() -> bool:
-    """Whether the running work acts as the Concierge: a run of a fleet agent,
+    """Whether the running work acts as Platform Health: a run of a fleet agent,
     flag on (``identity.current_concierge`` re-checks it). A login, an
     administrator included, never is."""
     return identity.current_concierge() is not None
@@ -79,9 +79,9 @@ def _bounded(value: object, *, default: int, maximum: int) -> int:
 
 
 def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The group. Each call checks the running work is the Concierge's: the
-    run's user plays no part, the Concierge being no user. *run_id* is the
-    assignment run the tools serve: its Concierge cycle is charged."""
+    """The group. Each call checks the running work is Platform Health's: the
+    run's user plays no part, Platform Health being no user. *run_id* is the
+    assignment run the tools serve: its Platform Health cycle is charged."""
     async def _list_memory_lanes(agent_id: str | None = None, limit: int = _DEFAULT_LANES) -> str | ToolResult:
         agent = None
         if agent_id:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Platform Concierge cycles, signals and schedules (#8261).
+"""Platform Health cycles, signals and schedules (#8261).
 
 Level 1's ``concierge_cycles`` is the budget unit; these tables hold what
 level 8 adds around it: the run a cycle started and its digest

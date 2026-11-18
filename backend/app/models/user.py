@@ -288,13 +288,13 @@ class User(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
 
-    # Platform Concierge opt-out (#8254): the Concierge reads none of this
+    # Platform Health opt-out (#8254): Platform Health reads none of this
     # user's memory lanes and conversations (``services/health/consent.py``).
     health_content_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 
-    # The Concierge companion (#8261): ``{"enabled": bool, "pet": slug}``,
+    # The Platform Health companion (#8261): ``{"enabled": bool, "pet": slug}``,
     # off when unset (``services/health/companion.py``).
     concierge_companion: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 

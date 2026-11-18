@@ -11,10 +11,10 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge's evaluations (#8257, PRD 6.8, decision B9).
+"""Platform Health's evaluations (#8257, PRD 6.8, decision B9).
 
 :func:`launch_health_evaluation` creates an evaluation on a dataset the
-Concierge built, with agents and flows as subjects (sandbox copies of targets of
+Platform Health built, with agents and flows as subjects (sandbox copies of targets of
 its supervision scope: never a production agent or flow), marks it ``concierge_built`` - the mark the engine gate
 reads to run it whatever the mode - and launches it through the same plan and
 runs as every other launch (``services/evaluation/launch.py``).
@@ -27,7 +27,7 @@ run that is not complete, or lost entries to a revocation, gives no verdict.
 
 Budget (PRD 6.12): a launch inside a cycle reserves on it, held past the
 cycle's close (``budget.reserve(hold=...)``); a launch outside one passes the
-budget gate. :func:`settle_health_evaluations`, on the Concierge's tick,
+budget gate. :func:`settle_health_evaluations`, on Platform Health's tick,
 charges an evaluation that ended on the cycle that reserved for it, and stops
 one whose measured spend passes a cap.
 """
@@ -67,7 +67,7 @@ PERFORMANCE_KEYS: tuple[str, ...] = (
 MAX_SUBJECTS = 10
 #: Tokens one entry of one run is reserved at when the caller sizes nothing: the subject's and the judge's.
 ENTRY_TOKENS_ESTIMATE = 25_000
-#: The work kind a Concierge evaluation holds its reservation under.
+#: The work kind a Platform Health evaluation holds its reservation under.
 HOLD_KIND = "evaluation"
 _ACTIVE_RUN_STATUSES = ("pending", "queued", "running")
 #: What a run stopped at a budget cap says; :func:`compare_concierge_runs` reads it back.
@@ -108,7 +108,7 @@ class RunComparison:
 
 
 async def evaluation_subject_refusal(db: AsyncSession, kind: str, subject_id: uuid.UUID) -> str | None:
-    """Why the Concierge may not evaluate this subject (logged by the caller), ``None`` when it may.
+    """Why Platform Health may not evaluate this subject (logged by the caller), ``None`` when it may.
 
     Only a sandbox copy (level 2), whose writes are intercepted: an evaluation
     runs its subject's tools, and a production agent or flow would write for
@@ -147,7 +147,7 @@ async def launch_health_evaluation(
     reserve_tokens: int | None = None,
     reserve_cost_usd: Decimal = Decimal(0),
 ) -> HealthLaunch:
-    """Create and launch a Concierge evaluation on *dataset_id*. Commits, then wakes the engine.
+    """Create and launch a Platform Health evaluation on *dataset_id*. Commits, then wakes the engine.
 
     *model_ids* empty: each agent runs on its own model; a flow always runs on
     its nodes' models. Raises :class:`HealthEvaluationError` (generic),
@@ -207,7 +207,7 @@ async def _create_and_reserve(
         # under this case's recordings.
         reuse_default="off",
         concierge_built=True,
-        enabled=False,  # no schedule, no run on agent change: the Concierge launches it
+        enabled=False,  # no schedule, no run on agent change: Platform Health launches it
     )
     db.add(evaluation)
     await db.flush()
@@ -232,7 +232,7 @@ async def _create_and_reserve(
 
 
 async def health_evaluation_runs(db: AsyncSession, evaluation_id: uuid.UUID) -> list[EvaluationRun]:
-    """The runs of a Concierge evaluation; refused for any other evaluation."""
+    """The runs of a Platform Health evaluation; refused for any other evaluation."""
     evaluation = await db.get(Evaluation, evaluation_id)
     if evaluation is None or not evaluation.concierge_built:
         raise HealthEvaluationError("The evaluation is not available.")
@@ -257,7 +257,7 @@ async def _simulated_writes(db: AsyncSession, run_id: uuid.UUID) -> int:
 async def compare_concierge_runs(
     db: AsyncSession, *, baseline_run_id: uuid.UUID, candidate_run_id: uuid.UUID
 ) -> RunComparison:
-    """Compare two runs of one Concierge evaluation (any two subjects: an agent and its variant, an agent and a flow)."""
+    """Compare two runs of one Platform Health evaluation (any two subjects: an agent and its variant, an agent and a flow)."""
     from app.services.evaluation.metrics import get_run_aggregates
 
     if baseline_run_id == candidate_run_id:
@@ -357,7 +357,7 @@ def _past_cap(left: budget.BudgetRemaining, held: budget.Reservation, tokens: in
 
 
 async def settle_health_evaluations(db: AsyncSession, *, limit: int = 100) -> int:
-    """Charge every held Concierge evaluation that ended on the cycle that reserved
+    """Charge every held Platform Health evaluation that ended on the cycle that reserved
     for it; stop the runs of one whose spend passes a cap. The number charged. Commits."""
     charged = 0
     for held in await budget.held_reservations(db, HOLD_KIND, limit=limit):

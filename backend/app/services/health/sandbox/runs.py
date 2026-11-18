@@ -27,7 +27,7 @@ source, else the agent a prototype automates): for that subject's owner, so it
 reaches no credential its subject does not hold, and only while the subject is
 in the supervision scope and its content readable, read again at every run
 (``tools.subject_refusal``, PRD 9). It never runs as an administrator the
-Concierge acts for: only an administrator's own call, outside a Concierge run,
+Platform Health acts for: only an administrator's own call, outside a Platform Health run,
 runs an owner-less copy as that administrator (``requested_by``).
 """
 
@@ -79,7 +79,7 @@ async def runner_user_id(
     db: AsyncSession, copy: SandboxCopy, *, requested_by: uuid.UUID | None = None
 ) -> uuid.UUID | None:
     """Whom a copy runs as: its subject's owner, else *requested_by* (an
-    administrator's own call, never the Concierge's), else nobody (``None``)."""
+    administrator's own call, never Platform Health's), else nobody (``None``)."""
     from app.models.agent import Agent
     from app.models.flow import Flow
     from app.services.health.flow_lab_access import copy_subject
@@ -183,7 +183,7 @@ async def run_sandbox_agent(
     # Its subject's reach is read again by ``sandbox_case``.
     runner = await runner_user_id(db, copy, requested_by=requested_by)
     if runner is None:
-        # Never the company-managed tier on the Concierge's behalf: that scope
+        # Never the company-managed tier on Platform Health's behalf: that scope
         # is opened only by the code that established the run has no account.
         raise SandboxRunError(NO_RUNNER)
     user_id = str(runner)
@@ -218,7 +218,7 @@ async def _graph_reach_refusal(
 ) -> str | None:
     """Why a copy's *graph* may not run as *runner_id*, or ``None``.
 
-    The graph is the Concierge's, not its runner's: it names nothing its
+    The graph is Platform Health's, not its runner's: it names nothing its
     source flow or basis agent does not (``flow_lab_access.sandbox_reach``,
     PRD 9), or, without either (a copy the server runs as a user it decided,
     a switch-over shadow), nothing its runner could not put on a flow of their

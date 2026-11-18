@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""An evaluation entry run on a Concierge sandbox copy (#8257, level 2's interception).
+"""An evaluation entry run on a Platform Health sandbox copy (#8257, level 2's interception).
 
 A sandbox agent copy runs each entry inside ``sandbox_case``: its writes are
 intercepted, its calls replayed from the entry's own recordings when the entry

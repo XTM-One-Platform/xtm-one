@@ -11,11 +11,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Evaluation datasets the Concierge builds from production (#8257, PRD 6.7, B15, B16).
+"""Evaluation datasets Platform Health builds from production (#8257, PRD 6.7, B15, B16).
 
 :func:`build_dataset_from_traces` turns a target's consented production work
 into an ordinary evaluation dataset, marked ``concierge_built``, owned by no
-user (the Concierge has no user row) and so visible to administrators only:
+user (Platform Health has no user row) and so visible to administrators only:
 
 * **cases to fix**: negatively rated answers and failed runs. The entry has no
   expected answer; its judge instructions carry the rating's comment and the
@@ -454,7 +454,7 @@ async def build_dataset_from_traces(
     since: datetime | None = None,
     dataset_id: uuid.UUID | None = None,
 ) -> DatasetBuildResult:
-    """Build (or extend, with *dataset_id*) a Concierge dataset from *target*'s production work.
+    """Build (or extend, with *dataset_id*) a Platform Health dataset from *target*'s production work.
 
     *target_type* ``agent`` reads its rated answers and its failed assignment
     runs, ``assignment`` the same restricted to one assignment's runs, ``flow``
@@ -594,7 +594,7 @@ async def build_dataset_from_traces(
 
 
 async def entry_recordings(db: AsyncSession, entry_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, list[Any]]:
-    """Each Concierge-built entry's recorded tool calls, as level 2's ``RecordedCall``."""
+    """Each Platform Health-built entry's recorded tool calls, as level 2's ``RecordedCall``."""
     from app.services.health.sandbox.replay import RecordedCall
 
     ids = list(entry_ids)
@@ -690,7 +690,7 @@ async def withdraw_entries(
     agent_id: uuid.UUID | None = None,
     flow_id: uuid.UUID | None = None,
 ) -> int:
-    """Delete the Concierge-built entries derived from *user_id*'s content (as the
+    """Delete Platform Health-built entries derived from *user_id*'s content (as the
     conversation's user or the rater), or from *agent_id* / *flow_id*. In the
     caller's transaction; returns how many entries went."""
     matches = []

@@ -11,12 +11,12 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Concierge's dedicated budget: its own line of the quota (#8254).
+"""Platform Health's dedicated budget: its own line of the quota (#8254).
 
 PRD ``dev-docs/platform-concierge.md`` 6.12 and decision B20. Both editions:
-Concierge work first passes the one licence gate every background work passes
+Platform Health work first passes the one licence gate every background work passes
 (``agentic_gate.agentic_verdict``: the AI switch and a licensed edition), then
-its own caps, set in Settings > Agents and automations > Concierge: per cycle and per month, in tokens
+its own caps, set in Settings > Agents and automations > Platform Health: per cycle and per month, in tokens
 and in dollars (invariant 17: a quota, not a feature switch). It is an extra
 cap, never a bypass: the fleet's runs are company-managed assignment runs and
 count in the platform-wide action tiers as any other.
@@ -70,7 +70,7 @@ BudgetRefusalCode = Literal[
     "month_budget_reached",
 ]
 
-#: What the digest and the callers state for each refusal; ``{name}`` is the Concierge's name (``naming``).
+#: What the digest and the callers state for each refusal; ``{name}`` is Platform Health's name (``naming``).
 REFUSAL_MESSAGES: dict[str, str] = {
     "concierge_disabled": "{name} is switched off.",
     "ai_disabled": "Agentic AI is switched off on this platform.",
@@ -83,7 +83,7 @@ REFUSAL_MESSAGES: dict[str, str] = {
 
 
 def refusal_message(code: str, name: str) -> str | None:
-    """The refusal *code* told with the Concierge called *name*, ``None`` for an unknown code.
+    """The refusal *code* told with Platform Health called *name*, ``None`` for an unknown code.
 
     ``str.replace``, never ``format``: a brace in a name stays a brace.
     """
@@ -99,7 +99,7 @@ _CENT_MICROS = Decimal("0.000001")
 
 
 class BudgetRefusedError(Exception):
-    """New Concierge work may not start. ``message`` is what the digest says."""
+    """New Platform Health work may not start. ``message`` is what the digest says."""
 
     def __init__(self, code: BudgetRefusalCode) -> None:
         self.code = code
@@ -225,7 +225,7 @@ def _cap_refusal(
 
 
 async def budget_refusal(db: AsyncSession, cycle_id: uuid.UUID | None = None) -> BudgetRefusalCode | None:
-    """Why a new Concierge cycle may not start now, or ``None`` when it may.
+    """Why a new Platform Health cycle may not start now, or ``None`` when it may.
 
     The entry gate: the licence first, then the caps. A run in flight asks
     :func:`remaining` instead, which never reads the AI gate.
@@ -237,7 +237,7 @@ async def budget_refusal(db: AsyncSession, cycle_id: uuid.UUID | None = None) ->
 
 
 async def _cap_state(db: AsyncSession, cycle_id: uuid.UUID | None) -> BudgetRefusalCode | None:
-    """The Concierge's own switch and caps, without the AI gate."""
+    """Platform Health's own switch and caps, without the AI gate."""
     if not await health_active(db):
         return "concierge_disabled"
     caps = (await load_health_settings(db)).budget
@@ -281,7 +281,7 @@ async def reserve(
 ) -> Reservation:
     """Set aside *tokens* / *cost_usd* for work about to start in *cycle_id*. Flushed.
 
-    Raises :class:`BudgetRefusedError` when the Concierge is switched off,
+    Raises :class:`BudgetRefusedError` when Platform Health is switched off,
     the cycle is closed, or a cap is reached or would be passed. Called from a
     run in flight, it never reads the AI gate: the cycle passed it when it
     opened (``tests/test_ai_toggle.py``). *hold*: the work keeps the
@@ -419,7 +419,7 @@ async def held_reservations(db: AsyncSession, kind: str, *, limit: int = 100) ->
 async def remaining(db: AsyncSession, cycle_id: uuid.UUID | None = None) -> BudgetRemaining:
     """What is left of the month (and of *cycle_id*), and why no more work fits, if so.
 
-    Read by a run in flight: the Concierge's own switch and caps, never the AI gate.
+    Read by a run in flight: Platform Health's own switch and caps, never the AI gate.
     """
     caps = (await load_health_settings(db)).budget
     cycle = await _cycle_row(db, cycle_id, lock=False) if cycle_id is not None else None

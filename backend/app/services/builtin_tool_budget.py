@@ -45,7 +45,7 @@ from app.services.builtin_tool_groups import schema_chars
 #: which took the total to 477,436. Lowered to 435,000 when the deck catalogue
 #: left the generate_presentation description for get_presentation(reference=)
 #: (#8812: generate_presentation 101,282 -> 56,483, total 478,013 -> 433,214).
-#: Raised to 454,000 for the Concierge's tools (total 452,062 on 5 Nov 2026).
+#: Raised to 454,000 for Platform Health's tools (total 452,062 on 5 Nov 2026).
 #: Lowered to 449,000 when the platform and coordination descriptions were
 #: trimmed (#8812: total 447,765 on 5 Nov 2026). Lowered to 441,000 when the
 #: generate_video_clip description sent its checks' detail to the Video

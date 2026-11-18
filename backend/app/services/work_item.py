@@ -5492,7 +5492,7 @@ def _inbox_run_identity(assignment: Any, agent: Any) -> tuple[str | None, bool]:
     The mirror of what ``trigger_assignment`` stamps on an inbox run (no
     person starts it): ``is_company_managed`` from the assignment unless its
     runs are hidden, ``user_id`` from the run-as user else the owner (none for
-    a Concierge fleet agent); then ``_resolve_run_file_owner_id``: no person
+    a Platform Health fleet agent); then ``_resolve_run_file_owner_id``: no person
     for a company-managed run.
     """
     from app.services.assignment_helpers import resolve_hide_runs

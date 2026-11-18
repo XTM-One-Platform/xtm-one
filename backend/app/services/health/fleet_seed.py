@@ -11,9 +11,9 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The seeded Concierge fleet (#8261, PRD 6.1, decision B10).
+"""The seeded Platform Health fleet (#8261, PRD 6.1, decision B10).
 
-Five company-managed agents - the Concierge orchestrator, the Memory Steward,
+Five company-managed agents - the Platform Health orchestrator, the Memory Steward,
 the Quality Analyst, the Flow Lab and the Experimenter - their assignments, and
 a company-managed fleet coordinating in a company-managed workspace.
 
@@ -28,10 +28,10 @@ run's user with no consent check (:data:`NON_CONSENT_TOOL_GROUPS`): every seed
 takes them off the fleet.
 
 Every assignment is a ``manual`` one: the cycle runner (``cycles.py``) starts
-it, after opening a budget cycle, so no Concierge run ever starts outside a
+it, after opening a budget cycle, so no Platform Health run ever starts outside a
 cycle (invariant 1: the work is assignments on agents; the schedule lives in
-Settings > Agents and automations > Concierge). The rows keep a real owner (invariant 9), but a run
-nobody triggered takes no user: it acts as the Concierge identity, never as
+Settings > Agents and automations > Platform Health). The rows keep a real owner (invariant 9), but a run
+nobody triggered takes no user: it acts as the Platform Health identity, never as
 that owner (``assignment_engine._execution_identity``).
 
 Seeded on every deployment: Platform Health is built in (no feature flag since
@@ -100,7 +100,7 @@ class FleetAssignmentSpec:
     timeout_seconds: int = 3600
     max_iterations: int = FLEET_MAX_ITERATIONS
     extra: dict = field(default_factory=dict)
-    #: Names the seed gave this assignment before (Concierge, until S1 of #101).
+    #: Names the seed gave this assignment before (Platform Health, until S1 of #101).
     former_names: tuple[str, ...] = ()
 
     @property
@@ -267,7 +267,7 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
         is_company_managed=True,
         is_builtin=False,
         slug=spec.slug,
-        # The orchestrator goes by the Concierge's name (``naming``), every member by its own.
+        # The orchestrator goes by Platform Health's name (``naming``), every member by its own.
         name=name if spec.slug == ORCHESTRATOR_SLUG else spec.name,
         description=spec.description,
         icon=spec.icon,
@@ -422,7 +422,7 @@ async def seed_health_fleet(db: AsyncSession) -> int:
 
     if ORCHESTRATOR_SLUG in by_slug:
         await _ensure_fleet(db, by_slug, owner_id, name)
-        # A deployment that changed mode, or seeded before the Concierge had a
+        # A deployment that changed mode, or seeded before Platform Health had a
         # name: rows still carrying a default name take this one's.
         await rename_health_agents(db, previous=DEFAULT_NAMES, name=name)
     await db.commit()

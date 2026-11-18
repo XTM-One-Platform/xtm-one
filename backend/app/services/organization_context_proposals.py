@@ -14,7 +14,7 @@
 """Organization changes proposed from chat, reviewed by an administrator (#9484, S-a2).
 
 The design is ``dev-docs/ctem-fleets.md`` section 6.1, "Chat". The CTEM
-Assistant and the Concierge call ``propose_organization_context_change``
+Assistant and the Platform Health call ``propose_organization_context_change``
 for "add Salesforce to our tech stack" or "we just acquired X, track it";
 the tool stores an :class:`OrganizationContextProposal` and NEVER writes a
 profile. An administrator accepts or rejects it, field by field, in

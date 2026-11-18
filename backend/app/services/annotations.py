@@ -145,7 +145,7 @@ class AnnotationListEntry:
     source: str = "web"
     emoji: str | None = None
     #: Who gave it (``None`` for a platform rater): a reader honouring a user's
-    #: opt-out (the Concierge, #8259) filters on it; never rendered.
+    #: opt-out (Platform Health, #8259) filters on it; never rendered.
     user_id: uuid.UUID | None = None
 
 
@@ -927,7 +927,7 @@ async def agents_weighted_score_window(
     """:func:`~app.services.feedback_criteria.aggregate_weighted_score` of each of
     *agent_ids* over the ratings given or changed in ``[since, until)``.
 
-    Batched for the Concierge's feedback signal (#8261): three grouped queries
+    Batched for Platform Health's feedback signal (#8261): three grouped queries
     whatever the number of agents, each riding a ``(…, updated_at)`` /
     ``created_at`` range. A rating counts at the time it was last given.
     """

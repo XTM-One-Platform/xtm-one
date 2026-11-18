@@ -18,7 +18,7 @@ company-managed, shared with no one, so the shared visibility helpers
 (``helpers.hidden_rows_excluded``) keep it out of every library, picker and
 fetch by id, admins included; analytics leave its traces out. It carries its
 source's configuration as an in-place duplicate does (the agent copy manifest,
-``models/agent_copy.py``), minus web and channel exposure, the Concierge opt-in
+``models/agent_copy.py``), minus web and channel exposure, the Platform Health opt-in
 and role, and the tool groups that read with no consent rule
 (:func:`sandbox_tool_ids`).
 
@@ -78,7 +78,7 @@ def sandbox_tool_ids(tool_ids: Sequence[str] | None) -> list[str]:
     """*tool_ids* without the groups that read as the runner with no consent
     rule (``fleet_seed.NON_CONSENT_TOOL_GROUPS``): never on a copy, at its
     creation and at each of its turns. Defence in depth: a copy's turn keeps
-    the Concierge's reach whatever it carries (``identity.in_health_reach``).
+    Platform Health's reach whatever it carries (``identity.in_health_reach``).
     """
     from app.services.health.fleet_seed import NON_CONSENT_TOOL_GROUPS
 

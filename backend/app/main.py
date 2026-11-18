@@ -2505,7 +2505,7 @@ async def lifespan(app: FastAPI):
     _recycle_watch = start_recycle_watch()
     register_worker_and_report_lost()
 
-    # Every Concierge consent revocation runs all its handlers in this process.
+    # Every Platform Health consent revocation runs all its handlers in this process.
     from app.services.health.consent import register_revocation_handlers
 
     register_revocation_handlers()

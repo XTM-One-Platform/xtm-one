@@ -41,7 +41,7 @@ class BudgetUnavailableError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Budget:
-    """What is left of the Concierge's line (``None``: no cap)."""
+    """What is left of Platform Health's line (``None``: no cap)."""
 
     tokens: int | None
     cost_usd: Decimal | None
@@ -145,7 +145,7 @@ class EvaluationUnavailableError(Exception):
     """Level 4 cannot measure this experiment (refused launch, or an arm it cannot run yet)."""
 
 
-#: Level 4 runs each case once per subject, and a Concierge launch takes no
+#: Level 4 runs each case once per subject, and a Platform Health launch takes no
 #: per-subject evaluation overlay yet (asked on #8257): one trial, and no skill
 #: variant (its stand-in is such an overlay).
 MAX_TRIALS = 1
@@ -160,7 +160,7 @@ async def build_dataset(
     since: datetime,
     max_entries: int,
 ) -> DatasetBuilt:
-    """A Concierge dataset of *target*'s consented production cases; ``entries`` 0 when none could be built."""
+    """A Platform Health dataset of *target*'s consented production cases; ``entries`` 0 when none could be built."""
     from app.services.health.datasets import DatasetBuildError, build_dataset_from_traces
 
     try:
