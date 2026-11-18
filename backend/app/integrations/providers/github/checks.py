@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.egress import egress_client
@@ -27,6 +29,12 @@ _CI_SKIPPED = frozenset({"skipped", "neutral"})
 #: Workflow runs listed per head when looking for one not finished.
 _CI_RUNS_PAGE = 100
 
+#: A check outside the base's required ones, pending for longer than this, no longer
+#: holds a head whose required checks all passed (a third-party app left in progress).
+STALE_OPTIONAL_SECONDS = 30 * 60
+#: The verdict of such a head: every required check passed, only stale optional checks pending.
+GREEN_STALE_OPTIONAL = "green_required_stale_optional"
+
 
 def is_conflict(mergeable: Any, merge_state: Any) -> bool:
     """Whether a pull request conflicts with its base.
@@ -40,20 +48,29 @@ def is_conflict(mergeable: Any, merge_state: Any) -> bool:
     return str(merge_state or "").lower() == "dirty"
 
 
-def ci_verdict(counts: dict[str, int], *, conflict: bool = False, running: list[str] | None = None) -> str:
+def ci_verdict(
+    counts: dict[str, int], *, conflict: bool = False, running: list[str] | None = None, stale: int = 0
+) -> str:
     """The one CI verdict of ``get_github_ci_status``, ``list_github_pr_states`` and ``get_github_pr``.
 
     *counts* are the latest-run-per-name buckets. A failing check wins; then a
     pull request conflicting with its base (no CI runs on its merge ref) is
-    ``conflict``; then a pending check or a workflow run of the head not
-    finished (*running*, its jobs not reported yet) is ``pending``; else
-    ``success`` (skipped or neutral only included), or ``none reported``.
+    ``conflict``; then a workflow run of the head not finished (*running*, its
+    jobs not reported yet) is ``pending``; then, when every pending check is one
+    of the *stale* ones (:func:`stale_optional`: every required check passed),
+    :data:`GREEN_STALE_OPTIONAL`; then any other pending check is ``pending``;
+    else ``success`` (skipped or neutral only included), or ``none reported``.
     """
     if counts.get("failed"):
         return "failure"
     if conflict:
         return "conflict"
-    if counts.get("pending") or running:
+    if running:
+        return "pending"
+    pending = counts.get("pending") or 0
+    if pending and stale >= pending:
+        return GREEN_STALE_OPTIONAL
+    if pending:
         return "pending"
     return "success" if any(counts.values()) else "none reported"
 
@@ -134,6 +151,92 @@ def coverage_pending(runs: list[dict[str, Any]]) -> bool:
     return any(not is_coverage_grade(r) and (r.get("status") != "completed" or not r.get("conclusion")) for r in runs)
 
 
+def _moment(value: Any) -> datetime | None:
+    """A GitHub ISO time as an aware datetime, ``None`` when absent or unreadable. Pure."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def pending_since(check: dict[str, Any]) -> str | None:
+    """When a pending check last moved: a check run's ``started_at``, a status's ``updated_at``. Pure.
+
+    A ``classify_ci`` entry carries it as ``since``.
+    """
+    for key in ("since", "started_at", "updated_at"):
+        value = check.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def stale_checks(
+    pending: Iterable[dict[str, Any]],
+    required: frozenset[str] = frozenset(),
+    now: datetime | None = None,
+    stale_after: int = STALE_OPTIONAL_SECONDS,
+) -> list[dict[str, Any]]:
+    """The *pending* checks outside *required* that have not moved for over *stale_after* seconds. Pure.
+
+    Each is ``{name, since, age_seconds}``. A check with no readable start time is
+    never stale: only a check seen pending for that long is left out of a verdict.
+    """
+    moment = now or datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for check in pending:
+        name = str(check.get("name") or check.get("context") or "")
+        if not name or name in required:
+            continue
+        since = pending_since(check)
+        started = _moment(since)
+        if started is None:
+            continue
+        age = int((moment - started).total_seconds())
+        if age > stale_after:
+            out.append({"name": name, "since": since, "age_seconds": age})
+    return out
+
+
+def stale_optional(
+    buckets: dict[str, list[dict[str, Any]]], required: frozenset[str], now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """The stale pending checks of a head whose required checks all passed, else none. Pure.
+
+    Empty unless the base requires at least one context, every required context
+    reported and passed (:func:`summarize_required`) and no check failed: only then
+    can a non-required check pending for over :data:`STALE_OPTIONAL_SECONDS` stop
+    holding the head (:data:`GREEN_STALE_OPTIONAL`).
+    """
+    if not required or buckets.get("failed") or not buckets.get("pending"):
+        return []
+    summary = summarize_required(buckets, required)
+    if summary["failed"] or summary["pending"] or summary["missing"]:
+        return []
+    return stale_checks(buckets["pending"], required, now)
+
+
+def format_age(seconds: int) -> str:
+    """``5h30m`` / ``42m``: the age of a stale check. Pure."""
+    minutes = max(0, seconds) // 60
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m" if hours else f"{minutes}m"
+
+
+def stale_note(stale: list[dict[str, Any]] | None) -> str:
+    """Name the stale optional checks left out of the verdict, with their age (empty when none). Pure."""
+    if not stale:
+        return ""
+    names = ", ".join(
+        f"{s['name']} (pending {format_age(int(s.get('age_seconds') or 0))})"
+        for s in sorted(stale, key=lambda s: s["name"])
+    )
+    return f"Stale optional check(s), not counted: {names}"
+
+
 def classify_ci(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Sort the latest check runs and commit statuses of a ref into four buckets.
 
@@ -152,6 +255,7 @@ def classify_ci(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]]
             "url": run.get("html_url") or run.get("details_url") or "",
             "app": (run.get("app") or {}).get("slug") or "",
             "id": _coerce_int(run.get("id")),
+            "since": run.get("started_at"),
         }
         if status != "completed" or not conclusion:
             buckets["pending"].append(entry)
@@ -169,6 +273,7 @@ def classify_ci(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]]
             "url": status.get("target_url") or "",
             "app": "status",
             "id": None,
+            "since": status.get("updated_at"),
         }
         if state == "pending":
             buckets["pending"].append(entry)
@@ -325,6 +430,7 @@ _OVERALL = {
     "failure": "✗ FAILURE",
     "conflict": "⚠ CONFLICT",
     "pending": "⟳ PENDING",
+    GREEN_STALE_OPTIONAL: "✓ GREEN - every required check passed, only stale optional check(s) pending",
     "success": "✓ SUCCESS - all passed",
     "none reported": "none reported",
 }
@@ -340,6 +446,7 @@ def format_ci_status(
     base: str = "",
     conflict: str = "",
     running: list[str] | None = None,
+    stale: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the compact CI status: counts always, detail only for what did not pass.
 
@@ -347,7 +454,9 @@ def format_ci_status(
     a ``Required by main`` line (the base branch's name) follows the counts and a failed or pending
     required check is tagged ``(required)``. *conflict* (the PR's merge state when it
     conflicts with its base) and *running* (workflow runs of the head not finished)
-    feed :func:`ci_verdict`, so green checks never read as success over them.
+    feed :func:`ci_verdict`, so green checks never read as success over them. *stale*
+    (:func:`stale_optional`) names the non-required checks pending too long to hold
+    a head whose required checks passed: the verdict is :data:`GREEN_STALE_OPTIONAL`.
     """
     required = required or frozenset()
     failed, pending = buckets["failed"], buckets["pending"]
@@ -356,7 +465,9 @@ def format_ci_status(
         f"{len(buckets['passed'])} passed, {len(failed)} failed, {len(pending)} pending, "
         f"{len(buckets['skipped'])} skipped ({total} checks)"
     )
-    verdict = ci_verdict({k: len(v) for k, v in buckets.items()}, conflict=bool(conflict), running=running)
+    verdict = ci_verdict(
+        {k: len(v) for k, v in buckets.items()}, conflict=bool(conflict), running=running, stale=len(stale or [])
+    )
     conflict_line = (
         f"Conflict: the PR conflicts with its base (merge state {conflict}); no CI runs on its merge ref "
         "until the conflict is resolved."
@@ -374,6 +485,8 @@ def format_ci_status(
         lines.append(conflict_line)
     if running and not failed:
         lines.append(running_note(running))
+    if verdict == GREEN_STALE_OPTIONAL:
+        lines.append(stale_note(stale))
     if required:
         lines.append(format_required(base or "the base branch", summarize_required(buckets, required)))
     if truncated:
@@ -524,8 +637,11 @@ def register(
             if not number and head_sha and not head_sha.startswith(ref):
                 label = f"{label} (head {head_sha[:8]})"
             buckets = classify_ci(check_runs, statuses)
+            # Every required check passed and only checks the base does not require,
+            # pending for too long, are left: they no longer hold the head.
+            stale = stale_optional(buckets, required)
             running: list[str] | None = None
-            if not buckets["failed"] and not buckets["pending"]:
+            if not buckets["failed"] and len(buckets["pending"]) <= len(stale):
                 # Every reported check passed: a workflow run still queued has
                 # not created its check runs yet, so the head is not green.
                 running = await running_workflows(client, headers, owner, name, ref)
@@ -559,6 +675,7 @@ def register(
                 base=base,
                 conflict=conflict,
                 running=running,
+                stale=stale,
             )
 
     async def create_github_commit_status(
