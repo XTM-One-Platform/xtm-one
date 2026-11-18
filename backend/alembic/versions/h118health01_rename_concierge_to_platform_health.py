@@ -23,7 +23,7 @@ probe makes this a no-op. The previous-version pods read the old names during
 a rolling deploy: the same window as any rename, accepted by the spec.
 
 Revision ID: h118health01
-Revises: c122deact0001
+Revises: a105a2arot1
 Create Date: 2026-11-18 12:20:00.000000
 """
 
@@ -38,7 +38,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "h118health01"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c122deact0001"
+down_revision: str | Sequence[str] | None = "a105a2arot1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
