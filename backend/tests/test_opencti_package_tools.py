@@ -393,6 +393,52 @@ async def test_manage_group_get_unwraps_role_nodes(monkeypatch):
     assert "Administrator" in result.content
 
 
+async def test_manage_group_get_names_its_members(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _RecordingGraphQL(
+        {
+            "group": {
+                "id": "g1",
+                "name": "Connectors (without labels)",
+                "roles": {"edges": []},
+                "members": {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": "u1",
+                                "name": "[F] feed",
+                                "user_email": "feed@x.io",
+                                "user_service_account": True,
+                            }
+                        },
+                        {"node": {"id": "u2", "name": "Alice", "user_email": "", "user_service_account": False}},
+                    ],
+                    "pageInfo": {"hasNextPage": True, "globalCount": 5},
+                },
+            }
+        }
+    )
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(executor, "manage_opencti_group", {"action": "get", "group_id": "g1"})
+    assert not result.is_error, result.content
+    assert "  members: 5" in result.content
+    assert "    - [F] feed (id: u1, feed@x.io, service account)" in result.content
+    assert "    - Alice (id: u2, user)" in result.content
+    assert "3 not shown" in result.content
+    query = fake.calls[-1][0]
+    assert "user_service_account" in query and "globalCount" in query
+
+
+def test_group_member_lines_without_page_info():
+    from app.integrations.providers.opencti.access import _group_member_lines
+
+    lines = _group_member_lines({"members": {"edges": [{"node": {"id": "u1", "name": "Alice"}}]}})
+    assert lines == ["  members: 1", "    - Alice (id: u1, user)"]
+    assert _group_member_lines({}) == ["  members: 0"]
+
+
 class _ConfidenceOpenCTI:
     """Stateful ``_graphql`` stub for the confidence level of one group and one user.
 
