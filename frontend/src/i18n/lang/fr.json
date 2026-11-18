@@ -19109,5 +19109,22 @@
   "Every run": "Toutes les exécutions",
   "{family} · {count, plural, one {# entry} other {# entries}} · {runs, plural, one {# completed run} other {# completed runs}}": "{family} · {count, plural, one {# entrée} other {# entrées}} · {runs, plural, one {# exécution terminée} other {# exécutions terminées}}",
   "Views of the comparison": "Vues de la comparaison",
-  "Run against run": "Exécution contre exécution"
+  "Run against run": "Exécution contre exécution",
+  "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted with it; missed deliveries are read back from the event log. The event carries IDs only: the run payload names the read tool.": "Se déclenche sur cet événement Wordsmith via un point de terminaison webhook créé avec le déclencheur et supprimé avec lui ; les livraisons manquées sont relues dans le journal des événements. L'événement ne porte que des identifiants : la charge de l'exécution nomme l'outil de lecture.",
+  "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the trigger's audience to customer (webhooks:admin scope).": "Se déclenche quand une règle d'alerte d'audit Wordsmith se déclenche. Nécessite un point de terminaison d'organisation : réglez l'audience du déclencheur sur customer (portée webhooks:admin).",
+  "Wordsmith alert triggered": "Alerte Wordsmith déclenchée",
+  "Wordsmith input request created": "Demande de saisie Wordsmith créée",
+  "Wordsmith input request resolved": "Demande de saisie Wordsmith résolue",
+  "Wordsmith operation cancelled": "Opération Wordsmith annulée",
+  "Wordsmith operation failed": "Opération Wordsmith échouée",
+  "Wordsmith operation succeeded": "Opération Wordsmith réussie",
+  "Wordsmith report run completed": "Exécution de rapport Wordsmith terminée",
+  "Wordsmith repository documents added": "Documents ajoutés à un référentiel Wordsmith",
+  "Wordsmith repository indexing completed": "Indexation d'un référentiel Wordsmith terminée",
+  "Wordsmith review completed": "Revue Wordsmith terminée",
+  "Wordsmith task assigned": "Tâche Wordsmith assignée",
+  "Wordsmith task comment added": "Commentaire ajouté à une tâche Wordsmith",
+  "Wordsmith task created": "Tâche Wordsmith créée",
+  "Wordsmith task status changed": "Statut de tâche Wordsmith modifié",
+  "Wordsmith webhook test event": "Événement de test du webhook Wordsmith"
 }

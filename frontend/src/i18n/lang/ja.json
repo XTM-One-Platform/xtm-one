@@ -19109,5 +19109,22 @@
   "Every run": "すべての実行",
   "{family} · {count, plural, one {# entry} other {# entries}} · {runs, plural, one {# completed run} other {# completed runs}}": "{family} · {count, plural, other {# 件のエントリ}} · {runs, plural, other {# 件の完了した実行}}",
   "Views of the comparison": "比較のビュー",
-  "Run against run": "実行同士の比較"
+  "Run against run": "実行同士の比較",
+  "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted with it; missed deliveries are read back from the event log. The event carries IDs only: the run payload names the read tool.": "トリガーと共に作成・削除される Webhook エンドポイントを通じて、この Wordsmith イベントで起動します。届かなかった配信はイベントログから読み直されます。イベントは ID のみを含み、実行のペイロードが読み取りツールを示します。",
+  "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the trigger's audience to customer (webhooks:admin scope).": "Wordsmith の監査アラートルールが発火したときに起動します。組織エンドポイントが必要です。トリガーの audience を customer に設定してください (webhooks:admin スコープ)。",
+  "Wordsmith alert triggered": "Wordsmith のアラートが発生",
+  "Wordsmith input request created": "Wordsmith の入力リクエストが作成",
+  "Wordsmith input request resolved": "Wordsmith の入力リクエストが解決",
+  "Wordsmith operation cancelled": "Wordsmith のオペレーションがキャンセル",
+  "Wordsmith operation failed": "Wordsmith のオペレーションが失敗",
+  "Wordsmith operation succeeded": "Wordsmith のオペレーションが成功",
+  "Wordsmith report run completed": "Wordsmith のレポート実行が完了",
+  "Wordsmith repository documents added": "Wordsmith のリポジトリにドキュメントが追加",
+  "Wordsmith repository indexing completed": "Wordsmith のリポジトリのインデックス作成が完了",
+  "Wordsmith review completed": "Wordsmith のレビューが完了",
+  "Wordsmith task assigned": "Wordsmith のタスクが割り当て",
+  "Wordsmith task comment added": "Wordsmith のタスクにコメントが追加",
+  "Wordsmith task created": "Wordsmith のタスクが作成",
+  "Wordsmith task status changed": "Wordsmith のタスクのステータスが変更",
+  "Wordsmith webhook test event": "Wordsmith の Webhook テストイベント"
 }
