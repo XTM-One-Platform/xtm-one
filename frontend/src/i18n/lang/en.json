@@ -18960,5 +18960,16 @@
   "Copy both": "Copy both",
   "The partner pastes the client ID and the secret together, as one pair.": "The partner pastes the client ID and the secret together, as one pair.",
   "Last refused token request": "Last refused token request",
-  "Rotate client ID and secret": "Rotate client ID and secret"
+  "Rotate client ID and secret": "Rotate client ID and secret",
+  "Regenerate the secret?": "Regenerate the secret?",
+  "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.": "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.",
+  "Rotate the client ID and the secret?": "Rotate the client ID and the secret?",
+  "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID and the new secret.": "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID and the new secret.",
+  "Rotate both": "Rotate both",
+  "Wrong secret for the current client ID": "Wrong secret for the current client ID",
+  "The partner must paste the latest secret.": "The partner must paste the latest secret.",
+  "Client ID rotated away": "Client ID rotated away",
+  "The partner must paste the current client ID and secret.": "The partner must paste the current client ID and secret.",
+  "No agent exposed": "No agent exposed",
+  "The credential is valid, but no agent bound to this integration is exposed.": "The credential is valid, but no agent bound to this integration is exposed."
 }

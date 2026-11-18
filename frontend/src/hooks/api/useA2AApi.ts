@@ -34,6 +34,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/rea
 import { useChatSendEnabled } from "@/hooks/usePlatformConfig";
 import { api, unavailableIsOrdinary } from "@/lib/api";
 import type { A2ALiaisons } from "@/lib/agent-graph-a2a";
+import type { A2ARefusedTokenRequest, Integration } from "@/types";
 
 /** Provider keys of the integrations that carry an A2A partner relationship
  * (mirrors `app.a2a.providers.A2A_PROVIDERS`). Binding ANY of them to an
@@ -77,6 +78,20 @@ export function useRegenerateA2ACredential(integrationId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integrations"] });
     },
+  });
+}
+
+/** The last token request this inbound credential refused (#105), for its
+ * managers. Served by the single-integration read alone (`GET
+ * /integrations/{id}`): the list rows carry no `a2a_credential`, so the card
+ * reads it here rather than off the integration the page found in the list.
+ * Its key sits under `integrations`, so a regenerate refreshes it. */
+export function useA2ALastRefusal(integrationId: string, enabled = true) {
+  return useQuery<Integration, Error, A2ARefusedTokenRequest | null>({
+    queryKey: ["integrations", integrationId, "a2a-credential"],
+    queryFn: () => api.get(`/integrations/${integrationId}`),
+    select: (integration) => integration.a2a_credential?.last_refused_token_request ?? null,
+    enabled: enabled && !!integrationId,
   });
 }
 

@@ -1011,6 +1011,16 @@ export interface AgentEmailSignatures {
   signature_integrations: SignatureIntegrationOption[];
 }
 
+/** The last token request an inbound `oauth_a2a` credential refused (#105).
+ *  `reason` is a code the UI translates: secret_mismatch, unknown_client or
+ *  no_reachable_agent; `what_to_do` is the backend's English fallback. */
+export interface A2ARefusedTokenRequest {
+  at: string;
+  client_id: string | null;
+  reason: string | null;
+  what_to_do: string | null;
+}
+
 export interface Integration {
   id: string;
   user_id: string | null;
@@ -1048,12 +1058,7 @@ export interface Integration {
     usable?: boolean;
     last_token_minted_at?: string | null;
     last_error?: { code: string; detail: string | null; at: string | null } | null;
-    last_refused_token_request?: {
-      at: string;
-      client_id: string | null;
-      reason: string | null;
-      what_to_do: string | null;
-    };
+    last_refused_token_request?: A2ARefusedTokenRequest;
   } | null;
   tags: string[];
   scopes: string | null;

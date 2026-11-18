@@ -126,7 +126,6 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
   let available = false;
 
   // A — the side that exposes.
-  let agentAName = '';
   let cardUrl = '';
   let credential = { clientId: '', clientSecret: '' };
   let tokenUrl = '';
@@ -144,7 +143,6 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
 
     const inbound = await createInboundIntegration(one.rest, exposedSide, stamp('E2E inbound main'));
     const agentA = await createAgent(one.rest, exposedSide, { name: stamp('E2E exposed main') });
-    agentAName = agentA.name;
     cardUrl = await exposeAgent(one.rest, agentA.id, inbound.id);
     credential = await mintCredential(one.rest, inbound.id);
     tokenUrl = `${one.origin}/mcp/oauth/token`;
