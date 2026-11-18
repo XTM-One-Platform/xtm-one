@@ -40,7 +40,7 @@ import functools
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.services.concierge.identity import concierge_run_scope, in_sandbox_turn, mark_concierge_run
+from app.services.health.identity import concierge_run_scope, in_sandbox_turn, mark_concierge_run
 
 
 def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -63,7 +63,7 @@ def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, 
 
 
 def _sandbox_turn(agent: Any) -> bool:
-    from app.services.concierge.sandbox.copies import is_sandbox_copy
+    from app.services.health.sandbox.copies import is_sandbox_copy
 
     return is_sandbox_copy(agent) or in_sandbox_turn()
 

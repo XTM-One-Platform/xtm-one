@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.concierge import datasets
-from app.services.concierge.sandbox import copies, runs
 from app.services.evaluation.sandbox_cases import SandboxCaseUnavailableError, agent_sandbox_case, case_ref
+from app.services.health import datasets
+from app.services.health.sandbox import copies, runs
 
 
 def _agent(*, sandbox: bool) -> SimpleNamespace:

@@ -10,8 +10,8 @@ from app.models.agent import Agent
 from app.models.agent_skill import AgentSkill
 from app.models.assignment import Assignment
 from app.models.user import User
-from app.services.concierge import experiments, quality_deps
-from app.services.concierge.findings import Evidence, record_finding
+from app.services.health import experiments, quality_deps
+from app.services.health.findings import Evidence, record_finding
 
 PERSONA = "You answer billing questions about {{user.name}}'s invoices."
 VARIANT = "You answer billing questions about {{user.name}}'s invoices. Quote the invoice number."

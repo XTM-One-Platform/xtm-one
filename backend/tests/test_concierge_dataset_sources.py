@@ -12,7 +12,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import func, select
 
-from app.models.concierge_dataset import CASE_TO_FIX, SOURCE_FLOW_RUN, ConciergeDatasetEntrySource
+from app.models.health_dataset import CASE_TO_FIX, SOURCE_FLOW_RUN, ConciergeDatasetEntrySource
 
 pytestmark = pytest.mark.integration
 

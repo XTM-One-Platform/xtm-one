@@ -9,7 +9,7 @@ the target's consented production cases, two sandbox copies (the current
 configuration and the variant) evaluated on it with the same model, and the
 comparison of the two runs. Nothing here writes the target: the only path to
 production is the proposal the Experimenter files from a completed experiment
-(``services/concierge/experiments.py``).
+(``services/health/experiments.py``).
 
 The base text is snapshotted with its version so an experiment whose target a
 human edited meanwhile is marked ``stale`` and never filed over that edit.

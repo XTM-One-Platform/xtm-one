@@ -11,9 +11,9 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.agent import Agent
-from app.models.concierge_finding import STATUS_DISMISSED, STATUS_OPEN, STATUS_RESOLVED, ConciergeFinding
+from app.models.health_finding import STATUS_DISMISSED, STATUS_OPEN, STATUS_RESOLVED, ConciergeFinding
 from app.models.user import User
-from app.services.concierge.findings import Evidence, FindingError, list_findings, record_finding, window_counts
+from app.services.health.findings import Evidence, FindingError, list_findings, record_finding, window_counts
 from tests.test_provisioning_postgres import _temp_database
 
 pytestmark = pytest.mark.integration

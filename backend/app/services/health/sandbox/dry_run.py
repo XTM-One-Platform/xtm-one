@@ -15,7 +15,7 @@
 
 While Settings > Agents and automations > Concierge has dry-run on, every write of every Concierge agent
 is logged and not executed: its tool writes through a ``dry_run``
-:class:`~app.services.concierge.sandbox.session.SandboxSession` bound to its
+:class:`~app.services.health.sandbox.session.SandboxSession` bound to its
 turns (``turns.intercepted_agent_turn``), the writes a service makes without a
 tool (a consolidation pass, filing a proposal) by asking
 :func:`dry_run_active` first and recording what it would have done with
@@ -37,8 +37,8 @@ DRY_RUN_AUDIT_ACTION = "concierge.dry_run_write"
 
 async def dry_run_active(db: AsyncSession) -> bool:
     """Whether the running work is the Concierge's and dry-run is on."""
-    from app.services.concierge.identity import in_concierge_run
-    from app.services.concierge.settings import load_concierge_settings
+    from app.services.health.identity import in_concierge_run
+    from app.services.health.settings import load_concierge_settings
 
     if not in_concierge_run():
         return False
@@ -61,7 +61,7 @@ async def record_dry_run_write(
     is neither, since an audit row needs a user to hang on.
     """
     from app.services.audit import log_system_audit
-    from app.services.concierge.identity import CONCIERGE_ACTOR, current_concierge
+    from app.services.health.identity import CONCIERGE_ACTOR, current_concierge
 
     principal = current_concierge()
     anchor = anchor_user_id or (principal.on_behalf_of_admin_id if principal else None)

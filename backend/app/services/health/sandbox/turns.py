@@ -33,8 +33,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.concierge.sandbox.replay import RecordedCall, ReplayIndex, load_recorded_calls
-from app.services.concierge.sandbox.session import (
+from app.services.health.sandbox.replay import RecordedCall, ReplayIndex, load_recorded_calls
+from app.services.health.sandbox.session import (
     SandboxReport,
     SandboxSession,
     current_sandbox_session,
@@ -53,7 +53,7 @@ def recording_consent() -> Callable[[RecordedCall], Awaitable[bool]]:
 
     async def _check(recording: RecordedCall) -> bool:
         from app.core.database import async_session
-        from app.services.concierge.consent import (
+        from app.services.health.consent import (
             ConsentDeniedError,
             content_readable,
             require_content_read,
@@ -129,15 +129,15 @@ async def agent_turn_session(db: AsyncSession, user_id: str, agent: Any) -> Sand
     if current_sandbox_session() is not None:
         return None
     if getattr(agent, "is_sandbox", False):
-        from app.services.concierge.sandbox.copies import sandbox_copy_of
+        from app.services.health.sandbox.copies import sandbox_copy_of
 
         copy = await sandbox_copy_of(db, agent_id=agent.id)
         recordings = await copy_recordings(db, copy) if copy is not None else []
         return build_sandbox_session(user_id=user_id, model=getattr(agent, "llm_model", None), recorded_calls=recordings)
-    from app.services.concierge.identity import in_concierge_run
+    from app.services.health.identity import in_concierge_run
 
     if in_concierge_run():
-        from app.services.concierge.sandbox.dry_run import dry_run_active
+        from app.services.health.sandbox.dry_run import dry_run_active
 
         if await dry_run_active(db):
             return SandboxSession(mode="dry_run")

@@ -7,9 +7,9 @@ import uuid
 
 async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch):
     """Only the principal's own agent is the Concierge; a sandbox copy's turn or a consulted agent is not."""
-    from app.services.concierge import identity
-    from app.services.concierge.flow_lab_access import resolve_caller
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
+    from app.services.health import identity
+    from app.services.health.flow_lab_access import resolve_caller
+    from app.services.health.identity import ConciergePrincipal, acting_as_concierge
 
     monkeypatch.setattr(identity, "concierge_enabled", lambda: True)
     principal = ConciergePrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
@@ -22,7 +22,7 @@ async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch)
 
 
 def test_a_graph_names_the_ids_of_its_node_configs_only():
-    from app.services.concierge.flow_lab_access import node_config_ids
+    from app.services.health.flow_lab_access import node_config_ids
 
     integration, variable, node = (str(uuid.uuid4()) for _ in range(3))
     graph = {
@@ -36,7 +36,7 @@ def test_a_graph_names_the_ids_of_its_node_configs_only():
 
 
 def test_a_prototype_remembers_the_agent_whose_reach_it_keeps():
-    from app.services.concierge.flow_lab_access import BASIS_AGENT_PREFIX, basis_agent_of
+    from app.services.health.flow_lab_access import BASIS_AGENT_PREFIX, basis_agent_of
 
     agent_id = uuid.uuid4()
     assert basis_agent_of(f"{BASIS_AGENT_PREFIX}{agent_id}") == agent_id

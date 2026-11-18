@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.concierge import budget
-from app.services.concierge.settings import ConciergeBudgetCaps
+from app.services.health import budget
+from app.services.health.settings import ConciergeBudgetCaps
 
 # ── The budget's arithmetic ───────────────────────────────────────────────
 

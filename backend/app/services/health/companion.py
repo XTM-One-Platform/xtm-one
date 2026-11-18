@@ -104,7 +104,7 @@ async def _count_reviews(db: AsyncSession, user: User) -> int:
     from app.api.v1.helpers import get_user_group_ids
     from app.models.improvement_proposal import ImprovementProposal
     from app.services import improvement_proposals as proposals
-    from app.services.concierge.cycle_access import readable_proposals
+    from app.services.health.cycle_access import readable_proposals
 
     rows = list(
         (
@@ -127,8 +127,8 @@ async def _count_reviews(db: AsyncSession, user: User) -> int:
 
 async def companion_activity(db: AsyncSession, user: User) -> CompanionActivity:
     from app.models.assignment import AssignmentRun
-    from app.models.concierge import ConciergeCycle
-    from app.models.concierge_cycle import ConciergeCycleRun
+    from app.models.health import ConciergeCycle
+    from app.models.health_cycle import ConciergeCycleRun
 
     since = datetime.now(UTC) - FAILURE_WINDOW
     cycles = select(ConciergeCycle.id).outerjoin(ConciergeCycleRun, ConciergeCycleRun.cycle_id == ConciergeCycle.id)

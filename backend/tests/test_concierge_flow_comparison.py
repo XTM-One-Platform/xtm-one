@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.services.concierge.flow_comparison import RunSide, compare_sides
+from app.services.health.flow_comparison import RunSide, compare_sides
 
 # ── Run comparison ─────────────────────────────────────────────────────────
 

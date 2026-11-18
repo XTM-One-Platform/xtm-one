@@ -6,9 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.services.concierge.cycles import CycleStart
-from app.services.concierge.naming import DEFAULT_NAMES, concierge_name, default_concierge_name
-from app.services.concierge.settings import MAX_NAME_LENGTH, ConciergeSettings
+from app.services.health.cycles import CycleStart
+from app.services.health.naming import DEFAULT_NAMES, concierge_name, default_concierge_name
+from app.services.health.settings import MAX_NAME_LENGTH, ConciergeSettings
 
 
 @pytest.mark.parametrize(

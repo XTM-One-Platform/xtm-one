@@ -32,6 +32,6 @@ def concierge_enabled() -> bool:
 
 async def concierge_active(db: AsyncSession) -> bool:
     """The administrator's "enabled" in the settings: may the work start?"""
-    from app.services.concierge.settings import load_concierge_settings
+    from app.services.health.settings import load_concierge_settings
 
     return (await load_concierge_settings(db)).enabled

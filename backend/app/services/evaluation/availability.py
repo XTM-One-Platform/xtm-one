@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.feature_flags import feature_disabled_detail, is_feature_enabled, require_feature
 from app.models.evaluation import Evaluation, EvaluationRun
-from app.services.concierge.availability import concierge_active
+from app.services.health.availability import concierge_active
 
 DISABLED_DETAIL = feature_disabled_detail("EVALUATION")
 

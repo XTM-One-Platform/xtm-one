@@ -19,7 +19,7 @@ def test_level_3_loads_a_handler_for_every_flow_type():
 
 
 async def test_a_flow_change_measured_on_an_older_version_is_stale():
-    from app.services.concierge.flow_proposals import FlowGraphHandler
+    from app.services.health.flow_proposals import FlowGraphHandler
 
     handler = FlowGraphHandler("flow_repair")
     proposal = SimpleNamespace(base_version_number=3)
@@ -30,7 +30,7 @@ async def test_a_flow_change_measured_on_an_older_version_is_stale():
 
 
 async def test_a_replacement_of_a_paused_or_changed_assignment_is_stale():
-    from app.services.concierge.flow_proposals import AgentToFlowHandler, AssignmentTarget
+    from app.services.health.flow_proposals import AgentToFlowHandler, AssignmentTarget
 
     graph = {"nodes": [{"id": "t", "kind": "trigger.schedule", "config": {"cron": "0 8 * * *"}}], "edges": []}
     proposal = SimpleNamespace(change={"graph": graph})
@@ -54,8 +54,8 @@ async def test_a_new_flow_its_manager_activated_is_never_archived_on_a_regressio
     import uuid
 
     from app.models.flow import FLOW_STATUS_ACTIVE, FLOW_STATUS_DRAFT
-    from app.services.concierge import flow_proposals
-    from app.services.concierge.flow_proposals import NewFlowHandler
+    from app.services.health import flow_proposals
+    from app.services.health.flow_proposals import NewFlowHandler
     from app.services.improvement_proposals.lifecycle import STATUS_REGRESSION_KEPT, _regress
 
     flow = SimpleNamespace(id=uuid.uuid4(), name="Digest", status=FLOW_STATUS_ACTIVE, version_number=1, user_id=None)

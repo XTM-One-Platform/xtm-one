@@ -14,7 +14,7 @@ import json
 import pytest
 
 from app.services.builtin_tools.memory_steward import build_memory_steward_tools
-from app.services.concierge import identity
+from app.services.health import identity
 from app.tools.base import ToolCall
 from tests.memory_steward_pass_world import pass_world, seed_owner_lane
 

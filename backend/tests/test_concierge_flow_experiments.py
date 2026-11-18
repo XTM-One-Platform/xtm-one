@@ -25,8 +25,8 @@ async def test_findings_and_drafts_are_the_flow_labs_own_writes(handler, caller)
 
 def test_level_6_measures_every_flow_type():
     import app.services.builtin_tools.flow_lab  # noqa: F401 - what loads the kinds at startup
-    from app.services.concierge.experiments import experiment_kind
-    from app.services.concierge.flow_experiments import AgentToFlowKind, FlowGraphKind, NewFlowKind
+    from app.services.health.experiments import experiment_kind
+    from app.services.health.flow_experiments import AgentToFlowKind, FlowGraphKind, NewFlowKind
 
     assert isinstance(experiment_kind("flow_repair"), FlowGraphKind)
     assert isinstance(experiment_kind("flow_optimization"), FlowGraphKind)
@@ -40,7 +40,7 @@ def test_level_6_measures_every_flow_type():
 )
 async def test_a_variant_must_target_its_findings_target(kind, finding_target):
     import app.services.builtin_tools.flow_lab  # noqa: F401 - loads the kinds
-    from app.services.concierge.experiments import ExperimentError, experiment_kind
+    from app.services.health.experiments import ExperimentError, experiment_kind
 
     target_id = uuid.uuid4()
     finding = SimpleNamespace(target_type=finding_target, target_id=target_id)
@@ -49,8 +49,8 @@ async def test_a_variant_must_target_its_findings_target(kind, finding_target):
 
 
 def test_a_variant_says_what_it_changes():
-    from app.services.concierge.experiments import ExperimentError
-    from app.services.concierge.flow_experiments import _summary
+    from app.services.health.experiments import ExperimentError
+    from app.services.health.flow_experiments import _summary
 
     assert _summary({"summary": "  Retry the  HTTP node twice. "}) == "Retry the HTTP node twice."
     assert len(_summary({"summary": "x" * 900})) == 500

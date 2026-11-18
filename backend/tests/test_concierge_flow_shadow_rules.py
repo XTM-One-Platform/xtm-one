@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.concierge.flow_shadow import settle_decision
+from app.services.health.flow_shadow import settle_decision
 
 
 def _pair(verdict="agree", left="completed", right="completed", simulated=0) -> dict:

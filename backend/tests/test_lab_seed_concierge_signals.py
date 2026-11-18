@@ -36,7 +36,7 @@ def _rows():
 
 
 def test_the_signals_cover_every_kind_target_and_state():
-    from app.services.concierge.signals import SIGNAL_KINDS
+    from app.services.health.signals import SIGNAL_KINDS
 
     targets, rows = _rows()
     assert len(rows) >= 6
@@ -51,7 +51,7 @@ def test_the_signals_cover_every_kind_target_and_state():
 
 
 def test_the_refusals_are_known_codes_and_one_unknown():
-    from app.services.concierge.cycles import CycleRefusal
+    from app.services.health.cycles import CycleRefusal
 
     module = _module()
     _, rows = _rows()

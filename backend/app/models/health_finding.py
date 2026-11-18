@@ -7,10 +7,10 @@ its evidence (trace, rating and run ids, counts), the hypothesis that
 explains it and the experiment it calls for. Its ``fingerprint`` is the
 pattern's identity - target, kind, key - and never its evidence, which changes
 every cycle: recording the same pattern again updates the row instead of
-reporting it twice (``services/concierge/findings.py``).
+reporting it twice (``services/health/findings.py``).
 
 Not a shareable entity: it belongs to the Concierge, and who may read it
-follows its target (``services/concierge/access.py``). The target is recorded
+follows its target (``services/health/access.py``). The target is recorded
 by id without a key, as it can be of several types; a finding whose target is
 gone is no longer listed.
 """
@@ -83,9 +83,7 @@ class ConciergeFinding(Base):
 
     #: Written by the analyst in the platform language; derived from hostile data.
     hypothesis: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default=sa.text("''"))
-    suggested_experiment: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=sa.text("''")
-    )
+    suggested_experiment: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default=sa.text("''"))
     #: ``{"trace_ids": [...], "rating_ids": [...], "run_ids": [...], "counts": {...}}``,
     #: every id checked against its row when recorded.
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb"))

@@ -5,7 +5,7 @@
 A copy is a hidden clone of an agent or a flow (its ``is_sandbox`` column is
 set) owned by the Concierge: ``user_id`` NULL, not company-managed, shared with
 no one. Every run of it replays the calls recorded in its source and intercepts
-its writes (``services/concierge/sandbox``). ``expires_at`` is when it may be
+its writes (``services/health/sandbox``). ``expires_at`` is when it may be
 purged, once no open proposal references it.
 
 ``sandbox_runs`` keeps each run's report with its exact counts, so an

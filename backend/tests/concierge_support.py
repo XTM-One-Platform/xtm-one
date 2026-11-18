@@ -15,7 +15,7 @@ from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.group import Group, GroupMember
 from app.models.user import User
-from app.services.concierge.settings import ConciergeSettings, save_concierge_settings
+from app.services.health.settings import ConciergeSettings, save_concierge_settings
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 

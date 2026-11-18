@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
-from app.services.concierge.sandbox import guards
+from app.services.health.identity import ConciergePrincipal, acting_as_concierge
+from app.services.health.sandbox import guards
 from app.services.tool_classification import infer_tool_type
 from app.tools.base import ToolCall
 
@@ -22,7 +22,7 @@ _PRINCIPAL = ConciergePrincipal(agent_id=uuid.uuid4(), role="flow_lab")
 
 @pytest.fixture(autouse=True)
 def _flag_on(monkeypatch):
-    monkeypatch.setattr("app.services.concierge.identity.concierge_enabled", lambda: True)
+    monkeypatch.setattr("app.services.health.identity.concierge_enabled", lambda: True)
 
 
 def _agent_builder():
@@ -94,13 +94,13 @@ async def test_outside_a_concierge_run_nothing_is_refused():
 
 
 async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monkeypatch):
-    from app.services.concierge.sandbox import turns
-    from app.services.concierge.settings import ConciergeSettings
+    from app.services.health.sandbox import turns
+    from app.services.health.settings import ConciergeSettings
 
     async def _settings(_db):
         return ConciergeSettings(dry_run=True)
 
-    monkeypatch.setattr("app.services.concierge.settings.load_concierge_settings", _settings)
+    monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
     agent = MagicMock(is_sandbox=False)
     assert await turns.agent_turn_session(MagicMock(), "u", agent) is None
     with acting_as_concierge(_PRINCIPAL):
@@ -109,19 +109,19 @@ async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monke
 
 
 async def test_dry_run_off_binds_nothing(monkeypatch):
-    from app.services.concierge.sandbox import turns
-    from app.services.concierge.settings import ConciergeSettings
+    from app.services.health.sandbox import turns
+    from app.services.health.settings import ConciergeSettings
 
     async def _settings(_db):
         return ConciergeSettings()
 
-    monkeypatch.setattr("app.services.concierge.settings.load_concierge_settings", _settings)
+    monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
     with acting_as_concierge(_PRINCIPAL):
         assert await turns.agent_turn_session(MagicMock(), "u", MagicMock(is_sandbox=False)) is None
 
 
 async def test_a_service_write_kept_by_dry_run_is_audited_as_the_concierge(monkeypatch):
-    from app.services.concierge.sandbox import dry_run
+    from app.services.health.sandbox import dry_run
 
     entries: list[dict] = []
 
@@ -139,7 +139,7 @@ async def test_a_service_write_kept_by_dry_run_is_audited_as_the_concierge(monke
 
 
 def test_a_copy_is_told_by_its_flag():
-    from app.services.concierge.sandbox.copies import is_sandbox_copy
+    from app.services.health.sandbox.copies import is_sandbox_copy
 
     assert [is_sandbox_copy(MagicMock(is_sandbox=v)) for v in (True, False)] == [True, False]
     assert is_sandbox_copy(object()) is False

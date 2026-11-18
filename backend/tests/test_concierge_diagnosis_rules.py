@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
-from app.services.concierge.diagnosis import summarize_window
+from app.services.health.diagnosis import summarize_window
 
 
 def _trace(status: str = "ok", cause: str | None = None, cost: float | None = 0.01, rollup: dict | None = None):

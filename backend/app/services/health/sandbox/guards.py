@@ -29,7 +29,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.services.concierge.sandbox.side_effects import tool_call_effect, vouched_source
+from app.services.health.sandbox.side_effects import tool_call_effect, vouched_source
 from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ FLOW_SHARED_WRITES = frozenset({"create_flow_event_type"})
 
 
 def in_concierge_run() -> bool:
-    from app.services.concierge.identity import in_concierge_run as _in_run
+    from app.services.health.identity import in_concierge_run as _in_run
 
     return _in_run()
 

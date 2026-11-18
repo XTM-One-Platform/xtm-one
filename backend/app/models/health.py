@@ -4,7 +4,7 @@
 
 The Concierge's own line of the quota (PRD ``dev-docs/platform-concierge.md``
 6.12): what each cycle and each month reserved and spent, in tokens and cost.
-Read and written only by ``services/concierge/budget.py``.
+Read and written only by ``services/health/budget.py``.
 """
 
 from __future__ import annotations

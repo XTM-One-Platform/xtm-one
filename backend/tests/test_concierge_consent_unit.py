@@ -8,7 +8,7 @@ import uuid
 
 import pytest
 
-from app.services.concierge.consent import ConsentScope
+from app.services.health.consent import ConsentScope
 
 # ── The consent snapshot ──────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ def test_scope_all_reads_enrolled_targets_only(monkeypatch) -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from app.services.concierge import consent
+    from app.services.health import consent
 
     async def _settings(_db):
         return SimpleNamespace(enabled=True, scope_mode="all", scope_agent_ids=[], scope_flow_ids=[])
@@ -97,7 +97,7 @@ def test_scope_all_reads_enrolled_targets_only(monkeypatch) -> None:
 def test_every_registered_handler_runs_once_in_order_and_a_failure_propagates(monkeypatch) -> None:
     import asyncio
 
-    from app.services.concierge import consent
+    from app.services.health import consent
 
     monkeypatch.setattr(consent, "_HANDLERS", [])
     seen: list[tuple[str, consent.Revocation]] = []
@@ -134,7 +134,7 @@ def test_start_up_registers_every_revocation_handler_in_a_fresh_process() -> Non
 
     script = (
         "import json\n"
-        "from app.services.concierge import consent\n"
+        "from app.services.health import consent\n"
         "names = lambda: sorted(h.__module__ + '.' + h.__name__ for h in consent._HANDLERS)\n"
         "before = names()\n"
         "consent.register_revocation_handlers()\n"
@@ -148,8 +148,8 @@ def test_start_up_registers_every_revocation_handler_in_a_fresh_process() -> Non
     assert json.loads(out) == [
         [],
         [
-            "app.services.concierge.datasets.withdraw_for_revocation",
-            "app.services.concierge.memory_history.purge_on_revocation",
+            "app.services.health.datasets.withdraw_for_revocation",
+            "app.services.health.memory_history.purge_on_revocation",
         ],
     ]
 

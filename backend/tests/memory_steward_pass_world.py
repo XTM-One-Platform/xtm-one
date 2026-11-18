@@ -14,11 +14,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from app.services import persistent_memory as pm
-from app.services.concierge import identity
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
-from app.services.concierge.memory_history import Lane
-from app.services.concierge.memory_steward_plan import Verdict
+from app.services.health import identity
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
+from app.services.health.memory_history import Lane
+from app.services.health.memory_steward_plan import Verdict
 from tests.memory_steward_world import World, entry, make_world, world_database
 
 _DIMENSIONS = 8

@@ -4,7 +4,7 @@
 
 A pet is a Codex-format package (``pet.json`` and an 8-column spritesheet)
 an administrator uploads; the platform stores the spritesheet it decoded and
-re-encoded itself, never the uploaded bytes (``services/concierge/pets.py``).
+re-encoded itself, never the uploaded bytes (``services/health/pets.py``).
 The built-in pets ship as files and have no row. A platform library, not a
 shareable entity: every signed-in user may pick any pet, administrators add
 and remove them.

@@ -38,7 +38,7 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.concierge.settings import ConciergeSettings, load_concierge_settings
+from app.services.health.settings import ConciergeSettings, load_concierge_settings
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ async def rename_concierge(db: AsyncSession, *, previous: Collection[str], name:
     from app.models.agent import Agent
     from app.models.fleet import Fleet
     from app.models.workspace import Workspace
-    from app.services.concierge.fleet_seed import ORCHESTRATOR_SLUG
+    from app.services.health.fleet_seed import ORCHESTRATOR_SLUG
 
     stale = set(previous) - {name}
     if not stale:

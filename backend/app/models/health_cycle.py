@@ -7,7 +7,7 @@ level 8 adds around it: the run a cycle started and its digest
 (:class:`ConciergeCycleRun`), the edge-triggered state of every signal
 (:class:`ConciergeSignalState`) and when each fleet-wide schedule last fired
 (:class:`ConciergeScheduleMark`). Read and written only by
-``services/concierge/cycles.py``, ``signals.py`` and ``digest.py``.
+``services/health/cycles.py``, ``signals.py`` and ``digest.py``.
 """
 
 from __future__ import annotations
@@ -39,12 +39,12 @@ class ConciergeCycleRun(Base):
     # Copied from the cycle so the per-target reads need no join.
     target_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    #: The :class:`~app.services.concierge.signals.SignalHit` that started it, as JSON.
+    #: The :class:`~app.services.health.signals.SignalHit` that started it, as JSON.
     signal: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     #: The person whose on-demand request started it. No foreign key: one would
     #: lock ``users`` for nothing the code needs; a deleted account reads as nobody.
     requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    #: :class:`~app.services.concierge.digest.CycleDigest`, built once the cycle closed.
+    #: :class:`~app.services.health.digest.CycleDigest`, built once the cycle closed.
     digest: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     digest_built_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

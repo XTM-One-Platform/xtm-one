@@ -12,7 +12,7 @@ import uuid
 from types import SimpleNamespace
 
 from app.services import improvement_proposals as proposals
-from app.services.concierge.cycle_access import readable_proposals
+from app.services.health.cycle_access import readable_proposals
 
 
 class _Handler:

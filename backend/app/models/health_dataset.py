@@ -2,7 +2,7 @@
 
 """Where a Concierge-built dataset entry came from (#8257, PRD 6.7).
 
-One row per entry the Concierge built from production (``services/concierge/datasets.py``):
+One row per entry the Concierge built from production (``services/health/datasets.py``):
 the case kind, the source it was read from, and the tool calls that source
 recorded, which a sandbox run replays (level 2). An opt-out, a revoked opt-in
 or a narrowed scope finds the entries to remove through these columns.

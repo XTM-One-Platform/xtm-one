@@ -30,7 +30,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.concierge.sandbox.replay import RecordedCall
+from app.services.health.sandbox.replay import RecordedCall
 
 logger = logging.getLogger(__name__)
 
