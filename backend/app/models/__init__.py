@@ -109,6 +109,7 @@ import app.models.roi
 import app.models.runner
 import app.models.sandbox_copy
 import app.models.sandbox_workspace
+import app.models.scim_token
 import app.models.secret_vault_provider
 import app.models.security_audit_finding_state
 import app.models.shared_state
