@@ -120,6 +120,7 @@ async def test_inline_arguments_combine_with_the_file_and_json_strings_are_accep
         (b"{not json", {}, "not a UTF-8 JSON file"),
         (b"[1, 2]", {}, "must hold a JSON object of arguments"),
         (b'{"hold": "take"}', {}, "names hold"),
+        (b'{"replace": true, "value_json": {"a": 1}}', {}, "replace=true inline writes the file's value_json whole"),
         (b'{"append_json": {"gaps": [1]}}', {"append_json": '{"gaps": [2]}'}, "both inline and in from_workspace_path"),
         (b'{"append_json": {"gaps": 1}}', {}, "must map each top-level key to a list"),
     ],
@@ -130,6 +131,17 @@ async def test_a_bad_file_writes_nothing(store, writes, content, inline, expecte
     result = await _set(composite, key="k", **inline, **{WORKSPACE_READ_ARGUMENT: "work/bad.json"})
     assert result.content.startswith("Error:") and expected in result.content, result.content
     assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_inline_replace_writes_the_file_value_whole(store, writes):
+    """replace is not a file argument: given inline, the file's value_json is written whole (#215)."""
+    composite, ci_exec = _composite()
+    await ci_exec.session.put_bytes("work/v.json", json.dumps({"value_json": {"gaps": [{"id": "a"}]}}).encode())
+    result = await _set(composite, key="k", replace=True, **{WORKSPACE_READ_ARGUMENT: "work/v.json"})
+    assert not result.is_error, result.content
+    (call,) = writes
+    assert call["replace_value"] is True and call["value"] == {"gaps": [{"id": "a"}]}
 
 
 @pytest.mark.asyncio
