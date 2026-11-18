@@ -22,6 +22,7 @@ from . import (
     full_ci_gate,
     merge_refusals,
     pr_files,
+    pr_inherit,
     pr_overlap,
     pr_title,
     review_loop,
@@ -819,6 +820,7 @@ def register(
         work_item_id: str = "",
         assignees: list[str] | None = None,
         labels: list[str] | None = None,
+        milestone: str | int | None = None,
         attachment_file_ids: list[str] | None = None,
         file_context: FileContext | None = None,
     ) -> str:
@@ -837,7 +839,12 @@ def register(
         reported without undoing the pull request. *labels* must exist on the
         repository (an unknown one refuses the call before any write) and are
         written first after creation, so a workflow reading the labels on
-        ``opened`` sees them. Another open pull request of
+        ``opened`` sees them. The issues of the same repository the title or
+        body closes give the pull request their type labels (``bug``,
+        ``feature``) and, when no *milestone* is given, the milestone of the
+        first one that has one (:mod:`.pr_inherit`); an explicit *milestone*
+        (number or exact title) the repository does not define refuses the
+        call, and a milestone is never created. Another open pull request of
         the same author that shares a file or an issue is named in a warning
         (:mod:`.pr_overlap`), never a refusal.
         """
@@ -865,6 +872,25 @@ def register(
                         f"Refused: label(s) not defined in {owner}/{name}: {', '.join(unknown)}. "
                         "Nothing was written; list them with list_github_labels and call again."
                     )
+            milestone_number: int | None = None
+            milestone_title = ""
+            milestone_note = ""
+            if milestone is not None and str(milestone).strip():
+                milestone_number, milestone_title, refusal = await pr_inherit.resolve_milestone(
+                    client, owner, name, milestone, headers
+                )
+                if refusal:
+                    return refusal
+            inherited = await pr_inherit.from_closing_issues(client, owner, name, title, body, headers)
+            for label in inherited.labels:
+                if label not in wanted_labels:
+                    wanted_labels.append(label)
+            if milestone_number is None and inherited.milestone_number is not None:
+                milestone_number, milestone_title = inherited.milestone_number, inherited.milestone_title
+                milestone_note = f" (from closing issue #{inherited.source_issue})"
+            elif milestone_number is None and inherited.closing_issues:
+                closing = ", ".join(f"#{n}" for n in inherited.closing_issues)
+                milestone_note = f"No milestone: closing issue {closing} has none"
             lines, aerr = await attachments.attach_files(
                 client, headers, repo, 0, attachment_file_ids, file_context, folder=f"pr-{head}"
             )
@@ -922,6 +948,20 @@ def register(
             if wanted_labels:
                 labelled = await _label_pull_request(client, owner, name, int(pr["number"]), wanted_labels)
                 created = f"{created}\n{labelled}"
+            if milestone_number is not None:
+                placed = await pr_inherit.set_milestone(
+                    client,
+                    owner,
+                    name,
+                    int(pr["number"]),
+                    milestone_number,
+                    milestone_title,
+                    headers,
+                    _LABEL_RETRY_DELAY,
+                )
+                created = f"{created}\n{placed}{milestone_note if placed.startswith('Milestone:') else ''}"
+            elif milestone_note:
+                created = f"{created}\n{milestone_note}"
             wanted = [a.strip() for a in (assignees or []) if a and a.strip()]
             if wanted:
                 created = f"{created}\n{await _assign_pull_request(client, owner, name, int(pr['number']), wanted)}"
@@ -1868,6 +1908,13 @@ def register(
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Existing labels set right after creation, before CI reads them (optional); unknown ones refuse the call",
+                    },
+                    "milestone": {
+                        "type": "string",
+                        "description": (
+                            "Existing milestone, number or exact title (optional; never created, unknown refuses). "
+                            "Default: the milestone of the issue the PR closes; its bug/feature label is copied too"
+                        ),
                     },
                     "attachment_file_ids": attachments.SCHEMA,
                     **(
