@@ -2133,6 +2133,20 @@ async def create_integration(
         integration.client_id_enc = encrypt_value(effective_client_id)
     if effective_client_secret:
         integration.client_secret_enc = encrypt_value(effective_client_secret)
+    elif auth_type == "oauth" and not integration.client_id_enc:
+        # A provider whose clients register themselves (catalog
+        # ``oauth_registration``): registered here, so the integration page
+        # offers Authorize at once. A refusal (the redirect URI not on the
+        # provider's allowlist) is said before anything is stored.
+        from app.services.integration_oauth_registration import (
+            IntegrationOAuthRegistrationError,
+            register_integration_client,
+        )
+
+        try:
+            await register_integration_client(db, integration, commit=False)
+        except IntegrationOAuthRegistrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if body.api_key:
         integration.api_key_enc = encrypt_value(body.api_key)
         # Bot tokens are immediately "connected"
@@ -3142,6 +3156,19 @@ async def start_oauth(
             ),
         )
 
+    # A provider whose clients register themselves (catalog
+    # ``oauth_registration``) gets its client now when it has none yet.
+    if not integration.client_id_enc:
+        from app.services.integration_oauth_registration import (
+            IntegrationOAuthRegistrationError,
+            register_integration_client,
+        )
+
+        try:
+            await register_integration_client(db, integration, commit=False)
+        except IntegrationOAuthRegistrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await db.commit()
     if not integration.client_id_enc:
         raise HTTPException(
             status_code=400, detail="Integration has no OAuth client ID configured"
