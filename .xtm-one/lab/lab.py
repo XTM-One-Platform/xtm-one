@@ -3422,8 +3422,11 @@ def seed_roi_chat_records(
     backend's models (every kind, counted and waiting lines, two corrected lines passing 1,000 hours,
     a 100+ character title), attributed to *review_agent* (the ROI review agent), to the first member
     of "Lab sample fleet" and to a long-named agent; owned by the administrator, the peer *peer_id*
-    and a long-named person. ``GET /roi/chat`` is read back. Logged as
-    ``seeded ROI chat records (N): <base>/value?scope=organization``. May raise: the caller logs and skips.
+    and a long-named person. Each line carries its agent's home fleet (``fleet_backfilled`` false), as
+    the platform's writer stamps it: the lab runs no backfill, so the Lab sample fleet lines are stamped
+    at seed or never (dev:harness-gaps lab-seed-roi-chat-records-fleet-stamp); none stamped raises.
+    ``GET /roi/chat`` is read back. Logged as ``seeded ROI chat records (N): <base>/value?scope=organization``
+    and ``seeded fleet chat stamped: <n>``. May raise: the caller logs and skips.
     """
     fleet_agent = LAB_AGENTS.get(FLEET_MEMBERS[0])
     if not fleet_agent:
@@ -3447,13 +3450,17 @@ def seed_roi_chat_records(
         raise RuntimeError(
             f"seed_roi_chat_records.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
         )
-    records = json.loads(out.read_text())["records"]
+    written = json.loads(out.read_text())
+    records, stamped = written["records"], written.get("fleet_stamped") or 0
+    if not stamped:
+        raise RuntimeError("seed_roi_chat_records.py stamped no line with a home fleet")
     series = api("GET", "/roi/chat?window=30d", token)
     total = series.get("total_lines") if isinstance(series, dict) else None
     if total is None or total < len(records):
         raise RuntimeError(f"GET /roi/chat answered {total} lines of {len(records)} seeded")
     url = f"{base}/value?scope=organization"
     log(f"seeded ROI chat records ({len(records)}): {url}")
+    log(f"seeded fleet chat stamped: {stamped}")
     return {"ROI chat records": {"id": ",".join(records.values()), "url": url}}
 
 
