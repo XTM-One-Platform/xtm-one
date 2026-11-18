@@ -298,7 +298,7 @@ def modules_ctem_posture(environ: dict) -> bool:
     async def collect(db, user_id: str, vertical: str = ctem_sample.VERTICAL):
         if vertical != ctem_sample.VERTICAL:
             return await live(db, user_id, vertical)
-        return modules_posture(state)
+        return modules_posture(state, await profile_reachability(db))
 
     # The posture route calls the collector by the name it imported, so the route module's attribute is the one used.
     ctem_metrics.build_posture_for_user = collect
@@ -308,7 +308,18 @@ def modules_ctem_posture(environ: dict) -> bool:
 modules_ctem_posture(dict(os.environ))
 
 
-def modules_posture(state: str) -> tuple[dict, set[str]]:
+async def profile_reachability(db) -> dict[str, int] | None:
+    """The reachability split of the organization profile's assets, as the live collector reads it (#103).
+
+    ``None`` when the profile holds no asset (the Exposed layer stays not configured); with assets, the sample
+    funnel's Exposed layer answers not available, reason ``assets_not_linked``, with this split.
+    """
+    from app.services import ctem_metrics_collector
+
+    return ctem_metrics_collector._profile_reachability(await ctem_metrics_collector._profile_asset_rows(db))
+
+
+def modules_posture(state: str, reachability: dict[str, int] | None = None) -> tuple[dict, set[str]]:
     """The cyber facts and present products of one ``LAB_CTEM_MODULES`` state, through the collector's steps."""
     from app.services import ctem_metrics_collector
 
@@ -317,7 +328,7 @@ def modules_posture(state: str) -> tuple[dict, set[str]]:
         rows = [dict(row) for row in ctem_sample.OUTCOME_ROWS]
         phases = [dict(phase) for phase in ctem_sample.OUTCOME_PHASES]
         facts["validation"]["outcome_matrix"] = ctem_metrics_collector._outcome_matrix(rows, phases)
-    ctem_metrics_collector._attach_funnel(facts, present)
+    ctem_metrics_collector._attach_funnel(facts, present, reachability)
     return facts, present
 
 
@@ -455,8 +466,9 @@ async def _screens_posture(db, user_id: str, vertical: str = ctem_sample.VERTICA
     from app.services import ctem_metrics_collector
 
     facts, present = ctem_sample.screens_facts(), set(ctem_sample.SCREENS_PRESENT)
-    # The collector's own step: the funnel inputs become the prioritization ``funnel`` (live layers).
-    ctem_metrics_collector._attach_funnel(facts, present)
+    # The collector's own step: the funnel inputs become the prioritization ``funnel`` (live layers), the Exposed
+    # layer read from the profile's assets as the live collector does (#103).
+    ctem_metrics_collector._attach_funnel(facts, present, await profile_reachability(db))
     return facts, present
 
 
