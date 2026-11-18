@@ -1,5 +1,12 @@
 name: E2E Tests
 
+# The suite runs in the merge queue and by hand, never on a pull request. In
+# the queue only the projects the merge group's change reaches run: none for a
+# change the stack does not carry (docs, unit tests), core for any other, and
+# a2a or evaluation for their own code, specs and UI, or for what every project
+# runs on (the images, the stack, the database) - the select job,
+# backend/tests/selection.py, dev-docs/ci-test-selection.md. The nightly run
+# on main runs every project.
 on:
   workflow_dispatch:
     inputs:
@@ -84,6 +91,61 @@ env:
   COMPOSE_PROJECT_NAME: xtm-one
 
 jobs:
+  # The projects the merge group's change reaches, as the shard job's matrix.
+  # Core takes ten shards: about 4 minutes of each go to the image build and
+  # the stack, so six left its slowest shard at 15 minutes.
+  select:
+    name: E2E selection
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      run: ${{ steps.select.outputs.run }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Fetch the merge group's base
+        if: github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
+
+      # The selection reads the backend with the standard library alone, but
+      # parses it with the interpreter it is written for.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Select the projects
+        id: select
+        working-directory: backend
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          # Project and shard only, so the values GitHub appends to the shard
+          # job's name stay those two. Evaluation runs only in copilot or dev
+          # mode with EVALUATION on: its specs get a stack of their own
+          # (PLATFORM_MODE and ENABLED_FEATURES of the shard job).
+          MATRIX: >-
+            [{"project": "core", "shard": "1/10"}, {"project": "core", "shard": "2/10"},
+            {"project": "core", "shard": "3/10"}, {"project": "core", "shard": "4/10"},
+            {"project": "core", "shard": "5/10"}, {"project": "core", "shard": "6/10"},
+            {"project": "core", "shard": "7/10"}, {"project": "core", "shard": "8/10"},
+            {"project": "core", "shard": "9/10"}, {"project": "core", "shard": "10/10"},
+            {"project": "a2a", "shard": "1/2"}, {"project": "a2a", "shard": "2/2"},
+            {"project": "evaluation", "shard": "1/1"}]
+        run: |
+          if [ "$EVENT" = merge_group ]; then
+            scope=(--base "$BASE_SHA")
+          else
+            scope=(--full "a $EVENT run runs every project")
+          fi
+          python -m tests.selection e2e "${scope[@]}" --matrix "$MATRIX" \
+            --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+
   # One stack per job, each running its share of the spec files exactly as the
   # whole suite ran before: one Playwright worker against its own platform,
   # database and scripted model. The files are dealt by their CI timings
@@ -91,30 +153,18 @@ jobs:
   # files depend on. A2A files never run concurrently on one deployment
   # (dev-docs/a2a-e2e-test-design.md); each of its jobs has a deployment of
   # its own. The name holds no matrix expression: GitHub appends the values
-  # itself ("E2E (core, 1/6)"), while a job skipped on a pull request never
+  # itself ("E2E (core, 1/10)"), while a job skipped on a pull request never
   # expands them and would show the expression as written. The matrix keeps
   # only project and shard, so the appended values stay those two.
   shard:
     name: E2E
-    if: github.event_name != 'pull_request'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { project: core, shard: 1/6 }
-          - { project: core, shard: 2/6 }
-          - { project: core, shard: 3/6 }
-          - { project: core, shard: 4/6 }
-          - { project: core, shard: 5/6 }
-          - { project: core, shard: 6/6 }
-          - { project: a2a, shard: 1/2 }
-          - { project: a2a, shard: 2/2 }
-          # Evaluation runs only in copilot or dev mode with EVALUATION on:
-          # its specs get a stack of their own (PLATFORM_MODE and
-          # ENABLED_FEATURES below).
-          - { project: evaluation, shard: 1/1 }
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -451,18 +501,58 @@ jobs:
   # the run is cancelled: skipped, it would count as passed. On a pull request
   # it skips with the shards (the suite runs in the merge queue): a job its
   # condition skips reports the required check as passed, so the pull request
-  # can enter the queue.
+  # can enter the queue. In the queue the shards skip when the change reaches
+  # no project, which passes; a failed selection fails.
   e2e:
     name: E2E (Playwright / Chromium)
     if: always() && github.event_name != 'pull_request'
-    needs: shard
+    needs: [select, shard]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Every shard passed
+        env:
+          SELECT: ${{ needs.select.result }}
+          RUN: ${{ needs.select.outputs.run }}
+          SHARDS: ${{ needs.shard.result }}
         run: |
-          if [ "${{ needs.shard.result }}" != "success" ]; then
-            echo "::error::An E2E shard ended ${{ needs.shard.result }} - its job above has the report and the service logs."
+          if [ "$SELECT" != success ]; then
+            echo "::error::The E2E selection ended $SELECT - its job above has the cause."
+            exit 1
+          fi
+          if [ "$RUN" = false ]; then
+            echo "The merge group's change reaches no E2E project."
+            exit 0
+          fi
+          if [ "$SHARDS" != success ]; then
+            echo "::error::An E2E shard ended $SHARDS - its job above has the report and the service logs."
             exit 1
           fi
           echo "All E2E shards passed."
+
+  # A red nightly run reaches nobody, and it is the full pass that catches
+  # what the queue's selection missed: it opens an issue, or comments on the
+  # one still open.
+  notify-on-failure:
+    name: Open an issue when the nightly run fails
+    needs: e2e
+    if: always() && github.event_name == 'schedule' && needs.e2e.result == 'failure'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open the issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label ci --state open \
+                   --search 'in:title "the nightly E2E run failed"' --json number --jq '.[0].number // empty')
+          if [ -z "$open" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --label ci \
+              --title "ci: the nightly E2E run failed" \
+              --body "The merge queue runs only the E2E projects a change reaches; this full pass on main found a failure it missed, or a flaky spec. Run: $RUN_URL"
+          else
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          fi

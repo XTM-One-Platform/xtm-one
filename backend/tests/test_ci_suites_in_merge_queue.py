@@ -1,9 +1,11 @@
 """The test suites run in the merge queue, and skip on a pull request.
 
-A pull request runs the static checks of ``ci.yml`` (the lint jobs and the
-secret scan) and, when it changes what they read, its database checks; the
-suites and builds of ``ci.yml`` and the shards of ``e2e.yml`` skip there and
-run on a merge group and by hand. The queue tests the exact commit main moves
+A pull request runs the static checks of ``ci.yml`` (the lint jobs, the secret
+scan, the ROI ledger's invariants and the frontend ratchet gates); the suites,
+the database checks and the builds of ``ci.yml`` and the shards of
+``e2e.yml`` skip there and run on a merge group and by hand. In the queue each
+workflow's ``select`` job sizes them to what the merge group's own change
+reaches (``tests/selection.py``), and every other event runs them whole. The queue tests the exact commit main moves
 to, so main runs both workflows again only nightly and when a file their
 caches follow changes: only main can save the caches the queue reads. Both
 workflows start on every pull request and merge group: the merge queue takes a
@@ -28,19 +30,23 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 SUITES = ["ci.yml", "e2e.yml"]
 REQUIRED = {"ci.yml": "verdict", "e2e.yml": "e2e"}
 # What a pull request runs: the static checks, the ROI ledger's invariant
-# suites (#12077 L7d), the frontend ratchet gates, and the database checks
-# behind their routing job.
-ON_PULL_REQUESTS = {
-    "backend-lint",
-    "roi-invariants",
-    "frontend-lint",
-    "frontend-gates",
-    "office-addin-lint",
-    "secrets",
-    "migration-changes",
-}
-DATABASE_CHECKS = {"bootstrap", "migrations"}
+# suites (#12077 L7d) and the frontend ratchet gates.
+ON_PULL_REQUESTS = {"backend-lint", "roi-invariants", "frontend-lint", "frontend-gates", "office-addin-lint", "secrets"}
 IN_THE_QUEUE = "github.event_name != 'pull_request'"
+# Opens an issue when the nightly run fails: it reads the required check, not the reverse.
+NOTIFY = "notify-on-failure"
+# The jobs a selection sizes, and the output that says whether each runs.
+SELECTED = {
+    "ci.yml": {
+        "backend": "unit-shards",
+        "browser-tool": "chromium-shards",
+        "bootstrap": "integration-shards",
+        "frontend-unit": "frontend-unit-mode",
+        "frontend": "frontend-build",
+        "migrations": "migrations",
+    },
+    "e2e.yml": {"shard": "run"},
+}
 # Every file a cache key, or a dependency layer of the e2e images, follows:
 # main must run when one changes, or the queue restores stale caches until
 # the nightly run.
@@ -112,28 +118,61 @@ def test_no_path_filter_keeps_a_required_check_waiting(name):
 def test_a_pull_request_runs_the_static_checks_and_the_queue_the_suites(name):
     jobs = _workflow(name)["jobs"]
     for job_name, job in jobs.items():
-        if job_name == REQUIRED[name] or job_name in DATABASE_CHECKS:
+        if job_name in {REQUIRED[name], NOTIFY}:
             continue
         if job_name in ON_PULL_REQUESTS:
             assert "if" not in job, f"{name}: {job_name}"
+        elif job_name == "select":
+            assert job["if"] == IN_THE_QUEUE, f"{name}: {job_name}"
         else:
-            assert job.get("if") == IN_THE_QUEUE, f"{name}: {job_name}"
+            assert job["if"].startswith(f"{IN_THE_QUEUE} && "), f"{name}: {job_name}"
 
 
-def test_a_pull_request_that_changes_the_database_runs_the_database_checks():
-    # migration-changes answers true on every event but a pull request that
-    # touches none of what they read.
-    jobs = _workflow("ci.yml")["jobs"]
-    for job_name in DATABASE_CHECKS:
-        assert jobs[job_name]["needs"] == "migration-changes", job_name
-        assert jobs[job_name]["if"] == "needs.migration-changes.outputs.run == 'true'", job_name
+@pytest.mark.parametrize("name", SUITES)
+def test_the_queue_runs_what_the_selection_says(name):
+    jobs = _workflow(name)["jobs"]
+    for job_name, output in SELECTED[name].items():
+        job = jobs[job_name]
+        assert job["needs"] == "select", f"{name}: {job_name}"
+        assert f"needs.select.outputs.{output}" in job["if"], f"{name}: {job_name}"
+        matrix = job.get("strategy", {}).get("matrix")
+        if matrix is not None:
+            # A sharded job takes the shards the selection gave it, none skipping it.
+            assert "fromJSON(needs.select.outputs." in str(matrix), f"{name}: {job_name}"
+
+
+@pytest.mark.parametrize("name", SUITES)
+def test_a_merge_group_measures_its_own_change_and_any_other_run_runs_everything(name):
+    steps = _workflow(name)["jobs"]["select"]["steps"]
+    script = next(step["run"] for step in steps if step.get("id") == "select")
+    env = next(step["env"] for step in steps if step.get("id") == "select")
+    assert env["BASE_SHA"] == "${{ github.event.merge_group.base_sha }}"
+    assert '[ "$EVENT" = merge_group ]' in script and '--base "$BASE_SHA"' in script and "--full" in script
 
 
 def test_the_required_checks_report_even_a_cancelled_run():
     assert _workflow("ci.yml")["jobs"]["verdict"]["if"] == "always()"
     # Skipped on a pull request, like its shards: a job its condition skips
     # reports the required check as passed.
-    assert _workflow("e2e.yml")["jobs"]["e2e"]["if"] == f"always() && {IN_THE_QUEUE}"
+    e2e = _workflow("e2e.yml")["jobs"]["e2e"]
+    assert e2e["if"] == f"always() && {IN_THE_QUEUE}"
+    # A failed selection skips the shards: the aggregator reads it too.
+    assert set(e2e["needs"]) == {"select", "shard"}
+
+
+@pytest.mark.parametrize("name", SUITES)
+def test_only_a_red_nightly_run_opens_an_issue(name):
+    notify = _workflow(name)["jobs"][NOTIFY]
+    assert notify["needs"] == REQUIRED[name]
+    assert "github.event_name == 'schedule'" in notify["if"]
+
+
+def test_a_red_nightly_ultra_render_opens_an_issue():
+    # No pull request runs the render any more: the nightly run is its only alarm.
+    notify = _workflow("video-studio-ultra.yml")["jobs"][NOTIFY]
+    assert notify["needs"] == "ultra"
+    assert "github.event_name == 'schedule'" in notify["if"]
+    assert "pull_request" not in _triggers("video-studio-ultra.yml")
 
 
 def _gates_command() -> str:
@@ -174,4 +213,4 @@ def test_the_gate_filter_reads_a_shallow_glob_only():
 
 def test_the_verdict_reads_every_job():
     jobs = _workflow("ci.yml")["jobs"]
-    assert set(jobs["verdict"]["needs"]) == set(jobs) - {"verdict"}
+    assert set(jobs["verdict"]["needs"]) == set(jobs) - {"verdict", NOTIFY}

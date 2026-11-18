@@ -1,14 +1,14 @@
 name: CI
 
 # A pull request runs the static checks (lint, types, dead code, catalog
-# validators, migration history, secret scan, the frontend ratchet gates)
-# and, when it changes what they read, the database checks (Bootstrap,
-# Migrations). The suites and the builds skip there (`if:
-# github.event_name != 'pull_request'`): the merge queue runs them with the
-# static checks again, since two pull requests each green on their own can
-# still land a failure together. A manual run runs every job: with no merge
-# queue on main, merge_github_pr dispatches one on the pull request's head and
-# merges only once it is green there ([merge] in .xtm-one/checks.toml, #11985).
+# validators, migration history, secret scan, the frontend ratchet gates) and
+# the ROI ledger's invariants. The suites, the database checks and the builds
+# skip there (`if: github.event_name != 'pull_request'`): the merge queue runs
+# them with the static checks again, since two pull requests each green on
+# their own can still land a failure together. In the queue each suite runs
+# only what the merge group's change reaches (the select job,
+# backend/tests/selection.py, dev-docs/ci-test-selection.md); any other run -
+# the nightly one on main, a manual one, a push to main - runs every job.
 on:
   workflow_dispatch:
   pull_request:
@@ -184,12 +184,73 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/betterleaks/betterleaks:v1.9.0 dir /repo --redact -v
 
+  # What the merge group's change reaches, suite by suite: the shards each
+  # sharded job takes (none: the job skips), whether Migrations and the
+  # frontend build run, and the files a selected suite collects. The change is
+  # the group's own (`merge_group.base_sha..sha`, every pull request batched
+  # in it): an entry ahead in the queue is tested in its own group, and merges
+  # only once that group passes (ALLGREEN, dev-docs/ci-test-selection.md). Every
+  # other event runs everything, and so does a change to what every test runs
+  # under (tests/selection.py's module docstring); the nightly run on main is
+  # the full pass that catches what the selection cannot see.
+  select:
+    name: Test selection
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      backend-full: ${{ steps.select.outputs.backend-full }}
+      unit-shards: ${{ steps.select.outputs.unit-shards }}
+      integration-shards: ${{ steps.select.outputs.integration-shards }}
+      integration-full: ${{ steps.select.outputs.integration-full }}
+      chromium-shards: ${{ steps.select.outputs.chromium-shards }}
+      frontend-unit-mode: ${{ steps.select.outputs.frontend-unit-mode }}
+      frontend-unit-shards: ${{ steps.select.outputs.frontend-unit-shards }}
+      migrations: ${{ steps.select.outputs.migrations }}
+      frontend-build: ${{ steps.select.outputs.frontend-build }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # The checkout is one commit deep: the base is fetched on its own, and
+      # the diff of two commits needs no history between them.
+      - name: Fetch the merge group's base
+        if: github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
+
+      - uses: ./.github/actions/backend-venv
+
+      - name: Select the tests
+        id: select
+        working-directory: backend
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          if [ "$EVENT" = merge_group ]; then
+            scope=(--base "$BASE_SHA")
+          else
+            scope=(--full "a $EVENT run runs every suite")
+          fi
+          python -m tests.selection ci "${scope[@]}" --outdir "$RUNNER_TEMP/selection" \
+            --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: test-selection
+          path: ${{ runner.temp }}/selection/
+          retention-days: 7
+
   # Every job collects the whole suite before its first test (about two
   # minutes on CI), so each job added pays that again. A shard's tests run on
   # the runner's two vCPUs: past about 15 minutes on a quiet runner, a busy one
   # reaches the timeout, and the suite takes one more shard. Four shards ran
   # 11 to 20 minutes on main and one was cancelled at 25 (2 Nov 2026):
-  # six keep a shard near 13 minutes, collection included.
+  # six keep a shard near 13 minutes, collection included. The select job
+  # sizes the matrix: a share of the suite takes its share of the shards
+  # (about 23 minutes of one worker's tests each, on four workers), the whole
+  # of it eight.
   # The 25-minute cap sits on the test step, not the job: a job killed by its
   # own timeout ends `cancelled` and GitHub then concludes the whole run
   # `cancelled` (whatever else failed), so no red-check wakes; a step past its
@@ -200,15 +261,21 @@ jobs:
   # and would show the expression as written.
   backend:
     name: Backend (Python)
-    if: github.event_name != 'pull_request'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.unit-shards != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/6, 2/6, 3/6, 4/6, 5/6, 6/6]
+        shard: ${{ fromJSON(needs.select.outputs.unit-shards) }}
     steps:
       - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-selection
+          path: ${{ runner.temp }}/selection
 
       # The install-script tests (tests/test_runner_install_scripts.py) start
       # PowerShell 7, whose first start on a fresh runner reads the .NET runtime
@@ -248,7 +315,9 @@ jobs:
         env:
           SECRET_KEY: "ci-test-secret-key-not-for-production"
           PYTEST_SHARD: ${{ matrix.shard }}
-          # Each job imports only its sixth of the test files (tests/sharding.py):
+          # The files the merge group's change reaches; empty when every file runs.
+          PYTEST_SELECTED_FILES: ${{ needs.select.outputs.backend-full == 'false' && format('{0}/selection/backend-tests.txt', runner.temp) || '' }}
+          # Each job imports only its share of the test files (tests/sharding.py):
           # collecting the whole suite held about 1.6 GB per xdist worker, and the
           # runner sampler below read under 250 MB available and 3 GB of swap (#10437).
           PYTEST_SHARD_SPLIT: files
@@ -279,7 +348,19 @@ jobs:
           python -m tests.runner_speed &
           watcher=$!
           trap 'kill "$watcher" 2>/dev/null || true' EXIT
-          python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25
+          python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25 \
+            --junitxml "$RUNNER_TEMP/junit/unit-${PYTEST_SHARD%/*}.xml" -o junit_family=xunit1
+
+      # Each test file's seconds, for tests/shard_durations.json: the nightly
+      # run is the full pass whose reports refresh it
+      # (backend/scripts/refresh_shard_durations.py).
+      - name: Keep the test timings
+        if: always() && github.event_name == 'schedule'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-junit-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/junit/
+          retention-days: 14
 
       - name: Stall report
         if: failure()
@@ -311,21 +392,29 @@ jobs:
   # figure scene's build-in drawn from the built frontend. The tests
   # run one at a time - the render's memory ceiling and the sign-in timeouts
   # are measured on a quiet machine - so the suite is split between jobs
-  # (PYTEST_SHARD) instead of between workers.
+  # (PYTEST_SHARD) instead of between workers: about half an hour of tests,
+  # next to a minute of setup per job, so the select job gives the whole
+  # suite five shards and a selected share its share of them.
   # About 12 minutes with the apt packages cached; the timeout leaves room for
   # a cache the repository's quota evicted, fetched again from a throttled
   # mirror: 37 minutes of installs on their own, at 50 kB/s.
   browser-tool:
     name: Browser tool (Chromium)
-    if: github.event_name != 'pull_request'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.chromium-shards != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/3, 2/3, 3/3]
+        shard: ${{ fromJSON(needs.select.outputs.chromium-shards) }}
     steps:
       - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-selection
+          path: ${{ runner.temp }}/selection
 
       - uses: ./.github/actions/backend-venv
 
@@ -457,6 +546,7 @@ jobs:
           SECRET_KEY: "ci-test-secret-key-not-for-production"
           REQUIRE_CHROMIUM: "1"
           PYTEST_SHARD: ${{ matrix.shard }}
+          PYTEST_SELECTED_FILES: ${{ needs.select.outputs.backend-full == 'false' && format('{0}/selection/backend-tests.txt', runner.temp) || '' }}
           # Collect only the files that spell mark.chromium (tests/marked_files.py).
           PYTEST_MARKED_FILES: chromium
         run: python -m pytest -m chromium -v --tb=short --durations=10
@@ -471,7 +561,8 @@ jobs:
   # cancelled at 1199 s).
   frontend:
     name: Frontend (TypeScript)
-    if: github.event_name != 'pull_request'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.frontend-build == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     # The build runs with an explicit heap: at Node's default ~2 GB it died
@@ -505,18 +596,27 @@ jobs:
   # files (679 s on main, 5 Nov 2026, run 42090500694) by file, and the first
   # shard also runs the node:test half (about 35 s). Three shards keep each
   # near 5 minutes, install included. The cap sits on the test step, not the
-  # job, for the reason given above the backend job.
+  # job, for the reason given above the backend job. In the queue a change
+  # that reaches no vitest file skips the job, and one that does runs
+  # `vitest related` on one shard: the tests that import a changed file, plus
+  # those that read one from disk (tests/selection.py).
   frontend-unit:
     name: Frontend unit tests
-    if: github.event_name != 'pull_request'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.frontend-unit-mode != 'skip'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/3, 2/3, 3/3]
+        shard: ${{ fromJSON(needs.select.outputs.frontend-unit-shards) }}
     steps:
       - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-selection
+          path: ${{ runner.temp }}/selection
 
       - uses: actions/setup-node@v6
         with:
@@ -534,9 +634,16 @@ jobs:
         run: node scripts/node-test-files.mjs
 
       - name: Vitest unit and component tests
+        if: needs.select.outputs.frontend-unit-mode == 'full'
         working-directory: frontend
         timeout-minutes: 20
         run: yarn vitest run --shard=${{ matrix.shard }}
+
+      - name: Vitest tests the change reaches
+        if: needs.select.outputs.frontend-unit-mode == 'related'
+        working-directory: frontend
+        timeout-minutes: 20
+        run: xargs -a "$RUNNER_TEMP/selection/frontend-related.txt" yarn vitest related --run --shard=${{ matrix.shard }}
 
   # The frontend ratchet gates, on every pull request. They scan the whole
   # tree (tests_unit/ and the top-level src/*.test.ts guards, the settings
@@ -570,8 +677,8 @@ jobs:
   # each near 7 minutes of tests, collection (about 70 s) aside.
   bootstrap:
     name: Bootstrap (fresh DB)
-    needs: migration-changes
-    if: needs.migration-changes.outputs.run == 'true'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.integration-shards != '[]'
     runs-on: ubuntu-26.04
     # Capped on the test step, as the backend shards are: a step timeout
     # fails the run, a job timeout leaves it `cancelled`.
@@ -579,7 +686,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/4, 2/4, 3/4, 4/4]
+        shard: ${{ fromJSON(needs.select.outputs.integration-shards) }}
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -673,6 +780,7 @@ jobs:
           ADMIN_EMAIL: "admin@test.filigran.io"
           ADMIN_PASSWORD: "test-admin-password-123"
           PYTEST_SHARD: ${{ matrix.shard }}
+          PYTEST_SELECTED_FILES: ${{ needs.select.outputs.integration-full == 'false' && format('{0}/selection/backend-tests.txt', runner.temp) || '' }}
           # Collect only the files that spell mark.integration (tests/marked_files.py).
           PYTEST_MARKED_FILES: integration
           # A test past this bound ends its worker with its stacks (tests/stall_guard.py).
@@ -696,39 +804,13 @@ jobs:
           done
           true
 
-  # A pull request that touches none of what the database checks (Bootstrap
-  # and Migrations) read skips them; every other run runs them. The checkout is the pull request's merge
-  # commit, whose first parent is the base, so that diff is its change.
-  migration-changes:
-    name: Migration-related changes
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.changed.outputs.run }}
-    steps:
-      - uses: actions/checkout@v6
-        if: github.event_name == 'pull_request'
-        with:
-          fetch-depth: 2
-
-      - id: changed
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          run=true
-          if [ "$EVENT" = pull_request ] && git diff --quiet HEAD^1 HEAD -- \
-            backend/alembic/ backend/app/models/ backend/app/core/config.py \
-            backend/app/core/migrations.py backend/app/core/database.py \
-            backend/tests/test_migration_integrity.py backend/tests/test_fresh_install.py \
-            backend/pyproject.toml backend/uv.lock .github/workflows/ci.yml; then
-            run=false
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-
+  # The migration chain is checked only when the merge group changes what
+  # it runs (migrations_reason, tests/selection.py): otherwise it is
+  # main's, which passed.
   migrations:
     name: Migrations (Alembic)
-    needs: migration-changes
-    if: needs.migration-changes.outputs.run == 'true'
+    needs: select
+    if: github.event_name != 'pull_request' && needs.select.outputs.migrations == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     services:
@@ -934,7 +1016,7 @@ jobs:
   verdict:
     name: CI verdict
     if: always()
-    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, backend, browser-tool, frontend, frontend-unit, bootstrap, migration-changes, migrations]
+    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, select, backend, browser-tool, frontend, frontend-unit, bootstrap, migrations]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -950,3 +1032,30 @@ jobs:
             exit 1
           fi
           echo "Every job passed or was skipped."
+
+  # A red nightly run reaches nobody: the queue no longer runs every test, so
+  # it is the full pass that catches what the selection missed. It opens an
+  # issue, or comments on the one still open.
+  notify-on-failure:
+    name: Open an issue when the nightly run fails
+    needs: verdict
+    if: always() && github.event_name == 'schedule' && needs.verdict.result == 'failure'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open the issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label ci --state open \
+                   --search 'in:title "the nightly CI run failed"' --json number --jq '.[0].number // empty')
+          if [ -z "$open" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --label ci \
+              --title "ci: the nightly CI run failed" \
+              --body "The merge queue runs only the tests a change reaches; this full pass on main found a failure it missed, or a flaky test. Run: $RUN_URL"
+          else
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          fi

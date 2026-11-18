@@ -11,38 +11,14 @@ name: Video Studio ultra render
 # preview reading at least 90% of its insert frames back.
 # Each test frees its working directory and its caches as it ends (tests/conftest.py): the runner's disk
 # quota holds one 2160p render's files at a time, never the session's.
-# Tens of minutes on a hosted runner: too long for
-# the Browser tool (Chromium) job of ci.yml, so it runs nightly, on demand, and
-# on the pull requests that change the render pipeline.
+# Fifty to eighty-five minutes on a hosted runner: too long for the Browser
+# tool (Chromium) job of ci.yml, and for a pull request to wait on, so it runs
+# nightly and on demand. A change to the render pipeline runs it on its branch
+# before the merge: `gh workflow run video-studio-ultra.yml --ref <branch>`.
 on:
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
-  pull_request:
-    paths:
-      - backend/app/services/video_studio/compositor.py
-      - backend/app/services/video_studio/compositor_page.py
-      - backend/app/services/video_studio/encoder.py
-      - backend/app/services/video_studio/figure_cache.py
-      - backend/app/services/video_studio/figures.py
-      - backend/app/services/video_studio/frame_freeze.py
-      - backend/app/services/video_studio/insert_frames.py
-      - backend/app/services/video_studio/lease.py
-      - backend/app/services/video_studio/page_schedule.py
-      - backend/app/services/video_studio/render.py
-      - backend/app/services/video_studio/render_preflight.py
-      - backend/app/services/video_studio/render_process.py
-      - backend/app/services/video_studio/resources.py
-      - backend/app/services/video_studio/screen_insert.py
-      - backend/app/services/video_studio/data/render_page_peak.json
-      - backend/tests/test_video_studio_ultra_render_chromium.py
-      - backend/tests/test_video_studio_page_peak_chromium.py
-      - backend/tests/test_video_studio_estimate_chromium.py
-      - backend/tests/test_video_studio_render_tail_chromium.py
-      - backend/tests/test_video_studio_insert_preview_chromium.py
-      - backend/tests/video_studio_render_fixture.py
-      - backend/tests/video_studio_memory.py
-      - .github/workflows/video-studio-ultra.yml
 
 permissions:
   contents: read
@@ -154,3 +130,30 @@ jobs:
       - name: Disk after the renders
         if: always()
         run: df -h / /tmp "$RUNNER_TEMP" || true
+
+  # No pull request waits on this render any more: a red nightly run is how a
+  # regression of the render pipeline shows. It opens an issue, or comments on
+  # the one still open.
+  notify-on-failure:
+    name: Open an issue when the nightly render fails
+    needs: ultra
+    if: always() && github.event_name == 'schedule' && needs.ultra.result == 'failure'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open the issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label ci --state open \
+                   --search 'in:title "the nightly Video Studio ultra render failed"' --json number --jq '.[0].number // empty')
+          if [ -z "$open" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --label ci \
+              --title "ci: the nightly Video Studio ultra render failed" \
+              --body "No pull request runs the 2160p render: this nightly run is where a regression of the render pipeline shows. Run: $RUN_URL"
+          else
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          fi
