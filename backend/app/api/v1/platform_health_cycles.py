@@ -188,7 +188,7 @@ async def request_cycle(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=TARGET_NOT_FOUND)
     if not target.can_manage:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Only who may manage it can ask the Concierge."
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only who may manage it can ask Platform Health."
         )
     result = await start_cycle(
         db,
@@ -212,7 +212,7 @@ async def request_cycle(
         entity_type="concierge_cycle",
         entity_id=result.cycle_id,
         entity_name=target.name,
-        summary=f"Asked the Concierge to improve the {body.target_type} '{target.name}'",
+        summary=f"Asked Platform Health to improve the {body.target_type} '{target.name}'",
         details={"target_type": body.target_type, "target_id": str(body.target_id)},
         request=request,
     )

@@ -132,7 +132,7 @@ async def load_scope(db: AsyncSession, user_id: str, *, direct: bool = False) ->
     from app.services.health.identity import in_health_reach
 
     if not direct and in_health_reach():
-        raise InsightRefusedError("Error: platform insights are not available to the Concierge.")
+        raise InsightRefusedError("Error: platform insights are not available to Platform Health.")
     parsed = safe_uuid(user_id) if user_id else None
     if parsed is None:
         raise InsightRefusedError("Error: platform insights need a signed-in user; this caller has no account.")

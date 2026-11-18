@@ -51,8 +51,8 @@ DIAGNOSIS_GROUP_ID = "concierge_diagnosis"
 #: The read functions of the group: the only ones the platform MCP server serves.
 DIAGNOSIS_READ_TOOLS: frozenset[str] = frozenset({"get_quality_signals", "list_findings"})
 
-_OFF = "Error: the Concierge is not enabled on this platform."
-_FAILED = "Error: the Concierge could not complete this request right now."
+_OFF = "Error: Platform Health is not enabled on this platform."
+_FAILED = "Error: Platform Health could not complete this request right now."
 _NO_READER = "Error: this tool needs an authenticated caller."
 
 

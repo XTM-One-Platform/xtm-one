@@ -344,7 +344,7 @@ async def test_the_tools_answer_off_while_the_capability_is_off(monkeypatch):
         monkeypatch.setattr(availability, "health_enabled", lambda: False)
         assert (
             await _call(str(world.admin.id), "list_findings", target_id=str(world.agent.id))
-            == "Error: the Concierge is not enabled on this platform."
+            == "Error: Platform Health is not enabled on this platform."
         )
 
 

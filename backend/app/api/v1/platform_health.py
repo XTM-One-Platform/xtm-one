@@ -148,7 +148,7 @@ async def set_agent_opt_in(
     if not can_manage(user, agent, groups):
         raise HTTPException(status_code=403, detail="You cannot manage this agent.")
     if agent.health_role is not None:
-        raise HTTPException(status_code=409, detail="A Concierge agent is never improved by the Concierge.")
+        raise HTTPException(status_code=409, detail="A Platform Health agent is never improved by Platform Health.")
     was = bool(agent.health_enrolled)
     if was != body.opt_in:
         agent.health_enrolled = body.opt_in
@@ -159,7 +159,7 @@ async def set_agent_opt_in(
             entity_type="agent",
             entity_id=agent.id,
             entity_name=agent.name,
-            summary=f"Turned the Concierge improvement opt-in {'on' if body.opt_in else 'off'}",
+            summary=f"Turned the Platform Health improvement opt-in {'on' if body.opt_in else 'off'}",
             details={"health_enrolled": body.opt_in},
             request=request,
         )
@@ -217,7 +217,7 @@ async def set_flow_opt_in(
             entity_type="flow",
             entity_id=flow.id,
             entity_name=flow.name,
-            summary=f"Turned the Concierge improvement opt-in {'on' if body.opt_in else 'off'}",
+            summary=f"Turned the Platform Health improvement opt-in {'on' if body.opt_in else 'off'}",
             details={"health_enrolled": body.opt_in},
             request=request,
         )
@@ -251,7 +251,7 @@ async def set_my_opt_out(
             entity_type="user",
             entity_id=row.id,
             entity_name=row.email,
-            summary=f"{'Opted out of' if body.opt_out else 'Opted back in to'} the Concierge",
+            summary=f"{'Opted out of' if body.opt_out else 'Opted back in to'} Platform Health",
             details={"health_content_opt_out": body.opt_out},
             request=request,
         )

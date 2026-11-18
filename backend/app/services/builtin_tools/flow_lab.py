@@ -72,10 +72,10 @@ FLOW_LAB_READ_TOOLS = frozenset(
     }
 )
 
-_OFF = "Error: the Concierge is not enabled on this platform."
+_OFF = "Error: Platform Health is not enabled on this platform."
 _FAILED = "Error: the Flow Lab could not complete this request right now."
 _NO_CALLER = "Error: this tool needs an authenticated caller."
-_CONCIERGE_ONLY = "Error: only a Concierge agent can do this, on sandbox copies."
+_CONCIERGE_ONLY = "Error: only a Platform Health agent can do this, on sandbox copies."
 
 #: How many replay cases ``get_flow_diagnosis`` lists with their payloads.
 _LISTED_CASES = 20
@@ -409,7 +409,7 @@ async def _create_sandbox_flow(
 def _flow_lab_refusal(caller: Any) -> str | None:
     """Findings and drafts are the Flow Lab agent's own writes (level 1's role on the agent row)."""
     if not caller.is_health_principal or getattr(caller.principal, "role", None) != "flow_lab":
-        return "Error: only the Concierge's Flow Lab can do this."
+        return "Error: only the Platform Health Flow Lab can do this."
     return None
 
 

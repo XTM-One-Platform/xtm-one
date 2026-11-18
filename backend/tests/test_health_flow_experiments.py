@@ -20,7 +20,7 @@ import pytest
 async def test_findings_and_drafts_are_the_flow_labs_own_writes(handler, caller):
     from app.services.builtin_tools import flow_lab as tools
 
-    assert await getattr(tools, handler)(None, caller) == "Error: only the Concierge's Flow Lab can do this."
+    assert await getattr(tools, handler)(None, caller) == "Error: only the Platform Health Flow Lab can do this."
 
 
 def test_level_6_measures_every_flow_type():

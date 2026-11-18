@@ -94,7 +94,7 @@ TRACE_SUITE_IDS: frozenset[str] = frozenset({"inspect_my_traces", "inspect_agent
 
 #: What Platform Health is told for another agent's traces: these tools apply no
 #: consent rule, ``concierge_diagnosis`` does.
-HEALTH_TRACES_REFUSED = "Error: the Concierge reads other agents' traces through its diagnosis tools only."
+HEALTH_TRACES_REFUSED = "Error: Platform Health reads other agents' traces through its diagnosis tools only."
 
 
 def _health_refuses_other_agents() -> bool:

@@ -76,7 +76,7 @@ TargetType = Literal["agent", "flow"]
 ContentKind = Literal["trace", "memory", "dataset_entry", "flow_run"]
 
 #: What a caller is told when a read is refused: never why (the reason is logged).
-DENIED_MESSAGE = "This content is not available to the Concierge."
+DENIED_MESSAGE = "This content is not available to Platform Health."
 
 
 class ConsentDeniedError(Exception):

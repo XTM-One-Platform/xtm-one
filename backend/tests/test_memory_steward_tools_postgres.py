@@ -43,7 +43,7 @@ async def test_the_tools_refuse_anything_but_a_concierge_run(monkeypatch) -> Non
                     assert (result.is_error, result.refused, result.content) == (
                         True,
                         True,
-                        "Error: the memory tools are reserved to the Platform Concierge.",
+                        "Error: the memory tools are reserved to Platform Health.",
                     ), (name, inside, flag)
 
         assert world.model_calls == []
@@ -76,7 +76,10 @@ async def test_a_concierge_run_lists_passes_and_counts_without_content(monkeypat
             False,
             {"status": "unchanged", "counts": {}},
         )
-        assert (refused.refused, refused.content) == (True, "Error: this memory lane may not be read by the Concierge.")
+        assert (refused.refused, refused.content) == (
+            True,
+            "Error: this memory lane may not be read by Platform Health.",
+        )
         assert malformed.content == "Error: agent_id must be a UUID."
         assert json.loads(counts.content)["counts"] == {"merge": 1, "remove": 1, "demote": 1}
         for result in (lanes, applied, unchanged, refused, counts):

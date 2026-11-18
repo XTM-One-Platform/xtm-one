@@ -48,7 +48,7 @@ _MAX_LANES = 100
 _DEFAULT_SINCE_HOURS = 24
 _MAX_SINCE_HOURS = 24 * 31
 
-_REFUSAL = "Error: the memory tools are reserved to the Platform Concierge."
+_REFUSAL = "Error: the memory tools are reserved to Platform Health."
 
 
 def _caller_is_health_principal() -> bool:
@@ -141,8 +141,8 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
         if result.status == "refused":
             # Consent and budget are stated; their details stay in the logs.
             message = {
-                "consent": "Error: this memory lane may not be read by the Concierge.",
-                "budget": "Error: the Concierge budget is spent; no pass was run.",
+                "consent": "Error: this memory lane may not be read by Platform Health.",
+                "budget": "Error: the Platform Health budget is spent; no pass was run.",
             }.get(result.reason or "", _REFUSAL)
             return _refused(message)
         if result.status == "unchanged":

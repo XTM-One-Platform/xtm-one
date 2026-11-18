@@ -156,7 +156,7 @@ async def upload_pet(
         entity_type="concierge_pet",
         entity_id=pet.id,
         entity_name=pet.display_name,
-        summary="Added a pet to the Concierge companion library",
+        summary="Added a pet to the Platform Health companion library",
         details={"slug": pet.slug, "sprite_version": pet.sprite_version},
         request=request,
     )
@@ -188,7 +188,7 @@ async def delete_pet(
         entity_type="concierge_pet",
         entity_id=pet.id,
         entity_name=pet.display_name,
-        summary="Removed a pet from the Concierge companion library",
+        summary="Removed a pet from the Platform Health companion library",
         details={"slug": pet.slug},
         request=request,
     )

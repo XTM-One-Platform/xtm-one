@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 #: The one refusal of an agent out of reach, existing or not.
 NOT_IN_REACH = "Error: this agent is not in your reach."
-WRITE_REFUSED = "Error: only the Concierge records findings and runs experiments."
+WRITE_REFUSED = "Error: only Platform Health records findings and runs experiments."
 
 
 class ConsentScope(Protocol):
