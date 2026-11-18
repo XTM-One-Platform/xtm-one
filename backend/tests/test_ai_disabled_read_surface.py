@@ -1457,6 +1457,7 @@ _NON_AI_MODULES: dict[str, str] = {
     "desktop_login.py": "XTM One Desktop browser sign-in handoff (FR-021)",
     "users.py": "users (FR-021)",
     "groups.py": "groups and roles (FR-021)",
+    "scim.py": "SCIM provisioning of users and groups, and its tokens (FR-021)",
     "invitations.py": "invitations (FR-021)",
     "api_keys.py": "API tokens (FR-021)",
     "platform.py": "platform registration, branding, health (FR-021)",

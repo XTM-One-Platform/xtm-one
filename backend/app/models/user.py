@@ -193,6 +193,9 @@ class User(Base):
     # cross-platform JWT provisioning (e.g. "https://opencti.example.com").
     sso_provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sso_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # The identity provider's id of the account when SCIM provisions it
+    # (``externalId``, ``api/v1/scim.py``); NULL for an account SCIM never saw.
+    scim_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
 
     # LLM preferences (per-user overrides)
     preferred_llm_provider: Mapped[str | None] = mapped_column(

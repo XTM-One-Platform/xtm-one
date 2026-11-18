@@ -139,6 +139,7 @@ from app.api.v1 import (
     resource_exposure,
     roi,
     runners,
+    scim,
     search,
     secret_vaults,
     security_audit,
@@ -4613,6 +4614,10 @@ application.include_router(
 application.include_router(intents.router, prefix="/api/v1", tags=["intents"])
 application.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 application.include_router(groups.router, prefix="/api/v1/groups", tags=["groups"])
+# SCIM 2.0 provisioning: the identity provider's surface (a SCIM token, nothing
+# else) and the administrator's tokens (api/v1/scim.py, dev-docs/scim.md).
+application.include_router(scim.scim_router, prefix="/api/v1/scim/v2", tags=["scim"])
+application.include_router(scim.tokens_router, prefix="/api/v1/scim/tokens", tags=["scim"])
 application.include_router(insights.router, prefix="/api/v1/insights", tags=["insights"])
 application.include_router(
     audit_logs.router, prefix="/api/v1/audit-logs", tags=["audit-logs"]
