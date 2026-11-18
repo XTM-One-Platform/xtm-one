@@ -1092,6 +1092,12 @@ def select_provider_configs() -> Select:
     )
 
 
+def newest_config(configs: Sequence[LLMProviderConfig]) -> LLMProviderConfig | None:
+    """The config a provider type named without an id resolves to: the newest of
+    its type, in :func:`select_provider_configs` order."""
+    return configs[-1] if configs else None
+
+
 def oldest_first(configs: Iterable[LLMProviderConfig]) -> list[LLMProviderConfig]:
     """*configs* in the order :func:`select_provider_configs` returns them.
 
@@ -3359,7 +3365,7 @@ def implicit_embedding_fallback(
             model = (
                 embedding_model if embedding_provider == prov_name else None
             ) or EMBEDDING_DEFAULTS[prov_name]
-            return matching[-1], model
+            return newest_config(matching), model
     return None
 
 
@@ -3426,7 +3432,7 @@ async def get_embedding_provider(
     if ps.embedding_provider:
         matching = configs_by_provider.get(ps.embedding_provider, [])
         if matching:
-            config = matching[-1]
+            config = newest_config(matching)
             model = ps.embedding_model or config.default_model or ""
             if model or config.provider in _EMBEDDING_MODEL_OPTIONAL_PROVIDERS:
                 await ensure_not_excluded(db, config, "Embedding", user_id)
@@ -3488,9 +3494,9 @@ async def get_image_provider(
             return await _cached_provider(config), ps.image_model
     if ps.image_provider and ps.image_model:
         matching = configs_by_provider.get(ps.image_provider, [])
-        if matching:
-            await ensure_not_excluded(db, matching[-1], "Image generation", user_id)
-            return await _cached_provider(matching[-1]), ps.image_model
+        if config := newest_config(matching):
+            await ensure_not_excluded(db, config, "Image generation", user_id)
+            return await _cached_provider(config), ps.image_model
 
     # 2. Fallback: first image-capable provider
     for prov_name in _IMAGE_PROVIDERS:

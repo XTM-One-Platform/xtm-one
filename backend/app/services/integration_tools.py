@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import dataclasses
 import functools
+import inspect
 import json as _json
 import logging
 import re
@@ -180,6 +181,7 @@ from app.integrations.providers.whatsapp_bot import build_tools as whatsapp_bot_
 from app.integrations.providers.whatsapp_gateway import BACKEND_GATEWAY as WHATSAPP_GATEWAY_BACKEND
 from app.integrations.providers.whatsapp_gateway import gateway_token as whatsapp_gateway_token
 from app.integrations.providers.wiz import build_tools as wiz_tools
+from app.integrations.providers.wordsmith import build_tools as wordsmith_tools
 from app.integrations.providers.x import build_tools as x_tools
 from app.integrations.providers.xdr import build_tools as xdr_tools
 from app.integrations.providers.xsoar import build_tools as xsoar_tools
@@ -940,6 +942,7 @@ PROVIDER_TOOLS = {
     "drata": drata_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
@@ -1044,6 +1047,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
         "cybersixgill",
@@ -1086,6 +1090,40 @@ _PERSIST_FILE_PROVIDERS = frozenset(
 _PERSIST_FILE_CHANNEL_BOTS = frozenset(
     {"teams_bot", "slack_bot", "discord_bot", "whatsapp_bot"}
 )
+
+#: The build context key of a list the caller gives to collect how each bound
+#: platform names the objects it holds: a provider whose builder declares a
+#: ``platform_names_sink`` parameter appends a lookup read on its tools' own
+#: connection (relay route included). The grounded STIX extraction uses the one
+#: lookup of a run with exactly one such platform
+#: (``builtin_tools.stix_extraction``).
+PLATFORM_NAMES_CONTEXT_KEY = "platform_names"
+#: Context key of a caller's list of the run's bound ATT&CK sources, each
+#: ``(source_url, version, relay route)`` as its own tools read it: a provider whose
+#: builder declares an ``attack_source_sink`` parameter gives its source, and the
+#: grounded STIX extraction reads ATT&CK from it, not from the deployment's most recent one.
+ATTACK_SOURCES_CONTEXT_KEY = "attack_sources"
+
+
+def _declares(builder: Callable[..., Any], parameter: str) -> bool:
+    """Whether a provider's tool builder takes *parameter* by name: a capability the
+    provider declares, so the generic build names no vendor (invariant 18)."""
+    try:
+        return parameter in inspect.signature(builder).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _routed_lookup(lookup: Callable[..., Awaitable[Any]], route: EgressRoute | None) -> Callable[..., Awaitable[Any]]:
+    """*lookup* sending its requests through *route*'s relay group, as the tools do."""
+    if route is None:
+        return lookup
+
+    async def _routed(*args: Any, **kwargs: Any) -> Any:
+        with egress_route(route):
+            return await lookup(*args, **kwargs)
+
+    return _routed
 
 
 def _custom_declared_tools_from_metadata(metadata_json: dict | None) -> list[dict[str, Any]]:
@@ -4067,6 +4105,23 @@ async def _get_token(
                 format_exception_message(exc),
             )
 
+    # Wordsmith: a region host from extra_config is prepended as base_url
+    if provider == "wordsmith" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            region = extra.get("region", "").strip()
+            if region:
+                from app.integrations.providers.wordsmith import resolve_base_url as wordsmith_base_url
+
+                return f"{wordsmith_base_url(region)}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
     # Drata: resolve region from extra_config → prepend base_url
     if provider == "drata" and integ.extra_config_enc:
         try:
@@ -6401,6 +6456,16 @@ async def _build_integration_tools_inner(
                         )
                         continue
                     _builder_kwargs["openapi_runtime"] = _openapi_runtime
+                # How the platform names what it holds, on this integration's
+                # own connection, for a caller that collects it.
+                _platform_names: list[Callable[..., Awaitable[Any]]] = []
+                _names_sink = context.get(PLATFORM_NAMES_CONTEXT_KEY)
+                if isinstance(_names_sink, list) and _declares(builder, "platform_names_sink"):
+                    _builder_kwargs["platform_names_sink"] = _platform_names.append
+                _attack_found: list[tuple[str, str]] = []
+                _attack_sink = context.get(ATTACK_SOURCES_CONTEXT_KEY)
+                if isinstance(_attack_sink, list) and _declares(builder, "attack_source_sink"):
+                    _builder_kwargs["attack_source_sink"] = _attack_found.append
                 defs = builder(token, executor, **_builder_kwargs)
                 # A send tool's text reaches a surface that draws no chat card:
                 # its artifact markers are sent as links (#9990).
@@ -6409,6 +6474,8 @@ async def _build_integration_tools_inner(
                 _route = _routes.get(str(integration_id))
                 if defs and _route is not None:
                     _route_through_relay(defs, executor, _route)
+                if defs and isinstance(_attack_sink, list):
+                    _attack_sink.extend((url, version, _route) for url, version in _attack_found)
                 _reached = _internally_reached.get(str(integration_id))
                 if defs and _reached is not None:
                     _show_tool_results_on_public_url(defs, executor, _reached)
@@ -6455,6 +6522,8 @@ async def _build_integration_tools_inner(
                             ),
                         )
                     definitions.extend(enriched)
+                    if isinstance(_names_sink, list):
+                        _names_sink.extend(_routed_lookup(lookup, _route) for lookup in _platform_names)
                     logger.debug(
                         "Loaded %d tools for provider %s [%s]",
                         len(defs),

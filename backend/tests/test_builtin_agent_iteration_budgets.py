@@ -29,6 +29,8 @@ _DOCUMENTED_BOUNDS = {
     "deep-investigation-agent",
     # A bounded repair loop, see test_cti_stix_harvester_config.py.
     "cti-stix-harvester",
+    # The extraction is the tool's own bounded pipeline; the loop makes one call.
+    "cti-stix-extractor",
 }
 
 

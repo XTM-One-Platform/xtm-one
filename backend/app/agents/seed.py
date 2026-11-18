@@ -361,6 +361,22 @@ def _sync_agent_fields(
         flag_modified(agent, attr)
 
 
+def _new_builtin_agent(data: dict, owner_id: object, *, anthropic_enabled: bool) -> Agent:
+    """A built-in agent row as the seed creates it: its identity, then every mutable
+    field written by :func:`_sync_agent_fields`, the one rule for both creation and
+    update. A field the update path writes (``config``, ``tool_deny_list``) used to be
+    missing from a freshly created row until the next boot."""
+    agent = Agent(
+        user_id=owner_id,
+        is_company_managed=True,
+        is_builtin=True,
+        slug=data["slug"],
+        name=data["name"],
+    )
+    _sync_agent_fields(agent, data, anthropic_enabled=anthropic_enabled)
+    return agent
+
+
 def _withheld_builtin_agent_slugs() -> set[str]:
     """The built-in agents whose feature flag is off."""
     return {
@@ -648,44 +664,7 @@ async def seed_builtin_agents(
             )
             continue
 
-        agent = Agent(
-            user_id=owner_id,
-            is_company_managed=True,
-            is_builtin=True,
-            slug=slug,
-            name=agent_data["name"],
-            description=agent_data.get("description"),
-            icon=agent_data.get("icon", "Bot"),
-            persona=_resolve_seed_content("agent_persona", agent_data.get("persona", slug)),
-            output_format=agent_data.get("output_format", "markdown"),
-            output_schema=with_builtin_roi_unit(slug, _resolve_seed_schema(agent_data.get("output_schema"))),
-            disable_chat=agent_data.get("disable_chat", False),
-            hide_runs=agent_data.get("hide_runs", False),
-            max_iterations=agent_data.get("max_iterations"),
-            llm_model=_resolve_llm_model(
-                agent_data, anthropic_enabled=anthropic_enabled
-            ),
-            llm_model_source=agent_data.get("llm_model_source"),
-            builtin_tool_ids=agent_data.get("builtin_tool_ids") or [],
-            integration_template_bindings=agent_data.get(
-                "integration_template_bindings", []
-            ),
-            integration_template_read_only=agent_data.get("integration_template_read_only") or None,
-            prepare_tool_ref=agent_data.get("prepare_tool_ref"),
-            finalize_tool_ref=agent_data.get("finalize_tool_ref"),
-            skip_llm=agent_data.get("skip_llm", False),
-            available_channel_types=["web"],
-            tags=agent_data.get("tags", ["builtin"]),
-            supported_intents=agent_data.get("supported_intents") or {},
-            temperature=agent_data.get("temperature"),
-            reasoning_effort=agent_data.get("reasoning_effort"),
-            organization_context_mode="inherit",
-            organization_context_categories=agent_data.get("organization_context_categories"),
-            memory_short_term_enabled=agent_data.get("memory_short_term_enabled", True),
-            memory_medium_term_enabled=agent_data.get("memory_medium_term_enabled", True),
-            memory_persistent_enabled=agent_data.get("memory_persistent_enabled", True),
-            memory_user_enabled=agent_data.get("memory_user_enabled", True),
-        )
+        agent = _new_builtin_agent(agent_data, owner_id, anthropic_enabled=anthropic_enabled)
         db.add(agent)
         # The id the versions reference exists once the row is flushed.
         await db.flush()

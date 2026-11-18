@@ -18,6 +18,7 @@ from app.evaluation_metrics.quality.families.stix_bundle import (
     stix_entity_scores,
     stix_relationship_scores,
 )
+from app.evaluation_metrics.quality.families.stix_bundle.alignment import stix_aligned_scores
 from app.evaluation_metrics.quality.families.structured_json import (
     json_field_accuracy,
     json_schema_validity,
@@ -109,6 +110,7 @@ def _stix_direct(reference: object, prediction: object) -> dict[str, ScoreResult
     return {
         **stix_entity_scores(reference, prediction, canonicalizer),
         "stix.relationship_prf": stix_relationship_scores(reference, prediction, canonicalizer),
+        **stix_aligned_scores(reference, prediction, canonicalizer),
     }
 
 
@@ -306,6 +308,9 @@ def test_stix_bundle_returns_expected_keys() -> None:
         "stix.entity_prf",
         "stix.entity_prf.by_type",
         "stix.relationship_prf",
+        "stix.entity_prf.aligned",
+        "stix.entity_prf.soft",
+        "stix.relationship_prf.aligned",
     }
 
 
@@ -323,7 +328,14 @@ def test_stix_bundle_envelope_gate_invalidates_dependents() -> None:
         for key, value in results["stix.envelope_validity"].detail.items()
         if key not in ("numerator", "denominator")
     }
-    for key in ("stix.entity_prf", "stix.entity_prf.by_type", "stix.relationship_prf"):
+    for key in (
+        "stix.entity_prf",
+        "stix.entity_prf.by_type",
+        "stix.relationship_prf",
+        "stix.entity_prf.aligned",
+        "stix.entity_prf.soft",
+        "stix.relationship_prf.aligned",
+    ):
         assert results[key].status is MetricStatus.scored
         assert results[key].value == 0.0
         assert results[key].error is None
@@ -338,6 +350,22 @@ def test_stix_bundle_envelope_gate_invalidates_dependents() -> None:
     }
     relationship = results["stix.relationship_prf"].detail
     assert (relationship["numerator"], relationship["denominator"]) == (0, 2)
+
+
+def test_an_unreadable_answer_scores_0_against_a_reference_too_large_to_align() -> None:
+    """A reference of more than 100 objects is too large to align with itself, so the
+    aligned metrics of the expected answer are skipped: an unreadable answer still scores
+    0 there, as structured_json's does, instead of dropping out of the run aggregate."""
+    config = FamilyConfig(canonicalizer=_IdentityCanonicalizer())
+    reference = {
+        "type": "bundle",
+        "id": "bundle--large",
+        "objects": [{"type": "malware", "id": f"malware--{i}", "name": f"family {i}"} for i in range(101)],
+    }
+    results = run_for_family(reference, {"objects": []}, Family.STIX_BUNDLE, config)
+    for key in ("stix.entity_prf.aligned", "stix.entity_prf.soft", "stix.relationship_prf.aligned"):
+        assert results[key].status is MetricStatus.scored, key
+        assert results[key].value == 0.0
 
 
 # --- cross-cutting ---------------------------------------------------------------------

@@ -7,6 +7,8 @@ and executor dispatch smoke (early-return paths, no network).
 
 import json
 
+import pytest
+
 from app.integrations.providers.opencti import build_tools
 from app.tools.base import CallableToolExecutor, ToolCall
 
@@ -643,6 +645,63 @@ async def test_user_update_refuses_ignored_fields_and_writes_nothing(monkeypatch
         assert result.is_error, (args, result.content)
         assert "othing was written" in result.content, result.content
     assert fake.writes() == []
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "named"),
+    [
+        # Reads and relation actions refuse a field they do not apply, as create and
+        # update do: the answer must never read as proof the field was taken.
+        ("manage_opencti_user", {"action": "list", "user_id": "u1"}, "user_id"),
+        ("manage_opencti_user", {"action": "get", "user_id": "u1", "max_confidence": 50}, "max_confidence"),
+        ("manage_opencti_user", {"action": "delete", "user_id": "u1", "name": "x"}, "name"),
+        (
+            "manage_opencti_user",
+            {"action": "add_group", "user_id": "u1", "group_id": "g1", "organization_id": "o1"},
+            "organization_id",
+        ),
+        (
+            "manage_opencti_user",
+            {"action": "remove_organization", "user_id": "u1", "organization_id": "o1", "search": "x"},
+            "search",
+        ),
+        ("manage_opencti_user", {"action": "create", "name": "x", "limit": 5}, "limit"),
+        ("manage_opencti_group", {"action": "list", "max_confidence": 50}, "max_confidence"),
+        ("manage_opencti_group", {"action": "get", "group_id": "g1", "bogus": 1}, "bogus"),
+        ("manage_opencti_group", {"action": "delete", "group_id": "g1", "role_id": "r1"}, "role_id"),
+        (
+            "manage_opencti_group",
+            {"action": "add_role", "group_id": "g1", "role_id": "r1", "description": "x"},
+            "description",
+        ),
+    ],
+)
+async def test_access_tools_refuse_unapplied_fields_on_every_action(monkeypatch, tool, args, named):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(executor, tool, args)
+    assert result.is_error, result.content
+    assert named in result.content and "nothing was written" in result.content, result.content
+    assert fake.calls == []
+
+
+async def test_access_tools_accept_the_fields_each_action_applies(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    for tool, args in (
+        ("manage_opencti_user", {"action": "list", "search": "x", "limit": 5}),
+        ("manage_opencti_user", {"action": "get", "user_id": "u1"}),
+        ("manage_opencti_group", {"action": "list", "search": "x", "limit": 20}),
+        ("manage_opencti_group", {"action": "get", "group_id": "g1"}),
+    ):
+        result = await _run(executor, tool, args)
+        assert "does not apply" not in result.content, (args, result.content)
 
 
 async def test_manage_profile_get_unwraps_group_nodes(monkeypatch):

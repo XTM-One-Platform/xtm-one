@@ -184,6 +184,9 @@ class QualityConfig:
     stix_canonicalizer: Any | None = None
     stix_validator: Any | None = None
     stix_unavailable_reason: str | None = None
+    # The object types the dataset references annotate (``_reference_types``), for the
+    # closed-world reading of the aligned STIX scores; None when none is derivable.
+    stix_reference_types: frozenset[str] | None = None
     # The ``ProseNormalizationPolicy``, or None for classification and STIX. The policy,
     # not a built ``ProseConfig``: the suite type is built in ``_build_family_config``.
     prose_policy: Any | None = None
@@ -242,6 +245,7 @@ def build_quality_config(
             stix_canonicalizer=canonicalizer,
             stix_validator=validator,
             stix_unavailable_reason=unavailable,
+            stix_reference_types=_reference_types(dataset_refs),
         )
 
     if family == PROSE:
@@ -298,6 +302,30 @@ def _field_scoring_overrides(
         else {}
     )
     return modes, weights
+
+
+#: Never a knowledge type a guideline annotates: the closed world keeps them regardless.
+_NOT_ANNOTATED_TYPES = frozenset({"sighting", "report", "grouping", "note", "opinion",
+                                  "observed-data", "marking-definition", "extension-definition",
+                                  "language-content", "bundle"})
+
+
+def _reference_types(dataset_refs: Sequence[str]) -> frozenset[str] | None:
+    """The object types the dataset's STIX references annotate, over every entry: what
+    its guideline records, ``relationship`` included when one reference holds one. None
+    when no reference is a readable bundle holding one."""
+    types: set[str] = set()
+    for ref in dataset_refs:
+        try:
+            bundle = json.loads(ref) if isinstance(ref, str) else ref
+        except ValueError:
+            continue
+        objects = bundle.get("objects") if isinstance(bundle, Mapping) else None
+        for obj in objects if isinstance(objects, list) else []:
+            kind = obj.get("type") if isinstance(obj, Mapping) else None
+            if isinstance(kind, str) and kind not in _NOT_ANNOTATED_TYPES:
+                types.add(kind)
+    return frozenset(types) or None
 
 
 def _derive_vocabulary(dataset_refs: Sequence[str]) -> frozenset[str]:
@@ -521,6 +549,7 @@ def _build_family_config(
         return FamilyConfig(
             canonicalizer=config.stix_canonicalizer,
             stix_validator=config.stix_validator,
+            reference_types=config.stix_reference_types,
         )
     if family == STRUCTURED_JSON:
         # Reached only when a schema is present (guarded in run_quality).

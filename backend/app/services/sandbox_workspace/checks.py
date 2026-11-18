@@ -745,6 +745,53 @@ def fold_missing_files(findings: list[Finding]) -> list[Finding]:
     return out
 
 
+#: An ANSI colour or cursor sequence: a coloured runner output or a highlighted DOM dump. A JUnit
+#: report drops the escape character (not valid XML) and keeps the rest, so a colour code without
+#: it ("[36m") is one too.
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\[[0-9;]{1,8}m")
+#: Where a testing-library error starts echoing the DOM it searched (the element list or the whole body).
+_DOM_DUMP = re.compile(r"\n\s*\n(?=\s*(?:Here are the matching elements:|Ignored nodes:|<[A-Za-z!/]))")
+#: The characters one finding's message keeps.
+FINDING_MESSAGE_CHARS = 400
+
+
+def finding_message(message: str) -> str:
+    """*message* as one finding shows it: colour codes stripped, a testing-library DOM dump cut, bounded.
+
+    A query matching several elements echoed each element whole, colour codes included, in every
+    failing test's finding (22 findings, 26.9k characters, one root cause). The failures file of the
+    run directory keeps the whole message.
+    """
+    text = _ANSI.sub("", message)
+    dump = _DOM_DUMP.search(text)
+    if dump is None:
+        return text[:FINDING_MESSAGE_CHARS]
+    marker = " [DOM dump left out: the failures file keeps it]"
+    return text[: dump.start()].rstrip()[: FINDING_MESSAGE_CHARS - len(marker)] + marker
+
+
+def fold_same_message(findings: list[Finding]) -> list[Finding]:
+    """*findings* with the tests failing on one same message folded into the first, the others counted.
+
+    One cause failing many tests (an ambiguous query in a shared helper) listed the same message
+    once per test; the first finding is kept, its message saying how many more failed with it.
+    """
+    out: list[Finding] = []
+    first: dict[str, Finding] = {}
+    extra: Counter[str] = Counter()
+    for finding in findings:
+        if finding.message and finding.message in first:
+            extra[finding.message] += 1
+            continue
+        if finding.message:
+            first[finding.message] = finding
+        out.append(finding)
+    for message, more in extra.items():
+        kept = first[message]
+        kept.message += f" (and {more} more test(s) failing with the same message, named in the failures file)"
+    return out
+
+
 def _int(value: object) -> int:
     try:
         return int(str(value))
@@ -810,8 +857,16 @@ def parse_junit(text: str) -> ReportSummary:
             message = body_lines[-1] if body_lines else ""
         where = f"{path}:{line} " if path and line else (f"{path} " if path else "")
         summary.failures.append((f"{where}{name}".strip(), "\n".join(part for part in (message, body) if part)))
-        findings.append(Finding(path=path or name, line=line, rule=name if path else "", message=message[:400], severity="error"))
-    return _bounded(summary, fold_missing_files(findings))
+        findings.append(
+            Finding(
+                path=path or name,
+                line=line,
+                rule=name if path else "",
+                message=finding_message(message),
+                severity="error",
+            )
+        )
+    return _bounded(summary, fold_same_message(fold_missing_files(findings)))
 
 
 _SARIF_LEVELS = {"error": "error", "warning": "warning", "note": "note", "none": "note"}
@@ -906,21 +961,48 @@ def _drop_sections(lines: list[str]) -> list[str]:
 
 #: pytest sections the report's findings already carry: left out of stdout when the findings are shown.
 _REPORTED_SECTIONS = frozenset({"FAILURES", "ERRORS", "short test summary info"})
+#: A vitest section rule (U+23AF runs around a title: "Failed Tests 22"), its title captured; the
+#: "[3/22]" rules between two failures carry no spaced title and are not one.
+_VITEST_HEADER = re.compile(r"^\u23af{2,}\s+(\S.*?)\s+\u23af{2,}$")
+#: The vitest totals that close its report (" Test Files  1 failed | 3 passed (4)").
+_VITEST_TOTALS = re.compile(r"^(Test Files|Tests|Start at|Duration)\s")
+
+
+def _reported_section_end(lines: list[str], index: int) -> tuple[int, str]:
+    """The end of the failure section *lines[index]* opens and its title, ``(index, "")`` when it opens none.
+
+    A pytest FAILURES, ERRORS or short summary section runs to the next pytest header; vitest's
+    "Failed Tests N" section (each failure with its stack and any DOM dump) runs to its next
+    section rule or its totals.
+    """
+    stripped = lines[index].strip()
+    header = _PYTEST_HEADER.match(stripped)
+    if header and header.group(1).strip() in _REPORTED_SECTIONS:
+        end = index + 1
+        while end < len(lines) and not _PYTEST_HEADER.match(lines[end].strip()):
+            end += 1
+        return end, f"pytest {header.group(1).strip()}"
+    header = _VITEST_HEADER.match(stripped)
+    if header and header.group(1).startswith("Failed Tests"):
+        end = index + 1
+        while end < len(lines) and not (
+            _VITEST_HEADER.match(lines[end].strip()) or _VITEST_TOTALS.match(lines[end].strip())
+        ):
+            end += 1
+        return end, f"vitest {header.group(1).strip()}"
+    return index, ""
 
 
 def _drop_reported(lines: list[str]) -> list[str]:
-    """*lines* without the pytest failure sections the findings repeat, each left as a one-line marker."""
+    """*lines* without the pytest and vitest failure sections the findings repeat, each left as a one-line marker."""
     kept: list[str] = []
     index = 0
     while index < len(lines):
-        header = _PYTEST_HEADER.match(lines[index].strip())
-        if header and header.group(1).strip() in _REPORTED_SECTIONS:
-            end = index + 1
-            while end < len(lines) and not _PYTEST_HEADER.match(lines[end].strip()):
-                end += 1
-            # The closing summary line ("=== 2 failed, 9 passed in 3s ===") is a header too: kept.
+        end, title = _reported_section_end(lines, index)
+        if title:
+            # The closing summary line ("=== 2 failed, 9 passed in 3s ===", vitest's totals) is kept.
             kept.append(
-                f"[... pytest {header.group(1).strip()}, {end - index} line(s), left out: the findings above "
+                f"[... {title}, {end - index} line(s), left out: the findings above "
                 "carry them, the run directory keeps them ...]"
             )
             index = end
@@ -983,7 +1065,8 @@ def condense(text: str, *, reported: bool = False) -> str:
     """
     if not text:
         return text
-    lines = text.splitlines()
+    # Colour codes carry nothing for the reader and hide repeats from the comparisons below.
+    lines = _ANSI.sub("", text).splitlines()
     if reported:
         lines = _drop_reported(lines)
     return "\n".join(_thin_frequent(_collapse_repeats(_drop_sections(lines))))

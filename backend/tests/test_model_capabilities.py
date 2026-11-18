@@ -170,6 +170,13 @@ def test_gpt_6_luna_is_sent_none_with_tools(model: str):
     assert refuses_effort_with_tools(model) is True
 
 
+@pytest.mark.parametrize("model", ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra"])
+def test_gpt_6_1_and_astra_omit_the_temperature_they_refuse(model):
+    assert build_openai_generation_params(model, temperature=0.0, max_tokens=512) == {
+        "max_completion_tokens": 512
+    }
+
+
 def test_chatgpt_model_keeps_temperature_with_completion_tokens():
     assert build_openai_generation_params(
         "chatgpt-4o-latest", temperature=0.2, max_tokens=512

@@ -109,6 +109,84 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+CIRCLECI = r"""
+version: 2.1
+jobs:
+  ensure_formatting:
+    docker:
+      - image: cimg/python:3.13
+      - image: redis:7
+        name: cache
+    working_directory: ~/repo
+    environment:
+      LANG: C.UTF-8
+    steps:
+      - checkout
+      - run:
+          name: install dependencies
+          command: pip install black isort --user
+      - run:
+          name: run isort check
+          command: isort --profile black --check .
+      - run: black --check .
+  linter:
+    docker:
+      - image: alpine/flake8
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run: flake8 --ignore=E,W ~/repo
+  test:
+    working_directory: ~/openaev
+    docker:
+      - image: cimg/python:3.13
+    parameters:
+      injector_name:
+        type: string
+    steps:
+      - checkout
+      - run:
+          working_directory: ~/openaev/<< parameters.injector_name >>
+          command: python -m unittest
+      - run:
+          working_directory: ~/
+          command: python -m pytest
+      - run:
+          working_directory: ~/openaev/client
+          command: python -m pytest tests
+  deploy_images:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - run: yarn build
+"""
+
+
+def test_circleci_run_lines_become_checks_at_the_checkout_root() -> None:
+    """isort --profile black ran from the root on CircleCI and no detected check reproduced it (gap sandbox-poetry-checks-and-root-format-checks)."""
+    found = _detect({".circleci/config.yml": CIRCLECI}, extra=("client/tests/test_x.py", "client/pyproject.toml"))
+    argv = _argv(found)
+    formats = {name: a for name, a in argv.items() if name.startswith("python-format")}
+    assert ("isort", "--profile", "black", "--check", ".") in formats.values()
+    assert ("black", "--check", ".") in formats.values()
+    # The job directory written in a line is the checkout root.
+    assert argv["python-lint"] == ("flake8", "--ignore=E,W", ".")
+    # A step below the job directory runs in that directory; a parameter or a directory outside the checkout is skipped.
+    assert argv["client:python-unit"] == ("python", "-m", "pytest", "tests")
+    assert not any("unittest" in a or a == ("python", "-m", "pytest") for a in argv.values())
+    # A deploy job ships the code: not a check.
+    assert not any("build" in a for a in argv.values())
+    assert found.checks["python-lint"].description == ".circleci/config.yml job linter: flake8 --ignore=E,W ."
+    assert ("LANG", "C.UTF-8") in found.checks["python-format"].env
+    assert detect.Infra("cache", "redis:7", ".circleci/config.yml job ensure_formatting") in found.infra
+
+
+def test_a_narrow_checkout_keeps_the_circleci_configuration() -> None:
+    sizes = {".circleci/config.yml": 900, "client/pyproject.toml": 100, "other/x.py": 10}
+    assert ".circleci/config.yml" in detect.companions(sizes, ["client"])
+    assert detect.candidates(["other/x.py", ".circleci/config.yml"])[0] == ".circleci/config.yml"
+
+
 def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
     # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
     # that carries its own dependencies); before, only the pytest line of the job was detected.
@@ -1815,6 +1893,43 @@ def test_a_narrow_checkout_follows_a_tsconfig_extends_and_never_leaves_the_repos
 def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_names():
     # opencti: a checkout of opencti-front/src/utils/hooks keeps relay.config.json (a companion) but its
     # schema ./src/schema/relay.schema.graphql was left out, so the Relay ESLint plugin failed before eslint.
+    _, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"",
+            "front/src/private/b.tsx": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert "front/src/schema/relay.schema.graphql" in written
+    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_a_narrow_checkout_of_a_relay_project_adds_its_src_and_the_files_its_sources_import() -> None:
+    # opencti #19969: node-unit-file failed on an undefined fragment until all of opencti-front/src was
+    # grown by hand; src then imports ../../lang/front/*.json outside it.
+    tree, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"import { b } from '../../private/b';",
+            "front/src/private/b.tsx": b"graphql`fragment b_x on Query { a }`;",
+            "front/src/components/Intl.tsx": b"import en from '../../lang/front/en.json';",
+            "front/lang/front/en.json": b"{}",
+            "front/lang/front/fr.json": b"{}",
+            "front/builder/big.js": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert tree.relay_sources == ["front/src"]
+    assert "front/src/private/b.tsx" in written and "front/src/components/Intl.tsx" in written
+    assert "front/lang/front/en.json" in tree.referenced and "front/lang/front/en.json" in written
+    assert "front/lang/front/fr.json" not in written and "front/builder/big.js" not in written
+
+
+def test_a_relay_src_past_its_bound_is_not_added_and_its_schema_still_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detect, "MAX_RELAY_SOURCE_BYTES", 10)
     tree, written = _narrow_tree(
         {
             "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
@@ -1824,9 +1939,21 @@ def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_na
         },
         ["front/src/utils/hooks"],
     )
+    assert tree.relay_sources == []
     assert "front/src/schema/relay.schema.graphql" in tree.referenced
     assert "front/src/schema/relay.schema.graphql" in written and "front/src/private/b.tsx" not in written
-    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_relay_source_dirs_reads_a_js_config_and_only_for_its_own_project() -> None:
+    sizes = {"web/app/a.ts": 3, "web/app/b.ts": 3, "other/x.ts": 1}
+    config = {"web/relay.config.js": b"module.exports = { src: './app', schema: './schema.graphql' };"}
+    assert detect.relay_source_dirs(config, sizes, ["web/app/hooks"]) == ["web/app"]
+    # A sub_path outside the config's project, or one already holding its src, adds nothing.
+    assert detect.relay_source_dirs(config, sizes, ["other"]) == []
+    assert detect.relay_source_dirs(config, sizes, ["web"]) == []
+    # A src out of the repository or at its root is never added.
+    assert detect.relay_source_dirs({"relay.config.json": b'{"src": "."}'}, sizes, ["web/app"]) == []
+    assert detect.relay_source_dirs({"web/relay.config.json": b'{"src": "../.."}'}, sizes, ["web/app"]) == []
 
 
 def test_a_directory_a_test_reads_whole_is_kept_only_within_its_bounds():

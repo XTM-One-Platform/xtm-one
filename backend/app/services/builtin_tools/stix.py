@@ -163,6 +163,13 @@ def _generate_standard_id_from_stix(data: dict) -> str | None:
         return f"{stix_type}--{_deterministic_uuid_fallback(stix_type, data)}"
 
 
+def stix_standard_id(data: dict) -> str | None:
+    """The STIX standard id OpenCTI derives for *data* (pycti), or a deterministic one of
+    its own when pycti cannot: the one rule every builder of a bundle in this platform
+    uses, so a rebuilt object keeps its id. ``None`` only when *data* has no type."""
+    return _generate_standard_id_from_stix(data)
+
+
 def _rewrite_refs_with_remap(node: object, id_remap: dict[str, str]) -> object:
     if isinstance(node, dict):
         for key, value in list(node.items()):

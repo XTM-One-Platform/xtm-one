@@ -198,6 +198,29 @@ The canonicalizer identifies an object from what it says:
   fallback, no defang normalization.
 * **Versions:** objects sharing an id are versions of one; the latest `modified` wins, the
   last one on a tie.
+* **As OpenCTI imports:** an attack-pattern without `x_mitre_id` takes the ATT&CK id of its
+  last `mitre-*` external reference, a location without `x_opencti_location_type` its type
+  from `city`, `country` or `region` (else Position), as pycti's `import_from_stix2` does.
+
+The aligned scores pair objects within their ontology class (compatible classes for the soft
+score), so their compute bound (`MAX_ENTRY_PRODUCT`) applies to each class's block, not to the
+whole entry. Past it, as for `structured_json`, the answer is credited nothing
+(`prediction_too_many_objects`: every reference item missed, every predicted one extra) when
+the reference aligns with itself within the bound, else the entry is `skipped`
+(`too_many_objects`); both report `largest_block_product`. Their relationship reading also
+finds a reference relationship through a reference object the pairing left unpaired when the
+predicted endpoint is of its class and carries one of its names: a reference that keeps one
+entity as several objects is matched once per object. With the object types the run's dataset
+references annotate (`FamilyConfig.reference_types`, derived by the platform from every
+reference), `stix.entity_prf.aligned.closed` and `stix.relationship_prf.aligned.closed` score
+the answer reduced to those types and the relationships between them, read as the pairing
+reads them (`threat-actor` annotated means `intrusion-set` is, and a kept indicator keeps the
+observable it is `based-on`): reported beside the aligned scores, never instead of them. A dataset none of whose references holds a relationship
+(an indicator list) annotates none: its closed relationship score is `skipped`
+(`not_annotated_by_dataset`), not 0 for every relationship an answer gives. Each aligned score's
+`detail.by_type` gives precision, recall and F1 with their counts per object class (`malware`,
+`identity:class` for a sector...) and per relationship type (`uses`, `targets`...): the entry's
+one F1 hides a type an answer misses, and the rows add up to its counts.
 
 ## Prose (`PROSE`)
 
@@ -313,6 +336,11 @@ changing a key breaks every persisted result.
 | `stix.entity_prf` | `STIX_BUNDLE` | `pooled` | higher |
 | `stix.entity_prf.by_type` | `STIX_BUNDLE` | `macro` | higher |
 | `stix.relationship_prf` | `STIX_BUNDLE` | `pooled` | higher |
+| `stix.entity_prf.aligned` | `STIX_BUNDLE` | `pooled` | higher |
+| `stix.entity_prf.soft` | `STIX_BUNDLE` | `pooled` | higher |
+| `stix.relationship_prf.aligned` | `STIX_BUNDLE` | `pooled` | higher |
+| `stix.entity_prf.aligned.closed` | `STIX_BUNDLE` | `pooled` | higher |
+| `stix.relationship_prf.aligned.closed` | `STIX_BUNDLE` | `pooled` | higher |
 | `json.schema_validity` | `STRUCTURED_JSON` | `pooled` | higher |
 | `json.field_accuracy` | `STRUCTURED_JSON` | `pooled` | higher |
 | `classification.vocabulary_validity` | `CLASSIFICATION` | `pooled` | higher |

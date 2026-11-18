@@ -1695,6 +1695,10 @@ def build_sandbox_workspace_tools(
             )
             + "".join(f", {d}/ added (a package of the checkout links it: workspace:)" for d in tree.workspace_links)
             + "".join(
+                f", {d}/ added (the Relay src a relay.config of the checkout names: the compiler reads every fragment)"
+                for d in tree.relay_sources
+            )
+            + "".join(
                 f", {d}/ added (the repository's release notes: a note written there is committed with the change)"
                 for d in tree.release_notes
             )

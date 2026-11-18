@@ -198,9 +198,14 @@ _PUBLISHED_METRIC_KEYS = {
     "prose.rouge_l",
     "prose.token_prf",
     "stix.entity_prf",
+    "stix.entity_prf.aligned",
+    "stix.entity_prf.aligned.closed",
     "stix.entity_prf.by_type",
+    "stix.entity_prf.soft",
     "stix.envelope_validity",
     "stix.relationship_prf",
+    "stix.relationship_prf.aligned",
+    "stix.relationship_prf.aligned.closed",
     "stix.semantic_validity",
 }
 
@@ -725,8 +730,13 @@ _POOLED = {
     "json.schema_validity",
     "prose.exact_match",
     "stix.entity_prf",
+    "stix.entity_prf.aligned",
+    "stix.entity_prf.aligned.closed",
+    "stix.entity_prf.soft",
     "stix.envelope_validity",
     "stix.relationship_prf",
+    "stix.relationship_prf.aligned",
+    "stix.relationship_prf.aligned.closed",
     "stix.semantic_validity",
 }
 _MACRO = {"classification.macro_prf", "stix.entity_prf.by_type"}

@@ -80,6 +80,7 @@ dependencies = [
   "xlrd==2.0.2",
   "beautifulsoup4==4.14.3",
   "trafilatura==2.0.0",
+  "tld==0.13.2",  # Public suffix list (offline): a domain IOC must end on a real TLD (services/stix_extraction/iocs.py)
   "markdown==3.10.2",  # Markdown → HTML rendering for agent PDF/HTML file generation
   "nh3==0.3.5",  # HTML sanitizer (Rust ammonia bindings) — email body normalization (services/email_html.py)
 

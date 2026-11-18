@@ -162,6 +162,29 @@ def test_an_unknown_type_is_identified_by_its_content(offline: None) -> None:
     assert canonical_id({"id": "x-custom-thing--1", "name": "b"}) != first
 
 
+def test_objects_opencti_merges_on_import_get_one_identifier(offline: None) -> None:
+    """OpenCTI's import reads an attack-pattern's ATT&CK id from its ``mitre-attack`` reference
+    and a location's type from its ``country`` / ``city`` / ``region``: the technique named as
+    a report names it and the one named as ATT&CK does (``x_mitre_id`` set) are one object, as
+    are a country with and without its type. Another technique or country stays apart."""
+
+    def canonical_id(obj: dict[str, object]) -> str:
+        bundle = {"type": "bundle", "id": "bundle--00000000-0000-4000-8000-000000000001",
+                  "objects": [{"id": f"{obj['type']}--44444444-4444-4444-8444-444444444444", **obj}]}
+        return str(_objects(OpenCtiCanonicalizer().canonicalize(bundle))[0]["id"])
+
+    mitre = lambda tid: [{"source_name": "mitre-attack", "external_id": tid}]  # noqa: E731
+    keylogging = canonical_id({"type": "attack-pattern", "name": "Keylogging", "external_references": mitre("T1056.001")})
+    assert keylogging == canonical_id({"type": "attack-pattern", "name": "Input Capture: Keylogging",
+                                       "x_mitre_id": "T1056.001", "external_references": mitre("T1056.001")})
+    assert keylogging != canonical_id({"type": "attack-pattern", "name": "Keylogging", "external_references": mitre("T1056")})
+    assert canonical_id({"type": "attack-pattern", "name": "Keylogging"}) != keylogging
+
+    russia = canonical_id({"type": "location", "name": "Russia", "country": "RU"})
+    assert russia == canonical_id({"type": "location", "name": "Russia", "country": "RU", "x_opencti_location_type": "Country"})
+    assert russia != canonical_id({"type": "location", "name": "Russia", "region": "eastern-europe"})
+
+
 def test_no_defang_normalization_is_applied(offline: None) -> None:
     """A defanged value stays defanged and keeps its own identifier."""
     bundle = _bundle()

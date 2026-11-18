@@ -23,6 +23,8 @@ The provider is split by domain:
                      deployment / lifecycle (Composer).
 * ``capabilities`` - capability pre-check wrapping the gated tools in
                      unattended runs.
+* ``naming``       - how the platform names the objects it holds (the
+                     grounded STIX extraction's ``platform_names``).
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in
@@ -32,6 +34,7 @@ Token format passed by the dispatcher: ``base_url||api_token`` (the
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from app.integrations.http import RefreshableHeaders, parse_compound_token
@@ -47,6 +50,7 @@ from .data_sharing import register as register_data_sharing
 from .ingestion import register as register_ingestion
 from .knowledge import register_knowledge
 from .markings import register as register_markings
+from .naming import platform_names_lookup
 from .notifications import register as register_notifications
 from .pir import register as register_pir
 from .playbooks import register as register_playbooks
@@ -58,7 +62,11 @@ __all__ = ["_format_entity", "_format_relationship", "build_tools"]
 
 
 def build_tools(
-    token: str, executor: CallableToolExecutor, **_kwargs: Any
+    token: str,
+    executor: CallableToolExecutor,
+    *,
+    platform_names_sink: Callable[[Any], None] | None = None,
+    **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenCTI integration tools.
 
@@ -155,4 +163,9 @@ def build_tools(
     # cannot pass, or OpenCTI records it as their unauthorized access.
     if autonomous:
         install_capability_gate(executor, base_url, headers)
+    # How this platform names the objects it holds, read on the tools' own
+    # connection (naming.platform_names_lookup): the grounded STIX extraction
+    # names its objects so, and its bundle merges into them.
+    if callable(platform_names_sink) and tools:
+        platform_names_sink(platform_names_lookup(base_url, headers))
     return tools

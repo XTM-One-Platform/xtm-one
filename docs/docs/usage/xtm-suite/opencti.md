@@ -27,7 +27,7 @@ The exact wording of buttons and menu entries depends on your OpenCTI version, a
 
 Playbooks are the access point that matters most for automation, because the agent runs without anyone watching. Three distinct roles are available, and they differ by what the step receives and what it must return:
 
-- A **harvester** receives a document — a PDF, an office file, a text report — and returns a STIX 2.1 bundle. Use it to turn incoming reports into structured knowledge.
+- A **harvester** receives a document — a PDF, an office file, a text report — and returns a STIX 2.1 bundle. Use it to turn incoming reports into structured knowledge. The built-in `CTI STIX Extractor (Grounded)` agent is another harvester: it extracts in several checked steps (entities, then their kinds and names, then the relationships between them), keeps only what it finds back in the text, and records for each object where it was read and for each relationship the sentence that states it. An address, a domain or a file hash the report ties to a threat becomes an indicator of that threat, every relationship is one OpenCTI accepts, and the links a report only cites are kept as its references, not as indicators. It is not bound to `cti.stix_harvester` by default; an administrator can bind it.
 - A **transformer** receives a STIX 2.1 bundle and returns a STIX 2.1 bundle. Use it to enrich, filter, rewrite, or normalize what is flowing through the playbook.
 - A **consumer** receives a STIX 2.1 bundle and takes a final action instead of returning a bundle — summarize it, alert on it, post it somewhere. It is a terminal step.
 

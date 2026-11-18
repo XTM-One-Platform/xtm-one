@@ -803,3 +803,42 @@ async def test_domain_validation_and_enabled_domain_restriction(monkeypatch):
     # Shorthand aliases resolve.
     result = await search(query="APT29", domain="enterprise")
     assert "G0016" in result
+
+
+@pytest.mark.asyncio
+async def test_attack_techniques_lists_live_techniques_with_their_definitions(monkeypatch):
+    """The catalogue the extraction classifies behaviours against: live techniques and
+    sub-techniques only (T1064 is revoked), sorted, with tactics and the definition."""
+    _build(monkeypatch=monkeypatch)
+    techniques = await mitre_attack.attack_techniques()
+    assert [t.attack_id for t in techniques] == ["T1059", "T1059.001"]
+    assert techniques[1].name == "PowerShell"
+    assert techniques[1].tactics == ("execution",)
+    assert techniques[1].description == "Adversaries may abuse PowerShell commands and scripts."
+
+
+@pytest.mark.asyncio
+async def test_attack_techniques_is_none_without_a_store(monkeypatch):
+    _build(monkeypatch=monkeypatch)
+    assert await mitre_attack.attack_techniques(domain="mobile-attack") is None
+
+
+def test_the_builder_declares_the_attack_source_its_tools_read() -> None:
+    """The ATT&CK source is a capability the provider declares (``attack_source_sink``),
+    so the generic integration build names no vendor; a builder not declaring a sink is
+    never handed one (invariant 18)."""
+    from app.integrations.providers import mitre_attack
+    from app.services.integration_tools import _declares
+    from app.tools.base import CallableToolExecutor
+
+    given: list[tuple[str, str]] = []
+    mitre_attack.build_tools("enterprise||17.1||https://mirror.internal/attack", CallableToolExecutor(),
+                             attack_source_sink=given.append)
+    assert given == [("https://mirror.internal/attack", "17.1")]
+    assert _declares(mitre_attack.build_tools, "attack_source_sink")
+    assert not _declares(mitre_attack.build_tools, "platform_names_sink")
+
+    def undeclared(token: str, executor: object, **kwargs: object) -> list:
+        return []
+
+    assert not _declares(undeclared, "attack_source_sink")

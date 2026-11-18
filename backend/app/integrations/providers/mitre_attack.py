@@ -51,6 +51,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -549,6 +550,86 @@ def _aliases_of(obj: dict) -> list[str]:
     return [a for a in aliases if a != name]
 
 
+@dataclass(frozen=True)
+class AttackEntry:
+    """An ATT&CK object as a name lookup answers it."""
+
+    attack_id: str
+    name: str
+    stix_type: str
+    aliases: tuple[str, ...]
+
+
+#: The ATT&CK object types a name may resolve to (techniques, groups, software, campaigns).
+_LINKABLE_TYPES = frozenset({"attack-pattern", "intrusion-set", "malware", "tool", "campaign"})
+
+
+async def lookup_attack_names(
+    names: list[str], *, domain: str = "enterprise-attack", source_url: str = DEFAULT_SOURCE_URL, version: str = ""
+) -> dict[str, list[AttackEntry]] | None:
+    """The live ATT&CK objects each name (case-insensitive) is the name or an alias of,
+    from the same cached store the integration's tools read; ``None`` when the store
+    cannot be loaded (an air-gapped deployment without a mirror), so a caller degrades
+    instead of failing. Revoked and deprecated objects are never answered."""
+    store, error = await _get_store(normalize_domain(domain), version, source_url)
+    if store is None:
+        logger.info("ATT&CK lookup unavailable: %s", error)
+        return None
+    found: dict[str, list[AttackEntry]] = {}
+    for name in names:
+        key = name.strip().lower()
+        if not key or key in found:
+            continue
+        entries = []
+        for stix_id in store.by_name.get(key, []):
+            obj = store.objects.get(stix_id) or {}
+            if obj.get("type") not in _LINKABLE_TYPES or not _is_active(obj):
+                continue
+            if obj.get("attack_id"):
+                entries.append(
+                    AttackEntry(obj["attack_id"], obj.get("name", ""), obj["type"], tuple(_aliases_of(obj)))
+                )
+        found[key] = entries
+    return found
+
+
+@dataclass(frozen=True)
+class AttackTechnique:
+    """A live technique or sub-technique as the catalogue answers it."""
+
+    attack_id: str
+    name: str
+    tactics: tuple[str, ...]
+    #: The definition, citations and links removed.
+    description: str
+
+
+_CITATION = re.compile(r"\(Citation:[^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+
+
+async def attack_techniques(
+    *, domain: str = "enterprise-attack", source_url: str = DEFAULT_SOURCE_URL, version: str = ""
+) -> list[AttackTechnique] | None:
+    """Every live technique and sub-technique of *domain*, sorted by id, from the same
+    cached store the integration's tools read; ``None`` when the store cannot be loaded.
+    Revoked and deprecated techniques are left out."""
+    store, error = await _get_store(normalize_domain(domain), version, source_url)
+    if store is None:
+        logger.info("ATT&CK catalogue unavailable: %s", error)
+        return None
+    out = []
+    for stix_id in store.by_type.get("attack-pattern", []):
+        obj = store.objects.get(stix_id) or {}
+        if not obj.get("attack_id") or not _is_active(obj):
+            continue
+        description = _MD_LINK.sub(r"\1", _CITATION.sub("", obj.get("description") or ""))
+        out.append(AttackTechnique(
+            obj["attack_id"], obj.get("name", ""), tuple(_tactics_of(obj)), " ".join(description.split())
+        ))
+    return sorted(out, key=lambda t: t.attack_id)
+
+
 def _tactics_of(obj: dict) -> list[str]:
     return [p.get("phase_name", "") for p in obj.get("kill_chain_phases") or []]
 
@@ -775,6 +856,8 @@ class MitreAttackIntegration(BaseIntegration):
 def build_tools(
     token: str,
     executor: CallableToolExecutor,
+    *,
+    attack_source_sink: Callable[[tuple[str, str]], None] | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build MITRE ATT&CK tools.
@@ -785,6 +868,10 @@ def build_tools(
     with the defaults: all domains, latest release, official GitHub source).
     """
     enabled_domains, pinned_version, source_url = parse_attack_config(token)
+    if callable(attack_source_sink):
+        # The ATT&CK source this integration's tools read, for a caller that reads ATT&CK
+        # as they do (the grounded STIX extraction).
+        attack_source_sink((source_url, pinned_version))
     default_domain = enabled_domains[0]
 
     def _resolve_domain(domain: str) -> tuple[str | None, str | None]:

@@ -99,6 +99,20 @@ _EXACT_MESSAGES: dict[str, DocumentErrorCode] = {
 #: one of them is served, and searched, exactly as written.
 PLATFORM_SENTENCES: frozenset[str] = frozenset(_EXACT_MESSAGES)
 
+#: Fixed sentences of failures another embedding provider can fix; content
+#: failures are not. A dimension mismatch is a valued sentence.
+PROVIDER_FAILURE_SENTENCES: frozenset[str] = frozenset(
+    sentence
+    for sentence, code in _EXACT_MESSAGES.items()
+    if code
+    in {
+        DocumentErrorCode.EMBEDDING_NOT_CONFIGURED,
+        DocumentErrorCode.EMBEDDING_NOT_AVAILABLE,
+        DocumentErrorCode.EMBEDDING_PROVIDER_ERROR,
+        DocumentErrorCode.TIMEOUT,
+    }
+)
+
 # The two sentences that carry a value. Matched on their fixed opening so the
 # older wording of each (written before this module existed) is recognised
 # too; the served sentence is REBUILT from the parsed values, never the stored

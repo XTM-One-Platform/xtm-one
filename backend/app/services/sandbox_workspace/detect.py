@@ -26,7 +26,9 @@ first, the first one to name a (directory, stack, kind) wins:
 
 1. the repository's workflows (``.github/workflows/*.yml``): every ``run:``
    line that installs, lints, type-checks, tests or builds, in its
-   ``working-directory``: what CI runs is the source of truth;
+   ``working-directory``: what CI runs is the source of truth; then the
+   CircleCI configuration (``.circleci/config.yml``), every job's ``run``
+   steps read the same way at the checkout root its ``working_directory`` names;
 2. the manifests: ``package.json`` scripts with the package manager its lock
    file or ``packageManager`` names; ``pyproject.toml``, ``uv.lock``,
    ``poetry.lock``, ``requirements*.txt`` and the tools their configuration
@@ -74,6 +76,8 @@ SKIP_DIRS = frozenset(
     {"node_modules", ".venv", "venv", ".tox", "target", "dist", "build", ".git", ".xtm", "__pycache__", "vendor", ".yarn"}
 )
 WORKFLOWS_DIR = ".github/workflows"
+#: A CircleCI configuration: its jobs' ``run`` steps are read like a workflow's (a repository CI'd on CircleCI).
+CIRCLECI_CONFIGS = frozenset({".circleci/config.yml", ".circleci/config.yaml"})
 #: Manifests whose content is read (the others only count by their presence in the listing).
 CONTENT_FILES = frozenset(
     {
@@ -301,15 +305,20 @@ def _is_workflow(path: str) -> bool:
     return posixpath.dirname(path) == WORKFLOWS_DIR and path.endswith((".yml", ".yaml"))
 
 
+def _is_ci_config(path: str) -> bool:
+    """Whether *path* is a CI definition detection reads: a GitHub Actions workflow or the CircleCI configuration."""
+    return _is_workflow(path) or path in CIRCLECI_CONFIGS
+
+
 def candidates(paths: Iterable[str]) -> list[str]:
     """The paths of a checkout listing (relative to its root) whose content :func:`detect` reads, bounded."""
     picked = []
     for path in paths:
         name = posixpath.basename(path)
         manifest = (name in CONTENT_FILES or _COMPOSE.match(name)) and path.count("/") <= MAX_DEPTH and not _skipped(path)
-        if _is_workflow(path) or manifest:
+        if _is_ci_config(path) or manifest:
             picked.append(path)
-    picked.sort(key=lambda p: (not _is_workflow(p), p.count("/"), p))
+    picked.sort(key=lambda p: (not _is_ci_config(p), p.count("/"), p))
     return picked[:MAX_CANDIDATES]
 
 
@@ -742,6 +751,60 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
     return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
 
 
+#: A Relay ``src`` larger than this is not added to a narrow checkout (OpenCTI's front is about 24 MB).
+MAX_RELAY_SOURCE_BYTES = 64 * 1024 * 1024
+#: The ``src`` of a ``relay.config.js`` / ``.ts`` (``src: './src'``); a JSON config is parsed.
+_RELAY_JS_SRC = re.compile(r"\bsrc\s*:\s*[\"'`]([^\"'`$]+)[\"'`]")
+#: The source files of an added Relay ``src`` whose relative imports outside it are kept.
+RELAY_SOURCE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs")
+
+
+def relay_source_dirs(configs: Mapping[str, bytes], sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:
+    """The Relay ``src`` directories a narrow checkout adds: the compiler reads every fragment of them.
+
+    A checkout of ``opencti-front/src/utils/hooks`` keeps the project's
+    ``relay.config.json`` and the schema it names, but the Relay compiler
+    and the test transform read every ``graphql`` tag of the config's
+    ``src``: a query spreading a fragment defined elsewhere fails as an
+    undefined fragment. *configs* maps the configurations read in or above
+    the sub_paths (:func:`is_referencing_config`) to their content, *sizes*
+    every regular file of the repository. The ``src`` of each
+    ``relay.config.*`` whose directory holds a sub_path is added when it is
+    not under a sub_path already, lies in the repository (never its root)
+    and holds at most :data:`MAX_RELAY_SOURCE_BYTES`; sorted.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+
+    def kept(path: str) -> bool:
+        return any(path == s or path.startswith(s + "/") for s in wanted)
+
+    found: set[str] = set()
+    for path, data in sorted(configs.items()):
+        name = posixpath.basename(path)
+        if not name.startswith("relay.config.") or _skipped(path):
+            continue
+        directory = posixpath.dirname(path)
+        if not any(not directory or s == directory or s.startswith(directory + "/") for s in wanted):
+            continue
+        if name.endswith(".json"):
+            src = _json(data).get("src")
+        else:
+            match = _RELAY_JS_SRC.search(_text(data[:MAX_REQUIREMENTS_BYTES]))
+            src = match.group(1) if match else None
+        target = _script_path(directory, src.strip()) if isinstance(src, str) and src.strip() else None
+        if not target or kept(target) or _skipped(target + "/x"):
+            continue
+        total = sum(size for file, size in sizes.items() if file.startswith(target + "/"))
+        if 0 < total <= MAX_RELAY_SOURCE_BYTES:
+            found.add(target)
+    return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))
+
+
+def is_relay_source(path: str) -> bool:
+    """Whether *path* is a source file of an added Relay ``src`` whose relative imports are followed."""
+    return path.endswith(RELAY_SOURCE_SUFFIXES) and not _skipped(path)
+
+
 def companions(sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:
     """The files outside *sub_paths* a narrow checkout keeps so its checks are detected.
 
@@ -772,12 +835,12 @@ def companions(sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:
         name = posixpath.basename(path)
         if (
             path == CHECKS_FILE
-            or _is_workflow(path)
+            or _is_ci_config(path)
             or path in actions_lint.ACTIONLINT_CONFIGS
             or (posixpath.dirname(path) in above and _companion_name(name))
         ):
             picked.append(path)
-    picked.sort(key=lambda p: (not (_is_workflow(p) or p in actions_lint.ACTIONLINT_CONFIGS), p.count("/"), p))
+    picked.sort(key=lambda p: (not (_is_ci_config(p) or p in actions_lint.ACTIONLINT_CONFIGS), p.count("/"), p))
     return picked[:MAX_COMPANIONS]
 
 
@@ -1582,6 +1645,120 @@ def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[In
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
                         if collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env) and job_python:
+                            collector.pythons[(parsed[0], stack, kind)] = job_python
+
+
+#: A CircleCI pipeline parameter (``<< parameters.name >>``): a value the sandbox cannot resolve.
+_CIRCLECI_PARAMETER = "<<"
+#: The directory a CircleCI job runs in when it names none: the checkout step writes the repository there.
+_CIRCLECI_HOME = "~/project"
+_CIRCLECI_PYTHON_IMAGE = re.compile(r"python:(\d+\.\d+)")
+
+
+def _circleci_env(base: Mapping[str, str | None], block: object) -> dict[str, str | None]:
+    """*base* overlaid with a CircleCI ``environment:`` block; a parameter value is a name the sandbox leaves unset."""
+    env = _layer_env(base, block)
+    for key, raw in block.items() if isinstance(block, dict) else ():
+        if str(key) in env and _CIRCLECI_PARAMETER in str(raw):
+            env[str(key)] = None
+    return env
+
+
+def _circleci_cwd(home: str, job_dir: str, rel: str, dirs: frozenset[str]) -> str | None:
+    """A ``run`` step's ``working_directory`` in the checkout, or ``None`` (outside it, or a parameter).
+
+    CircleCI checks the repository out into the job's ``working_directory`` (*home*, ``~/repo``):
+    a step directory below *home* is that directory of the checkout, any other absolute or
+    home-relative one lies outside it, a relative one is joined to the job's directory.
+    """
+    if not rel:
+        return job_dir
+    if _CIRCLECI_PARAMETER in rel:
+        return None
+    if rel.startswith(("~", "/")):
+        if rel.rstrip("/") != home and not rel.startswith(home + "/"):
+            return None
+        return _clean_dir("", rel[len(home) :].strip("/"), dirs)
+    return _clean_dir(job_dir, rel, dirs)
+
+
+def _circleci(collector: _Collector, files: Mapping[str, bytes], infra: list[Infra], dirs: frozenset[str]) -> None:
+    """The checks of a CircleCI configuration: every job's ``run`` lines, as :func:`_workflows` reads a workflow's.
+
+    The job's first ``docker`` image is the one its steps run in (its ``python:X.Y`` tag names the
+    job's Python); the next ones are its services. A line or a directory that names a pipeline
+    parameter is skipped, and the job directory written in a line (``flake8 ~/repo``) is the
+    checkout root when the line runs there.
+    """
+    budget = MAX_RUN_LINES
+    for path in sorted(p for p in files if p in CIRCLECI_CONFIGS):
+        doc = _yaml(files[path])
+        raw_jobs = doc.get("jobs")
+        jobs: dict[Any, Any] = raw_jobs if isinstance(raw_jobs, dict) else {}
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict) or any(word in str(job_id).lower() for word in _SHIPPING):
+                continue  # a release, publish or deploy job ships the code, it does not check it
+            images = (
+                [i for i in job.get("docker") or [] if isinstance(i, dict)]
+                if isinstance(job.get("docker"), list)
+                else []
+            )
+            for service in images[1:]:
+                image = str(service.get("image") or "")
+                infra.append(
+                    Infra(
+                        str(service.get("name") or image.split(":")[0].rsplit("/", 1)[-1]),
+                        image,
+                        f"{path} job {job_id}",
+                    )
+                )
+            pinned = _CIRCLECI_PYTHON_IMAGE.search(str(images[0].get("image") or "")) if images else None
+            job_python = _minor(pinned.group(1)) if pinned else ""
+            if job_python and job_python not in collector.workflow_pythons:
+                collector.workflow_pythons.append(job_python)
+            home = str(job.get("working_directory") or _CIRCLECI_HOME).rstrip("/")
+            if not home.startswith(("~", "/")):
+                home = f"~/{home}"  # a relative job directory is below the home directory
+            # The checkout step writes the repository into the job directory: the steps run at its root.
+            job_dir: str | None = None if _CIRCLECI_PARAMETER in home else ""
+            job_env = _circleci_env({}, job.get("environment"))
+            raw_steps = job.get("steps")
+            steps: list[Any] = raw_steps if isinstance(raw_steps, list) else []
+            for step in steps:
+                run = step.get("run") if isinstance(step, dict) else None
+                if isinstance(run, str):
+                    run = {"command": run}
+                if not isinstance(run, dict) or not isinstance(run.get("command"), str) or job_dir is None:
+                    continue
+                cwd = _circleci_cwd(home, job_dir, str(run.get("working_directory") or ""), dirs)
+                step_env = _circleci_env(job_env, run.get("environment"))
+                for line in _run_lines(run["command"]):
+                    budget -= 1
+                    if budget < 0:
+                        return
+                    moved = _CD.match(line)
+                    if moved:
+                        cwd = _clean_dir(cwd, moved.group(1), dirs) if cwd is not None else None
+                        continue
+                    if cwd is None or _CIRCLECI_PARAMETER in line:
+                        continue
+                    if cwd == "":
+                        line = re.sub(
+                            rf"(?<![\w~/.-]){re.escape(home)}(/|(?=[\s;&|)]|$))",
+                            lambda m: "" if m.group(1) else ".",
+                            line,
+                        )
+                    parsed = _command(line, cwd, dirs)
+                    found = classify(parsed[2]) if parsed else None
+                    if parsed and found:
+                        stack, kind = found
+                        runs_on = collector.stack_of(parsed[0]) if stack == "make" else ""
+                        source = f"{path} job {job_id}: {line}"
+                        kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
+                        if (
+                            collector.add(parsed[0], stack, kind, parsed[1], source, runs_on=runs_on, env=step_env)
+                            and job_python
+                        ):
                             collector.pythons[(parsed[0], stack, kind)] = job_python
 
 
@@ -2410,6 +2587,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     infra: list[Infra] = []
     dirs = frozenset(d for p in listing for d in _ancestors(posixpath.dirname(p)) if d)
     _workflows(collector, files, infra, dirs)
+    _circleci(collector, files, infra, dirs)
     _node(collector, listing, files)
     _python(collector, listing, files)
     _jvm(collector, listing, files)

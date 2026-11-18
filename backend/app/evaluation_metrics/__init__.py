@@ -179,6 +179,39 @@ field by field under the branch its reference entry matches, read from the value
 branches fix differently (``const`` / ``enum``), else the properties every branch declares
 alike. An object field of several shapes takes its branch the same way. A schema with
 neither scores as before; any other answer is not comparable across this boundary.
+
+15.1.0: three STIX_BUNDLE metrics read the bundle as a reviewer does, object by object
+(``quality.families.stix_bundle.alignment``). ``stix.entity_prf.aligned`` pairs reference
+and predicted objects one-to-one (Hungarian) over every name an object answers to (name,
+aliases, ATT&CK id, external ids, folded: ``U.S.`` / ``USA`` / ``United States``) and one
+ontology class (``intrusion-set`` and ``threat-actor`` are one *actor*);
+``stix.relationship_prf.aligned`` scores the triples once their endpoints are read through
+that pairing; ``stix.entity_prf.soft`` gives partial credit to close names and to
+confusable classes (malware / tool, sector / organization, country / region, an ATT&CK
+technique and its sub-technique). An indicator ``based-on`` an observable of the bundle is
+read as that observable. Additive: the existing keys score as before.
+16.0.0: breaking, because the OpenCTI canonicalizer identifies an object as OpenCTI's import
+does (pycti ``import_from_stix2``). An attack-pattern without ``x_mitre_id`` takes the ATT&CK id
+of its last ``mitre-*`` external reference, and a location without ``x_opencti_location_type``
+is a City, a Country or a Region by the property it carries, else a Position. A technique
+named ``Keylogging`` with its ``T1056.001`` reference and ``Input Capture: Keylogging`` with
+``x_mitre_id`` ``T1056.001`` were two identifiers and are one, as OpenCTI merges them; so are a
+country with and without its type. ``stix.entity_prf`` and ``stix.relationship_prf`` of a
+bundle where one side omits these properties are not comparable across this boundary.
+The aligned scores pair each ontology class's block alone (the same optimum: a pair across
+classes earns nothing), so ``MAX_ENTRY_PRODUCT`` bounds a block, not the entry: an entry of
+many kinds of objects that was ``skipped`` (``too_many_objects``) is scored, and an answer
+past the bound against a reference within it is credited nothing
+(``prediction_too_many_objects``), as ``structured_json``'s is, instead of skipped. Their
+relationship reading finds a reference relationship through a reference object left unpaired
+when the predicted endpoint is of its class and carries one of its names (a reference that
+keeps a victim, its acronym and a misspelling as three objects). New, additive:
+``stix.entity_prf.aligned.closed`` and ``stix.relationship_prf.aligned.closed``, the aligned
+scores of the answer reduced to the object types the run's dataset references annotate (read as
+the pairing reads them: a type of an annotated one's class, an indicator's observable);
+the relationship one is ``skipped`` (``not_annotated_by_dataset``) for a dataset none of whose
+references holds a relationship. Each aligned score's detail breaks its counts down per object
+class and per relationship type (``by_type``).
 """
 
-__version__ = "15.0.0"
+__version__ = "16.0.0"

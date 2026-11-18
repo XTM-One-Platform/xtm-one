@@ -1,0 +1,6 @@
+<!-- Wordsmith mark - trademark of Wordsmith AI. Used to identify the Wordsmith integration provider. The mark sits on its own white tile with fixed fills, so it reads on the dark and the light XTM One themes whatever the OS colour scheme. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" fill="none">
+<rect x="4" y="4" width="492" height="492" rx="92" fill="#FFFFFF" stroke="#E4E5E7" stroke-width="8"/>
+<path d="M352.88 125L287.404 375H363.72L429.195 125H352.88Z" fill="#0060DF"/>
+<path d="M271.798 275.861L293.655 192.409L276.115 125H214.153C218.456 130.829 221.316 147.851 217.081 162.082L178.079 310.355L139.989 169.272C132.54 141.491 147.002 125 147.002 125H71C71 125 81.2952 137.529 88.4311 159.154L150.407 374.986H203.299L250.527 194.656L271.798 275.847V275.861Z" fill="#181818"/>
+</svg>

@@ -373,9 +373,14 @@ def stix_expected_scores(
         ConfigurationError: As :func:`stix_entity_scores` and
             :func:`stix_relationship_scores` for the reference.
     """
+    from app.evaluation_metrics.quality.families.stix_bundle.alignment import (
+        stix_aligned_scores,
+    )
+
     results = dict(stix_entity_scores(reference, reference, canonicalizer, selection))
     relationship = stix_relationship_scores(reference, reference, canonicalizer)
     results[relationship.metadata.key] = relationship
+    results.update(stix_aligned_scores(reference, reference, canonicalizer, selection))
     return results
 
 

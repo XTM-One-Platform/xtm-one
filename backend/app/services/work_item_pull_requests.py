@@ -48,6 +48,11 @@ that names the pull request:
 * **New head** - a push moves ``head_sha`` and forgets the CI of the old head;
   ``draft`` follows the delivery (a draft is not yet waiting on its merge, so
   the inbox finalizer never parks an item on it, see ``settle_inbox_work_item``).
+* **Dequeued** - the code host dropped the pull request from its merge queue
+  without merging it (failed queue checks): no CI event follows, so the item
+  is dispatched once per removal with the conclusion ``dequeued`` (#200).
+* **Conflict** - a conflict with the base sends no event either: the CI poll
+  reads it and dispatches the item once per head with ``conflict`` (#200).
 * **Closed** - a dated note; with ``complete_on_merge`` the item is completed
   with the merge SHA once every pull request it names is merged. An item
   blocked on its pull requests alone (a reason, no ``blocked_on``, no open
@@ -690,10 +695,9 @@ def _apply_ci(binding: dict, event: PullRequestEvent) -> CiCompleted | None:
         )
         return None
     ci["dispatched"] = [*dispatched, dispatch_key][-_MAX_DISPATCH_KEYS:]
-    failed = next(
-        (r for r in runs.values() if _concluded(r) and (r.get("conclusion") or "") not in _PASSING),
-        None,
-    )
+    reds = [r for r in runs.values() if _concluded(r) and (r.get("conclusion") or "") not in _PASSING]
+    # The red that decides is one the base requires, when there is one: an unrequired red never names the dispatch.
+    failed = next((r for r in reds if not r.get("not_required")), reds[0] if reds else None)
     deciding = failed or (runs.get(key) or {})
     return CiCompleted(
         repo=binding["repo"],
@@ -703,6 +707,43 @@ def _apply_ci(binding: dict, event: PullRequestEvent) -> CiCompleted | None:
         run_url=deciding.get("url"),
         run_name=deciding.get("name"),
         dispatch_key=dispatch_key,
+    )
+
+
+#: ``conclusion`` of a dispatch made because the merge queue dropped the pull request.
+DEQUEUED_CONCLUSION = "dequeued"
+#: ``conclusion`` of a dispatch made because the pull request conflicts with its base.
+CONFLICT_CONCLUSION = "conflict"
+
+
+def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompleted | None:
+    """The dispatch a merge queue removal of an open pull request owes, once per removal. Pure.
+
+    GitHub sends no CI event when it drops a pull request from its merge queue
+    (failed queue checks, a conflict in the group): the item waiting on the
+    merge would wait forever. The removal time keys the dispatch, so a
+    redelivery is dropped and a second removal of the same head wakes again.
+    """
+    if binding.get("state", "open") != "open":
+        return None
+    ci = dict(binding.get("ci") or {}) if isinstance(binding.get("ci"), dict) else {}
+    sha = event.head_sha or ci.get("head_sha") or binding.get("head_sha")
+    key = f"{sha or '?'}:{DEQUEUED_CONCLUSION}:{event.closed_at or event.conclusion or ''}"
+    dispatched = list(ci.get("dispatched") or [])
+    if key in dispatched:
+        ci["dropped"] = int(ci.get("dropped") or 0) + 1
+        binding["ci"] = ci
+        return None
+    ci["dispatched"] = [*dispatched, key][-_MAX_DISPATCH_KEYS:]
+    binding["ci"] = ci
+    return CiCompleted(
+        repo=binding["repo"],
+        number=binding["number"],
+        head_sha=sha,
+        conclusion=DEQUEUED_CONCLUSION,
+        run_url=event.url or binding.get("url"),
+        run_name=f"merge queue: removed ({event.conclusion or 'unknown'})",
+        dispatch_key=key,
     )
 
 
@@ -746,6 +787,10 @@ def apply_pull_request_event(
                 binding["head_branch"] = event.head_branch
             if event.draft is not None:
                 binding["draft"] = event.draft
+        elif event.kind == "dequeued":
+            done = _apply_dequeued(binding, event)
+            if done is not None:
+                outcomes.append(done)
         elif event.kind == "closed":
             if binding.get("state", "open") != "open":
                 # Already closed: the delivery and the polling fallback may both
@@ -1327,6 +1372,9 @@ def record_unconfirmed_failure(payload: object, done: CiCompleted, state: dict |
                 if _concluded(run) and (run.get("conclusion") or "") not in _PASSING:
                     runs[key] = {**run, "not_required": True}
             ci["runs"] = runs
+            # Its dispatch key is given back: a later red of a required check on the same
+            # head builds the same key, and would be dropped as a duplicate otherwise.
+            ci["dispatched"] = [k for k in ci.get("dispatched") or [] if k != done.dispatch_key]
             what = f"{label}: the red is on a check its base branch does not require"
         ci.pop("failed_at", None)
         binding["ci"] = ci
@@ -1474,6 +1522,22 @@ def apply_polled_ci(
         binding["draft"] = state["draft"]
     conclusion = state.get("conclusion")
     done: CiCompleted | None = None
+    conflict_key = f"{sha}:{CONFLICT_CONCLUSION}:"
+    if state.get("conflict") is True and conflict_key not in (ci.get("dispatched") or []):
+        # A conflict with the base sends no CI event: the read is its only wake, once per head.
+        ci["head_sha"] = sha
+        ci["dispatched"] = [*(ci.get("dispatched") or []), conflict_key][-_MAX_DISPATCH_KEYS:]
+        binding["ci"] = ci
+        out["pull_requests"] = bindings
+        return out, CiCompleted(
+            repo=binding["repo"],
+            number=binding["number"],
+            head_sha=sha,
+            conclusion=CONFLICT_CONCLUSION,
+            run_url=binding.get("url"),
+            run_name="conflict with the base (read)",
+            dispatch_key=conflict_key,
+        )
     if conclusion in ("success", "failure"):
         ci["head_sha"] = sha
         decider = polled_decider(state)
