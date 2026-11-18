@@ -351,7 +351,9 @@ lifetime = 7200
 # ".yarnrc.yml", "tsconfig.base.json", "tsconfig.json", "front", "back", "module", "utils", "eslint-rules",
 # "integration-tests/package.json"], path="<this checkout>/opencrq"). Open /lab/sign-in first, then any page;
 # theme: /lab/theme/dark or /lab/theme/light; tenant (Community Edition shows one): /lab/tenant/<name>, e.g.
-# /lab/tenant/Tarnwick%20Industries for the seeded tenant with no asset groups (#97).
+# /lab/tenant/Tarnwick%20Industries for the seeded tenant with no asset groups (#97); language: /lab/locale/fr,
+# /lab/locale/en or /lab/locale/default; each switch opens ?next=<path>. Feature flags: every flag on (*), narrowed
+# by LAB_OPENCRQ_FEATURE_FLAGS (comma-separated, none for none) (#99).
 [service.lab-opencrq]
 description = "OpenCRQ back and front built from a nested opencrq/ checkout at the PR head, migrated, platform-seeded (risk scenarios with quantified results), signed in as lab@filigran.io"
 argv = ["python", ".xtm-one/lab/opencrq_pr_head.py"]

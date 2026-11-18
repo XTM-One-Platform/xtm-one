@@ -133,6 +133,36 @@ def test_an_unknown_tenant_writes_nothing(monkeypatch):
     assert len(calls) == 1 and calls[0].startswith("SELECT id FROM tenants")
 
 
+def test_every_feature_flag_is_on_by_default(monkeypatch):
+    """A screen behind a development flag renders in the lab; the env narrows them, 'none' turns them off."""
+    module = _module()
+    monkeypatch.delenv("LAB_OPENCRQ_FEATURE_FLAGS", raising=False)
+    assert module.local_config()["feature_flags"] == ["*"]
+    monkeypatch.setenv("LAB_OPENCRQ_FEATURE_FLAGS", " enterprise-edition-status , technique-coverage-changes ")
+    assert module.local_config()["feature_flags"] == ["enterprise-edition-status", "technique-coverage-changes"]
+    assert module.feature_flags("none") == [] and module.feature_flags("") == ["*"]
+
+
+def test_a_switch_opens_a_local_next_path_only():
+    module = _module()
+    assert module.next_path("next=/abc/assets?tab=2") == "/abc/assets?tab=2"
+    assert module.next_path("") == "/"
+    for unsafe in ("next=//evil.example/", "next=https://evil.example/", "next=/\\evil.example"):
+        assert module.next_path(unsafe) == "/", unsafe
+
+
+def test_the_language_is_the_users_locale(monkeypatch):
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "psql", lambda sql, **params: calls.append((sql, params)) or "")
+    user = "f4ad0db5-4c66-4e5f-8817-7f4dc3b67162"
+    assert module.set_locale("fr", user) is True
+    assert calls[-1] == ("UPDATE users SET locale = :'locale' WHERE id = :'user'::uuid", {"locale": "fr", "user": user})
+    assert module.set_locale("default", user) is True
+    assert calls[-1] == ("UPDATE users SET locale = NULL WHERE id = :'user'::uuid", {"user": user})
+    assert module.set_locale("de", user) is False and len(calls) == 2
+
+
 def test_the_declaration_comment_names_every_sub_path():
     module = _module()
     comment = " ".join(CHECKS.read_text(encoding="utf-8").split("[service.lab-opencrq]")[0].splitlines()[-8:])
