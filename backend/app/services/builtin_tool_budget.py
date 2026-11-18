@@ -45,7 +45,7 @@ from app.services.builtin_tool_groups import schema_chars
 #: which took the total to 477,436. Lowered to 435,000 when the deck catalogue
 #: left the generate_presentation description for get_presentation(reference=)
 #: (#8812: generate_presentation 101,282 -> 56,483, total 478,013 -> 433,214).
-#: Raised to 454,000 for Platform Health's tools (total 452,062 on 5 Nov 2026).
+#: Raised to 454,000 for the Concierge's tools (total 452,062 on 5 Nov 2026).
 #: Lowered to 449,000 when the platform and coordination descriptions were
 #: trimmed (#8812: total 447,765 on 5 Nov 2026). Lowered to 441,000 when the
 #: generate_video_clip description sent its checks' detail to the Video
@@ -98,11 +98,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: catalog counted workset_resolve, offered on every implicit corpus since #12168 (#12218:
 #: coordination +279, total 460,976 on 16 Nov 2026).
 #: Raised to 461,700 for ``extract_stix_from_document``, the ``stix_extractor`` group's grounded
-#: extraction (#9126: +629, total 461,605 on 16 Nov 2026). Raised to 462,200 when Platform Health
-#: became built in and its eight groups joined the ids create_agent, update_agent and
-#: clone_agent advertise (#101: platform +474, concierge_orchestrator +20, total ~462,113
-#: on 18 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 462_200
+#: extraction (#9126: +629, total 461,605 on 16 Nov 2026).
+#: Raised to 461,800 for list_shared_state's key_prefix (coordination +~80 on 18 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 461_800
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -119,10 +117,8 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # intent-binding tools (#11865: 144,249 on 14 Nov 2026); 145,600 with the
     # three ROI unit catalog tools (#11881: about 145,370 on 14 Nov 2026); 145,700 with
     # dismiss_fleet_health_findings (#12014: 145,602 on 15 Nov 2026); 146,000 with
-    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033);
-    # 146,100 with Platform Health built in, its groups advertised by the agent builder
-    # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026).
-    "platform": 146_100,
+    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033).
+    "platform": 146_000,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:
@@ -130,8 +126,9 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # complete_work_item (#11740: 36,805 on 14 Nov 2026); 37,200 with the
     # recipient of a needs_human item (#11893: 37,148 on 14 Nov 2026); 37,500 with
     # group_by on get_shared_state and list_work_items (#12105, 15 Nov 2026); 37,800 with
-    # workset_resolve counted (#12218: 37,779 on 16 Nov 2026).
-    "coordination": 37_800,
+    # workset_resolve counted (#12218: 37,779 on 16 Nov 2026); 37,900 with
+    # list_shared_state's key_prefix (about 37,870 on 18 Nov 2026).
+    "coordination": 37_900,
     "video_studio": 89_500,
 }
 
