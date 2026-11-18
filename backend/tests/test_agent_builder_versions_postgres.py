@@ -230,7 +230,10 @@ async def test_update_agent_versions_every_tracked_field_and_its_clear(
             (2, stored, BUILDER_EDIT_COMMIT_MESSAGE),
             (3, None, BUILDER_EDIT_COMMIT_MESSAGE),
         ]
-        assert await _agent_audit_details(sessionmaker, agent_id) == [
+        details = await _agent_audit_details(sessionmaker, agent_id)
+        # Every edit names the fields it changed (#251), under the tool's labels.
+        assert all(d.pop("fields") for d in details)
+        assert details == [
             {"slug": None, "config_field_versions": {field: 2}, "via": "agent"},
             {"slug": None, "config_field_versions": {field: 3}, "via": "agent"},
         ]

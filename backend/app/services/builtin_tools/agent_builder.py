@@ -7093,13 +7093,19 @@ def build_agent_builder_tool(
             if _config_versions and not _configuring_new:
                 _version_audit["config_field_versions"] = _config_versions
 
-            # The entry the REST update writes, naming the switch and the
-            # versions it recorded; an edit that only versioned values gets
-            # an entry of its own.
+            # The entry the REST update writes on every edit, naming the fields
+            # changed, the switch and the versions it recorded: an unversioned
+            # edit (description, bindings, flags) is audited too. A per-user
+            # share change has its own sharing row below, never counted twice.
+            _audit_fields = (
+                []
+                if _configuring_new
+                else sorted({label for label in updated if not (label == "users" and _share_audit)})
+            )
             _update_caller = _cipt_caller
-            if _update_caller is None and _version_audit:
+            if _update_caller is None and (_version_audit or _audit_fields):
                 _update_caller = await _load_caller_user_for_builder(_db, uid)
-            if _update_caller is not None and (_cipt_caller is not None or _version_audit):
+            if _update_caller is not None and (_cipt_caller is not None or _version_audit or _audit_fields):
                 from app.services.audit import log_audit
 
                 await log_audit(
@@ -7107,17 +7113,18 @@ def build_agent_builder_tool(
                     user=_update_caller,
                     action="update",
                     entity_type="agent",
-                    entity_id=agent.id,
+                    entity_id=getattr(agent, "id", None),
                     entity_name=agent.name,
                     summary=f"Updated agent '{agent.name}'",
                     details={
-                        "slug": agent.slug,
+                        "slug": getattr(agent, "slug", None),
                         **(
                             {"catalog_include_personal_tools": _cipt_val}
                             if _cipt_caller is not None
                             else {}
                         ),
                         **_version_audit,
+                        **({"fields": _audit_fields} if _audit_fields else {}),
                         "via": "agent",
                     },
                 )
