@@ -1,0 +1,83 @@
+name: Merge notice
+
+# Posts each pull request merged into `main` to the team's Teams channel, with
+# who merged it. Since `main` takes pull requests through the merge queue, the
+# push to `main` comes from `github-merge-queue[bot]`, so the GitHub app's
+# `commits` feed names the bot; the pull request's `merged_by` still names the
+# person who added it to the queue.
+#
+# The channel side is a Teams Workflows webhook ("Post to a channel when a
+# webhook request is received"), whose URL is the `TEAMS_MERGE_WEBHOOK_URL`
+# secret; without it the job skips.
+#
+# `pull_request_target` so the secret is there for pull requests from forks
+# too. Safe: nothing is checked out, the pull request's fields reach the shell
+# only through env and the JSON is built by jq.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  notify:
+    name: Post the merge to Teams
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Post the card
+        env:
+          WEBHOOK_URL: ${{ secrets.TEAMS_MERGE_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::notice::TEAMS_MERGE_WEBHOOK_URL is not set, no card posted"
+            exit 0
+          fi
+          merged_by="${MERGED_BY:-$PR_AUTHOR}"
+          if [ "$merged_by" = "$PR_AUTHOR" ]; then
+            who="by **$PR_AUTHOR**"
+          else
+            who="by **$PR_AUTHOR**, merged by **$merged_by**"
+          fi
+          short_sha="${MERGE_SHA:0:7}"
+          jq -n \
+            --arg repo "$REPO" \
+            --arg title "$PR_TITLE" \
+            --arg number "$PR_NUMBER" \
+            --arg url "$PR_URL" \
+            --arg who "$who" \
+            --arg sha "$short_sha" \
+            --arg commit_url "$SERVER_URL/$REPO/commit/$MERGE_SHA" \
+            '{
+              type: "message",
+              attachments: [{
+                contentType: "application/vnd.microsoft.card.adaptive",
+                content: {
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  type: "AdaptiveCard",
+                  version: "1.4",
+                  msteams: { width: "Full" },
+                  body: [
+                    { type: "TextBlock", size: "Small", isSubtle: true, wrap: true,
+                      text: ("Merged into " + $repo + ":main · [" + $sha + "](" + $commit_url + ")") },
+                    { type: "TextBlock", weight: "Bolder", wrap: true,
+                      text: ("[" + $title + " (#" + $number + ")](" + $url + ")") },
+                    { type: "TextBlock", spacing: "Small", wrap: true, text: $who }
+                  ]
+                }
+              }]
+            }' > card.json
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -H 'Content-Type: application/json' \
+            --data @card.json "$WEBHOOK_URL"
