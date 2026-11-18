@@ -8,8 +8,8 @@ agent all get the same generic refusal and file nothing; a measured verdict
 is never taken from the model (only ``unmeasured`` is filed here);
 ``list_improvements`` reads by the scope when the Concierge's own agent calls
 it and by ``can_read`` otherwise, returns what a proposal carries as untrusted
-data, and is refused to a caller with neither, and to everyone while
-``CONCIERGE`` is off.
+data, and is refused to a caller with neither; it needs no feature flag
+(built in since #101 S1).
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ async def test_no_concierge_run_and_no_user_lists_nothing(readable):
     assert await _call(_Db(rows=[_proposal()]), "list_improvements", {}, user_id=None) == tools.REFUSED
 
 
-async def test_nobody_lists_while_the_flag_is_off(readable, monkeypatch):
+async def test_a_reader_lists_with_no_flag(readable, monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "enabled_features", "")
@@ -278,7 +278,7 @@ async def test_nobody_lists_while_the_flag_is_off(readable, monkeypatch):
     monkeypatch.setattr(proposals, "can_read", lambda *_args: True)
     db = _Db(rows=[_proposal()], users={user.id: user})
 
-    assert await _call(db, "list_improvements", {}, user_id=str(user.id)) == tools.REFUSED
+    assert await _call(db, "list_improvements", {}, user_id=str(user.id)) != tools.REFUSED
 
 
 @pytest.mark.parametrize(("field", "value"), [("status", "approved"), ("proposal_type", "workspace"), ("target_id", "x")])

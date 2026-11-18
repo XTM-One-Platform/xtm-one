@@ -1,7 +1,7 @@
 """The Concierge's evaluations and their tools (#8257, PRD 6.8 and 8).
 
-One access rule for the agent tools and ``/mcp/xtm``: the ``CONCIERGE`` flag,
-then the Concierge, or an administrator while the evaluation surface is on
+One access rule for the agent tools and ``/mcp/xtm``: the Concierge (built in
+since #101 S1, no flag), or an administrator while the evaluation surface is on
 (B9). A launch takes a Concierge-built dataset and subjects that are sandbox
 copies or targets of the supervision scope, and marks its evaluation for the
 engine gate. A comparison gives no verdict on an incomplete run.
@@ -38,23 +38,25 @@ FORMER_ADMIN = SimpleNamespace(is_admin=True, is_active=False)
     ("features", "mode", "concierge_run", "caller", "allowed"),
     [
         ("CONCIERGE", "xtm_one", True, None, True),
-        ("", "xtm_one", True, None, False),
+        ("", "xtm_one", True, None, True),
         ("CONCIERGE", "xtm_one", False, ADMIN, False),
         ("CONCIERGE,EVALUATION", "copilot", False, ADMIN, True),
         ("CONCIERGE,EVALUATION", "copilot", False, MEMBER, False),
         ("CONCIERGE,EVALUATION", "copilot", False, FORMER_ADMIN, False),
         ("CONCIERGE,EVALUATION", "copilot", False, None, False),
-        ("EVALUATION", "copilot", False, ADMIN, False),
+        ("EVALUATION", "copilot", False, ADMIN, True),
+        ("", "copilot", False, ADMIN, False),
     ],
     ids=[
         "concierge-xtm-one",
-        "concierge-flag-off",
+        "concierge-no-flag",
         "admin-xtm-one",
         "admin-surface-on",
         "member",
         "deactivated-admin",
         "anonymous",
-        "admin-flag-off",
+        "admin-evaluation-only",
+        "admin-surface-off",
     ],
 )
 async def test_one_access_rule(monkeypatch, features, mode, concierge_run, caller, allowed):

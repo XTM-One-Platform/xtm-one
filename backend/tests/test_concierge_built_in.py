@@ -1,11 +1,10 @@
-"""With ``CONCIERGE`` off, the Concierge's surfaces stay dark.
+"""The Concierge is built in (#101 S1): no ``CONCIERGE`` flag gates its surfaces.
 
-Pinned here: every built-in group gated on the Concierge (``gate="concierge"``)
-is withheld from the offered catalog while the registry keeps it, and the agent
-builder does not advertise the memory steward; a chat turn wires none of the
-Concierge's tool groups; the improvement proposal routes answer 403; the
-listing rule hides the seeded fleet (``concierge_role``), administrators
-included, and shows it again once the flag is on.
+Pinned here, with ``ENABLED_FEATURES`` empty: every built-in group gated on the
+Concierge (``gate="concierge"``) is offered and kept by the registry, and the
+agent builder advertises the memory steward; a chat turn wires the Concierge's
+tool groups; the improvement proposal routes are served; the listing rule shows
+the seeded fleet (``concierge_role``) to everyone the listing allows.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api.v1.helpers import user_visible_filter
@@ -26,8 +24,9 @@ from app.tools.base import CompositeToolExecutor
 _CONCIERGE_GROUPS = {group.id for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"}
 
 
-def _flag(monkeypatch, on: bool) -> None:
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE" if on else "")
+@pytest.fixture(autouse=True)
+def _no_flags(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "enabled_features", "")
 
 
 def test_every_concierge_group_is_gated():
@@ -43,60 +42,39 @@ def test_every_concierge_group_is_gated():
     } <= _CONCIERGE_GROUPS
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
-def test_the_offered_catalog_follows_the_flag(monkeypatch, on):
+def test_the_offered_catalog_carries_the_concierge_groups_with_no_flag():
     from app.api.v1.settings import _offered_builtin_tool_catalog
     from app.services.builtin_tool_catalog import build_builtin_tool_catalog
     from app.services.builtin_tools import agent_builder
 
-    _flag(monkeypatch, on)
-
-    offered = set(_offered_builtin_tool_catalog())
-    assert not on or offered >= _CONCIERGE_GROUPS
-    assert on or not _CONCIERGE_GROUPS & offered
-    # The registry keeps them: an agent already carrying one stays valid.
+    assert set(_offered_builtin_tool_catalog()) >= _CONCIERGE_GROUPS
     assert set(build_builtin_tool_catalog()) >= _CONCIERGE_GROUPS
-    assert ("memory_steward" in agent_builder._advertised_builtin_tool_ids()) is on
+    assert "memory_steward" in agent_builder._advertised_builtin_tool_ids()
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
-def test_a_chat_turn_wires_the_concierge_groups_only_with_the_flag_on(monkeypatch, on):
+def test_a_chat_turn_wires_the_concierge_groups_with_no_flag():
     from app.services.agent_chat import _add_platform_builder_tools
 
-    _flag(monkeypatch, on)
     composite = CompositeToolExecutor()
     _add_platform_builder_tools(
         composite, None, str(uuid.uuid4()), ["improvement_proposals", "concierge_sandbox", "concierge_evaluation"]
     )
 
-    names = set(composite.tool_names)
-    assert ({"list_improvements", "propose_improvement"} <= names) is on
-    assert bool(names) is on
+    assert {"list_improvements", "propose_improvement"} <= set(composite.tool_names)
 
 
-@pytest.mark.parametrize(
-    ("features", "served"),
-    [("", False), ("CONCIERGE", True)],
-    ids=["both-off", "concierge-on"],
-)
-def test_the_proposal_routes_are_served_only_while_a_proposal_is_reachable(monkeypatch, features, served):
+def test_the_proposal_routes_are_served_with_no_flag():
     from app.api.v1.improvement_proposals import require_surface
 
-    monkeypatch.setattr(settings, "enabled_features", features)
-    if served:
-        require_surface()
-        return
-    with pytest.raises(HTTPException) as refused:
-        require_surface()
-    assert refused.value.status_code == 403
+    require_surface()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_the_fleet_is_listed_to_nobody_while_the_flag_is_off(monkeypatch):
+async def test_the_fleet_is_listed_with_no_flag():
     from tests.test_provisioning_postgres import _temp_database
 
-    async with _temp_database("concierge_flag_off_fleet") as sessionmaker:
+    async with _temp_database("concierge_built_in_fleet") as sessionmaker:
         async with sessionmaker() as db:
             admin = User(
                 id=uuid.uuid4(), email="admin-fleet@test.local", full_name="A", hashed_password="x", role="admin"
@@ -127,8 +105,5 @@ async def test_the_fleet_is_listed_to_nobody_while_the_flag_is_off(monkeypatch):
                 clause = user_visible_filter(Agent, person.id, [], is_admin=person.role == "admin")
                 return set((await db.execute(select(Agent.id).where(clause))).scalars())
 
-        _flag(monkeypatch, False)
-        assert await _listed(user) == {plain.id}
-        assert await _listed(admin) == {plain.id}
-        _flag(monkeypatch, True)
         assert await _listed(user) == {plain.id, fleet.id}
+        assert await _listed(admin) == {plain.id, fleet.id}

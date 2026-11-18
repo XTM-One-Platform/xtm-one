@@ -13,7 +13,7 @@ import pytest
 
 from app.api.v1.helpers import agent_tool_admin_bypass
 from app.core.config import settings
-from app.core.feature_flags import FLAG_CONDITIONS, KNOWN_FEATURE_FLAGS, is_feature_enabled
+from app.core.feature_flags import KNOWN_FEATURE_FLAGS
 from app.services.concierge import identity
 from app.services.concierge.settings import ConciergeBudgetCaps, ConciergeSettings, _read, scope_narrowed
 
@@ -33,13 +33,9 @@ def _user(role: str = "admin", *, active: bool = True):
 # ── The flag ──────────────────────────────────────────────────────────────
 
 
-def test_the_flag_is_known_off_by_default_and_unconditional(monkeypatch) -> None:
-    assert "CONCIERGE" in KNOWN_FEATURE_FLAGS
-    assert "CONCIERGE" not in FLAG_CONDITIONS
-    monkeypatch.setattr(settings, "enabled_features", "")
-    assert is_feature_enabled("CONCIERGE") is False
-    monkeypatch.setattr(settings, "enabled_features", "*")
-    assert is_feature_enabled("CONCIERGE") is True
+def test_there_is_no_concierge_flag_any_more() -> None:
+    # Built in since #101 (S1): the flag left the known list.
+    assert "CONCIERGE" not in KNOWN_FEATURE_FLAGS
 
 
 # ── The identity ──────────────────────────────────────────────────────────
@@ -74,18 +70,17 @@ def test_who_acts_as_the_concierge(flag_on, agent, user, expected: bool) -> None
         assert principal.on_behalf_of_admin_id == (user.id if user else None)
 
 
-def test_nothing_acts_as_the_concierge_while_the_flag_is_off(monkeypatch) -> None:
+def test_a_concierge_agent_acts_as_the_concierge_with_no_flag(monkeypatch) -> None:
     monkeypatch.setattr(settings, "enabled_features", "")
-    assert identity.concierge_principal_for(_agent(), None) is None
+    assert identity.concierge_principal_for(_agent(), None) is not None
 
 
-def test_the_flag_switched_off_mid_run_ends_the_principal(monkeypatch, flag_on) -> None:
+def test_the_principal_lives_for_its_scope_with_no_flag(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "enabled_features", "")
     principal = identity.concierge_principal_for(_agent(), None)
     with identity.acting_as_concierge(principal):
         assert identity.current_concierge() == principal
-        monkeypatch.setattr(settings, "enabled_features", "")
-        assert identity.current_concierge() is None
-        assert identity.in_concierge_run() is False
+        assert identity.in_concierge_run() is True
     assert identity._CURRENT.get() is None
 
 
