@@ -986,7 +986,15 @@ async def sync_lab(
     synced = f"{resolved.name}: synced {what} into the lab {held['pod']}."
     if restart:
         return await _restart_service(
-            resolved, held, restart, client=client, synced=synced, sleep=sleep, clock=clock, budget=answer_seconds
+            resolved,
+            held,
+            restart,
+            client=client,
+            synced=synced,
+            sleep=sleep,
+            clock=clock,
+            budget=answer_seconds,
+            pod=pod,
         )
     return ServiceOutcome(
         text=(
@@ -1050,10 +1058,29 @@ async def _restart_service(
     sleep: Sleep,
     clock: Clock,
     budget: float,
+    pod: dict[str, Any] | None = None,
 ) -> ServiceOutcome:
-    """Run *service*'s process again in its container of the lab *held*, then wait for it to answer (#12104)."""
+    """Run *service*'s process again in its container of the lab *held*, then wait for it to answer (#12104).
+
+    A service whose container has already exited cannot be run again in place: the pod runs with
+    ``restartPolicy: Never``, so the container is gone for good and the exec stream into it is refused by the API
+    server (an HTTP 500 on the WebSocket upgrade). That case is answered before any exec, with the exit and the
+    container's last lines, and the way out: stop the lab and start it again (#115).
+    """
     name = held["pod"]
     container = (held.get("containers") or {}).get(service) or container_name(service)
+    exited = _terminated(pod or {}, container)
+    if exited:
+        return ServiceOutcome(
+            text=(
+                f"Error: {synced} {service} was not restarted: its container {exited}, and a lab container that "
+                "has exited cannot be run again in place. Read why with sandbox_service_logs(service_id, "
+                f"service={service!r}), then sandbox_stop_service and sandbox_start_service again (the start "
+                f"copies the checkout).{await _tail(client, name, container)}"
+            ),
+            refused=True,
+            service_id=name,
+        )
     started = clock()
     result = await client.exec(
         name, container, ["sh", "-c", restart_script()], timeout=_RESTART_TERM_SECONDS + _RESTART_KILL_SECONDS + 30.0

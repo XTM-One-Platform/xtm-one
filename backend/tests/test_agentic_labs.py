@@ -598,6 +598,26 @@ async def test_a_restart_of_an_unknown_service_or_of_an_old_pod_is_refused_with_
 
 
 @pytest.mark.usefixtures("lab_settings", "no_quota")
+async def test_a_restart_of_an_exited_service_says_it_exited_without_an_exec(redis):
+    # #115: an exec into a container that has exited is refused by the API server (HTTP 500 on the upgrade).
+    workspace = _workspace()
+    resolved = await _resolved(workspace)
+    fake = _Kube()
+    started = await labs.start_lab(resolved, workspace=workspace, client=fake, sleep=_no_sleep)
+    for status in fake.pods[started.service_id]["status"]["containerStatuses"]:
+        if status["name"] == "svc-lab":
+            status["ready"] = False
+            status["state"] = {"terminated": {"exitCode": 1, "reason": "Error"}}
+    fake.execs.clear()
+    outcome = await labs.sync_lab(resolved, workspace=workspace, client=fake, restart="lab", sleep=_no_sleep)
+    assert outcome.refused and outcome.service_id == started.service_id, outcome.text
+    assert "exited with code 1 (Error)" in outcome.text and "cannot be run again in place" in outcome.text
+    assert "sandbox_stop_service" in outcome.text and "svc-lab line 4" in outcome.text
+    # The copy may run in the workspace container; nothing ran in the exited one.
+    assert [e for e in fake.execs if e[1] == "svc-lab"] == []
+
+
+@pytest.mark.usefixtures("lab_settings", "no_quota")
 async def test_a_restarted_service_that_does_not_answer_in_the_budget_is_answered_starting(redis):
     workspace = _workspace()
     resolved = await _resolved(workspace)

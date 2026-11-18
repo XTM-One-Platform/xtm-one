@@ -86,6 +86,35 @@ def test_a_step_marked_gate_has_an_approval_gate_listed(slug):
         assert parts.get("gates"), slug
 
 
+_PROFILE_ROUTES = {
+    "profile:sector": "/settings/organization?card=identity",
+    "profile:regions": "/settings/organization?card=identity",
+    "profile:crown_jewels": "/settings/organization/profile/business?card=crown_jewels",
+    "profile:tracked_organizations": "/settings/organization/profile/business?card=tracked_organizations",
+    "profile:tech_stack": "/settings/organization/profile/technology?card=tech_stack",
+    "profile:ai_systems": "/settings/organization/profile/technology?card=ai_systems",
+}
+
+
+def test_a_profile_prerequisite_opens_the_tab_and_card_of_its_field_never_the_bare_profile():
+    from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED, profile_fix_route
+    from app.services.fleet_docs import clean_structured
+
+    seen = set()
+    for slug, parts in BUILTIN_FLEET_STRUCTURED.items():
+        for item in parts["prerequisites"]:
+            if not item["check"].startswith("profile:"):
+                continue
+            seen.add(item["check"])
+            assert item["fix_route"] == _PROFILE_ROUTES[item["check"]], (slug, item)
+            assert item["fix_route"] not in ("/settings/organization", "/settings/organization/profile"), slug
+        # The routes pass the save rules (fix_route pattern).
+        assert clean_structured(parts)["prerequisites"], slug
+    assert "profile:crown_jewels" in seen
+    for check, route in _PROFILE_ROUTES.items():
+        assert profile_fix_route(check.split(":", 1)[1]) == route
+
+
 def test_an_entry_keeps_its_own_documentation_and_an_unknown_slug_gets_none():
     own = {"purpose": "Mine"}
     assert builtin_fleet_documentation({"slug": "ctem-posture", "documentation": own}) is own

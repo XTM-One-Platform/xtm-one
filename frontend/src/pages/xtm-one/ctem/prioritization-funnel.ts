@@ -15,18 +15,37 @@
  * - a layer without a count (not configured, not available) is drawn at the
  *   width of the live layer above it, dashed: it removes nothing, so the
  *   funnel never looks narrower than what was measured.
- * - a not configured layer leads to Settings > Organization; a live one to the
+ * - a not configured layer leads to the Settings > Organization card of the
+ *   field it needs (its tab, scrolled to the card); a live one to the
  *   list it counts in OpenCTI, filtered when the backend sent the filter.
  */
 import type { CtemFunnel, CtemFunnelLayer, CtemFunnelLayerKey } from "@/types";
+
+import { profileFieldHref } from "../../../lib/organization-profile-tabs.ts";
 
 import { OPENCTI_VULNERABILITIES_PATH, openCtiListHref } from "./opencti-link.ts";
 
 /** Narrowest a live layer is drawn, in percent of the first layer's width. */
 export const FUNNEL_MIN_WIDTH_PCT = 14;
 
-/** Settings > Organization, where every not configured layer is unlocked. */
-export const FUNNEL_SETTINGS_PATH = "/settings/organization";
+/** The profile field each layer a not configured state asks for: its call to action opens the card that edits it. */
+export const FUNNEL_LAYER_FIELD: Partial<Record<CtemFunnelLayerKey, string>> = {
+  relevant: "tech_stack",
+  exposed: "assets_exposure",
+  business_impact: "crown_jewels",
+  policy: "prioritization_policy",
+  open_issues: "tech_stack",
+};
+
+/** Settings > Organization, on the tab and card of the field a not configured layer needs (#12329 tabs). */
+export function funnelSettingsHref(key: CtemFunnelLayerKey): string {
+  return profileFieldHref(FUNNEL_LAYER_FIELD[key] ?? "");
+}
+
+/** Whether a link opens Settings > Organization (the profile page, any tab). */
+export function isOrganizationSettingsHref(href: string): boolean {
+  return href === "/settings/organization" || href.startsWith("/settings/organization?") || href.startsWith("/settings/organization/profile/");
+}
 
 /** Name, definition and call to action of each layer (English catalog keys). */
 export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; definition: string; cta?: string }> = {
@@ -178,7 +197,7 @@ export function funnelIsEmpty(funnel: CtemFunnel): boolean {
  *  filter keeps, and a narrower layer without a filter OpenCTI can read is
  *  not a link (it would open a wider set than its figure). */
 export function funnelLayerHref(layer: CtemFunnelLayer, openctiUrl: string | null | undefined): string | null {
-  if (layer.state === "not_configured") return FUNNEL_SETTINGS_PATH;
+  if (layer.state === "not_configured") return funnelSettingsHref(layer.key);
   if (layer.state === "live" && isCasesLayer(layer)) return FUNNEL_CASES_PATH;
   if (layer.state !== "live") return null;
   if (layer.source !== "opencti" && layer.key !== "relevant") return null;

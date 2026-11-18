@@ -18,7 +18,7 @@
  * dev-docs/reference/data-tables.md), every column sorted, a count (UX round 1
  * B4 of #9443).
  */
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, type HTMLAttributes, useEffect, useId, useState } from "react";
 import { Archive, Check, Lock, Network, Pencil, Plus, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -94,7 +94,13 @@ function toInput(o: Organization): OrganizationInput {
 const sameInput = (a: OrganizationInput, b: OrganizationInput) =>
   a.name === b.name && a.relationship === b.relationship && a.criticality === b.criticality && (a.opencti_organization_id ?? null) === (b.opencti_organization_id ?? null);
 
-export function TrackedOrganizations() {
+/**
+ * The card's root attributes a host page sets: a landing anchor (id, scroll margin, `data-anchor`,
+ * `tabIndex`) goes on the card itself, never on a wrapper, so its focus ring keeps the card's radius.
+ */
+type TrackedOrganizationsProps = Omit<HTMLAttributes<HTMLDivElement>, "title" | "children"> & { "data-anchor"?: string };
+
+export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) {
   const { t_i18n } = useFormatter();
   const fieldId = useId();
   const { toast } = useToast();
@@ -452,6 +458,7 @@ export function TrackedOrganizations() {
 
   return (
     <SettingsCard
+      {...cardProps}
       data-testid="settings.organizations"
       icon={Network}
       title={t_i18n("Tracked organizations")}

@@ -70,6 +70,7 @@ export const PROFILE_FIELD_CARD = {
   accepted_risks: "prioritization_policy",
   posture_target: "prioritization_policy",
   enterprise_knowledge: "enterprise_knowledge",
+  tracked_organizations: "tracked_organizations",
 } as const satisfies Record<string, ProfileCard>;
 
 /** The tab of a field, by form key or contract path ("risk_appetite.approval_threshold", "ticketing.project"); null when unknown. */
@@ -90,6 +91,26 @@ const PROFILE_TAB_SEGMENT = /^\/settings\/organization\/profile\/([^/]+)\/?$/;
 /** The path of a tab: the first tab is the bare section path, the others `/settings/organization/profile/<tab>`. */
 export function profileTabPath(tab: ProfileTab): string {
   return tab === PROFILE_TABS[0] ? PROFILE_PATH : `${PROFILE_PATH}/profile/${tab}`;
+}
+
+/** The query parameter a link sets to land on one card of its tab (read once by the page, then dropped). */
+export const PROFILE_CARD_PARAM = "card";
+
+/** The card a URL query names; null for none or an unknown key. */
+export function parseProfileCard(raw: string | null | undefined): ProfileCard | null {
+  return raw && Object.prototype.hasOwnProperty.call(PROFILE_CARD_TAB, raw) ? (raw as ProfileCard) : null;
+}
+
+/**
+ * The link to the card that edits a field: its tab's path with `?card=<card>`, so a call to
+ * action ("Map crown jewels to assets") opens the right tab scrolled to the right card, never the
+ * first tab. An unknown field opens the first tab.
+ */
+export function profileFieldHref(path: string): string {
+  const fields = PROFILE_FIELD_CARD as Record<string, ProfileCard>;
+  const card = fields[path] ?? fields[path.split(".").pop() ?? ""] ?? fields[path.split(".")[0]];
+  if (!card) return PROFILE_PATH;
+  return `${profileTabPath(PROFILE_CARD_TAB[card])}?${PROFILE_CARD_PARAM}=${card}`;
 }
 
 /** The tab a page path names; any other path is the first tab. */

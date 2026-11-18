@@ -9,7 +9,9 @@ import {
   PROFILE_TAB_LABELS,
   changedTabs,
   groupByTab,
+  parseProfileCard,
   parseProfileTab,
+  profileFieldHref,
   profileTabOfPath,
   profileTabPath,
   tabOfField,
@@ -63,6 +65,31 @@ describe("organization profile tabs", () => {
     expect(profileTabOfPath("/settings/organization")).toBe("identity");
     expect(profileTabOfPath("/settings/organization/profile/nope")).toBe("identity");
     for (const tab of PROFILE_TABS) expect(profileTabOfPath(profileTabPath(tab))).toBe(tab);
+  });
+
+  it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
+    expect(profileFieldHref("crown_jewels")).toBe("/settings/organization/profile/business?card=crown_jewels");
+    expect(profileFieldHref("prioritization_policy")).toBe("/settings/organization/profile/exposure?card=prioritization_policy");
+    expect(profileFieldHref("accepted_risks")).toBe("/settings/organization/profile/exposure?card=prioritization_policy");
+    expect(profileFieldHref("assets_exposure")).toBe("/settings/organization/profile/exposure?card=assets_exposure");
+    expect(profileFieldHref("tech_stack")).toBe("/settings/organization/profile/technology?card=tech_stack");
+    expect(profileFieldHref("ai_systems")).toBe("/settings/organization/profile/technology?card=ai_systems");
+    expect(profileFieldHref("tracked_organizations")).toBe("/settings/organization/profile/business?card=tracked_organizations");
+    expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
+    expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");
+    expect(profileFieldHref("nope")).toBe("/settings/organization");
+    // Every field lands on its own tab.
+    for (const field of Object.keys(PROFILE_FIELD_CARD)) {
+      const [path] = profileFieldHref(field).split("?");
+      expect(profileTabOfPath(path), field).toBe(tabOfField(field));
+    }
+  });
+
+  it("parses the card of the URL, null for none or an unknown key", () => {
+    expect(parseProfileCard("crown_jewels")).toBe("crown_jewels");
+    expect(parseProfileCard("toString")).toBeNull();
+    expect(parseProfileCard("nope")).toBeNull();
+    expect(parseProfileCard(null)).toBeNull();
   });
 
   it("names the tabs a change touches and groups items by tab in tab order", () => {
