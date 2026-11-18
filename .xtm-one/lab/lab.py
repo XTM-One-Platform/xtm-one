@@ -1575,6 +1575,9 @@ def backend_env() -> dict[str, str]:
         "LAB_ORG_AI_DRAFT": os.environ.get("LAB_ORG_AI_DRAFT", "1"),
         # ``lab_asgi`` answers Check against OpenCRQ with a deterministic plan (Apply writes nothing).
         "LAB_OPENCRQ_SYNC": os.environ.get("LAB_OPENCRQ_SYNC", "1"),
+        # ``lab_asgi`` answers the organization import (preview, apply, sync runs) from its fixture for a platform
+        # the real path answers "not connected" (#65); a live OpenCTI keeps its real answers.
+        "LAB_ORG_IMPORT": os.environ.get("LAB_ORG_IMPORT", "1"),
         # ``lab_asgi`` answers the Nova engine status as available, so the Engine models card renders (no model).
         "LAB_NOVA_ENGINE": os.environ.get("LAB_NOVA_ENGINE", "1"),
         # With it, an empty Nova semantic override is answered as ignored, so the second calibration line renders.
@@ -4300,6 +4303,59 @@ def seed_kb_activity(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"KB activity": {"id": knowledge, "url": url}}
 
 
+#: The second administrator who owns a sync, with an address long enough to wrap in the Runs as column (#65).
+ORG_SYNC_OWNER_EMAIL = "lab-organization-sync-owner-with-a-long-address@lab-sample-subsidiary.filigran.io"
+ORG_SYNC_OWNER_PASSWORD = "lab-only-password-sync-owner"
+
+
+def seed_org_syncs(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Organization syncs of every state and an import preview that reads (#65).
+
+    The administrator saves a daily OpenCTI assets sync; a second administrator with a long address
+    (:data:`ORG_SYNC_OWNER_EMAIL`) saves a weekly OpenAEV asset groups sync, is then demoted, and a run now
+    pauses that sync with the real reason ("no longer an administrator"). ``LAB_ORG_IMPORT=1`` makes the
+    preview read the fixture of ``lab_asgi``. Read back: ``GET /organization-context/syncs`` lists both, one
+    paused, and ``POST /organization-context/import/preview`` answers rows with no error. Logged
+    ``seeded organization syncs: <base>/settings/organization``. May raise: the caller logs and skips.
+    """
+    def saved(rows: object) -> list[dict]:
+        return [r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
+
+    existing = saved(api("GET", "/organization-context/syncs", token))
+    if not any(r.get("section") == "assets" and r.get("source") == "opencti" for r in existing):
+        api("POST", "/organization-context/syncs", token, {
+            "section": "assets", "source": "opencti", "batch_type": "host", "frequency": "daily",
+            "hour": 6, "minute": 30, "timezone": "Europe/Paris", "filters": {"search": "lab"},
+        })
+    if not any(r.get("owner_email") == ORG_SYNC_OWNER_EMAIL for r in existing):
+        owner = _created(api("POST", "/users", token, {
+            "email": ORG_SYNC_OWNER_EMAIL, "full_name": "Lab sync owner", "password": ORG_SYNC_OWNER_PASSWORD,
+            "role": "admin",
+        }))
+        login = api("POST", "/auth/login", body={"email": ORG_SYNC_OWNER_EMAIL, "password": ORG_SYNC_OWNER_PASSWORD})
+        owner_token = login.get("access_token") if isinstance(login, dict) else None
+        if not owner_token:
+            raise RuntimeError("the sync owner's sign-in answered no access token")
+        sync = _created(api("POST", "/organization-context/syncs", owner_token, {
+            "section": "asset_groups", "source": "openaev", "frequency": "weekly", "weekday": 0,
+            "hour": 7, "minute": 0, "timezone": "UTC",
+        }))
+        api("PUT", f"/users/{owner}/role", token, {"role": "user"})
+        api("POST", f"/organization-context/syncs/{sync}/run", token)
+    rows = saved(api("GET", "/organization-context/syncs", token))
+    if len(rows) < 2 or not any(r.get("paused_reason") for r in rows):
+        raise RuntimeError(f"stored, but GET /organization-context/syncs answers {str(rows)[:200]}")
+    preview = api("POST", "/organization-context/import/preview", token, {
+        "section": "assets", "source": "opencti", "filters": {}, "batch_type": "",
+    })
+    plan = preview.get("plan") if isinstance(preview, dict) else None
+    if not isinstance(plan, dict) or plan.get("error") or not plan.get("read"):
+        raise RuntimeError(f"the import preview answers {str(preview)[:200]}")
+    url = f"{base}/settings/organization"
+    log(f"seeded organization syncs: {url}")
+    return {"organization syncs": {"id": f"{len(rows)} syncs, {plan.get('read')} rows previewed", "url": url}}
+
+
 def seed_oauth_missing_scopes(token: str, base: str) -> dict[str, dict[str, str]]:
     """A connected Google OAuth integration whose token was granted all but one requested scope (#9813).
 
@@ -6955,6 +7011,10 @@ def seed_entities() -> None:
         seeded.update(seed_kb_activity(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["KB activity"] = str(exc)[:600]
+    try:
+        seeded.update(seed_org_syncs(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["organization syncs"] = str(exc)[:600]
     # Before the AI switches (Enable fleet is refused while AI is off).
     if peer_id and "opencti" in suite:
         try:

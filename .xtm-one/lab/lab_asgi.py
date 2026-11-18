@@ -115,7 +115,7 @@ import ctem_sample  # beside this file
 
 from app.api.v1 import ctem_metrics
 from app.main import application as backend
-from app.services import organization_opencti, trigger_provisioning
+from app.services import organization_context_import, organization_opencti, trigger_provisioning
 
 #: The one repository the lab's GitHub integration lists, in the shape ``integration_elements`` answers.
 LAB_REPOSITORY = {
@@ -656,6 +656,90 @@ def stub_opencti_identities(environ: dict) -> bool:
 
 
 stub_opencti_identities(dict(os.environ))
+
+
+#: What a platform that is not connected answers the organization import with under ``LAB_ORG_IMPORT=1``
+#: (#65): raw entities in each platform's own shape, mapped by the import's real mappers.
+LAB_ORG_IMPORT_OPENCTI_SYSTEMS = [
+    {"id": "system--lab-0001", "name": "Payments API gateway", "x_opencti_system_category": "web_application",
+     "x_opencti_criticality": "very_high", "x_opencti_internet_facing": "yes", "x_opencti_environment": "production",
+     "x_opencti_platform": "Linux", "objectLabel": [{"value": "pci"}], "createdBy": {"name": "Lab sample SOC"}},
+    {"id": "system--lab-0002", "name": "Domain controller DC-01", "x_opencti_system_category": "host",
+     "x_opencti_system_subcategory": "server", "x_opencti_criticality": "high", "x_opencti_internet_facing": "no",
+     "x_opencti_environment": "production", "objectMarking": [{"definition": "TLP:AMBER"}]},
+    {"id": "system--lab-0003", "name": "Build farm runner pool with a name long enough to wrap in the preview sample"},
+]
+LAB_ORG_IMPORT_OPENAEV_ASSETS = [
+    {"asset_id": "lab-aev-0001", "asset_name": "FINANCE-LAPTOP-07", "endpoint_platform": "Windows",
+     "asset_criticality": "medium", "asset_internet_facing": False},
+    {"asset_id": "lab-aev-0002", "asset_name": "web-frontend-02", "endpoint_platform": "Linux",
+     "asset_criticality": "high", "asset_internet_facing": True},
+]
+LAB_ORG_IMPORT_OPENAEV_GROUPS = [
+    {"asset_group_id": "lab-aev-group-0001", "asset_group_name": "Finance endpoints",
+     "asset_group_description": "Every laptop of the finance team."},
+]
+LAB_ORG_IMPORT_OPENAEV_PLATFORMS = [{"security_platform_name": "Microsoft Defender for Endpoint"}, {"asset_name": "CrowdStrike Falcon"}]
+
+
+def lab_org_import_read(section: str, source: str, batch_type: str = ""):
+    """The fixture read of *section* from *source* (a ``ReadResult``), or ``None`` when the lab has none for it."""
+    imp = organization_context_import
+    rows: list = []
+    if (section, source) == ("assets", "opencti"):
+        rows = [imp.opencti_system(node, batch_type) for node in LAB_ORG_IMPORT_OPENCTI_SYSTEMS]
+    elif (section, source) == ("assets", "openaev"):
+        rows = [imp.openaev_asset(asset, batch_type) for asset in LAB_ORG_IMPORT_OPENAEV_ASSETS]
+    elif (section, source) == ("asset_groups", "openaev"):
+        rows = [imp.openaev_asset_group(group) for group in LAB_ORG_IMPORT_OPENAEV_GROUPS]
+    elif (section, source) == ("tech_stack", "openaev"):
+        names = [str(p.get("asset_name") or p.get("security_platform_name")) for p in LAB_ORG_IMPORT_OPENAEV_PLATFORMS]
+        rows = [imp.TechStackEntry(product=name) for name in names]
+    else:
+        return None
+    rows = [row for row in rows if row]
+    return imp.ReadResult(rows=rows, total=len(rows))
+
+
+def _not_connected(error: str | None) -> bool:
+    return bool(error) and "not connected" in (error or "").lower()
+
+
+def stub_org_import(environ: dict) -> bool:
+    """Answer the organization import preview, apply and syncs from the fixture where the platform is not connected.
+
+    Only a read the real path answers "not connected" is replaced, and only the source status that real path
+    reports unavailable: a lab with a live OpenCTI or OpenAEV (``LAB_OPENCTI = "live"``) keeps its real answers.
+    """
+    if environ.get("LAB_ORG_IMPORT") != "1":
+        return False
+    imp = organization_context_import
+    live_read, live_statuses = imp.read_source, imp.source_statuses
+
+    async def read_source(db, *, user_id, section, source, filters, batch_type=""):
+        real = await live_read(
+            db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
+        )
+        if not _not_connected(real.error):
+            return real
+        return lab_org_import_read(section, source, batch_type) or real
+
+    async def source_statuses(db, *, user_id):
+        statuses = await live_statuses(db, user_id=user_id)
+        for source in ("opencti", "openaev"):
+            status = statuses.get(source)
+            if status is not None and not status.available:
+                statuses[source] = imp.SourceStatus(source=source, available=True)
+        return statuses
+
+    # ``preview_import`` (the preview, the apply and every sync run) and the routes call these by module
+    # attribute at each request, so the module attributes are the ones they call.
+    imp.read_source = read_source
+    imp.source_statuses = source_statuses
+    return True
+
+
+stub_org_import(dict(os.environ))
 
 
 #: The PIRs the lab's OpenCTI answers the PIR picker with, in the ``{id, name}`` rows ``list_pirs`` answers.
