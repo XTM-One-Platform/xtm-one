@@ -61,7 +61,7 @@ WHAT_TO_DO: Final[dict[str, str]] = {
 _CLIENT_ID_MAX_CHARS = 255
 
 
-def _session_factory():
+def _session_factory() -> Any:
     from app.core.database import async_session
 
     return async_session

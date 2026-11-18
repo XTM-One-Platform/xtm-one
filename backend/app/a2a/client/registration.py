@@ -260,16 +260,19 @@ async def _fetch_verdict(integration: Any, target: Any, *, trigger: str) -> tupl
                     ),
                 )
 
-        if verdict is None and integration.provider in _VERIFY_MINTS_CREDENTIALS:
-            # Every verification, the sweep's and a delegation's re-verify
-            # included, not only an operator's: otherwise a wrong secret flips
-            # back to usable on the anonymous card at the next sweep and a
-            # fixed one never heals the target by itself (#105). Only Verify
-            # bypasses the token cache.
-            verdict = await test_credential(integration, client, fresh=trigger == "manual")
-
         if verdict is None:
             verdict = await verify_card(card_url=url, http_client=client, headers=headers)
+
+        if verdict.is_usable and integration.provider in _VERIFY_MINTS_CREDENTIALS:
+            # The card is there; now the credential (#105). Every verification,
+            # the sweep's and a delegation's re-verify included, not only an
+            # operator's: otherwise a wrong secret flips back to usable on the
+            # anonymous card at the next sweep and a fixed one never heals the
+            # target by itself. Card first, so a card that is not there keeps
+            # its own reason. Only Verify bypasses the token cache.
+            refused = await test_credential(integration, client, fresh=trigger == "manual")
+            if refused is not None:
+                verdict = refused
 
     if not verdict.is_usable:
         # Whatever went wrong, the next attempt starts from a fresh mint.

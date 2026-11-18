@@ -27,7 +27,7 @@ from app.models.a2a import A2AIntegrationSettings
 
 
 class _Db:
-    async def execute(self, _statement):
+    async def execute(self, _statement: object) -> SimpleNamespace:
         # The current client id read before the mint (#105): none yet.
         return SimpleNamespace(scalar_one_or_none=lambda: None)
 
@@ -57,7 +57,7 @@ def route(monkeypatch):
     """
     minted: dict[str, bool] = {"called": False}
 
-    async def _mint(_db, integration):
+    async def _mint(_db: object, integration: object, *, rotate_client_id: bool = False) -> tuple[str, str]:
         minted["called"] = True
         return "a2a-new", "secret-shown-once"
 

@@ -26,6 +26,8 @@ written to the audit trail, a contract the probe seam already states.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.a2a.client import breaker
 from app.integrations.connectivity import ProbeContext, ProbeResult
 from app.models.a2a import DIRECTION_OUTBOUND, USABILITY_USABLE
@@ -53,7 +55,7 @@ _WHAT_TO_DO = {
 }
 
 
-async def _mint_refusal(integration) -> str | None:
+async def _mint_refusal(integration: Any) -> str | None:
     """Mint a fresh token for an OAuth partner; the refusal detail, or None."""
     import httpx
 

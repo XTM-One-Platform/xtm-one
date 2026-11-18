@@ -574,15 +574,15 @@ test.describe.serial('The inbound surface', () => {
     expect(token.scope).toBe('a2a:task');
     expect(typeof token.access_token).toBe('string');
 
-    // Minting again REPLACES the credential row, so a secret an operator
-    // copied a minute ago is refused in the same words as one that never
-    // existed. This is the arm the byte-exact comparison in 10 cannot reach:
+    // Minting again replaces the secret on the same client id (#105), so a
+    // secret an operator copied a minute ago is refused in the same words as
+    // one that never existed. This is the arm the byte-exact comparison in 10 cannot reach:
     // it needs a registration that exists and a secret that used to be its.
     const stale = await createInboundIntegration(one.rest, created, stamp('E2E inbound stale'));
     const original = await mintCredential(one.rest, stale.id);
     const agent = await createAgent(one.rest, created, { name: stamp('E2E stale agent') });
     await exposeAgent(one.rest, agent.id, stale.id);
-    await mintCredential(one.rest, stale.id); // replaces the row `original` came from
+    await mintCredential(one.rest, stale.id); // rotates the secret `original` carries
 
     const refused = await requestToken(one.wire, original);
     expect(refused.status(), original.clientId).toBe(401);

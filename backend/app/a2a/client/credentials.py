@@ -247,7 +247,7 @@ _OAUTH_TOKEN_ERRORS = frozenset(
 )
 
 
-def _token_refusal_detail(response, client_id: str) -> str:
+def _token_refusal_detail(response: Any, client_id: str) -> str:
     """Why the partner refused a token, naming what the operator can check (#105).
 
     The OAuth error code (``invalid_client`` is what an XTM One partner answers

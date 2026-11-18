@@ -553,7 +553,7 @@ class A2AIntegrationSettings(Base):
     # The client ids an explicit "Rotate client id and secret" retired, newest
     # last and bounded, so a partner still presenting one is reported as a
     # retired client id rather than one nobody issued. Identifiers, not secrets.
-    retired_client_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    retired_client_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

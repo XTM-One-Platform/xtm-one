@@ -166,7 +166,7 @@ async def _credential_integration(request: Request, db: AsyncSession):
     return getattr(client, "a2a_integration_id", None)
 
 
-def minted_before_rotation(payload: dict, client) -> bool:
+def minted_before_rotation(payload: dict[str, Any], client: Any) -> bool:
     """Whether a partner bearer predates its credential's last secret rotation.
 
     A regenerate keeps the client id and replaces the secret in place (#105),

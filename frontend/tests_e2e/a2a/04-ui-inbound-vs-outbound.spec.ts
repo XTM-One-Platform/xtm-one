@@ -692,7 +692,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
 
     await expect(
       card.getByText(
-        'The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.',
+        'The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.',
       ),
     ).toBeVisible();
     await expect(
@@ -700,7 +700,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     ).toBeVisible();
     await expect(
       card.getByText(
-        'The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.',
+        'The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.',
       ),
     ).toBeVisible();
 
@@ -708,7 +708,9 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     await card.getByRole('button', { name: 'Generate credential' }).click();
     await expect(card.getByText('Copy this now: the secret is never shown again')).toBeVisible();
     await expect(card.getByText('Client secret')).toBeVisible();
+    // The pair is shown together, once, with one action that copies both.
     await expect(card.locator('code', { hasText: /^a2a-/ })).toHaveCount(1);
+    await expect(card.getByTestId('a2a-credential-copy-both')).toBeVisible();
 
     // The secret lives in the DOM for the life of this page and nowhere else,
     // so the reload is what proves it is gone rather than merely re-rendered.
@@ -719,16 +721,25 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
 
     await reloaded.getByRole('button', { name: 'Regenerate secret' }).click();
     const confirmDialog = page.getByRole('dialog');
-    await expect(confirmDialog.getByText('Regenerate partner credential?')).toBeVisible();
+    await expect(confirmDialog.getByText('Regenerate the secret?')).toBeVisible();
+    // The client id stays (#105): the dialog says so, so the operator tells the
+    // partner to paste the secret alone.
     await expect(
       confirmDialog.getByText(
-        'The current secret stops working immediately, on every agent this integration is bound to. The partner must be given the new one.',
+        'The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.',
       ),
     ).toBeVisible();
-    await expect(confirmDialog.getByRole('button', { name: 'Regenerate' })).toBeVisible();
+    await expect(confirmDialog.getByRole('button', { name: 'Regenerate secret' })).toBeVisible();
     // Cancelling rather than confirming: re-keying here would retire nothing
     // any other test holds, but the point of the branch is the dialog.
     await confirmDialog.getByRole('button', { name: 'Cancel' }).click();
+
+    // Changing both is its own action, and its dialog says both change.
+    await reloaded.getByRole('button', { name: 'Rotate client ID and secret' }).click();
+    const rotateDialog = page.getByRole('dialog');
+    await expect(rotateDialog.getByText('Rotate the client ID and the secret?')).toBeVisible();
+    await expect(rotateDialog.getByRole('button', { name: 'Rotate both' })).toBeVisible();
+    await rotateDialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
   test('the reachability card names what is missing, and then what is missing next', async ({ one }) => {

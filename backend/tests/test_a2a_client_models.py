@@ -49,6 +49,12 @@ class TestSettingsShape:
             "credential_error_code",
             "credential_error_detail",
             "credential_error_at",
+            # Inbound: the last refused token request and the retired client
+            # ids (#105). Identifiers and reason codes, never a secret.
+            "last_refused_token_at",
+            "last_refused_client_id",
+            "last_refused_reason",
+            "retired_client_ids",
             "created_at",
             "updated_at",
         }

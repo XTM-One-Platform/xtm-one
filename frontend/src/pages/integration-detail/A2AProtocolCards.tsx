@@ -457,7 +457,7 @@ export function A2ACredentialCard({
           )}
         </p>
 
-        {clientId ? (
+        {issued ? null : clientId ? (
           <CopyRow
             label={t_i18n("Client ID")}
             value={clientId}

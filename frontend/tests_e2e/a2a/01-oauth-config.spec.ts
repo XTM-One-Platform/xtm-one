@@ -561,8 +561,10 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     // fingerprint and all.
     expect(after.id).toBe(before.id);
     expect(after.usability).toBe('usable');
-    expect(after.last_verified_at).toBe(before.last_verified_at);
     expect(after.card_fingerprint).toBe(before.card_fingerprint);
+    // But it is due again (#105): the verdict was judged on the old secret,
+    // so the next delegation or sweep re-verifies, minting with the new one.
+    expect(after.last_verified_at).toBeNull();
   });
 
   test('the stored secret comes back masked while the addresses come back in clear', async ({

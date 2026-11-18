@@ -3408,7 +3408,7 @@ async def delete_integration(
     await db.commit()
 
 
-async def _a2a_inbound_client_id(db: AsyncSession, integration_id) -> str | None:
+async def _a2a_inbound_client_id(db: AsyncSession, integration_id: uuid.UUID) -> str | None:
     """The client id of an inbound integration's current credential, if any."""
     from app.models.oauth_client import OAuthClient
 
