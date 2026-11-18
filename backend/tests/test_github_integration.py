@@ -12,6 +12,7 @@ All tools route HTTP through ``_common.safe_request`` and GraphQL through
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -1549,6 +1550,46 @@ async def test_manage_pr_disable_automerge_records_self_action():
         gql.return_value = ({"disablePullRequestAutoMerge": {"pullRequest": {"number": 7}}}, None)
         await fn(repo="octo/repo", number=7, action="disable_automerge")
     recorder.assert_awaited_once_with("octo/repo", 7)
+
+
+@pytest.mark.asyncio
+async def test_manage_pr_dequeue_removes_a_queued_pr() -> None:
+    fn, recorder = _get_fn_with_recorder("manage_github_pr")
+
+    async def fake_request(client: Any, method: str, url: str, provider: str, action: str, **kwargs: Any) -> Any:
+        return (_mock_response({"node_id": "PR_node1"}), None)  # _pr_node_id
+
+    with (
+        patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request),
+        patch("app.integrations.providers.github._common.gh_graphql", new_callable=AsyncMock) as gql,
+    ):
+        gql.side_effect = [
+            ({"node": {"isInMergeQueue": True, "mergeQueueEntry": {"position": 3, "state": "AWAITING_CHECKS"}}}, None),
+            ({"dequeuePullRequest": {"mergeQueueEntry": {"state": "UNMERGEABLE"}}}, None),
+        ]
+        result = await fn(repo="octo/repo", number=7, action="dequeue")
+    assert "removed from the merge queue (it was at position 3)" in result
+    assert "dequeuePullRequest" in gql.await_args_list[1][0][2]
+    assert gql.await_args_list[1][0][3] == {"id": "PR_node1"}
+    recorder.assert_awaited_once_with("octo/repo", 7)
+
+
+@pytest.mark.asyncio
+async def test_manage_pr_dequeue_writes_nothing_when_not_queued() -> None:
+    fn, recorder = _get_fn_with_recorder("manage_github_pr")
+
+    async def fake_request(client: Any, method: str, url: str, provider: str, action: str, **kwargs: Any) -> Any:
+        return (_mock_response({"node_id": "PR_node1"}), None)
+
+    with (
+        patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request),
+        patch("app.integrations.providers.github._common.gh_graphql", new_callable=AsyncMock) as gql,
+    ):
+        gql.return_value = ({"node": {"isInMergeQueue": False, "mergeQueueEntry": None}}, None)
+        result = await fn(repo="octo/repo", number=7, action="dequeue")
+    assert "not in a merge queue" in result
+    assert gql.await_count == 1
+    recorder.assert_not_awaited()
 
 
 @pytest.mark.asyncio
