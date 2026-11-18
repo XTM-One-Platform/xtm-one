@@ -131,6 +131,17 @@ def test_the_frontend_lint_check_lints_only_the_named_file():
     assert checks.command_argv(spec) == ("yarn", "oxlint", "src/")
 
 
+def test_the_lint_checks_take_the_changed_sources_with_affected():
+    """affected=true hands a linter the changed sources, never the test files that mention them."""
+    root = Path(__file__).resolve().parents[2]
+    specs = checks.load_checks((root / checks.CHECKS_FILE).read_text(encoding="utf-8"))
+    frontend, backend = specs["frontend-lint"], specs["backend-lint"]
+    assert frontend.affected == "files" and {"*.ts", "*.tsx"} <= set(frontend.affected_globs)
+    assert "*.json" not in frontend.affected_globs
+    assert backend.affected == "files" and backend.affected_globs == ("*.py", "*.pyi")
+    assert not frontend.affected_by_default and not backend.affected_by_default
+
+
 def test_extra_args_are_bounded():
     assert checks.extra_args(None) == [] and checks.extra_args("tests/x.py") == ["tests/x.py"]
     assert checks.extra_args(["-k", "name"]) == ["-k", "name"]
