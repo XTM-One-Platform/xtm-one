@@ -12,7 +12,7 @@ Lock-safe recipe both ways (idempotency probe, ``terminate_lock_holders``,
 triggers on ``users`` under a SHARE ROW EXCLUSIVE lock.
 
 Revision ID: c122deact0001
-Revises: a12346a2acred1
+Revises: h114fhcheck01
 Create Date: 2026-11-18 09:40:00.000000
 """
 
@@ -29,7 +29,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c122deact0001"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "a12346a2acred1"
+down_revision: str | Sequence[str] | None = "h114fhcheck01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
