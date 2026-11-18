@@ -15,7 +15,7 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, _validate_filter_group
+from ._common import _api, _search_body, _validate_filter_group, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "update"):
             if action == "create" and not name:
@@ -241,7 +241,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "update", "upsert"):
             if action != "update" and (not name or not platform_type):

@@ -14,6 +14,7 @@ integration_tools.py).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -33,6 +34,7 @@ from app.integrations.http import (
     TRANSIENT_RETRY_STATUSES,
     AutoRefreshClient,
     RefreshFn,
+    clip_text,
     safe_request,
 )
 from app.integrations.http import (
@@ -48,6 +50,22 @@ from app.integrations.http import (
 logger = logging.getLogger(__name__)
 
 _PROVIDER = "OpenAEV"
+
+#: Characters of compact JSON a single-object read (an inject, its status trace,
+#: an atomic test, a dashboard, the settings) answers before its cut marker.
+JSON_READ_CHARS = 12000
+
+
+def json_answer(value: Any, limit: int = JSON_READ_CHARS) -> str:
+    """*value* as compact JSON, cut past *limit* characters with a marker.
+
+    An OpenAEV answer never ends mid-JSON without saying so: a cut answer ends
+    with ``... [truncated, N more characters]`` (``clip_text``), so the agent
+    knows the object goes on and reads a narrower call instead of trusting a
+    partial one.
+    """
+    return clip_text(json.dumps(value, default=str), limit)
+
 
 # Transient upstream statuses that IDEMPOTENT OpenAEV calls opt into retrying at
 # the HTTP layer (via ``_api(..., retry_transient=True)``). The shared gateway
@@ -2212,6 +2230,7 @@ __all__ = [
     "EXPECTATION_TYPES",
     "FILTER_MODES",
     "FILTER_OPERATORS",
+    "JSON_READ_CHARS",
     "PAYLOAD_TYPES",
     "PLATFORMS",
     "REPORTING_CONTEXT_TYPES",
@@ -2263,6 +2282,7 @@ __all__ = [
     "_with_scope_hint",
     "expectation_label",
     "expectation_result_type",
+    "json_answer",
     "logger",
     "scoped_safe_request",
 ]

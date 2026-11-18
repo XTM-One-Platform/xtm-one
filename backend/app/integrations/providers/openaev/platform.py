@@ -25,7 +25,7 @@ from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import PlatformCapabilities, _api, _search_body
+from ._common import PlatformCapabilities, _api, _search_body, json_answer
 
 
 def _version_from_body(body: str | None) -> str:
@@ -563,7 +563,7 @@ def register(
             resp, err = await _api(base_url, headers, "get", "/api/settings", "get settings")
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "version":
             resp, err = await _api(
