@@ -19,6 +19,11 @@ migrations and seeded data, not a stub (xtm-one #11799, item 5):
 5. This script listens on ``PORT``, the preview port: ``/lab/*`` here, everything else (websockets included) to
    Vite, which proxies ``/trpc`` and ``/api`` to the backend. Theme: ``/lab/theme/dark`` or
    ``/lab/theme/light`` sets the admin's theme in the database, then opens ``/``.
+6. Without XTM One the backend runs in Community Edition, where a user reaches one tenant: the first of their
+   memberships by id (``visibleTenants``, ``back/src/features/app-router/tenant-edition-utils.ts``), Acme Bank
+   for the seeded administrator. ``/lab/tenant/<name>`` (case-insensitive, e.g. ``Tarnwick Industries``, the
+   seeded tenant with no asset groups, or ``Fresh Start``, the one with no organization) makes that tenant the one
+   shown (:func:`select_tenant`), then opens ``/``; an unknown name answers 404 with the seeded names.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ import sys
 import tarfile
 import threading
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -169,6 +175,28 @@ def seed_session(admin_email: str = LAB_ADMIN_EMAIL) -> str:
     return session
 
 
+def select_tenant(name: str, user: str) -> str | None:
+    """Make the tenant named *name* the one Community Edition shows *user*; ``None`` when no tenant has that name.
+
+    Community Edition keeps a user's first membership by tenant id (UUID order is the string order
+    ``communityEditionTenantId`` sorts by), so the user joins the tenant and leaves every tenant whose id sorts
+    before it. Their group memberships stay, so going back with the tenant's own name restores the same rights.
+    """
+    tenant = psql("SELECT id FROM tenants WHERE lower(name) = lower(:'name') ORDER BY id LIMIT 1", name=name)
+    if not tenant:
+        return None
+    psql(
+        "INSERT INTO tenant_users (tenant_id, user_id) VALUES (:'tenant'::uuid, :'user'::uuid) ON CONFLICT DO NOTHING;\n"
+        "DELETE FROM tenant_users WHERE user_id = :'user'::uuid AND tenant_id < :'tenant'::uuid",
+        tenant=tenant, user=user,
+    )
+    return tenant
+
+
+def tenant_names() -> str:
+    return psql("SELECT coalesce(string_agg(name, ', ' ORDER BY id), '') FROM tenants")
+
+
 def seeded() -> bool:
     try:
         return psql("SELECT to_regclass('public.sessions') IS NOT NULL") == "t"
@@ -188,6 +216,15 @@ class Front(proxy.Front):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _not_found(self, message: str) -> None:
+        self._body()
+        data = message.encode()
+        self.send_response(404)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle(self) -> None:
         path = self.path.split("?", 1)[0]
         try:
@@ -203,6 +240,12 @@ class Front(proxy.Front):
             elif path in ("/lab/theme/dark", "/lab/theme/light"):
                 psql("UPDATE users SET theme = :'theme' WHERE id = :'user'::uuid", theme=path.rsplit("/", 1)[-1], user=SESSION.get("user", ""))
                 self._redirect()
+            elif path.startswith("/lab/tenant/"):
+                name = urllib.parse.unquote(path[len("/lab/tenant/"):]).strip()
+                if select_tenant(name, SESSION.get("user", "")) is None:
+                    self._not_found(f"no seeded tenant named {name!r}; seeded tenants: {tenant_names()}\n")
+                else:
+                    self._redirect()
             else:
                 self._forward()
         except (BrokenPipeError, ConnectionResetError):
@@ -238,7 +281,7 @@ def main() -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     lab.log(
         f"lab up: http://localhost:{PORT}/lab/sign-in signs in as {LAB_ADMIN_EMAIL} (OpenCRQ built from {root.name}/, "
-        f"seeded); theme at /lab/theme/dark or /lab/theme/light"
+        f"seeded); theme at /lab/theme/dark or /lab/theme/light; tenant at /lab/tenant/<name> ({tenant_names()})"
     )
     while True:
         for child in lab.CHILDREN:

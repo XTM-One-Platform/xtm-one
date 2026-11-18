@@ -350,7 +350,8 @@ lifetime = 7200
 # materialize_repository(OpenCRQ-Platform/opencrq, ref=<the PR head>, sub_paths=["package.json", "yarn.lock",
 # ".yarnrc.yml", "tsconfig.base.json", "tsconfig.json", "front", "back", "module", "utils", "eslint-rules",
 # "integration-tests/package.json"], path="<this checkout>/opencrq"). Open /lab/sign-in first, then any page;
-# theme: /lab/theme/dark or /lab/theme/light.
+# theme: /lab/theme/dark or /lab/theme/light; tenant (Community Edition shows one): /lab/tenant/<name>, e.g.
+# /lab/tenant/Tarnwick%20Industries for the seeded tenant with no asset groups (#97).
 [service.lab-opencrq]
 description = "OpenCRQ back and front built from a nested opencrq/ checkout at the PR head, migrated, platform-seeded (risk scenarios with quantified results), signed in as lab@filigran.io"
 argv = ["python", ".xtm-one/lab/opencrq_pr_head.py"]
