@@ -40,6 +40,33 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
+#: The label of each Wordsmith event type in the trigger picker.
+_WORDSMITH_EVENT_LABELS: dict[str, str] = {
+    "operation.succeeded": "Wordsmith operation succeeded",
+    "operation.failed": "Wordsmith operation failed",
+    "operation.cancelled": "Wordsmith operation cancelled",
+    "task.created": "Wordsmith task created",
+    "task.assigned": "Wordsmith task assigned",
+    "task.status_changed": "Wordsmith task status changed",
+    "task.comment_added": "Wordsmith task comment added",
+    "review.completed": "Wordsmith review completed",
+    "input_request.created": "Wordsmith input request created",
+    "input_request.resolved": "Wordsmith input request resolved",
+    "repository.documents_added": "Wordsmith repository documents added",
+    "repository.indexing_completed": "Wordsmith repository indexing completed",
+    "report.run_completed": "Wordsmith report run completed",
+    "alert.triggered": "Wordsmith alert triggered",
+    "webhook_endpoint.test": "Wordsmith webhook test event",
+}
+_WORDSMITH_EVENT_DESCRIPTION = (
+    "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted "
+    "with it; missed deliveries are read back from the event log. The event carries IDs only: the run "
+    "payload names the read tool."
+)
+_WORDSMITH_ALERT_DESCRIPTION = (
+    "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the "
+    "trigger's audience to customer (webhooks:admin scope)."
+)
 
 #: Providers an XTM One instance only ever gets through a platform
 #: registration, which creates and rewrites them: never created by hand, and
@@ -4654,13 +4681,9 @@ PROVIDER_CATALOG = {
         "available_events": [
             {
                 "event": event,
-                "label": f"Wordsmith {event}",
+                "label": _WORDSMITH_EVENT_LABELS[event],
                 "description": (
-                    f"Triggers on the Wordsmith event {event}. A webhook endpoint is created for the "
-                    "trigger (deleted with it) and missed deliveries are read back from the event log. "
-                    "The event carries IDs only: the run payload names the read tool (follow_up_tool)."
-                    + " trigger_config.audience 'customer' makes it an organisation endpoint"
-                    + (" (required for this event)." if event == "alert.triggered" else ".")
+                    _WORDSMITH_ALERT_DESCRIPTION if event == "alert.triggered" else _WORDSMITH_EVENT_DESCRIPTION
                 ),
                 "mechanism": "webhook",
                 "filter_keys": _WORDSMITH_FILTER_KEYS,

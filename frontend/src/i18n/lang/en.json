@@ -19109,5 +19109,22 @@
   "Every run": "Every run",
   "{family} · {count, plural, one {# entry} other {# entries}} · {runs, plural, one {# completed run} other {# completed runs}}": "{family} · {count, plural, one {# entry} other {# entries}} · {runs, plural, one {# completed run} other {# completed runs}}",
   "Views of the comparison": "Views of the comparison",
-  "Run against run": "Run against run"
+  "Run against run": "Run against run",
+  "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted with it; missed deliveries are read back from the event log. The event carries IDs only: the run payload names the read tool.": "Triggers on this Wordsmith event through a webhook endpoint created with the trigger and deleted with it; missed deliveries are read back from the event log. The event carries IDs only: the run payload names the read tool.",
+  "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the trigger's audience to customer (webhooks:admin scope).": "Triggers when a Wordsmith audit alert rule fires. Needs an organisation endpoint: set the trigger's audience to customer (webhooks:admin scope).",
+  "Wordsmith alert triggered": "Wordsmith alert triggered",
+  "Wordsmith input request created": "Wordsmith input request created",
+  "Wordsmith input request resolved": "Wordsmith input request resolved",
+  "Wordsmith operation cancelled": "Wordsmith operation cancelled",
+  "Wordsmith operation failed": "Wordsmith operation failed",
+  "Wordsmith operation succeeded": "Wordsmith operation succeeded",
+  "Wordsmith report run completed": "Wordsmith report run completed",
+  "Wordsmith repository documents added": "Wordsmith repository documents added",
+  "Wordsmith repository indexing completed": "Wordsmith repository indexing completed",
+  "Wordsmith review completed": "Wordsmith review completed",
+  "Wordsmith task assigned": "Wordsmith task assigned",
+  "Wordsmith task comment added": "Wordsmith task comment added",
+  "Wordsmith task created": "Wordsmith task created",
+  "Wordsmith task status changed": "Wordsmith task status changed",
+  "Wordsmith webhook test event": "Wordsmith webhook test event"
 }

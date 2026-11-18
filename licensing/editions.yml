@@ -610,6 +610,7 @@ ee:
   # Added on main since the audit (2026-11-12)
   - backend/app/services/jira_events.py
   - backend/app/services/jira_webhooks.py
+  - backend/app/services/wordsmith_webhooks.py
   - backend/app/services/teams_late_reply.py
   - backend/app/services/organization_onboarding.py
   - frontend/src/components/chat-panel/**
