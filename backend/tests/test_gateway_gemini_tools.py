@@ -18,6 +18,7 @@ from app.llm.gateway_provider import FiligranGatewayProvider, XtmJwtAuth, _gatew
 from app.llm.identity import _llm_caller, set_llm_caller
 from app.llm.openai_thinking_blocks import EXTRA_KEY, ThinkingBlocks
 from app.tools.base import ToolCall, ToolDefinition
+from tests.gateway_helpers import gateway_refusal_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 GEMINI = "gemini-4-argon"
@@ -233,8 +234,7 @@ async def test_a_signature_from_another_model_is_not_sent():
 
 @pytest.mark.asyncio
 async def test_a_refused_signature_is_retried_once_without_it():
-    refusal = httpx.Response(502, json={"error": {"type": "provider_error", "message": "Corrupted thought signature.",
-                                                  "retryable": False}})
+    refusal = httpx.Response(502, json=gateway_refusal_body("Corrupted thought signature."))
     gateway = _Gateway(refusal, _ok())
     messages = _round_of_two_turns(None, _kept())
     await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
@@ -326,10 +326,8 @@ async def test_signatures_that_overflow_alone_are_dropped_for_the_request_only(m
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("thinking_off", [False, True])
-async def test_a_refusal_not_naming_the_signature_is_not_retried_without_it(thinking_off):
-    refusal = httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
-                                                  "retryable": False}})
-    gateway = _Gateway(refusal)
+async def test_a_refusal_naming_another_cause_is_not_retried_without_the_signature(thinking_off):
+    gateway = _Gateway(httpx.Response(502, json=gateway_refusal_body("bad tool schema")))
     messages = _round_of_two_turns(None, _kept())
     with pytest.raises(openai.APIStatusError):
         await gateway.provider().chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
@@ -339,11 +337,27 @@ async def test_a_refusal_not_naming_the_signature_is_not_retried_without_it(thin
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("thinking_off", [False, True])
+async def test_an_older_gateways_refusal_sheds_the_signatures_for_one_retry(thinking_off):
+    """Without the provider's message (before XTM-One-Platform/ai-gateway#348) the cause cannot be told."""
+    gateway = _Gateway(httpx.Response(502, json=gateway_refusal_body()), _ok(), _ok())
+    provider = gateway.provider()
+    messages = _round_of_two_turns(None, _kept())
+    await provider.chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+    await provider.chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False, True]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "refusal",
     [
         httpx.Response(413, json={"error": {"message": "request too large"}}),
         httpx.Response(400, json={"error": {"message": "prompt is too long: 9 tokens > 8 maximum"}}),
+        httpx.Response(502, json=gateway_refusal_body("request too large", status="413 Payload Too Large")),
+        httpx.Response(502, json=gateway_refusal_body(status="413 Payload Too Large")),
+        httpx.Response(502, json=gateway_refusal_body("prompt is too long: 9 tokens > 8 maximum")),
     ],
 )
 async def test_a_size_refusal_sheds_the_signatures_for_that_request_only(refusal):

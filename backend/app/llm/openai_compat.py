@@ -511,9 +511,12 @@ async def _create_completion(client, params: dict, model: str | None, replay: Bl
     except openai.APIStatusError as exc:
         if replay is None or not replay.sent or not _refuses_replay(exc):
             raise
-        message = _error_message(exc)
-        too_big = exc.status_code == 413 or says_prompt_too_long(message)
-        retry = replay.retry_without(message, params["messages"], too_big=too_big)
+        status, message = gateway_upstream_refusal(exc) or (exc.status_code, _error_message(exc))
+        too_big = status == 413 or (message is not None and says_prompt_too_long(message))
+        # Nobody said why (an older gateway, a bare 502): the signatures may be the cause.
+        untold = message is None or status == 502
+        reason = message or _error_message(exc)
+        retry = replay.retry_without(reason, params["messages"], shed_signatures=too_big or untold)
         if retry is None:
             raise
         params["messages"] = retry

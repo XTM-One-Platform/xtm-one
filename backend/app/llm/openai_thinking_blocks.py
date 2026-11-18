@@ -231,16 +231,16 @@ class BlocksReplay:
             kept.refused = False
         self.retired = []
 
-    def retry_without(self, reason: str, sent: list[dict], *, too_big: bool = False) -> list[dict] | None:
+    def retry_without(self, reason: str, sent: list[dict], *, shed_signatures: bool = False) -> list[dict] | None:
         """The request was refused: its blocks are never sent again, nor its
-        signatures when *reason* names them. A *too_big* request sheds them for
-        this retry only. ``None`` when that leaves the request as sent, so there
+        signatures when *reason* names them. With *shed_signatures* (too big, or
+        a refusal that does not say why) they are left out of this retry only. ``None`` when that leaves the request as sent, so there
         is nothing to retry.
 
         Returns *sent*, the messages as sent (cache breakpoints included), without them.
         """
         named = refuses_replayed_signatures(reason)
-        strip = named or too_big
+        strip = named or shed_signatures
         turns = [(kept, self._sends_blocks(kept), strip and self._sends_signatures(kept)) for kept in self.sent]
         turns = [turn for turn in turns if turn[1] or turn[2]]
         if not turns:
