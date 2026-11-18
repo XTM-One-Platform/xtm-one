@@ -283,6 +283,52 @@ def _unpublished_log_answer(job_id: int, repo: str, job: dict[str, Any], annotat
         for step in steps:
             state = step.get("conclusion") or step.get("status") or "?"
             lines.append(f"  {step.get('number', '?')}. {step.get('name') or 'unnamed'} [{state}]")
+    lines.extend(_annotation_lines(annotations))
+    return "\n".join(lines)
+
+
+#: Characters of a third-party check run's output summary and text kept in the answer.
+_MAX_CHECK_OUTPUT_CHARS = 4000
+
+
+def _app_check_run_answer(check_id: int, repo: str, check: dict[str, Any], annotations: list[Any] | None) -> str:
+    """The answer for a check run id that is not a GitHub Actions job.
+
+    A check run of another app (CircleCI, Codecov, SonarCloud, a security
+    scanner) has no Actions log: the jobs endpoint answers 404 for its id. What
+    it reported lives in its own output (title, summary, text), its annotations
+    and its details link, so the answer carries those instead of "Not Found".
+    """
+    raw_app = check.get("app")
+    app: dict[str, Any] = raw_app if isinstance(raw_app, dict) else {}
+    app_name = app.get("slug") or app.get("name") or "another app"
+    state = check.get("conclusion") or check.get("status") or "?"
+    lines = [
+        f"Check run {check_id} ({check.get('name') or 'unnamed'}) in {repo} is reported by {app_name}, not by a "
+        f"GitHub Actions job [{state}]: it has no Actions log. Its own output follows."
+    ]
+    if check.get("details_url"):
+        lines.append(f"Details: {check['details_url']}")
+    raw_output = check.get("output")
+    output: dict[str, Any] = raw_output if isinstance(raw_output, dict) else {}
+    reported = False
+    for key in ("title", "summary", "text"):
+        value = str(output.get(key) or "").strip()
+        if not value:
+            continue
+        reported = True
+        if len(value) > _MAX_CHECK_OUTPUT_CHARS:
+            value = value[:_MAX_CHECK_OUTPUT_CHARS] + f"\n... [cut at {_MAX_CHECK_OUTPUT_CHARS:,} characters]"
+        lines.append(f"{key.capitalize()}:\n{value}")
+    if not reported:
+        lines.append("Output: none (the app reported no title, summary or text).")
+    lines.extend(_annotation_lines(annotations))
+    return "\n".join(lines)
+
+
+def _annotation_lines(annotations: list[Any] | None) -> list[str]:
+    """The check-run annotations as answer lines; ``None`` when they could not be read."""
+    lines: list[str] = []
     if annotations is None:
         lines.append("Annotations: unreadable (the check-run annotations endpoint answered an error).")
     elif not annotations:
@@ -298,7 +344,7 @@ def _unpublished_log_answer(job_id: int, repo: str, job: dict[str, Any], annotat
             where = f" ({path}:{note.get('start_line')})" if path and path != ".github" else ""
             message = " ".join(str(note.get("message") or "").split())
             lines.append(f"  [{level}] {title}{message}{where}")
-    return "\n".join(lines)
+    return lines
 
 
 def _job_log_cache_key(headers: dict[str, str], owner: str, name: str, job_id: int, mode: str) -> str:
@@ -753,6 +799,31 @@ def register(
                         answer = _unpublished_log_answer(job_id, repo, job, notes if isinstance(notes, list) else None)
                         # No log to write into the workspace: an Error: prefix
                         # keeps the ingest from writing this summary as the file.
+                        return f"Error: {answer}" if workspace_ingest_requested() else answer
+                elif _log_is_missing(job_err):
+                    # Not an Actions job: a check run of another app has no
+                    # log, its own output says what it found.
+                    check_resp, check_err = await _common.safe_request(
+                        client,
+                        "get",
+                        f"{_BASE_URL}/repos/{owner}/{name}/check-runs/{job_id}",
+                        _PROVIDER,
+                        f"get check run {job_id} in {repo}",
+                        headers=headers,
+                    )
+                    check = None if check_err else check_resp.json()
+                    if isinstance(check, dict) and check.get("id"):
+                        notes_resp, notes_err = await _common.safe_request(
+                            client,
+                            "get",
+                            f"{_BASE_URL}/repos/{owner}/{name}/check-runs/{job_id}/annotations",
+                            _PROVIDER,
+                            f"get annotations of check run {job_id} in {repo}",
+                            headers=headers,
+                            params={"per_page": _MAX_ANNOTATIONS},
+                        )
+                        notes = None if notes_err else notes_resp.json()
+                        answer = _app_check_run_answer(job_id, repo, check, notes if isinstance(notes, list) else None)
                         return f"Error: {answer}" if workspace_ingest_requested() else answer
             if err:
                 return err
@@ -1268,7 +1339,8 @@ def register(
                 "characters. failures_only=true drops the last lines; tail=true returns the raw last 40,000 "
                 "characters whatever the log holds. to_workspace_path puts the whole log in the sandbox workspace "
                 "instead. A completed job whose log was never published (a lost runner) answers its steps and "
-                "check-run annotations. Use the job_id from list_github_workflow_jobs."
+                "check-run annotations; the id of another app's check run answers that run's output, annotations "
+                "and details link. Use the job_id from list_github_workflow_jobs."
             ),
             input_schema={
                 "type": "object",
