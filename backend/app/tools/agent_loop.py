@@ -3678,6 +3678,7 @@ class _LoopBreaker:
         "_page_refuse",
         "_page_warn",
         "_pages",
+        "_rechecks",
         "_similar",
         "_similar_refuse",
         "_similar_warn",
@@ -3698,7 +3699,12 @@ class _LoopBreaker:
         live_reads: frozenset[str] = frozenset(),
         declared_positions: dict[str, tuple[tuple[str, ...], int]] | None = None,
         cosmetic_arguments: Mapping[str, frozenset[str]] | None = None,
+        rechecks: frozenset[str] = frozenset(),
     ) -> None:
+        # Tools whose definition declares ``recheck_after_write``: a write by
+        # name that checks what the other writes change (a sandbox check run),
+        # so another tool's write starts its counts over like a read's (#175).
+        self._rechecks = rechecks
         # Tools whose definition declares ``live_state``: polled like
         # the exempt tools below, their unchanged argument is the point.
         self._live_tools = live_tools
@@ -4005,7 +4011,11 @@ class _LoopBreaker:
         exempt = set(writers)
 
         def _starts_over(tool_name: str) -> bool:
-            return tool_name not in exempt and not _is_named_write(tool_name)
+            if tool_name in exempt:
+                return False
+            # A recheck tool (``recheck_after_write``) checks the state the
+            # write changed: a new question, whatever its name reads as (#175).
+            return tool_name in self._rechecks or not _is_named_write(tool_name)
 
         for key in [k for k in self._identical if _starts_over(k[0])]:
             del self._identical[key]
@@ -10954,6 +10964,8 @@ async def run_agent_loop(
         # A part of one target per distinct position, as each tool declares it.
         declared_positions=_declared_positions(tools),
         cosmetic_arguments=_cosmetic_arguments,
+        # Writes by name that check what the other writes change (#175).
+        rechecks=frozenset(t.name for t in tools or () if t.recheck_after_write),
     )
     # (LLM-visible tool name, decision) per warning queued this batch.
     _loop_breaker_pending_nudges: list[tuple[str, _LoopDecision]] = []
