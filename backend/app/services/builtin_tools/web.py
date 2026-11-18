@@ -1111,7 +1111,10 @@ def build_browser_tool(
             elif action == "press":
                 if not key:
                     return "Error: 'key' is required for the press action."
-                return await browser_press(session_key, key)
+                try:
+                    return await browser_press(session_key, key)
+                except ValueError as exc:
+                    return _failed_action(f"Browser action 'press' refused: {exc}")
 
             elif action == "hover":
                 if not selector:
@@ -1334,7 +1337,7 @@ def build_browser_tool(
                 },
                 "key": {
                     "type": "string",
-                    "description": "Keyboard key to press, e.g. 'Enter', 'Tab' (required for 'press').",
+                    "description": "Key ('Enter'), or keys as 'Tab*26 Enter' (required for 'press').",
                 },
                 "expression": {
                     "type": "string",

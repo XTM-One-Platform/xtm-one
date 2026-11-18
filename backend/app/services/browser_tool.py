@@ -2683,17 +2683,84 @@ async def browser_type(session_key: str, selector: str, text: str) -> str:
         return result
 
 
+#: Keys one press call may send: a keyboard path of a few dozen stops, never an unbounded loop.
+MAX_PRESSED_KEYS = 100
+
+#: Names the focused element after the keys: its tag, role and accessible text, so a run sees where the
+#: keys landed without a second call.
+_FOCUSED_JS = """() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return '';
+  const role = el.getAttribute('role');
+  const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || '')
+    .replace(/\\s+/g, ' ').trim().slice(0, 60);
+  return el.tagName.toLowerCase() + (role ? `[role=${role}]` : '') + (label ? ` '${label}'` : '');
+}"""
+
+
+def parse_key_sequence(key: str) -> list[str]:
+    """The keys *key* names: one key ('Tab', 'Shift+Tab') or several separated by spaces, each with an
+    optional repeat count ('Tab*26 Enter').
+
+    Raises ``ValueError`` on an empty name, a repeat count that is not a positive integer, or more than
+    ``MAX_PRESSED_KEYS`` keys in all.
+    """
+    keys: list[str] = []
+    for token in key.split():
+        name, repeat = token, 1
+        if "*" in token[1:]:  # a bare '*' is the key itself
+            name, _, count = token.rpartition("*")
+            if not count.isdigit() or int(count) < 1:
+                raise ValueError(f"'{token}': a repeat count is a positive integer, as in Tab*3")
+            repeat = int(count)
+        if len(keys) + repeat > MAX_PRESSED_KEYS:
+            raise ValueError(f"at most {MAX_PRESSED_KEYS} keys per press call")
+        keys.extend([name] * repeat)
+    if not keys:
+        raise ValueError("no key named")
+    return keys
+
+
+async def _settle(page: Any) -> None:
+    """Let the page render what the last key changed (two frames, at most 200 ms)."""
+    try:
+        await page.evaluate(_SETTLE_JS)
+    except Exception as exc:
+        logger.debug("Page not settled after a key press: %s", format_exception_message(exc))
+
+
+async def _focused(page: Any) -> str:
+    """The focused element, described by ``_FOCUSED_JS``; empty when unreadable or the body holds it."""
+    try:
+        described = await page.evaluate(_FOCUSED_JS)
+    except Exception as exc:
+        logger.debug("Focused element not read: %s", format_exception_message(exc))
+        return ""
+    return described if isinstance(described, str) else ""
+
+
 async def browser_press(session_key: str, key: str) -> str:
-    """Press a keyboard key (e.g. 'Enter', 'Tab', 'Escape')."""
+    """Press a keyboard key, or a sequence of keys in one call ('Tab*26 Enter').
+
+    Each key is pressed once the page rendered what the previous one changed, so a keyboard path is
+    walked at the page's own pace inside a timed window (an undo notice) instead of one tool call per
+    key; the result names the element that holds the focus after the last key.
+    """
+    keys = parse_key_sequence(key)
     session = await _get_or_create_session(session_key)
     async with session.lock:
         session.last_used = time.time()
         session.navigated = None  # Enter may submit a form that routes the page
         await _reopen_resumed_page(session_key, session)
-        await session.page.keyboard.press(key)
+        page = session.page
+        for name in keys:
+            await page.keyboard.press(name)
+            await _settle(page)
         # A sign-in submitted with Enter writes its token now: kept like a click's.
         await _remember_state(session_key, session)
-        return f"Pressed key: {key}"
+        result = f"Pressed key: {key}" if len(keys) == 1 else f"Pressed {len(keys)} keys: {key}"
+        focused = await _focused(page)
+        return f"{result}. Focus: {focused}" if focused else result
 
 
 #: Finds a viewport point the element itself receives the pointer at, or ``null``. Playwright's
