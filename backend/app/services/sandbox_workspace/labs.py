@@ -427,9 +427,9 @@ async def copy_checkout(client: KubeClient, name: str, archive: bytes, *, sleep:
             result = await client.exec(name, WORKSPACE_CONTAINER, ["sh", "-c", unpack], stdin=archive, timeout=budget)
         except KubeError as exc:
             if attempt == _COPY_ATTEMPTS:
-                raise KubeError(f"{exc}, after {attempt} attempts", exc.status) from exc
+                raise KubeError(f"{exc}, after {attempt} attempts", exc.status, handshake=exc.handshake) from exc
             logger.warning("lab %s: checkout copy attempt %d failed (%s), retrying", name, attempt, exc)
-            if exc.status:
+            if exc.handshake:
                 await sleep(_COPY_REFUSED_PAUSE_SECONDS)
             continue
         if result.exit_code != 0:

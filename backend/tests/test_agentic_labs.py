@@ -267,7 +267,7 @@ class _Kube:
                 raise kube.KubeError(f"the command did not finish within {timeout:g} s")
             if self.copy_refusals:
                 self.copy_refusals -= 1
-                raise kube.KubeError("the API server refused the exec stream (HTTP 404)", 404)
+                raise kube.KubeError("the API server refused the exec stream (HTTP 404)", handshake=404)
         if stdin is not None and not self.never_ready:
             for status in self.pods[name]["status"]["containerStatuses"]:
                 status["ready"] = True
@@ -716,9 +716,9 @@ async def test_exec_turns_a_refused_or_lost_stream_into_a_kube_error(monkeypatch
     with pytest.raises(kube.KubeError) as raised:
         await client.exec("lab-1", "workspace", ["true"], stdin=b"x")
     if refusal == "status":
-        assert raised.value.status == 404 and "HTTP 404" in str(raised.value)
+        assert raised.value.status == 0 and raised.value.handshake == 404 and "HTTP 404" in str(raised.value)
     else:
-        assert raised.value.status == 0 and "exec stream was lost" in str(raised.value)
+        assert raised.value.status == 0 and raised.value.handshake == 0 and "exec stream was lost" in str(raised.value)
 
 
 @pytest.mark.usefixtures("lab_settings", "no_quota")
@@ -1244,6 +1244,24 @@ async def test_run_check_in_lab_execs_in_the_workspace_container(redis):
         workspace, outcome.service_id, checkout="co", label="x", argv=("false",), cwd="co", client=fake
     )
     assert not failed.refused and not failed.ready and "x: exit 3 in " in failed.text
+
+
+@pytest.mark.usefixtures("lab_settings", "no_quota")
+async def test_run_check_in_lab_keeps_the_lab_when_the_exec_upgrade_is_refused(redis):
+    """A 404 on the exec upgrade is not a pod gone: the lab record stays, only a REST 404 drops it."""
+    workspace = _workspace()
+    fake = _Kube()
+    outcome = await labs.start_lab(await _resolved(workspace), workspace=workspace, client=fake, sleep=_no_sleep)
+
+    async def refused(*_args, **_kwargs):
+        raise kube.KubeError("the API server refused the exec stream (HTTP 404)", handshake=404)
+
+    fake.exec = refused
+    ran = await labs.run_check_in_lab(
+        workspace, outcome.service_id, checkout="co", label="x", argv=("true",), cwd="co", client=fake
+    )
+    assert ran.refused and "gone" not in ran.text and "HTTP 404" in ran.text
+    assert await labs.find(workspace, "co:lab") is not None
 
 
 def test_bounded_keeps_the_end():

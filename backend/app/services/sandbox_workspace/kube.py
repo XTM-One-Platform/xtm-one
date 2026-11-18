@@ -43,11 +43,16 @@ _STDIN, _STDOUT, _STDERR, _STATUS = 0, 1, 2, 3
 
 
 class KubeError(RuntimeError):
-    """A call the API server refused or could not answer; ``status`` is its HTTP status (0 when none)."""
+    """A call the API server refused or could not answer; ``status`` is its HTTP status (0 when none).
 
-    def __init__(self, message: str, status: int = 0) -> None:
+    ``handshake`` is the HTTP status of an exec stream refused at its upgrade (0 when none): kept apart
+    from ``status`` so a transient 404 on the upgrade never reads as a REST 404 (the pod is gone).
+    """
+
+    def __init__(self, message: str, status: int = 0, *, handshake: int = 0) -> None:
         super().__init__(message)
         self.status = status
+        self.handshake = handshake
 
 
 @dataclass
@@ -276,8 +281,9 @@ class KubeClient:
             raise KubeError(f"the command did not finish within {timeout:g} s") from exc
         except InvalidStatus as exc:
             # The API server refused the upgrade: a 404 while it has not caught up with a new pod, a 5xx.
+            # The code goes in ``handshake``, never ``status``: callers read status 404 as a pod gone.
             code = int(getattr(exc.response, "status_code", 0) or 0)
-            raise KubeError(f"the API server refused the exec stream (HTTP {code})", code) from exc
+            raise KubeError(f"the API server refused the exec stream (HTTP {code})", handshake=code) from exc
         except (InvalidHandshake, ConnectionClosed, OSError) as exc:
             # A stream lost before the status frame: as retryable as a stall, never an unknown type.
             detail = str(exc).strip()
