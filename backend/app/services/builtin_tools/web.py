@@ -1084,11 +1084,11 @@ def build_browser_tool(
                     if not isinstance(opened, ProfileSessionInfo):
                         return opened
                     mode = "read-only" if opened.read_only else "full access"
-                    result = await browser_navigate(session_key, url or opened.start_url)
+                    result = await browser_navigate(session_key, url or opened.start_url, timeout)
                     return f"Signed in with the browser profile '{opened.name}' ({mode}).\n{result}"
                 if not url:
                     return "Error: 'url' is required for the navigate action."
-                return await browser_navigate(session_key, url)
+                return await browser_navigate(session_key, url, timeout)
 
             elif action == "get_content":
                 return await browser_get_content(session_key)
@@ -1346,8 +1346,8 @@ def build_browser_tool(
                 "timeout": {
                     "type": "number",
                     "description": (
-                        f"evaluate only: seconds the script may run before it is stopped (default "
-                        f"{EVALUATE_TIMEOUT_SECONDS:g}, at most {MAX_EVALUATE_TIMEOUT_SECONDS:g})."
+                        f"Seconds (default {EVALUATE_TIMEOUT_SECONDS:g}, at most {MAX_EVALUATE_TIMEOUT_SECONDS:g}): "
+                        "evaluate's script, navigate's page load."
                     ),
                 },
                 "width": {
