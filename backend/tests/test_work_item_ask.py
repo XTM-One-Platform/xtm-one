@@ -76,6 +76,12 @@ def test_an_invalid_ask_is_refused_with_its_reason(ask, reason):
         normalize_ask(ask)
 
 
+def test_the_tool_schema_says_the_recommendation_is_an_option_key():
+    from app.services.builtin_tools.work_items import _BLOCKED_WHY_SCHEMA
+
+    assert "recommendation: option key" in _BLOCKED_WHY_SCHEMA["ask"]["description"]
+
+
 def test_a_naive_deadline_is_read_as_utc():
     assert normalize_ask({"question": "q", "deadline": "2026-11-08T09:00:00"})["deadline"] == (
         "2026-11-08T09:00:00+00:00"
