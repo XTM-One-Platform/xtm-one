@@ -59,7 +59,7 @@ def _refused(message: str) -> ToolResult:
     return ToolResult(tool_call_id="", content=message, is_error=True, refused=True)
 
 
-def _refused_in_concierge_run(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+def _refused_in_health_run(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
     @functools.wraps(handler)
     async def _checked(*args: Any, **kwargs: Any) -> Any:
         if in_health_run():
@@ -82,7 +82,7 @@ def guard_agent_builder(definitions: list[ToolDefinition], executor: CallableToo
         if tool_call_effect(d.name, base_name=d.base_name, vouched=vouched_source(d.source)) == "write"
     ]
     for name in writes:
-        executor.wrap_handler(name, _refused_in_concierge_run)
+        executor.wrap_handler(name, _refused_in_health_run)
     if not in_health_run():
         return definitions
     withheld = set(writes)
@@ -127,4 +127,4 @@ def guard_flow_builder(db: Any, executor: CallableToolExecutor) -> None:
             executor.wrap_handler(name, _guard)
     for name in FLOW_SHARED_WRITES:
         if executor.handler(name) is not None:
-            executor.wrap_handler(name, _refused_in_concierge_run)
+            executor.wrap_handler(name, _refused_in_health_run)

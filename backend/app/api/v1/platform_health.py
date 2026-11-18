@@ -44,7 +44,7 @@ from app.models.flow import Flow
 from app.models.health import HealthBudgetMonth, HealthCycle
 from app.models.user import User
 from app.services.audit import log_audit
-from app.services.health import budget as concierge_budget
+from app.services.health import budget as health_budget
 from app.services.health.consent import Revocation, apply_revocation
 from app.services.health.naming import default_health_agent_name, load_health_agent_name
 from app.services.health.settings import (
@@ -271,7 +271,7 @@ class HealthNameResponse(BaseModel):
 
 
 @router.get("/name", response_model=HealthNameResponse)
-async def get_concierge_name(
+async def get_health_name(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HealthNameResponse:
@@ -283,7 +283,7 @@ async def get_concierge_name(
 
 
 @router.get("/settings", response_model=HealthSettings)
-async def get_concierge_settings(
+async def get_health_settings(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSettings:
@@ -291,7 +291,7 @@ async def get_concierge_settings(
 
 
 @router.put("/settings", response_model=HealthSettings)
-async def put_concierge_settings(
+async def put_health_settings(
     body: HealthSettings,
     request: Request,
     admin: User = Depends(require_admin),
@@ -308,11 +308,11 @@ async def get_budget(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BudgetResponse:
-    month = concierge_budget.current_month()
+    month = health_budget.current_month()
     caps = (await load_health_settings(db)).budget
     row = (await db.execute(select(HealthBudgetMonth).where(HealthBudgetMonth.month == month))).scalar_one_or_none()
-    left = await concierge_budget.remaining(db)
-    refusal = await concierge_budget.budget_refusal(db)
+    left = await health_budget.remaining(db)
+    refusal = await health_budget.budget_refusal(db)
     open_cycles = (
         await db.execute(select(func.count(HealthCycle.id)).where(HealthCycle.status == "open"))
     ).scalar_one()
@@ -329,7 +329,5 @@ async def get_budget(
         remaining_cost_usd=left.month_cost_usd,
         open_cycles=open_cycles,
         refusal=refusal,
-        refusal_message=concierge_budget.refusal_message(refusal, await load_health_agent_name(db))
-        if refusal
-        else None,
+        refusal_message=health_budget.refusal_message(refusal, await load_health_agent_name(db)) if refusal else None,
     )

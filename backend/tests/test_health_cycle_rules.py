@@ -325,8 +325,8 @@ def test_a_fleet_run_with_no_user_delegates_under_its_owner_of_record_and_its_ta
     assert "delegate_available=_delegation_user_id is not None" in engine
     assert "user_id=str(_delegation_user_id)" in engine
     created = inspect.getsource(sub_agent.create_sub_agent_task)
-    assert "_concierge_alone = health_acts_alone()" in created
-    assert "user_id=uuid.UUID(user_id) if user_id and not _concierge_alone else None" in created
+    assert "_health_alone = health_acts_alone()" in created
+    assert "user_id=uuid.UUID(user_id) if user_id and not _health_alone else None" in created
     executed = inspect.getsource(sub_agent._execute_sub_agent_task)
     assert "_turn_user_id = task_turn_user_id(task.metadata_json, user_id)" in executed
     # The target agent is reloaded with the turn's identity, never the owner of record.

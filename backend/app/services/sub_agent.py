@@ -496,7 +496,7 @@ async def _spawn_wait_budget_continuation(
     evaluation_chain: bool = False,
     evaluation_tool_approval: bool | None = None,
     cap_scope: str | None = None,
-    concierge_alone: bool = False,
+    health_alone: bool = False,
     call_output_schema: dict[str, Any] | None = None,
 ) -> bool:
     """Spawn one follow-up task after a wait-budget death with live children.
@@ -526,7 +526,7 @@ async def _spawn_wait_budget_continuation(
         ),
         "pending_task_ids": pending_ids,
         # The same work: still Platform Health's with no user, if it was.
-        **({HEALTH_ALONE_KEY: True} if concierge_alone else {}),
+        **({HEALTH_ALONE_KEY: True} if health_alone else {}),
         # And still answering in the shape its caller fixed.
         **({CALL_OUTPUT_SCHEMA_KEY: call_output_schema} if call_output_schema else {}),
     }
@@ -824,7 +824,7 @@ async def create_sub_agent_task(
     # Delegated by Platform Health acting alone (read on the server's own
     # context, never on an argument): the task's run and turn act with no
     # user, and ``user_id`` is the row's owner of record only.
-    _concierge_alone = health_acts_alone() or bool((extra_metadata or {}).get(HEALTH_ALONE_KEY))
+    _health_alone = health_acts_alone() or bool((extra_metadata or {}).get(HEALTH_ALONE_KEY))
 
     async with async_session() as own_db:
         # Atomic per-run cap: take a transaction-scoped advisory lock on the
@@ -888,7 +888,7 @@ async def create_sub_agent_task(
                     agent_id=uuid.UUID(target_agent_id),
                     # A Platform Health cycle's delegated work charges the same cycle (#8261).
                     trigger_context=await inherited_cycle_context(own_db, parent_run_id),
-                    user_id=uuid.UUID(user_id) if user_id and not _concierge_alone else None,
+                    user_id=uuid.UUID(user_id) if user_id and not _health_alone else None,
                     is_company_managed=child_company_managed,
                     parent_run_id=uuid.UUID(parent_run_id) if parent_run_id else None,
                     trigger_payload={
@@ -920,7 +920,7 @@ async def create_sub_agent_task(
             **({RUN_TRIGGER_TYPE_KEY: own_run_trigger} if own_run_trigger and assignment_run_id else {}),
             **({"cap_scope": cap_scope} if cap_scope else {}),
             **(extra_metadata or {}),
-            **({HEALTH_ALONE_KEY: True} if _concierge_alone else {}),
+            **({HEALTH_ALONE_KEY: True} if _health_alone else {}),
         }
 
         try:
@@ -4294,7 +4294,7 @@ async def _execute_sub_agent_task(
                     element_scope=element_scope,
                     evaluation_chain=bool(meta.get(EVALUATION_CHAIN_KEY)),
                     evaluation_tool_approval=_evaluation_tool_approval,
-                    concierge_alone=bool(meta.get(HEALTH_ALONE_KEY)),
+                    health_alone=bool(meta.get(HEALTH_ALONE_KEY)),
                     call_output_schema=_call_output_schema,
                 )
                 if not continued and _evaluation_chain:
