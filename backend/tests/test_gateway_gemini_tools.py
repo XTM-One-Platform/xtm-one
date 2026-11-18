@@ -9,6 +9,7 @@ import json
 import uuid
 
 import httpx
+import openai
 import pytest
 
 from app.core.xtm_auth import _normalize_url
@@ -17,6 +18,7 @@ from app.llm.gateway_provider import FiligranGatewayProvider, XtmJwtAuth, _gatew
 from app.llm.identity import _llm_caller, set_llm_caller
 from app.llm.openai_thinking_blocks import EXTRA_KEY, ThinkingBlocks
 from app.tools.base import ToolCall, ToolDefinition
+from tests.gateway_helpers import gateway_refusal_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 GEMINI = "gemini-4-argon"
@@ -232,15 +234,14 @@ async def test_a_signature_from_another_model_is_not_sent():
 
 @pytest.mark.asyncio
 async def test_a_refused_signature_is_retried_once_without_it():
-    refusal = httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
-                                                  "retryable": False}})
+    refusal = httpx.Response(502, json=gateway_refusal_body("Corrupted thought signature."))
     gateway = _Gateway(refusal, _ok())
     messages = _round_of_two_turns(None, _kept())
     await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
     first, retry = ([m for m in sent["messages"] if m["role"] == "assistant"][-1] for sent in gateway.sent)
     assert first["tool_calls"][0]["extra_content"] == SIGNATURE
     assert "extra_content" not in retry["tool_calls"][0]
-    assert messages[3]._provider_extra[EXTRA_KEY].refused
+    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
 
 
 @pytest.mark.asyncio
@@ -260,7 +261,7 @@ async def test_a_400_naming_the_signature_is_retried_once_without_it():
     await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
     retry = [m for m in gateway.sent[1]["messages"] if m["role"] == "assistant"][-1]
     assert "extra_content" not in retry["tool_calls"][0]
-    assert messages[3]._provider_extra[EXTRA_KEY].refused
+    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
 
 
 @pytest.mark.asyncio
@@ -285,3 +286,151 @@ async def test_an_alias_whose_listing_fails_keeps_its_schemas():
     provider = FiligranGatewayProvider(api_key=GATEWAY_URL, http_client=client)
     await provider.chat([ChatMessage(role="user", content="Plan it")], model="default", tools=[DUE])
     assert gateway.sent[0]["tools"][0]["function"]["parameters"] == DUE.input_schema
+
+
+# --- signatures outlive what is not about them (#15) -------------------------
+
+
+def _signature_sent(body: dict) -> bool:
+    return any("extra_content" in c for m in body["messages"] for c in m.get("tool_calls") or [])
+
+
+def _blocks_sent(body: dict) -> bool:
+    return any("thinking_blocks" in m for m in body["messages"])
+
+
+@pytest.mark.asyncio
+async def test_the_overflow_drop_sheds_the_blocks_first_and_keeps_signatures_that_fit(monkeypatch):
+    gateway = _Gateway(_ok())
+    provider = gateway.provider()
+    monkeypatch.setattr(provider, "_resolve_context_window", lambda model: 1000)
+    huge = {"type": "thinking", "thinking": "x", "signature": "s" * 8000}
+    kept = _kept()
+    kept[EXTRA_KEY].blocks = (huge,)
+    messages = _round_of_two_turns(None, kept)
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert not _blocks_sent(gateway.sent[0])
+    assert _signature_sent(gateway.sent[0])
+
+
+@pytest.mark.asyncio
+async def test_signatures_that_overflow_alone_are_dropped_for_the_request_only(monkeypatch):
+    gateway = _Gateway(_ok())
+    provider = gateway.provider()
+    monkeypatch.setattr(provider, "_resolve_context_window", lambda model: 1000)
+    messages = _round_of_two_turns(None, _kept(signature="s" * 8000))
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert not _signature_sent(gateway.sent[0])
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thinking_off", [False, True])
+async def test_a_refusal_naming_another_cause_is_not_retried_without_the_signature(thinking_off):
+    gateway = _Gateway(httpx.Response(502, json=gateway_refusal_body("bad tool schema")))
+    messages = _round_of_two_turns(None, _kept())
+    with pytest.raises(openai.APIStatusError):
+        await gateway.provider().chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
+    # Nothing else was replayed: a retry would have sent the same request again.
+    assert len(gateway.sent) == 1
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thinking_off", [False, True])
+async def test_an_older_gateways_refusal_sheds_the_signatures_for_one_retry(thinking_off):
+    """Without the provider's message (before XTM-One-Platform/ai-gateway#348) the cause cannot be told."""
+    gateway = _Gateway(httpx.Response(502, json=gateway_refusal_body()), _ok(), _ok())
+    provider = gateway.provider()
+    messages = _round_of_two_turns(None, _kept())
+    await provider.chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+    await provider.chat(messages, model=GEMINI, tools=[DUE], disable_thinking=thinking_off)
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False, True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        httpx.Response(413, json={"error": {"message": "request too large"}}),
+        httpx.Response(400, json={"error": {"message": "prompt is too long: 9 tokens > 8 maximum"}}),
+        httpx.Response(502, json=gateway_refusal_body("request too large", status="413 Payload Too Large")),
+        httpx.Response(502, json=gateway_refusal_body(status="413 Payload Too Large")),
+        httpx.Response(502, json=gateway_refusal_body("prompt is too long: 9 tokens > 8 maximum")),
+    ],
+)
+async def test_a_size_refusal_sheds_the_signatures_for_that_request_only(refusal):
+    gateway = _Gateway(refusal, _ok(), _ok())
+    messages = _round_of_two_turns(None, _kept())
+    provider = gateway.provider()
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False, True]
+
+
+@pytest.mark.asyncio
+async def test_a_signature_the_refusal_named_stays_retired_when_the_retry_is_refused_too():
+    named = httpx.Response(400, json={"error": {"message": "Corrupted thought signature."}})
+    other = httpx.Response(400, json={"error": {"message": "bad tool schema"}})
+    gateway = _Gateway(named, other)
+    messages = _round_of_two_turns(None, _kept())
+    with pytest.raises(openai.APIStatusError, match="bad tool schema"):
+        await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False]
+    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+
+def _signatures_by_turn(body: dict) -> list[str | None]:
+    return [
+        (call.get("extra_content") or {}).get("google", {}).get("thought_signature")
+        for m in body["messages"] if m["role"] == "assistant"
+        for call in m.get("tool_calls") or []
+    ]
+
+
+@pytest.mark.asyncio
+async def test_turns_sharing_call_0_keep_their_own_signatures_through_the_overflow_drop(monkeypatch):
+    """Both turns are ``call_0``: only their position tells them apart."""
+    huge = {"type": "thinking", "thinking": "x", "signature": "s" * 8000}
+    first, second = _kept(signature="Zmlyc3Q="), _kept(signature="c2Vjb25k")
+    first[EXTRA_KEY].blocks = (huge,)
+    gateway = _Gateway(_ok())
+    provider = gateway.provider()
+    monkeypatch.setattr(provider, "_resolve_context_window", lambda model: 1000)
+    await provider.chat(_round_of_two_turns(first, second), model=GEMINI, tools=[BARE, DUE])
+    assert not _blocks_sent(gateway.sent[0])
+    assert _signatures_by_turn(gateway.sent[0]) == ["Zmlyc3Q=", "c2Vjb25k"]
+
+
+@pytest.mark.asyncio
+async def test_turns_sharing_call_0_keep_their_own_signatures_after_a_size_refusal():
+    too_big = httpx.Response(413, json={"error": {"message": "request too large"}})
+    gateway = _Gateway(too_big, _ok(), _ok())
+    provider = gateway.provider()
+    messages = _round_of_two_turns(_kept(signature="Zmlyc3Q="), _kept(signature="c2Vjb25k"))
+    await provider.chat(messages, model=GEMINI, tools=[BARE, DUE])
+    await provider.chat(messages, model=GEMINI, tools=[BARE, DUE])
+    assert [_signatures_by_turn(body) for body in gateway.sent] == [
+        ["Zmlyc3Q=", "c2Vjb25k"], [None, None], ["Zmlyc3Q=", "c2Vjb25k"]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("message", "named"),
+    [
+        ("Corrupted thought signature.", True),
+        ("Invalid thought signatures in request", True),
+        ("thought_signatures are missing", True),
+        ("Function call is missing a thought_signature in functionCall parts", True),
+        ("Invalid thoughtSignature", True),
+        ("Invalid `signature` in `thinking` block", False),
+        ("bad tool schema", False),
+    ],
+)
+def test_a_refusal_names_a_thought_signature(message, named):
+    from app.llm.openai_thinking_blocks import refuses_replayed_signatures
+
+    assert refuses_replayed_signatures(message) is named

@@ -11,6 +11,7 @@ turns get theirs back; a refused replay is retried once without them.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -32,10 +33,12 @@ class ThinkingBlocks:
     provider: str
     model: str
     call_ids: tuple[str, ...]
-    #: Set once a request carrying them was refused: never sent again.
+    #: Set once a request carrying the blocks was refused: never sent again.
     refused: bool = False
     #: Gemini's ``(call id, thought_signature)`` pairs.
     signatures: tuple[tuple[str, str], ...] = ()
+    #: Set once a refusal named the signatures: never sent again.
+    signatures_refused: bool = False
 
 
 def blocks_of(obj: object) -> list[dict]:
@@ -50,6 +53,16 @@ def blocks_of(obj: object) -> list[dict]:
         if isinstance(block, Mapping) and block.get("type") in THINKING_BLOCK_TYPES:
             out.append(dict(block))
     return out
+
+
+# How Google names a thought signature in a refusal: ``thought signature(s)``,
+# ``thought_signature(s)``, ``thoughtSignature``.
+_SIGNATURE_REFUSAL = re.compile(r"\bthought[ _]?signatures?\b")
+
+
+def refuses_replayed_signatures(message: str) -> bool:
+    """Whether an API error *message* names a replayed Gemini thought signature."""
+    return _SIGNATURE_REFUSAL.search(message.lower()) is not None
 
 
 def thought_signature_of(tool_call: object) -> str | None:
@@ -71,13 +84,14 @@ def _with_signatures(calls: list[dict], signatures: Mapping[str, str]) -> list[d
     ]
 
 
-def _without_replay(message: dict) -> dict:
-    """*message* without the blocks and signatures a replay put on it."""
+def _without_replay(message: dict, *, signatures: bool) -> dict:
+    """*message* without the blocks a replay put on it, and its signatures too when *signatures*."""
     calls = message.get("tool_calls") or []
-    if "thinking_blocks" not in message and not any("extra_content" in call for call in calls):
+    signed = signatures and any("extra_content" in call for call in calls)
+    if "thinking_blocks" not in message and not signed:
         return message
     out = {k: v for k, v in message.items() if k != "thinking_blocks"}
-    if calls:
+    if signed:
         out["tool_calls"] = [{k: v for k, v in call.items() if k != "extra_content"} for call in calls]
     return out
 
@@ -110,6 +124,7 @@ class BlocksReplay:
     messages: list[dict]
     without: list[dict]
     sent: list[ThinkingBlocks] = field(default_factory=list)
+    #: The turns whose blocks the last retry retired.
     retired: list[ThinkingBlocks] = field(default_factory=list)
     #: False when thinking is off: the turns' blocks are not sent, only their signatures.
     with_blocks: bool = True
@@ -135,7 +150,6 @@ class BlocksReplay:
             kept = (msg._provider_extra or {}).get(EXTRA_KEY)
             usable = (
                 isinstance(kept, ThinkingBlocks)
-                and not kept.refused
                 and kept.provider == provider
                 and kept.model == model
                 and kept.call_ids == tuple(tc.id for tc in msg.tool_calls or [])
@@ -153,11 +167,14 @@ class BlocksReplay:
             kept = next(turns, None)
             if kept is None or kept.call_ids != tuple(tc.get("id") for tc in entry["tool_calls"]):
                 continue
-            if not kept.signatures and not blocks:
+            send_blocks = replay._sends_blocks(kept)
+            send_signatures = replay._sends_signatures(kept)
+            if not send_blocks and not send_signatures:
                 continue
-            entry = {**entry, "tool_calls": _with_signatures(entry["tool_calls"], dict(kept.signatures))}
-            if kept.blocks and blocks:
-                entry["thinking_blocks"] = [dict(b) for b in kept.blocks]
+            if send_signatures:
+                entry = {**entry, "tool_calls": _with_signatures(entry["tool_calls"], dict(kept.signatures))}
+            if send_blocks:
+                entry = {**entry, "thinking_blocks": [dict(b) for b in kept.blocks]}
             out[i] = entry
             replay.sent.append(kept)
         if replay.sent:
@@ -185,37 +202,65 @@ class BlocksReplay:
             return None
         return {EXTRA_KEY: ThinkingBlocks(tuple(blocks), self.provider, self.model, calls, signatures=kept_signatures)}
 
+    def _sends_blocks(self, kept: ThinkingBlocks) -> bool:
+        return self.with_blocks and bool(kept.blocks) and not kept.refused
+
+    def _sends_signatures(self, kept: ThinkingBlocks) -> bool:
+        return bool(kept.signatures) and not kept.signatures_refused
+
     def chars(self) -> int:
         return sum(
-            sum(block_chars(b) for b in kept.blocks if self.with_blocks) + sum(len(sig) for _, sig in kept.signatures)
+            sum(block_chars(b) for b in kept.blocks if self._sends_blocks(kept))
+            + sum(len(sig) for _, sig in kept.signatures if self._sends_signatures(kept))
             for kept in self.sent
         )
 
-    def drop(self) -> list[dict]:
-        """Send the messages as built: no block this time, decided again next request."""
-        self.sent = []
-        self.messages = self.without
-        return self.without
+    def drop(self, *, signatures: bool = False) -> bool:
+        """Send no block this time, and no signature either with *signatures*:
+        decided again next request. Whether anything was dropped."""
+        dropped = any(self._sends_blocks(k) or (signatures and self._sends_signatures(k)) for k in self.sent)
+        self.with_blocks = False
+        self.sent = [] if signatures else [kept for kept in self.sent if self._sends_signatures(kept)]
+        self.messages = [_without_replay(m, signatures=False) for m in self.messages] if self.sent else self.without
+        return dropped
 
     def restore(self) -> None:
-        """The request failed without the blocks too: they may be sent again."""
+        """The request failed without the blocks too: they may be sent again.
+        A signature a refusal named stays retired."""
         for kept in self.retired:
             kept.refused = False
         self.retired = []
 
-    def retry_without(self, reason: str, sent: list[dict]) -> list[dict]:
-        """The request was refused with the blocks (and signatures): they are never sent again.
+    def retry_without(self, reason: str, sent: list[dict], *, shed_signatures: bool = False) -> list[dict] | None:
+        """The request was refused: its blocks are never sent again, nor its
+        signatures when *reason* names them. With *shed_signatures* (too big, or
+        a refusal that does not say why) they are left out of this retry only. ``None`` when that leaves the request as sent, so there
+        is nothing to retry.
 
         Returns *sent*, the messages as sent (cache breakpoints included), without them.
         """
+        named = refuses_replayed_signatures(reason)
+        strip = named or shed_signatures
+        turns = [(kept, self._sends_blocks(kept), strip and self._sends_signatures(kept)) for kept in self.sent]
+        turns = [turn for turn in turns if turn[1] or turn[2]]
+        if not turns:
+            return None
         logger.warning(
-            "Thinking blocks or thought signatures refused (%d turn(s)); retrying once without them: %s",
-            len(self.sent),
+            "%s refused (%d turn(s)); retrying once without them: %s",
+            " and ".join(
+                what
+                for what, sent in (("Thinking blocks", 1), ("thought signatures", 2))
+                if any(t[sent] for t in turns)
+            ).capitalize(),
+            len(turns),
             reason[:300],
         )
-        for kept in self.sent:
-            kept.refused = True
-        self.retired = self.sent
-        self.sent = []
-        self.messages = [_without_replay(m) for m in sent]
+        for kept, blocks, signed in turns:
+            kept.refused = kept.refused or blocks
+            # Only a refusal naming them retires them, and that is final: restore() never brings them back.
+            kept.signatures_refused = kept.signatures_refused or (signed and named)
+        self.retired = [kept for kept, blocks, _ in turns if blocks]
+        self.with_blocks = False
+        self.sent = [] if strip else [kept for kept in self.sent if self._sends_signatures(kept)]
+        self.messages = [_without_replay(m, signatures=strip) for m in sent]
         return self.messages

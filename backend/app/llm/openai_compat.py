@@ -48,7 +48,12 @@ from app.llm.model_capabilities import (
     takes_no_effort,
 )
 from app.llm.model_limits import _normalize_family_key, reported_context_window
-from app.llm.openai_thinking_blocks import BlocksReplay, blocks_of, thought_signature_of
+from app.llm.openai_thinking_blocks import (
+    BlocksReplay,
+    blocks_of,
+    refuses_replayed_signatures,
+    thought_signature_of,
+)
 from app.llm.speech import OpenAISpeechMixin
 from app.llm.video import OpenAIVideosMixin
 from app.tools.base import ToolCall, ToolDefinition
@@ -488,12 +493,9 @@ def _refuses_replay(exc: Exception) -> bool:
         return status in (413, 502)
     if message is None:
         return True
-    return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)
-
-
-def _refuses_signature(message: str) -> bool:
-    """A 400 naming a Gemini thought signature (``thought_signature`` / "thought signature")."""
-    return re.search(r"\bthought[ _]signature", message, re.IGNORECASE) is not None
+    return (
+        refuses_replayed_blocks(message) or refuses_replayed_signatures(message) or says_prompt_too_long(message)
+    )
 
 
 async def _create_completion(client, params: dict, model: str | None, replay: BlocksReplay | None):
@@ -509,7 +511,15 @@ async def _create_completion(client, params: dict, model: str | None, replay: Bl
     except openai.APIStatusError as exc:
         if replay is None or not replay.sent or not _refuses_replay(exc):
             raise
-        params["messages"] = replay.retry_without(_error_message(exc), params["messages"])
+        status, message = gateway_upstream_refusal(exc) or (exc.status_code, _error_message(exc))
+        too_big = status == 413 or (message is not None and says_prompt_too_long(message))
+        # Nobody said why (an older gateway, a bare 502): the signatures may be the cause.
+        untold = message is None or status == 502
+        reason = message or _error_message(exc)
+        retry = replay.retry_without(reason, params["messages"], shed_signatures=too_big or untold)
+        if retry is None:
+            raise
+        params["messages"] = retry
     try:
         return await send()
     except openai.APIStatusError as exc:
@@ -955,14 +965,22 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         replay = BlocksReplay.build(
             oai_messages, messages, self.provider_name, model, blocks=not kwargs.get("disable_thinking")
         )
-        if replay.sent:
+        limit = self._resolve_context_window(model) * self._OVERFLOW_THRESHOLD
+        # The blocks go first; the signatures, small, only when they alone do not fit.
+        for signatures in (False, True):
+            if not replay.sent:
+                break
             estimated = self._estimate_resolved_tokens(
                 text_chars=text_chars + replay.chars(), image_count=image_count,
                 native_file_bytes=native_file_bytes, tool_chars=self._tool_definition_chars(tools),
             )[0]
-            if estimated > self._resolve_context_window(model) * self._OVERFLOW_THRESHOLD:
-                logger.info("Dropping replayed thinking blocks (model=%s): ~%d tokens with them", model, estimated)
-                replay.drop()
+            if estimated <= limit:
+                break
+            if replay.drop(signatures=signatures):
+                logger.info(
+                    "Dropping replayed %s (model=%s): ~%d tokens with them",
+                    "thought signatures" if signatures else "thinking blocks", model, estimated,
+                )
         return replay.messages, replay
 
     # ------------------------------------------------------------------
