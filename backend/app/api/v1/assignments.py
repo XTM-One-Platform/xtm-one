@@ -4486,6 +4486,10 @@ async def delete_assignment(
     from app.services.trigger_provisioning import deprovision_assignment
 
     await deprovision_assignment(db, assignment)
+    # A deleted seeded fleet health check stays deleted: its fleet opts out.
+    from app.services.fleets import record_health_check_deleted
+
+    await record_health_check_deleted(db, assignment, actor=str(user.id))
     await db.delete(assignment)
     # Same as the create: the list refetched right after the 204 must not
     # still hold the deleted row.

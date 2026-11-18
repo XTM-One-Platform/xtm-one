@@ -255,14 +255,15 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
         "autonomy_level",
         "prerequisite_confirmations",
         "health_dismissals",
+        "health_check",
         "hide_activity_from_non_admins",
     }
 )
 
 BUILTIN_FLEET_REFUSAL = (
     "Built-in fleets ship with the platform and are read-only: only archiving, the run "
-    "defaults (budget, iteration cap), the autonomy level, the prerequisite confirmations "
-    "and the dismissed health findings can be changed."
+    "defaults (budget, iteration cap), the autonomy level, the prerequisite confirmations, "
+    "the dismissed health findings and the weekly health check can be changed."
 )
 
 
@@ -920,12 +921,130 @@ def is_fleet_health_check(assignment: object) -> bool:
     )
 
 
+#: ``Fleet.health_check`` modes: the seeded check (``NULL``), none, or one of the fleet's own.
+HEALTH_CHECK_DEFAULT = "default"
+HEALTH_CHECK_OFF = "off"
+HEALTH_CHECK_OWN = "own"
+
+
+def fleet_health_check_mode(fleet: object) -> str:
+    """How *fleet* checks its health: ``default`` (the seeded check), ``off`` or ``own``."""
+    stored = getattr(fleet, "health_check", None)
+    mode = stored.get("mode") if isinstance(stored, dict) else None
+    return mode if mode in (HEALTH_CHECK_OFF, HEALTH_CHECK_OWN) else HEALTH_CHECK_DEFAULT
+
+
+def _health_check_record(mode: str, actor: str | None, assignment_id: uuid.UUID | None = None) -> dict[str, object]:
+    from datetime import UTC, datetime
+
+    record: dict[str, object] = {"mode": mode, "by": actor, "at": datetime.now(UTC).isoformat()}
+    if assignment_id is not None:
+        record["assignment_id"] = str(assignment_id)
+    return record
+
+
+async def _seeded_health_checks(db: AsyncSession, agent_id: uuid.UUID) -> list[object]:
+    from app.models.assignment import Assignment
+
+    rows = (
+        (
+            await db.execute(
+                select(Assignment).where(Assignment.agent_id == agent_id, Assignment.name == FLEET_HEALTH_CHECK_NAME)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [row for row in rows if is_fleet_health_check(row)]
+
+
+async def set_fleet_health_check(
+    db: AsyncSession, fleet: Fleet, choice: str, *, actor: str | None
+) -> dict[str, object] | None:
+    """Set how *fleet* checks its health; the stored record (``None`` = the default).
+
+    *choice* is ``default`` (the seeded check, created again when missing),
+    ``off`` (no check) or the id of an assignment of a home member, which then
+    is the fleet's health check. Leaving the default deletes the seeded check of
+    the orchestrator, its runs kept. Refused (400) on any other value.
+    """
+    from app.models.assignment import Assignment
+    from app.services.assignment_retire import detach_runs_clause
+
+    text = (choice or "").strip()
+    lowered = text.lower()
+    if lowered == HEALTH_CHECK_DEFAULT:
+        fleet.health_check = None
+        if fleet.orchestrator_agent_id is not None:
+            agent = await db.get(Agent, fleet.orchestrator_agent_id)
+            if agent is not None:
+                await ensure_fleet_health_check(db, fleet, agent)
+        return None
+    if lowered == HEALTH_CHECK_OFF:
+        record = _health_check_record(HEALTH_CHECK_OFF, actor)
+    else:
+        try:
+            assignment_id = uuid.UUID(text)
+        except ValueError:
+            raise FleetActionRefusedError(
+                400, "health_check is 'default', 'off' or the id of an assignment of a home member."
+            ) from None
+        member_ids = (
+            (
+                await db.execute(
+                    select(FleetMember.agent_id).where(
+                        FleetMember.fleet_id == fleet.id, FleetMember.role == FLEET_ROLE_MEMBER
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assignment = await db.get(Assignment, assignment_id)
+        if assignment is None or assignment.agent_id not in set(member_ids) or is_fleet_health_check(assignment):
+            raise FleetActionRefusedError(
+                400, "The health check must be an assignment of a home member of the fleet, not the seeded one."
+            )
+        record = _health_check_record(HEALTH_CHECK_OWN, actor, assignment_id)
+    fleet.health_check = record
+    if fleet.orchestrator_agent_id is not None:
+        for seeded in await _seeded_health_checks(db, fleet.orchestrator_agent_id):
+            await db.execute(detach_runs_clause(seeded.id))
+            await db.delete(seeded)
+    return record
+
+
+async def record_health_check_deleted(db: AsyncSession, assignment: object, *, actor: str | None) -> bool:
+    """Record the deletion of a seeded health check as its fleet's opt-out; whether it did.
+
+    Called by every person-driven deletion of an assignment (the API, the
+    ``delete_assignment`` tool, the retirement after a run), so the boot
+    backfill never re-creates a check a person deleted. A fleet already off or
+    on its own check keeps its record. The caller commits.
+    """
+    if not is_fleet_health_check(assignment):
+        return False
+    arguments = (getattr(assignment, "activation_check", None) or {}).get("arguments") or {}
+    try:
+        fleet_id = uuid.UUID(str(arguments.get("fleet_id")))
+    except ValueError:
+        return False
+    fleet = await db.get(Fleet, fleet_id)
+    if fleet is None or fleet_health_check_mode(fleet) != HEALTH_CHECK_DEFAULT:
+        return False
+    if fleet.orchestrator_agent_id != getattr(assignment, "agent_id", None):
+        return False
+    fleet.health_check = _health_check_record(HEALTH_CHECK_OFF, actor)
+    return True
+
+
 async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent) -> bool:
     """Give *fleet*'s orchestrator *agent* the weekly health check; whether it was created.
 
     Born switched off with the ``created_disabled`` stamp, so the fleet reads
     "Not set up" and Enable fleet lists it; an existing one keeps its switch
-    and only has its gate re-pointed at *fleet*. Idempotent.
+    and only has its gate re-pointed at *fleet*. A fleet that opted out
+    (:func:`fleet_health_check_mode` ``off`` or ``own``) gets none. Idempotent.
     """
     from app.models.assignment import Assignment
     from app.services.assignment_pause import CREATED_DISABLED_REASON, pause_assignment
@@ -944,6 +1063,8 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
         if existing.activation_check != gate:
             existing.activation_check = gate
             existing.prompt = fleet_health_check_prompt(fleet)
+        return False
+    if fleet_health_check_mode(fleet) != HEALTH_CHECK_DEFAULT:
         return False
     assignment = Assignment(
         agent_id=agent.id,
