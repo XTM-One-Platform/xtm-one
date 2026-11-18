@@ -71,7 +71,9 @@ ENTRY_TOKENS_ESTIMATE = 25_000
 HOLD_KIND = "evaluation"
 _ACTIVE_RUN_STATUSES = ("pending", "queued", "running")
 #: What a run stopped at a budget cap says; :func:`compare_concierge_runs` reads it back.
-BUDGET_STOP_ERROR = "Stopped: the Concierge's budget is reached."
+BUDGET_STOP_ERROR = "Stopped: Platform Health's budget is reached."
+#: The same stop as stored before the rename to Platform Health: such runs still read as a budget stop.
+_BUDGET_STOP_ERRORS = frozenset({BUDGET_STOP_ERROR, "Stopped: the Concierge's budget is reached."})
 
 
 class HealthEvaluationError(Exception):
@@ -197,7 +199,7 @@ async def _create_and_reserve(
     from app.services.evaluation_engine import stage_evaluation_execution
 
     evaluation = Evaluation(
-        name=(name or f"Concierge - {dataset.name}")[:200],
+        name=(name or f"Platform Health - {dataset.name}")[:200],
         family=DATASET_FAMILY,
         execution_mode="full_loop",
         use_agent_default_model=not model_ids,
@@ -297,7 +299,7 @@ async def compare_concierge_runs(
     for label, run in (("baseline", baseline), ("candidate", candidate)):
         if run.status != "completed":
             reason = f"the {label} run is {run.status}"
-            code = "budget" if run.status == "cancelled" and run.error == BUDGET_STOP_ERROR else "failed"
+            code = "budget" if run.status == "cancelled" and run.error in _BUDGET_STOP_ERRORS else "failed"
         elif (run.headline_details or {}).get("withdrawn_entries"):
             reason, code = f"the {label} run lost entries to a consent revocation", "consent"
     verdict = None if reason else next(m["verdict"] for m in metrics if m["metric"] == quality)

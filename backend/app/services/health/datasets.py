@@ -472,8 +472,8 @@ async def build_dataset_from_traces(
             raise DatasetBuildError("The dataset is not available.")
     else:
         dataset = Dataset(
-            name=f"Concierge - {name}"[:200],
-            description=f"Built by the Concierge from production on {datetime.now(UTC):%Y-%m-%d}.",
+            name=f"Platform Health - {name}"[:200],
+            description=f"Built by Platform Health from production on {datetime.now(UTC):%Y-%m-%d}.",
             family=DATASET_FAMILY,
             concierge_built=True,
         )

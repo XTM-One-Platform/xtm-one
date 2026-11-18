@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 #: What a sandbox run is answered with when its source has no one to run as.
 NO_RUNNER = "This sandbox copy has no user to run as: its source has no owner and no administrator asked for the run."
 #: What a run of a copy whose subject is out of reach is answered with (the reason is logged).
-SUBJECT_REFUSED = "This sandbox copy cannot run: its source is no longer within the Concierge's reach."
+SUBJECT_REFUSED = "This sandbox copy cannot run: its source is no longer within Platform Health's reach."
 
 
 class SandboxRunError(Exception):

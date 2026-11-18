@@ -279,7 +279,7 @@ def build_improvement_tools(
         handler = proposals.handler_for(proposal_type) if proposal_type in PROPOSAL_TYPES else None
         reason = None
         if author is None:
-            reason = "the caller is not the Concierge's Experimenter"
+            reason = "the caller is not Platform Health's Experimenter"
         elif handler is None or tid is None:
             reason = "unknown proposal type or target id"
         elif not await target_in_scope(db, handler.target_type, tid):

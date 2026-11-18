@@ -228,7 +228,7 @@ async def materialize_flow(db: AsyncSession, shadow: FlowShadow, assignment: Ass
         id=uuid.uuid4(),
         user_id=assignment_acting_user_id(assignment, agent),
         name=f"{assignment.name} (flow)"[:200],
-        description=f"Replaces the assignment '{assignment.name}' after an approved Concierge proposal."[:2000],
+        description=f"Replaces the assignment '{assignment.name}' after an approved Platform Health proposal."[:2000],
         status=FLOW_STATUS_DRAFT,
         graph=dict(copy.graph or {}),
         version_number=1,
@@ -244,7 +244,7 @@ async def materialize_flow(db: AsyncSession, shadow: FlowShadow, assignment: Ass
         flow_id=flow.id,
         graph=flow.graph,
         author_id=await _anchor_user_id(db, shadow.started_by_user_id),
-        commit_message=f"Created from Concierge proposal {shadow.proposal_id}"[:200],
+        commit_message=f"Created from Platform Health proposal {shadow.proposal_id}"[:200],
     )
     return flow
 
@@ -262,8 +262,8 @@ async def switch_over(db: AsyncSession, shadow: FlowShadow, assignment: Assignme
     pause_assignment(
         assignment,
         reason=SWITCH_OVER_PAUSE_REASON,
-        details=f"Replaced by the flow '{flow.name}' after an approved Concierge proposal.",
-        actor_label="Concierge switch-over",
+        details=f"Replaced by the flow '{flow.name}' after an approved Platform Health proposal.",
+        actor_label="Platform Health switch-over",
         now=now,
     )
     shadow.status = SHADOW_STATUS_WATCHING

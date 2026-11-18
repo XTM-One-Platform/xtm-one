@@ -264,7 +264,7 @@ class FlowGraphHandler:
             flow_id=target.id,
             graph=graph,
             author_id=approver.id,
-            commit_message=f"Concierge proposal {proposal.id} ({self.proposal_type}), approved",
+            commit_message=f"Platform Health proposal {proposal.id} ({self.proposal_type}), approved",
         )
         await log_audit(
             db,
@@ -295,7 +295,7 @@ class FlowGraphHandler:
             flow_id=target.id,
             graph=base,
             author_id=None,
-            commit_message=f"Automatic rollback of Concierge proposal {proposal.id}"[:200],
+            commit_message=f"Automatic rollback of Platform Health proposal {proposal.id}"[:200],
         )
         await _system_audit(
             db,
@@ -379,7 +379,11 @@ class NewFlowHandler:
         db.add(flow)
         await db.flush()
         await create_flow_version(
-            db, flow_id=flow.id, graph=graph, author_id=approver.id, commit_message=f"Concierge proposal {proposal.id}"
+            db,
+            flow_id=flow.id,
+            graph=graph,
+            author_id=approver.id,
+            commit_message=f"Platform Health proposal {proposal.id}",
         )
         proposal.apply_state = {"flow_id": str(flow.id)}
         await log_audit(
@@ -389,7 +393,7 @@ class NewFlowHandler:
             entity_type="flow",
             entity_id=flow.id,
             entity_name=flow.name,
-            summary=f"Created the draft flow '{flow.name}' from an approved Concierge proposal",
+            summary=f"Created the draft flow '{flow.name}' from an approved Platform Health proposal",
             details={"improvement_proposal_id": str(proposal.id), "agent_id": str(target.id)},
         )
         return Applied(version_number=1, status="watching", candidate_run_id=None)

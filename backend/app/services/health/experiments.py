@@ -364,7 +364,7 @@ async def run(
         evaluation_id, baseline_runs, variant_runs = await deps.launch(
             db,
             dataset_id=built.dataset_id,
-            name=f"Concierge experiment {experiment.id}",
+            name=f"Platform Health experiment {experiment.id}",
             baseline=baseline,
             variant=variant,
             cycle_id=cycle_id,
