@@ -197,6 +197,30 @@ def _contract_confidence_default(contract: dict) -> int | None:
     return _coerce_confidence_level(contract.get("max_confidence_level"))
 
 
+def _contract_config_value(value: object) -> str:
+    """Serialise one ``manager_contract_configuration`` value for OpenCTI.
+
+    The managed connector input carries every value as a string, and OpenCTI
+    validates it against the connector contract's type: a boolean field takes
+    ``"true"`` or ``"false"`` only, so Python's ``str(True)`` (``"True"``) is
+    refused ("must be a boolean value (true or false)"). Booleans are written
+    in their JSON form, lists and objects as JSON (never a Python repr), None
+    as an empty string, and anything else with ``str()``.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, separators=(",", ":"))
+    return str(value)
+
+
+def _contract_configuration(config: dict[str, object]) -> list[dict[str, str]]:
+    """Build the ``manager_contract_configuration`` list of key/value pairs."""
+    return [{"key": str(k), "value": _contract_config_value(v)} for k, v in config.items()]
+
+
 def _summarize_contract(contract: dict) -> list[str]:
     """Render a one-connector summary (no config schema) for catalog listings."""
     title = contract.get("title") or contract.get("slug") or "?"
@@ -637,10 +661,7 @@ def register(
                     "query_opencti_catalog action='get' (the connector's "
                     "catalog_id) and pass it as catalog_id."
                 )
-            contract_config = [
-                {"key": str(k), "value": "" if v is None else str(v)}
-                for k, v in parsed_config.items()
-            ]
+            contract_config = _contract_configuration(parsed_config)
             inp: dict = {
                 "name": name.strip(),
                 "catalog_id": resolved_catalog_id,
@@ -706,10 +727,7 @@ def register(
                     "name is required for action 'update_config' (the connector's "
                     "current name/title — get it from action='get')."
                 )
-            contract_config = [
-                {"key": str(k), "value": "" if v is None else str(v)}
-                for k, v in parsed_config.items()
-            ]
+            contract_config = _contract_configuration(parsed_config)
             inp = {
                 "id": connector_id,
                 "name": name.strip(),

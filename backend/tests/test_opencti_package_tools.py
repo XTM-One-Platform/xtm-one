@@ -2128,6 +2128,64 @@ async def test_connector_deploy_and_edit_declare_non_null_input(monkeypatch):
     assert "$input: EditManagedConnectorInput!" in edit_query, edit_query
 
 
+async def test_connector_config_sends_json_booleans(monkeypatch):
+    # OpenCTI validates manager_contract_configuration values against the
+    # contract: a boolean field takes "true"/"false" only and refuses Python's
+    # str(True) == "True" ("must be a boolean value (true or false)").
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+    config = (
+        '{"MATCH_SINGLE": true, "VERBOSE": false, "PERIOD": 60, '
+        '"TLP": "White", "EMPTY": null, "TYPES": ["report", "note"]}'
+    )
+    expected = {
+        "MATCH_SINGLE": "true",
+        "VERBOSE": "false",
+        "PERIOD": "60",
+        "TLP": "White",
+        "EMPTY": "",
+        "TYPES": '["report","note"]',
+    }
+
+    edit_fake = _RecordingGraphQL({"managedConnectorEdit": {"id": "c1", "name": "Fetcher"}})
+    monkeypatch.setattr(connectors, "_graphql", edit_fake)
+    edit_result = await _run(
+        executor,
+        "manage_opencti_connector",
+        {
+            "action": "update_config",
+            "connector_id": "c1",
+            "name": "Fetcher",
+            "config": config,
+            "user_id": "svc",
+        },
+    )
+    assert not edit_result.is_error, edit_result.content
+    inp = edit_fake.calls[-1][1]["input"]
+    sent = {c["key"]: c["value"] for c in inp["manager_contract_configuration"]}
+    assert sent == expected
+
+    deploy_fake = _RecordingGraphQL({"managedConnectorAdd": {"id": "c2", "name": "Fetcher"}})
+    monkeypatch.setattr(connectors, "_graphql", deploy_fake)
+    deploy_result = await _run(
+        executor,
+        "manage_opencti_connector",
+        {
+            "action": "deploy",
+            "name": "Fetcher",
+            "manager_contract_image": "img:1",
+            "catalog_id": "cat1",
+            "config": config,
+            "user_id": "svc",
+        },
+    )
+    assert not deploy_result.is_error, deploy_result.content
+    inp = deploy_fake.calls[-1][1]["input"]
+    sent = {c["key"]: c["value"] for c in inp["manager_contract_configuration"]}
+    assert sent == expected
+
+
 async def test_connector_deploy_requires_image_and_user():
     executor, _ = _build()
     missing_image = await _run(
