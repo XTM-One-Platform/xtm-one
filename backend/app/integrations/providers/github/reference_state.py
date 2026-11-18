@@ -24,6 +24,7 @@ whose CI delivery never came.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
 from app.core.egress import egress_client
@@ -179,16 +180,39 @@ async def read_successful_workflow_run(
 _PASSING = frozenset({"success", "neutral", "skipped"})
 
 
-def head_ci_verdict(data: Any, required: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
+def head_ci_verdict(
+    data: Any, required: frozenset[str] = frozenset(), now: datetime | None = None
+) -> tuple[str | None, str | None]:
     """``(conclusion, url)`` of GitHub's check-runs answer *data* for one head commit. Pure.
 
     :func:`head_ci_decision` with the deciding check run left out.
     """
-    conclusion, url, _ = head_ci_decision(data, required)
+    conclusion, url, _ = head_ci_decision(data, required, now)
     return conclusion, url
 
 
-def head_ci_decision(data: Any, required: frozenset[str] = frozenset()) -> tuple[str | None, str | None, dict | None]:
+def held_by_stale_only(data: Any, now: datetime | None = None) -> bool:
+    """Whether a head's check-runs answer *data* has nothing failed and only stale pending checks. Pure.
+
+    Every check not completed has been pending for over
+    :data:`~.checks.STALE_OPTIONAL_SECONDS`: the base's required checks are read
+    to tell whether they all passed (:func:`head_ci_decision`), since a check the
+    base does not require may be all that holds the head.
+    """
+    from .checks import stale_checks
+
+    runs = data.get("check_runs") if isinstance(data, dict) else None
+    latest = latest_runs_by_name(runs if isinstance(runs, list) else [])
+    pending = [r for r in latest if r.get("status") != "completed"]
+    if not pending:
+        return False
+    failed = [r for r in latest if r.get("status") == "completed" and (r.get("conclusion") or "") not in _PASSING]
+    return not failed and len(stale_checks(pending, frozenset(), now)) == len(pending)
+
+
+def head_ci_decision(
+    data: Any, required: frozenset[str] = frozenset(), now: datetime | None = None
+) -> tuple[str | None, str | None, dict[str, Any] | None]:
     """``(conclusion, url, decider)`` of GitHub's check-runs answer *data* for one head commit. Pure.
 
     *decider* is ``{"check_id", "completed_at"}`` of the last check run to
@@ -208,14 +232,17 @@ def head_ci_decision(data: Any, required: frozenset[str] = frozenset()) -> tuple
     not decided (a ``pull_request_target`` run completes before the pull
     request's own CI is created). Their ``success`` also waits for every other
     check of the head to complete: a base that requires one fast check (a CLA)
-    would otherwise read green while the CI still runs (#12093). Without any,
-    every check decides.
+    would otherwise read green while the CI still runs (#12093), except a check
+    the base does not require that has been pending for over
+    :data:`~.checks.STALE_OPTIONAL_SECONDS` at *now* (a third-party app left in
+    progress, xtm-one #195): it no longer holds the head. Without any, every
+    check decides.
     A Codecov red read while another check of the head runs
     (:func:`~.checks.coverage_pending`) is provisional and never fails the head
     by itself: the coverage uploads may still turn it green (#12050).
     The url is the failing run's, else the last completed one's.
     """
-    from .checks import coverage_pending, is_coverage_grade
+    from .checks import coverage_pending, is_coverage_grade, stale_checks
 
     runs = data.get("check_runs") if isinstance(data, dict) else None
     latest = {r["name"]: r for r in latest_runs_by_name(runs if isinstance(runs, list) else [])}
@@ -226,7 +253,8 @@ def head_ci_decision(data: Any, required: frozenset[str] = frozenset()) -> tuple
     partial_page = isinstance(total, int) and total > len(runs or [])
     if required:
         decision = _required_decision(latest, required, provisional)
-        if decision[0] == "success" and (partial_page or any(r.get("status") != "completed" for r in latest.values())):
+        running = [r for r in latest.values() if r.get("status") != "completed"]
+        if decision[0] == "success" and (partial_page or len(stale_checks(running, required, now)) < len(running)):
             # The required checks passed but the head's CI still runs: not decided yet.
             return None, None, None
         return decision
@@ -299,6 +327,7 @@ def status_runs(data: Any) -> list[dict[str, Any]]:
                 "conclusion": None if state == "pending" else ("success" if state == "success" else "failure"),
                 "html_url": status.get("target_url"),
                 "completed_at": status.get("updated_at"),
+                "started_at": status.get("updated_at"),
             }
         )
     return out
@@ -486,7 +515,11 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
     required: frozenset[str] = frozenset()
     base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
     base_ref = _text(base.get("ref"))
-    if base_ref and _BRANCH_RE.match(base_ref) and head_ci_verdict(checks)[0] in ("success", "failure"):
+    if (
+        base_ref
+        and _BRANCH_RE.match(base_ref)
+        and (head_ci_verdict(checks)[0] in ("success", "failure") or held_by_stale_only(checks))
+    ):
         required = await _required_checks(owner, name, base_ref, token)
         if required and isinstance(checks, dict) and isinstance(checks.get("check_runs"), list):
             statuses = await _commit_statuses(owner, name, sha, token)

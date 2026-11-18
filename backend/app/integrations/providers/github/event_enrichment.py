@@ -86,6 +86,15 @@ check stands: a red with a later run of the same check on the head (a re-run,
 a labeler re-run by the ``labeled`` event) is superseded and never counts
 (#11807).
 
+A head with nothing failed whose only pending checks have not moved for over
+``checks.STALE_OPTIONAL_SECONDS`` (30 minutes) has its base's required contexts
+and commit statuses read (two more reads, on such a head only): when every
+required context passed and none of those checks is required, ``all_green``
+reads true with ``verdict`` ``green_required_stale_optional`` and
+``stale_optional[]`` (``name``, ``since``, ``age_seconds``), ``all_completed``
+stays false and the head is settled (xtm-one #195): a third-party check left in
+progress no longer holds a head whose branch rules are met.
+
 ``all_green`` needs every check of the head, so a non-required third-party
 check that never completes (a coverage upload left in progress) keeps a head
 whose branch rules are met from ever waking a filter (#11419). A filter key
@@ -577,7 +586,45 @@ def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]
         "all_completed": False,
         "all_green": False,
         "names": [*checks["names"], *extra],
+        **({"verdict": "pending"} if "verdict" in checks else {}),
     }
+
+
+def held_by_stale_only(check_runs: list[Any], checks: dict[str, Any], now: datetime | None = None) -> bool:
+    """Whether a head reads nothing failed and only checks pending for over the stale age. Pure.
+
+    Only then are the base's required checks read to tell whether a check it
+    does not require is all that holds the head (``checks.STALE_OPTIONAL_SECONDS``).
+    """
+    if checks.get("all_green") or checks.get("failed") or not checks.get("pending"):
+        return False
+    runs = gh_checks.latest_check_runs([run for run in check_runs if isinstance(run, dict)])
+    pending = [r for r in runs if r.get("status") != "completed"]
+    return len(gh_checks.stale_checks(pending, frozenset(), now)) == len(pending)
+
+
+def with_stale_optional(
+    checks: dict[str, Any],
+    check_runs: list[Any],
+    statuses: list[Any],
+    required: frozenset[str],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """*checks* read green when every *required* context passed and only stale optional checks are pending.
+
+    ``all_green`` then reads true, ``verdict`` :data:`~.checks.GREEN_STALE_OPTIONAL`
+    and ``stale_optional[]`` names each left-out check (``name``, ``since``,
+    ``age_seconds``); ``all_completed`` stays false. Unchanged otherwise. Pure.
+    """
+    runs = [run for run in check_runs if isinstance(run, dict)]
+    states = [status for status in statuses if isinstance(status, dict)]
+    stale = gh_checks.stale_optional(gh_checks.classify_ci(runs, states), required, now)
+    latest = gh_checks.latest_check_runs(runs)
+    pending = [r for r in latest if r.get("status") != "completed"]
+    held = {s["name"] for s in stale}
+    if not stale or any(r.get("name") not in held for r in pending):
+        return checks
+    return {**checks, "all_green": True, "verdict": gh_checks.GREEN_STALE_OPTIONAL, "stale_optional": stale}
 
 
 def required_facts(
@@ -724,6 +771,14 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                 _delivered_completion_time(event_key, payload),
                 contexts or None,
             )
+            if branch is not None and held_by_stale_only(check_runs, checks):
+                # Nothing failed and only long-pending checks are left: when the base's
+                # required checks all passed, a check it does not require no longer
+                # holds the head (xtm-one #195). Two more reads, on such a head only.
+                if contexts is None:
+                    contexts = await gh_checks.read_required_contexts(client, _headers(token), owner, name, branch)
+                if contexts:
+                    checks = with_stale_optional(checks, check_runs, await _statuses(client, base, token), contexts)
             if checks["all_green"]:
                 running, events = await _running_workflow_runs(client, repo_base, sha, token)
                 if workflows_not_created(check_runs, events, _opened_at(pulls, sha)):
@@ -772,11 +827,14 @@ def head_subject(event_key: str, payload: dict) -> str | None:
 
 
 def head_settled(facts: dict) -> bool:
-    """Whether every check of the head completed (no check state left to change); true without checks read."""
+    """Whether every check of the head completed (no check state left to change); true without checks read.
+
+    A head green with only stale optional checks pending (``stale_optional``) is settled too.
+    """
     checks = _dig(facts, ("head", "checks"))
     if not isinstance(checks, dict):
         return True
-    return bool(checks.get("all_completed"))
+    return bool(checks.get("all_completed") or (checks.get("all_green") and checks.get("stale_optional")))
 
 
 def head_best_case(facts: dict) -> dict:
