@@ -58,8 +58,10 @@ from app.llm.music import (
     status_error,
 )
 from app.llm.openai_compat import (
+    Endpoint,
     OpenAICompatibleProvider,
     declared_model_types,
+    endpoint_of,
     gateway_upstream_refusal,
     marked_not_retryable,
 )
@@ -272,6 +274,10 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._owner_misses: dict[str, float] = {}
         # (model, dimension) pairs the upstream refused: embedded at native size from then on.
         self._refused_dimensions: set[tuple[str, int]] = set()
+
+    def refusal_endpoint(self) -> Endpoint | None:
+        # The client's api_key is a placeholder: the row's token and target route it.
+        return endpoint_of(self.client, f"{self._token or ''}||{self._target or ''}")
 
     def _reasoning_effort(self, model: str, kwargs: dict) -> str | None:
         # ``disable_thinking`` has no OpenAI-format field: Claude 4.7+ thinks by

@@ -38,6 +38,7 @@ function answer(key: string, model: string, entity: number, relationship: number
     evaluation_name: "STIX extraction",
     model_id: model,
     subject_id: null,
+    subject_name: null,
     created_at: null,
     judge_score: 70,
     anomaly: null,

@@ -458,7 +458,7 @@ export function useRunDiff(runA?: string, runB?: string) {
   });
 }
 
-/** Evaluations of one family compared on their shared entries (#12282). `runIds`
+/** Evaluations of one family compared on their shared entries, or one evaluation's runs (#12282). `runIds`
  *  picks the runs compared; an evaluation none of whose runs is named keeps its newest. */
 export function useEvaluationComparison(evaluationIds: string[], runIds: string[] = []) {
   const ids = evaluationIds.join(",");
@@ -467,7 +467,7 @@ export function useEvaluationComparison(evaluationIds: string[], runIds: string[
     queryKey: ["evaluation-comparison", ids, runs],
     queryFn: () =>
       api.get(`/evaluations/compare?ids=${encodeURIComponent(ids)}${runs ? `&run_ids=${encodeURIComponent(runs)}` : ""}`),
-    enabled: evaluationIds.length >= 2,
+    enabled: evaluationIds.length >= 1,
     // A refusal (another family, an unknown id) is the page's own message, not the boundary's.
     retry: false,
     throwOnError: false,

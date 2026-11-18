@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEntityListScope } from "@/hooks/useEntityListScope";
-import { API_BASE, api, getToken } from "@/lib/api";
+import { API_BASE, api, getToken, notFoundIsOrdinary } from "@/lib/api";
 import { REFETCH_INTERVAL_FAST, REFETCH_INTERVAL_SLOW, REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import { entityListKey, entityListPath } from "@/lib/entity-list-scope";
 import { dropFromFlowNodeCatalog, syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
@@ -88,11 +88,17 @@ export function useCreateKnowledgeBase() {
   });
 }
 
+/**
+ * One knowledge base. A 404 is an ordinary answer (deleted, not shared with
+ * the caller, or a workset's internal storage, whose `detail` names the
+ * workset): the page shows its not-found state, never the error boundary.
+ */
 export function useKnowledgeBase(kbId: string) {
   return useQuery<KnowledgeBase>({
     queryKey: ["knowledge-base", kbId],
     queryFn: () => api.get(`/knowledge-bases/${kbId}`),
     enabled: !!kbId,
+    ...notFoundIsOrdinary,
     refetchInterval: (query) =>
       (query.state.data?.pending_count ?? 0) > 0 ? REFETCH_INTERVAL_STANDARD : false,
   });

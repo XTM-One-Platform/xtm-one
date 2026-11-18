@@ -1695,6 +1695,10 @@ def build_sandbox_workspace_tools(
             )
             + "".join(f", {d}/ added (a package of the checkout links it: workspace:)" for d in tree.workspace_links)
             + "".join(
+                f", {d}/ added (the Relay src a relay.config of the checkout names: the compiler reads every fragment)"
+                for d in tree.relay_sources
+            )
+            + "".join(
                 f", {d}/ added (the repository's release notes: a note written there is committed with the change)"
                 for d in tree.release_notes
             )
@@ -3190,6 +3194,8 @@ def build_sandbox_workspace_tools(
         source=source,
         # A call with a run_id and no stop only waits for a command already running: a read a resumed turn may repeat.
         read_only_call=_run_command_waits_only,
+        # A check run checks the tree the edit tools change: run, edit, run is never an identical repeat (#175).
+        recheck_after_write=True,
         # A repeat of a call whose check ended before the worker restart is answered with its saved result.
         landed_probe=_run_command_landed,
     )

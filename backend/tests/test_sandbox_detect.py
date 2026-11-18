@@ -109,6 +109,125 @@ def test_workflow_run_lines_become_checks_in_their_working_directory():
     assert [(i.name, i.image) for i in found.infra] == [("db", "postgres:16"), ("cache", "redis:7")]
 
 
+CIRCLECI = r"""
+version: 2.1
+jobs:
+  ensure_formatting:
+    docker:
+      - image: cimg/python:3.13
+      - image: redis:7
+        name: cache
+    working_directory: ~/repo
+    environment:
+      LANG: C.UTF-8
+    steps:
+      - checkout
+      - run:
+          name: install dependencies
+          command: pip install black isort --user
+      - run:
+          name: run isort check
+          command: isort --profile black --check .
+      - run: black --check .
+  linter:
+    docker:
+      - image: alpine/flake8
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run: flake8 --ignore=E,W ~/repo
+  test:
+    working_directory: ~/openaev
+    docker:
+      - image: cimg/python:3.13
+    parameters:
+      injector_name:
+        type: string
+    steps:
+      - checkout
+      - run:
+          working_directory: ~/openaev/<< parameters.injector_name >>
+          command: python -m unittest
+      - run:
+          working_directory: ~/
+          command: python -m pytest
+      - run:
+          working_directory: ~/openaev/client
+          command: python -m pytest tests
+  deploy_images:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - run: yarn build
+"""
+
+
+def test_circleci_run_lines_become_checks_at_the_checkout_root() -> None:
+    """isort --profile black ran from the root on CircleCI and no detected check reproduced it (gap sandbox-poetry-checks-and-root-format-checks)."""
+    found = _detect({".circleci/config.yml": CIRCLECI}, extra=("client/tests/test_x.py", "client/pyproject.toml"))
+    argv = _argv(found)
+    formats = {name: a for name, a in argv.items() if name.startswith("python-format")}
+    assert ("isort", "--profile", "black", "--check", ".") in formats.values()
+    assert ("black", "--check", ".") in formats.values()
+    # The job directory written in a line is the checkout root.
+    assert argv["python-lint"] == ("flake8", "--ignore=E,W", ".")
+    # A step below the job directory runs in that directory; a parameter or a directory outside the checkout is skipped.
+    assert argv["client:python-unit"] == ("python", "-m", "pytest", "tests")
+    assert not any("unittest" in a or a == ("python", "-m", "pytest") for a in argv.values())
+    # A deploy job ships the code: not a check.
+    assert not any("build" in a for a in argv.values())
+    assert found.checks["python-lint"].description == ".circleci/config.yml job linter: flake8 --ignore=E,W ."
+    assert ("LANG", "C.UTF-8") in found.checks["python-format"].env
+    assert detect.Infra("cache", "redis:7", ".circleci/config.yml job ensure_formatting") in found.infra
+
+
+def test_a_narrow_checkout_keeps_the_circleci_configuration() -> None:
+    sizes = {".circleci/config.yml": 900, "client/pyproject.toml": 100, "other/x.py": 10}
+    assert ".circleci/config.yml" in detect.companions(sizes, ["client"])
+    assert detect.candidates(["other/x.py", ".circleci/config.yml"])[0] == ".circleci/config.yml"
+
+
+def test_a_workflow_repository_script_is_a_check_named_by_its_kind() -> None:
+    # XTM-Flow/filigran-flow: the lint job runs `uv run plugin/scripts/flow_lint.py` (a PEP 723 script
+    # that carries its own dependencies); before, only the pytest line of the job was detected.
+    wf = (
+        "jobs:\n  lint:\n    steps:\n"
+        "      - run: uv run plugin/scripts/flow_lint.py --format github\n"
+        "      - run: uv run plugin/scripts/flow_index.py --check\n"
+        "      - run: uv run --with pytest pytest plugin/tests -q\n"
+    )
+    argv = _argv(_detect({".github/workflows/flow.yml": wf}))
+    assert argv["python-lint"] == ("uv", "run", "plugin/scripts/flow_lint.py", "--format", "github")
+    assert argv["python-unit"] == ("uv", "run", "--with", "pytest", "pytest", "plugin/tests", "-q")
+    assert not any("flow_index" in " ".join(a) for a in argv.values())
+
+
+def test_a_repository_gate_script_with_an_expression_option_is_a_check_the_call_completes() -> None:
+    # OpenAEV-Platform/collectors tests-collectors.yml (gap repo-script-run-without-declared-check): the
+    # catalog gate passes its base ref as an expression; the line was dropped whole and no check ran it.
+    wf = (
+        "jobs:\n  catalog-contract:\n    steps:\n"
+        '      - run: python .github/scripts/check_catalog_contract.py --changed-since "origin/${{ github.base_ref }}"\n'
+        "      - run: uv run scripts/validate_manifest.py --ref=${{ github.sha }} --strict\n"
+        "      - run: python .github/scripts/build_test_matrix.py ${{ matrix.collector }}\n"
+        "      - run: ${{ matrix.command }}\n"
+        "      - run: python .github/scripts/check_release_notes.py\n"
+        "      - run: verify.py\n"
+    )
+    found = _detect({".github/workflows/tests.yml": wf})
+    argv = _argv(found)
+    assert argv["python-check-catalog-contract"] == ("python", ".github/scripts/check_catalog_contract.py")
+    assert argv["python-check-manifest"] == ("uv", "run", "scripts/validate_manifest.py", "--strict")
+    # A positional expression, a whole-expression command, a shipping name and a bare verb stay out.
+    assert not any("build_test_matrix" in " ".join(a) or "release" in " ".join(a) for a in argv.values())
+    assert not any("verify.py" in a for a in argv.values())
+    assert detect._without_expression_options('python x.py "${{ a }}"') is None
+    assert detect._without_expression_options("echo ${{ a }} && python x.py") is None
+    assert detect._gate_script_kind("check_catalog_contract") == "check-catalog-contract"
+    assert detect._gate_script_kind("checkout") is None
+    assert detect._gate_script_kind("check_publish") is None
+
+
 def test_a_workflow_wins_over_the_manifest_for_the_same_check():
     pkg = json.dumps({"scripts": {"lint": "eslint src", "test": "vitest"}})
     wf = "jobs:\n  a:\n    steps:\n      - run: yarn lint --max-warnings 0\n"
@@ -138,6 +257,10 @@ def test_a_workflow_wins_over_the_manifest_for_the_same_check():
         ("dbt parse", ("dbt", "parse")),
         ("sqlfluff lint models", ("dbt", "lint")),
         ("make test", ("make", "unit")),
+        ("uv run plugin/scripts/flow_lint.py --format github", ("python", "lint")),
+        ("python3 scripts/run_tests.py -q", ("python", "unit")),
+        ("uv run plugin/scripts/flow_index.py --check", None),
+        ("python scripts/release.py", None),
         ("docker build .", None),
         ("echo hi", None),
     ],
@@ -1533,6 +1656,51 @@ def test_a_narrow_checkout_keeps_the_root_requirements_and_python_tool_configs_i
     assert "external-import/other/src/main.py" not in written
 
 
+def test_a_narrow_checkout_keeps_the_directory_a_ci_step_cds_into() -> None:
+    # connectors: the STIX ID lint job runs `cd ./shared/pylint_plugins/check_stix_plugin &&
+    # PYTHONPATH=. pylint ../../../ --load-plugins linter_stix_id_generator`; a checkout of one
+    # connector kept the plugin's requirements.txt but not the plugin, so the sandbox lint
+    # passed with "Plugin ... is impossible to load" and CI went red on the same files.
+    workflow = b"""
+on: pull_request
+jobs:
+  linter:
+    runs-on: ubuntu-latest
+    steps:
+      - run: uv pip install -r ./shared/pylint_plugins/check_stix_plugin/requirements.txt
+      - name: Run STIX ID pylint
+        run: |
+          cd ./shared/pylint_plugins/check_stix_plugin && \\
+            PYTHONPATH=. pylint ../../../ \\
+            --load-plugins linter_stix_id_generator
+"""
+    tree, written = _narrow_tree(
+        {
+            ".github/workflows/ci-lint-format.yml": workflow,
+            "shared/pylint_plugins/check_stix_plugin/requirements.txt": b"pylint\n",
+            "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py": b"",
+            "shared/pylint_plugins/check_stix_plugin/__init__.py": b"",
+            "shared/pylint_plugins/tests/test_plugin.py": b"",
+            "external-import/acme/src/main.py": b"",
+            "external-import/other/src/main.py": b"",
+        },
+        ["external-import/acme"],
+    )
+    plugin = "shared/pylint_plugins/check_stix_plugin/linter_stix_id_generator.py"
+    assert plugin in tree.named and plugin in written
+    assert "shared/pylint_plugins/check_stix_plugin/__init__.py" in written
+    # Only the directory the step runs from: neither its siblings nor the repository it lints.
+    assert "shared/pylint_plugins/tests/test_plugin.py" not in written
+    assert "external-import/other/src/main.py" not in written
+
+
+def test_a_step_that_cds_into_a_large_directory_keeps_none_of_it() -> None:
+    files = {f"tools/big/f{i}.py": b"" for i in range(detect.MAX_REFERENCED_DIR_FILES + 1)}
+    workflow = b"on: pull_request\njobs:\n  a:\n    steps:\n      - run: cd tools/big && python -m lint ../../src\n"
+    tree, _written = _narrow_tree({".github/workflows/ci.yml": workflow, **files, "src/a.py": b""}, ["src"])
+    assert not any(p.startswith("tools/big/") for p in tree.named)
+
+
 def test_a_job_running_two_formatters_gives_a_check_for_each():
     # isort then black in one job: CI gates on both, one check per kind dropped black.
     found = detect.detect(
@@ -1725,6 +1893,43 @@ def test_a_narrow_checkout_follows_a_tsconfig_extends_and_never_leaves_the_repos
 def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_names():
     # opencti: a checkout of opencti-front/src/utils/hooks keeps relay.config.json (a companion) but its
     # schema ./src/schema/relay.schema.graphql was left out, so the Relay ESLint plugin failed before eslint.
+    _, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"",
+            "front/src/private/b.tsx": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert "front/src/schema/relay.schema.graphql" in written
+    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_a_narrow_checkout_of_a_relay_project_adds_its_src_and_the_files_its_sources_import() -> None:
+    # opencti #19969: node-unit-file failed on an undefined fragment until all of opencti-front/src was
+    # grown by hand; src then imports ../../lang/front/*.json outside it.
+    tree, written = _narrow_tree(
+        {
+            "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
+            "front/src/schema/relay.schema.graphql": b"type Query { a: Int }",
+            "front/src/utils/hooks/useA.ts": b"import { b } from '../../private/b';",
+            "front/src/private/b.tsx": b"graphql`fragment b_x on Query { a }`;",
+            "front/src/components/Intl.tsx": b"import en from '../../lang/front/en.json';",
+            "front/lang/front/en.json": b"{}",
+            "front/lang/front/fr.json": b"{}",
+            "front/builder/big.js": b"",
+        },
+        ["front/src/utils/hooks"],
+    )
+    assert tree.relay_sources == ["front/src"]
+    assert "front/src/private/b.tsx" in written and "front/src/components/Intl.tsx" in written
+    assert "front/lang/front/en.json" in tree.referenced and "front/lang/front/en.json" in written
+    assert "front/lang/front/fr.json" not in written and "front/builder/big.js" not in written
+
+
+def test_a_relay_src_past_its_bound_is_not_added_and_its_schema_still_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detect, "MAX_RELAY_SOURCE_BYTES", 10)
     tree, written = _narrow_tree(
         {
             "front/relay.config.json": b'{"src": "./src", "schema": "./src/schema/relay.schema.graphql"}',
@@ -1734,9 +1939,21 @@ def test_a_narrow_checkout_keeps_the_relay_schema_a_config_above_its_sub_path_na
         },
         ["front/src/utils/hooks"],
     )
+    assert tree.relay_sources == []
     assert "front/src/schema/relay.schema.graphql" in tree.referenced
     assert "front/src/schema/relay.schema.graphql" in written and "front/src/private/b.tsx" not in written
-    assert detect.is_referencing_config("front/relay.config.json") and not detect.is_referencing_config("a.test.ts")
+
+
+def test_relay_source_dirs_reads_a_js_config_and_only_for_its_own_project() -> None:
+    sizes = {"web/app/a.ts": 3, "web/app/b.ts": 3, "other/x.ts": 1}
+    config = {"web/relay.config.js": b"module.exports = { src: './app', schema: './schema.graphql' };"}
+    assert detect.relay_source_dirs(config, sizes, ["web/app/hooks"]) == ["web/app"]
+    # A sub_path outside the config's project, or one already holding its src, adds nothing.
+    assert detect.relay_source_dirs(config, sizes, ["other"]) == []
+    assert detect.relay_source_dirs(config, sizes, ["web"]) == []
+    # A src out of the repository or at its root is never added.
+    assert detect.relay_source_dirs({"relay.config.json": b'{"src": "."}'}, sizes, ["web/app"]) == []
+    assert detect.relay_source_dirs({"web/relay.config.json": b'{"src": "../.."}'}, sizes, ["web/app"]) == []
 
 
 def test_a_directory_a_test_reads_whole_is_kept_only_within_its_bounds():

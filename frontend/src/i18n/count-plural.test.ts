@@ -124,6 +124,8 @@ const NEVER_ZERO: Record<string, string> = {
     "The public agent page shows it only when needing.length > 0.",
   "Needs an action: {count, plural, one {the item it waits for was cancelled ({titles}), so it does not reopen by itself.} other {# items it waits for were cancelled ({titles}), so it does not reopen by itself.}}":
     "BlockedStatusBadge picks this tooltip only when cancelled.length > 0.",
+  "On the {count, plural, one {# entry} other {# entries}} both ran, {after} scores {afterValue} against {beforeValue} for {before} ({change}, 95% interval {low} to {high}). {verdict}":
+    "EvaluationCompare shows it only for a pair with a change, and pairedChange returns null without a paired entry, so count is at least 1.",
   "Queued: emailed once the {count, plural, one {announcement} other {# announcements}} recorded before it went out.":
     "model-announcements returns the queued status only when queued_behind > 0.",
   "{count, plural, one {# save} other {# saves}} since {date}, combined over the last {hours, plural, one {# hour} other {# hours}}. Edit what the email announces before sending it.":

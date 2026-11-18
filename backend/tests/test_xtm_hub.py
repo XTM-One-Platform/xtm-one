@@ -24,6 +24,7 @@ from app.api.v1.integration_catalog import (
 )
 from app.api.v1.integration_testing import test_provider_connectivity as connectivity
 from app.integrations.providers import xtm_hub as hub
+from app.integrations.providers import xtm_hub_api as hub_api
 from app.services.hitl_whitelist_platform import HAND_GATED
 from app.services.tool_classification import infer_tool_type
 from app.tools.base import CallableToolExecutor, ToolCall
@@ -168,7 +169,9 @@ def test_catalog_entry_is_public_by_default_and_takes_an_api_token():
 
 
 def test_every_tool_is_a_read_and_introspects_with_the_dummy_token():
-    defs = hub.build_tools(build_dummy_token("xtm_hub"), CallableToolExecutor())
+    # The curated tools; the schema-driven ones follow (tests/test_xtm_hub_api.py).
+    generated = {name for name, _summary in hub_api.OPERATIONS.values()}
+    defs = [d for d in hub.build_tools(build_dummy_token("xtm_hub"), CallableToolExecutor()) if d.name not in generated]
     assert [d.name for d in defs] == [
         "list_xtm_hub_catalogs",
         "search_xtm_hub_resources",

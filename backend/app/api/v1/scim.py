@@ -748,6 +748,41 @@ async def list_scim_tokens(
     return {"endpoint": _base(request), "tokens": [_token_dict(t) for t in rows]}
 
 
+@tokens_router.get("/activity")
+async def list_scim_activity(
+    limit: int = 50, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    """The latest SCIM writes, newest first: every SCIM write is audited under
+    ``system:scim:<token name>`` (reads and refused calls are not audited)."""
+    from app.models.audit_log import AuditLog
+    from app.services.audit import SYSTEM_ACTOR_PREFIX
+
+    rows = (
+        (
+            await db.execute(
+                select(AuditLog)
+                .where(AuditLog.user_email.like(f"{SYSTEM_ACTOR_PREFIX}scim:%"))
+                .order_by(AuditLog.created_at.desc())
+                .limit(max(1, min(limit, 200)))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "token": row.user_email.removeprefix(f"{SYSTEM_ACTOR_PREFIX}scim:"),
+            "action": row.action,
+            "entity_type": row.entity_type,
+            "entity_name": row.entity_name,
+            "summary": row.summary,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
 @tokens_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_scim_token(
     body: ScimTokenCreate, request: Request, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)

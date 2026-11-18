@@ -122,6 +122,9 @@ class EntityArm(NamedTuple):
     #: items, flow runs) are listed when their type is picked, so the default
     #: page keeps reading configuration objects only.
     listed_by_default: bool = True
+    #: Rows of the table that are not objects of this type (another primitive's
+    #: internal storage): excluded from the list and from every count.
+    where: Callable[[], ColumnElement[bool]] | None = None
 
 
 # The per-type detail positions every arm carries, with the SQL type of the
@@ -194,7 +197,8 @@ def _entity_select(arm: EntityArm, *, now: datetime | None = None):
         if expression is None:
             expression = cast(null(), sql_type)
         columns.append(expression.label(column))
-    return select(*columns)
+    statement = select(*columns)
+    return statement.where(arm.where()) if arm.where else statement
 
 
 # Every entity type the browser unions, keyed by the ``object_type`` filter value.
@@ -207,7 +211,10 @@ def _entity_select(arm: EntityArm, *, now: datetime | None = None):
 # The ``platform_insights`` agent tools count and list the same arms.
 ENTITY_MAP: dict[str, EntityArm] = {
     "agent": EntityArm(Agent, "agent"),
-    "knowledge_base": EntityArm(KnowledgeBase, "knowledge_base"),
+    # A workset's corpus is an ``is_internal`` knowledge base: its storage, not
+    # a collection. It has no page (every read hides it, admins included), so
+    # it is listed under its Workset row only, never as a Knowledge Base.
+    "knowledge_base": EntityArm(KnowledgeBase, "knowledge_base", where=lambda: KnowledgeBase.is_internal.is_(False)),
     "prompt": EntityArm(Prompt, "prompt"),
     "skill": EntityArm(AgentSkill, "skill"),
     "mcp_server": EntityArm(MCPServer, "mcp_server"),

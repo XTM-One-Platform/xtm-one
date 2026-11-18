@@ -20,6 +20,8 @@ interface NotFoundStateProps {
   title: string;
   /** Descriptive subtitle. */
   description: string;
+  /** Values of the subtitle's placeholders (e.g. `{name}`), translated with it. */
+  descriptionValues?: Record<string, string | number>;
   /** Label on the action button (e.g. "View All Agents"). */
   actionLabel: string;
   /** Called when the action button is clicked. */
@@ -34,6 +36,7 @@ export function NotFoundState({
   icon: Icon,
   title,
   description,
+  descriptionValues,
   actionLabel,
   onAction,
   backTo,
@@ -47,7 +50,7 @@ export function NotFoundState({
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
           <Icon className="h-10 w-10 text-default-secondary mb-3" />
           <CardTitle className="text-base mb-1">{t_i18n(title)}</CardTitle>
-          <p className="content-base text-default-secondary">{t_i18n(description)}</p>
+          <p className="content-base text-default-secondary">{t_i18n(description, descriptionValues)}</p>
           <Button className="mt-4" variant="secondary" onClick={onAction}>
             {t_i18n(actionLabel)}
           </Button>

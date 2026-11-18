@@ -39,6 +39,7 @@ import { useBundleReview } from "@/hooks/api/useEvaluationApi";
 import { useFormatter } from "@/i18n";
 import {
   EXPECTED,
+  answerName,
   FILTER_KEYS,
   buildModel,
   derive,
@@ -108,7 +109,9 @@ function Review({ review }: { review: BundleReview }) {
   const sourceName = (s: string) => {
     if (s === EXPECTED) return t_i18n("Expected");
     const a = review.answers.find((x) => x.key === s);
-    return a ? `${a.evaluation_name} · ${formatModelLabel(a.model_id, t_i18n)}` : s;
+    if (!a) return s;
+    const name = answerName(review.answers, a, (id) => formatModelLabel(id, t_i18n));
+    return `${name.title} · ${name.detail}`;
   };
   const ctx: ReviewContext = {
     review,

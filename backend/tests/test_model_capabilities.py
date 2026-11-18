@@ -156,7 +156,7 @@ def test_gpt_6_omits_temperature_while_using_completion_tokens():
 
 
 @pytest.mark.parametrize(
-    "model", ["gpt-6-luna", "gpt-6-luna-2026-09-01", "gpt-6.2-sol", "gpt-6.2-astra", "openai/gpt-6-luna"]
+    "model", ["gpt-6-luna", "gpt-6-luna-2026-09-01", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.2-astra", "openai/gpt-6-luna"]
 )
 def test_gpt_6_is_not_sent_a_temperature(model: str):
     """gpt-6 models refuse any temperature but 1 (#125)."""

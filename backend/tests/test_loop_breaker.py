@@ -248,6 +248,42 @@ def test_the_tool_that_wrote_keeps_its_own_count():
     assert actions == ["allow", "allow", "warn", "allow", "refuse"]
 
 
+def test_a_check_run_starts_over_after_an_edit_but_not_after_itself():
+    """``sandbox_run_command`` reads as a write by its name; run, edit, run checks a
+    new tree each time, so another tool's write starts its count over (#175).
+    Its own repeats with nothing edited between them still escalate."""
+    run = ("sandbox_run_command", {"checkout": "xo", "check": "backend-lint"})
+    assert al._is_named_write(run[0]), "the premise: its name reads as a write"
+    breaker = _breaker(rechecks=frozenset({run[0]}))
+    for _ in range(6):
+        assert breaker.screen(*run).action == "allow"
+        breaker.after_write({run[0]})  # the run itself took effect: it keeps its count
+        breaker.after_write({"sandbox_edit_file"})
+    assert breaker.count_of(*run) == 0
+    plain = _breaker()
+    for _ in range(4):
+        plain.screen(*run)
+    plain.after_write({"sandbox_edit_file"})
+    assert plain.count_of(*run) == 4, "undeclared, a write by name keeps its count"
+    alone = _breaker(rechecks=frozenset({run[0]}))
+    actions = []
+    for _ in range(5):
+        decision = alone.screen(*run)
+        actions.append(decision.action)
+        alone.after_write({run[0]})
+    assert actions == ["allow", "allow", "warn", "allow", "refuse"]
+
+
+def test_the_sandbox_run_command_definition_declares_recheck_after_write():
+    from pathlib import Path
+
+    from app.services.builtin_tools import sandbox_workspace as sw
+
+    source = Path(sw.__file__).read_text(encoding="utf-8")
+    start = source.index('name="sandbox_run_command"')
+    assert "recheck_after_write=True" in source[start : source.index("landed_probe=_run_command_landed", start)]
+
+
 def test_the_runner_browser_is_a_session_like_the_built_in_one():
     """``browser_control`` drives the runner's real browser: a screenshot after
     a click is a new page, and a step of that session resets no read count."""
