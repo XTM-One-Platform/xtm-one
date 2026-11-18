@@ -31,7 +31,7 @@ describe("useConciergeName", () => {
   it("asks with no feature flag and keeps the default name when the read fails", async () => {
     api.get.mockRejectedValue(Object.assign(new Error("Forbidden"), { status: 403 }));
     renderWithProviders(<Name />);
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/concierge/name"));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/name"));
     expect(screen.getByTestId("name")).toHaveTextContent("Concierge");
   });
 

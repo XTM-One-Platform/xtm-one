@@ -102,7 +102,7 @@ alias for one minor release (section 2.3).
 
 | Surface | Today | Disposition |
 |---|---|---|
-| `/api/v1/concierge/*` (opt-in, opt-out, name, settings, budget, cycles, signals, schedules, improvements, pets, companion, activity) | 3 routers in `main.py` | Rename to `/api/v1/health/*`; `name` and `activity` removed, `pets` and `companion` kept (profile option); old paths aliased (2.3) |
+| `/api/v1/concierge/*` (opt-in, opt-out, name, settings, budget, cycles, signals, schedules, improvements, pets, companion, activity) | 3 routers in `main.py` | Rename to `/api/v1/health/*`; `name` and `activity` removed, `pets` and `companion` kept (profile option); old paths aliased (2.3). Done in S1: every route served under `/api/v1/health`, `/api/v1/concierge` kept as a deprecated alias (hidden from OpenAPI, `Deprecation` and `Link` headers, `tests/test_health_api_alias.py`); the frontend calls the new prefix |
 | Nav entry | `nav-model.ts:367` `aiLeaf("/concierge", Compass, "Concierge")`, `named: "concierge"` | Leaf "Platform Health" at `/health`, no `named`; `/concierge` redirects |
 | Page | `pages/Concierge.tsx` (Improvements, Cycles, Signals) | `pages/Health.tsx` (section 8) |
 | Settings | `pages/settings/ConciergeSection.tsx`, `ConciergeTriggerBlocks.tsx`, `ConciergePetLibrary.tsx`, `concierge-block.tsx` | One compact `HealthSection` (section 7) |

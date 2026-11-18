@@ -18,10 +18,10 @@ const PET = { slug: "alfred", display_name: "Alfred", description: null, sprite_
 
 function serve(companion: { enabled: boolean; pet: string }, state = "review") {
   api.get.mockImplementation((path: string) => {
-    if (path === "/concierge/me/companion") return Promise.resolve({ ...companion, default_pet: "alfred" });
-    if (path === "/concierge/pets") return Promise.resolve([PET]);
-    if (path === "/concierge/me/activity") return Promise.resolve({ state, running: 0, waiting: 0, review: 1, failed_at: null });
-    if (path === "/concierge/name") return Promise.resolve({ name: "Jeeves", default_name: "Concierge" });
+    if (path === "/health/me/companion") return Promise.resolve({ ...companion, default_pet: "alfred" });
+    if (path === "/health/pets") return Promise.resolve([PET]);
+    if (path === "/health/me/activity") return Promise.resolve({ state, running: 0, waiting: 0, review: 1, failed_at: null });
+    if (path === "/health/name") return Promise.resolve({ name: "Jeeves", default_name: "Concierge" });
     return Promise.reject(new Error(path));
   });
   api.download.mockResolvedValue({ blob: new Blob(["x"], { type: "image/webp" }), filename: null });
@@ -38,9 +38,9 @@ describe("ConciergeCompanion", () => {
   it("shows nothing while the companion is off", async () => {
     serve({ enabled: false, pet: "alfred" });
     renderWithProviders(<MemoryRouter><ConciergeCompanion /></MemoryRouter>);
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/concierge/me/companion"));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/me/companion"));
     expect(screen.queryByTestId("concierge.companion")).toBeNull();
-    expect(api.get).not.toHaveBeenCalledWith("/concierge/me/activity");
+    expect(api.get).not.toHaveBeenCalledWith("/health/me/activity");
   });
 
   it("reads the companion with no feature flag (#101 S1)", async () => {
@@ -78,7 +78,7 @@ describe("ConciergeCompanion", () => {
     renderWithProviders(<MemoryRouter><ConciergeCompanion /></MemoryRouter>);
     fireEvent.click(await screen.findByRole("button", { name: "Alfred" }));
     fireEvent.click(await screen.findByRole("button", { name: "Hide" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: false, pet: "alfred" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "alfred" }));
     await waitFor(() => expect(screen.queryByTestId("concierge.companion")).toBeNull());
   });
 });

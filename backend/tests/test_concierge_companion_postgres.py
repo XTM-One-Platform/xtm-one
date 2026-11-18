@@ -48,7 +48,7 @@ def _flag_on(monkeypatch):
 @asynccontextmanager
 async def _client(sessions, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(routes.router, prefix="/api/v1/concierge")
+    app.include_router(routes.router, prefix="/api/v1/health")
 
     async def _get_db():
         async with sessions() as db:
@@ -77,7 +77,7 @@ def _package(slug: str = "owl", **manifest) -> bytes:
 
 
 async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
-    return await client.post("/api/v1/concierge/pets", files=[("files", ("owl.zip", package, "application/zip"))])
+    return await client.post("/api/v1/health/pets", files=[("files", ("owl.zip", package, "application/zip"))])
 
 
 # ── The preference ─────────────────────────────────────────────────────────
@@ -89,11 +89,11 @@ async def test_a_removed_pet_falls_back_to_alfred_for_who_picked_it() -> None:
         async with _client(sessions, world.admin) as client:
             await _upload(client, _package())
         async with _client(sessions, world.reader) as client:
-            chosen = await client.put("/api/v1/concierge/me/companion", json={"enabled": True, "pet": "owl"})
+            chosen = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "owl"})
         async with _client(sessions, world.admin) as client:
-            removed = await client.delete("/api/v1/concierge/pets/owl")
+            removed = await client.delete("/api/v1/health/pets/owl")
         async with _client(sessions, world.reader) as client:
-            after = await client.get("/api/v1/concierge/me/companion")
+            after = await client.get("/api/v1/health/me/companion")
     assert chosen.json() == {"enabled": True, "pet": "owl", "default_pet": "alfred"}
     assert removed.status_code == 204
     assert after.json() == {"enabled": True, "pet": "alfred", "default_pet": "alfred"}
@@ -103,16 +103,16 @@ async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.member) as client:
-            default = await client.get("/api/v1/concierge/me/companion")
-            saved = await client.put("/api/v1/concierge/me/companion", json={"enabled": True, "pet": "alfred"})
-            unknown = await client.put("/api/v1/concierge/me/companion", json={"enabled": True, "pet": "owl"})
-            malformed = await client.put("/api/v1/concierge/me/companion", json={"enabled": True, "pet": "../x"})
+            default = await client.get("/api/v1/health/me/companion")
+            saved = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "alfred"})
+            unknown = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "owl"})
+            malformed = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "../x"})
             extra = await client.put(
-                "/api/v1/concierge/me/companion", json={"enabled": True, "user_id": str(world.owner.id)}
+                "/api/v1/health/me/companion", json={"enabled": True, "user_id": str(world.owner.id)}
             )
-            not_bool = await client.put("/api/v1/concierge/me/companion", json={"enabled": "maybe"})
+            not_bool = await client.put("/api/v1/health/me/companion", json={"enabled": "maybe"})
         async with _client(sessions, world.owner) as client:
-            others = await client.get("/api/v1/concierge/me/companion")
+            others = await client.get("/api/v1/health/me/companion")
         async with sessions() as db:
             stored = (await db.get(User, world.member.id)).concierge_companion
     assert default.json() == {"enabled": False, "pet": "alfred", "default_pet": "alfred"}
@@ -128,9 +128,9 @@ async def test_every_companion_route_is_dark_while_the_flag_is_off(monkeypatch) 
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
             for method, url in [
-                ("GET", "/api/v1/concierge/me/companion"),
-                ("PUT", "/api/v1/concierge/me/companion"),
-                ("GET", "/api/v1/concierge/me/activity"),
+                ("GET", "/api/v1/health/me/companion"),
+                ("PUT", "/api/v1/health/me/companion"),
+                ("GET", "/api/v1/health/me/activity"),
             ]:
                 assert (await client.request(method, url, json={"enabled": True})).status_code == 403, url
 
@@ -168,7 +168,7 @@ async def _run(db, world: World, user: User, status: str) -> None:
 
 async def _activity(sessions, user: User) -> dict:
     async with _client(sessions, user) as client:
-        response = await client.get("/api/v1/concierge/me/activity")
+        response = await client.get("/api/v1/health/me/activity")
     assert response.status_code == 200
     body = response.json()
     return {key: body[key] for key in ("state", "running", "waiting", "review")}

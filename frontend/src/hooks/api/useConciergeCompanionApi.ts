@@ -30,7 +30,7 @@ const COMPANION_KEY = ["concierge", "companion"] as const;
 const ACTIVITY_INTERVAL_MS = 30_000;
 
 export function usePets(enabled = true) {
-  return useQuery<ConciergePet[]>({ queryKey: PETS_KEY, queryFn: () => api.get("/concierge/pets"), enabled });
+  return useQuery<ConciergePet[]>({ queryKey: PETS_KEY, queryFn: () => api.get("/health/pets"), enabled });
 }
 
 export function useUploadPet() {
@@ -39,7 +39,7 @@ export function useUploadPet() {
     mutationFn: (files: File[]) => {
       const form = new FormData();
       for (const file of files) form.append("files", file, file.name);
-      return api.postForm<ConciergePet>("/concierge/pets", form);
+      return api.postForm<ConciergePet>("/health/pets", form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: PETS_KEY }),
   });
@@ -48,7 +48,7 @@ export function useUploadPet() {
 export function useDeletePet() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) => api.delete(`/concierge/pets/${encodeURIComponent(slug)}`),
+    mutationFn: (slug: string) => api.delete(`/health/pets/${encodeURIComponent(slug)}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: PETS_KEY });
       void qc.invalidateQueries({ queryKey: COMPANION_KEY });
@@ -60,7 +60,7 @@ export function useDeletePet() {
 export function usePetSpritesheet(slug: string | undefined, sha256: string | undefined): string | null {
   const { data } = useQuery<Blob>({
     queryKey: ["concierge", "pet-spritesheet", slug, sha256],
-    queryFn: async () => (await api.download(`/concierge/pets/${encodeURIComponent(slug as string)}/spritesheet`)).blob,
+    queryFn: async () => (await api.download(`/health/pets/${encodeURIComponent(slug as string)}/spritesheet`)).blob,
     enabled: Boolean(slug),
     staleTime: Infinity,
   });
@@ -81,7 +81,7 @@ export function usePetSpritesheet(slug: string | undefined, sha256: string | und
 export function useCompanion(enabled = true) {
   return useQuery<ConciergeCompanion>({
     queryKey: COMPANION_KEY,
-    queryFn: () => api.get("/concierge/me/companion"),
+    queryFn: () => api.get("/health/me/companion"),
     enabled,
   });
 }
@@ -90,7 +90,7 @@ export function useSaveCompanion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { enabled: boolean; pet: string | null }) =>
-      api.put<ConciergeCompanion>("/concierge/me/companion", body),
+      api.put<ConciergeCompanion>("/health/me/companion", body),
     onSuccess: (data) => qc.setQueryData(COMPANION_KEY, data),
   });
 }
@@ -98,7 +98,7 @@ export function useSaveCompanion() {
 export function useCompanionActivity(enabled: boolean) {
   return useQuery<ConciergeActivity>({
     queryKey: ["concierge", "activity"],
-    queryFn: () => api.get("/concierge/me/activity"),
+    queryFn: () => api.get("/health/me/activity"),
     enabled,
     refetchInterval: enabled ? ACTIVITY_INTERVAL_MS : false,
     refetchIntervalInBackground: false,

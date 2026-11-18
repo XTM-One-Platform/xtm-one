@@ -22,8 +22,8 @@ describe("the Concierge opt-in of a flow", () => {
 
     fireEvent.click(await screen.findByRole("switch", { name: "Opt in to improvement" }));
 
-    expect(api.get).toHaveBeenCalledWith("/concierge/flows/f-1/opt-in");
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/flows/f-1/opt-in", { opt_in: true }));
+    expect(api.get).toHaveBeenCalledWith("/health/flows/f-1/opt-in");
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/flows/f-1/opt-in", { opt_in: true }));
     expect(await screen.findByText("The Concierge may now improve this flow")).toBeTruthy();
   });
 

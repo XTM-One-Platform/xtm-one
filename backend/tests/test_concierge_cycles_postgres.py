@@ -680,7 +680,7 @@ async def test_a_failed_signal_evaluation_waits_for_its_cadence(concierge_on, mo
 @asynccontextmanager
 async def _client(sessions, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(routes.router, prefix="/api/v1/concierge")
+    app.include_router(routes.router, prefix="/api/v1/health")
 
     async def _get_db():
         async with sessions() as db:
@@ -766,10 +766,10 @@ async def test_improve_with_concierge_follows_the_manage_rule(concierge_on, who,
         agent = private if target == "private" else company
         async with _client(sessions, users[who]) as client:
             response = await client.post(
-                "/api/v1/concierge/cycles", json={"target_type": "agent", "target_id": str(agent.id)}
+                "/api/v1/health/cycles", json={"target_type": "agent", "target_id": str(agent.id)}
             )
             listing = await client.get(
-                "/api/v1/concierge/cycles", params={"target_type": "agent", "target_id": str(agent.id)}
+                "/api/v1/health/cycles", params={"target_type": "agent", "target_id": str(agent.id)}
             )
     assert response.status_code == expected, response.text
     if expected == 202:
@@ -800,9 +800,9 @@ async def test_the_digest_narrative_follows_the_chat_read_rule(concierge_on, who
             await db.commit()
         async with _client(sessions, users[who]) as client:
             listing = await client.get(
-                "/api/v1/concierge/cycles", params={"target_type": "agent", "target_id": str(private.id)}
+                "/api/v1/health/cycles", params={"target_type": "agent", "target_id": str(private.id)}
             )
-            one = await client.get(f"/api/v1/concierge/cycles/{cycle.id}")
+            one = await client.get(f"/api/v1/health/cycles/{cycle.id}")
     assert listing.json()[0]["digest"]["narrative"] == narrative
     assert one.json()["digest"]["narrative"] == narrative
 
@@ -811,10 +811,10 @@ async def test_a_non_admin_lists_nothing_without_a_target(concierge_on):
     async with _scratch("cc_routes_list") as sessions:
         users, _private, _company = await _access_matrix(sessions)
         async with _client(sessions, users["owner"]) as client:
-            cycles_list = await client.get("/api/v1/concierge/cycles")
-            signal_list = await client.get("/api/v1/concierge/signals")
+            cycles_list = await client.get("/api/v1/health/cycles")
+            signal_list = await client.get("/api/v1/health/signals")
         async with _client(sessions, users["admin"]) as client:
-            admin_list = await client.get("/api/v1/concierge/cycles")
+            admin_list = await client.get("/api/v1/health/cycles")
     assert (cycles_list.status_code, signal_list.status_code, admin_list.status_code) == (404, 404, 200)
 
 
@@ -832,7 +832,7 @@ async def test_a_signal_names_its_target_and_a_deleted_target_has_no_name(concie
                 )
             await db.commit()
         async with _client(sessions, users["admin"]) as client:
-            listing = await client.get("/api/v1/concierge/signals")
+            listing = await client.get("/api/v1/health/signals")
     assert listing.status_code == 200
     names = {row["target_id"]: row["target_name"] for row in listing.json()}
     assert names == {str(private.id): "Private agent", str(gone): None}
@@ -843,8 +843,8 @@ async def test_a_second_request_answers_409_with_the_open_cycle(concierge_on):
         users, private, _company = await _access_matrix(sessions)
         async with _client(sessions, users["owner"]) as client:
             body = {"target_type": "agent", "target_id": str(private.id)}
-            first = await client.post("/api/v1/concierge/cycles", json=body)
-            second = await client.post("/api/v1/concierge/cycles", json=body)
+            first = await client.post("/api/v1/health/cycles", json=body)
+            second = await client.post("/api/v1/health/cycles", json=body)
     assert (first.status_code, second.status_code) == (202, 409)
     assert second.json()["detail"] == {
         "code": "cycle_open",
@@ -862,8 +862,8 @@ async def test_a_refusal_names_the_concierge_as_its_administrator_named_it(conci
             await db.commit()
         async with _client(sessions, users["owner"]) as client:
             body = {"target_type": "agent", "target_id": str(private.id)}
-            await client.post("/api/v1/concierge/cycles", json=body)
-            second = await client.post("/api/v1/concierge/cycles", json=body)
+            await client.post("/api/v1/health/cycles", json=body)
+            second = await client.post("/api/v1/health/cycles", json=body)
     # A brace in the name is a brace: the message is never formatted with it.
     assert second.json()["detail"]["message"] == "{Jeeves} is already working on this target."
 
@@ -872,10 +872,12 @@ async def test_an_invalid_body_is_a_422(concierge_on):
     async with _scratch("cc_routes_422") as sessions:
         users, _private, _company = await _access_matrix(sessions)
         async with _client(sessions, users["owner"]) as client:
-            bad_type = await client.post("/api/v1/concierge/cycles", json={"target_type": "user", "target_id": str(uuid.uuid4())})
-            bad_id = await client.post("/api/v1/concierge/cycles", json={"target_type": "agent", "target_id": "x"})
+            bad_type = await client.post(
+                "/api/v1/health/cycles", json={"target_type": "user", "target_id": str(uuid.uuid4())}
+            )
+            bad_id = await client.post("/api/v1/health/cycles", json={"target_type": "agent", "target_id": "x"})
             extra = await client.post(
-                "/api/v1/concierge/cycles", json={"target_type": "agent", "target_id": str(uuid.uuid4()), "user_id": "x"}
+                "/api/v1/health/cycles", json={"target_type": "agent", "target_id": str(uuid.uuid4()), "user_id": "x"}
             )
     assert (bad_type.status_code, bad_id.status_code, extra.status_code) == (422, 422, 422)
 
@@ -929,8 +931,8 @@ async def test_the_inbox_lists_a_proposal_to_who_may_read_it(concierge_on, who, 
     async with _scratch("cc_inbox") as sessions:
         users, private, proposal, _trace = await _with_proposal(sessions)
         async with _client(sessions, users[who]) as client:
-            by_agent = await client.get("/api/v1/concierge/improvements", params={"agent_id": str(private.id)})
-            evidence = await client.get(f"/api/v1/concierge/improvements/{proposal.id}/evidence")
+            by_agent = await client.get("/api/v1/health/improvements", params={"agent_id": str(private.id)})
+            evidence = await client.get(f"/api/v1/health/improvements/{proposal.id}/evidence")
     items = by_agent.json()["items"]
     if listed:
         assert [(i["id"], i["can_decide"]) for i in items] == [(str(proposal.id), can_decide)]
@@ -943,9 +945,9 @@ async def test_evidence_links_only_what_the_viewer_may_open(concierge_on):
     async with _scratch("cc_evidence") as sessions:
         users, _private, proposal, trace = await _with_proposal(sessions)
         async with _client(sessions, users["owner"]) as client:
-            owner = (await client.get(f"/api/v1/concierge/improvements/{proposal.id}/evidence")).json()
+            owner = (await client.get(f"/api/v1/health/improvements/{proposal.id}/evidence")).json()
         async with _client(sessions, users["config"]) as client:
-            configurer = (await client.get(f"/api/v1/concierge/improvements/{proposal.id}/evidence")).json()
+            configurer = (await client.get(f"/api/v1/health/improvements/{proposal.id}/evidence")).json()
     assert owner == [
         {"kind": "trace", "id": str(trace.id), "href": f"/traces/{trace.id}", "hidden": False},
         {"kind": "trace", "id": None, "href": None, "hidden": True},
@@ -961,9 +963,9 @@ async def test_a_non_admin_names_a_target_to_list_proposals(concierge_on):
     async with _scratch("cc_inbox_scope") as sessions:
         users, _private, _proposal, _trace = await _with_proposal(sessions)
         async with _client(sessions, users["owner"]) as client:
-            unscoped = await client.get("/api/v1/concierge/improvements")
+            unscoped = await client.get("/api/v1/health/improvements")
         async with _client(sessions, users["admin"]) as client:
-            everything = await client.get("/api/v1/concierge/improvements", params={"status": "pending_approval"})
+            everything = await client.get("/api/v1/health/improvements", params={"status": "pending_approval"})
     assert unscoped.status_code == 404
     assert everything.json()["total"] == 1
 
@@ -997,7 +999,7 @@ async def test_the_inbox_counts_and_pages_past_one_scan_batch(concierge_on, monk
             async with _client(sessions, users[who]) as client:
                 pages[who] = (
                     await client.get(
-                        "/api/v1/concierge/improvements",
+                        "/api/v1/health/improvements",
                         params={"agent_id": str(private.id), "limit": 2, "offset": 4},
                     )
                 ).json()
@@ -1035,24 +1037,24 @@ async def test_the_inbox_searches_filters_and_sorts_for_the_data_table(concierge
         scope = {"agent_id": str(private.id)}
         async with _client(sessions, users["admin"]) as client:
             both = (
-                await client.get("/api/v1/concierge/improvements", params={**scope, "status": ["kept", "rejected"]})
+                await client.get("/api/v1/health/improvements", params={**scope, "status": ["kept", "rejected"]})
             ).json()
-            searched = (await client.get("/api/v1/concierge/improvements", params={**scope, "q": "tone"})).json()
-            literal = (await client.get("/api/v1/concierge/improvements", params={**scope, "q": "100%"})).json()
+            searched = (await client.get("/api/v1/health/improvements", params={**scope, "q": "tone"})).json()
+            literal = (await client.get("/api/v1/health/improvements", params={**scope, "q": "100%"})).json()
             by_status = (
                 await client.get(
-                    "/api/v1/concierge/improvements", params={**scope, "sort": "status", "direction": "asc"}
+                    "/api/v1/health/improvements", params={**scope, "sort": "status", "direction": "asc"}
                 )
             ).json()
             by_type = (
                 await client.get(
-                    "/api/v1/concierge/improvements", params={**scope, "proposal_type": ["persona", "skill"]}
+                    "/api/v1/health/improvements", params={**scope, "proposal_type": ["persona", "skill"]}
                 )
             ).json()
             oldest = (
-                await client.get("/api/v1/concierge/improvements", params={**scope, "sort": "date", "direction": "asc"})
+                await client.get("/api/v1/health/improvements", params={**scope, "sort": "date", "direction": "asc"})
             ).json()
-            bad = await client.get("/api/v1/concierge/improvements", params={**scope, "sort": "summary"})
+            bad = await client.get("/api/v1/health/improvements", params={**scope, "sort": "summary"})
 
     assert both["total"] == 2 and {p["status"] for p in both["items"]} == {"kept", "rejected"}
     assert [p["summary"] for p in searched["items"]] == ["Sharper tone"]

@@ -42,7 +42,7 @@ def _flag_on(monkeypatch):
 @asynccontextmanager
 async def _client(sessions, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(routes.router, prefix="/api/v1/concierge")
+    app.include_router(routes.router, prefix="/api/v1/health")
 
     async def _get_db():
         async with sessions() as db:
@@ -71,7 +71,7 @@ def _package(slug: str = "owl", **manifest) -> bytes:
 
 
 async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
-    return await client.post("/api/v1/concierge/pets", files=[("files", ("owl.zip", package, "application/zip"))])
+    return await client.post("/api/v1/health/pets", files=[("files", ("owl.zip", package, "application/zip"))])
 
 
 # ── The library ────────────────────────────────────────────────────────────
@@ -81,10 +81,10 @@ async def test_every_user_reads_the_library_and_alfred_comes_first() -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.stranger) as client:
-            listing = await client.get("/api/v1/concierge/pets")
-            sheet = await client.get("/api/v1/concierge/pets/alfred/spritesheet")
-            missing = await client.get("/api/v1/concierge/pets/nobody/spritesheet")
-            too_long = await client.get(f"/api/v1/concierge/pets/{'x' * 300}/spritesheet")
+            listing = await client.get("/api/v1/health/pets")
+            sheet = await client.get("/api/v1/health/pets/alfred/spritesheet")
+            missing = await client.get("/api/v1/health/pets/nobody/spritesheet")
+            too_long = await client.get(f"/api/v1/health/pets/{'x' * 300}/spritesheet")
     assert [(p["slug"], p["builtin"], p["sprite_version"]) for p in listing.json()] == [("alfred", True, 1)]
     assert sheet.status_code == 200
     assert sheet.headers["content-type"] == "image/webp"
@@ -105,8 +105,8 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
             again = await _upload(client, package)
             builtin_id = await _upload(client, _package("alfred"))
         async with _client(sessions, world.reader) as client:
-            listing = await client.get("/api/v1/concierge/pets")
-            sheet = await client.get("/api/v1/concierge/pets/owl/spritesheet")
+            listing = await client.get("/api/v1/health/pets")
+            sheet = await client.get("/api/v1/health/pets/owl/spritesheet")
         async with sessions() as db:
             rows = (await db.execute(select(ConciergePet))).scalars().all()
             audits = (
@@ -158,7 +158,7 @@ async def test_a_hostile_upload_is_a_422_and_stores_nothing(files, code) -> None
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
-            response = await client.post("/api/v1/concierge/pets", files=files)
+            response = await client.post("/api/v1/health/pets", files=files)
         async with sessions() as db:
             count = await db.scalar(select(func.count()).select_from(ConciergePet))
     assert response.status_code == 422
@@ -172,12 +172,12 @@ async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> No
         async with _client(sessions, world.admin) as client:
             await _upload(client, _package())
         async with _client(sessions, world.reader) as client:
-            refused = await client.delete("/api/v1/concierge/pets/owl")
+            refused = await client.delete("/api/v1/health/pets/owl")
         async with _client(sessions, world.admin) as client:
-            builtin = await client.delete("/api/v1/concierge/pets/alfred")
-            removed = await client.delete("/api/v1/concierge/pets/owl")
-            gone = await client.delete("/api/v1/concierge/pets/owl")
-            listing = await client.get("/api/v1/concierge/pets")
+            builtin = await client.delete("/api/v1/health/pets/alfred")
+            removed = await client.delete("/api/v1/health/pets/owl")
+            gone = await client.delete("/api/v1/health/pets/owl")
+            listing = await client.get("/api/v1/health/pets")
         async with sessions() as db:
             audits = (
                 (
@@ -201,9 +201,9 @@ async def test_every_library_route_is_dark_while_the_flag_is_off(monkeypatch) ->
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
             for method, url in [
-                ("GET", "/api/v1/concierge/pets"),
-                ("GET", "/api/v1/concierge/pets/alfred/spritesheet"),
-                ("POST", "/api/v1/concierge/pets"),
-                ("DELETE", "/api/v1/concierge/pets/owl"),
+                ("GET", "/api/v1/health/pets"),
+                ("GET", "/api/v1/health/pets/alfred/spritesheet"),
+                ("POST", "/api/v1/health/pets"),
+                ("DELETE", "/api/v1/health/pets/owl"),
             ]:
                 assert (await client.request(method, url)).status_code == 403, url

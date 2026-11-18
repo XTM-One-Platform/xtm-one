@@ -13,7 +13,7 @@
 
 """Concierge cycles, signals and the Improvements inbox (#8261).
 
-Mounted under ``/api/v1/concierge`` beside level 1's routes, behind the
+Mounted under ``/api/v1/health`` beside level 1's routes, behind the
 ``CONCIERGE`` flag. Access is ``services/concierge/cycle_access.py``, the rule
 the orchestrator's tools share: a person reads the cycles of the targets they
 manage (administrators: all); "Improve with Concierge" needs the same right.

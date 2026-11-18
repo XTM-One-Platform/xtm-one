@@ -23,9 +23,9 @@ describe("ConciergeCompanionCard", () => {
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
     api.get.mockImplementation((path: string) => {
-      if (path === "/concierge/me/companion") return Promise.resolve({ enabled: false, pet: "alfred", default_pet: "alfred" });
-      if (path === "/concierge/pets") return Promise.resolve(PETS);
-      if (path === "/concierge/name") return Promise.resolve({ name: "Alfred", default_name: "Alfred" });
+      if (path === "/health/me/companion") return Promise.resolve({ enabled: false, pet: "alfred", default_pet: "alfred" });
+      if (path === "/health/pets") return Promise.resolve(PETS);
+      if (path === "/health/name") return Promise.resolve({ name: "Alfred", default_name: "Alfred" });
       return Promise.reject(new Error(path));
     });
     api.download.mockResolvedValue({ blob: new Blob(["x"]), filename: null });
@@ -39,7 +39,7 @@ describe("ConciergeCompanionCard", () => {
     const toggle = await screen.findByRole("switch", { name: "Show the companion" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: true, pet: "alfred" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: true, pet: "alfred" }));
     expect(api.put).toHaveBeenCalledTimes(1);
   });
 
@@ -47,12 +47,12 @@ describe("ConciergeCompanionCard", () => {
     renderWithProviders(<ConciergeCompanionCard />);
     expect(await screen.findByRole("radio", { name: /Alfred/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(await screen.findByRole("radio", { name: /Owl/ }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: false, pet: "owl" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "owl" }));
   });
 
   it("reads the companion with no feature flag (#101 S1)", async () => {
     renderWithProviders(<ConciergeCompanionCard />);
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/concierge/me/companion"));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/me/companion"));
     expect(await screen.findByTestId("profile.concierge-companion")).toBeInTheDocument();
   });
 });

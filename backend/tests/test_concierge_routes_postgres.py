@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254): the ``/api/v1/concierge`` routes against PostgreSQL.
+"""Platform Concierge level 1 (#8254): the ``/api/v1/health`` routes against PostgreSQL.
 
 * The improvement opt-in as owner, admin, ``read_only`` / ``config`` grantee,
   group grant, revoked share, stranger, on a company-managed agent and on a
@@ -65,7 +65,7 @@ def licensed(monkeypatch):
 @asynccontextmanager
 async def _client(sessions: async_sessionmaker, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(concierge_api.router, prefix="/api/v1/concierge")
+    app.include_router(concierge_api.router, prefix="/api/v1/health")
 
     async def _get_db():
         async with sessions() as db:
@@ -102,7 +102,7 @@ async def test_the_agent_opt_in_is_written_by_whoever_may_manage_it(who: str, st
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, getattr(world, who)) as client:
-            response = await client.put(f"/api/v1/concierge/agents/{world.private.id}/opt-in", json={"opt_in": True})
+            response = await client.put(f"/api/v1/health/agents/{world.private.id}/opt-in", json={"opt_in": True})
         assert response.status_code == status
         assert await _opt_in(sessions, Agent, world.private.id) is (status == 200)
         if status == 200:
@@ -116,7 +116,7 @@ async def test_the_agent_opt_in_is_written_by_whoever_may_manage_it(who: str, st
 async def test_a_revoked_share_loses_the_opt_in_at_once(handlers) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
-        url = f"/api/v1/concierge/agents/{world.private.id}/opt-in"
+        url = f"/api/v1/health/agents/{world.private.id}/opt-in"
         async with _client(sessions, world.configurer) as client:
             assert (await client.get(url)).json() == {"opt_in": False, "can_manage": True, "eligible": True}
             async with sessions() as db:
@@ -132,7 +132,7 @@ async def test_a_revoked_share_loses_the_opt_in_at_once(handlers) -> None:
 async def test_a_company_managed_agent_is_opted_in_by_admins_only(handlers) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
-        url = f"/api/v1/concierge/agents/{world.company.id}/opt-in"
+        url = f"/api/v1/health/agents/{world.company.id}/opt-in"
         async with _client(sessions, world.stranger) as client:
             assert (await client.put(url, json={"opt_in": True})).status_code == 403
         async with _client(sessions, world.admin) as client:
@@ -143,7 +143,7 @@ async def test_a_company_managed_agent_is_opted_in_by_admins_only(handlers) -> N
 async def test_a_fleet_agent_has_no_opt_in(handlers) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
-        url = f"/api/v1/concierge/agents/{world.fleet.id}/opt-in"
+        url = f"/api/v1/health/agents/{world.fleet.id}/opt-in"
         async with _client(sessions, world.admin) as client:
             assert (await client.get(url)).json() == {"opt_in": False, "can_manage": False, "eligible": False}
             assert (await client.put(url, json={"opt_in": True})).status_code == 409
@@ -155,7 +155,7 @@ async def test_the_flow_opt_in_follows_the_same_rule(who: str, status: int, hand
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, getattr(world, who)) as client:
-            response = await client.put(f"/api/v1/concierge/flows/{world.flow.id}/opt-in", json={"opt_in": True})
+            response = await client.put(f"/api/v1/health/flows/{world.flow.id}/opt-in", json={"opt_in": True})
         assert response.status_code == status
         assert await _opt_in(sessions, Flow, world.flow.id) is (status == 200)
 
@@ -164,8 +164,8 @@ async def test_turning_an_opt_in_off_revokes_in_the_same_transaction(handlers) -
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.owner) as client:
-            agent_url = f"/api/v1/concierge/agents/{world.private.id}/opt-in"
-            flow_url = f"/api/v1/concierge/flows/{world.flow.id}/opt-in"
+            agent_url = f"/api/v1/health/agents/{world.private.id}/opt-in"
+            flow_url = f"/api/v1/health/flows/{world.flow.id}/opt-in"
             await client.put(agent_url, json={"opt_in": True})
             await client.put(agent_url, json={"opt_in": False})
             await client.put(flow_url, json={"opt_in": True})
@@ -188,7 +188,7 @@ async def test_a_failing_revocation_changes_nothing(monkeypatch) -> None:
             (await db.get(Agent, world.private.id)).concierge_improvement_opt_in = True
             await db.commit()
         async with _client(sessions, world.owner) as client:
-            response = await client.put(f"/api/v1/concierge/agents/{world.private.id}/opt-in", json={"opt_in": False})
+            response = await client.put(f"/api/v1/health/agents/{world.private.id}/opt-in", json={"opt_in": False})
         assert response.status_code == 500
         assert response.json() == {"detail": concierge_api.NOT_APPLIED_DETAIL}
         assert await _opt_in(sessions, Agent, world.private.id) is True
@@ -198,10 +198,10 @@ async def test_the_opt_out_is_the_users_own(handlers) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.reader) as client:
-            assert (await client.get("/api/v1/concierge/me/opt-out")).json() == {"opt_out": False}
-            assert (await client.put("/api/v1/concierge/me/opt-out", json={"opt_out": True})).json() == {"opt_out": True}
-            assert (await client.put("/api/v1/concierge/me/opt-out", json={"opt_out": True})).status_code == 200
-            bad = await client.put("/api/v1/concierge/me/opt-out", json={"opt_out": True, "user_id": str(world.owner.id)})
+            assert (await client.get("/api/v1/health/me/opt-out")).json() == {"opt_out": False}
+            assert (await client.put("/api/v1/health/me/opt-out", json={"opt_out": True})).json() == {"opt_out": True}
+            assert (await client.put("/api/v1/health/me/opt-out", json={"opt_out": True})).status_code == 200
+            bad = await client.put("/api/v1/health/me/opt-out", json={"opt_out": True, "user_id": str(world.owner.id)})
             assert bad.status_code == 422
         async with sessions() as db:
             assert (await db.get(User, world.reader.id)).concierge_opt_out is True
@@ -213,15 +213,15 @@ async def test_settings_and_budget_are_for_admins(handlers, licensed) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.configurer) as client:
-            assert (await client.get("/api/v1/concierge/settings")).status_code == 403
-            assert (await client.put("/api/v1/concierge/settings", json={"enabled": True})).status_code == 403
-            assert (await client.get("/api/v1/concierge/budget")).status_code == 403
+            assert (await client.get("/api/v1/health/settings")).status_code == 403
+            assert (await client.put("/api/v1/health/settings", json={"enabled": True})).status_code == 403
+            assert (await client.get("/api/v1/health/budget")).status_code == 403
         async with _client(sessions, world.admin) as client:
             body = {"enabled": True, "scope_mode": "selected", "scope_agent_ids": [str(world.private.id)]}
-            saved = (await client.put("/api/v1/concierge/settings", json=body)).json()
+            saved = (await client.put("/api/v1/health/settings", json=body)).json()
             assert saved["enabled"] is True and saved["scope_agent_ids"] == [str(world.private.id)]
-            assert (await client.put("/api/v1/concierge/settings", json={**body, "typo": 1})).status_code == 422
-            budget_view = (await client.get("/api/v1/concierge/budget")).json()
+            assert (await client.put("/api/v1/health/settings", json={**body, "typo": 1})).status_code == 422
+            budget_view = (await client.get("/api/v1/health/budget")).json()
             assert budget_view["used"]["tokens"] == 0
             assert budget_view["refusal"] is None
             assert budget_view["remaining_tokens"] == 10_000_000
@@ -235,11 +235,11 @@ async def test_every_route_is_dark_while_the_flag_is_off(monkeypatch, handlers) 
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
             for method, url in [
-                ("GET", f"/api/v1/concierge/agents/{world.private.id}/opt-in"),
-                ("GET", f"/api/v1/concierge/flows/{world.flow.id}/opt-in"),
-                ("GET", "/api/v1/concierge/me/opt-out"),
-                ("GET", "/api/v1/concierge/settings"),
-                ("GET", "/api/v1/concierge/budget"),
+                ("GET", f"/api/v1/health/agents/{world.private.id}/opt-in"),
+                ("GET", f"/api/v1/health/flows/{world.flow.id}/opt-in"),
+                ("GET", "/api/v1/health/me/opt-out"),
+                ("GET", "/api/v1/health/settings"),
+                ("GET", "/api/v1/health/budget"),
             ]:
                 assert (await client.request(method, url)).status_code == 403, url
 

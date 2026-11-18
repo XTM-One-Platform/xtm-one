@@ -19,7 +19,7 @@ function page(path: string) {
   const query = new URLSearchParams(path.split("?")[1]);
   const offset = Number(query.get("offset") ?? 0);
   const limit = Number(query.get("limit") ?? 25);
-  if (!path.startsWith("/concierge/improvements?")) return Promise.resolve([]);
+  if (!path.startsWith("/health/improvements?")) return Promise.resolve([]);
   return Promise.resolve({
     total: 45,
     items: Array.from({ length: Math.min(limit, 45 - offset) }, (_, i) => ({
@@ -57,12 +57,12 @@ describe("the Improvements inbox", () => {
   it("asks the server for the next page and says how many there are", async () => {
     render();
     expect((await screen.findAllByText("Page 1 of 2")).length).toBeGreaterThan(0);
-    expect(calls()).toContain("/concierge/improvements?agent_id=a-1&sort=date&direction=desc&limit=25&offset=0");
+    expect(calls()).toContain("/health/improvements?agent_id=a-1&sort=date&direction=desc&limit=25&offset=0");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
 
     await waitFor(() =>
-      expect(calls()).toContain("/concierge/improvements?agent_id=a-1&sort=date&direction=desc&limit=25&offset=25"),
+      expect(calls()).toContain("/health/improvements?agent_id=a-1&sort=date&direction=desc&limit=25&offset=25"),
     );
     expect((await screen.findAllByText("Page 2 of 2")).length).toBeGreaterThan(0);
   });
@@ -71,7 +71,7 @@ describe("the Improvements inbox", () => {
     render("/?imp_q=tone&imp_f_type=persona&imp_f_type=skill&imp_f_status=kept&imp_sort=status:asc");
     await screen.findAllByTestId("improvement-row");
     expect(calls()).toContain(
-      "/concierge/improvements?agent_id=a-1&proposal_type=persona&proposal_type=skill&status=kept&q=tone&sort=status&direction=asc&limit=25&offset=0",
+      "/health/improvements?agent_id=a-1&proposal_type=persona&proposal_type=skill&status=kept&q=tone&sort=status&direction=asc&limit=25&offset=0",
     );
   });
 

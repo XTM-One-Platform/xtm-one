@@ -44,7 +44,7 @@ def _flag_on(monkeypatch):
 @asynccontextmanager
 async def _client(sessions, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(concierge_api.router, prefix="/api/v1/concierge")
+    app.include_router(concierge_api.router, prefix="/api/v1/health")
 
     async def _get_db():
         async with sessions() as db:
@@ -71,10 +71,10 @@ async def test_every_signed_in_person_reads_the_name(monkeypatch) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.stranger) as client:
-            default = await client.get("/api/v1/concierge/name")
+            default = await client.get("/api/v1/health/name")
         await configure(sessions, world.admin, name="Jeeves")
         async with _client(sessions, world.reader) as client:
-            named = await client.get("/api/v1/concierge/name")
+            named = await client.get("/api/v1/health/name")
     assert default.json() == {"name": "Alfred", "default_name": "Alfred"}
     assert named.json() == {"name": "Jeeves", "default_name": "Alfred"}
 
@@ -84,7 +84,7 @@ async def test_the_name_route_is_dark_while_the_flag_is_off(monkeypatch) -> None
         world = await World().build(sessions)
         monkeypatch.setattr(settings, "enabled_features", "")
         async with _client(sessions, world.admin) as client:
-            assert (await client.get("/api/v1/concierge/name")).status_code == 403
+            assert (await client.get("/api/v1/health/name")).status_code == 403
 
 
 @pytest.mark.parametrize("name", ["Al\nfred", "x" * 41, "Al‮fred", "Al\x00fred", 7])
@@ -92,7 +92,7 @@ async def test_a_hostile_name_is_a_422_and_nothing_is_saved(name) -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
-            response = await client.put("/api/v1/concierge/settings", json={"enabled": True, "name": name})
+            response = await client.put("/api/v1/health/settings", json={"enabled": True, "name": name})
         async with sessions() as db:
             stored = await load_concierge_settings(db)
     assert response.status_code == 422
@@ -103,7 +103,7 @@ async def test_a_non_admin_cannot_name_the_concierge() -> None:
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.configurer) as client:
-            response = await client.put("/api/v1/concierge/settings", json={"name": "Mine"})
+            response = await client.put("/api/v1/health/settings", json={"name": "Mine"})
         async with sessions() as db:
             stored = await load_concierge_settings(db)
     assert response.status_code == 403
@@ -135,13 +135,13 @@ async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeyp
             fleet.name = "Improvement crew"
             await db.commit()
         async with _client(sessions, world.admin) as client:
-            saved = await client.put("/api/v1/concierge/settings", json={"enabled": True, "name": "  Jeeves "})
+            saved = await client.put("/api/v1/health/settings", json={"enabled": True, "name": "  Jeeves "})
         renamed = await _names(sessions)
         async with sessions() as db:
             await fleet_seed.seed_concierge_fleet(db)
         reseeded = await _names(sessions)
         async with _client(sessions, world.admin) as client:
-            await client.put("/api/v1/concierge/settings", json={"enabled": True, "name": None})
+            await client.put("/api/v1/health/settings", json={"enabled": True, "name": None})
         back_to_default = await _names(sessions)
     assert saved.status_code == 200 and saved.json()["name"] == "Jeeves"
     assert renamed == ("Jeeves", "Improvement crew", "Jeeves")
@@ -160,5 +160,5 @@ async def test_the_budget_line_names_the_concierge_as_its_administrator_named_it
         world = await World().build(sessions)
         await configure(sessions, world.admin, enabled=False, name="{Jeeves}")
         async with _client(sessions, world.admin) as client:
-            budget = (await client.get("/api/v1/concierge/budget")).json()
+            budget = (await client.get("/api/v1/health/budget")).json()
     assert (budget["refusal"], budget["refusal_message"]) == ("concierge_disabled", "{Jeeves} is switched off.")

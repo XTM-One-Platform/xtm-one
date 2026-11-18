@@ -41,7 +41,7 @@ const SIGNALS = [
 
 function answer(signals: unknown) {
   vi.mocked(api.get).mockImplementation((url: string) =>
-    url.startsWith("/concierge/signals") ? (signals instanceof Error ? Promise.reject(signals) : Promise.resolve(signals)) : Promise.resolve({}),
+    url.startsWith("/health/signals") ? (signals instanceof Error ? Promise.reject(signals) : Promise.resolve(signals)) : Promise.resolve({}),
   );
 }
 
