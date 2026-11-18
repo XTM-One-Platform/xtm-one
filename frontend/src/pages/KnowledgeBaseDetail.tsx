@@ -40,6 +40,7 @@ import {
 import { useGeneralAssistantConfig } from "@/hooks/api/useSettingsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/api";
+import { worksetLink, worksetStorageOf } from "@/lib/workset-storage";
 import { downloadErrorDescription } from "@/lib/download-error";
 import { withBasePath } from "@/lib/base-path";
 import { REFETCH_INTERVAL_FAST, REFETCH_INTERVAL_SLOW } from "@/lib/constants";
@@ -106,16 +107,19 @@ export default function KnowledgeBaseDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t_i18n } = useFormatter();
-  const { data: kb, isLoading, refetch: refetchKb } = useKnowledgeBase(id || "");
-  const { data: docs, refetch: refetchDocs } = useKnowledgeDocuments(id || "");
-  const { data: syncSources, refetch: refetchSources } = useKBSyncSources(id || "");
+  const { data: kb, isLoading, error: kbError, refetch: refetchKb } = useKnowledgeBase(id || "");
+  // The rest of the page reads once the knowledge base itself answered: an id
+  // that is not one (deleted, not shared, a workset's storage) reads nothing more.
+  const kbId = kb?.id ?? "";
+  const { data: docs, refetch: refetchDocs } = useKnowledgeDocuments(kbId);
+  const { data: syncSources, refetch: refetchSources } = useKBSyncSources(kbId);
   const { user, isAdmin } = useAuth();
   const remove = useDeleteKnowledgeBase();
   const reprocessDocs = useReprocessDocuments();
   const exportKnowledgeBase = useExportKnowledgeBase();
-  const { data: exportPackages, refetch: refetchExportPackages } = useKBExportPackages(id || "");
+  const { data: exportPackages, refetch: refetchExportPackages } = useKBExportPackages(kbId);
   const { data: gaConfig } = useGeneralAssistantConfig();
-  const { data: embeddingStats } = useKBEmbeddingStats(isAdmin && id ? id : "");
+  const { data: embeddingStats } = useKBEmbeddingStats(isAdmin ? kbId : "");
   const [tab] = useTabParam<Tab>("overview");
   const [showTestSearch, setShowTestSearch] = useState(false);
   const [showExportPackages, setShowExportPackages] = useState(false);
@@ -157,6 +161,19 @@ export default function KnowledgeBaseDetail() {
   }, [showExportPackages, displayedPackages.length]);
 
   if (isLoading) return <DetailPageSkeleton backTo="/knowledge" backLabel="Back to Knowledge Bases" tabs={5} descriptionLines={1} actions={2} />;
+  const storageOwner = kb ? null : worksetStorageOf(kbError);
+  if (storageOwner) return (
+    <NotFoundState
+      icon={Database}
+      title="Internal storage of a workset"
+      description="This knowledge base holds the documents of the workset {name}. It has no page of its own: open the workset in Operations."
+      descriptionValues={{ name: storageOwner.name }}
+      actionLabel="View the workset"
+      onAction={() => navigate(worksetLink(storageOwner))}
+      backTo="/knowledge"
+      backLabel="Back to Knowledge Bases"
+    />
+  );
   if (!kb) return (
     <NotFoundState
       icon={Database}
