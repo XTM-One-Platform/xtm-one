@@ -319,7 +319,13 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
         embed=AsyncMock(return_value=[0.1, 0.2, 0.3]), provider_name="test", embedding_dimensions=1536
     )
     used_config = str(uuid.uuid4())
-    moved = AsyncMock(return_value=True)
+    commits_when_asked: list[int] = []
+
+    async def _moved(_config_id):
+        commits_when_asked.append(session.commits)
+        return True
+
+    moved = AsyncMock(side_effect=_moved)
     monkeypatch.setattr(document_processor, "async_session", lambda: session)
     monkeypatch.setattr(
         document_processor, "chunk_text", lambda *_a, **_kw: ["This chunk has enough content to be embedded."]
@@ -337,6 +343,9 @@ async def test_a_dimension_mismatch_on_a_config_switched_meanwhile_is_due_now(mo
     assert doc.status == "error"
     assert "dimension" in doc.error_message
     assert moved.await_args.args[0] == used_config
+    # Asked once the error is committed: the job holds no connection meanwhile.
+    assert commits_when_asked == [2]
+    assert session.commits == 3
     assert before <= doc.embedding_next_retry_at <= datetime.now(UTC)
 
 

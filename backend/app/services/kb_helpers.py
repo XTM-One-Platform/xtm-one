@@ -1489,7 +1489,8 @@ async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:
     the one a job embedded with: an admin switched it while the job ran.
 
     The router's own resolution, fallbacks included, on a fresh session: the
-    job's session still holds the settings it read when it started.
+    job's session still holds the settings it read when it started. Call it with
+    no transaction open on the caller's session, or it holds two connections.
     """
     from app.core.database import async_session
     from app.llm.router import get_embedding_provider
@@ -1498,6 +1499,7 @@ async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:
         async with async_session() as db:
             _provider, _model, current = await get_embedding_provider(db)
     except Exception:
+        logger.warning("Could not check whether the embedding config was switched; assuming not", exc_info=True)
         return False
     return current is not None and str(current) != str(used_config_id)
 

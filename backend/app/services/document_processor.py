@@ -629,18 +629,20 @@ async def _process_document_impl(
                 # had; a content change zeroed both before re-queuing.
                 doc.status = "error"
                 doc.error_message = reason
+                schedule_embedding_retry(doc, retryable=retryable)
                 await log_kb_activity(
                     db,
                     kb_id,
                     EMBEDDING_FAILED_EVENT,
                     details=embedding_failed_details(doc_filename, reason),
                 )
-                # Failed on a provider an admin switched away from meanwhile:
-                # the new one may embed it, so retry now. Checked last, just
-                # before the commit, to leave the switch's retry pass the least gap.
-                moved = provider_config_id is not None and await embedding_config_moved(provider_config_id)
-                schedule_embedding_retry(doc, retryable=retryable or moved, immediately=moved)
                 await db.commit()
+                # Failed on a provider an admin switched away from meanwhile:
+                # retry now. Asked after the commit, holding no connection: a
+                # switch committed later has its retry pass see this error.
+                if provider_config_id is not None and await embedding_config_moved(provider_config_id):
+                    schedule_embedding_retry(doc, retryable=True, immediately=True)
+                    await db.commit()
                 return 0
 
             if not chunks:
