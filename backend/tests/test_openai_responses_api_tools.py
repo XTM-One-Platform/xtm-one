@@ -106,7 +106,9 @@ def _provider(endpoints: _Endpoints) -> OpenAIProvider:
     return provider
 
 
-@pytest.mark.parametrize("model", [_ASTRA, "gpt-6-astra-2026-09-01", "openai/gpt-6-astra"])
+@pytest.mark.parametrize(
+    "model", [_ASTRA, "gpt-6-astra-2026-09-01", "openai/gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"]
+)
 def test_gpt6_astra_is_flagged_for_the_responses_api(model):
     assert uses_responses_api_with_tools(model)
 

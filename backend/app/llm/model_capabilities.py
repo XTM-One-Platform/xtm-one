@@ -144,8 +144,9 @@ MODEL_PARAMETER_RULES = (
     # tools (the tools refusal of #11571), so a request with tools goes
     # through the Responses API (#12205). It refuses ``temperature`` on both
     # endpoints ("Unsupported parameter", #12216), as the o-series does.
+    # gpt-6.2-sol and gpt-6.2-astra refuse ``none`` and effort+tools alike (#133).
     ModelParameterRule(
-        prefixes=("gpt-6-astra",),
+        prefixes=("gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"),
         output_tokens="max_completion_tokens",
         omit_temperature=True,
         effort_levels=EFFORT_LEVELS,
@@ -153,7 +154,8 @@ MODEL_PARAMETER_RULES = (
         responses_api_with_tools=True,
     ),
     # Every gpt-6 model checked (luna, 6.2-sol, 6.2-astra) refuses any
-    # temperature but its default 1 ("Unsupported value", #125).
+    # temperature but its default 1 ("Unsupported value", #125); luna takes
+    # ``none`` next to tools.
     ModelParameterRule(
         prefixes=("gpt-6",),
         output_tokens="max_completion_tokens",
