@@ -8,8 +8,8 @@ consume agentic quota. It reports, inside XTM One, the issues, recommendations a
 of the agents and fleets an admin enrols, of XTM One itself, and of every registered
 OpenCTI, OpenAEV and OpenCRQ platform.
 
-Working names (product decision, Sam may rename): page and nav label **Health**, fleet
-**Platform Health**, orchestrator **Health Assistant**. No configurable name.
+Name (decided by Sam, 18 Nov 2026, section 11): **Platform Health** everywhere: page and
+nav label, routes, settings section, i18n, docs and the seeded fleet. No configurable name.
 
 ## 1. The three scope rules
 
@@ -87,7 +87,7 @@ alias for one minor release (section 2.3).
 | Signals | `signals.py` (feedback drop, failure spike, cost drift, model change) | Keep as deterministic agent checks of the engine (section 4.1), reading enrolled targets only |
 | Findings | `findings.py`, `concierge_findings` | Merge into the engine's finding store (`health_findings`) |
 | Cycles and digest | `cycles.py`, `digest.py`, `concierge_cycle_runs`, `concierge_schedule_marks`, `concierge_signal_states` | Keep and rename: a cycle becomes a health pass; the digest becomes the Health page history and the optional daily email |
-| Fleet seed (5 agents) | `fleet_seed.py`: `concierge`, `concierge-memory-steward`, `concierge-quality-analyst`, `concierge-flow-lab`, `concierge-experimenter` | Keep and rename the fleet "Platform Health", orchestrator "Health Assistant"; the migration renames rows by slug and leaves a hand-edited persona as written (compare to the seeded hash) |
+| Fleet seed (5 agents) | `fleet_seed.py`: `concierge`, `concierge-memory-steward`, `concierge-quality-analyst`, `concierge-flow-lab`, `concierge-experimenter` | Keep and rename the fleet "Platform Health", orchestrator "Platform Health"; the migration renames rows by slug and leaves a hand-edited persona as written (compare to the seeded hash) |
 | Memory steward | `memory_steward*.py`, `memory_history.py` | Keep, content opt-in only (rule 1.2), runs only for enrolled agents with the second opt-in |
 | Quality analyst, diagnosis | `diagnosis.py`, `quality_deps.py`, `text_kinds.py`, `turns.py` | Keep, content opt-in only |
 | Evaluations, datasets | `evaluations.py`, `evaluation_tools.py`, `datasets.py` | Keep (generic AI, already shared with `EVALUATION`) |
@@ -95,20 +95,20 @@ alias for one minor release (section 2.3).
 | Flow Lab (shadow, comparison, proposals, switch-over) | `flow_*.py` | Keep, enrolled flows only, admin on demand |
 | Sandbox | `sandbox/*` | Keep unchanged (it isolates experiments) |
 | Improvement proposals | `api/v1/improvement_proposals.py`, `improvement_proposals` | Keep; served while `EVALUATION` is on or Health is (always) |
-| Companion and pets | `companion.py`, `pets.py`, `concierge_pets`, `scripts/generate_alfred_pet.py`, profile companion card | Remove from the product (no health value). The table is kept one release and dropped by a later migration; uploaded pets are exported in the release notes procedure. Product decision for Sam, default "remove" |
+| Companion and pets | `companion.py`, `pets.py`, `concierge_pets`, `scripts/generate_alfred_pet.py`, profile companion card | Keep as a profile option (Sam, 18 Nov 2026, section 11): renamed with the rest, tables and uploaded pets carried by the migration, nothing dropped |
 | Identity | `identity.py` (`concierge_role`, principal) | Keep and rename (`health_role`), values carried |
 
 ### 2.2 API, frontend, docs
 
 | Surface | Today | Disposition |
 |---|---|---|
-| `/api/v1/concierge/*` (opt-in, opt-out, name, settings, budget, cycles, signals, schedules, improvements, pets, companion, activity) | 3 routers in `main.py` | Rename to `/api/v1/health/*`; `name`, `pets`, `companion`, `activity` removed; old paths aliased (2.3) |
-| Nav entry | `nav-model.ts:367` `aiLeaf("/concierge", Compass, "Concierge")`, `named: "concierge"` | Leaf "Health" at `/health`, no `named`; `/concierge` redirects |
+| `/api/v1/concierge/*` (opt-in, opt-out, name, settings, budget, cycles, signals, schedules, improvements, pets, companion, activity) | 3 routers in `main.py` | Rename to `/api/v1/health/*`; `name` and `activity` removed, `pets` and `companion` kept (profile option); old paths aliased (2.3) |
+| Nav entry | `nav-model.ts:367` `aiLeaf("/concierge", Compass, "Concierge")`, `named: "concierge"` | Leaf "Platform Health" at `/health`, no `named`; `/concierge` redirects |
 | Page | `pages/Concierge.tsx` (Improvements, Cycles, Signals) | `pages/Health.tsx` (section 8) |
 | Settings | `pages/settings/ConciergeSection.tsx`, `ConciergeTriggerBlocks.tsx`, `ConciergePetLibrary.tsx`, `concierge-block.tsx` | One compact `HealthSection` (section 7) |
 | Agent page | `pages/agent-detail/OverviewTab.tsx` opt-in card and Improvements block | One compact row at the bottom of the overview, after the configuration: enrolment switch, content opt-in, last finding count, link to Health |
 | Flow page | `pages/flow-builder/ConciergePanel.tsx`, toolbar button | Same compact row in the flow side panel |
-| Profile | `ConciergeOptOutRow.tsx`, `ConciergeCompanionCard.tsx` | Opt-out kept and renamed; companion removed |
+| Profile | `ConciergeOptOutRow.tsx`, `ConciergeCompanionCard.tsx` | Opt-out kept and renamed; companion kept as a profile option and renamed |
 | i18n | about 577 occurrences in 5 catalogs | Renamed in every language |
 | Docs | `docs/docs/administration/concierge.md`, 7 `dev-docs/concierge-*.md` | `administration/health.md`, `usage/health.md`; dev-docs folded into this file and `platform-health-*.md` slices |
 | Flag | `CONCIERGE` in `backend/app/core/feature_flags.py` and `frontend/src/lib/utils.ts` | Removed per "Removing the flag"; `ENABLED_FEATURES=CONCIERGE` becomes a no-op logged once |
@@ -241,7 +241,9 @@ OpenCRQ side: the registration itself and a snapshot of those two states.
 | **Push**: each platform adds a `health` snapshot to the registration it already sends every 5 minutes (`POST /api/v1/platform/register`, OpenCTI `XTM_ONE_SCHEDULE_TIME`, OpenAEV `XtmOneClient`) | No credential stored in XTM One; works through internal URLs; zero extra cost; the heartbeat already proves liveness | Needs a PR in opencti, openaev and opencrq; a platform older than that release sends no snapshot (only heartbeat, version and licence checks then) |
 | Pull: XTM One calls a dedicated health endpoint with a platform-scoped identity | Fresher on demand | A credential per platform, network reachability from XTM One, a new endpoint anyway |
 
-**Decision: push**, with an on-demand refresh: the Health page "Refresh" sets a flag the
+**Decision: push** (confirmed by Sam, 18 Nov 2026, section 11), with automatic refresh:
+the Platform Health page re-reads on its own interval, so fresh data shows without a
+manual pull. An admin may still force a refresh: "Refresh" sets a flag the
 next registration answer carries (`health_refresh_requested`), and the platform sends its
 next snapshot at once. `RegisterRequest` gains an optional bounded `health` object
 (schema versioned, size capped at 256 KB, unknown keys ignored); the latest snapshot is
@@ -268,7 +270,7 @@ OpenCTI, OpenAEV and OpenCRQ are opened on team approval (skill section 16).
 
 ## 7. Settings
 
-One compact "Health" section (Settings > Agents and automations > Health):
+One compact "Platform Health" section (Settings > Agents and automations > Platform Health):
 
 - Enrolled agents and fleets (list, bulk enrol, bulk remove).
 - Per module (XTM One mode only): check toggles and the (E) thresholds of section 4.
@@ -279,7 +281,7 @@ One compact "Health" section (Settings > Agents and automations > Health):
 
 ## 8. Health page
 
-- Left menu "Health" (`/health`), generic AI leaf, both modes.
+- Left menu "Platform Health" (`/health`), generic AI leaf, both modes.
 - Overview: one card per module present (agents, fleets; plus XTM One, OpenCTI, OpenAEV,
   OpenCRQ in XTM One mode) with score, counts by severity and trend.
 - Findings list filterable by module, severity, category, status.
@@ -310,7 +312,7 @@ APPROVE on its head.
 | Slice | Content | UI |
 |---|---|---|
 | S0 | This spec | no |
-| S1 | Rename and de-flag: flag removed, routes, nav, i18n, docs, seeded fleet, migration (columns, tables, settings), aliases, companion removed, deployment values checked | yes |
+| S1 | Rename and de-flag: flag removed, routes, nav, i18n, docs, seeded fleet, migration (columns, tables, settings), aliases, companion kept as a profile option, deployment values checked | yes |
 | S2 | Engine: finding store, passes, score, history, dismissals, not-metered test (d), enrolment model and the 900-agent upgrade test (a) | no |
 | S3 | Agent and fleet checks (4.1) on enrolled targets, existing signals and fleet health moved onto the engine | no |
 | S4 | XTM One platform checks (4.2), mode gate and guard allowlist entries, test (b) | no |
@@ -323,9 +325,10 @@ APPROVE on its head.
 | S11 | Platform email (SMTP) integration and `send_email` | yes |
 | S12 | Health alert emails | yes |
 
-## 11. Open product decisions (Sam)
+## 11. Product decisions (decided by Sam, 18 Nov 2026)
 
-- Names: "Platform Health", "Health", "Health Assistant".
-- Companion and pets: removed (default) or kept as a profile option.
-- Acquisition: push in the heartbeat (recommended) or pull.
-- Analysis ceiling: set from the S9 measurement.
+- Name: **Platform Health** (not "Health", not "Health Assistant"), in routes, nav,
+  settings, i18n, docs and the seeded fleet from S1.
+- Companion and pets: **kept** as a profile option; not removed in the rename.
+- Acquisition: **push** in the heartbeat, with automatic refresh of the UI (section 5).
+- Analysis ceiling: **go**, set from the S9 measurement (section 6).
