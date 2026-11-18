@@ -192,6 +192,10 @@ async def retire_assignments_after_runs(*, limit: int = 200) -> int:
                             ],
                         },
                     )
+                # A deleted seeded fleet health check stays deleted: its fleet opts out.
+                from app.services.fleets import record_health_check_deleted
+
+                await record_health_check_deleted(db, assignment, actor=assignment.paused_by_label)
                 await db.delete(assignment)
                 await db.commit()
                 deleted += 1

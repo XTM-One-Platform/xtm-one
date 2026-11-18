@@ -133,3 +133,63 @@ def test_the_whole_failure_message_goes_to_the_failures_file_and_is_named():
         stdout="", stderr="", run_dir="workspace/.xtm/runs/a", report=summary,
     )
     assert checks.FAILURES_FILE not in unsaved
+
+
+WARNINGS = "\n".join(f"  ! eslint-plugin-react(no-array-index-key): src/x{i}.tsx:{i}:3 warning" for i in range(300))
+
+
+def test_a_green_check_answers_with_its_totals_not_its_warnings():
+    stdout = WARNINGS + "\nFound 300 warnings and 0 errors.\nFinished in 1.2s on 812 files."
+    text = checks.format_result(
+        check="frontend-lint",
+        argv=["yarn", "oxlint"],
+        cwd="frontend",
+        exit_code=0,
+        seconds=2.0,
+        timed_out=False,
+        stdout=stdout,
+        stderr="",
+        run_dir="workspace/.xtm/runs/a",
+        report=None,
+        green_summary=True,
+    )
+    assert "Found 300 warnings and 0 errors." in text and text.rstrip().endswith("run.json).")
+    assert "before the totals left out" in text and "workspace/.xtm/runs/a" in text
+    assert len(text) < checks.GREEN_OUTPUT_CHARS + 600
+
+
+def test_a_red_check_and_an_argv_keep_their_output():
+    stdout = WARNINGS + "\nFound 300 warnings and 1 error."
+    red = checks.format_result(
+        check="frontend-lint",
+        argv=["yarn", "oxlint"],
+        cwd="frontend",
+        exit_code=1,
+        seconds=2.0,
+        timed_out=False,
+        stdout=stdout,
+        stderr="",
+        run_dir="workspace/.xtm/runs/a",
+        report=None,
+        green_summary=True,
+    )
+    assert "before the totals left out" not in red and "characters elided" in red
+    argv = checks.format_result(
+        check="argv",
+        argv=["cat", "x"],
+        cwd=".",
+        exit_code=0,
+        seconds=0.1,
+        timed_out=False,
+        stdout=stdout,
+        stderr="",
+        run_dir="workspace/.xtm/runs/a",
+        report=None,
+    )
+    assert "before the totals left out" not in argv
+
+
+def test_green_tail_keeps_short_output_whole():
+    assert checks.green_tail("5 passed in 0.1s") == "5 passed in 0.1s"
+    tail = checks.green_tail("." * 5000 + "\n5384 passed in 90s", limit=100)
+    assert tail.endswith("5384 passed in 90s") and "1 line(s) before the totals left out" in tail

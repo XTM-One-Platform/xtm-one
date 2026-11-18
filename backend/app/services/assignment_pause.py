@@ -106,6 +106,7 @@ PauseReason = Literal[
     "panic_stop",
     "retire_after_run",
     "fleet_pause",
+    "owner_deactivated",
 ]
 
 #: The reason stamped by the emergency stop (``services/panic.py``). A module
@@ -128,7 +129,14 @@ PAUSE_REASONS: dict[str, str] = {
     "retire_after_run": "to be deleted once its runs end",
     "concierge_switch_over": "replaced by a flow after an approved Platform Health proposal",
     "fleet_pause": "paused with every automation of its fleet",
+    "owner_deactivated": "paused because the account it acts as was deactivated",
 }
+
+#: The reason stamped by the user-deactivation cascade
+#: (``services/user_deactivation.py``) on an assignment that would act with a
+#: deactivated account's identity. Lifted only by that account's reactivation,
+#: which re-enables exactly the assignments the cascade recorded.
+OWNER_DEACTIVATED_REASON = "owner_deactivated"
 
 #: The reason stamped by a fleet's "Pause all" (``services/fleet_control.py``):
 #: the fleet's "Resume" re-enables exactly the assignments carrying it.
@@ -141,7 +149,14 @@ FLEET_PAUSE_REASON = "fleet_pause"
 #: caller is about to attribute an autonomous decision to a person, which is
 #: the one mistake an audit feature must not make quietly.
 SYSTEM_REASONS: frozenset[str] = frozenset(
-    {"auth_quarantine", "stale_reference", "invalid_schedule", "system_seed", "concierge_switch_over"}
+    {
+        "auth_quarantine",
+        "stale_reference",
+        "invalid_schedule",
+        "system_seed",
+        "concierge_switch_over",
+        "owner_deactivated",
+    }
 )
 
 #: Reasons that are ROUTINE rather than anomalous — a copy born switched off,

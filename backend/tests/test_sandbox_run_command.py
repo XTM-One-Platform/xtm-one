@@ -2056,6 +2056,23 @@ async def test_the_check_listing_is_an_answer_with_image_report_and_services():
     assert "Error" not in listing
 
 
+async def test_a_large_lab_is_named_not_described_in_the_check_listing():
+    workspace = _workspace()
+    services = "".join(
+        f'\n[service.lab-{i}]\nargv = ["serve"]\nport = {3100 + i}\ndescription = "{"a seeded lab state " * 6}{i}"\n'
+        for i in range(40)
+    )
+    await workspace.put_tree([("co/.xtm-one/checks.toml", (CHECKS + services).encode())])
+    listing = await commands.list_checks(workspace, checkout="co", known_images={"python"})
+    assert "Services it declares (sandbox_start_service):\n40 services: lab-0, lab-1," in listing, listing
+    assert "lab-39\n(sandbox_start_service without a service lists them" in listing
+    assert "a seeded lab state" not in listing and "port 3100" not in listing
+    assert len(listing) < checks.LISTING_MAX_CHARS + checks.SERVICES_LISTING_MAX_CHARS
+    # The services listing itself keeps every description.
+    full = checks.describe_services(checks.load_services(CHECKS + services))
+    assert "- lab-39 (a seeded lab state" in full and "port 3139" in full
+
+
 def test_the_tool_is_offered_on_the_opensandbox_backend_only(monkeypatch):
     from app.services.builtin_tools.media import build_code_interpreter_tool
 

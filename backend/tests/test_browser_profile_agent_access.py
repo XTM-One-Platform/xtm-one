@@ -222,7 +222,7 @@ async def test_navigate_with_a_profile_opens_it_and_lands_on_its_start_url(monke
     async def install(key, session):
         opened.append(key)
 
-    async def navigate(key, url):
+    async def navigate(key, url, timeout=None):
         return f"Navigated to: {url}\nTitle: Demo"
 
     monkeypatch.setattr(agent_access, "resolve_profile", resolve)

@@ -744,6 +744,7 @@ def build_fleet_tools(
         instructions_position: str | None = None,
         announce_instructions: object = False,
         confirm: object = False,
+        health_check: str | None = None,
     ) -> str:
         from app.services.fleet_autonomy import (
             effective_level,
@@ -754,6 +755,7 @@ def build_fleet_tools(
         from app.services.fleets import (
             FleetActionRefusedError,
             check_scope_organizations,
+            set_fleet_health_check,
             set_member_defaults,
             set_orchestrator,
         )
@@ -770,6 +772,7 @@ def build_fleet_tools(
                     ("member_defaults", member_defaults),
                     ("autonomy_level", autonomy_level),
                     ("instructions_position", instructions_position),
+                    ("health_check", health_check),
                 )
                 if value is not None
             }
@@ -831,6 +834,12 @@ def build_fleet_tools(
                 else:
                     await set_orchestrator(db, fleet, _one_id(text, "orchestrator_agent_id"))
                 changed.append("orchestrator_agent_id")
+            if health_check is not None and str(health_check).strip():
+                try:
+                    await set_fleet_health_check(db, fleet, str(health_check), actor=str(user.id))
+                except FleetActionRefusedError as exc:
+                    raise _RefusedError(exc.detail) from None
+                changed.append("health_check")
             if workspace_id is not None and workspace_id.strip():
                 target = _one_id(workspace_id, "workspace_id")
                 if target != fleet.workspace_id:
@@ -866,7 +875,7 @@ def build_fleet_tools(
                     )
                 raise _RefusedError(
                     "Nothing to change: pass a name, description, workspace_id, orchestrator_agent_id, archived, "
-                    "member_defaults, an autonomy_level or an instructions_position."
+                    "member_defaults, health_check, an autonomy_level or an instructions_position."
                 )
             await db.flush()
             await _audit(db, user, fleet, "update", f"Updated fleet '{fleet.name}'", fields=sorted(changed))
@@ -2097,8 +2106,8 @@ def build_fleet_tools(
         ToolDefinition(
             name="update_fleet",
             description=(
-                "Change only the fields passed. orchestrator: a home member, 'none' clears. autonomy_level: "
-                "a raise is admin and chat only, with confirm=true. instructions_position: admin only."
+                "orchestrator: member or 'none'. autonomy_level raise: admin chat, confirm=true. "
+                "instructions_position: admin. health_check: default|off|assignment id."
             ),
             input_schema={
                 "type": "object",
@@ -2113,6 +2122,7 @@ def build_fleet_tools(
                     "instructions_position": {"type": "string"},
                     "announce_instructions": {"type": "boolean"},
                     "confirm": {"type": "boolean"},
+                    "health_check": {"type": "string"},
                     "member_defaults": {
                         "type": "object",
                         "description": "Inherited unless a member sets its own.",

@@ -626,6 +626,82 @@ def _load_dotenv_files() -> None:
     load_dotenv_files()
 
 
+# Providers whose chat models the seed lists when ``LLM_PROVIDER_{P}_MODELS``
+# is unset: the gateway's catalog is curated upstream, so "all" is meaningful.
+_SEED_LISTED_PROVIDERS = frozenset({"filigran_gateway"})
+# Short: it runs on every boot and under the AI toggle's bootstrap lock.
+_SEED_LISTING_TIMEOUT_SECONDS = 5.0
+
+
+async def _list_models_for_seed(provider_name: str, api_key: str) -> list[str] | None:
+    """The chat models *provider_name* lists, or ``None`` when it cannot answer."""
+    from app.llm.router import PROVIDER_MAP, is_chat_capable_model, provider_instance
+    from app.services.vault import resolve_secret_text
+
+    provider = None
+    try:
+        provider = provider_instance(PROVIDER_MAP[provider_name], await resolve_secret_text(api_key))
+        listed = await asyncio.wait_for(provider.list_models(), timeout=_SEED_LISTING_TIMEOUT_SECONDS)
+    except Exception as exc:
+        logger.warning(
+            "LLM env seed: could not list the %s models, its model list is left as it is: %s",
+            provider_name,
+            format_exception_message(exc),
+        )
+        return None
+    finally:
+        if close := getattr(getattr(provider, "client", None), "close", None):
+            with suppress(Exception):
+                await close()
+    return [m for m in listed if is_chat_capable_model(m)] or None
+
+
+def _listing_default(current: str | None, declared: str | None, listed: list[str]) -> str | None:
+    """The default for a listed catalog: *current*, else *declared*, while listed; else the first."""
+    from app.llm.env_models import resolve_default_model
+
+    return resolve_default_model(current if current in listed else declared, listed)
+
+
+async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
+    """List the models of the seeded providers that have no ``*_MODELS`` list.
+
+    A catalog still equal to its last listing (``env_models``) is refreshed;
+    one an admin edited is left alone. A provider never listed is listed only
+    while no other provider offers a chat model (next to one, a gateway key is
+    there for its other models), and in editable mode only while it has no
+    catalog. Done before the seed's transaction so no network call holds the
+    provider lock.
+    """
+    from sqlalchemy import select as _sel
+
+    from app.core.database import async_session
+    from app.llm.env_models import env_models_for
+    from app.llm.router import is_chat_capable_model
+    from app.models.llm_config import LLMProviderConfig
+
+    wanted = [(n, k) for n, k in providers if n in _SEED_LISTED_PROVIDERS and env_models_for(n) is None]
+    if not wanted:
+        return {}
+    names = {n for n, _ in wanted}
+    async with async_session() as db:
+        rows = (await db.execute(_sel(LLMProviderConfig))).scalars().all()
+    # The seeded rows of the providers to list, and every other config's models.
+    own = {r.provider: r for r in rows if r.provider in names and r.user_id is None}
+    offered = [m for r in rows if not (r.provider in names and r.user_id is None) for m in r.available_models or []]
+    offered += [m for n, _ in providers if n not in names for m in env_models_for(n) or []]
+    sole = not any(is_chat_capable_model(m) for m in offered)
+
+    def _to_list(name: str) -> bool:
+        row = own.get(name)
+        if row is not None and row.env_models is not None:
+            return row.available_models == row.env_models
+        return sole and (not models_editable or row is None or row.available_models is None)
+
+    listed = {n: await _list_models_for_seed(n, k) for n, k in wanted if _to_list(n)}
+    return {n: models for n, models in listed.items() if models}
+
+
 async def _seed_llm_providers_from_env() -> set[str]:
     """Upsert LLM providers from environment variables on every boot.
 
@@ -639,6 +715,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
     ``app.llm.env_models.merge_env_models``.  Either way the list
     applied is snapshotted on ``env_models``, and models the seed drops from
     a catalog are cleaned off agents / preferences / platform defaults.
+    Unset for the gateway, its own listing stands in (``_seed_listed_models``).
 
     ``DEFAULT_MODEL``, ``DEFAULT_ROUTING_MODEL``, ``DEFAULT_EMBEDDING_*``,
     ``DEFAULT_IMAGE_*`` and the video, speech, music and decision defaults
@@ -722,6 +799,10 @@ async def _seed_llm_providers_from_env() -> set[str]:
     if not providers_to_seed and not has_platform_overrides:
         return set()
 
+    # Resolved: ``LLM_PROVIDER_MODELS_EDITABLE`` or ``BYOLLM_ACTIVATED``.
+    models_editable = settings.provider_models_admin_curated
+    listed_models = await _seed_listed_models(providers_to_seed, models_editable)
+
     async with async_session() as db:
         # Also runs when AI is re-enabled at runtime, next to an admin's delete:
         # it edits catalogs and pins defaults to configs, a catalog edit.
@@ -751,15 +832,23 @@ async def _seed_llm_providers_from_env() -> set[str]:
         # of an install that is already configured.
         install_configured_before_boot = await _byollm_install_configured(db)
 
-        # Resolved: ``LLM_PROVIDER_MODELS_EDITABLE`` or ``BYOLLM_ACTIVATED``.
-        models_editable = settings.provider_models_admin_curated
         # provider name -> the row the seed left behind, so the DEFAULT_MODEL
         # pass below can check what each env-seeded provider actually offers.
         seeded_rows: dict[str, LLMProviderConfig] = {}
+        # provider name -> the env list, or the provider's own listing, the seed applied.
+        seed_lists: dict[str, list[str]] = {}
         for provider_name, api_key in providers_to_seed:
             # ``None`` = ``LLM_PROVIDER_{P}_MODELS`` unset / blank -> the stored
-            # catalog is never touched (historical "optional" contract).
+            # catalog is never touched (historical "optional" contract), except
+            # by a listing (``_seed_listed_models``).
             env_models = env_models_for(provider_name)
+            listed = listed_models.get(provider_name)
+            # A listing is alphabetical: the provider's own default (the gateway's
+            # ``default`` alias) when listed, else the stored one, else the first.
+            declared_default = getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
+            if listed and not models_editable:
+                env_models = listed
+            seed_lists[provider_name] = env_models or listed or []
 
             existing = existing_by_name.get(provider_name)
             if existing:
@@ -786,20 +875,28 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     else:
                         # Pinned regime: the env list IS the catalog.
                         existing.available_models = env_models
-                        existing.default_model = env_models[0]
+                        existing.default_model = (
+                            _listing_default(existing.default_model, declared_default, env_models)
+                            if listed
+                            else env_models[0]
+                        )
                     existing.env_models = env_models
                     # A model the seed just dropped from the catalog must not
                     # linger on agents / user preferences / platform defaults
                     # as a ghost reference that 404s at runtime — the same
                     # cleanup a UI shrink and the orphaned-provider prune run.
                     retired = before - set(existing.available_models or [])
-                    if retired:
+                    # A listing may be partial (an upstream down): it hides the
+                    # model, it does not clear the choices made on it.
+                    if retired and not listed:
                         # Scoped to this config: a model another config
                         # also serves stays on the choices pinned to it.
                         await _cleanup_orphaned_model_references(
                             db, provider_name, retired, provider_id=existing.id
                         )
-                else:
+                elif provider_name not in _SEED_LISTED_PROVIDERS or existing.available_models != existing.env_models:
+                    # Kept while the catalog still equals it: a failed listing is no
+                    # catalog change, and the next boot refreshes it again.
                     existing.env_models = None
                 logger.debug("LLM env seed: updated %s from env var", provider_name)
                 cfg = existing
@@ -808,7 +905,11 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     user_id=None,
                     provider=provider_name,
                     api_key_enc=encrypt_value(api_key),
-                    default_model=env_models[0] if env_models else None,
+                    default_model=(
+                        _listing_default(None, declared_default, env_models)
+                        if listed and env_models
+                        else (env_models[0] if env_models else None)
+                    ),
                     available_models=env_models,
                     env_models=env_models,
                     is_from_env=True,
@@ -816,6 +917,11 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 db.add(cfg)
                 await db.flush()
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
+            if listed and models_editable and cfg.available_models in (None, cfg.env_models):
+                # Editable: refreshed until an admin edits it (it then differs from the snapshot).
+                cfg.available_models = listed
+                cfg.default_model = _listing_default(cfg.default_model, declared_default, listed)
+                cfg.env_models = listed
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
@@ -829,13 +935,17 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 if platform_default_model and platform_default_model in available_models
                 else provider_default
             )
+            if listed and model_for_platform not in (platform_default_model, declared_default):
+                # A first-in-alphabet pick is no one's choice: not pinned platform-wide.
+                model_for_platform = None
             if model_for_platform:
                 await _ensure_platform_default_model(
                     db,
                     provider_name,
                     model_for_platform,
                     provider_id=str(cfg.id),
-                    available_models=available_models or None,
+                    # A listing is chat models only: the chosen one, not its first.
+                    available_models=None if listed else available_models or None,
                     # Under BYOLLM an empty default of a configured install is
                     # the administrator's choice, not a gap.
                     fill_empty_defaults=not install_configured_before_boot,
@@ -918,7 +1028,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 # then apply, exactly as for any other unlisted model.
                 seeded = seeded_rows.get(prov_name)
                 offered = set(seeded.available_models or []) if seeded else set()
-                models = [m for m in (env_models_for(prov_name) or []) if m in offered]
+                models = [m for m in seed_lists.get(prov_name, []) if m in offered]
                 if platform_default_model in models:
                     ps.agent_default_provider = prov_name
                     # Scope the provider_id lookup to env-seeded rows
@@ -1766,44 +1876,6 @@ async def _bootstrap_platform_data() -> None:
             "Settings > Platform or set PLATFORM_MODE."
         )
 
-    # Provider provisioning is AI-only; everything after it (admin upsert,
-    # user defaults) is not and must still run on an AI-disabled install.
-    if _ai_on:
-        # Lives in ``services/provisioning.py`` for the same reason the content
-        # seeding does: the runtime AI toggle must create exactly the same
-        # thing (FR-012).
-        from app.services.provisioning import provision_env_providers
-
-        await provision_env_providers()
-
-        # Diagnose misconfigured chat providers: any provider registered in the
-        # chat router (not embedding-only like ``tei``) that exposes no chat-capable
-        # model. Best-effort and isolated — a diagnostic must never break startup.
-        try:
-            from sqlalchemy import select as _sel_llm
-
-            from app.api.v1.platform_settings_helpers import (
-                get_platform_settings as _gps,
-            )
-            from app.core.database import async_session
-            from app.llm.router import (
-                validate_chat_provider_configs,
-                validate_fallback_model,
-            )
-            from app.models.llm_config import LLMProviderConfig as _LLMProviderConfig
-
-            async with async_session() as db:
-                _llm_configs = list(
-                    (await db.execute(_sel_llm(_LLMProviderConfig))).scalars().all()
-                )
-                _ps = await _gps(db)
-            validate_chat_provider_configs(_llm_configs)
-            # Also validate the admin-configured explicit fallback model:
-            # a completion-only or non-chat model will 404 on every failover attempt.
-            validate_fallback_model(getattr(_ps, "fallback_model", None), _llm_configs)
-        except Exception as exc:  # pragma: no cover - diagnostic only
-            logger.debug("Chat provider validation skipped: %s", format_exception_message(exc))
-
     # Upsert admin user from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
     # Always overwritten on startup so credentials stay in sync with .env.
     #
@@ -1901,6 +1973,44 @@ async def _bootstrap_platform_data() -> None:
                     env_token.key_prefix = prefix
                     logger.info("Admin env token rotated")
                     await db.commit()
+
+    # Provider provisioning is AI-only, and follows the admin upsert: the
+    # gateway signs its boot model listing as that account (service identity).
+    if _ai_on:
+        # Lives in ``services/provisioning.py`` for the same reason the content
+        # seeding does: the runtime AI toggle must create exactly the same
+        # thing (FR-012).
+        from app.services.provisioning import provision_env_providers
+
+        await provision_env_providers()
+
+        # Diagnose misconfigured chat providers: any provider registered in the
+        # chat router (not embedding-only like ``tei``) that exposes no chat-capable
+        # model. Best-effort and isolated — a diagnostic must never break startup.
+        try:
+            from sqlalchemy import select as _sel_llm
+
+            from app.api.v1.platform_settings_helpers import (
+                get_platform_settings as _gps,
+            )
+            from app.core.database import async_session
+            from app.llm.router import (
+                validate_chat_provider_configs,
+                validate_fallback_model,
+            )
+            from app.models.llm_config import LLMProviderConfig as _LLMProviderConfig
+
+            async with async_session() as db:
+                _llm_configs = list(
+                    (await db.execute(_sel_llm(_LLMProviderConfig))).scalars().all()
+                )
+                _ps = await _gps(db)
+            validate_chat_provider_configs(_llm_configs)
+            # Also validate the admin-configured explicit fallback model:
+            # a completion-only or non-chat model will 404 on every failover attempt.
+            validate_fallback_model(getattr(_ps, "fallback_model", None), _llm_configs)
+        except Exception as exc:  # pragma: no cover - diagnostic only
+            logger.debug("Chat provider validation skipped: %s", format_exception_message(exc))
 
     # In XTM One mode, set CTEM Assistant as default agent for all users
     # (including the admin row just upserted above) and link it as the

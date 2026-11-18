@@ -133,7 +133,8 @@ with HTTP 400 `unsupported_value` (gpt-6-astra, with or without tools). A
 caller's `none` or `minimal` is sent as the model's lowest declared level
 (`lowest_effort()`); no effort set still sends none at all. A 400 that names
 `reasoning_effort` all the same (a model the table does not know yet, or
-whose values moved) is retried once on the same leg by
+whose values moved), or the AI Gateway's 502 carrying such a provider 400
+(XTM-One-Platform/ai-gateway#348), is retried once on the same leg by
 `openai_compat.create_with_effort_retry()`: with the value the error lists
 nearest below the one sent, `none` when the error asks for it, else without
 the parameter, logged once per model and value at warning. A failover leg
@@ -163,11 +164,13 @@ provider: `gpt-6-astra` (dated ids included).
 `gpt-6-astra` also sets `omit_temperature`: it answers `temperature` with
 HTTP 400 "Unsupported parameter" on chat completions and the Responses API
 alike, so neither request carries it (`build_openai_generation_params`,
-`openai_responses.build_responses_params`). A 400 that names `temperature`
+`openai_responses.build_responses_params`). The other `gpt-6` models set it
+too: they refuse any `temperature` but the default 1 ("Unsupported value"). A 400 that names `temperature`
 all the same (a model the table does not flag yet) is retried once on the
 same leg without it by `openai_compat.create_without_refused_temperature()`,
 on chat completions (inside `create_with_effort_retry()`) and the Responses
-API, logged once per model at warning. A leg that still fails on a refused
+API, logged once per model at warning; the gateway's 502 carrying that 400
+is retried the same way. A leg that still fails on a refused
 parameter is named `HTTP 400 <param> not supported` in the chain error.
 
 Declared today:

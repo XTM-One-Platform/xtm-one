@@ -107,6 +107,9 @@ class FleetUpdate(BaseModel):
     autonomy_level: Literal["full_gates", "medium", "low", "autonomous"] | None = None
     #: Admin only (#11624): hide the members' and the workspace's activity from non-admins.
     hide_activity_from_non_admins: bool | None = None
+    #: The weekly health check: ``default`` (the seeded one), ``off``, or the id
+    #: of an assignment of a home member that is the fleet's own check.
+    health_check: str | None = Field(default=None, max_length=64)
 
 
 class FleetMemberCreate(BaseModel):
@@ -262,6 +265,9 @@ class FleetResponse(BaseModel):
     gated_action_count: int = 0
     #: Where the fleet's instructions put it on the scale (#10168); ``null`` = unset.
     instructions_position: str | None = None
+    #: The weekly health check: ``null`` = the seeded one; ``{mode: off | own,
+    #: assignment_id?, by, at}`` = the fleet opted out of it.
+    health_check: dict | None = None
     #: Provenance of a fork (#9174): the source's id, slug, name, built-in
     #: flag, fingerprint, member mode and fork time; ``null`` = not a fork.
     forked_from: dict | None = None

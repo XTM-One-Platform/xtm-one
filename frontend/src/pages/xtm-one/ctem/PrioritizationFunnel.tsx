@@ -59,7 +59,6 @@ import {
   FLOW_REASON,
   FLOW_TOP,
   FUNNEL_LAYER_COPY,
-  FUNNEL_SETTINGS_PATH,
   flowBandPath,
   flowBranchPath,
   flowDashedPath,
@@ -69,7 +68,9 @@ import {
   funnelIsEmpty,
   funnelLayerHref,
   funnelRows,
+  funnelSettingsHref,
   isCasesLayer,
+  isOrganizationSettingsHref,
   withCasesLayer,
   type FlowStep,
   type FunnelCaseStates,
@@ -315,7 +316,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
   const destinationOf = (layer: CtemFunnelLayer) => {
     const href = hrefOf(layer);
     if (!href) return null;
-    if (href === FUNNEL_SETTINGS_PATH) return t_i18n("Opens Settings > Organization");
+    if (isOrganizationSettingsHref(href)) return t_i18n("Opens Settings > Organization");
     if (/^https?:\/\//.test(href)) return t_i18n("Opens in OpenCTI, Arsenal > Vulnerabilities");
     return t_i18n("Opens the Cases list");
   };
@@ -567,7 +568,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
                   <span className="shrink-0 text-default-secondary">{stateText(layer)}</span>
                   {cta && !sample && (
                     <Link
-                      to={hrefOf(layer) ?? FUNNEL_SETTINGS_PATH}
+                      to={hrefOf(layer) ?? funnelSettingsHref(layer.key)}
                       className={cn("min-w-0 truncate font-medium text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
                       data-flow-mark=""
                       tabIndex={-1}

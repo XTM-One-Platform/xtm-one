@@ -26,6 +26,7 @@ import { useCtemPosture, useCtemPostureHistory } from "@/hooks/api/useCtemMetric
 import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_BAND_CONFIG, CTEM_PRODUCT_INFO } from "@/lib/constants";
+import { profileFieldHref } from "@/lib/organization-profile-tabs";
 import { safeExternalUrl } from "@/lib/utils";
 import type { CtemVertical } from "@/types";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -385,7 +386,7 @@ export default function CtemGovernance() {
             <NotConfiguredFrame
               reason={t_i18n("No accepted risk with an expiry in the prioritization policy")}
               action={isAdmin ? t_i18n("Open the prioritization policy") : undefined}
-              onAction={isAdmin ? () => navigate("/settings/organization") : undefined}
+              onAction={isAdmin ? () => navigate(profileFieldHref("accepted_risks")) : undefined}
               testId="ctem-governance-no-risks"
             />
           ) : (

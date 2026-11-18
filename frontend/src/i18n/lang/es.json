@@ -18960,5 +18960,9 @@
   "Knowledge and sources": "Conocimiento y fuentes",
   "About the organization profile": "Acerca del perfil de la organización",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# propuesta} other {# propuestas}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# campo sin completar, señalado por cada agente que lo necesita} other {# campos sin completar, señalados por cada agente que los necesita}}"
+  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# campo sin completar, señalado por cada agente que lo necesita} other {# campos sin completar, señalados por cada agente que los necesita}}",
+  "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "Los proveedores LLM configurados no ofrecen ningún modelo. Las funciones agénticas y basadas en LLM no estarán disponibles hasta que alguno lo haga.",
+  "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "Defina {variable} y reinicie, o defina LLM_PROVIDER_MODELS_EDITABLE=true para seleccionar sus modelos aquí.",
+  "Select models on a provider in this section.": "Seleccione modelos en un proveedor de esta sección.",
+  "Set {variable} and restart.": "Defina {variable} y reinicie."
 }

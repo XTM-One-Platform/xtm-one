@@ -520,6 +520,35 @@ async def test_a_bound_slack_thread_continues_the_web_conversation_for_its_owner
     assert (shown["content"], shown["channel"]) == ("and the figures?", "slack")
 
 
+async def test_a_resumed_turn_keeps_each_replayed_tool_call_with_its_result(monkeypatch, fake_redis):
+    """A shutdown-cut channel turn resumes its checkpointed tool work after
+    compaction, as the web does: a compaction that kept only the tail of the
+    replay sent a tool result without its call, which every provider 400s."""
+    from app.llm.base import ChatMessage
+    from app.services import turn_checkpoint
+    from app.tools.base import ToolCall
+
+    stub = _stub_channel_turn(monkeypatch)
+    monkeypatch.setattr(stub.router, "_resolve_channel_agent", stub.resolve)
+    replay = [
+        ChatMessage(role="assistant", tool_calls=[ToolCall(id="toolu_1", name="web_search")]),
+        ChatMessage(role="tool", content="found", tool_call_id="toolu_1", name="web_search"),
+    ]
+    monkeypatch.setattr(turn_checkpoint, "load_replay", AsyncMock(return_value=(None, replay)))
+
+    async def _keep_last(_db, history, **_kw):
+        return history[-1:]  # a compaction keeps the most recent messages
+
+    monkeypatch.setattr(stub.router, "_compact_history", _keep_last)
+    async with scratch_database("chcont", tables=ALL_TABLES, extensions=("vector",)) as db:
+        w = await _seed(db.sessions)
+        await _bind(db.sessions, w)
+        await stub.router.handle_message(_slack_dm("and the figures?", email=w.owner_email))
+
+    history = stub.run.await_args.args[3]
+    assert history[-2:] == replay
+
+
 @pytest.mark.asyncio
 async def test_a_bound_thread_never_reaches_the_conversation_for_another_sender(monkeypatch, fake_redis):
     stub = _stub_channel_turn(monkeypatch)

@@ -266,3 +266,41 @@ def test_the_screens_seed_is_documented():
         "seed_video_ready_render.py",
     ):
         assert part in text, part
+
+
+def test_the_sample_funnels_read_the_profile_assets_reachability(monkeypatch):
+    """#103: the screens and module samples pass the profile's reachability split to ``_attach_funnel``."""
+    from app.api.v1 import ctem_metrics
+    from app.services import ctem_metrics_collector
+
+    module = _lab_asgi(monkeypatch)
+    split = {"total": 3, "reachable": 1, "unreachable": 1, "unknown": 1, "endpoints": 0}
+    rows = {"value": None}
+
+    async def asset_rows(db):
+        return rows["value"]
+
+    monkeypatch.setattr(ctem_metrics_collector, "_profile_asset_rows", asset_rows)
+    monkeypatch.setattr(ctem_metrics_collector, "_profile_reachability", lambda r: dict(split) if r else None)
+
+    async def live(db, user_id, vertical="cyber"):
+        return {}, set()
+
+    def exposed(facts):
+        return next(layer for layer in facts["prioritization"]["funnel"]["layers"] if layer["key"] == "exposed")
+
+    for switch in ({"LAB_CTEM_SCREENS": "on"}, {"LAB_CTEM_MODULES": "cti-aev"}):
+        monkeypatch.setattr(ctem_metrics, "build_posture_for_user", live)
+        if "LAB_CTEM_SCREENS" in switch:
+            assert module.screens_ctem_posture(switch) is True
+        else:
+            assert module.modules_ctem_posture(switch) is True
+        rows["value"] = None
+        facts, _ = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
+        assert exposed(facts)["state"] == "not_configured", switch
+        rows["value"] = ([object()], [])
+        facts, _ = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
+        layer = exposed(facts)
+        assert layer["state"] == "not_available" and layer["reason"] == "assets_not_linked", (switch, layer)
+        assert layer["reachability"] == split, switch
+    assert "lab_asgi.profile_reachability" in DOCS.read_text(encoding="utf-8")
