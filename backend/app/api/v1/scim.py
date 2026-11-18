@@ -37,6 +37,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
+from app.api.v1.helpers import parse_path_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import enforce_rate_limit
@@ -779,10 +780,7 @@ async def create_scim_token(
 async def revoke_scim_token(
     token_id: str, request: Request, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> Response:
-    try:
-        tid = uuid.UUID(token_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="SCIM token not found") from None
+    tid = parse_path_id(token_id, not_found_detail="SCIM token not found")
     token = await db.get(ScimToken, tid)
     if token is None:
         raise HTTPException(status_code=404, detail="SCIM token not found")
