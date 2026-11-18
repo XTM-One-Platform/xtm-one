@@ -19,12 +19,12 @@
  *    03-outbound-registration.spec.ts, which captures a fresh
  *    registration's state in its own `beforeAll` and so cannot be overtaken
  *    by whatever verifies next;
- *  - an outbound registration with no credentials at all still verifies as
- *    usable, because an oauth_a2a card is fetched anonymously — Verify does
- *    not test the credential, and cannot report on it;
- *  - regenerating the inbound credential does not merely retire a secret. It
- *    deletes the row that says which recorded traffic was this partner's, so
- *    the partner's whole history disappears from the activity read.
+ *  - an outbound registration with no credentials verifies as unusable
+ *    (credential_cannot_mint_token): the card is fetched anonymously, but
+ *    Verify mints a token to test the credential (#105);
+ *  - regenerating the inbound credential rotates the secret and keeps the
+ *    client id (#105), so the partner's history survives it; only the
+ *    explicit client id rotation starts it over.
  *
  * The regenerate branch is asserted against the token endpoint and the task
  * surface rather than against a delegation: the caller caches its bearer on
@@ -126,7 +126,6 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
   let available = false;
 
   // A — the side that exposes.
-  let agentAName = '';
   let cardUrl = '';
   let credential = { clientId: '', clientSecret: '' };
   let tokenUrl = '';
@@ -144,7 +143,6 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
 
     const inbound = await createInboundIntegration(one.rest, exposedSide, stamp('E2E inbound main'));
     const agentA = await createAgent(one.rest, exposedSide, { name: stamp('E2E exposed main') });
-    agentAName = agentA.name;
     cardUrl = await exposeAgent(one.rest, agentA.id, inbound.id);
     credential = await mintCredential(one.rest, inbound.id);
     tokenUrl = `${one.origin}/mcp/oauth/token`;
@@ -352,17 +350,51 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     expect((await exposureOf(one.rest, ex.agentId)).card_url).not.toBe(ex.cardUrl);
   });
 
-  test('regenerating replaces the credential rather than adding one', async ({ one }) => {
+  test('regenerating rotates the secret and keeps the client id (#105)', async ({ one }) => {
     test.skip(!available, 'A2A is not licensed on this deployment');
     const ex = await freshExposure(one.rest, exposedSide, 'regen');
     expect((await requestToken(one.wire, ex)).status()).toBe(200);
 
-    const replacement = await mintCredential(one.rest, ex.integrationId);
-    expect(replacement.clientId).not.toBe(ex.clientId);
-    // A leaked credential must have one revocation, not one per bound agent:
-    // the previous registration row is deleted, not left alongside.
+    const first = await mintCredential(one.rest, ex.integrationId);
+    const second = await mintCredential(one.rest, ex.integrationId);
+    // The partner keeps the client id it holds and pastes the secret alone.
+    expect(first.clientId).toBe(ex.clientId);
+    expect(second.clientId).toBe(ex.clientId);
+    // One revocation for a leaked secret: only the latest one mints.
     expect((await requestToken(one.wire, ex)).status()).toBe(401);
-    expect((await requestToken(one.wire, replacement)).status()).toBe(200);
+    expect((await requestToken(one.wire, first)).status()).toBe(401);
+    expect((await requestToken(one.wire, second)).status()).toBe(200);
+    // A secret-only paste: the old client id with the new secret works.
+    expect(
+      (await requestToken(one.wire, { clientId: ex.clientId, clientSecret: second.clientSecret })).status(),
+    ).toBe(200);
+  });
+
+  test('the explicit rotation changes the client id and the secret', async ({ one }) => {
+    test.skip(!available, 'A2A is not licensed on this deployment');
+    const ex = await freshExposure(one.rest, exposedSide, 'rotate-id');
+    const rotated = await mintCredential(one.rest, ex.integrationId, { rotateClientId: true });
+    expect(rotated.clientId).not.toBe(ex.clientId);
+    expect(
+      (await requestToken(one.wire, { clientId: ex.clientId, clientSecret: rotated.clientSecret })).status(),
+    ).toBe(401);
+    expect((await requestToken(one.wire, rotated)).status()).toBe(200);
+    // Its managers learn why the old id was refused; the caller only that it was.
+    const read = await (await one.rest.get(`/api/v1/integrations/${ex.integrationId}`)).json();
+    expect(read.a2a_credential?.last_refused_token_request?.reason).toBe('unknown_client');
+    expect(read.a2a_credential?.last_refused_token_request?.client_id).toBe(ex.clientId);
+  });
+
+  test('a wrong secret is recorded as a secret mismatch for the managers', async ({ one }) => {
+    test.skip(!available, 'A2A is not licensed on this deployment');
+    const ex = await freshExposure(one.rest, exposedSide, 'mismatch');
+    const refused = await requestToken(one.wire, { clientId: ex.clientId, clientSecret: 'not-the-secret' });
+    expect(refused.status()).toBe(401);
+    expect((await refused.json()).error).toBe('invalid_client');
+    const read = await (await one.rest.get(`/api/v1/integrations/${ex.integrationId}`)).json();
+    const last = read.a2a_credential?.last_refused_token_request;
+    expect(last?.reason).toBe('secret_mismatch');
+    expect(JSON.stringify(last)).not.toContain('not-the-secret');
   });
 
   test('a bearer minted before the regenerate is refused by the task surface', async ({ one }) => {
@@ -370,11 +402,12 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     const ex = await freshExposure(one.rest, exposedSide, 'stale');
     const partner = await PartnerClient.connect(ex.cardUrl, ex);
     try {
+      // iat is whole seconds: let the bearer's second pass before rotating.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       await mintCredential(one.rest, ex.integrationId);
-      // The bearer is a self-contained JWT that has not expired, so nothing
-      // about the token itself changed — the registration it names is simply
-      // gone, and the surface resolves the caller through that row on every
-      // request. This is the moment a caching partner discovers a rotation.
+      // The bearer is a self-contained JWT that has not expired and names a
+      // client id that still exists (#105): the rotation stamp on the row is
+      // what retires it, on every request.
       const { status, body } = await partner.getTask('e2e-any-task-id');
       expect(status).toBe(401);
       expect(body.error?.message).toBe('Unauthenticated');
@@ -383,7 +416,7 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     }
   });
 
-  test("regenerating erases the partner's recorded history", async ({ one, model }) => {
+  test("regenerating the secret keeps the partner's recorded history", async ({ one, model }) => {
     test.skip(!available, 'A2A is not licensed on this deployment');
     const ex = await freshExposure(one.rest, exposedSide, 'history');
     const m = marker('activity');
@@ -393,18 +426,17 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     const activity = async () =>
       (await one.rest.get(`/api/v1/integrations/${ex.integrationId}/a2a-activity`)).json();
     try {
-      // The task row is written by the submission itself, so there is nothing
-      // to wait for here — the run's outcome does not enter into it.
       const sent = await partner.send(`Record this. ${m}`);
       expect(sent.status, JSON.stringify(sent.body)).toBe(200);
       expect((await activity()).last_activity_at).not.toBeNull();
 
+      // The traffic is this partner's by its client id, which a secret
+      // rotation keeps (#105): the Activity tab survives it.
       await mintCredential(one.rest, ex.integrationId);
-      // "Which traffic is this partner's" is derived from the credential rows
-      // that currently exist, and every recorded task carries the client id of
-      // the one just deleted. Rotating a secret therefore also empties the
-      // Activity tab and flips the reachability card back to "has not
-      // connected yet" — a consequence the regenerate dialog does not mention.
+      expect((await activity()).last_activity_at).not.toBeNull();
+
+      // Only the explicit client id rotation starts the history over.
+      await mintCredential(one.rest, ex.integrationId, { rotateClientId: true });
       expect((await activity()).last_activity_at).toBeNull();
     } finally {
       await partner.dispose();
@@ -477,7 +509,7 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
   // What an outbound registration is given, and what it refuses
   // -------------------------------------------------------------------------
 
-  test('an outbound registration saved with no credentials at all still verifies', async ({ one }) => {
+  test('an outbound registration saved with no credentials does not verify as usable (#105)', async ({ one }) => {
     test.skip(!available, 'A2A is not licensed on this deployment');
     const resp = await one.rest.post('/api/v1/integrations', {
       data: {
@@ -495,22 +527,12 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     callingSide.integrations.push(id);
 
     const target = targetFor(await verifyNow(one.rest, id), cardUrl);
-    // And Verify does not bring it forward, because an oauth_a2a card is
-    // fetched anonymously — oauth_a2a is deliberately absent from
-    // _CARD_NEEDS_CREDENTIALS. So "usable" here means the partner is there,
-    // never that this registration could authenticate to it.
-    expect(target.usability).toBe('usable');
-    expect(target.unusable_reason).toBeNull();
-    expect(target.declared_name).toBe(agentAName);
-    // The rest of the verdict, since one verification records all of it: the
-    // version both sides agreed, the transport chosen from what the card
-    // offered, and "unsigned" — this platform emits no card signature, so
-    // that value is the honest one rather than a missing check. Verification
-    // declares no version when it fetches, so it is served the undeclared
-    // default and agrees on that.
-    expect(target.agreed_protocol_version).toBe('1.0');
-    expect(target.transport).toBe('JSONRPC');
-    expect(target.signature_state).toBe('unsigned');
+    // The card is still fetched anonymously, but Verify now tests the
+    // credential too by minting a token: with none configured it cannot, and
+    // says so, instead of answering usable on a registration that would be
+    // refused at the first send.
+    expect(target.usability).toBe('unusable');
+    expect(target.unusable_reason).toBe('credential_cannot_mint_token');
     expect(target.last_verified_at).not.toBeNull();
   });
 
@@ -537,8 +559,10 @@ test.describe.serial('A2A OAuth configuration, both directions', () => {
     // fingerprint and all.
     expect(after.id).toBe(before.id);
     expect(after.usability).toBe('usable');
-    expect(after.last_verified_at).toBe(before.last_verified_at);
     expect(after.card_fingerprint).toBe(before.card_fingerprint);
+    // But it is due again (#105): the verdict was judged on the old secret,
+    // so the next delegation or sweep re-verifies, minting with the new one.
+    expect(after.last_verified_at).toBeNull();
   });
 
   test('the stored secret comes back masked while the addresses come back in clear', async ({

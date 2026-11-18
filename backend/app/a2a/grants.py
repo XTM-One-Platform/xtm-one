@@ -66,6 +66,11 @@ async def handle_client_credentials(data: dict, db: AsyncSession) -> JSONRespons
         db, client_id, client_secret, grant_type="client_credentials"
     )
     if client is None:
+        # The answer stays the uniform invalid_client; the integration's
+        # managers alone learn why (#105).
+        from app.a2a.refusals import note_refusal
+
+        await note_refusal(db, client_id)
         return invalid
 
     # A client that is neither an integration's credential nor an exposure's
@@ -97,6 +102,14 @@ async def handle_client_credentials(data: dict, db: AsyncSession) -> JSONRespons
             db, client.a2a_integration_id, OAUTH_A2A_PROVIDER
         )
         if not reachable:
+            from app.a2a.refusals import REASON_NO_REACHABLE_AGENT, note_refusal
+
+            await note_refusal(
+                db,
+                client_id,
+                reason=REASON_NO_REACHABLE_AGENT,
+                integration_id=client.a2a_integration_id,
+            )
             return invalid
         # No single run-as user exists across several agents, and it would be
         # the wrong thing to bake in anyway: each run executes as ITS OWN

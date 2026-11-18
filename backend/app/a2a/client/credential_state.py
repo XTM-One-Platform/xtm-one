@@ -56,6 +56,9 @@ logger = logging.getLogger(__name__)
 #: status badge, the security audit and the integration list already know.
 STATUS_ERROR: Final = "error"
 STATUS_CONNECTED: Final = "connected"
+#: ``Integration.connection_test_status`` values (``api.v1.integrations``).
+CONNECTION_TEST_UNTESTED: Final = "untested"
+CONNECTION_TEST_OK: Final = "ok"
 
 #: ``credential_error_code`` of a credential that cannot mint a token. The
 #: refusal outcome the delegation answers carries the same family.
@@ -203,12 +206,14 @@ async def record_mint_success(
     *,
     last_minted_at: datetime | None = None,
     session_factory: Any = None,
+    force: bool = False,
 ) -> bool:
     """Stamp a minted token and restore ``connected``; whether anything was written.
 
     *last_minted_at* is the stamp the caller already read (the settings row it
     holds), so a busy partner writes at most every :data:`MINT_STAMP_INTERVAL`
-    unless the integration is in error.
+    unless the integration is in error. ``force`` (an operator's Verify, #105)
+    always writes: the stamp is the answer the operator is waiting for.
     """
     from sqlalchemy import update
 
@@ -221,7 +226,7 @@ async def record_mint_success(
     now = datetime.now(UTC)
     in_error = getattr(integration, "status", None) == STATUS_ERROR
     last = last_minted_at or _LAST_STAMP.get(str(integration_id))
-    if not in_error and last is not None and now - last < MINT_STAMP_INTERVAL:
+    if not force and not in_error and last is not None and now - last < MINT_STAMP_INTERVAL:
         return False
     _LAST_STAMP[str(integration_id)] = now
     factory = session_factory or _session_factory()
@@ -252,6 +257,15 @@ async def record_mint_success(
             )
             if restored.rowcount:
                 logger.info("a2a.client: integration %s minted a token again, back to connected", integration_id)
+            # A credential saved since and not yet tested is tested now (#105).
+            await db.execute(
+                update(Integration)
+                .where(
+                    Integration.id == integration_id,
+                    Integration.connection_test_status == CONNECTION_TEST_UNTESTED,
+                )
+                .values(connection_test_status=CONNECTION_TEST_OK)
+            )
             await db.commit()
         return True
     except Exception:
@@ -264,6 +278,11 @@ async def clear_on_credential_edit(db: Any, integration: Any) -> bool:
 
     Returns whether the integration was in a credential error. The caller
     commits with the edit itself, so a refused edit leaves the error in place.
+
+    The saved credential is NOT reported as working (#105): the integration
+    reads "Not tested" (``connection_test_status`` untested) until a mint
+    succeeds, from Verify, Test Connection or the next send. It used to read
+    connected, green on a secret nobody had tried.
     """
     from sqlalchemy import update
 
@@ -272,6 +291,17 @@ async def clear_on_credential_edit(db: Any, integration: Any) -> bool:
     integration_id = getattr(integration, "id", None)
     if integration_id is None:
         return False
+    _LAST_STAMP.pop(str(integration_id), None)
+    if hasattr(integration, "connection_test_status"):
+        integration.connection_test_status = CONNECTION_TEST_UNTESTED
+    # The targets' verdicts were judged on the old credential: mark them due,
+    # so the next delegation re-verifies (and mints) before trusting a stale
+    # unusable or usable, and the sweep takes them first (#105).
+    from app.models.a2a import A2AClientTarget
+
+    await db.execute(
+        update(A2AClientTarget).where(A2AClientTarget.integration_id == integration_id).values(last_verified_at=None)
+    )
     cleared = await db.execute(
         update(A2AIntegrationSettings)
         .where(

@@ -48,7 +48,10 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
-import { OAUTH_A2A_PROVIDER, useA2APartnerActivity, useRegenerateA2ACredential } from "@/hooks/api/useA2AApi";
+import {
+  OAUTH_A2A_PROVIDER, useA2ALastRefusal, useA2APartnerActivity, useRegenerateA2ACredential,
+} from "@/hooks/api/useA2AApi";
+import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { useA2ADirection, useA2AVerificationState } from "@/hooks/api/useA2AClientApi";
 import { missingCardCount, useBoundAgentCards } from "./a2a-card-rows";
 import type { A2ATargetState } from "@/hooks/api/useA2AClientApi";
@@ -361,9 +364,12 @@ export function A2ACredentialCard({
   integration: Integration;
   canManage: boolean;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const direction = useA2ADirection(integration);
   const regenerate = useRegenerateA2ACredential(integration.id);
+  // The page finds the integration in the list, whose rows carry no
+  // a2a_credential: the refusal comes from the single read, managers only.
+  const { data: refused } = useA2ALastRefusal(integration.id, direction === "inbound" && canManage);
   // Read from the bound agents' exposure status, built by the same helper as
   // the card's tokenUrl: the deployment's public origin, never a UI constant.
   const { tokenUrl } = useBoundAgentCards(integration.id);
@@ -389,14 +395,18 @@ export function A2ACredentialCard({
   // render a mint button to an outbound registration.
   if (direction !== "inbound") return null;
 
+  // A regenerate rotates the SECRET and keeps the client id the partner
+  // already holds (#105): the partner pastes one value. Changing both is its
+  // own action, whose confirm says both change.
   const onRegenerate = async () => {
     if (
       clientId &&
       !(await confirm({
-        title: "Regenerate partner credential?",
-        description:
-          "The current secret stops working immediately, on every agent this integration is bound to. The partner must be given the new one.",
-        confirmLabel: "Regenerate",
+        title: t_i18n("Regenerate the secret?"),
+        description: t_i18n(
+          "The client ID stays the same. The current secret stops working immediately, on every agent this integration is bound to. The partner must paste the new secret.",
+        ),
+        confirmLabel: t_i18n("Regenerate secret"),
         variant: "warning",
       }))
     ) {
@@ -404,6 +414,24 @@ export function A2ACredentialCard({
     }
     regenerate.mutate(undefined, { onSuccess: (data) => setIssued(data) });
   };
+
+  const onRotateClientId = async () => {
+    if (
+      !(await confirm({
+        title: t_i18n("Rotate the client ID and the secret?"),
+        description: t_i18n(
+          "Both change. The current client ID and secret stop working immediately, on every agent this integration is bound to. The partner must paste the new client ID and the new secret.",
+        ),
+        confirmLabel: t_i18n("Rotate both"),
+        variant: "warning",
+      }))
+    ) {
+      return;
+    }
+    regenerate.mutate({ rotateClientId: true }, { onSuccess: (data) => setIssued(data) });
+  };
+
+  const refusalLabel = refused ? refusalReasonLabel(refused.reason, t_i18n) : null;
 
   return (
     <Card>
@@ -433,11 +461,11 @@ export function A2ACredentialCard({
       <CardContent className="space-y-3">
         <p className="text-[11px] text-default-secondary">
           {t_i18n(
-            "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to, so regenerating re-keys all of them.",
+            "The partner exchanges these at the token URL on the agent card for a short-lived bearer token. One credential per partner: it works on every agent this integration is bound to. Regenerating the secret keeps the client ID.",
           )}
         </p>
 
-        {clientId ? (
+        {issued ? null : clientId ? (
           <CopyRow
             label={t_i18n("Client ID")}
             value={clientId}
@@ -470,21 +498,73 @@ export function A2ACredentialCard({
 
         {issued ? (
           <div className="space-y-2 rounded-sm border border-feedback-alert-primary/40 bg-feedback-alert-primary/5 p-3">
-            <div className="flex items-center gap-1.5 content-caption font-medium text-feedback-warning-primary">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {t_i18n("Copy this now: the secret is never shown again")}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 content-caption font-medium text-feedback-warning-primary">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {t_i18n("Copy this now: the secret is never shown again")}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 content-caption"
+                data-testid="a2a-credential-copy-both"
+                onClick={() => copy(`client_id=${issued.client_id}\nclient_secret=${issued.client_secret}`, "both")}
+              >
+                {copied === "both" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {t_i18n("Copy both")}
+              </Button>
             </div>
+            <CopyRow
+              label={t_i18n("Client ID")}
+              value={issued.client_id}
+              copied={copied === "issued-id"}
+              onCopy={() => copy(issued.client_id, "issued-id")}
+            />
             <CopyRow
               label={t_i18n("Client secret")}
               value={issued.client_secret}
               copied={copied === "secret"}
               onCopy={() => copy(issued.client_secret, "secret")}
             />
+            <p className="content-caption text-default-secondary">
+              {t_i18n("The partner pastes the client ID and the secret together, as one pair.")}
+            </p>
           </div>
         ) : (
           <p className="content-caption text-default-secondary">
-            {t_i18n("The secret is shown only once, when it is generated. If it is lost, regenerate it: the old one stops working immediately.")}
+            {t_i18n("The secret is shown only once, when it is generated. If it is lost, regenerate it: the client ID stays, the old secret stops working immediately.")}
           </p>
+        )}
+        {refused && (
+          <div className="space-y-1 rounded-sm border border-line-primary p-3" data-testid="a2a-credential-last-refusal">
+            <div className="content-caption font-medium">{t_i18n("Last refused token request")}</div>
+            <p className="content-caption text-default-secondary">
+              <Tip content={formatTimeAgo(intl, refused.at)}>
+                <span data-testid="a2a-credential-last-refusal-at">{formatShortDateTimeIntl(intl, refused.at)}</span>
+              </Tip>
+              {" · "}
+              {t_i18n("Client ID")} {refused.client_id ?? "-"}
+            </p>
+            {refusalLabel ? (
+              <>
+                <p className="content-caption font-medium">{refusalLabel.reason}</p>
+                <p className="content-caption">{refusalLabel.whatToDo}</p>
+              </>
+            ) : (
+              refused.what_to_do && <p className="content-caption">{refused.what_to_do}</p>
+            )}
+          </div>
+        )}
+        {canManage && clientId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 content-caption"
+            onClick={onRotateClientId}
+            disabled={regenerate.isPending}
+          >
+            {t_i18n("Rotate client ID and secret")}
+          </Button>
         )}
         {regenerate.isError && (
           <p className="content-caption text-feedback-error-primary">{regenerate.error.message}</p>
@@ -493,6 +573,34 @@ export function A2ACredentialCard({
       {ConfirmEl}
     </Card>
   );
+}
+
+/** The reason of a refused token request and what the operator does about it,
+ * translated here; null for a code this UI does not know, which then shows the
+ * backend's English sentence (`what_to_do`) as a fallback. */
+function refusalReasonLabel(
+  reason: string | null,
+  t_i18n: (key: string) => string,
+): { reason: string; whatToDo: string } | null {
+  switch (reason) {
+    case "secret_mismatch":
+      return {
+        reason: t_i18n("Wrong secret for the current client ID"),
+        whatToDo: t_i18n("The partner must paste the latest secret."),
+      };
+    case "unknown_client":
+      return {
+        reason: t_i18n("Client ID rotated away"),
+        whatToDo: t_i18n("The partner must paste the current client ID and secret."),
+      };
+    case "no_reachable_agent":
+      return {
+        reason: t_i18n("No agent exposed"),
+        whatToDo: t_i18n("The credential is valid, but no agent bound to this integration is exposed."),
+      };
+    default:
+      return null;
+  }
 }
 
 function CopyRow({
