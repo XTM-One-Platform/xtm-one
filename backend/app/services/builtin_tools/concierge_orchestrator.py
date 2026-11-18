@@ -48,7 +48,7 @@ TOOL_NAMES: Final = (
     "request_concierge_cycle",
 )
 _MAX_LIMIT: Final = 50
-_GENERIC_ERROR: Final = "The Concierge could not answer this right now."
+_GENERIC_ERROR: Final = "Platform Health could not answer this right now."
 _NOT_FOUND: Final = "No such target you may manage."
 
 
@@ -159,7 +159,7 @@ def build_concierge_orchestrator_tools(
             return _GENERIC_ERROR
         if not rows:
             return "No signal is crossed."
-        return "Crossed Concierge signals:\n" + _data(rows, "Concierge signals")
+        return "Crossed Platform Health signals:\n" + _data(rows, "Platform Health signals")
 
     async def list_concierge_cycles(target_type: str = "", target: str = "", status: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
@@ -181,7 +181,7 @@ def build_concierge_orchestrator_tools(
                         ConciergeCycle.target_type == resolved[0], ConciergeCycle.target_id == resolved[1]
                     )
                 elif principal is None and not (user is not None and agent_tool_admin_bypass(user)):
-                    return "Name the agent or flow whose Concierge cycles to list."
+                    return "Name the agent or flow whose Platform Health cycles to list."
                 if status:
                     query = query.where(ConciergeCycle.status == str(status)[:16])
                 rows = (
@@ -194,8 +194,8 @@ def build_concierge_orchestrator_tools(
             logger.exception("list_concierge_cycles failed")
             return _GENERIC_ERROR
         if not items:
-            return "No Concierge cycle matches."
-        return "Concierge cycles, newest first (statuses as recorded):\n" + _data(items, "Concierge cycles")
+            return "No Platform Health cycle matches."
+        return "Platform Health cycles, newest first (statuses as recorded):\n" + _data(items, "Platform Health cycles")
 
     async def get_concierge_cycle(cycle_id: str = "") -> str:
         from app.core.database import async_session
@@ -231,7 +231,7 @@ def build_concierge_orchestrator_tools(
         except Exception:
             logger.exception("get_concierge_cycle failed")
             return _GENERIC_ERROR
-        return "Concierge cycle and its digest (figures and statuses as recorded):\n" + _data(item, "Concierge cycle")
+        return "Platform Health cycle and its digest (figures and statuses as recorded):\n" + _data(item, "Platform Health cycle")
 
     async def request_concierge_cycle(target_type: str = "agent", target: str = "") -> str:
         from app.core.database import async_session
@@ -262,7 +262,7 @@ def build_concierge_orchestrator_tools(
         if not result.started:
             # The platform's own name for it: a model reads no administrator text here.
             return f"Not started: {result.message(DEFAULT_NAME)}"
-        return f"Started Concierge cycle {result.cycle_id} on the {target_type} {resolved[1]}."
+        return f"Started Platform Health cycle {result.cycle_id} on the {target_type} {resolved[1]}."
 
     executor = CallableToolExecutor()
     functions = [list_concierge_signals, list_concierge_cycles, get_concierge_cycle]
@@ -282,12 +282,12 @@ def build_concierge_orchestrator_tools(
     definitions = [
         ToolDefinition(
             name="list_concierge_signals",
-            description="List the Concierge signals currently crossed (feedback drop, failure spike, cost drift, model change), for one target or all you may read. Read-only.",
+            description="List the Platform Health signals currently crossed (feedback drop, failure spike, cost drift, model change), for one target or all you may read. Read-only.",
             input_schema={"type": "object", "properties": {**target_props, **limit_prop}},
         ),
         ToolDefinition(
             name="list_concierge_cycles",
-            description="List Concierge cycles with their status and digest summary, for one target or all you may read. Read-only.",
+            description="List Platform Health cycles with their status and digest summary, for one target or all you may read. Read-only.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -302,7 +302,7 @@ def build_concierge_orchestrator_tools(
         ),
         ToolDefinition(
             name="get_concierge_cycle",
-            description="Read one Concierge cycle and its digest: consolidations, findings, experiments, proposals, budget spent, what was skipped and why. Read-only.",
+            description="Read one Platform Health cycle and its digest: consolidations, findings, experiments, proposals, budget spent, what was skipped and why. Read-only.",
             input_schema={
                 "type": "object",
                 "properties": {"cycle_id": {"type": "string", "description": "From list_concierge_cycles."}},
@@ -311,7 +311,7 @@ def build_concierge_orchestrator_tools(
         ),
         ToolDefinition(
             name="request_concierge_cycle",
-            description="Ask the Concierge to investigate and improve one agent or flow you may manage. Starts at most one cycle per target at a time.",
+            description="Ask Platform Health to investigate and improve one agent or flow you may manage. Starts at most one cycle per target at a time.",
             input_schema={"type": "object", "properties": target_props, "required": ["target"]},
         ),
     ]

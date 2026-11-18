@@ -610,7 +610,7 @@ async def _advance(db: AsyncSession, shadow: FlowShadow, *, now: datetime) -> st
             if not final:
                 return shadow.status
             return await _close(
-                db, shadow, SHADOW_STATUS_CANCELLED, "Not switched over: the Concierge is switched off.", "failed", now=now
+                db, shadow, SHADOW_STATUS_CANCELLED, "Not switched over: Platform Health is switched off.", "failed", now=now
             )
         from app.services.concierge.flow_switch_over import take_over
 

@@ -126,7 +126,7 @@ PAUSE_REASONS: dict[str, str] = {
     "system_seed": "switched off by the deployment configuration",
     "panic_stop": "paused by an emergency stop",
     "retire_after_run": "to be deleted once its runs end",
-    "concierge_switch_over": "replaced by a flow after an approved Concierge proposal",
+    "concierge_switch_over": "replaced by a flow after an approved Platform Health proposal",
     "fleet_pause": "paused with every automation of its fleet",
 }
 

@@ -103,7 +103,7 @@ class BudgetRefusedError(Exception):
     def __init__(self, code: BudgetRefusalCode) -> None:
         self.code = code
         # The digest and the tools read it: the platform's own name, no administrator text.
-        self.message = REFUSAL_MESSAGES[code].replace("{name}", "Concierge")
+        self.message = REFUSAL_MESSAGES[code].replace("{name}", "Platform Health")
         super().__init__(self.message)
 
 

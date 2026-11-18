@@ -234,7 +234,7 @@ async def test_with_the_concierge_off_a_held_switch_over_waits_then_is_given_up(
 
         assert await _advance(sessions, shadow_id) == "cancelled"
         async with sessions() as db:
-            assert (await db.get(FlowShadow, shadow_id)).note == "Not switched over: the Concierge is switched off."
+            assert (await db.get(FlowShadow, shadow_id)).note == "Not switched over: Platform Health is switched off."
             assert (await db.get(Assignment, seeded["assignment_id"])).enabled is True
 
 

@@ -64,7 +64,7 @@ def test_every_refusal_has_its_message() -> None:
 
     assert set(get_args(budget.BudgetRefusalCode)) == set(budget.REFUSAL_MESSAGES)
     assert budget.BudgetRefusedError("month_budget_reached").message == (
-        "Concierge's budget for this month is reached."
+        "Platform Health's budget for this month is reached."
     )
     assert budget.refusal_message("month_budget_reached", "{Jeeves}") == "{Jeeves}'s budget for this month is reached."
     assert budget.refusal_message("no_such_code", "Jeeves") is None

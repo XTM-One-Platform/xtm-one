@@ -57,7 +57,7 @@ export const CONCIERGE_SIGNAL_LABELS = {
 
 /** @i18n-keys */
 export const CONCIERGE_SPECIALIST_LABELS = {
-  orchestrator: "Concierge",
+  orchestrator: "Platform Health",
   memory_steward: "Memory Steward",
   quality_analyst: "Quality Analyst",
   flow_lab: "Flow Lab",
