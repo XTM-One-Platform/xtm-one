@@ -27,16 +27,16 @@ they already read with no account and no admin bypass
   fleet agent gets no principal, so every Platform Health tool refuses.
 * A fleet run nobody started by hand acts with no user at all: never as its
   agent's owner (``assignment_engine._acting_identity``), and the work it
-  delegates neither (:data:`CONCIERGE_ALONE_KEY`, :func:`health_acts_alone`).
+  delegates neither (:data:`HEALTH_ALONE_KEY`, :func:`health_acts_alone`).
   A sandbox copy's turn keeps the principal its runner holds, and with or
   without one reaches only what Platform Health may (:func:`in_health_reach`).
 * The principal is held in a context variable written by server code only
-  (:func:`acting_as_concierge`, :func:`mark_health_run`), never derived
+  (:func:`acting_as_health_principal`, :func:`mark_health_run`), never derived
   from a request or a model's output.
 * Rows Platform Health creates carry ``user_id = NULL`` plus the creating
-  level's own marker. :data:`CONCIERGE_PRINCIPAL_ID` names the principal in
+  level's own marker. :data:`HEALTH_PRINCIPAL_ID` names the principal in
   columns that are not a ``users`` foreign key; written into one, it fails.
-* Audit entries name it ``system:concierge`` (:data:`CONCIERGE_ACTOR` through
+* Audit entries name it ``system:concierge`` (:data:`HEALTH_ACTOR` through
   ``services.audit.log_system_audit``).
 """
 
@@ -55,13 +55,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.health.availability import health_enabled
 
 #: ``log_system_audit(actor=...)``: audit rows read ``system:concierge``.
-CONCIERGE_ACTOR: Final = "concierge"
+HEALTH_ACTOR: Final = "concierge"
 
 #: The principal's stable id. Never a ``users`` row.
-CONCIERGE_PRINCIPAL_ID: Final[uuid.UUID] = uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
+HEALTH_PRINCIPAL_ID: Final[uuid.UUID] = uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
 
 HealthRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter"]
-CONCIERGE_ROLES: Final[frozenset[str]] = frozenset(get_args(HealthRole))
+HEALTH_ROLES: Final[frozenset[str]] = frozenset(get_args(HealthRole))
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +86,7 @@ _RUN_SCOPE_OPEN: ContextVar[bool] = ContextVar("concierge_run_scope_open", defau
 
 def health_identity_id() -> uuid.UUID:
     """The principal's id (no row to read)."""
-    return CONCIERGE_PRINCIPAL_ID
+    return HEALTH_PRINCIPAL_ID
 
 
 def is_health_identity(value: object) -> bool:
@@ -94,10 +94,10 @@ def is_health_identity(value: object) -> bool:
     if isinstance(value, HealthPrincipal):
         return True
     if isinstance(value, uuid.UUID):
-        return value == CONCIERGE_PRINCIPAL_ID
+        return value == HEALTH_PRINCIPAL_ID
     if isinstance(value, str):
         try:
-            return uuid.UUID(value) == CONCIERGE_PRINCIPAL_ID
+            return uuid.UUID(value) == HEALTH_PRINCIPAL_ID
         except ValueError:
             return False
     return False
@@ -110,7 +110,7 @@ def is_health_agent(agent: Any) -> bool:
     agent never acts as the platform.
     """
     role = getattr(agent, "health_role", None)
-    return role in CONCIERGE_ROLES and getattr(agent, "is_company_managed", False) is True
+    return role in HEALTH_ROLES and getattr(agent, "is_company_managed", False) is True
 
 
 def health_principal_for(agent: Any, user: Any | None) -> HealthPrincipal | None:
@@ -129,10 +129,10 @@ def health_principal_for(agent: Any, user: Any | None) -> HealthPrincipal | None
 
 
 @contextlib.contextmanager
-def acting_as_concierge(principal: HealthPrincipal) -> Iterator[None]:
+def acting_as_health_principal(principal: HealthPrincipal) -> Iterator[None]:
     """Scope in which the current work acts as *principal*."""
     if not isinstance(principal, HealthPrincipal):
-        raise TypeError("acting_as_concierge needs a HealthPrincipal")
+        raise TypeError("acting_as_health_principal needs a HealthPrincipal")
     token = _CURRENT.set(principal)
     try:
         yield
@@ -140,7 +140,7 @@ def acting_as_concierge(principal: HealthPrincipal) -> Iterator[None]:
         _CURRENT.reset(token)
 
 
-def current_concierge() -> HealthPrincipal | None:
+def current_health_principal() -> HealthPrincipal | None:
     """The principal the current work acts as, or ``None``.
 
     Re-checks the flag: switching it off stops a run in flight from acting
@@ -151,14 +151,14 @@ def current_concierge() -> HealthPrincipal | None:
 
 
 def in_health_run() -> bool:
-    return current_concierge() is not None
+    return current_health_principal() is not None
 
 
 def health_acts_alone() -> bool:
     """Whether the current work acts as Platform Health with nobody behind it: a
     fleet run nobody started by hand, and the work it delegates. Such work
     acts with no user at all, never as its agents' owner (PRD 13)."""
-    principal = current_concierge()
+    principal = current_health_principal()
     return principal is not None and principal.on_behalf_of_admin_id is None
 
 
@@ -185,7 +185,7 @@ def in_sandbox_turn() -> bool:
 #: Set by the server on a task Platform Health delegated with no user
 #: (:func:`health_acts_alone` at spawn): its run and its turn act with no
 #: user. The task's ``user_id``, which the row needs, is its owner of record only.
-CONCIERGE_ALONE_KEY: Final = "concierge_alone"
+HEALTH_ALONE_KEY: Final = "concierge_alone"
 
 
 async def health_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UUID | None:
@@ -194,7 +194,7 @@ async def health_delegation_owner_id(db: AsyncSession, agent: Any) -> uuid.UUID 
     ``sub_agent_tasks.user_id`` needs one: the delegating fleet agent's owner
     (invariant 9), else the company-managed owner. Only as the record's owner
     (its notices, its result files): the task is marked
-    :data:`CONCIERGE_ALONE_KEY`, so its turn and its reach are no user's.
+    :data:`HEALTH_ALONE_KEY`, so its turn and its reach are no user's.
     """
     if not health_acts_alone() or not is_health_agent(agent):
         return None
@@ -242,11 +242,11 @@ async def mark_health_run(db: AsyncSession, agent: Any, user_id: uuid.UUID | Non
 async def set_health_role(db: AsyncSession, agent: Any, role: str | None) -> None:
     """Give *agent* its fleet role, or take it away. The seed's call alone.
 
-    Refuses a role outside :data:`CONCIERGE_ROLES` and an agent that is not
+    Refuses a role outside :data:`HEALTH_ROLES` and an agent that is not
     company-managed. Flushes, does not commit.
     """
     if role is not None:
-        if role not in CONCIERGE_ROLES:
+        if role not in HEALTH_ROLES:
             raise ValueError(f"not a Concierge role: {role!r}")
         if getattr(agent, "is_company_managed", False) is not True:
             raise ValueError("a Concierge fleet agent must be company-managed")

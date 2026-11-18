@@ -25,7 +25,7 @@ from app.models.flow import Flow
 from app.models.user import User
 from app.services.health import consent
 from app.services.health.consent import ConsentDeniedError
-from app.services.health.identity import acting_as_concierge, health_principal_for
+from app.services.health.identity import acting_as_health_principal, health_principal_for
 from tests.health_support import World, configure, health_database, make_agent
 
 pytestmark = pytest.mark.integration
@@ -129,7 +129,7 @@ async def test_an_audited_read_names_the_concierge_and_a_refused_one_writes_noth
             (await db.get(User, world.revoked.id)).health_content_opt_out = True
             await db.commit()
             principal = health_principal_for(await db.get(Agent, world.fleet.id), None)
-            with acting_as_concierge(principal):
+            with acting_as_health_principal(principal):
                 await consent.require_content_read(
                     db, kind="trace", ref_id=trace_id, agent_id=world.private.id, user_id=world.reader.id
                 )

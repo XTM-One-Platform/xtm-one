@@ -451,13 +451,13 @@ async def fleet_assignment(db: AsyncSession, key: AssignmentKey) -> tuple[Assign
 
 async def fleet_agent_ids(db: AsyncSession) -> list[uuid.UUID]:
     """The ids of the agents holding a fleet role (the digest's "by the Concierge")."""
-    from app.services.health.identity import CONCIERGE_ROLES
+    from app.services.health.identity import HEALTH_ROLES
 
     return list(
         (
             await db.execute(
                 select(Agent.id).where(
-                    Agent.health_role.in_(sorted(CONCIERGE_ROLES)), Agent.is_company_managed.is_(True)
+                    Agent.health_role.in_(sorted(HEALTH_ROLES)), Agent.is_company_managed.is_(True)
                 )
             )
         ).scalars()

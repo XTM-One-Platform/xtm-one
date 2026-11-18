@@ -180,14 +180,14 @@ async def _system_audit(
     db: AsyncSession, *, anchor: Any, action: str, entity: Any, entity_type: str, summary: str, details: dict
 ) -> None:
     from app.services.audit import log_system_audit
-    from app.services.health.identity import CONCIERGE_ACTOR
+    from app.services.health.identity import HEALTH_ACTOR
 
     if anchor is None:
         logger.warning("%s of %s %s has no user to anchor its audit entry", action, entity_type, entity.id)
         return
     await log_system_audit(
         db,
-        actor=CONCIERGE_ACTOR,
+        actor=HEALTH_ACTOR,
         anchor_user_id=anchor,
         action=action,
         entity_type=entity_type,

@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health import HealthBudgetMonth, HealthBudgetWork, HealthCycle
 from app.services.health.availability import health_active
-from app.services.health.identity import CONCIERGE_ROLES
+from app.services.health.identity import HEALTH_ROLES
 from app.services.health.settings import HealthBudgetCaps, load_health_settings
 
 logger = logging.getLogger(__name__)
@@ -257,7 +257,7 @@ async def open_cycle(
     target_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Open a cycle for *specialist*; raises :class:`BudgetRefusedError` when work may not start. Flushed."""
-    if specialist not in CONCIERGE_ROLES:
+    if specialist not in HEALTH_ROLES:
         raise ValueError(f"not a Concierge role: {specialist!r}")
     if trigger not in _TRIGGERS:
         raise ValueError(f"not a cycle trigger: {trigger!r}")

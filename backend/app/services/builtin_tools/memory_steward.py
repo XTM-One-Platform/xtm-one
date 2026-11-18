@@ -19,7 +19,7 @@ tools return statuses and counts, never memory content: the pass reads the
 lane itself, and only counts go to the digest.
 
 One access rule: the caller is Platform Health, a run of one of its fleet
-agents while Platform Health is available (``identity.current_concierge``). Nobody
+agents while Platform Health is available (``identity.current_health_principal``). Nobody
 else, an administrator included, may run or read a pass. The platform MCP
 server serves logins, which Platform Health never is, so it does not offer them.
 """
@@ -53,9 +53,9 @@ _REFUSAL = "Error: the memory tools are reserved to the Platform Concierge."
 
 def _caller_is_concierge() -> bool:
     """Whether the running work acts as Platform Health: a run of a fleet agent,
-    flag on (``identity.current_concierge`` re-checks it). A login, an
+    flag on (``identity.current_health_principal`` re-checks it). A login, an
     administrator included, never is."""
-    return identity.current_concierge() is not None
+    return identity.current_health_principal() is not None
 
 
 def _refused(message: str = _REFUSAL) -> ToolResult:

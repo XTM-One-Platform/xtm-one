@@ -89,7 +89,7 @@ from app.services.attempt_charges import credit_lost_attempts, task_receipt_toke
 from app.services.channel_notices import DEFAULT_LANGUAGE, notice, user_notice_language
 from app.services.element_scope import ENFORCED_SCOPE_MARKER_KEY, INHERITED_SCOPE_KEY
 from app.services.failure_causes import FailureCause, FailureDetermination
-from app.services.health.identity import CONCIERGE_ALONE_KEY
+from app.services.health.identity import HEALTH_ALONE_KEY
 from app.services.orchestration_engine import (
     bound_by_deadline,
     deadline_cut_budget,
@@ -526,7 +526,7 @@ async def _spawn_wait_budget_continuation(
         ),
         "pending_task_ids": pending_ids,
         # The same work: still Platform Health's with no user, if it was.
-        **({CONCIERGE_ALONE_KEY: True} if concierge_alone else {}),
+        **({HEALTH_ALONE_KEY: True} if concierge_alone else {}),
         # And still answering in the shape its caller fixed.
         **({CALL_OUTPUT_SCHEMA_KEY: call_output_schema} if call_output_schema else {}),
     }
@@ -824,7 +824,7 @@ async def create_sub_agent_task(
     # Delegated by Platform Health acting alone (read on the server's own
     # context, never on an argument): the task's run and turn act with no
     # user, and ``user_id`` is the row's owner of record only.
-    _concierge_alone = health_acts_alone() or bool((extra_metadata or {}).get(CONCIERGE_ALONE_KEY))
+    _concierge_alone = health_acts_alone() or bool((extra_metadata or {}).get(HEALTH_ALONE_KEY))
 
     async with async_session() as own_db:
         # Atomic per-run cap: take a transaction-scoped advisory lock on the
@@ -920,7 +920,7 @@ async def create_sub_agent_task(
             **({RUN_TRIGGER_TYPE_KEY: own_run_trigger} if own_run_trigger and assignment_run_id else {}),
             **({"cap_scope": cap_scope} if cap_scope else {}),
             **(extra_metadata or {}),
-            **({CONCIERGE_ALONE_KEY: True} if _concierge_alone else {}),
+            **({HEALTH_ALONE_KEY: True} if _concierge_alone else {}),
         }
 
         try:
@@ -3274,7 +3274,7 @@ def task_turn_user_id(metadata: dict | None, user_id: str) -> str:
     """Whom a task's turn acts as and sees with: its user, or no one (``""``)
     for Platform Health's delegated work, never the row's owner of record
     (``create_sub_agent_task``)."""
-    return "" if (metadata or {}).get(CONCIERGE_ALONE_KEY) else user_id
+    return "" if (metadata or {}).get(HEALTH_ALONE_KEY) else user_id
 
 
 @known_secrets_scoped()
@@ -4294,7 +4294,7 @@ async def _execute_sub_agent_task(
                     element_scope=element_scope,
                     evaluation_chain=bool(meta.get(EVALUATION_CHAIN_KEY)),
                     evaluation_tool_approval=_evaluation_tool_approval,
-                    concierge_alone=bool(meta.get(CONCIERGE_ALONE_KEY)),
+                    concierge_alone=bool(meta.get(HEALTH_ALONE_KEY)),
                     call_output_schema=_call_output_schema,
                 )
                 if not continued and _evaluation_chain:

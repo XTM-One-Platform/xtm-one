@@ -22,7 +22,7 @@ rows at every call:
   for its owner, an admin or a ``config`` grantee); administrators read every
   cycle. Asking for an improvement needs the same right on the target; a
   target the person cannot see is "not found", never "forbidden".
-* **Platform Health** (``identity.current_concierge()``) reads its own cycles
+* **Platform Health** (``identity.current_health_principal()``) reads its own cycles
   and signals within its supervision scope.
 * **Evidence** is linked only where the viewer may open it: a trace or a
   rating where they may read the agent's chats (``may_read_agent_traces``), a

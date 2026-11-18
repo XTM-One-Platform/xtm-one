@@ -89,7 +89,7 @@ async def _call(db, name, args, *, principal=None, user_id=None, agent_id=None):
     handler = executor.handler(name)
     if principal is None:
         return await handler(**args)
-    with identity.acting_as_concierge(principal):
+    with identity.acting_as_health_principal(principal):
         return await handler(**args)
 
 

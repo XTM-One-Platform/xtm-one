@@ -143,7 +143,7 @@ async def test_a_name_others_share_still_resolves_to_the_one_flow_within_reach()
 def concierge(monkeypatch):
     """The Concierge acting, level 1's consent recorded at its call site."""
     from app.services.health import consent
-    from app.services.health.identity import HealthPrincipal, acting_as_concierge
+    from app.services.health.identity import HealthPrincipal, acting_as_health_principal
 
     calls: dict[str, list] = {"scope": [], "content": [], "audit": []}
     state = {"in_scope": True, "readable": True}
@@ -169,7 +169,7 @@ def concierge(monkeypatch):
     principal = HealthPrincipal(agent_id=uuid.uuid4(), role="flow_lab", on_behalf_of_admin_id=None)
     state["agent_id"] = str(principal.agent_id)
     # The principal is a ContextVar: it is entered in the test's own task.
-    return calls, state, lambda: acting_as_concierge(principal)
+    return calls, state, lambda: acting_as_health_principal(principal)
 
 
 async def test_the_concierge_reaches_what_its_scope_admits(concierge):

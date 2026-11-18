@@ -38,7 +38,7 @@ Signals are **edge-triggered** (`concierge_signal_states`): a crossing starts an
 
 ## Access (`cycle_access.py`)
 
-One rule for REST, the `concierge_orchestrator` tools and the platform MCP server: a person reads the cycles and signals of targets they manage (`can_manage`; administrators everything) and may request a cycle on such a target; a target they cannot see is a 404. In a Concierge run (`identity.current_concierge()`) the tools read the supervision scope, and `request_concierge_cycle` is not offered (a cycle's run never starts another). Evidence links (`evidence_links`) are given only where the viewer may open the item. The Improvements inbox (`GET /improvements`) pages in SQL for an administrator; a non-administrator's listing (one agent or one target) is read whole, so its total and pages count only what that person may read.
+One rule for REST, the `concierge_orchestrator` tools and the platform MCP server: a person reads the cycles and signals of targets they manage (`can_manage`; administrators everything) and may request a cycle on such a target; a target they cannot see is a 404. In a Concierge run (`identity.current_health_principal()`) the tools read the supervision scope, and `request_concierge_cycle` is not offered (a cycle's run never starts another). Evidence links (`evidence_links`) are given only where the viewer may open the item. The Improvements inbox (`GET /improvements`) pages in SQL for an administrator; a non-administrator's listing (one agent or one target) is read whole, so its total and pages count only what that person may read.
 
 ## Turn scope (`turns.py`)
 

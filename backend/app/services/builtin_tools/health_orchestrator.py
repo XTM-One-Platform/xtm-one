@@ -17,7 +17,7 @@ Group ``concierge_orchestrator``, agent-keyed, offered while Platform Health
 is available. One rule on every path (``services/health/cycle_access.py``), decided at
 each call from the database rows:
 
-* as **Platform Health** (``identity.current_concierge()``: a scheduled run, an
+* as **Platform Health** (``identity.current_health_principal()``: a scheduled run, an
   administrator's chat) - every cycle, and the signals of the supervision scope;
 * as **a person** (a non-administrator chatting with the orchestrator, the
   platform MCP server) - the cycles and signals of the targets that person
@@ -68,9 +68,9 @@ def _data(payload: Any, label: str) -> str:
 async def _caller(db, user_id: str | None):
     """``(principal, user)``: the Platform Health principal when the work acts as it, else the person."""
     from app.models.user import User
-    from app.services.health.identity import current_concierge
+    from app.services.health.identity import current_health_principal
 
-    principal = current_concierge()
+    principal = current_health_principal()
     user = None
     uid = _uuid(user_id)
     if uid is not None:

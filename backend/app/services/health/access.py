@@ -18,7 +18,7 @@ One rule for every surface - the agent tools, the platform MCP server
 every call, never cached across calls:
 
 * **Platform Health** (a call inside a Platform Health run: level 1's
-  ``identity.current_concierge()``) reads an agent's rollups, counts, costs
+  ``identity.current_health_principal()``) reads an agent's rollups, counts, costs
   and ratings without comment while the agent is in its supervision scope,
   and its conversation content (trace ids, rating comments, content-derived
   hypotheses) only while the agent is opted in; nothing of an opted-out user.
@@ -126,9 +126,9 @@ def _current_principal(agent_id: str | None) -> Any | None:
     A principal stays bound over what its run executes inline (a sandbox
     copy's turn, a consulted agent): those agents read as their runner.
     """
-    from app.services.builtin_tools.improvements import calling_concierge
+    from app.services.builtin_tools.improvements import calling_health_principal
 
-    return calling_concierge(agent_id)
+    return calling_health_principal(agent_id)
 
 
 async def _load_scope(db: AsyncSession) -> ConsentScope:

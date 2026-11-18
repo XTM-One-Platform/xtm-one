@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.models.audit_log import AuditLog
 from app.services.health.availability import health_active
-from app.services.health.identity import current_concierge, health_run_scope, mark_health_run
+from app.services.health.identity import current_health_principal, health_run_scope, mark_health_run
 from app.services.health.settings import HealthSettings, load_health_settings
 from tests.health_support import World, configure, health_database
 
@@ -54,11 +54,11 @@ async def test_a_fleet_run_is_marked_for_no_user_or_an_admin_only(who: str, acts
             fleet = await db.get(type(world.fleet), world.fleet.id)
             with health_run_scope():
                 principal = await mark_health_run(db, fleet, user_id)
-                assert (current_concierge() is not None) is acts
+                assert (current_health_principal() is not None) is acts
                 assert (principal is not None) is acts
                 if principal is not None:
                     assert principal.on_behalf_of_admin_id == (world.admin.id if who == "admin" else None)
-            assert current_concierge() is None
+            assert current_health_principal() is None
             # Any other agent is never marked, whoever runs it.
             with health_run_scope():
                 assert await mark_health_run(db, await db.get(type(world.company), world.company.id), None) is None

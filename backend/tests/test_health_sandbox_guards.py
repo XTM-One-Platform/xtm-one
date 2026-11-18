@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.health.identity import HealthPrincipal, acting_as_concierge
+from app.services.health.identity import HealthPrincipal, acting_as_health_principal
 from app.services.health.sandbox import guards
 from app.services.tool_classification import infer_tool_type
 from app.tools.base import ToolCall
@@ -38,7 +38,7 @@ def test_agent_builder_keeps_its_writes_outside_a_concierge_run():
 
 def test_agent_builder_built_in_a_concierge_run_offers_reads_only():
     everything, _ = _agent_builder()
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         definitions, _ = _agent_builder()
     reads = [d.name for d in everything if infer_tool_type(d.name) == "read"]
     assert [d.name for d in definitions] == reads
@@ -47,7 +47,7 @@ def test_agent_builder_built_in_a_concierge_run_offers_reads_only():
 
 async def test_agent_builder_refuses_a_write_called_by_name_in_a_concierge_run():
     _, executor = _agent_builder()  # built outside the run: the definitions are all there
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         result = await executor.execute_tool(ToolCall(id="c1", name="delete_agent", arguments={"agent_id": "x"}))
     assert result.content == guards.BUILDER_REFUSAL
     assert (result.is_error, result.refused) == (True, True)
@@ -64,7 +64,7 @@ def _flow_builder(is_sandbox: bool | None):
 @pytest.mark.parametrize("tool", sorted(guards.FLOW_PRODUCTION_WRITES))
 async def test_flow_builder_refuses_production_writes_in_a_concierge_run(tool):
     executor = _flow_builder(is_sandbox=False)
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         result = await executor.execute_tool(ToolCall(id="c1", name=tool, arguments={"flow_id": str(uuid.uuid4())}))
     assert result.content == guards.PRODUCTION_FLOW_REFUSAL
 
@@ -72,7 +72,7 @@ async def test_flow_builder_refuses_production_writes_in_a_concierge_run(tool):
 @pytest.mark.parametrize("tool", sorted(guards.FLOW_SHARED_WRITES))
 async def test_flow_builder_refuses_shared_writes_in_a_concierge_run_only(tool):
     executor = _flow_builder(is_sandbox=True)
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         result = await executor.execute_tool(ToolCall(id="c1", name=tool, arguments={"name": "incident"}))
     assert result.content == guards.BUILDER_REFUSAL
     assert executor.handler(tool) is not None
@@ -81,7 +81,7 @@ async def test_flow_builder_refuses_shared_writes_in_a_concierge_run_only(tool):
 async def test_a_sandbox_flow_is_not_refused():
     db = MagicMock()
     db.scalar = AsyncMock(return_value=True)
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         assert await guards.production_flow_refusal(db, uuid.uuid4()) is None
         assert await guards.production_flow_refusal(db, "not-an-id") == guards.PRODUCTION_FLOW_REFUSAL
 
@@ -103,7 +103,7 @@ async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monke
     monkeypatch.setattr("app.services.health.settings.load_health_settings", _settings)
     agent = MagicMock(is_sandbox=False)
     assert await turns.agent_turn_session(MagicMock(), "u", agent) is None
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         session = await turns.agent_turn_session(MagicMock(), "u", agent)
     assert session is not None and session.mode == "dry_run"
 
@@ -116,7 +116,7 @@ async def test_dry_run_off_binds_nothing(monkeypatch):
         return HealthSettings()
 
     monkeypatch.setattr("app.services.health.settings.load_health_settings", _settings)
-    with acting_as_concierge(_PRINCIPAL):
+    with acting_as_health_principal(_PRINCIPAL):
         assert await turns.agent_turn_session(MagicMock(), "u", MagicMock(is_sandbox=False)) is None
 
 
@@ -130,7 +130,7 @@ async def test_a_service_write_kept_by_dry_run_is_audited_as_the_concierge(monke
 
     monkeypatch.setattr("app.services.audit.log_system_audit", _audit)
     admin = uuid.uuid4()
-    with acting_as_concierge(
+    with acting_as_health_principal(
         HealthPrincipal(agent_id=uuid.uuid4(), role="memory_steward", on_behalf_of_admin_id=admin)
     ):
         await dry_run.record_dry_run_write(MagicMock(), action="consolidate lane", target_type="memory", target_id="m1")

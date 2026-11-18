@@ -61,16 +61,16 @@ async def record_dry_run_write(
     is neither, since an audit row needs a user to hang on.
     """
     from app.services.audit import log_system_audit
-    from app.services.health.identity import CONCIERGE_ACTOR, current_concierge
+    from app.services.health.identity import HEALTH_ACTOR, current_health_principal
 
-    principal = current_concierge()
+    principal = current_health_principal()
     anchor = anchor_user_id or (principal.on_behalf_of_admin_id if principal else None)
     logger.info("Concierge dry-run: %s on %s %s not executed", action[:80], target_type[:40], target_id)
     if anchor is None:
         return
     await log_system_audit(
         db,
-        actor=CONCIERGE_ACTOR,
+        actor=HEALTH_ACTOR,
         anchor_user_id=anchor,
         action=DRY_RUN_AUDIT_ACTION,
         entity_type=target_type[:50],

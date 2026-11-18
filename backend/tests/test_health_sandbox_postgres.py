@@ -624,7 +624,7 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
     from app.core.config import settings
     from app.models.platform_settings import PlatformSettings
     from app.services.health.flow_lab_access import BASIS_AGENT_PREFIX
-    from app.services.health.identity import HealthPrincipal, acting_as_concierge
+    from app.services.health.identity import HealthPrincipal, acting_as_health_principal
     from app.services.health.settings import HealthSettings
 
     monkeypatch.setattr(sandbox_tools, "subject_refusal", _REAL_SUBJECT_REFUSAL)
@@ -653,7 +653,7 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
         await session.commit()
 
         principal = HealthPrincipal(agent_id=uuid.uuid4(), role="experimenter", on_behalf_of_admin_id=admin.id)
-        with acting_as_concierge(principal):
+        with acting_as_health_principal(principal):
             for copy in (flow_copy, refused, standing_for_nothing):
                 with pytest.raises(runs.SandboxRunError):
                     await runs.start_sandbox_flow_run(session, copy)

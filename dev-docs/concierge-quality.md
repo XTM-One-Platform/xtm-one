@@ -35,7 +35,7 @@ The Quality Analyst reads the quality signals of the agents in the Concierge's s
 
 `services/concierge/access.py`, read on the rows at every call, on every surface:
 
-- The Concierge: a call is the Concierge's only when the agent calling the tool is the bound principal's own (level 3's `calling_concierge`); an agent its run executes inline, a sandbox copy's turn, reads as its runner. It reads the agents of its supervision scope (level 1's consent scope, no admin bypass), their content only while opted in. Its run's cycle is read from the run (level 5's `run_cycle_id`).
+- The Concierge: a call is the Concierge's only when the agent calling the tool is the bound principal's own (level 3's `calling_health_principal`); an agent its run executes inline, a sandbox copy's turn, reads as its runner. It reads the agents of its supervision scope (level 1's consent scope, no admin bypass), their content only while opted in. Its run's cycle is read from the run (level 5's `run_cycle_id`).
 - A person: the findings, signals and experiments of an agent whose feedback they may read (its managers), their content only with the chats right (`may_read_agent_traces`).
 - Writes are the Concierge's, each held by one role: `record_finding` and `draft_variant` the `quality_analyst`'s, `run_experiment`, `propose_from_experiment` and settling the `experimenter`'s.
 - An agent out of reach answers the same refusal whether it exists or not.

@@ -202,7 +202,7 @@ async def audit(
         raise consent.ConsentDeniedError()
     await log_system_audit(
         db,
-        actor=identity.CONCIERGE_ACTOR,
+        actor=identity.HEALTH_ACTOR,
         anchor_user_id=anchor,
         action=action,
         entity_type="memory_consolidation",

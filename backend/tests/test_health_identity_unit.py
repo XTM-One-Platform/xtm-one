@@ -44,8 +44,8 @@ def test_there_is_no_concierge_flag_any_more() -> None:
 
 def test_the_principal_id_is_stable_and_only_it_names_the_concierge() -> None:
     assert identity.health_identity_id() == uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
-    assert identity.is_health_identity(identity.CONCIERGE_PRINCIPAL_ID) is True
-    assert identity.is_health_identity(str(identity.CONCIERGE_PRINCIPAL_ID)) is True
+    assert identity.is_health_identity(identity.HEALTH_PRINCIPAL_ID) is True
+    assert identity.is_health_identity(str(identity.HEALTH_PRINCIPAL_ID)) is True
     assert identity.is_health_identity(uuid.uuid4()) is False
     assert identity.is_health_identity("not-a-uuid") is False
     assert identity.is_health_identity(None) is False
@@ -79,8 +79,8 @@ def test_a_concierge_agent_acts_as_the_concierge_with_no_flag(monkeypatch) -> No
 def test_the_principal_lives_for_its_scope_with_no_flag(monkeypatch) -> None:
     monkeypatch.setattr(settings, "enabled_features", "")
     principal = identity.health_principal_for(_agent(), None)
-    with identity.acting_as_concierge(principal):
-        assert identity.current_concierge() == principal
+    with identity.acting_as_health_principal(principal):
+        assert identity.current_health_principal() == principal
         assert identity.in_health_run() is True
     assert identity._CURRENT.get() is None
 
@@ -90,12 +90,12 @@ def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope(flag_o
 
     async def scenario() -> None:
         assert await identity.mark_health_run(None, agent, None) is None
-        assert identity.current_concierge() is None
+        assert identity.current_health_principal() is None
         with identity.health_run_scope():
             marked = await identity.mark_health_run(None, agent, None)
             assert marked is not None
-            assert identity.current_concierge() == marked
-        assert identity.current_concierge() is None
+            assert identity.current_health_principal() == marked
+        assert identity.current_health_principal() is None
 
     asyncio.run(scenario())
 
@@ -139,9 +139,9 @@ def test_a_fleet_run_with_no_user_acts_with_no_user_never_its_admin_owner() -> N
 def test_the_concierge_acts_alone_only_with_nobody_behind_it(flag_on) -> None:
     agent = _agent()
     assert identity.health_acts_alone() is False
-    with identity.acting_as_concierge(identity.health_principal_for(agent, None)):
+    with identity.acting_as_health_principal(identity.health_principal_for(agent, None)):
         assert identity.health_acts_alone() is True
-    with identity.acting_as_concierge(identity.health_principal_for(agent, _user("admin"))):
+    with identity.acting_as_health_principal(identity.health_principal_for(agent, _user("admin"))):
         assert identity.health_acts_alone() is False
 
 
@@ -159,9 +159,9 @@ def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only
 
     async def scenario() -> list:
         seen = [await identity.health_delegation_owner_id(None, fleet)]
-        with identity.acting_as_concierge(identity.health_principal_for(fleet, None)):
+        with identity.acting_as_health_principal(identity.health_principal_for(fleet, None)):
             seen += [await identity.health_delegation_owner_id(None, a) for a in (fleet, ownerless, personal)]
-        with identity.acting_as_concierge(identity.health_principal_for(fleet, _user("admin"))):
+        with identity.acting_as_health_principal(identity.health_principal_for(fleet, _user("admin"))):
             seen.append(await identity.health_delegation_owner_id(None, fleet))
         return seen
 
@@ -177,19 +177,19 @@ def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -
     assert agent_tool_admin_bypass(admin) is True
     assert identity.in_health_reach() is False
     with sandbox_session(SandboxSession(mode="sandbox")):
-        assert identity.current_concierge() is None
+        assert identity.current_health_principal() is None
         assert identity.in_health_reach() is True
         assert agent_tool_admin_bypass(admin) is False
     # A dry run is a Concierge turn's own session: it is no sandbox turn.
     with sandbox_session(SandboxSession(mode="dry_run")):
         assert identity.in_sandbox_turn() is False
-    with identity.acting_as_concierge(identity.health_principal_for(_agent(), admin)):
+    with identity.acting_as_health_principal(identity.health_principal_for(_agent(), admin)):
         assert agent_tool_admin_bypass(admin) is False
 
 
 def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> None:
     """``health_turn_scoped`` would reset it for a non-fleet agent: a copy's
-    turn, and any turn inside a sandbox case, keep it (``calling_concierge``
+    turn, and any turn inside a sandbox case, keep it (``calling_health_principal``
     still refuses the copy the Concierge's own tools)."""
     from app.services.health.sandbox.session import SandboxSession, sandbox_session
     from app.services.health.turns import health_turn_scoped
@@ -201,10 +201,10 @@ def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> N
 
     @health_turn_scoped
     async def turn(db, user_id, agent):
-        seen.append(identity.current_concierge())
+        seen.append(identity.current_health_principal())
 
     async def scenario() -> None:
-        with identity.acting_as_concierge(principal):
+        with identity.acting_as_health_principal(principal):
             await turn(None, str(uuid.uuid4()), copy)
             await turn(None, str(uuid.uuid4()), consulted)
             with sandbox_session(SandboxSession(mode="sandbox")):
@@ -266,16 +266,16 @@ def test_the_assignment_engine_scope_bounds_the_mark(flag_on) -> None:
     @company_managed_run_scoped
     async def run():
         await identity.mark_health_run(None, agent, None)
-        return identity.current_concierge()
+        return identity.current_health_principal()
 
     principal = asyncio.run(run())
     assert principal is not None and principal.agent_id == agent.id
-    assert identity.current_concierge() is None
+    assert identity.current_health_principal() is None
 
 
 @pytest.mark.parametrize(
     ("metadata", "expected"),
-    [({identity.CONCIERGE_ALONE_KEY: True}, ""), ({}, "owner"), (None, "owner")],
+    [({identity.HEALTH_ALONE_KEY: True}, ""), ({}, "owner"), (None, "owner")],
 )
 def test_a_task_the_concierge_delegated_alone_acts_and_sees_as_no_user(metadata, expected) -> None:
     """The row's owner of record never becomes the task's turn user nor the

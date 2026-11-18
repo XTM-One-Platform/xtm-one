@@ -254,8 +254,8 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
     with the orchestrator delegates as that administrator, as before."""
     from app.models.sub_agent_task import SubAgentTask
     from app.services.health.identity import (
-        CONCIERGE_ALONE_KEY,
-        acting_as_concierge,
+        HEALTH_ALONE_KEY,
+        acting_as_health_principal,
         health_delegation_owner_id,
         health_principal_for,
     )
@@ -275,7 +275,7 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
             orchestrator, analyst = agents["orchestrator"], agents["quality_analyst"]
             tasks = []
             for who in (None, admin):
-                with acting_as_concierge(health_principal_for(orchestrator, who)):
+                with acting_as_health_principal(health_principal_for(orchestrator, who)):
                     owner = await health_delegation_owner_id(db, orchestrator) or (who.id if who else None)
                     tasks.append(
                         await create_sub_agent_task(
@@ -294,8 +294,8 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
                 for t in (alone, asked)
             ]
 
-    assert alone.user_id == admin.id and alone.metadata_json.get(CONCIERGE_ALONE_KEY) is True
-    assert asked.user_id == admin.id and CONCIERGE_ALONE_KEY not in asked.metadata_json
+    assert alone.user_id == admin.id and alone.metadata_json.get(HEALTH_ALONE_KEY) is True
+    assert asked.user_id == admin.id and HEALTH_ALONE_KEY not in asked.metadata_json
     assert child_users == [None, admin.id]
 
 

@@ -224,12 +224,12 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
 
     @health_turn_scoped
     async def turn(db, user_id, agent):
-        seen.append(identity.current_concierge())
+        seen.append(identity.current_health_principal())
 
-    with identity.acting_as_concierge(identity.HealthPrincipal(orchestrator.id, "orchestrator")):
+    with identity.acting_as_health_principal(identity.HealthPrincipal(orchestrator.id, "orchestrator")):
         await turn(None, None, specialist)
         await turn(None, None, personal)
-        after = identity.current_concierge()
+        after = identity.current_health_principal()
 
     assert [(p.agent_id, p.role) if p else None for p in seen] == [(specialist.id, "quality_analyst"), None]
     assert (after.agent_id, after.role) == (orchestrator.id, "orchestrator")
@@ -247,7 +247,7 @@ async def test_a_user_id_that_names_no_user_never_acts_as_the_concierge(monkeypa
 
     @health_turn_scoped
     async def turn(db, user_id, agent):
-        seen.append(identity.current_concierge())
+        seen.append(identity.current_health_principal())
 
     for user_id in ("telegram:42", "not-a-uuid", None, ""):
         await turn(None, user_id, orchestrator)
@@ -299,7 +299,7 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
     principal = identity.health_principal_for(experimenter, None)
     groups = ["concierge_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
     if who == "concierge_alone":
-        with identity.acting_as_concierge(principal):
+        with identity.acting_as_health_principal(principal):
             agent_chat._add_platform_builder_tools(composite, None, "", groups, agent_id=str(experimenter.id))
     else:
         agent_chat._add_platform_builder_tools(composite, None, "", groups, agent_id=str(experimenter.id))

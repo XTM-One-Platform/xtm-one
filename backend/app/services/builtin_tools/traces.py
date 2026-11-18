@@ -94,7 +94,7 @@ TRACE_SUITE_IDS: frozenset[str] = frozenset({"inspect_my_traces", "inspect_agent
 
 #: What Platform Health is told for another agent's traces: these tools apply no
 #: consent rule, ``concierge_diagnosis`` does.
-CONCIERGE_TRACES_REFUSED = "Error: the Concierge reads other agents' traces through its diagnosis tools only."
+HEALTH_TRACES_REFUSED = "Error: the Concierge reads other agents' traces through its diagnosis tools only."
 
 
 def _health_refuses_other_agents() -> bool:
@@ -2313,7 +2313,7 @@ def build_trace_tools(
                         return denied.message
                     agent_ids = [target_uuid]
                 if agent_ids != [own_agent_id] and _health_refuses_other_agents():
-                    return CONCIERGE_TRACES_REFUSED
+                    return HEALTH_TRACES_REFUSED
                 reader = (
                     _own_trace_reader(user)
                     if own_agent_id is not None and agent_ids == [own_agent_id]
@@ -2545,7 +2545,7 @@ def build_trace_tools(
                     # an agent they owned - never through an admin bypass.
                     may_read_other_agent = await _deleted_agent_trace_is_callers(_db, user.id, trace)
                 if not is_own_trace and _health_refuses_other_agents():
-                    return CONCIERGE_TRACES_REFUSED
+                    return HEALTH_TRACES_REFUSED
                 if not is_own_trace and not may_read_other_agent:
                     return (
                         "Error: you are not allowed to read payloads for this trace. "

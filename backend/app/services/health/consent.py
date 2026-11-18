@@ -361,14 +361,14 @@ async def audit_content_read(
     to anchor it on): a read that cannot be audited does not happen.
     """
     from app.services.audit import log_system_audit
-    from app.services.health.identity import CONCIERGE_ACTOR, current_concierge
+    from app.services.health.identity import HEALTH_ACTOR, current_health_principal
 
     agent, flow, user = _uuid(agent_id), _uuid(flow_id), _uuid(user_id)
     anchor = await _anchor_user_id(db, user_id=user, agent_id=agent, flow_id=flow)
     if anchor is None:
         logger.warning("Concierge read of %s %.80r refused: no user to anchor its audit row on", kind, ref_id)
         raise ConsentDeniedError()
-    principal = current_concierge()
+    principal = current_health_principal()
     ref = _uuid(ref_id)
     details: dict[str, Any] = {
         "agent_id": str(agent) if agent else None,
@@ -380,7 +380,7 @@ async def audit_content_read(
         details["ref"] = str(ref_id)[:200]
     await log_system_audit(
         db,
-        actor=CONCIERGE_ACTOR,
+        actor=HEALTH_ACTOR,
         anchor_user_id=anchor,
         action="concierge_content_read",
         entity_type=kind,

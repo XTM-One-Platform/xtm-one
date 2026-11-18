@@ -35,7 +35,7 @@ from app.services.builtin_tools.health_quality import build_health_diagnosis_too
 from app.services.health import availability
 from app.services.health.access import NOT_IN_REACH, WRITE_REFUSED
 from app.services.health.findings import Evidence, record_finding
-from app.services.health.identity import HealthPrincipal, acting_as_concierge, current_concierge
+from app.services.health.identity import HealthPrincipal, acting_as_health_principal, current_health_principal
 from app.tools.base import ToolCall
 from tests.test_provisioning_postgres import _temp_database
 
@@ -179,7 +179,7 @@ async def _call(user_id: str, name: str, **arguments) -> str:
         else build_health_experiment_tools
     )
     # The calling agent is the bound principal's own, as in its Concierge run.
-    principal = current_concierge()
+    principal = current_health_principal()
     _defs, executor = builder(user_id, agent_id=str(principal.agent_id) if principal else None)
     result = await executor.execute_tool(ToolCall(id="c1", name=name, arguments=arguments))
     return result.content or ""
@@ -192,7 +192,7 @@ def _parsed(text: str) -> dict:
 
 
 def _as(agent: Agent, role: str):
-    return acting_as_concierge(HealthPrincipal(agent_id=agent.id, role=role))
+    return acting_as_health_principal(HealthPrincipal(agent_id=agent.id, role=role))
 
 
 @pytest.mark.asyncio

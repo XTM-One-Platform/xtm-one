@@ -103,16 +103,16 @@ async def target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.UU
     return False
 
 
-def calling_concierge(agent_id: str | None) -> Any | None:
+def calling_health_principal(agent_id: str | None) -> Any | None:
     """The Platform Health principal, when the agent calling the tool is its own.
 
     A principal stays bound over everything its work runs inline (a sandbox
     copy's turn, a consulted agent): those agents are not Platform Health and
     read as their runner.
     """
-    from app.services.health.identity import current_concierge
+    from app.services.health.identity import current_health_principal
 
-    principal = current_concierge()
+    principal = current_health_principal()
     if principal is None or agent_id is None or str(principal.agent_id) != str(agent_id):
         return None
     return principal
@@ -123,7 +123,7 @@ async def filing_agent(db: AsyncSession, agent_id: str | None) -> Any | None:
     from app.models.agent import Agent
     from app.services.health.identity import is_health_agent
 
-    principal = calling_concierge(agent_id)
+    principal = calling_health_principal(agent_id)
     if principal is None or principal.role != FILING_ROLE:
         return None
     agent = await db.get(Agent, principal.agent_id)
@@ -191,7 +191,7 @@ def build_improvement_tools(
         if not health_enabled():
             logger.info("list_improvements refused: Platform Health is not available")
             return REFUSED
-        concierge = calling_concierge(agent_id) is not None
+        concierge = calling_health_principal(agent_id) is not None
         user = None if concierge else await _caller(db, user_id)
         if not concierge and user is None:
             logger.info("list_improvements refused: no Concierge run and no active user")

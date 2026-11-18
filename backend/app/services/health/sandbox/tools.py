@@ -141,7 +141,7 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
         source_run_ids: Any = None,
     ) -> str:
         from app.services.health.flow_lab_access import is_server_marker
-        from app.services.health.identity import current_concierge
+        from app.services.health.identity import current_health_principal
 
         if source_type not in ("agent", "flow"):
             return "source_type is `agent` or `flow`."
@@ -157,7 +157,7 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
                 graph = json.loads(graph)
             except ValueError:
                 return "`graph` must be a JSON object."
-        principal = current_concierge()
+        principal = current_health_principal()
         try:
             copy = await copies.create_sandbox_copy(
                 db,

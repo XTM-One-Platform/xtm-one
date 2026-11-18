@@ -18,7 +18,7 @@ resolve their targets here, on the database row, by id or by exact name, so
 the rule cannot drift between surfaces:
 
 * **Platform Health** (a run of a Platform Health agent, level 1's
-  ``current_concierge()``, when the agent calling the tool is the
+  ``current_health_principal()``, when the agent calling the tool is the
   principal's own; an agent its run executes inline reads as its runner):
   a flow or an assignment's agent in the supervision scope; content
   (trigger payloads, outputs) only where ``consent.content_readable``
@@ -69,10 +69,10 @@ async def resolve_caller(
     db: AsyncSession, user_id: str | uuid.UUID | None, *, agent_id: str | None = None
 ) -> FlowLabCaller | None:
     """The caller of a tool call: Platform Health when *agent_id*, the agent calling the tool, is its
-    principal's own (level 3's ``calling_concierge``), else the user row."""
-    from app.services.builtin_tools.improvements import calling_concierge
+    principal's own (level 3's ``calling_health_principal``), else the user row."""
+    from app.services.builtin_tools.improvements import calling_health_principal
 
-    principal = calling_concierge(agent_id)
+    principal = calling_health_principal(agent_id)
     if principal is not None:
         return FlowLabCaller(concierge=principal, user=None)
     if user_id is None:
