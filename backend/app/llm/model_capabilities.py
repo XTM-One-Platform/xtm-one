@@ -152,18 +152,12 @@ MODEL_PARAMETER_RULES = (
         refuses_effort_none=True,
         responses_api_with_tools=True,
     ),
-    # gpt-6-luna refuses any temperature but its default 1 ("Unsupported
-    # value", #125); the other gpt-6 models are not known to, so keep theirs.
-    ModelParameterRule(
-        prefixes=("gpt-6-luna",),
-        output_tokens="max_completion_tokens",
-        omit_temperature=True,
-        effort_levels=EFFORT_LEVELS,
-        effort_refused_with_tools=True,
-    ),
+    # Every gpt-6 model checked (luna, 6.2-sol, 6.2-astra) refuses any
+    # temperature but its default 1 ("Unsupported value", #125).
     ModelParameterRule(
         prefixes=("gpt-6",),
         output_tokens="max_completion_tokens",
+        omit_temperature=True,
         effort_levels=EFFORT_LEVELS,
         effort_refused_with_tools=True,
     ),
