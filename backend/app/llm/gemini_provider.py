@@ -1892,6 +1892,9 @@ def _clean_schema_for_gemini(schema: dict) -> dict:
         else:
             cleaned[key] = value
 
+    # Google refuses an array without items, failing the whole request; empty items mean any element.
+    if cleaned.get("type") == "array" and not isinstance(cleaned.get("items"), dict):
+        cleaned["items"] = {}
     if nullable and cleaned.get("type") not in (None, "null"):
         cleaned["nullable"] = True
     return cleaned
