@@ -28,8 +28,8 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Final, Protocol, cast
+from types import MappingProxyType, SimpleNamespace
+from typing import TYPE_CHECKING, Any, Final, Protocol, Self, cast
 
 from sqlalchemy import ColumnElement, Numeric, case, func, select, text, tuple_, update
 from sqlalchemy import cast as sql_cast  # ``cast`` is taken by typing.cast above
@@ -309,7 +309,20 @@ async def stage_rescore_execution(
     )
 
 
-IntegrationToolsBundle = tuple[list["ToolDefinition"], "ToolExecutor"]
+class IntegrationToolsBundle(tuple):
+    """An evaluation's integration tools, built once for its entries: the pair
+    ``(definitions, executor)`` it always was, and on ``context`` what the build collected
+    for the agent's built-in tools (``integration_tools.PLATFORM_NAMES_CONTEXT_KEY``,
+    ``ATTACK_SOURCES_CONTEXT_KEY``), which an evaluated run reads as a chat run does."""
+
+    context: Mapping[str, list]
+
+    def __new__(
+        cls, definitions: list[ToolDefinition], executor: ToolExecutor, context: Mapping[str, list] | None = None
+    ) -> Self:
+        bundle = super().__new__(cls, (definitions, executor))
+        bundle.context = context if context is not None else MappingProxyType({})
+        return bundle
 
 
 class JudgeEntryLike(Protocol):
@@ -2593,11 +2606,15 @@ async def _build_evaluation_integration_tools(
         READ_ONLY_CONTEXT_KEY,
         read_only_integration_ids,
     )
+    from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY, PLATFORM_NAMES_CONTEXT_KEY
 
+    # What the build collects for the agent's built-in tools, as a chat run's build does.
+    collected: dict[str, list] = {PLATFORM_NAMES_CONTEXT_KEY: [], ATTACK_SOURCES_CONTEXT_KEY: []}
     integ_defs, integ_exec = await build_integration_tools(
         db,
         effective_bindings,
         context={
+            **collected,
             "source": "evaluation",
             "agent": agent.name,
             "agent_id": str(agent.id),
@@ -2657,7 +2674,7 @@ async def _build_evaluation_integration_tools(
         len(filtered_defs),
     )
 
-    return filtered_defs, integ_exec
+    return IntegrationToolsBundle(filtered_defs, integ_exec, collected)
 
 
 async def score_result(

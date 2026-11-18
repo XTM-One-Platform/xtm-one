@@ -108,6 +108,7 @@ ee:
   - backend/app/services/roi*.py
   - backend/app/services/shared_state*.py
   - backend/app/services/skill_*.py
+  - backend/app/services/stix_extraction/**
   - backend/app/services/structured_output.py
   - backend/app/services/sub_agent*.py
   - backend/app/services/template_*.py
@@ -757,6 +758,10 @@ third_party:
   - backend/app/agents/seed_data/licenses/**
   # LiteLLM model prices and context windows, MIT (seed_data/NOTICE-model-prices.md).
   - backend/app/agents/seed_data/model_prices_and_context_window.json
+  # MISP galaxy (CC0-1.0 / BSD-2-Clause) and OpenCTI datasets (Apache-2.0), derived data and
+  # their license texts (stix_extraction/data/NOTICE.md).
+  - backend/app/services/stix_extraction/data/*.json
+  - backend/app/services/stix_extraction/data/LICENSE-*
   # Microsoft AgentSchema v1.0 schemas, MIT (schemas/NOTICE.md).
   - backend/app/services/agentschema/schemas/*.yaml
   # SGDSN / VIGINUM publications reused with the SGDSN's agreement, and the

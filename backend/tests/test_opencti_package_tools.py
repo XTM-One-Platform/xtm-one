@@ -7,6 +7,8 @@ and executor dispatch smoke (early-return paths, no network).
 
 import json
 
+import pytest
+
 from app.integrations.providers.opencti import build_tools
 from app.tools.base import CallableToolExecutor, ToolCall
 
@@ -391,6 +393,52 @@ async def test_manage_group_get_unwraps_role_nodes(monkeypatch):
     assert "Administrator" in result.content
 
 
+async def test_manage_group_get_names_its_members(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _RecordingGraphQL(
+        {
+            "group": {
+                "id": "g1",
+                "name": "Connectors (without labels)",
+                "roles": {"edges": []},
+                "members": {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": "u1",
+                                "name": "[F] feed",
+                                "user_email": "feed@x.io",
+                                "user_service_account": True,
+                            }
+                        },
+                        {"node": {"id": "u2", "name": "Alice", "user_email": "", "user_service_account": False}},
+                    ],
+                    "pageInfo": {"hasNextPage": True, "globalCount": 5},
+                },
+            }
+        }
+    )
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(executor, "manage_opencti_group", {"action": "get", "group_id": "g1"})
+    assert not result.is_error, result.content
+    assert "  members: 5" in result.content
+    assert "    - [F] feed (id: u1, feed@x.io, service account)" in result.content
+    assert "    - Alice (id: u2, user)" in result.content
+    assert "3 not shown" in result.content
+    query = fake.calls[-1][0]
+    assert "user_service_account" in query and "globalCount" in query
+
+
+def test_group_member_lines_without_page_info():
+    from app.integrations.providers.opencti.access import _group_member_lines
+
+    lines = _group_member_lines({"members": {"edges": [{"node": {"id": "u1", "name": "Alice"}}]}})
+    assert lines == ["  members: 1", "    - Alice (id: u1, user)"]
+    assert _group_member_lines({}) == ["  members: 0"]
+
+
 class _ConfidenceOpenCTI:
     """Stateful ``_graphql`` stub for the confidence level of one group and one user.
 
@@ -643,6 +691,63 @@ async def test_user_update_refuses_ignored_fields_and_writes_nothing(monkeypatch
         assert result.is_error, (args, result.content)
         assert "othing was written" in result.content, result.content
     assert fake.writes() == []
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "named"),
+    [
+        # Reads and relation actions refuse a field they do not apply, as create and
+        # update do: the answer must never read as proof the field was taken.
+        ("manage_opencti_user", {"action": "list", "user_id": "u1"}, "user_id"),
+        ("manage_opencti_user", {"action": "get", "user_id": "u1", "max_confidence": 50}, "max_confidence"),
+        ("manage_opencti_user", {"action": "delete", "user_id": "u1", "name": "x"}, "name"),
+        (
+            "manage_opencti_user",
+            {"action": "add_group", "user_id": "u1", "group_id": "g1", "organization_id": "o1"},
+            "organization_id",
+        ),
+        (
+            "manage_opencti_user",
+            {"action": "remove_organization", "user_id": "u1", "organization_id": "o1", "search": "x"},
+            "search",
+        ),
+        ("manage_opencti_user", {"action": "create", "name": "x", "limit": 5}, "limit"),
+        ("manage_opencti_group", {"action": "list", "max_confidence": 50}, "max_confidence"),
+        ("manage_opencti_group", {"action": "get", "group_id": "g1", "bogus": 1}, "bogus"),
+        ("manage_opencti_group", {"action": "delete", "group_id": "g1", "role_id": "r1"}, "role_id"),
+        (
+            "manage_opencti_group",
+            {"action": "add_role", "group_id": "g1", "role_id": "r1", "description": "x"},
+            "description",
+        ),
+    ],
+)
+async def test_access_tools_refuse_unapplied_fields_on_every_action(monkeypatch, tool, args, named):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(executor, tool, args)
+    assert result.is_error, result.content
+    assert named in result.content and "nothing was written" in result.content, result.content
+    assert fake.calls == []
+
+
+async def test_access_tools_accept_the_fields_each_action_applies(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    for tool, args in (
+        ("manage_opencti_user", {"action": "list", "search": "x", "limit": 5}),
+        ("manage_opencti_user", {"action": "get", "user_id": "u1"}),
+        ("manage_opencti_group", {"action": "list", "search": "x", "limit": 20}),
+        ("manage_opencti_group", {"action": "get", "group_id": "g1"}),
+    ):
+        result = await _run(executor, tool, args)
+        assert "does not apply" not in result.content, (args, result.content)
 
 
 async def test_manage_profile_get_unwraps_group_nodes(monkeypatch):
@@ -2067,6 +2172,64 @@ async def test_connector_deploy_and_edit_declare_non_null_input(monkeypatch):
     assert not edit_result.is_error, edit_result.content
     edit_query = edit_fake.calls[-1][0]
     assert "$input: EditManagedConnectorInput!" in edit_query, edit_query
+
+
+async def test_connector_config_sends_json_booleans(monkeypatch):
+    # OpenCTI validates manager_contract_configuration values against the
+    # contract: a boolean field takes "true"/"false" only and refuses Python's
+    # str(True) == "True" ("must be a boolean value (true or false)").
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+    config = (
+        '{"MATCH_SINGLE": true, "VERBOSE": false, "PERIOD": 60, '
+        '"TLP": "White", "EMPTY": null, "TYPES": ["report", "note"]}'
+    )
+    expected = {
+        "MATCH_SINGLE": "true",
+        "VERBOSE": "false",
+        "PERIOD": "60",
+        "TLP": "White",
+        "EMPTY": "",
+        "TYPES": '["report","note"]',
+    }
+
+    edit_fake = _RecordingGraphQL({"managedConnectorEdit": {"id": "c1", "name": "Fetcher"}})
+    monkeypatch.setattr(connectors, "_graphql", edit_fake)
+    edit_result = await _run(
+        executor,
+        "manage_opencti_connector",
+        {
+            "action": "update_config",
+            "connector_id": "c1",
+            "name": "Fetcher",
+            "config": config,
+            "user_id": "svc",
+        },
+    )
+    assert not edit_result.is_error, edit_result.content
+    inp = edit_fake.calls[-1][1]["input"]
+    sent = {c["key"]: c["value"] for c in inp["manager_contract_configuration"]}
+    assert sent == expected
+
+    deploy_fake = _RecordingGraphQL({"managedConnectorAdd": {"id": "c2", "name": "Fetcher"}})
+    monkeypatch.setattr(connectors, "_graphql", deploy_fake)
+    deploy_result = await _run(
+        executor,
+        "manage_opencti_connector",
+        {
+            "action": "deploy",
+            "name": "Fetcher",
+            "manager_contract_image": "img:1",
+            "catalog_id": "cat1",
+            "config": config,
+            "user_id": "svc",
+        },
+    )
+    assert not deploy_result.is_error, deploy_result.content
+    inp = deploy_fake.calls[-1][1]["input"]
+    sent = {c["key"]: c["value"] for c in inp["manager_contract_configuration"]}
+    assert sent == expected
 
 
 async def test_connector_deploy_requires_image_and_user():

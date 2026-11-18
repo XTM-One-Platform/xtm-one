@@ -10,7 +10,9 @@ work-item service reads:
   GitHub Actions, whose suites ``workflow_run`` already reports; advisory, as
   an app can complete green before the head's workflows are requested;
 * ``pull_request`` closed (merged or not), synchronize (new head commit),
-  ready_for_review and converted_to_draft (the draft flag, on a ``head`` event);
+  ready_for_review and converted_to_draft (the draft flag, on a ``head`` event),
+  dequeued without a merge (a ``dequeued`` event, the removal reason as its
+  conclusion);
 * ``issues`` closed: an ``issue_closed`` event, which releases the
   work items blocked on the issue.
 
@@ -18,6 +20,8 @@ Every other delivery answers ``None``.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from app.integrations.pull_request_events import PullRequestEvent
 
@@ -47,6 +51,35 @@ def _int(value: object) -> int | None:
 
 def _str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+#: Removal reasons of a merge queue entry that mean it merged: no wake owed.
+_MERGED_REASONS = frozenset({"MERGE", "MERGED", "ALREADY_MERGED"})
+
+
+def _dequeued(repo: str, payload: dict[str, Any]) -> PullRequestEvent | None:
+    """A ``pull_request`` ``dequeued`` delivery that did not merge, as a ``dequeued`` event."""
+    raw = payload.get("pull_request")
+    if not isinstance(raw, dict) or raw.get("merged"):
+        return None
+    pull: dict[str, Any] = raw
+    number = _int(pull.get("number")) or _int(payload.get("number"))
+    reason = (_str(payload.get("reason")) or "unknown").upper()
+    if not number or reason in _MERGED_REASONS:
+        return None
+    raw_head = pull.get("head")
+    head: dict[str, Any] = raw_head if isinstance(raw_head, dict) else {}
+    return PullRequestEvent(
+        kind="dequeued",
+        repo=repo,
+        pr_numbers=(number,),
+        head_branch=_str(head.get("ref")),
+        head_sha=_str(head.get("sha")),
+        conclusion=reason.lower(),
+        url=_str(pull.get("html_url")),
+        # When GitHub removed it: one wake per removal, a second removal of the same head is another.
+        closed_at=_str(pull.get("updated_at")),
+    )
 
 
 def parse_github_pull_request_event(event_key: str, payload: dict) -> PullRequestEvent | None:
@@ -128,6 +161,8 @@ def parse_github_pull_request_event(event_key: str, payload: dict) -> PullReques
             closed_at=closed_at,
             draft=draft if isinstance(draft, bool) and action != "closed" else None,
         )
+    if event == "pull_request" and action == "dequeued":
+        return _dequeued(repo, payload)
     if event == "issues" and action == "closed":
         issue = payload.get("issue")
         if not isinstance(issue, dict) or issue.get("pull_request"):

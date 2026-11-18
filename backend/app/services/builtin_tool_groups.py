@@ -269,6 +269,20 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         aliases=("stix_bundle_validator", "fimi_analytics"),
     ),
     BuiltinToolGroup(
+        id="stix_extractor",
+        # Off by default and never reached through Threat Intelligence: one call reads a
+        # report through hundreds of model calls (up to 30 min), so an agent carries it
+        # only when switched on for it (the CTI STIX Extractor built-in agent).
+        name="STIX Extraction",
+        tagline="Extract a STIX 2.1 bundle from threat reports, every object and relationship grounded in the text",
+        detail="Reads the attached reports chunk by chunk with the agent's own model: entities, relationships, indicators and ATT&CK techniques, each tied to the sentence that states it, in OpenCTI's ontology with its standard ids. A long report takes minutes and many model calls; switch it on only for agents that extract.",
+        category="security",
+        icon="FileText",
+        # Runs on the agent's own model for an agent built to extract; never on the
+        # General Assistant.
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
         id="platform_insights",
         default_on=True,
         name="Platform Insights",

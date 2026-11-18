@@ -5570,10 +5570,20 @@ async def execute_assignment_run(
                             _unresolved,
                         )
 
+            # How the run's bound platforms name the objects they hold, filled by
+            # the integration build (integration_tools.PLATFORM_NAMES_CONTEXT_KEY)
+            # for the grounded STIX extraction below.
+            _platform_names: list = []
+            # The run's bound MITRE ATT&CK sources, for the same extraction.
+            _attack_sources: list = []
             if effective_bindings:
                 try:
                     from app.services.assignment_helpers import resolve_hitl
-                    from app.services.integration_tools import build_integration_tools
+                    from app.services.integration_tools import (
+                        ATTACK_SOURCES_CONTEXT_KEY,
+                        PLATFORM_NAMES_CONTEXT_KEY,
+                        build_integration_tools,
+                    )
 
                     # Resolved here as well as for the built-in HITL tool below,
                     # because providers need it at tool-build time: a provider
@@ -5640,6 +5650,8 @@ async def execute_assignment_run(
                     )
                     integration_context[SIGNATURE_CONTEXT_KEY] = getattr(agent, "integration_signatures", None)
                     integration_context[LIVE_WRITES_CONTEXT_KEY] = live_writes_overrides(agent, effective_bindings)
+                    integration_context[PLATFORM_NAMES_CONTEXT_KEY] = _platform_names
+                    integration_context[ATTACK_SOURCES_CONTEXT_KEY] = _attack_sources
                     integ_defs, integ_exec = await build_integration_tools(
                         db,
                         effective_bindings,
@@ -6027,6 +6039,14 @@ async def execute_assignment_run(
                     strict_refs=stix_validator_strict_refs(agent)
                 )
                 composite.add_tools(sv_defs, sv_exec)
+
+            if "stix_extractor" in agent_builtin_tool_ids:
+                from app.services.builtin_tools import build_stix_extraction_tool
+
+                sx_defs, sx_exec = build_stix_extraction_tool(
+                    llm, wf_resolved_model, platform_names=_platform_names, attack_sources=_attack_sources
+                )
+                composite.add_tools(sx_defs, sx_exec)
 
             # --- Skill loader (built-in, IMPLICIT when skills are attached) ---
             # Mirrors agent_chat.py: the catalog in the system prompt tells the

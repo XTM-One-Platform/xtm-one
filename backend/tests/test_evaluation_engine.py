@@ -908,6 +908,25 @@ def test_build_evaluation_integration_tools_passes_evaluation_user_id(monkeypatc
     }
 
 
+def test_an_evaluated_run_gets_what_the_build_collects_for_the_built_in_tools(monkeypatch):
+    """The build fills the lists a chat run's grounded extraction reads (how the bound
+    platform names objects, the bound ATT&CK source); the evaluation's build hands the same
+    lists over with its tools, so the pipeline it evaluates is the one that runs."""
+    from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY, PLATFORM_NAMES_CONTEXT_KEY
+
+    agent = _make_eval_agent()
+    evaluation = SimpleNamespace(id=uuid.uuid4(), user_id=uuid.uuid4())
+    captured = _mock_integration_tool_build(monkeypatch, [_integration_tool_def("opencti_search", "opencti")])
+
+    bundle = asyncio.run(ee._build_evaluation_integration_tools(_FakeSession([]), agent, evaluation=evaluation))
+
+    for key in (PLATFORM_NAMES_CONTEXT_KEY, ATTACK_SOURCES_CONTEXT_KEY):
+        assert isinstance(captured[key], list)
+        assert bundle.context[key] is captured[key]
+    _definitions, executor = bundle  # still the pair callers unpack
+    assert executor == "executor"
+
+
 def test_build_evaluation_integration_tools_falls_back_to_agent_owner_user_id(monkeypatch):
     agent_owner_id = uuid.uuid4()
     agent = _make_eval_agent(user_id=agent_owner_id)

@@ -190,6 +190,7 @@ from app.tools.base import (
     SendGuard,
     ToolCall,
     ToolDefinition,
+    ToolModelSpend,
     ToolNameResolver,
     ToolResult,
     WriteCoalescing,
@@ -204,6 +205,8 @@ from app.tools.base import (
     is_rate_limit_error,
     limiting_tool_results,
     offering_tools,
+    spending_for_tool,
+    timing_tool_call,
     tool_retention_key,
     visible_aliases,
 )
@@ -2176,7 +2179,10 @@ _WAIT_TIMEOUT_RESULT = WaitResult(
 
 
 def _tool_timeout_for(
-    name: str, effective: float, wall_clock_deadline: float | None = None
+    name: str,
+    effective: float,
+    wall_clock_deadline: float | None = None,
+    declared: int = 0,
 ) -> float:
     """Per-tool execution timeout.
 
@@ -2193,8 +2199,14 @@ def _tool_timeout_for(
     run by the caller's outer ``asyncio.wait_for``, while one that times out
     here returns to the loop, whose deadline guard then answers with what the
     run gathered.
+
+    ``declared`` is the tool's own ``ToolDefinition.execution_timeout``: a
+    tool whose one call does long work by design declares it, and it replaces
+    the regular ceiling as the agent tier does.
     """
-    if name in _AGENT_TOOL_NAMES:
+    if declared > 0:
+        timeout = declared
+    elif name in _AGENT_TOOL_NAMES:
         timeout = _AGENT_TOOL_TIMEOUT
     elif name == WAIT_TOOL_NAME:
         timeout = WAIT_TOOL_TIMEOUT
@@ -10333,6 +10345,16 @@ async def run_agent_loop(
     def _lookup_tool_coalescing(name: str) -> WriteCoalescing | None:
         return _tool_coalescing_map.get(name)
 
+    # The tools that declare their own execution timeout
+    # (``ToolDefinition.execution_timeout``), by LLM-visible name.
+    _tool_execution_timeouts: dict[str, int] = {
+        _td.name: _td.execution_timeout for _td in effective_tools or [] if _td.execution_timeout > 0
+    }
+
+    def _declared_timeout(name: str) -> int:
+        canonical = _tool_name_map.canonical_visible(name)
+        return _tool_execution_timeouts.get(canonical, 0) if canonical is not None else 0
+
     # The send tools that declare their recipient and body arguments
     # (``ToolDefinition.send_guard``), by LLM-visible name, and the
     # run's successful sends they are matched against.
@@ -11537,6 +11559,48 @@ async def run_agent_loop(
                     max_total_tokens,
                     accumulated_usage,
                 )
+
+    # A tool that calls a model itself (the grounded STIX extraction) spends the
+    # run's allowance: its usage goes through ``_merge_usage`` like the loop's own
+    # calls, and each of its calls reserves its worst case first, against the run's
+    # budget and against ``max_total_tokens`` (the tokens spent plus those its calls
+    # in flight may still spend), so calls made at once cannot together outspend
+    # the run.
+    _tool_tokens_in_flight = 0
+
+    def _tool_call_reserve(
+        estimated_input_tokens: int, max_output_tokens: int
+    ) -> Callable[[], None] | None:
+        nonlocal _tool_tokens_in_flight
+        if token_budget_exceeded:
+            return None
+        worst = max(0, estimated_input_tokens) + max(0, max_output_tokens)
+        if (
+            max_total_tokens is not None
+            and max_total_tokens > 0
+            and _accumulated_total_tokens() + _tool_tokens_in_flight + worst > max_total_tokens
+        ):
+            return None
+        reservation = None
+        if _budget is not None:
+            reservation = _budget.try_reserve(
+                estimated_input_tokens=estimated_input_tokens,
+                max_output_tokens=max_output_tokens,
+            )
+            if not reservation.granted:
+                return None
+        _tool_tokens_in_flight += worst
+        budget = _budget
+
+        def release() -> None:
+            nonlocal _tool_tokens_in_flight
+            _tool_tokens_in_flight -= worst
+            if budget is not None and reservation is not None:
+                budget.release(reservation)
+
+        return release
+
+    _tool_spend = ToolModelSpend(record=_merge_usage, reserve=_tool_call_reserve)
 
     # Whether the compaction that just ran spent anything: its summariser's
     # usage reached ``_merge_usage`` through this hook.  Reset before every
@@ -16480,7 +16544,7 @@ async def run_agent_loop(
                     await _inject_loop_breaker_nudges()
                     continue
                 _tc_timeout = _tool_timeout_for(
-                    tc.name, effective_tool_timeout, wall_clock_deadline
+                    tc.name, effective_tool_timeout, wall_clock_deadline, _declared_timeout(tc.name)
                 )
                 logger.info("Executing tool: %s (id=%s)", tc.name, tc.id)
                 _tool_ctx = _lf_start_tool_span(
@@ -16507,7 +16571,9 @@ async def run_agent_loop(
                 try:
                     # The cap the result gets, for a tool that pages its own
                     # answer; the task below copies it.
-                    with limiting_tool_results(max_tool_result_chars):
+                    with limiting_tool_results(max_tool_result_chars), spending_for_tool(_tool_spend), timing_tool_call(
+                        _tc_timeout
+                    ):
                         result = await _race_cancellation(
                             _await_with_heartbeat(
                                 _execute_fenced(tc),
@@ -17000,7 +17066,9 @@ async def run_agent_loop(
                         timeout=timeout,
                     )
                     try:
-                        with limiting_tool_results(max_tool_result_chars):
+                        with limiting_tool_results(max_tool_result_chars), spending_for_tool(
+                            _tool_spend
+                        ), timing_tool_call(timeout):
                             result = await _race_cancellation(
                                 _execute_fenced(tc),
                                 cancel_event,
@@ -17108,7 +17176,10 @@ async def run_agent_loop(
                 # ran under, not one recomputed after the batch returned.
                 _par_timeouts = {
                     _ci: _tool_timeout_for(
-                        tool_calls[_ci].name, effective_tool_timeout, wall_clock_deadline
+                        tool_calls[_ci].name,
+                        effective_tool_timeout,
+                        wall_clock_deadline,
+                        _declared_timeout(tool_calls[_ci].name),
                     )
                     for _ci in _exec_indices
                 }

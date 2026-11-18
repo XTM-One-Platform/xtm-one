@@ -189,6 +189,10 @@ _READ_ONLY_ANALYSIS = frozenset(
         # nothing leaves the process, which is the same ground on which
         # ``analyze_stix_timeline`` and ``compare_stix_bundles`` sit above.
         "stix_bundle_validator",
+        # Reads the run's own file or text, calls the run's own model and reads
+        # the public ATT&CK catalogue (the MITRE ATT&CK integration's source);
+        # writes nothing anywhere.
+        "extract_stix_from_document",
         "validate_presentation",
     }
 )

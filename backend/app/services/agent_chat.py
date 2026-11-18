@@ -628,6 +628,9 @@ async def load_conversation_files(
     # docstring: "files are handed to the agent run in memory").
     for ref in current_turn_files or []:
         file_context.add(ref)
+    file_context.current_turn_ids = {
+        str(getattr(ref, "file_id", "") or "").removeprefix("file-") for ref in current_turn_files or []
+    } - {""}
     return file_context
 
 
@@ -4804,6 +4807,23 @@ async def run_agent_chat(
             sv_defs, sv_exec = build_stix_bundle_validator_tool(strict_refs=stix_validator_strict_refs(agent))
             composite.add_tools(sv_defs, sv_exec)
 
+        # --- Grounded STIX extraction (built-in, opt-in) ---
+        # On the turn's own provider and model, so an evaluation comparing models
+        # compares the whole extraction pipeline on each. It names its objects as
+        # the agent's one bound platform names them: the integrations built below
+        # fill the list (integration_tools.PLATFORM_NAMES_CONTEXT_KEY).
+        _platform_names: list = []
+        # It reads ATT&CK from the run's bound MITRE ATT&CK integration, through its
+        # relay route (integration_tools.ATTACK_SOURCES_CONTEXT_KEY).
+        _attack_sources: list = []
+        if "stix_extractor" in agent_builtin_tool_ids:
+            from app.services.builtin_tools import build_stix_extraction_tool
+
+            sx_defs, sx_exec = build_stix_extraction_tool(
+                llm, resolved_model, platform_names=_platform_names, attack_sources=_attack_sources
+            )
+            composite.add_tools(sx_defs, sx_exec)
+
         # --- Skill loader (built-in, IMPLICIT when skills are attached) ---
         # Deliberately not in ``builtin_tool_ids``: the catalog in the system
         # prompt tells the model to call ``load_skill``, so a user who forgot to
@@ -5399,9 +5419,17 @@ async def run_agent_chat(
         _turn_stages.mark("scope_and_bindings")
         _invalid_integration_note = ""
         if prebuilt_integration_tools is not None:
-            integ_defs, integ_exec = prebuilt_integration_tools
+            integ_defs, integ_exec = prebuilt_integration_tools[0], prebuilt_integration_tools[1]
             if integ_defs:
                 composite.add_tools(integ_defs, integ_exec)
+            # What that build collected for the built-in tools (the bound platform's names,
+            # its ATT&CK source): the extraction an evaluation runs is the one a chat runs.
+            from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY as _ATTACK_KEY
+            from app.services.integration_tools import PLATFORM_NAMES_CONTEXT_KEY as _NAMES_KEY
+
+            _prebuilt_context = getattr(prebuilt_integration_tools, "context", None) or {}
+            _platform_names.extend(_prebuilt_context.get(_NAMES_KEY, []))
+            _attack_sources.extend(_prebuilt_context.get(_ATTACK_KEY, []))
         elif effective_bindings:
             from app.services.integration_tools import build_integration_tools
 
@@ -5414,6 +5442,7 @@ async def run_agent_chat(
                 READ_ONLY_CONTEXT_KEY,
                 read_only_integration_ids,
             )
+            from app.services.integration_tools import ATTACK_SOURCES_CONTEXT_KEY, PLATFORM_NAMES_CONTEXT_KEY
 
             _integration_build_context: dict = {
                     "source": "agent_chat",
@@ -5433,6 +5462,8 @@ async def run_agent_chat(
                     READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, effective_bindings),
                     SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
                     LIVE_WRITES_CONTEXT_KEY: live_writes_overrides(agent, effective_bindings),
+                    PLATFORM_NAMES_CONTEXT_KEY: _platform_names,
+                    ATTACK_SOURCES_CONTEXT_KEY: _attack_sources,
             }
             integ_defs, integ_exec = await build_integration_tools(
                 db,

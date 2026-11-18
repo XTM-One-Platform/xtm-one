@@ -184,9 +184,20 @@ async def _context(session: Any, checkout: str) -> tuple[CheckoutRecord, dict[st
     return record, specs
 
 
+def recorded_guards(spec: CheckSpec, specs: Mapping[str, CheckSpec]) -> list[CheckSpec]:
+    """The guards a whole run of *spec* counts for: itself when it is one, and each declared guard it stands for."""
+    kept = [spec] if spec.pre_push else []
+    for name in spec.stands_for:
+        guard = specs.get(name)
+        if guard is not None and guard.pre_push and guard not in kept:
+            kept.append(guard)
+    return kept
+
+
 async def record_run(session: Any, checkout: str, *, check: str, argv: Iterable[str], exit_code: int | None) -> bool:
     """Keep the run of guard *check* when it ran whole (its declared argv, no args) and ended; whether it was kept.
 
+    A check declaring ``stands_for`` (the same gate on another image) is kept as the run of each guard it names.
     A guard run on some files (args, ``affected``) proves nothing about the tree: it is not kept. Never raises:
     the check ran, so a state that cannot be written is logged, not thrown.
     """
@@ -198,12 +209,19 @@ async def record_run(session: Any, checkout: str, *, check: str, argv: Iterable[
             return False
         record, specs = context
         spec = specs.get(check)
-        if spec is None or not spec.pre_push or tuple(argv) != command_argv(spec, []):
+        if spec is None or tuple(argv) != command_argv(spec, []):
+            return False
+        kept = recorded_guards(spec, specs)
+        if not kept:
             return False
         entries = await session.entries(refresh=True)
         path = state_path(record.path)
         state = load_state(await _read(session, path))
-        data = updated_state(state, check, fingerprint=fingerprint(record, entries, spec), exit_code=exit_code)
+        for guard in kept:
+            data = updated_state(
+                state, guard.name, fingerprint=fingerprint(record, entries, guard), exit_code=exit_code
+            )
+            state = load_state(data)
         await session.put_tree([(path, data)], operation="run_command")
     except Exception:
         logger.warning("Pre-push guard state of %s not written for %s", checkout, check, exc_info=True)

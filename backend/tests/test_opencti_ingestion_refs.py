@@ -183,6 +183,8 @@ async def test_label_import_switch_is_refused_as_absent_from_opencti(monkeypatch
     result = await _run(executor, "manage_opencti_ingestion", _create({"label_import": False}))
     assert result.is_error
     assert "no label import setting" in result.content
+    assert "Manage labels (SETTINGS_SETLABELS)" in result.content
+    assert "always turns" not in result.content
     assert stub.mutations() == []
 
 
@@ -205,7 +207,8 @@ async def test_get_shows_markings_author_user_and_label_import(monkeypatch):
     assert f"markings: TLP:CLEAR ({TLP_CLEAR['id']})" in result.content
     assert f"author: Filigran (Organization, {AUTHOR['id']})" in result.content
     assert f"ingestion user: [F] Ingestion ({USER['id']})" in result.content
-    assert "label import: always on" in result.content
+    assert "always on" not in result.content
+    assert "a new one is created only when the ingestion user's role has Manage labels" in result.content
 
 
 async def test_update_resolves_markings_before_patching(monkeypatch):

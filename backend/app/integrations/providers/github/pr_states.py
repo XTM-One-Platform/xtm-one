@@ -66,7 +66,7 @@ _TITLE_CHARS = 80
 _UNKNOWN_BACKOFF: tuple[float, ...] = (1.0, 2.0)
 
 _PR_FIELDS = f"""
-      number title state isDraft mergeable mergeStateStatus reviewDecision headRefOid
+      number title state isDraft mergeable mergeStateStatus reviewDecision headRefOid baseRefName
       reviewThreads(first: {_THREADS}) {{ totalCount nodes {{ isResolved }} }}
       commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{
         state
@@ -132,9 +132,24 @@ def rollup_counts(node: dict[str, Any] | None) -> dict[str, int]:
     return _counts(rollup if isinstance(rollup, dict) else None)
 
 
-def verdict(buckets: dict[str, int], *, conflict: bool = False, running: list[str] | None = None) -> str:
+def verdict(
+    buckets: dict[str, int], *, conflict: bool = False, running: list[str] | None = None, stale: int = 0
+) -> str:
     """The checks verdict of ``get_github_ci_status`` from bucket counts (``checks.ci_verdict``)."""
-    return checks.ci_verdict(buckets, conflict=conflict, running=running)
+    return checks.ci_verdict(buckets, conflict=conflict, running=running, stale=stale)
+
+
+def waits_on_pending(node: dict[str, Any] | None) -> bool:
+    """Whether an open pull request's rollup reads nothing failed and something pending. Pure.
+
+    Such a head is re-read through REST with its base's required checks: a check
+    the base does not require, pending for too long, may be all that holds it
+    (``checks.GREEN_STALE_OPTIONAL``).
+    """
+    if not isinstance(node, dict) or str(node.get("state") or "").upper() != "OPEN" or not node.get("headRefOid"):
+        return False
+    counts = rollup_counts(node)
+    return not counts["failed"] and bool(counts["pending"]) and not node_conflict(node)
 
 
 def _answered_counts(node: dict[str, Any] | None, latest: dict[str, int] | str | None) -> dict[str, int]:
@@ -162,6 +177,7 @@ def format_pr(
     rereads: int = 0,
     latest: dict[str, int] | str | None = None,
     running: list[str] | None = None,
+    stale: list[dict[str, Any]] | None = None,
 ) -> str:
     """One line for one pull request (or why it could not be read).
 
@@ -169,7 +185,9 @@ def format_pr(
     mergeability; a pull request still unknown after them says so. *latest*
     holds the latest-run-per-name counts of a head re-read through the REST
     checks (they replace the rollup's), or the error of that re-read.
-    *running* names the workflow runs of a green head not finished yet.
+    *running* names the workflow runs of a green head not finished yet; *stale*
+    the checks the base does not require, pending too long to hold a head whose
+    required checks all passed (``checks.stale_optional``).
     """
     if not isinstance(node, dict):
         return f"#{number}: not found"
@@ -191,8 +209,11 @@ def format_pr(
         conflict = node_conflict(node)
         if running and not conflict:
             note += "; " + checks.running_note(running)
+        answered = verdict(buckets, conflict=conflict, running=running, stale=len(stale or []))
+        if answered == checks.GREEN_STALE_OPTIONAL:
+            note += "; " + checks.stale_note(stale)
         parts.append(
-            f"checks {verdict(buckets, conflict=conflict, running=running)} ({buckets['passed']} passed, "
+            f"checks {answered} ({buckets['passed']} passed, "
             f"{buckets['failed']} failed, {buckets['pending']} pending, {buckets['skipped']} skipped{note})"
         )
         threads = node.get("reviewThreads") or {}
@@ -294,6 +315,36 @@ def register(
             latest: dict[int, dict[str, int] | str] = {}
             for (number, _sha), (runs, statuses, _truncated, err) in zip(suspect, reads, strict=True):
                 latest[number] = err if err else latest_counts(runs, statuses)
+            # A head with nothing failed but something pending: re-read it with its
+            # base's required checks, a stale optional check may be all that holds it.
+            waiting = [
+                (n, str(node.get("headRefOid")), str(node.get("baseRefName") or ""))
+                for n, node in nodes.items()
+                if waits_on_pending(node)
+            ]
+            bases = sorted({base for _n, _sha, base in waiting if base})
+            contexts = await asyncio.gather(
+                *(checks.read_required_contexts(client, headers, owner, name, base) for base in bases)
+            )
+            required_of = dict(zip(bases, contexts, strict=True))
+            pending_reads = await asyncio.gather(
+                *(
+                    checks.read_ci(client, headers, owner, name, sha)
+                    for _n, sha, base in waiting
+                    if required_of.get(base)
+                )
+            )
+            stale_of: dict[int, list[dict[str, Any]]] = {}
+            for (number, _sha, base), (runs, statuses, _truncated, err) in zip(
+                [w for w in waiting if required_of.get(w[2])], pending_reads, strict=True
+            ):
+                if err:
+                    continue
+                buckets = checks.classify_ci(runs, statuses)
+                found = checks.stale_optional(buckets, required_of[base])
+                if found:
+                    latest[number] = {bucket: len(entries) for bucket, entries in buckets.items()}
+                    stale_of[number] = found
             # A head whose reported checks all passed may still have a workflow
             # run queued (its jobs not reported yet): read those heads' runs.
             green = [
@@ -303,7 +354,8 @@ def register(
                 and str(node.get("state") or "").upper() == "OPEN"
                 and node.get("headRefOid")
                 and not node_conflict(node)
-                and verdict(_answered_counts(node, latest.get(n))) == "success"
+                and verdict(_answered_counts(node, latest.get(n)), stale=len(stale_of.get(n, [])))
+                in ("success", checks.GREEN_STALE_OPTIONAL)
             ]
             runs_of = await asyncio.gather(
                 *(checks.running_workflows(client, headers, owner, name, sha) for _n, sha in green)
@@ -317,7 +369,16 @@ def register(
                 lines.append(f"#{', #'.join(str(n) for n in batch)}: not read ({err})")
                 continue
             for number in batch:
-                lines.append(format_pr(number, nodes.get(number), rereads, latest.get(number), running.get(number)))
+                lines.append(
+                    format_pr(
+                        number,
+                        nodes.get(number),
+                        rereads,
+                        latest.get(number),
+                        running.get(number),
+                        stale_of.get(number),
+                    )
+                )
         text = "\n".join(lines)
         if any(is_computing(node) for node in nodes.values()):
             # A merge state GitHub is still computing is not an answer to keep:

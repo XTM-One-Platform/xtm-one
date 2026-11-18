@@ -135,6 +135,15 @@ def test_a_migrated_row_wires_what_the_row_wired_before():
         assert set(runtime_builtin_tool_ids(*after)) == set(runtime_builtin_tool_ids(before, None)), before
 
 
+def test_the_grounded_extraction_is_its_own_group_never_reached_through_cti():
+    """An agent with Threat Intelligence switched on does not get the grounded extraction (a
+    tool of hundreds of model calls): it is a group of its own, wired only where selected."""
+    assert alias_group("stix_extractor") is None
+    assert "stix_extractor" not in runtime_builtin_tool_ids(["cti"], None)
+    assert "stix_extractor" in runtime_builtin_tool_ids(["stix_extractor"], None)
+    assert "stix_extractor" in runtime_builtin_tool_ids(["cti", "stix_extractor"], None)
+
+
 def test_describe_names_the_group_of_a_former_id():
     assert alias_group("inspect_my_traces") == "observability"
     assert alias_group("observability") is None

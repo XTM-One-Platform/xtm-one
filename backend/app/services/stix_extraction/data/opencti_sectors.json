@@ -1,0 +1,305 @@
+{
+ "source": "OpenCTI-Platform/datasets@709e73e4d28688fe89df94daf99d4204a83d7404 data/sectors.json (Apache-2.0)",
+ "sectors": {
+  "Agriculture and agribusiness": [
+   "Agribusiness",
+   "Agriculture",
+   "Food Production",
+   "Nutritional Supplements"
+  ],
+  "Air transport": [
+   "Aerospace",
+   "Airline",
+   "Aviation",
+   "Satellite",
+   "Satellite and communications"
+  ],
+  "Banking institutions": [
+   "Bank",
+   "Banking",
+   "Banking & Investment Services",
+   "Banking Services",
+   "Banks"
+  ],
+  "Central administration and government": [
+   "Critical Public",
+   "Emergency-Services",
+   "Government-National",
+   "Government-Public-Services",
+   "Law Enforcement",
+   "Police",
+   "Security"
+  ],
+  "Citizens": [
+   "Religion",
+   "Religious"
+  ],
+  "Civil society": [],
+  "Construction": [
+   "Building",
+   "Offshore",
+   "Offshore Engineering",
+   "Real Estate"
+  ],
+  "Consulting": [
+   "Advisory",
+   "HR Services",
+   "Marketing",
+   "Marketing / Public Relations",
+   "Professional & consumer services",
+   "Professional services",
+   "Public Relations"
+  ],
+  "Culture": [
+   "Travel"
+  ],
+  "Culture and entertainment": [
+   "Entertainment"
+  ],
+  "Defense": [
+   "Defence",
+   "National Security"
+  ],
+  "Defense industry": [
+   "Defence industry"
+  ],
+  "Defense ministries (including the military)": [
+   "Intelligence services",
+   "Military",
+   "intelligence"
+  ],
+  "Defense research and development": [
+   "Defence research and development"
+  ],
+  "Digital infrastructures": [
+   "Cellular",
+   "domain"
+  ],
+  "Diplomacy": [
+   "Diplomatic",
+   "Foreign"
+  ],
+  "Dissidents": [
+   "activism"
+  ],
+  "Education": [],
+  "Electricity": [
+   "Electrical",
+   "Power",
+   "Utilities &amp; Electric"
+  ],
+  "Energy": [
+   "Natural Resources"
+  ],
+  "Engineering consulting": [
+   "Engineering"
+  ],
+  "Entertainment industry": [
+   "Gaming",
+   "Online Gaming Community"
+  ],
+  "Finance": [
+   "Financial",
+   "Financial Industry (FI)",
+   "Financial Services",
+   "Financial-Services"
+  ],
+  "Financial organizations": [
+   "investment"
+  ],
+  "Food and drinks businesses": [
+   "Beverage",
+   "Food",
+   "Restaurant",
+   "Restaurant Chains"
+  ],
+  "Gambling": [],
+  "Gas": [
+   "Gas And",
+   "Gas and Oil",
+   "Natural Gas Utilities",
+   "Oil &amp; Gas Manufacturing",
+   "Oil and Gas"
+  ],
+  "Government and administrations": [
+   "Election",
+   "Government",
+   "Voting"
+  ],
+  "Health": [
+   "Healthcare"
+  ],
+  "Healthcare research": [
+   "Biomedical"
+  ],
+  "Healthcare services": [
+   "Medical",
+   "Social Services"
+  ],
+  "Heavy industries": [
+   "Chemical",
+   "Critical Infrastructure",
+   "Critical Infrastructures",
+   "Industry",
+   "Infrastructure",
+   "Metal",
+   "Metallurgical",
+   "Petrochemicals",
+   "Textile",
+   "heavy industry",
+   "metals"
+  ],
+  "High-tech": [
+   "Biotechnology",
+   "Electronics",
+   "High Tech",
+   "High Technology",
+   "Semiconductor"
+  ],
+  "Hospitality": [
+   "Hospitality-Leisure"
+  ],
+  "Hosting service providers": [],
+  "Information Technologies Consulting": [
+   "IT Service Providers",
+   "Information Technology"
+  ],
+  "Insurance services": [
+   "Insurance"
+  ],
+  "International organizations": [
+   "Diplomatic Organizations"
+  ],
+  "Internet Service providers": [],
+  "Judicial power (justice)": [
+   "law"
+  ],
+  "Legal consulting": [
+   "Legal"
+  ],
+  "Legislative branch (parliamentary chambers)": [],
+  "Local administrations": [
+   "Government-Local",
+   "Government-Regional"
+  ],
+  "Lodging industry": [],
+  "Logistics": [
+   "Logistic"
+  ],
+  "Manufacturing": [
+   "ICS",
+   "Industrial Control Systems",
+   "Utilities",
+   "industrial"
+  ],
+  "Maritime transport": [
+   "Marine",
+   "Naval",
+   "maritime"
+  ],
+  "Market infrastructures": [
+   "Trade",
+   "Trading"
+  ],
+  "Medias and audiovisual": [
+   "Journalism",
+   "Journalists",
+   "Media",
+   "News",
+   "News &amp; Media",
+   "News Media"
+  ],
+  "Mining": [],
+  "Ministries of foreign affairs": [
+   "Foreign Affairs"
+  ],
+  "Non-Governmental Organizations (NGOs)": [
+   "Charitable Organizations",
+   "Environmental",
+   "Human Rights",
+   "Humanitarian",
+   "NGO",
+   "Non-Profit"
+  ],
+  "Nuclear power (civilian use)": [
+   "Nuclear"
+  ],
+  "Oil": [
+   "Fuel"
+  ],
+  "Pharmacy and drugs manufacturing": [
+   "Pharmaceutical",
+   "Pharmaceuticals"
+  ],
+  "Political parties": [
+   "Political",
+   "Political opposition",
+   "Politics"
+  ],
+  "Rail transport": [],
+  "Renewable energies": [],
+  "Research": [],
+  "Retail (distribution)": [
+   "Commercial",
+   "Distribution",
+   "Ecommerce",
+   "Retail",
+   "Wholesale",
+   "commerce",
+   "e-commerce"
+  ],
+  "Road transport": [
+   "Automotive"
+  ],
+  "Schools": [],
+  "Sports": [
+   "Sport"
+  ],
+  "Technologies": [
+   "Bitcoin",
+   "Crypto",
+   "Cryptocurrency",
+   "Currency Exchange",
+   "IT",
+   "Information Security",
+   "Software Development",
+   "Technology",
+   "Virtual Currency",
+   "Vulnerability Research",
+   "software"
+  ],
+  "Telecommunications": [
+   "Communications",
+   "Telecom",
+   "Telecommunication",
+   "Telecoms"
+  ],
+  "Think tanks": [
+   "Think tank",
+   "Thinktank",
+   "Thinktanks"
+  ],
+  "Transport": [
+   "Shipping",
+   "Transportation"
+  ],
+  "Travel and tourism industry": [
+   "Commodities",
+   "Tourism"
+  ],
+  "Universities": [
+   "Academic",
+   "Academic Sector",
+   "Academics",
+   "Higher education"
+  ],
+  "Unknown": [
+   "Undefined"
+  ],
+  "Water distribution and supply": [
+   "Dams",
+   "Water",
+   "Water Treatment Plants"
+  ]
+ }
+}

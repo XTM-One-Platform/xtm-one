@@ -74,6 +74,11 @@ _CATALOG: Final[dict[str, _FamilyInfo]] = {
             "stix.entity_prf",
             "stix.entity_prf.by_type",
             "stix.relationship_prf",
+            "stix.entity_prf.aligned",
+            "stix.entity_prf.soft",
+            "stix.relationship_prf.aligned",
+            "stix.entity_prf.aligned.closed",
+            "stix.relationship_prf.aligned.closed",
         ),
     ),
     STRUCTURED_JSON: _FamilyInfo(

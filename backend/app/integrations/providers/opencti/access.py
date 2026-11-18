@@ -46,6 +46,76 @@ def _unapplied(action: str, fields: dict[str, object]) -> str | None:
     )
 
 
+# The fields each action of manage_opencti_user / manage_opencti_group reads. Any
+# other field passed is refused by name on EVERY action, reads and relation actions
+# included: a list, get or delete must never answer as if an extra field applied.
+_USER_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"user_id"}),
+    "create": frozenset(
+        {
+            "name",
+            "user_email",
+            "password",
+            "firstname",
+            "lastname",
+            "description",
+            "account_status",
+            "group_ids",
+            "max_confidence",
+            "confidence_overrides",
+        }
+    ),
+    "update": frozenset(
+        {
+            "user_id",
+            "name",
+            "user_email",
+            "firstname",
+            "lastname",
+            "description",
+            "account_status",
+            "max_confidence",
+            "confidence_overrides",
+            "inherit_confidence",
+        }
+    ),
+    "delete": frozenset({"user_id"}),
+    "add_group": frozenset({"user_id", "group_id"}),
+    "remove_group": frozenset({"user_id", "group_id"}),
+    "add_organization": frozenset({"user_id", "organization_id"}),
+    "remove_organization": frozenset({"user_id", "organization_id"}),
+}
+_GROUP_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"group_id"}),
+    "create": frozenset({"name", "description", "max_confidence", "confidence_overrides"}),
+    "update": frozenset({"group_id", "name", "description", "max_confidence", "confidence_overrides"}),
+    "delete": frozenset({"group_id"}),
+    "add_role": frozenset({"group_id", "role_id"}),
+    "remove_role": frozenset({"group_id", "role_id"}),
+}
+_DEFAULT_LIMIT = 20
+
+
+def _refuse_unapplied(
+    action: str,
+    applies: dict[str, frozenset[str]],
+    fields: dict[str, object],
+    extra: dict[str, object],
+) -> str | None:
+    """The refusal of :func:`_unapplied` for every field *action* does not read.
+
+    *fields* are the declared arguments as passed (``limit`` only when it differs
+    from its default), *extra* the undeclared ones. An unknown action is left to the
+    tool's own answer.
+    """
+    allowed = applies.get(action)
+    if allowed is None:
+        return None
+    return _unapplied(action, {**{k: v for k, v in fields.items() if k not in allowed}, **extra})
+
+
 def _confidence_level(
     max_confidence: int | None, overrides: list[dict[str, Any]] | None
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -81,6 +151,34 @@ def _format_level(level: dict[str, Any] | None) -> str:
     text = str(level.get("max_confidence")) if level.get("max_confidence") is not None else "unset"
     overrides = [f"{o.get('entity_type')} {o.get('max_confidence')}" for o in (level.get("overrides") or [])]
     return f"{text} (overrides: {', '.join(overrides)})" if overrides else text
+
+
+#: Members a group ``get`` names; past it the answer says how many more exist.
+_GROUP_MEMBERS_SHOWN = 200
+
+
+def _group_member_lines(group: dict[str, Any]) -> list[str]:
+    """``members: N`` then one line per member: name, id, email, service account or not.
+
+    The count is OpenCTI's ``globalCount`` when it answers one, so a group larger
+    than the page says how many members are left unnamed instead of a short count.
+    """
+    connection = group.get("members") or {}
+    members = [(e or {}).get("node") or {} for e in connection.get("edges") or []]
+    page = connection.get("pageInfo") or {}
+    total = page.get("globalCount")
+    total = total if isinstance(total, int) and total >= len(members) else len(members)
+    lines = [f"  members: {total}"]
+    for m in members:
+        kind = "service account" if m.get("user_service_account") else "user"
+        email = f", {m['user_email']}" if m.get("user_email") else ""
+        lines.append(f"    - {m.get('name')} (id: {m.get('id')}{email}, {kind})")
+    if total > len(members) or page.get("hasNextPage"):
+        lines.append(
+            f"    ... {max(total - len(members), 0) or 'more'} not shown "
+            f"(first {len(members)} listed; the user 'get' action lists a user's groups)"
+        )
+    return lines
 
 
 def _format_source(source: dict[str, Any] | None) -> str:
@@ -153,6 +251,31 @@ def register(
         **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _USER_APPLIES,
+            {
+                "user_id": user_id,
+                "name": name,
+                "user_email": user_email,
+                "password": password,
+                "firstname": firstname,
+                "lastname": lastname,
+                "description": description,
+                "account_status": account_status,
+                "group_ids": group_ids,
+                "group_id": group_id,
+                "organization_id": organization_id,
+                "search": search,
+                "limit": None if limit == _DEFAULT_LIMIT else limit,
+                "max_confidence": max_confidence,
+                "confidence_overrides": confidence_overrides,
+                "inherit_confidence": inherit_confidence,
+            },
+            extra,
+        )
+        if refused:
+            return refused
 
         async def _read_user_confidence() -> tuple[dict[str, Any] | None, str | None]:
             query = (
@@ -239,18 +362,6 @@ def register(
         if action == "create":
             if not name:
                 return "name is required for action 'create'."
-            refused = _unapplied(
-                "create",
-                {
-                    "user_id": user_id,
-                    "group_id": group_id,
-                    "organization_id": organization_id,
-                    "inherit_confidence": inherit_confidence,
-                    **extra,
-                },
-            )
-            if refused:
-                return refused
             inp: dict = {"name": name}
             if max_confidence is not None or confidence_overrides:
                 level, level_err = _confidence_level(max_confidence, confidence_overrides)
@@ -284,19 +395,6 @@ def register(
         if action == "update":
             if not user_id:
                 return "user_id is required for action 'update'."
-            refused = _unapplied(
-                "update",
-                {
-                    "password": password,
-                    "group_ids": group_ids,
-                    "group_id": group_id,
-                    "organization_id": organization_id,
-                    "search": search,
-                    **extra,
-                },
-            )
-            if refused:
-                return refused
             sets_confidence = max_confidence is not None or confidence_overrides is not None
             if inherit_confidence and sets_confidence:
                 return (
@@ -422,6 +520,23 @@ def register(
         **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _GROUP_APPLIES,
+            {
+                "group_id": group_id,
+                "name": name,
+                "description": description,
+                "max_confidence": max_confidence,
+                "role_id": role_id,
+                "search": search,
+                "limit": None if limit == _DEFAULT_LIMIT else limit,
+                "confidence_overrides": confidence_overrides,
+            },
+            extra,
+        )
+        if refused:
+            return refused
 
         async def _read_group_confidence() -> tuple[dict[str, Any] | None, str | None]:
             query = (
@@ -462,7 +577,9 @@ def register(
                 "  group(id: $id) { id name description default_assignation"
                 f"    auto_new_marking group_confidence_level {{ {_LEVEL_FIELDS} }}"
                 "    roles { edges { node { id name } } }"
-                "    members(first: 50) { edges { node { id name } } } } }"
+                f"    members(first: {_GROUP_MEMBERS_SHOWN}) {{ edges {{ node {{"
+                "      id name user_email user_service_account } }"
+                "      pageInfo { hasNextPage globalCount } } } }"
             )
             data, err = await _gql(query, {"id": group_id})
             if err:
@@ -473,7 +590,6 @@ def register(
             roles = ", ".join(
                 e.get("name", "") for e in _edges(g, "roles")
             ) or "none"
-            members = _edges(g, "members")
             return "\n".join(
                 [
                     f"{g.get('name')} (id: {g.get('id')})",
@@ -482,16 +598,13 @@ def register(
                     f"  auto_new_marking: {g.get('auto_new_marking')}",
                     f"  group_confidence_level: {_format_level(g.get('group_confidence_level'))}",
                     f"  roles: {roles}",
-                    f"  members: {len(members)}",
+                    *_group_member_lines(g),
                 ]
             )
 
         if action == "create":
             if not name:
                 return "name is required for action 'create'."
-            refused = _unapplied("create", {"group_id": group_id, "role_id": role_id, **extra})
-            if refused:
-                return refused
             level, level_err = _confidence_level(
                 100 if max_confidence is None else max_confidence, confidence_overrides
             )
@@ -518,9 +631,6 @@ def register(
         if action == "update":
             if not group_id:
                 return "group_id is required for action 'update'."
-            refused = _unapplied("update", {"role_id": role_id, "search": search, **extra})
-            if refused:
-                return refused
             edits = _edits(
                 [("name", name or None), ("description", description or None)]
             )
@@ -918,7 +1028,8 @@ def register(
                 "'update' (group_id + any of name/description/max_confidence/"
                 "confidence_overrides; the answer reads the stored level back), "
                 "'delete' (group_id), 'add_role'/'remove_role' (group_id + role_id). "
-                "'get' shows the group's max confidence and overrides. A field the "
+                "'get' shows the group's max confidence, overrides and members "
+                "(name, id, email, service account). A field the "
                 "action does not apply is refused with nothing written."
             ),
             input_schema={

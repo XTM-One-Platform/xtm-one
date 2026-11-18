@@ -238,12 +238,15 @@ def _keys_line(value: object) -> str:
     )
 
 
-def size_limit_refusal(old_size: int, new_value: object) -> str | None:
+def size_limit_refusal(old_size: int, new_value: object, kept_open: dict[str, int] | None = None) -> str | None:
     """Why a write leaving *new_value* is refused, or None when it may land.
 
     The hard limit (``shared_state_value_hard_limit_chars``, 0 disables) refuses
     a value over it unless the write shrinks the value, so an entry already
-    over the limit can always be compacted.
+    over the limit can always be compacted. *kept_open* maps a list to the open
+    items a ``keep_last_json`` of the same write could not trim because the
+    retention's ``archive_when`` protects them: the refusal then names them
+    instead of advising the ``keep_last_json`` the caller already passed.
     """
     hard = settings.shared_state_value_hard_limit_chars
     if not hard or hard <= 0:
@@ -251,11 +254,22 @@ def size_limit_refusal(old_size: int, new_value: object) -> str | None:
     new_size = value_size(new_value)
     if new_size <= hard or new_size < old_size:
         return None
-    return (
+    head = (
         f"the value would be {new_size} characters, over the hard limit of {hard} "
-        f"(largest keys: {_keys_line(new_value)}); nothing was written. Shrink it in "
-        "the same write: keep_last_json with archive_key on the longest list, "
-        "remove_json for terminal items, or unset_keys"
+        f"(largest keys: {_keys_line(new_value)}); nothing was written. "
+    )
+    held = {name: count for name, count in (kept_open or {}).items() if count}
+    if held:
+        lists = ", ".join(f"{count} open item(s) of {name!r}" for name, count in held.items())
+        return head + (
+            f"keep_last_json trimmed only terminal items: it kept {lists}, which the "
+            "retention's archive_when protects from any trim. Shrink it in the same write "
+            "another way: move items to a terminal state archive_when matches, "
+            "remove_json them (archive_key keeps a copy), or shorten their fields"
+        )
+    return head + (
+        "Shrink it in the same write: keep_last_json with archive_key on the longest "
+        "list, remove_json for terminal items, or unset_keys"
     )
 
 
@@ -1397,6 +1411,20 @@ def parse_value_path(path: str | None) -> list[str]:
     return [p.strip() for p in parts]
 
 
+def value_at_path(value: dict[str, Any], path: list[str]) -> Any:
+    """Answer what *value* holds under *path*, or ``None`` when a key along it is missing.
+
+    A key along the path that holds anything but an object answers ``None`` for
+    a deeper path; the caller tells a missing object from a scalar at the end.
+    """
+    held: Any = value
+    for part in path:
+        if not isinstance(held, dict):
+            return None
+        held = held.get(part)
+    return held
+
+
 def write_at_path(value: dict, path: list[str], patch: dict, *, replace: bool = False) -> dict:
     """Answer a copy of *value* with *patch* written under *path* alone.
 
@@ -2346,8 +2374,9 @@ async def upsert_state(
     update = _update_shape(update)
     fold = _fold_shape(fold)
     value_path = parse_value_path(path)
-    if value_path and value is None:
-        raise ValueError("path needs a value to write under it")
+    path_list_ops = bool(value_path) and bool(append or remove or keep_last or update or fold)
+    if value_path and value is None and not path_list_ops:
+        raise ValueError("path needs a value to write under it, or list changes to apply under it")
     hold_action = (hold or "").strip().lower() or None
     if hold_action is not None and hold_action not in SHARED_STATE_HOLD_ACTIONS:
         raise ValueError("hold must be 'take' or 'release'")
@@ -2413,7 +2442,31 @@ async def upsert_state(
                 new_value.update(value)
         policy = policy_set if policy_set is not None else (getattr(state, "retention", None) or {})
         overflow_appends.clear()
-        if append or remove or keep_last or update or fold:
+        if path_list_ops:
+            # The list changes apply to the lists of the object under the path,
+            # under the row lock: two runs changing one nested list never drop
+            # each other's change (a read then a path write of the whole object did).
+            base_value = new_value if new_value is not None else dict(state.value or {})
+            held = value_at_path(base_value, value_path)
+            if held is not None and not isinstance(held, dict):
+                raise ValueError(
+                    f"the value under {'.'.join(value_path)!r} is not an object, so its lists "
+                    "cannot be changed; nothing was written"
+                )
+            nested, changes = apply_list_ops(
+                dict(held or {}),
+                append=append,
+                remove=remove,
+                keep_last=keep_last,
+                unique_by=unique_by,
+                update=update,
+                fold=fold,
+                guard_trim=guard_trim,
+            )
+            new_value = write_at_path(base_value, value_path, nested, replace=True)
+            list_changes.clear()
+            list_changes.update({f"{'.'.join(value_path)}.{name}": counts for name, counts in changes.items()})
+        elif append or remove or keep_last or update or fold:
             dropped: dict[str, list] = {}
             base_value = new_value if new_value is not None else dict(state.value or {})
             new_value, changes = apply_list_ops(
@@ -2463,7 +2516,7 @@ async def upsert_state(
             # already stored, a later write the items it brings (#12177).
             spilled_out.update(spill_items(new_value, policy))
             appended = {
-                name: (list_changes.get(name) or {}).get("appended", 0) for name in (append or {})
+                name: (list_changes.get(name) or {}).get("appended", 0) for name in (append or {}) if not path_list_ops
             }
             rolled_out.update(roll_lists(new_value, policy, appended, held_open))
         if new_value is not None:
@@ -2474,7 +2527,11 @@ async def upsert_state(
                     if archive_fit
                     else _trim_to_hard_limit(new_value, appended_counts)
                 )
-            refusal = size_limit_refusal(value_size(state.value), new_value)
+            refusal = size_limit_refusal(
+                value_size(state.value),
+                new_value,
+                {name: c.get("kept_open", 0) for name, c in list_changes.items()},
+            )
             if refusal:
                 raise ValueError(refusal)
             if not archive:

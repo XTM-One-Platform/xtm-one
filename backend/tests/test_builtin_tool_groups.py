@@ -55,8 +55,9 @@ def test_one_group_per_catalog_id():
     # flow_builder into platform; 17 with the Concierge sandbox, 18 with its
     # improvement proposals, 19 with Concierge evaluation, 20 with its memory
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
-    # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594).
-    assert len(_IDS) == len(set(_IDS)) == 25
+    # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
+    # the grounded STIX extraction, its own group so Threat Intelligence never carries it.
+    assert len(_IDS) == len(set(_IDS)) == 26
     assert set(_IDS) == set(catalog)
 
 

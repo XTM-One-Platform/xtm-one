@@ -236,6 +236,12 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     sv_defs, _ = build_stix_bundle_validator_tool()
     catalog["stix_bundle_validator"] = _extract(sv_defs)
 
+    # Grounded STIX extraction: the definition alone, no model at catalog time.
+    from app.services.builtin_tools import build_stix_extraction_tool
+
+    sx_defs, _ = build_stix_extraction_tool(None, None)
+    catalog["stix_extractor"] = _extract(sx_defs)
+
     # FIMI analytics tools (single source of truth for the sub-tool set)
     from app.services.builtin_tools import build_fimi_analytics_composite
 
