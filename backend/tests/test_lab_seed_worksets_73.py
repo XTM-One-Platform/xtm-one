@@ -56,7 +56,22 @@ def test_the_seed_writes_an_implicit_and_a_sealed_workset():
         assert part in seed, part
 
 
+def test_the_seed_gives_the_active_workset_its_storage_knowledge_base():
+    """Metadata-only items create no corpus: the seed creates the active one's (#265)."""
+    from app.services import workset
+
+    assert callable(workset.ensure_corpus)
+    source = SCRIPT.read_text(encoding="utf-8")
+    seed = ast.unparse(
+        next(n for n in ast.parse(source).body if isinstance(n, ast.AsyncFunctionDef) and n.name == "seed")
+    )
+    assert "storage = await worksets.ensure_corpus(db, active, user)" in seed
+    assert "'storage': [str(storage)]" in seed
+
+
 def test_the_lab_logs_the_four_worksets():
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
     helper = ast.unparse(next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "seed_operations"))
     assert "worksets (active, resolved, rolling, sealed)" in helper
+    assert "workset storage knowledge base" in helper
+    assert "{base}/knowledge/" in helper
