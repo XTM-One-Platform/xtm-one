@@ -26,11 +26,11 @@ import logging
 import random
 import time
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import String, cast, delete, event, func, or_, select, update
+from sqlalchemy import String, and_, cast, delete, event, func, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, SessionTransaction
@@ -45,7 +45,12 @@ from app.core.session_transactions import (
 from app.core.utils import format_exception_message
 from app.models.embedding import Embedding
 from app.models.knowledge_base import KBActivityLog, KnowledgeBase, KnowledgeDocument
-from app.services.kb_document_errors import worker_timeout_message
+from app.services.kb_document_errors import (
+    PLATFORM_SENTENCES,
+    PROVIDER_FAILURE_SENTENCES,
+    WORKER_TIMEOUT_OPENING,
+    worker_timeout_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1409,6 +1414,114 @@ def schedule_embedding_retry(
     doc.embedding_next_retry_at = now + timedelta(
         seconds=_embedding_retry_delay_seconds(count)
     )
+
+
+def _provider_failure_conditions() -> list:
+    """Documents in error another embedding provider can fix, within the attempt cap.
+
+    Any reason that is no fixed sentence counts: a dimension mismatch, raw text
+    from a row older than the sentences or none, which may be a provider failure.
+    """
+    conditions = [
+        KnowledgeDocument.status == "error",
+        or_(
+            KnowledgeDocument.error_message.in_(PROVIDER_FAILURE_SENTENCES),
+            KnowledgeDocument.error_message.is_(None),
+            and_(
+                KnowledgeDocument.error_message.not_in(PLATFORM_SENTENCES),
+                ~KnowledgeDocument.error_message.startswith(WORKER_TIMEOUT_OPENING, autoescape=True),
+            ),
+        ),
+    ]
+    max_attempts = app_settings.embedding_auto_retry_max_attempts
+    if max_attempts > 0:
+        conditions.append(KnowledgeDocument.embedding_retry_count < max_attempts)
+    return conditions
+
+
+async def count_provider_failures(db: AsyncSession) -> int:
+    """How many documents :func:`retry_provider_failures_now` would make due."""
+    result = await db.execute(
+        select(func.count()).select_from(KnowledgeDocument).where(*_provider_failure_conditions())
+    )
+    return int(result.scalar_one())
+
+
+async def _make_provider_failures_due(db: AsyncSession, ids: Sequence[uuid.UUID], now: datetime) -> int:
+    """The guarded write: *ids* that still are provider failures under the cap
+    become due *now*; a row re-queued meanwhile is left alone. Commits."""
+    result = await db.execute(
+        update(KnowledgeDocument)
+        .where(KnowledgeDocument.id.in_(ids), *_provider_failure_conditions())
+        .values(embedding_next_retry_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return result.rowcount or 0
+
+
+async def retry_provider_failures_now(*, now: datetime | None = None, batch_size: int | None = None) -> int:
+    """Make the provider failures due now, for :func:`recover_failed_documents`.
+
+    Run after a switch to another provider of the same model, which keeps the
+    vectors; a dimension mismatch is otherwise never retried. One pass over the
+    rows that qualify when it starts, in committed batches on its own session; a
+    locked row is waited on. A job still on the old provider is covered by
+    :func:`retry_document_after_switch`. Returns the row count.
+    """
+    if not app_settings.embedding_auto_retry_enabled:
+        return 0
+    from app.core.database import async_session
+
+    now = now or datetime.now(UTC)
+    limit = max(1, batch_size or app_settings.embedding_auto_retry_batch_size)
+    total = 0
+    try:
+        async with async_session() as db:
+            snapshot = select(KnowledgeDocument.id).where(*_provider_failure_conditions())
+            ids = (await db.execute(snapshot)).scalars().all()
+            await db.commit()
+            for start in range(0, len(ids), limit):
+                total += await _make_provider_failures_due(db, ids[start : start + limit], now)
+    except Exception:
+        logger.error("Retry of provider failures after an embedding provider switch failed", exc_info=True)
+    logger.info("Embedding provider switch: %d failed document(s) due for retry", total)
+    return total
+
+
+async def retry_document_after_switch(db: AsyncSession, doc_id: uuid.UUID, *, now: datetime | None = None) -> bool:
+    """Make one job's provider failure due now, the embedding config having
+    moved while it ran (:func:`embedding_config_moved`). Never raises; returns
+    whether the row was written."""
+    if not app_settings.embedding_auto_retry_enabled:
+        return False
+    try:
+        return bool(await _make_provider_failures_due(db, [doc_id], now or datetime.now(UTC)))
+    except Exception:
+        logger.warning("Could not retry document %s after an embedding provider switch", doc_id, exc_info=True)
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        return False
+
+
+async def embedding_config_moved(used_config_id: uuid.UUID | str) -> bool:
+    """Whether resolving the embedding provider now lands on another config than
+    the one a job embedded with: an admin switched it while the job ran.
+
+    The router's own resolution, fallbacks included, on a fresh session: the
+    job's session still holds the settings it read when it started. Call it with
+    no transaction open on the caller's session, or it holds two connections.
+    """
+    from app.core.database import async_session
+    from app.llm.router import get_embedding_provider
+
+    try:
+        async with async_session() as db:
+            _provider, _model, current = await get_embedding_provider(db)
+    except Exception:
+        logger.warning("Could not check whether the embedding config was switched; assuming not", exc_info=True)
+        return False
+    return current is not None and str(current) != str(used_config_id)
 
 
 async def recover_failed_documents(

@@ -66,7 +66,12 @@ from app.services.kb_document_errors import (
     embedding_failed_details,
 )
 from app.services.kb_embedding_text import resolve_embedding_text_async
-from app.services.kb_helpers import log_kb_activity, schedule_embedding_retry
+from app.services.kb_helpers import (
+    embedding_config_moved,
+    log_kb_activity,
+    retry_document_after_switch,
+    schedule_embedding_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -613,6 +618,9 @@ async def _process_document_impl(
             # False so we never retry a document that can't produce chunks,
             # while a provider-side failure (e.g. "no vectors returned") passes
             # True so it self-heals once the embedding server is fixed.
+            # The config the embedding calls ran on, once resolved.
+            provider_config_id = None
+
             async def _mark_document_unprocessable(
                 reason: str, *, retryable: bool = False
             ) -> int:
@@ -634,6 +642,11 @@ async def _process_document_impl(
                     details=embedding_failed_details(doc_filename, reason),
                 )
                 await db.commit()
+                # Failed on a provider an admin switched away from meanwhile:
+                # retry now. Asked after the commit, holding no connection: a
+                # switch committed later has its retry pass see this error.
+                if provider_config_id is not None and await embedding_config_moved(provider_config_id):
+                    await retry_document_after_switch(db, doc.id)
                 return 0
 
             if not chunks:
