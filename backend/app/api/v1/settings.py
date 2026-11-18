@@ -1090,6 +1090,36 @@ async def _run_embedding_reset_background(target_embedding_model: str | None) ->
         )
 
 
+
+async def _run_failed_documents_requeue_background() -> None:
+    """Queue again the documents in error after a switch to another provider of
+    the same model: ``ready`` vectors stay valid, but a failure such as a
+    dimension mismatch is never auto-retried and only a new provider fixes it.
+    """
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as bg_db:
+            rows = await bg_db.execute(
+                update(KnowledgeDocument)
+                .where(KnowledgeDocument.status == "error")
+                .values(
+                    status="pending",
+                    error_message=None,
+                    embedding_retry_count=0,
+                    embedding_next_retry_at=None,
+                )
+                .returning(KnowledgeDocument.id)
+            )
+            doc_ids = [str(r[0]) for r in rows.all()]
+            await bg_db.commit()
+        if doc_ids:
+            await enqueue_reembedding(doc_ids)
+        logger.info("Embedding provider switch: re-queued %d failed document(s)", len(doc_ids))
+    except Exception:
+        # recover_stuck_documents picks up pending docs whose enqueue was lost.
+        logger.error("Re-queue of failed KB documents after a provider switch failed", exc_info=True)
+
 def _build_probe_candidates(
     *,
     max_probe: int,
@@ -3522,12 +3552,8 @@ async def update_general_assistant_config(
         await require_agentic_ai(db)
 
     previous_model_defaults = _model_defaults_snapshot(ps)
-    previous_embedding_signature = (
-        ps.embedding_provider,
-        ps.embedding_provider_id,
-        ps.embedding_model,
-        ps.embedding_dimensions,
-    )
+    previous_embedding_vectors = (ps.embedding_model, ps.embedding_dimensions)
+    previous_embedding_provider = (ps.embedding_provider, ps.embedding_provider_id)
 
     # ── GA-only fields ──
     if "linked_agent_id" in body.model_fields_set:
@@ -3861,17 +3887,18 @@ async def update_general_assistant_config(
         clear_license_cache("copilot")
         clear_license_cache("xtm")
 
-    current_embedding_signature = (
-        ps.embedding_provider,
-        ps.embedding_provider_id,
-        ps.embedding_model,
-        ps.embedding_dimensions,
+    # Another provider of the same model and dimensions keeps the vectors valid,
+    # as the stale sweepers and provider deletion already assume. Without a
+    # model, each provider embeds with its own default, so the switch resets.
+    provider_changed = (ps.embedding_provider, ps.embedding_provider_id) != previous_embedding_provider
+    kb_reset_scheduled = (ps.embedding_model, ps.embedding_dimensions) != previous_embedding_vectors or (
+        provider_changed and not ps.embedding_model
     )
-    embedding_config_changed = (
-        current_embedding_signature != previous_embedding_signature
-    )
+    embedding_config_changed = kb_reset_scheduled or provider_changed
+    if provider_changed and not kb_reset_scheduled:
+        background_tasks.add_task(_run_failed_documents_requeue_background)
 
-    if embedding_config_changed:
+    if kb_reset_scheduled:
         # The embedding-config write itself is tiny and is committed atomically
         # with the audit log before this handler returns: FastAPI runs the task
         # below before the ``get_db`` teardown, so a commit left to it would
@@ -3924,7 +3951,7 @@ async def update_general_assistant_config(
         "llm_model": config.llm_model,
         "agent_default_model": ps.agent_default_model,
         "embedding_config_changed": embedding_config_changed,
-        "kb_reset_scheduled": embedding_config_changed,
+        "kb_reset_scheduled": kb_reset_scheduled,
     }
     if default_model_announced is not None:
         audit_details["default_model_announced"] = default_model_announced

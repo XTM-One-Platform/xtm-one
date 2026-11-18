@@ -246,3 +246,127 @@ async def test_background_reset_swallows_errors(monkeypatch):
 
     # Must not raise.
     await settings_module._run_embedding_reset_background("text-embedding-3-large")
+
+
+async def _save(monkeypatch, body, **ps_fields):
+    """Run the GA save on the default ps; return (bg tasks, audit details)."""
+    _clear_env_locks(monkeypatch)
+    ps = _make_ps()
+    for key, value in ps_fields.items():
+        setattr(ps, key, value)
+    _common_patches(monkeypatch, ps=ps)
+    audits: list = []
+
+    async def _capture_audit(*_a, **kw):
+        audits.append(kw.get("details"))
+
+    async def _no_reference_check(*_a, **_kw):
+        return None
+
+    monkeypatch.setattr(settings_module, "log_audit", _capture_audit)
+    monkeypatch.setattr(settings_module, "_refuse_missing_ga_provider_references", _no_reference_check)
+    bg = BackgroundTasks()
+    await settings_module.update_general_assistant_config(
+        body=body,
+        request=SimpleNamespace(),
+        background_tasks=bg,
+        user=SimpleNamespace(id="admin", email="admin@filigran.io"),
+        db=_MockSession([_Result(SimpleNamespace(llm_model="gpt-4.1"))]),
+    )
+    return bg.tasks, audits[0]
+
+
+@pytest.mark.asyncio
+async def test_same_model_on_another_provider_keeps_the_vectors(monkeypatch):
+    # OpenAI direct -> AI Gateway, same model and dimensions: the stored vectors
+    # are still valid, so nothing is purged.
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="filigran_gateway",
+            embedding_provider_id="00000000-0000-0000-0000-000000000002",
+            embedding_model="text-embedding-3-small",
+            embedding_dimensions=1536,
+        ),
+    )
+
+    # Only the documents that failed on the old provider are queued again.
+    assert [t.func for t in tasks] == [settings_module._run_failed_documents_requeue_background]
+    assert audit["embedding_config_changed"] is True
+    assert audit["kb_reset_scheduled"] is False
+
+
+@pytest.mark.asyncio
+async def test_provider_switch_without_a_model_schedules_reset(monkeypatch):
+    # No model set: each provider embeds with its own default model.
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="gemini",
+            embedding_provider_id="00000000-0000-0000-0000-000000000002",
+        ),
+        embedding_model=None,
+    )
+
+    assert [t.func for t in tasks] == [settings_module._run_embedding_reset_background]
+    assert audit["kb_reset_scheduled"] is True
+
+
+@pytest.mark.asyncio
+async def test_failed_documents_requeue_keeps_ready_vectors(monkeypatch):
+    statements: list = []
+
+    class _BgSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+        async def execute(self, statement):
+            statements.append(statement)
+            return SimpleNamespace(all=lambda: [("doc-err",)])
+
+        async def commit(self):
+            pass
+
+    monkeypatch.setattr("app.core.database.async_session", _BgSession)
+    enqueued: list = []
+
+    async def _fake_enqueue(doc_ids):
+        enqueued.extend(doc_ids)
+
+    monkeypatch.setattr("app.services.kb_helpers.enqueue_documents", _fake_enqueue)
+
+    await settings_module._run_failed_documents_requeue_background()
+
+    assert enqueued == ["doc-err"]
+    [statement] = statements
+    sql = str(statement)
+    assert sql.startswith("UPDATE knowledge_documents")
+    assert "knowledge_documents.status = :status_1" in sql
+    assert statement.compile().params["status_1"] == "error"
+    assert "embeddings" not in sql.replace("embedding_", "")
+
+
+@pytest.mark.asyncio
+async def test_dimensions_change_schedules_reset(monkeypatch):
+    tasks, audit = await _save(monkeypatch, GeneralAssistantConfigRequest(embedding_dimensions=512))
+
+    assert [t.func for t in tasks] == [settings_module._run_embedding_reset_background]
+    assert audit["kb_reset_scheduled"] is True
+
+
+@pytest.mark.asyncio
+async def test_model_change_on_another_provider_schedules_reset(monkeypatch):
+    tasks, audit = await _save(
+        monkeypatch,
+        GeneralAssistantConfigRequest(
+            embedding_provider="filigran_gateway",
+            embedding_provider_id="00000000-0000-0000-0000-000000000002",
+            embedding_model="text-embedding-3-large",
+        ),
+    )
+
+    assert [t.args for t in tasks] == [("text-embedding-3-large",)]
+    assert audit["kb_reset_scheduled"] is True
