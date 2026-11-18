@@ -558,7 +558,7 @@ async def _cancel_runs(
     # cascade cancels ``pending / delayed / running`` children; the second
     # UPDATE catches the ``awaiting_human`` / ``queued`` ones an ordinary
     # cancel leaves alone but an emergency stop must not.
-    tree = await cascade_cancel(db, roots)
+    tree = await cascade_cancel(db, roots, reason=STOP_MESSAGE)
     root_ids = set(roots)
     descendants = [rid for rid in tree if rid not in root_ids]
     for batch in chunked(descendants, _ID_CHUNK):
@@ -1023,7 +1023,7 @@ async def sweep_late_admissions(outcome: EmergencyStopOutcome) -> int:
                     .values(status="cancelled", completed_at=now, error=STOP_MESSAGE)
                 )
                 cancelled = result.rowcount or 0
-                tree = await cascade_cancel(db, late)
+                tree = await cascade_cancel(db, late, reason=STOP_MESSAGE)
                 await cancel_executions_for_runs(db, tree)
                 if cancelled:
                     # The trail must say what the stop halted in total,

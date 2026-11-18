@@ -56,7 +56,7 @@ import { useDescendantRuns } from "@/hooks/api/useAssignmentApi";
 import { INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import { RunHumanInput, runHitlState } from "@/components/ui/run-human-input";
-import type { ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
+import type { A2AExchange, ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
 
 // ── Props ───────────────────────────────────────────────────────────────────
 interface RunCardRun {
@@ -87,6 +87,8 @@ interface RunCardRun {
   trigger_context?: Record<string, unknown> | null;
   /** The A2A provider that submitted this run, resolved server-side. */
   a2a_provider?: string | null;
+  /** Its A2A task's exchange with the caller: the status reads "Waiting on caller" while it asks. */
+  a2a_exchange?: A2AExchange | null;
   /** Delegation chain fields */
   parent_run_id?: string | null;
   child_run_count?: number;

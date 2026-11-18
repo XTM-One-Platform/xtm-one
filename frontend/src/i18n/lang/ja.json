@@ -18960,5 +18960,19 @@
   "The configured LLM providers offer no model. Agentic and LLM-powered platform features are unavailable until one does.": "設定済みのLLMプロバイダーはモデルを提供していません。いずれかが提供するまで、エージェント機能とLLM機能は利用できません。",
   "Set {variable} and restart, or set LLM_PROVIDER_MODELS_EDITABLE=true to select its models here.": "{variable} を設定して再起動するか、LLM_PROVIDER_MODELS_EDITABLE=true を設定してここでモデルを選択してください。",
   "Select models on a provider in this section.": "このセクションのプロバイダーでモデルを選択してください。",
-  "Set {variable} and restart.": "{variable} を設定して再起動してください。"
+  "Set {variable} and restart.": "{variable} を設定して再起動してください。",
+  "Waiting on caller": "呼び出し元の回答待ち",
+  "A2A Provider": "A2A プロバイダー",
+  "No result yet: the task is waiting for its caller to answer the question above.": "まだ結果はありません。タスクは呼び出し元が上記の質問に回答するのを待っています。",
+  "No result in this run: it asked its caller a question, and the answer continued the task in another run.": "この実行に結果はありません。呼び出し元に質問し、その回答によってタスクは別の実行で続行されました。",
+  "No result: the task was cancelled before its caller answered.": "結果はありません。呼び出し元が回答する前にタスクがキャンセルされました。",
+  "Continues the task after its caller answered": "呼び出し元の回答を受けてタスクを続行",
+  "The agent asked": "エージェントの質問",
+  "The caller answered": "呼び出し元の回答",
+  "View the run that asked": "質問した実行を表示",
+  "Waiting on its caller": "呼び出し元の回答待ち",
+  "Asked its caller": "呼び出し元に質問済み",
+  "Cancelled before an answer": "回答前にキャンセル",
+  "The A2A task is waiting for the agent that submitted it to answer. Its answer continues the task in a new run, linked from here.": "A2A タスクは、送信元のエージェントの回答を待っています。回答によりタスクは新しい実行で続行され、ここからリンクされます。",
+  "View the run that continued it": "続行した実行を表示"
 }

@@ -2080,10 +2080,25 @@ async def lock_sub_agent_tasks_for_runs(
         )
 
 
+#: Why a background task stopped with its run, as the task's ``error`` reads.
+#: Each cascade says its own cause: a partner's cancel read as a deletion sent
+#: operators looking for a run that was never deleted.
+RUN_DELETED_TASK_REASON = "Cancelled because its run was deleted."
+#: The same for a run stopped rather than deleted, when the stop names no cause.
+RUN_CANCELLED_TASK_REASON = "Cancelled because its run was cancelled."
+
+
 async def mark_sub_agent_tasks_cancelled_for_runs(
-    db: AsyncSession, run_ids: Iterable[str | uuid.UUID]
+    db: AsyncSession,
+    run_ids: Iterable[str | uuid.UUID],
+    *,
+    reason: str = RUN_DELETED_TASK_REASON,
 ) -> int:
-    """Cancel background tasks whose linked run is being deleted.
+    """Cancel background tasks whose linked run is being deleted or stopped.
+
+    ``reason`` is the task's ``error`` and its delegation row's: a deletion by
+    default, the cancel's own cause when a cascade stops the run instead
+    (``a2a.tasks.cascade_cancel``).
 
     Companion to ``orchestration_engine.cancel_executions_for_runs`` (which
     cancels the durable executions): this flips the decoupled ``SubAgentTask``
@@ -2125,11 +2140,12 @@ async def mark_sub_agent_tasks_cancelled_for_runs(
             tasks_by_id[task.id] = task
     cancelled = 0
     for task in tasks_by_id.values():
-        _mark_task_cancelled(
-            task, now=now, error="Cancelled because its run was deleted."
-        )
+        _mark_task_cancelled(task, now=now, error=reason)
         await _update_task_delegation(
-            db, str(task.id), "cancelled", error="Run deleted."
+            db,
+            str(task.id),
+            "cancelled",
+            error="Run deleted." if reason == RUN_DELETED_TASK_REASON else reason,
         )
         cancelled += 1
     if cancelled:
