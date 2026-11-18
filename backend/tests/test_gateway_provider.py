@@ -1030,9 +1030,7 @@ class TestChatAndModels:
             body = json.loads(request.content)
             bodies.append(body)
             if body["input"] == "too long":
-                return httpx.Response(502, json={"error": {
-                    "message": "upstream returned status 400 Bad Request", "code": "provider_error",
-                }})
+                return httpx.Response(502, json=gateway_refusal_body())
             size = body.get("dimensions", 3072)
             return httpx.Response(200, json={
                 "object": "list",

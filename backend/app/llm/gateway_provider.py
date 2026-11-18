@@ -60,7 +60,7 @@ from app.llm.music import (
 from app.llm.openai_compat import (
     OpenAICompatibleProvider,
     declared_model_types,
-    gateway_provider_message,
+    gateway_upstream_refusal,
     marked_not_retryable,
 )
 from app.llm.system_prompt_split import split_system_prompt
@@ -526,12 +526,11 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
 def _may_refuse_dimensions(exc: openai.APIStatusError) -> bool:
     """The gateway's 502 for an upstream 400 that refuses ``dimensions``. Without the
     provider's message (an older gateway), any upstream 400 may be that refusal."""
-    if exc.status_code != 502:
+    upstream = gateway_upstream_refusal(exc)
+    if upstream is None or upstream[0] != 400:
         return False
-    if (message := gateway_provider_message(exc)) is not None:
-        # OpenAI: "Invalid value for 'dimensions'"; not one provider's exact wording.
-        return "dimensions" in message.lower()
-    return "upstream returned status 400" in str(exc)
+    # OpenAI: "Invalid value for 'dimensions'"; not one provider's exact wording.
+    return upstream[1] is None or "dimensions" in upstream[1].lower()
 
 
 def mark_claude_cache_breakpoints(params: dict, cache_control: dict | None) -> None:

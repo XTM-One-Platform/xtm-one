@@ -76,7 +76,7 @@ class _Gateway:
         return [m for m in self.sent[index]["messages"] if m["role"] == "assistant"]
 
 
-def _gateway_refusal(provider_message: str, status: str = "400 Bad Request") -> httpx.Response:
+def _gateway_refusal(provider_message: str | None, status: str = "400 Bad Request") -> httpx.Response:
     return httpx.Response(502, json=gateway_refusal_body(provider_message, status=status))
 
 
@@ -229,8 +229,18 @@ async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(ref
 
 
 @pytest.mark.asyncio
-async def test_a_gateway_refusal_naming_another_cause_keeps_the_blocks():
-    gateway = _Gateway(_gateway_refusal("tools.0.custom.name: String should match pattern"))
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _gateway_refusal("tools.0.custom.name: String should match pattern"),
+        _gateway_refusal("model: claude-x not found", status="404 Not Found"),
+        _gateway_refusal(None, status="404 Not Found"),
+    ],
+    ids=["400 naming another cause", "404", "404 without the provider's message"],
+)
+async def test_a_gateway_refusal_naming_another_cause_keeps_the_blocks(refusal):
+    """As a direct 404 is: never re-sent without the blocks."""
+    gateway = _Gateway(refusal)
     messages = _round(_kept())
     with pytest.raises(openai.InternalServerError):
         await gateway.provider().chat(messages, model=MODEL, tools=[TOOL])

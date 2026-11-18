@@ -165,27 +165,28 @@ _QUOTED_VALUE = re.compile(r"'([a-z]+)'")
 _NO_RETRY = object()
 
 
-# The AI Gateway's 502 for an upstream 4xx, once it carries the provider's message
-# (XTM-One-Platform/ai-gateway#348): "... upstream returned status 400 Bad Request: <message>".
-_GATEWAY_PROVIDER_MESSAGE = re.compile(r"upstream returned status 4\d\d[^:]*: (.+)", re.DOTALL)
+# The AI Gateway's 502 for an upstream 4xx: "... upstream returned status 400 Bad Request",
+# then ": <the provider's message>" since XTM-One-Platform/ai-gateway#348.
+_GATEWAY_UPSTREAM_REFUSAL = re.compile(r"upstream returned status (4\d\d)[^:]*(?:: (.+))?", re.DOTALL)
 
 
-def gateway_provider_message(exc: BaseException) -> str | None:
-    """The provider's own message in the gateway's 502 for an upstream 4xx.
+def gateway_upstream_refusal(exc: BaseException) -> tuple[int, str | None] | None:
+    """The upstream status and the provider's message of the gateway's 502 for an upstream 4xx.
 
-    ``None`` when there is none: another error, an older gateway, or a message it withheld.
+    The message is ``None`` from an older gateway or one that withheld it; ``None`` for any other error.
     """
     if not (isinstance(exc, openai.APIStatusError) and exc.status_code == 502 and marked_not_retryable(exc.body)):
         return None
-    match = _GATEWAY_PROVIDER_MESSAGE.search(_error_message(exc))
-    return match.group(1) if match else None
+    match = _GATEWAY_UPSTREAM_REFUSAL.search(_error_message(exc))
+    return (int(match.group(1)), match.group(2)) if match else None
 
 
 def _refusal_message(exc: openai.APIStatusError) -> str | None:
-    """What a refused request says: a 400's message, or the provider's behind the gateway."""
+    """What a refused request says: a 400's message, or the provider's 400 behind the gateway."""
     if isinstance(exc, openai.BadRequestError):
         return str(getattr(exc, "message", "") or exc)
-    return gateway_provider_message(exc)
+    upstream = gateway_upstream_refusal(exc)
+    return upstream[1] if upstream and upstream[0] == 400 else None
 
 
 def _effort_after_refusal(exc: openai.APIStatusError, sent: str | None) -> object:
@@ -475,16 +476,14 @@ def _refused(exc: Exception) -> bool:
 
 
 def _refuses_replay(exc: Exception) -> bool:
-    """A refusal the replayed thinking blocks may have caused. A 400 must say so, as must the
-    provider's 400 behind the gateway; any other refusal (a 413) cannot be told apart."""
+    """A refusal the replayed thinking blocks may have caused, the gateway's read as the upstream
+    status: a 400 must say so, a 413 cannot be told apart, another 4xx never is."""
     if not _refused(exc):
         return False
-    if exc.status_code == 400:
-        message = _error_message(exc)
-    elif "upstream returned status 400" in _error_message(exc):
-        message = gateway_provider_message(exc)
-    else:
-        return True
+    status, message = gateway_upstream_refusal(exc) or (exc.status_code, _error_message(exc))
+    if status != 400:
+        # 502: an upstream refusal the gateway named no status for.
+        return status in (413, 502)
     if message is None:
         return True
     return refuses_replayed_blocks(message) or says_prompt_too_long(message) or _refuses_signature(message)

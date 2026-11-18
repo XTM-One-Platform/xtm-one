@@ -13,7 +13,7 @@ import httpx
 import openai
 import pytest
 
-from app.llm.openai_compat import FUNCTION_TOOLS_UNSUPPORTED, create_with_effort_retry, gateway_provider_message
+from app.llm.openai_compat import FUNCTION_TOOLS_UNSUPPORTED, create_with_effort_retry, gateway_upstream_refusal
 from tests.gateway_helpers import gateway_refusal_body
 
 _EFFORT_REFUSAL = (
@@ -29,21 +29,26 @@ def _gateway_502(provider_message: str | None, *, status: str = "400 Bad Request
     return openai.InternalServerError(body["message"], response=httpx.Response(502, request=request), body=body)
 
 
-def test_the_provider_message_is_read_after_the_status():
-    assert gateway_provider_message(_gateway_502("a: b")) == "a: b"
+@pytest.mark.parametrize(
+    ("exc", "read"),
+    [
+        (_gateway_502("a: b"), (400, "a: b")),
+        (_gateway_502(None), (400, None)),
+        (_gateway_502("gone", status="404 Not Found"), (404, "gone")),
+    ],
+    ids=["with the provider's message", "older gateway", "upstream 404"],
+)
+def test_the_upstream_status_and_message_are_read(exc, read):
+    assert gateway_upstream_refusal(exc) == read
 
 
 @pytest.mark.parametrize(
     "exc",
-    [
-        _gateway_502(None),
-        _gateway_502("a", retryable=True),
-        _gateway_502("a", status="500 Internal Server Error"),
-    ],
-    ids=["older gateway", "retryable", "upstream 5xx"],
+    [_gateway_502("a", retryable=True), _gateway_502("a", status="500 Internal Server Error")],
+    ids=["retryable", "upstream 5xx"],
 )
-def test_no_provider_message_is_read_from_another_502(exc):
-    assert gateway_provider_message(exc) is None
+def test_another_502_is_no_upstream_refusal(exc):
+    assert gateway_upstream_refusal(exc) is None
 
 
 async def test_a_refused_effort_behind_the_gateway_is_retried_with_a_listed_value():
