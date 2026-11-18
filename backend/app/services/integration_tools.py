@@ -55,6 +55,7 @@ from app.integrations.providers.aws_security import build_tools as aws_security_
 from app.integrations.providers.bluesky import build_tools as bluesky_tools
 from app.integrations.providers.brave_search import build_tools as brave_search_tools
 from app.integrations.providers.concord import build_tools as concord_tools
+from app.integrations.providers.wordsmith import build_tools as wordsmith_tools
 from app.integrations.providers.credly import build_tools as credly_tools
 from app.integrations.providers.crowdsec import build_tools as crowdsec_tools
 from app.integrations.providers.crowdstrike import build_tools as crowdstrike_tools
@@ -940,6 +941,7 @@ PROVIDER_TOOLS = {
     "drata": drata_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
@@ -1044,6 +1046,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
         "cybersixgill",
@@ -4064,6 +4067,23 @@ async def _get_token(
             logger.warning(
                 "Failed to extract extra_config for '%s' (filigran_ai): %s",
                 integ.name,
+                format_exception_message(exc),
+            )
+
+    # Wordsmith: a region host from extra_config is prepended as base_url
+    if provider == "wordsmith" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            region = extra.get("region", "").strip()
+            if region:
+                from app.integrations.providers.wordsmith import resolve_base_url as wordsmith_base_url
+
+                return f"{wordsmith_base_url(region)}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
                 format_exception_message(exc),
             )
 

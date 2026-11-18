@@ -230,6 +230,7 @@ router = APIRouter()
 # Provider lists are computed automatically from PROVIDER_CATALOG entries.
 _INTEGRATION_TYPE_META: dict[str, dict[str, str]] = {
     "email": {"label": "Email", "description": "Email services (Outlook, Gmail)"},
+    "legal": {"label": "Legal", "description": "Legal AI platforms (Wordsmith)"},
     "calendar": {
         "label": "Calendar",
         "description": "Calendar services (Outlook Calendar, Google Calendar)",
