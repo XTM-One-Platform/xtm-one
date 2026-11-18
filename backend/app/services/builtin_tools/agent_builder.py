@@ -16172,7 +16172,7 @@ def build_agent_builder_tool(
         executor.register(tool_name, handler)
     definitions.extend(intent_defs)
 
-    # A Concierge run reads the platform here, never changes it (#8255).
+    # A Platform Health run reads the platform here, never changes it (#8255).
     from app.services.health.sandbox.guards import guard_agent_builder
 
     return guard_agent_builder(definitions, executor), executor
