@@ -339,3 +339,126 @@ def test_the_tool_description_names_the_recursive_merge_and_the_path():
     assert "merged recursively" in tool.description
     assert "path" in tool.description
     assert "path" in tool.input_schema["properties"]
+
+
+# ── list changes under a path (gap shared-state-path-write-lost-update) ─────
+
+
+@pytest.mark.asyncio
+async def test_list_changes_under_a_path_keep_the_siblings_and_the_other_lists(monkeypatch):
+    state = _state(
+        {
+            "pools": {
+                "connectors": {"open": [{"n": 8424}, {"n": 8287}], "merged_by_team": [{"n": 1}], "size": 10},
+                "opencti": {"open": [{"n": 5}]},
+            }
+        }
+    )
+    monkeypatch.setattr("app.core.database.async_session", lambda: _Session(state))
+    await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="pr-pools",
+        path="pools.connectors",
+        remove={"open": [{"n": 8287}]},
+        append={"merged_by_team": [{"n": 8287}]},
+        writer=COMPANY_AGENT,
+    )
+    assert state.value == {
+        "pools": {
+            "connectors": {"open": [{"n": 8424}], "merged_by_team": [{"n": 1}, {"n": 8287}], "size": 10},
+            "opencti": {"open": [{"n": 5}]},
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_two_list_writes_under_one_path_both_land(monkeypatch):
+    state = _state({"pools": {"connectors": {"open": [{"n": 1}, {"n": 2}], "merged": []}}})
+    monkeypatch.setattr("app.core.database.async_session", lambda: _Session(state))
+    for n in (1, 2):
+        await shared_state_service.upsert_state(
+            user_id=str(uuid.uuid4()),
+            key="pr-pools",
+            path="pools.connectors",
+            remove={"open": [{"n": n}]},
+            append={"merged": [{"n": n}]},
+            writer=COMPANY_AGENT,
+        )
+    assert state.value == {"pools": {"connectors": {"open": [], "merged": [{"n": 1}, {"n": 2}]}}}
+
+
+@pytest.mark.asyncio
+async def test_list_changes_under_a_path_create_the_object(monkeypatch):
+    state = _state({"pools": {}})
+    monkeypatch.setattr("app.core.database.async_session", lambda: _Session(state))
+    await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="pr-pools",
+        path="pools.openaev",
+        append={"open": [{"n": 7}]},
+        writer=COMPANY_AGENT,
+    )
+    assert state.value == {"pools": {"openaev": {"open": [{"n": 7}]}}}
+
+
+@pytest.mark.asyncio
+async def test_list_changes_under_a_non_object_write_nothing(monkeypatch):
+    state = _state({"pools": {"connectors": [1, 2]}})
+    session = _Session(state)
+    monkeypatch.setattr("app.core.database.async_session", lambda: session)
+    with pytest.raises(ValueError, match="not an object"):
+        await shared_state_service.upsert_state(
+            user_id=str(uuid.uuid4()),
+            key="pr-pools",
+            path="pools.connectors",
+            append={"open": [{"n": 7}]},
+            writer=COMPANY_AGENT,
+        )
+    assert state.value == {"pools": {"connectors": [1, 2]}}
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_tool_passes_list_changes_with_a_path_and_no_value(monkeypatch):
+    captured: dict = {}
+
+    async def _upsert(**kwargs):
+        captured.update(kwargs)
+        return {"key": kwargs["key"], "value": {}, "notes": []}
+
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="pr-pools",
+        path="pools.connectors",
+        remove_json='{"open": [{"n": 8287}]}',
+    )
+    assert not result.is_error
+    assert captured["path"] == "pools.connectors"
+    assert captured["remove"] == {"open": [{"n": 8287}]}
+    assert captured["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_tool_refuses_an_archive_key_with_path_list_changes(monkeypatch):
+    called = False
+
+    async def _upsert(**kwargs):
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="pr-pools",
+        path="pools.connectors",
+        remove_json='{"open": [{"n": 1}]}',
+        archive_key="pr-pools:archive",
+    )
+    assert "archive_key works on the top-level lists only" in result.content
+    assert called is False
