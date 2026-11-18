@@ -1187,8 +1187,19 @@ def build_shared_state_tools(
                 )
             parsed[name] = loaded
         parsed_value = parsed["value_json"]
-        if (path or "").strip() and parsed_value is None:
-            return "Error: path needs value_json, the object to write under it. Nothing was written."
+        path_list_ops = (path or "").strip() and any(
+            parsed[name] for name in ("append_json", "remove_json", "keep_last_json", "update_json", "fold_json")
+        )
+        if (path or "").strip() and parsed_value is None and not path_list_ops:
+            return (
+                "Error: path needs value_json, the object to write under it, or list changes "
+                "(append_json, remove_json, update_json, keep_last_json, fold_json) to apply to the "
+                "lists of the object under it. Nothing was written."
+            )
+        if path_list_ops and (archive_key or "").strip():
+            return (
+                "Error: archive_key works on the top-level lists only, not with path list changes. Nothing was written."
+            )
         if confirm_trim is not None and not isinstance(confirm_trim, bool):
             return "Error: confirm_trim must be true or false. Nothing was written."
         if lease is not None and not isinstance(lease, bool):
@@ -1336,7 +1347,9 @@ def build_shared_state_tools(
         if unknown:
             return (
                 f"Error: from_workspace_path names {', '.join(unknown)}; it may hold "
-                f"{', '.join(_WORKSPACE_JSON_ARGUMENTS)}. Nothing was written."
+                f"{', '.join(_WORKSPACE_JSON_ARGUMENTS)}. Pass any other argument inline beside "
+                "from_workspace_path: replace=true inline writes the file's value_json whole. "
+                "Nothing was written."
             )
         merged = dict(inline)
         for name, value in loaded.items():
@@ -1513,6 +1526,7 @@ def build_shared_state_tools(
         limit: int = DEFAULT_PAGE_LIMIT,
         offset: int = 0,
         scope: str = "",
+        key_prefix: str = "",
     ) -> str:
         from app.services import coordination_scope
         from app.services.shared_state import count_states, list_states
@@ -1537,7 +1551,9 @@ def build_shared_state_tools(
             "status": status,
             "stale_only": stale_only,
             "reader": writer,
-            "key_prefix": _prefix or None,
+            # The caller's key_prefix narrows inside its namespace, in the query,
+            # so one family of keys (dev:green-claim:) answers without a page.
+            "key_prefix": f"{_prefix}{key_prefix or ''}" or None,
             "scope": resolved.shared_state_clause(),
         }
         try:
@@ -1745,7 +1761,7 @@ def build_shared_state_tools(
                 "properties": {
                     "key": {"type": "string", "description": "Exact state key (any caller-chosen identifier)"},
                     "value_json": {"type": "string", "description": "A JSON object to merge in (nested objects merge key by key; lists and scalars replace); with path, any JSON value"},
-                    "path": {"type": "string", "description": "Optional dot-separated sub-key to write value_json under alone, e.g. 'slice_state.P2' (created when missing; every sibling kept; with replace=true only that sub-key is overwritten)"},
+                    "path": {"type": "string", "description": "Dot-separated sub-key value_json is written under alone, e.g. 'slice_state.P2' (created when missing, siblings kept; replace=true overwrites it alone); list ops apply to its lists"},
                     "label": {"type": "string", "description": "Optional human-friendly label for the entry"},
                     "note": {"type": "string", "description": "Log note (store-stamped)"},
                     "owner_agent_id": {"type": "string", "description": "UUID of the agent responsible for this state (defaults to you on first create)"},
@@ -1790,6 +1806,7 @@ def build_shared_state_tools(
                 "properties": {
                     "include_resolved": {"type": "boolean", "description": "Also list resolved entries (default false)"},
                     "stale_only": {"type": "boolean", "description": "Only active entries that have gone quiet past the staleness window"},
+                    "key_prefix": {"type": "string", "description": "Only keys starting with it"},
                     "limit": {
                         "type": "integer",
                         "description": f"Entries per page (default {DEFAULT_PAGE_LIMIT}, max {MAX_PAGE_LIMIT})",

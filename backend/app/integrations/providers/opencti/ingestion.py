@@ -173,8 +173,10 @@ def register(
         if unsupported:
             return (
                 f"Error: OpenCTI has no label import setting on ingestion feeds "
-                f"({', '.join(unsupported)}): an RSS feed always turns each item's "
-                "categories into labels of its report. Nothing was written."
+                f"({', '.join(unsupported)}): an RSS 2.0 feed sends each item's categories "
+                "as labels of its report; a new label is created only when the ingestion "
+                "user's role has Manage labels (SETTINGS_SETLABELS), so that role is the "
+                "switch. Nothing was written."
             )
         return None
 
@@ -229,8 +231,9 @@ def register(
             )
         if feed_type == "rss":
             lines.append(
-                "  label import: always on (OpenCTI turns each item's categories into "
-                "report labels; it has no setting to turn this off)"
+                "  labels: RSS 2.0 item categories are sent as report labels; an existing "
+                "label is attached, a new one is created only when the ingestion user's "
+                "role has Manage labels (SETTINGS_SETLABELS), else it is skipped"
             )
         return lines
 
@@ -660,8 +663,8 @@ def register(
                 "confidence_to_score. Marking refs take an internal id, a STIX id or a "
                 "name (TLP:CLEAR; list_opencti_markings), the author an id or an exact "
                 "identity name; an unknown ref is an error and nothing is written. create "
-                "and get show the stored markings, author and ingestion user. OpenCTI has "
-                "no RSS label import setting: item categories always become labels."
+                "and get show the stored markings, author and ingestion user. No RSS label "
+                "setting: new category labels need the ingestion user's Manage labels."
             ),
             input_schema={
                 "type": "object",
