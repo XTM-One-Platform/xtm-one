@@ -20,13 +20,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * picks the runs compared (else each evaluation's newest completed run per agent and
  * model). Four sections, in reading order: what can be compared, the same model in
  * both evaluations, every configuration on the shared entries, and whether the shared
- * entries stand for each evaluation's whole dataset. Figures are pooled from the
+ * entries stand for each evaluation's whole dataset. One evaluation alone (`Compare
+ * models` on its page) compares its own runs: run against run entry by entry, then every
+ * run ranked; its entries are all shared, so the first and last sections say nothing. Figures are pooled from the
  * stored per-entry counts (`lib/evaluation-compare.ts`), so each is the run's own
  * figure on those entries.
  */
 
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { useEvaluationComparison } from "@/hooks/api/useEvaluationApi";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
@@ -51,12 +53,21 @@ import {
   seedOf,
   sharedEntries,
 } from "@/lib/evaluation-compare";
+import { DetailTabs } from "@/components/ui/detail-tabs";
+import { LeaderboardTab } from "@/components/evaluation/compare/leaderboard-tab";
+import { ResultsTab } from "@/components/evaluation/compare/results-tab";
+import { boardOf, runLabeler } from "@/lib/evaluation-leaderboard";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { cn, formatModelLabel } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import type { ComparedRun, EvaluationComparison } from "@/types";
 
 const STIX_BUNDLE = "STIX_BUNDLE";
+/** One evaluation's views (#2): its runs by launch, its configurations pooled, two runs entry by entry. */
+type CompareTab = "leaderboard" | "results" | "pairs";
+const COMPARE_TABS: CompareTab[] = ["leaderboard", "results", "pairs"];
+/** The tab labels, read by `t_i18n` (in `DetailTabs`). @i18n-keys */
+const COMPARE_TAB_LABELS = { leaderboard: "Leaderboard", results: "Results", pairs: "Run against run" } as const satisfies Record<CompareTab, string>;
 /** Tile names built outside a component, read by `t_i18n`. @i18n-keys */
 const TILE_LABELS = { costTime: "Cost · time per entry" } as const;
 const fmt = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
@@ -129,13 +140,33 @@ export default function EvaluationCompare() {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const ids = useMemo(() => (params.get("ids") ?? "").split(",").filter(Boolean), [params]);
+  const ids = useMemo(() => [...new Set((params.get("ids") ?? "").split(",").filter(Boolean))], [params]);
   const runIds = useMemo(() => (params.get("runs") ?? "").split(",").filter(Boolean), [params]);
   const { data: comparison, isLoading, error } = useEvaluationComparison(ids, runIds);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const [pairIndex, setPairIndex] = useState(0);
 
   const view = useMemo(() => (comparison ? buildView(comparison, metricKey) : null), [comparison, metricKey]);
+
+  // One evaluation: its Leaderboard and Results read every completed run (its 50 newest).
+  const single = ids.length === 1;
+  const tabParam = useParams<{ tab?: string }>().tab;
+  const tab: CompareTab = !single ? "pairs" : tabParam === "results" || tabParam === "pairs" ? tabParam : "leaderboard";
+  const choiceIds = useMemo(
+    () => (single && comparison?.evaluations.length === 1 ? comparison.evaluations[0].run_choices.map((r) => r.id) : []),
+    [single, comparison],
+  );
+  const { data: everyRun, isLoading: loadingEveryRun } = useEvaluationComparison(choiceIds.length ? ids : [], choiceIds);
+  const board = useMemo(() => {
+    if (!everyRun || everyRun.evaluations.length !== 1) return null;
+    const runs = everyRun.evaluations[0].runs;
+    return {
+      ...boardOf(runs, cellIndex(everyRun), everyRun.metrics.map((m) => m.key)),
+      cells: cellIndex(everyRun),
+      label: runLabeler(runs),
+      entryCount: everyRun.entries.length,
+    };
+  }, [everyRun]);
 
   const setRuns = (next: string[]) => {
     const p = new URLSearchParams(params);
@@ -144,28 +175,35 @@ export default function EvaluationCompare() {
     setParams(p, { replace: true });
   };
 
+  // One evaluation compares its own runs (its models), back on its page.
   const header = (
     <EntityPageHeader
-      backTo="/evaluations"
-      backLabel={t_i18n("Back to Evaluations")}
+      backTo={single ? `/evaluations/${ids[0]}` : "/evaluations"}
+      backLabel={single ? t_i18n("Back to the evaluation") : t_i18n("Back to Evaluations")}
       icon={<Icon name="columns-3" size={20} />}
       title={comparison ? comparison.evaluations.map((e) => e.name).join(" vs ") : t_i18n("Compare evaluations")}
       description={
         view
-          ? t_i18n("{family} · {count, plural, one {# entry} other {# entries}} in common", {
-              family: comparison!.family,
-              count: view.shared.length,
-            })
+          ? single
+            ? t_i18n("{family} · {count, plural, one {# entry} other {# entries}} · {runs, plural, one {# completed run} other {# completed runs}}", {
+                family: comparison!.family,
+                count: view.shared.length,
+                runs: comparison!.evaluations[0].run_choices.length,
+              })
+            : t_i18n("{family} · {count, plural, one {# entry} other {# entries}} in common", {
+                family: comparison!.family,
+                count: view.shared.length,
+              })
           : undefined
       }
     />
   );
 
-  if (ids.length < 2) {
+  if (ids.length === 0) {
     return (
       <div className="space-y-6">
         {header}
-        <RefusalAlert message={t_i18n("Select at least two evaluations to compare them.")} />
+        <RefusalAlert message={t_i18n("Select the evaluations to compare.")} />
       </div>
     );
   }
@@ -204,19 +242,64 @@ export default function EvaluationCompare() {
         )}
       </div>
 
+      {single && (
+        <DetailTabs
+          tabs={COMPARE_TABS.map((key) => ({ key, label: COMPARE_TAB_LABELS[key] }))}
+          active={tab}
+          searchFor={(_key, current) => `?${current.toString()}`}
+          ariaLabel={t_i18n("Views of the comparison")}
+        />
+      )}
+
+      {tab !== "pairs" && !board && (loadingEveryRun ? <PageSkeleton cards={2} /> : <RefusalAlert message={t_i18n("No completed run")} />)}
+      {tab === "leaderboard" && board && (
+        <LeaderboardTab board={board} metric={metric} metrics={comparison.metrics} label={board.label} />
+      )}
+      {tab === "results" && board && (
+        <ResultsTab
+          evaluationName={comparison.evaluations[0].name}
+          board={board}
+          cells={board.cells}
+          metric={metric}
+          metrics={comparison.metrics}
+          entryCount={board.entryCount}
+          label={board.label}
+        />
+      )}
+
+      {tab === "pairs" && <>
       <RunPicker comparison={comparison} onChange={setRuns} />
 
-      <Section
-        title={t_i18n("1 · What can be compared")}
-        lead={t_i18n("Read this first: it says what the figures below measure.")}
-      >
-        <ComparabilityMatrix comparison={comparison} sharedCount={view.shared.length} />
-      </Section>
+      {!single && (
+        <Section
+          title={t_i18n("1 · What can be compared")}
+          lead={t_i18n("Read this first: it says what the figures below measure.")}
+        >
+          <ComparabilityMatrix comparison={comparison} sharedCount={view.shared.length} />
+        </Section>
+      )}
 
       <Section
-        title={t_i18n("2 · Same model in both evaluations")}
+        title={single ? t_i18n("1 · Run against run, entry by entry") : t_i18n("2 · Same model in both evaluations")}
         lead={
-          pair?.change
+          pair?.change && single
+            ? t_i18n(
+                "On the {count, plural, one {# entry} other {# entries}} both ran, {after} scores {afterValue} against {beforeValue} for {before} ({change}, 95% interval {low} to {high}). {verdict}",
+                {
+                  count: pair.keys.length,
+                  after: pair.afterLabel,
+                  afterValue: fmt(pair.change.after),
+                  before: pair.beforeLabel,
+                  beforeValue: fmt(pair.change.before),
+                  change: signed(pair.change.change),
+                  low: signed(pair.change.low),
+                  high: signed(pair.change.high),
+                  verdict: pair.change.holds
+                    ? t_i18n("The change holds across the entries.")
+                    : t_i18n("This change is within the noise of so few entries: neither can be called better."),
+                },
+              )
+            : pair?.change
             ? t_i18n(
                 "On the {count, plural, one {# shared entry} other {# shared entries}}, {model} scores {after} in {afterName} against {before} in {beforeName} ({change}, 95% interval {low} to {high}). {verdict}",
                 {
@@ -234,7 +317,9 @@ export default function EvaluationCompare() {
                     : t_i18n("This change is within the noise of so few entries: neither can be called better."),
                 },
               )
-            : t_i18n("No model ran in two of these evaluations on the same entries: only configurations can be compared.")
+            : single
+              ? t_i18n("Fewer than two runs have figures on the same entries: run the evaluation on another model to compare them.")
+              : t_i18n("No model ran in two of these evaluations on the same entries: only configurations can be compared.")
         }
       >
         {pair?.change && (
@@ -243,11 +328,13 @@ export default function EvaluationCompare() {
               <SegmentedFilter
                 options={pairs.map((p, i) => ({
                   key: String(i),
-                  label: `${formatModelLabel(p.model, t_i18n)} · ${p.before.evaluation.name} → ${p.after.evaluation.name}`,
+                  label: single
+                    ? `${p.beforeLabel} → ${p.afterLabel}`
+                    : `${formatModelLabel(p.model, t_i18n)} · ${p.beforeLabel} → ${p.afterLabel}`,
                 }))}
                 value={String(Math.min(pairIndex, pairs.length - 1))}
                 onChange={(key: string) => setPairIndex(Number(key))}
-                ariaLabel={t_i18n("Model compared")}
+                ariaLabel={single ? t_i18n("Runs compared") : t_i18n("Model compared")}
                 selection="radio"
                 overflow="menu"
               />
@@ -264,9 +351,9 @@ export default function EvaluationCompare() {
             <DumbbellChart
               rows={pair.rows}
               metricLabel={metric.label}
-              beforeLabel={pair.before.evaluation.name}
-              afterLabel={pair.after.evaluation.name}
-              colors={[EVALUATION_COLORS[pair.before.index % 4], EVALUATION_COLORS[pair.after.index % 4]]}
+              beforeLabel={pair.beforeLabel}
+              afterLabel={pair.afterLabel}
+              colors={[EVALUATION_COLORS[pair.before.colorIndex % 4], EVALUATION_COLORS[pair.after.colorIndex % 4]]}
               onOpen={reviewable ? (key) => openReview(pair.resultIds(key)) : undefined}
             />
             {reviewable && (
@@ -279,7 +366,7 @@ export default function EvaluationCompare() {
       </Section>
 
       <Section
-        title={t_i18n("3 · Every configuration on the shared entries")}
+        title={single ? t_i18n("2 · Every run ranked on the same entries") : t_i18n("3 · Every configuration on the shared entries")}
         lead={
           view.ranking.length
             ? view.ranking.filter((r) => r.best === 1).length > 1
@@ -296,7 +383,7 @@ export default function EvaluationCompare() {
         </p>
       </Section>
 
-      <Section
+      {!single && <Section
         title={t_i18n("4 · Do the shared entries stand for each dataset?")}
         lead={t_i18n("Each run on the shared entries against its evaluation's other entries: a large gap means the shared entries are easier or harder than the rest.")}
       >
@@ -333,7 +420,8 @@ export default function EvaluationCompare() {
             </tbody>
           </table>
         </div>
-      </Section>
+      </Section>}
+      </>}
     </div>
   );
 }
@@ -346,27 +434,39 @@ function buildView(comparison: EvaluationComparison, metricKey: string | null) {
   const evalIds = comparison.evaluations.map((e) => e.id);
   const shared = sharedEntries(comparison.entries, evalIds).map((e) => e.key);
   const label = new Map(comparison.entries.map((e) => [e.key, e.label]));
-  const runs = comparison.evaluations.flatMap((evaluation, index) => evaluation.runs.map((run) => ({ run, evaluation, index })));
-  // Model first (the colour says the evaluation), without its provider route prefix.
-  const name = (r: (typeof runs)[number]) =>
-    [r.run.model_id.replace(/^~/, "").split("/").pop(), r.run.subject_name].filter(Boolean).join(" · ");
+  const single = comparison.evaluations.length === 1;
+  // One evaluation: the reference first, so each pair reads "reference → other": the
+  // default model's run, then the baseline agent's. The colour then tells the runs apart,
+  // else the evaluations.
+  const ordered = comparison.evaluations.flatMap((evaluation, index) => evaluation.runs.map((run) => ({ run, evaluation, index })));
+  if (single) {
+    const baselines = new Set(comparison.evaluations[0].subjects.filter((s) => s.is_baseline).map((s) => s.id));
+    const reference = (r: (typeof ordered)[number]) =>
+      2 * Number(r.run.is_default_model) + Number(!!r.run.subject_id && baselines.has(r.run.subject_id));
+    ordered.sort((a, b) => reference(b) - reference(a));
+  }
+  const runs = ordered.map((r, i) => ({ ...r, colorIndex: single ? i : r.index }));
+  // By what differs between the runs compared (the colour says the evaluation).
+  const runLabel = runLabeler(runs.map((r) => r.run));
+  const name = (r: (typeof runs)[number]) => runLabel(r.run);
 
   const ranking = rankSpread(
     runs
       .map((r) => {
         const interval = bootstrap(runCounts(cells, r.run.id, metric.key, shared), seedOf(r.run.id));
-        return interval ? { id: r.run.id, label: name(r), colorIndex: r.index, ...interval } : null;
+        return interval ? { id: r.run.id, label: name(r), colorIndex: r.colorIndex, ...interval } : null;
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => b.value - a.value),
   );
 
   // The same model in two evaluations: each later evaluation against the first that ran it.
+  // One evaluation: every two of its runs.
   const pairs = [];
   for (let i = 0; i < runs.length; i++) {
     for (let j = i + 1; j < runs.length; j++) {
       const a = runs[i], b = runs[j];
-      if (a.evaluation.id === b.evaluation.id || a.run.model_id !== b.run.model_id) continue;
+      if (!single && (a.evaluation.id === b.evaluation.id || a.run.model_id !== b.run.model_id)) continue;
       const keys = sharedEntries(comparison.entries, [a.evaluation.id, b.evaluation.id]).map((e) => e.key);
       const counts = pairedCounts(cells, a.run.id, b.run.id, metric.key, keys);
       const change = pairedChange(counts.before, counts.after, seedOf(a.run.id + b.run.id));
@@ -391,6 +491,8 @@ function buildView(comparison: EvaluationComparison, metricKey: string | null) {
         model: a.run.model_id,
         before: a,
         after: b,
+        beforeLabel: single ? name(a) : a.evaluation.name,
+        afterLabel: single ? name(b) : b.evaluation.name,
         keys: counts.keys,
         change,
         tiles,
@@ -415,7 +517,7 @@ function buildView(comparison: EvaluationComparison, metricKey: string | null) {
       const interval = bootstrap(counts, seedOf(r.run.id + salt));
       return interval ? { ...interval, n: counts.length } : null;
     };
-    return { id: r.run.id, label: name(r), colorIndex: r.index, all: stat(own, "all"), shared: stat(shared, "shared"), other: stat(other, "other") };
+    return { id: r.run.id, label: name(r), colorIndex: r.colorIndex, all: stat(own, "all"), shared: stat(shared, "shared"), other: stat(other, "other") };
   });
 
   return { metric, shared, ranking, pairs, representativeness };

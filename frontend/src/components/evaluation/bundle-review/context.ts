@@ -36,7 +36,7 @@ export interface ReviewContext {
   select: (selection: ReviewSelection) => void;
   /** One letter per source: E for the expected bundle, A to D for the answers. */
   letter: (source: string) => string;
-  /** A source's name: "Expected", or the answer's evaluation and model. */
+  /** A source's name: "Expected", or the answer's evaluation (its agent within one) and model. */
   sourceName: (source: string) => string;
   /** The sources on screen: the expected bundle, then the pair's answers. */
   shown: string[];

@@ -27,6 +27,7 @@ import { useFormatter } from "@/i18n";
 import {
   EXPECTED,
   NONE,
+  answerName,
   compareEntity,
   entityCounts,
   f1,
@@ -59,6 +60,7 @@ function AnswerCard({ ctx, answer }: { ctx: ReviewContext; answer: BundleReviewA
   const { t_i18n } = useFormatter();
   const role = answer.key === ctx.pair.under ? t_i18n("Under review") : answer.key === ctx.pair.ref ? t_i18n("Reference") : null;
   const unreadable = ctx.review.unreadable.includes(answer.key);
+  const name = answerName(ctx.review.answers, answer, (id) => formatModelLabel(id, t_i18n));
   return (
     <Card className={cn("layer-1 bg-elevation-default border-elevation-subtle-soft", answer.key === ctx.pair.under && "border-accent")}>
       <CardContent className="space-y-2 p-3">
@@ -66,9 +68,9 @@ function AnswerCard({ ctx, answer }: { ctx: ReviewContext; answer: BundleReviewA
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 content-compact font-semibold">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-elevation-highlight content-caption">{ctx.letter(answer.key)}</span>
-              <span className="truncate">{answer.evaluation_name}</span>
+              <span className="truncate">{name.title}</span>
             </p>
-            <p className="truncate content-caption text-default-secondary">{formatModelLabel(answer.model_id, t_i18n)}</p>
+            <p className="truncate content-caption text-default-secondary">{name.detail}</p>
           </div>
           <Link
             to={`/evaluations/runs/${answer.run_id}`}
