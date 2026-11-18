@@ -429,7 +429,7 @@ def register_handlers(
         executor.register(name, _bind())
 
 
-def build_concierge_diagnosis_tools(
+def build_health_diagnosis_tools(
     user_id: str, *, read_only: bool = False, run_id: str | None = None, agent_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The Quality Analyst's tools acting for *user_id* (``read_only``: the reads alone, as on ``/mcp/xtm``),
@@ -455,7 +455,7 @@ def concierge_tools_offered() -> bool:
     return concierge_enabled()
 
 
-def add_concierge_quality_tools(
+def add_health_quality_tools(
     composite: Any,
     user_id: str,
     builtin_tool_ids: list[str],
@@ -472,16 +472,16 @@ def add_concierge_quality_tools(
     (an assignment run) names the Concierge cycle an experiment's spend is
     booked on.
     """
-    from .health_experiments import EXPERIMENTS_GROUP_ID, build_concierge_experiment_tools
+    from .health_experiments import EXPERIMENTS_GROUP_ID, build_health_experiment_tools
 
     if not any(gid in builtin_tool_ids for gid in (DIAGNOSIS_GROUP_ID, EXPERIMENTS_GROUP_ID)):
         return
     if not concierge_tools_offered():
         return
     if DIAGNOSIS_GROUP_ID in builtin_tool_ids:
-        composite.add_tools(*build_concierge_diagnosis_tools(user_id, run_id=run_id, agent_id=agent_id))
+        composite.add_tools(*build_health_diagnosis_tools(user_id, run_id=run_id, agent_id=agent_id))
     if EXPERIMENTS_GROUP_ID in builtin_tool_ids:
-        composite.add_tools(*build_concierge_experiment_tools(user_id, run_id=run_id, agent_id=agent_id))
+        composite.add_tools(*build_health_experiment_tools(user_id, run_id=run_id, agent_id=agent_id))
 
 
 def build_group(

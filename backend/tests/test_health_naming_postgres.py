@@ -30,7 +30,7 @@ from app.models.fleet import Fleet
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.health import fleet_seed
-from app.services.health.settings import load_concierge_settings
+from app.services.health.settings import load_health_settings
 from tests.health_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration
@@ -95,7 +95,7 @@ async def test_a_hostile_name_is_a_422_and_nothing_is_saved(name) -> None:
         async with _client(sessions, world.admin) as client:
             response = await client.put("/api/v1/health/settings", json={"enabled": True, "name": name})
         async with sessions() as db:
-            stored = await load_concierge_settings(db)
+            stored = await load_health_settings(db)
     assert response.status_code == 422
     assert (stored.enabled, stored.name) == (False, None)
 
@@ -106,7 +106,7 @@ async def test_a_non_admin_cannot_name_the_concierge() -> None:
         async with _client(sessions, world.configurer) as client:
             response = await client.put("/api/v1/health/settings", json={"name": "Mine"})
         async with sessions() as db:
-            stored = await load_concierge_settings(db)
+            stored = await load_health_settings(db)
     assert response.status_code == 403
     assert stored.name is None
 
@@ -116,7 +116,7 @@ async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_re
         await World().build(sessions)
         monkeypatch.setattr(settings, "platform_mode", "copilot")
         async with sessions() as db:
-            await fleet_seed.seed_concierge_fleet(db)
+            await fleet_seed.seed_health_fleet(db)
         seeded = await _names(sessions)
         # A deployment seeded before #101 carries the former copilot default.
         async with sessions() as db:
@@ -129,7 +129,7 @@ async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_re
             await db.commit()
         monkeypatch.setattr(settings, "platform_mode", "xtm_one")
         async with sessions() as db:
-            await fleet_seed.seed_concierge_fleet(db)
+            await fleet_seed.seed_health_fleet(db)
         reseeded = await _names(sessions)
     assert seeded == ("Platform Health", "Platform Health", "Platform Health")
     assert reseeded == ("Platform Health", "Platform Health", "Platform Health")
@@ -140,7 +140,7 @@ async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeyp
     async with concierge_database() as sessions:
         world = await World().build(sessions)
         async with sessions() as db:
-            await fleet_seed.seed_concierge_fleet(db)
+            await fleet_seed.seed_health_fleet(db)
             fleet = (await db.execute(select(Fleet))).scalar_one()
             fleet.name = "Improvement crew"
             await db.commit()
@@ -148,7 +148,7 @@ async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeyp
             saved = await client.put("/api/v1/health/settings", json={"enabled": True, "name": "  Jeeves "})
         renamed = await _names(sessions)
         async with sessions() as db:
-            await fleet_seed.seed_concierge_fleet(db)
+            await fleet_seed.seed_health_fleet(db)
         reseeded = await _names(sessions)
         async with _client(sessions, world.admin) as client:
             await client.put("/api/v1/health/settings", json={"enabled": True, "name": None})

@@ -133,10 +133,12 @@ async def agent_turn_session(db: AsyncSession, user_id: str, agent: Any) -> Sand
 
         copy = await sandbox_copy_of(db, agent_id=agent.id)
         recordings = await copy_recordings(db, copy) if copy is not None else []
-        return build_sandbox_session(user_id=user_id, model=getattr(agent, "llm_model", None), recorded_calls=recordings)
-    from app.services.health.identity import in_concierge_run
+        return build_sandbox_session(
+            user_id=user_id, model=getattr(agent, "llm_model", None), recorded_calls=recordings
+        )
+    from app.services.health.identity import in_health_run
 
-    if in_concierge_run():
+    if in_health_run():
         from app.services.health.sandbox.dry_run import dry_run_active
 
         if await dry_run_active(db):

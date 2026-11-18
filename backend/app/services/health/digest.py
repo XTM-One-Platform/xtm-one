@@ -211,7 +211,7 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
     """Build and store the digest of a closed *cycle*. Flushed, not committed."""
     from app.models.assignment import AssignmentRun
     from app.services.health.fleet_seed import fleet_agent_ids
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
     record = await db.get(HealthCycleRun, cycle.id)
     run = await db.get(AssignmentRun, record.run_id) if record is not None and record.run_id else None
@@ -223,7 +223,7 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         target_id=cycle.target_id,
         fleet_agent_ids=await fleet_agent_ids(db),
     )
-    caps = (await load_concierge_settings(db)).budget
+    caps = (await load_health_settings(db)).budget
     digest = CycleDigest(
         cycle_id=str(cycle.id),
         specialist=cycle.specialist,

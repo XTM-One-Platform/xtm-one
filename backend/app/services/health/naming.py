@@ -38,7 +38,7 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.settings import HealthSettings, load_concierge_settings
+from app.services.health.settings import HealthSettings, load_health_settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def concierge_name(value: HealthSettings) -> str:
 
 
 async def load_concierge_name(db: AsyncSession) -> str:
-    return concierge_name(await load_concierge_settings(db))
+    return concierge_name(await load_health_settings(db))
 
 
 async def rename_concierge(db: AsyncSession, *, previous: Collection[str], name: str) -> int:

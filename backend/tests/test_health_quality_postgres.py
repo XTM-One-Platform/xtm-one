@@ -30,8 +30,8 @@ from app.models.group import Group, GroupMember
 from app.models.health_finding import HealthFinding
 from app.models.platform_settings import PlatformSettings
 from app.models.user import User
-from app.services.builtin_tools.health_experiments import build_concierge_experiment_tools
-from app.services.builtin_tools.health_quality import build_concierge_diagnosis_tools
+from app.services.builtin_tools.health_experiments import build_health_experiment_tools
+from app.services.builtin_tools.health_quality import build_health_diagnosis_tools
 from app.services.health import availability
 from app.services.health.access import NOT_IN_REACH, WRITE_REFUSED
 from app.services.health.findings import Evidence, record_finding
@@ -97,9 +97,7 @@ async def _seed(sessions) -> World:
         )
         company_agent.health_enrolled = True
         outside_agent = Agent(id=uuid.uuid4(), name="Outside agent", user_id=users["owner"].id, persona="x")
-        analyst = Agent(
-            id=uuid.uuid4(), name="Quality Analyst", user_id=admin.id, is_company_managed=True, persona="x"
-        )
+        analyst = Agent(id=uuid.uuid4(), name="Quality Analyst", user_id=admin.id, is_company_managed=True, persona="x")
         analyst.health_role = "quality_analyst"
         experimenter = Agent(
             id=uuid.uuid4(), name="Experimenter", user_id=admin.id, is_company_managed=True, persona="x"
@@ -169,12 +167,17 @@ async def _world(monkeypatch, prefix: str) -> AsyncIterator[tuple[World, object]
 
 
 async def _call(user_id: str, name: str, **arguments) -> str:
-    builder = build_concierge_diagnosis_tools if name in {
-        "get_quality_signals",
-        "list_findings",
-        "record_finding",
-        "draft_variant",
-    } else build_concierge_experiment_tools
+    builder = (
+        build_health_diagnosis_tools
+        if name
+        in {
+            "get_quality_signals",
+            "list_findings",
+            "record_finding",
+            "draft_variant",
+        }
+        else build_health_experiment_tools
+    )
     # The calling agent is the bound principal's own, as in its Concierge run.
     principal = current_concierge()
     _defs, executor = builder(user_id, agent_id=str(principal.agent_id) if principal else None)
@@ -230,7 +233,14 @@ async def test_the_concierge_reads_its_scope_and_writes_with_its_role(monkeypatc
 
         with _as(world.experimenter, "experimenter"):
             assert (
-                await _call("", "record_finding", target_type="agent", target_id=str(world.agent.id), pattern_kind="latency", hypothesis="x")
+                await _call(
+                    "",
+                    "record_finding",
+                    target_type="agent",
+                    target_id=str(world.agent.id),
+                    pattern_kind="latency",
+                    hypothesis="x",
+                )
                 == WRITE_REFUSED
             )
         with _as(world.analyst, "quality_analyst"):
@@ -274,7 +284,10 @@ async def test_a_person_reads_the_findings_of_an_agent_they_manage(monkeypatch, 
                 agent.shared_user_ids = [*agent.shared_user_ids, str(world.revoked.id)]
                 agent.shared_user_permissions = {**agent.shared_user_permissions, str(world.revoked.id): "config"}
                 await db.commit()
-                assert _parsed(await _call(str(world.revoked.id), "list_findings", target_id=str(world.agent.id)))["count"] == 1
+                assert (
+                    _parsed(await _call(str(world.revoked.id), "list_findings", target_id=str(world.agent.id)))["count"]
+                    == 1
+                )
                 agent.shared_user_ids = [u for u in agent.shared_user_ids if u != str(world.revoked.id)]
                 agent.shared_user_permissions = {
                     k: v for k, v in agent.shared_user_permissions.items() if k != str(world.revoked.id)
@@ -361,7 +374,10 @@ async def _cycle_run(sessions, world: World) -> tuple[uuid.UUID, uuid.UUID]:
     cycle = uuid.uuid4()
     async with sessions() as db:
         run = AssignmentRun(
-            agent_id=world.experimenter.id, user_id=world.admin.id, status="running", trigger_context={CYCLE_KEY: str(cycle)}
+            agent_id=world.experimenter.id,
+            user_id=world.admin.id,
+            status="running",
+            trigger_context={CYCLE_KEY: str(cycle)},
         )
         db.add(run)
         await db.commit()
@@ -383,11 +399,11 @@ async def test_a_concierge_run_s_experiment_is_sized_on_its_cycle(monkeypatch):
             return kwargs["experiment"]
 
         monkeypatch.setattr(experiments, "run", _run)
-        _defs, executor = build_concierge_experiment_tools(
-            "", run_id=str(run_id), agent_id=str(world.experimenter.id)
-        )
+        _defs, executor = build_health_experiment_tools("", run_id=str(run_id), agent_id=str(world.experimenter.id))
         with _as(world.experimenter, "experimenter"):
-            await executor.execute_tool(ToolCall(id="c1", name="run_experiment", arguments={"experiment_id": str(experiment_id)}))
+            await executor.execute_tool(
+                ToolCall(id="c1", name="run_experiment", arguments={"experiment_id": str(experiment_id)})
+            )
             async with sessions() as db:
                 reader = await load_reader(db, "", run_id="not-a-run", agent_id=str(world.experimenter.id))
                 assert (reader.is_concierge, reader.cycle_id) == (True, None)
@@ -459,8 +475,11 @@ async def test_an_agent_run_inline_by_the_concierge_reads_as_its_runner(monkeypa
     async with _world(monkeypatch, "cq_inline") as (world, _sessions):
         # A sandbox copy's turn inside the Experimenter's run: the principal is still bound.
         with _as(world.experimenter, "experimenter"):
-            for user_id, answer in (("", "Error: this tool needs an authenticated caller."), (str(world.stranger.id), None)):
-                _defs, executor = build_concierge_diagnosis_tools(user_id, agent_id=str(world.agent.id))
+            for user_id, answer in (
+                ("", "Error: this tool needs an authenticated caller."),
+                (str(world.stranger.id), None),
+            ):
+                _defs, executor = build_health_diagnosis_tools(user_id, agent_id=str(world.agent.id))
                 listed = (await executor.execute_tool(ToolCall(id="c1", name="list_findings", arguments={}))).content
                 assert listed == (answer or "Error: name the agent or assignment whose findings to list (target_id).")
                 signals = (

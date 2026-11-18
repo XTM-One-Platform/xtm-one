@@ -112,7 +112,7 @@ async def _find_target(db, principal, user, group_ids, target_type: str, target:
     return target_type, target_id, found.name
 
 
-def build_concierge_orchestrator_tools(
+def build_health_orchestrator_tools(
     user_id: str | None, *, allow_requests: bool = True
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The group's tools, acting for *user_id* unless the work acts as the Concierge.

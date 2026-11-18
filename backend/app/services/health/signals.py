@@ -453,18 +453,14 @@ async def record_readings(db: AsyncSession, readings: list[SignalReading], *, no
     kinds = {reading.kind for reading in readings}
     existing = {
         (state.kind, state.target_type, state.target_id): state
-        for state in (
-            await db.execute(select(HealthSignalState).where(HealthSignalState.kind.in_(kinds)))
-        ).scalars()
+        for state in (await db.execute(select(HealthSignalState).where(HealthSignalState.kind.in_(kinds)))).scalars()
     }
     crossings = []
     for reading in readings:
         key = (reading.kind, reading.target_type, reading.target_id)
         state = existing.get(key)
         if state is None:
-            state = HealthSignalState(
-                kind=reading.kind, target_type=reading.target_type, target_id=reading.target_id
-            )
+            state = HealthSignalState(kind=reading.kind, target_type=reading.target_type, target_id=reading.target_id)
             db.add(state)
             existing[key] = state
         state.evaluated_at = now
@@ -531,9 +527,9 @@ async def fire_signals(db: AsyncSession, crossings: list[SignalReading], *, now:
 async def evaluate_signal(db: AsyncSession, kind: str, *, now: datetime, since: datetime) -> list[SignalReading]:
     """Read one signal over the scope (no model call)."""
     from app.services.health.consent import load_consent_scope
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
-    s = (await load_concierge_settings(db)).signals
+    s = (await load_health_settings(db)).signals
     scope = await load_consent_scope(db)
     if kind == "feedback_drop":
         return await read_feedback(db, scope, s, now)
@@ -547,13 +543,13 @@ async def evaluate_signal(db: AsyncSession, kind: str, *, now: datetime, since: 
 async def signals_tick(*, now: datetime | None = None) -> int:
     """Evaluate every enabled signal whose cadence is due, then fire its crossings; cycles started."""
     from app.core.database import async_session
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
     now = now or datetime.now(UTC)
     started = 0
     for kind in SIGNAL_KINDS:
         async with async_session() as db:
-            settings = await load_concierge_settings(db)
+            settings = await load_health_settings(db)
             if not settings.enabled or not getattr(settings.signals, _ENABLED_FIELD[kind]):
                 continue
             mark = await db.get(HealthScheduleMark, _MARK_KEYS[kind])

@@ -132,13 +132,13 @@ async def test_a_spent_budget_stops_the_pairing_and_keeps_the_cursor(sandbox, mo
     from app.services.health import budget
     from app.services.health.settings import HealthBudgetCaps
 
-    real_settings = budget.load_concierge_settings
+    real_settings = budget.load_health_settings
 
     async def tight(db):
         settings = await real_settings(db)
         return settings.model_copy(update={"budget": HealthBudgetCaps(month_tokens=1_000)})
 
-    monkeypatch.setattr(budget, "load_concierge_settings", tight)
+    monkeypatch.setattr(budget, "load_health_settings", tight)
     async with _database() as sessions:
         seeded = await _seed(sessions, sandbox)
         shadow_id = await _shadow(sessions, seeded)

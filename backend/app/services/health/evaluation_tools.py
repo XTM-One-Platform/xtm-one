@@ -48,11 +48,11 @@ async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str 
     from app.models.user import User
     from app.services.evaluation.availability import evaluation_enabled
     from app.services.health.availability import concierge_enabled
-    from app.services.health.identity import in_concierge_run
+    from app.services.health.identity import in_health_run
 
     if not concierge_enabled():
         return "the CONCIERGE flag is off"
-    if in_concierge_run():
+    if in_health_run():
         return None
     try:
         caller = await db.get(User, uuid.UUID(str(user_id))) if user_id else None
@@ -87,7 +87,7 @@ def _uuids(value: Any) -> list[uuid.UUID] | None:
     return None if any(p is None for p in parsed) else parsed  # type: ignore[return-value]
 
 
-def build_concierge_evaluation_tools(
+def build_health_evaluation_tools(
     db: AsyncSession, user_id: str | None, *, run_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The Concierge evaluation functions acting for *user_id* (``None`` in a Concierge run),
@@ -106,18 +106,18 @@ def build_concierge_evaluation_tools(
         return None
 
     async def _cycle_id() -> uuid.UUID | None:
-        from app.services.health.identity import in_concierge_run
+        from app.services.health.identity import in_health_run
         from app.services.health.memory_steward_deps import run_cycle_id
 
-        run = _uuid(run_id) if run_id and in_concierge_run() else None
+        run = _uuid(run_id) if run_id and in_health_run() else None
         return await run_cycle_id(db, run) if run is not None else None
 
     async def _audit_admin(action: str, entity_type: str, entity_id: uuid.UUID, summary: str) -> None:
         from app.models.user import User
         from app.services.audit import log_audit
-        from app.services.health.identity import in_concierge_run
+        from app.services.health.identity import in_health_run
 
-        if in_concierge_run():
+        if in_health_run():
             return
         caller = await db.get(User, uuid.UUID(str(user_id)))
         await log_audit(db, user=caller, action=action, entity_type=entity_type, entity_id=entity_id, summary=summary)
@@ -177,7 +177,7 @@ def build_concierge_evaluation_tools(
         if dataset is None or agents is None or flows is None or not all(isinstance(m, str) for m in models):
             return "dataset_id, agent_ids and flow_ids are ids; model_ids is a list of model ids."
         try:
-            launch = await evaluations.launch_concierge_evaluation(
+            launch = await evaluations.launch_health_evaluation(
                 db,
                 dataset_id=dataset,
                 subject_agent_ids=agents,

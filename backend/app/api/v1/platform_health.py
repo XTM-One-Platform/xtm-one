@@ -50,8 +50,8 @@ from app.services.health.naming import default_concierge_name, load_concierge_na
 from app.services.health.settings import (
     HealthBudgetCaps,
     HealthSettings,
-    load_concierge_settings,
-    save_concierge_settings,
+    load_health_settings,
+    save_health_settings,
     scope_narrowed,
 )
 
@@ -287,7 +287,7 @@ async def get_concierge_settings(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSettings:
-    return await load_concierge_settings(db)
+    return await load_health_settings(db)
 
 
 @router.put("/settings", response_model=HealthSettings)
@@ -297,7 +297,7 @@ async def put_concierge_settings(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSettings:
-    before, after = await save_concierge_settings(db, body, actor=admin, request=request)
+    before, after = await save_health_settings(db, body, actor=admin, request=request)
     revocation = Revocation(kind="scope_narrowed") if scope_narrowed(before, after) else None
     await _commit_with_revocation(db, revocation)
     return after
@@ -309,7 +309,7 @@ async def get_budget(
     db: AsyncSession = Depends(get_db),
 ) -> BudgetResponse:
     month = concierge_budget.current_month()
-    caps = (await load_concierge_settings(db)).budget
+    caps = (await load_health_settings(db)).budget
     row = (await db.execute(select(HealthBudgetMonth).where(HealthBudgetMonth.month == month))).scalar_one_or_none()
     left = await concierge_budget.remaining(db)
     refusal = await concierge_budget.budget_refusal(db)

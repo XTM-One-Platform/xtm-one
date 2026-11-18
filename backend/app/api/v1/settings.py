@@ -155,9 +155,9 @@ from app.services.branding import (
 )
 from app.services.builtin_tool_catalog import (
     build_builtin_tool_catalog,
-    withhold_concierge_tools,
     withhold_evaluation_tools,
     withhold_flow_builder_tools,
+    withhold_health_tools,
 )
 from app.services.ctem_verticals import normalize_vertical
 from app.services.handover_types import with_added_handover_targets
@@ -6345,7 +6345,7 @@ async def _scannable_tool_groups(db: AsyncSession) -> list[ScannableToolGroup]:
         catalog.pop("deep_investigation", None)
     if not is_feature_enabled("MOBILE_COMPANION"):
         catalog.pop("phone", None)
-    withhold_concierge_tools(catalog)
+    withhold_health_tools(catalog)
     if not is_feature_enabled("DASHBOARD_STUDIO"):
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
@@ -8149,7 +8149,7 @@ def _offered_builtin_tool_catalog() -> dict[str, list[dict]]:
         catalog.pop("custom_dashboards", None)
     if not is_feature_enabled("VIDEO_STUDIO"):
         catalog.pop("video_studio", None)
-    withhold_concierge_tools(catalog)
+    withhold_health_tools(catalog)
     return withhold_evaluation_tools(catalog)
 
 

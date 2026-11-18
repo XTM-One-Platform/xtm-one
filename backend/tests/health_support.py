@@ -15,7 +15,7 @@ from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.group import Group, GroupMember
 from app.models.user import User
-from app.services.health.settings import HealthSettings, save_concierge_settings
+from app.services.health.settings import HealthSettings, save_health_settings
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 
@@ -55,7 +55,11 @@ class World:
     async def build(self, sessions: async_sessionmaker) -> World:
         async with sessions() as db:
             self.owner, self.admin = make_user("owner"), make_user("admin", admin=True)
-            self.reader, self.configurer, self.member = make_user("reader"), make_user("configurer"), make_user("member")
+            self.reader, self.configurer, self.member = (
+                make_user("reader"),
+                make_user("configurer"),
+                make_user("member"),
+            )
             self.revoked, self.stranger = make_user("revoked"), make_user("stranger")
             db.add_all([self.owner, self.admin, self.reader, self.configurer, self.member, self.revoked, self.stranger])
             await db.flush()
@@ -78,10 +82,7 @@ class World:
         return self
 
 
-
 async def configure(sessions, admin: User, **values) -> None:
     async with sessions() as db:
-        await save_concierge_settings(db, HealthSettings(**values), actor=admin)
+        await save_health_settings(db, HealthSettings(**values), actor=admin)
         await db.commit()
-
-

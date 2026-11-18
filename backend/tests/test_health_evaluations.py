@@ -62,7 +62,7 @@ FORMER_ADMIN = SimpleNamespace(is_admin=True, is_active=False)
 async def test_one_access_rule(monkeypatch, features, mode, concierge_run, caller, allowed):
     monkeypatch.setattr(settings, "enabled_features", features)
     monkeypatch.setattr(settings, "platform_mode", mode)
-    monkeypatch.setattr(identity, "in_concierge_run", lambda: concierge_run)
+    monkeypatch.setattr(identity, "in_health_run", lambda: concierge_run)
 
     refusal = await evaluation_tool_refusal(_Db(caller), str(uuid.uuid4()) if caller else None)  # type: ignore[arg-type]
 
@@ -71,7 +71,7 @@ async def test_one_access_rule(monkeypatch, features, mode, concierge_run, calle
 
 async def test_every_tool_refuses_generically_without_reading(monkeypatch):
     monkeypatch.setattr(settings, "enabled_features", "")
-    definitions, executor = evaluation_tools.build_concierge_evaluation_tools(None, None)  # type: ignore[arg-type]
+    definitions, executor = evaluation_tools.build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
     calls = {
         "build_dataset_from_traces": {"target_type": "agent", "target_id": str(uuid.uuid4())},
         "run_concierge_evaluation": {"dataset_id": str(uuid.uuid4())},
@@ -100,7 +100,7 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
     from app.services.health import datasets, evaluations
 
     monkeypatch.setattr(evaluation_tools, "evaluation_tool_refusal", _allowed)
-    monkeypatch.setattr(identity, "in_concierge_run", lambda: False)
+    monkeypatch.setattr(identity, "in_health_run", lambda: False)
     audited, built = [], []
 
     async def _log_audit(_db, **kwargs):
@@ -114,13 +114,15 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
         return datasets.DatasetBuildResult(dataset_id=dataset_id)
 
     monkeypatch.setattr(audit, "log_audit", _log_audit)
-    monkeypatch.setattr(evaluations, "launch_concierge_evaluation", _launch)
+    monkeypatch.setattr(evaluations, "launch_health_evaluation", _launch)
     monkeypatch.setattr(datasets, "build_dataset_from_traces", _build)
     evaluation_id, run_id, dataset_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     db = _AdminDb()
-    _defs, executor = evaluation_tools.build_concierge_evaluation_tools(db, str(uuid.uuid4()))  # type: ignore[arg-type]
+    _defs, executor = evaluation_tools.build_health_evaluation_tools(db, str(uuid.uuid4()))  # type: ignore[arg-type]
 
-    launched = await executor._handlers["run_concierge_evaluation"](dataset_id=str(dataset_id), agent_ids=[str(uuid.uuid4())])
+    launched = await executor._handlers["run_concierge_evaluation"](
+        dataset_id=str(dataset_id), agent_ids=[str(uuid.uuid4())]
+    )
     await executor._handlers["build_dataset_from_traces"](
         target_type="agent", target_id=str(uuid.uuid4()), since="2026-11-01"
     )
@@ -180,7 +182,8 @@ async def _world(s, *, scope_agent_ids: list | None = None, budget: dict | None 
     )
     s.add(PlatformSettings(health_settings={"enabled": True, **scope, **({"budget": budget} if budget else {})}))
     s.add_all(
-        DatasetEntry(dataset_id=d.id, position=0, input_prompt="Question", expected_answer="a") for d in (dataset, human)
+        DatasetEntry(dataset_id=d.id, position=0, input_prompt="Question", expected_answer="a")
+        for d in (dataset, human)
     )
     # The subjects are sandbox copies (level 2): an evaluation never runs a production one.
     copies = [await _copy(s, source) for source in (agent, fleet, flow)]
@@ -222,7 +225,7 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
     from app.models.orchestration import OrchestrationExecution
     from app.services import orchestration_engine
     from app.services.evaluation.constants import MODEL_INDEPENDENT
-    from app.services.health.evaluations import launch_concierge_evaluation
+    from app.services.health.evaluations import launch_health_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async def _no_wake() -> None:
@@ -234,7 +237,7 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
         db.sessions() as s,
     ):
         agent, _fleet, flow, dataset, _human, _source = await _world(s)
-        launch = await launch_concierge_evaluation(
+        launch = await launch_health_evaluation(
             s, dataset_id=dataset.id, subject_agent_ids=[agent.id], subject_flow_ids=[flow.id]
         )
         evaluation = await s.get(Evaluation, launch.evaluation_id)
@@ -263,7 +266,7 @@ async def test_a_launch_marks_its_evaluation_and_runs_agents_and_flows(monkeypat
 async def test_a_launch_is_refused_before_anything_is_written(case):
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation
-    from app.services.health.evaluations import HealthEvaluationError, launch_concierge_evaluation
+    from app.services.health.evaluations import HealthEvaluationError, launch_health_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -274,7 +277,7 @@ async def test_a_launch_is_refused_before_anything_is_written(case):
         agent, fleet, _flow, dataset, human, source = await _world(s, scope_agent_ids=scope)
         subjects = {"fleet-agent": [fleet.id], "no-subject": [], "production-agent": [source.id]}.get(case, [agent.id])
         with pytest.raises(HealthEvaluationError):
-            await launch_concierge_evaluation(
+            await launch_health_evaluation(
                 s, dataset_id=(human if case == "human-dataset" else dataset).id, subject_agent_ids=subjects
             )
         await s.rollback()
@@ -291,7 +294,11 @@ async def test_a_launch_is_refused_before_anything_is_written(case):
         ({"score": 90.0}, "progression", None),
         ({"score": 79.0}, "neutral", None),
         ({"score": 60.0, "status": "failed"}, None, "the candidate run is failed"),
-        ({"score": 90.0, "headline_details": {"withdrawn_entries": 1}}, None, "the candidate run lost entries to a consent revocation"),
+        (
+            {"score": 90.0, "headline_details": {"withdrawn_entries": 1}},
+            None,
+            "the candidate run lost entries to a consent revocation",
+        ),
         ({"score": None}, None, "the quality metric is not measured on both runs"),
     ],
     ids=["progression", "neutral", "failed", "withdrawn", "unmeasured"],
@@ -311,7 +318,12 @@ async def test_a_comparison_states_its_verdict_or_why_there_is_none(candidate, v
         s.add(evaluation)
         await s.flush()
         base = EvaluationRun(
-            evaluation_id=evaluation.id, agent_id=agent.id, model_id="m", trigger_reason="concierge", status="completed", score=80.0
+            evaluation_id=evaluation.id,
+            agent_id=agent.id,
+            model_id="m",
+            trigger_reason="concierge",
+            status="completed",
+            score=80.0,
         )
         cand = EvaluationRun(
             evaluation_id=evaluation.id,
@@ -357,7 +369,9 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
         s.add(evaluation)
         await s.flush()
         runs = [
-            EvaluationRun(evaluation_id=evaluation.id, agent_id=agent.id, model_id=m, trigger_reason="manual", status="completed")
+            EvaluationRun(
+                evaluation_id=evaluation.id, agent_id=agent.id, model_id=m, trigger_reason="manual", status="completed"
+            )
             for m in ("a", "b")
         ]
         s.add_all(runs)
@@ -401,8 +415,8 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
     from app.services.health import budget
     from app.services.health.evaluations import (
         ENTRY_TOKENS_ESTIMATE,
-        launch_concierge_evaluation,
-        settle_concierge_evaluations,
+        launch_health_evaluation,
+        settle_health_evaluations,
     )
     from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -414,7 +428,7 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
         agent, _fleet, flow, dataset, _human, _source = await _world(s)
         cycle_id = await budget.open_cycle(s, specialist="experimenter", trigger="signal")
         await s.commit()
-        await launch_concierge_evaluation(
+        await launch_health_evaluation(
             s, dataset_id=dataset.id, subject_agent_ids=[agent.id], subject_flow_ids=[flow.id], cycle_id=cycle_id
         )
         reserved = (await s.get(HealthCycle, cycle_id)).reserved_tokens
@@ -423,12 +437,12 @@ async def test_a_launch_holds_its_reservation_past_its_cycle_and_is_charged_when
         await s.commit()
         month = (await s.execute(select(HealthBudgetMonth))).scalar_one()
         held = ((await s.get(HealthCycle, cycle_id)).reserved_tokens, month.reserved_tokens)
-        assert await settle_concierge_evaluations(s) == 0
+        assert await settle_health_evaluations(s) == 0
         for run in (await s.execute(select(EvaluationRun))).scalars().all():
             await _measured(s, run, tokens=3_000, cost=0.01)
             run.status = "completed"
         await s.commit()
-        charged, again = await settle_concierge_evaluations(s), await settle_concierge_evaluations(s)
+        charged, again = await settle_health_evaluations(s), await settle_health_evaluations(s)
         cycle = await s.get(HealthCycle, cycle_id)
         await s.refresh(cycle)
         await s.refresh(month)
@@ -451,8 +465,8 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
     from app.services.health.evaluations import (
         BUDGET_STOP_ERROR,
         compare_concierge_runs,
-        launch_concierge_evaluation,
-        settle_concierge_evaluations,
+        launch_health_evaluation,
+        settle_health_evaluations,
     )
     from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -464,7 +478,7 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
         agent, _fleet, flow, dataset, _human, _source = await _world(s, budget={"cycle_tokens": 12_000})
         cycle_id = await budget.open_cycle(s, specialist="experimenter", trigger="signal")
         await s.commit()
-        await launch_concierge_evaluation(
+        await launch_health_evaluation(
             s,
             dataset_id=dataset.id,
             subject_agent_ids=[agent.id],
@@ -479,10 +493,10 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
         await _measured(s, cand, tokens=9_000, cost=0.0)
         await s.commit()
         # 13 000 measured: past the 10 000 reserved and the 2 000 left under the cycle's cap.
-        assert await settle_concierge_evaluations(s) == 0
+        assert await settle_health_evaluations(s) == 0
         await s.refresh(cand)
         stopped = (cand.status, cand.error)
-        assert await settle_concierge_evaluations(s) == 1
+        assert await settle_health_evaluations(s) == 1
         comparison = await compare_concierge_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
         cycle = await s.get(HealthCycle, cycle_id)
         await s.refresh(cycle)
@@ -498,7 +512,7 @@ async def test_a_launch_outside_a_cycle_is_refused_at_the_cap():
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation
     from app.services.health import budget
-    from app.services.health.evaluations import launch_concierge_evaluation
+    from app.services.health.evaluations import launch_health_evaluation
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -507,7 +521,7 @@ async def test_a_launch_outside_a_cycle_is_refused_at_the_cap():
     ):
         agent, _fleet, _flow, dataset, _human, _source = await _world(s, budget={"month_tokens": 0})
         with pytest.raises(budget.BudgetRefusedError) as refused:
-            await launch_concierge_evaluation(s, dataset_id=dataset.id, subject_agent_ids=[agent.id])
+            await launch_health_evaluation(s, dataset_id=dataset.id, subject_agent_ids=[agent.id])
         await s.rollback()
         evaluations = (await s.execute(select(Evaluation))).scalars().all()
 

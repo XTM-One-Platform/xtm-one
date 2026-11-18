@@ -148,7 +148,7 @@ from app.services.failure_causes import (
 )
 from app.services.frictions import binding_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
-from app.services.health.identity import concierge_delegation_owner_id, is_concierge_agent, mark_concierge_run
+from app.services.health.identity import concierge_delegation_owner_id, is_health_agent, mark_health_run
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.orchestration_engine import (
     bound_by_deadline,
@@ -4379,7 +4379,7 @@ async def execute_assignment_run(
         # automation always had in every read that has no account to go by.
         mark_company_managed_run(assignment, run)
         # A run of a Concierge fleet agent acts as the Concierge identity (#8254).
-        await mark_concierge_run(db, agent, run.user_id)
+        await mark_health_run(db, agent, run.user_id)
 
         # ── Owner deactivated ────────────────────────────────────
         # A run that existed before its owner's account was deactivated (a
@@ -6397,9 +6397,9 @@ async def execute_assignment_run(
                 # The run's Concierge cycle pays for the pass's model calls.
                 composite.add_tools(*build_memory_steward_tools(run_id=str(run.id)))
             # --- Platform Concierge (#8259): the run acts as its principal, user or not ---
-            from app.services.builtin_tools.health_quality import add_concierge_quality_tools
+            from app.services.builtin_tools.health_quality import add_health_quality_tools
 
-            add_concierge_quality_tools(
+            add_health_quality_tools(
                 composite,
                 str(effective_user_id) if effective_user_id else "",
                 agent_builtin_tool_ids,
@@ -6415,9 +6415,9 @@ async def execute_assignment_run(
             # --- Concierge orchestrator (#8261): read-only in a run, so a
             # cycle's own run never starts another cycle ---
             if "concierge_orchestrator" in agent_builtin_tool_ids:
-                from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
+                from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-                co_defs, co_exec = build_concierge_orchestrator_tools(
+                co_defs, co_exec = build_health_orchestrator_tools(
                     str(effective_user_id) if effective_user_id else None, allow_requests=False
                 )
                 composite.add_tools(co_defs, co_exec)
@@ -6449,10 +6449,10 @@ async def execute_assignment_run(
                 )
             # --- Concierge evaluation (#8257): the same rule, the tools' own.
             if "concierge_evaluation" in agent_builtin_tool_ids:
-                from app.services.health.evaluation_tools import build_concierge_evaluation_tools
+                from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(
-                    *build_concierge_evaluation_tools(
+                    *build_health_evaluation_tools(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
@@ -9218,7 +9218,7 @@ async def execute_assignment_run(
                 and current_retries < max_retries
                 # A Concierge fleet run with no user is retried as what it ran
                 # as, the Concierge alone: there is no other user to check.
-                and not (retry_identity is None and run.user_id is None and is_concierge_agent(agent))
+                and not (retry_identity is None and run.user_id is None and is_health_agent(agent))
                 and not await can_open_continued_run(db, run, retry_identity)
             ):
                 await _report_refused_continuation(
@@ -9574,7 +9574,7 @@ def _run_person(
 ) -> _uuid.UUID | None:
     """:func:`_execution_identity`, read tolerantly: a gate must never be what
     breaks a trigger on an assignment-like object."""
-    if triggered_by_user_id is None and is_concierge_agent(agent):
+    if triggered_by_user_id is None and is_health_agent(agent):
         return None
     return (
         triggered_by_user_id
@@ -9591,7 +9591,7 @@ def _execution_identity(
     A Concierge fleet run nobody started has no user: it acts as the Concierge
     identity, never as the assignment's owner or run-as user (PRD 13).
     """
-    if triggered_by_user_id is None and is_concierge_agent(agent):
+    if triggered_by_user_id is None and is_health_agent(agent):
         return None
     return triggered_by_user_id or assignment.run_as_user_id or assignment.user_id
 
@@ -9604,7 +9604,7 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
     with no user, as the Concierge alone (PRD 9, 13). Its tools, quota,
     provider exclusions and variables are then those of a run with no account.
     """
-    if user_id is None and is_concierge_agent(agent):
+    if user_id is None and is_health_agent(agent):
         return None
     return user_id or (agent.user_id if agent else None)
 

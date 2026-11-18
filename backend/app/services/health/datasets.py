@@ -715,9 +715,9 @@ async def withdraw_entries(
 
 async def withdraw_out_of_scope(db: AsyncSession) -> int:
     """Delete the entries whose source target left a narrowed supervision scope."""
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
-    settings = await load_concierge_settings(db)
+    settings = await load_health_settings(db)
     if settings.scope_mode != "selected":
         return 0
     outside = or_(

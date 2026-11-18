@@ -117,8 +117,8 @@ async def test_the_fleet_is_seeded_once_company_managed(concierge_on):
     async with _scratch("cc_seed") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        assert await fleet_seed.seed_concierge_fleet(db) == 5
-        assert await fleet_seed.seed_concierge_fleet(db) == 0
+        assert await fleet_seed.seed_health_fleet(db) == 5
+        assert await fleet_seed.seed_health_fleet(db) == 0
         agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
 
     assert sorted((a.health_role, a.is_company_managed, a.is_builtin) for a in agents) == [
@@ -141,11 +141,11 @@ async def test_an_admin_edit_survives_the_next_seed(concierge_on):
     async with _scratch("cc_seed_edit") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         steward = (await db.execute(select(Agent).where(Agent.slug == "concierge-memory-steward"))).scalar_one()
         steward.persona = "Edited by an administrator."
         await db.commit()
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         await db.refresh(steward)
     assert steward.persona == "Edited by an administrator."
 
@@ -156,7 +156,7 @@ async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concie
     async with _scratch("cc_seed_rename") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         spec = fleet_seed.ASSIGNMENT_BY_KEY["digest"]
         row = (await db.execute(select(Assignment).where(Assignment.name == spec.name))).scalar_one()
         row.name = spec.former_names[0]
@@ -166,7 +166,7 @@ async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concie
         before = await db.scalar(select(func.count()).select_from(Assignment))
         found = await fleet_seed.fleet_assignment(db, "digest")
         assert found is not None and found[0].id == row_id
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         after = await db.scalar(select(func.count()).select_from(Assignment))
         await db.refresh(row)
 
@@ -179,14 +179,14 @@ async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps
     async with _scratch("cc_seed_groups") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         # As an earlier seed left them: trace and platform reads, no iteration cap.
         analyst = (await db.execute(select(Agent).where(Agent.health_role == "quality_analyst"))).scalar_one()
         analyst.builtin_tool_ids = ["observability", "platform_insights", *analyst.builtin_tool_ids]
         for assignment in (await db.execute(select(Assignment))).scalars():
             assignment.max_iterations = None
         await db.commit()
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         agents = (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars().all()
         # The fleet's own loops; the weekly fleet health check (#11700) is not a Concierge assignment.
         caps = {
@@ -207,7 +207,7 @@ async def test_a_cycle_run_has_no_user_and_acts_as_the_concierge_alone(concierge
     from unittest.mock import AsyncMock
 
     from app.api.v1 import helpers
-    from app.services.health.identity import mark_concierge_run
+    from app.services.health.identity import mark_health_run
 
     monkeypatch.setattr(assignment_engine, "trigger_assignment", _REAL_TRIGGER)
     monkeypatch.setattr(assignment_engine, "_refuse_if_ai_disabled", AsyncMock())
@@ -230,7 +230,7 @@ async def test_a_cycle_run_has_no_user_and_acts_as_the_concierge_alone(concierge
             @helpers.company_managed_run_scoped
             async def _marks():
                 company_managed = helpers.mark_company_managed_run(assignment, run)
-                principal = await mark_concierge_run(db, agent, run.user_id)
+                principal = await mark_health_run(db, agent, run.user_id)
                 return company_managed, principal, helpers.agent_tool_admin_bypass(admin)
 
             company_managed, principal, bypass = await _marks()
@@ -290,7 +290,8 @@ async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
         async with sessions() as db:
             alone, asked = [await db.get(SubAgentTask, t.id) for t in tasks]
             child_users = [
-                (await db.get(AssignmentRun, uuid.UUID(t.metadata_json["assignment_run_id"]))).user_id for t in (alone, asked)
+                (await db.get(AssignmentRun, uuid.UUID(t.metadata_json["assignment_run_id"]))).user_id
+                for t in (alone, asked)
             ]
 
     assert alone.user_id == admin.id and alone.metadata_json.get(CONCIERGE_ALONE_KEY) is True
@@ -302,8 +303,8 @@ async def test_the_fleet_is_seeded_on_every_deployment_and_once():
     async with _scratch("cc_seed_builtin") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        assert await fleet_seed.seed_concierge_fleet(db) > 0
-        assert await fleet_seed.seed_concierge_fleet(db) == 0
+        assert await fleet_seed.seed_health_fleet(db) > 0
+        assert await fleet_seed.seed_health_fleet(db) == 0
 
 
 # ── One open cycle per target ───────────────────────────────────────────────
@@ -315,7 +316,7 @@ async def _seeded_with_target(sessions, **settings_fields):
         db.add(admin)
         await db.commit()
         await _enable(db, **settings_fields)
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         # Enrolled: Platform Health supervises opted-in targets only (consent.py).
         target = Agent(
             id=uuid.uuid4(), name="Invoice agent", user_id=admin.id, persona="You answer.", health_enrolled=True
@@ -338,8 +339,8 @@ async def test_two_racing_requests_open_one_cycle(concierge_on):
         first, second = await asyncio.gather(request(), request())
         async with sessions() as db:
             open_cycles = (
-                await db.execute(select(HealthCycle).where(HealthCycle.target_id == target.id))
-            ).scalars().all()
+                (await db.execute(select(HealthCycle).where(HealthCycle.target_id == target.id))).scalars().all()
+            )
 
     results = sorted([first, second], key=lambda r: r.started, reverse=True)
     assert [r.started for r in results] == [True, False]
@@ -504,7 +505,9 @@ async def test_a_delegated_run_inherits_its_parent_s_cycle(concierge_on):
             db.add(plain)
             await db.commit()
             inherited = await cycles.inherited_cycle_context(db, started.run_id)
-            child = AssignmentRun(agent_id=target.id, status="pending", parent_run_id=started.run_id, trigger_context=inherited)
+            child = AssignmentRun(
+                agent_id=target.id, status="pending", parent_run_id=started.run_id, trigger_context=inherited
+            )
             db.add(child)
             await db.commit()
             grandchild = await cycles.inherited_cycle_context(db, child.id)
@@ -538,7 +541,9 @@ async def test_a_failure_spike_fires_once_and_rearms_when_it_clears(concierge_on
     async with _scratch("cc_failure") as sessions:
         admin, target = await _seeded_with_target(sessions)
         async with sessions() as db:
-            assignment = Assignment(agent_id=target.id, user_id=admin.id, name="Nightly", prompt="Go.", trigger_type="manual")
+            assignment = Assignment(
+                agent_id=target.id, user_id=admin.id, name="Nightly", prompt="Go.", trigger_type="manual"
+            )
             db.add(assignment)
             await db.commit()
             await _runs(db, assignment, ["failed", "failed"] + ["completed"] * 18, now=now)
@@ -641,10 +646,14 @@ async def test_the_concierge_s_sandbox_copies_raise_no_signal(concierge_on):
     async with _scratch("cc_sandbox") as sessions:
         admin, _target = await _seeded_with_target(sessions)
         async with sessions() as db:
-            copy = Agent(id=uuid.uuid4(), name="Sandbox of Invoice agent", user_id=admin.id, persona="p", is_sandbox=True)
+            copy = Agent(
+                id=uuid.uuid4(), name="Sandbox of Invoice agent", user_id=admin.id, persona="p", is_sandbox=True
+            )
             db.add(copy)
             await db.commit()
-            assignment = Assignment(agent_id=copy.id, user_id=admin.id, name="Copy", prompt="Go.", trigger_type="manual")
+            assignment = Assignment(
+                agent_id=copy.id, user_id=admin.id, name="Copy", prompt="Go.", trigger_type="manual"
+            )
             db.add(assignment)
             for offset in range(1, 15):
                 db.add(
@@ -731,7 +740,7 @@ async def _access_matrix(sessions):
         db.add_all([admin, owner, reader, configurer, grouped, revoked, stranger])
         await db.commit()
         await _enable(db)
-        await fleet_seed.seed_concierge_fleet(db)
+        await fleet_seed.seed_health_fleet(db)
         group = Group(id=uuid.uuid4(), name=f"g-{uuid.uuid4().hex[:6]}")
         db.add(group)
         await db.flush()
@@ -765,15 +774,19 @@ async def _access_matrix(sessions):
         private.shared_user_ids = [str(reader.id), str(configurer.id)]
         private.shared_user_permissions = {str(reader.id): "read_only", str(configurer.id): "config"}
         await db.commit()
-        return {
-            "admin": admin,
-            "owner": owner,
-            "read_only": reader,
-            "config": configurer,
-            "group": grouped,
-            "revoked": revoked,
-            "stranger": stranger,
-        }, private, company
+        return (
+            {
+                "admin": admin,
+                "owner": owner,
+                "read_only": reader,
+                "config": configurer,
+                "group": grouped,
+                "revoked": revoked,
+                "stranger": stranger,
+            },
+            private,
+            company,
+        )
 
 
 @pytest.mark.parametrize(
@@ -1072,14 +1085,10 @@ async def test_the_inbox_searches_filters_and_sorts_for_the_data_table(concierge
             searched = (await client.get("/api/v1/health/improvements", params={**scope, "q": "tone"})).json()
             literal = (await client.get("/api/v1/health/improvements", params={**scope, "q": "100%"})).json()
             by_status = (
-                await client.get(
-                    "/api/v1/health/improvements", params={**scope, "sort": "status", "direction": "asc"}
-                )
+                await client.get("/api/v1/health/improvements", params={**scope, "sort": "status", "direction": "asc"})
             ).json()
             by_type = (
-                await client.get(
-                    "/api/v1/health/improvements", params={**scope, "proposal_type": ["persona", "skill"]}
-                )
+                await client.get("/api/v1/health/improvements", params={**scope, "proposal_type": ["persona", "skill"]})
             ).json()
             oldest = (
                 await client.get("/api/v1/health/improvements", params={**scope, "sort": "date", "direction": "asc"})

@@ -44,7 +44,7 @@ def withhold_evaluation_tools(catalog: dict[str, list[dict]]) -> dict[str, list[
     return catalog
 
 
-def withhold_concierge_tools(catalog: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def withhold_health_tools(catalog: dict[str, list[dict]]) -> dict[str, list[dict]]:
     """Drop every group gated on the Concierge (``gate="concierge"``) while "CONCIERGE" is off.
 
     For what an endpoint offers; the registry itself keeps them, so an agent
@@ -262,10 +262,10 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ms_defs, _ = build_memory_steward_tools()
     catalog["memory_steward"] = _extract(ms_defs)
     # Platform Concierge (#8259): every call opens its own session and resolves its caller.
-    from app.services.builtin_tools import build_concierge_diagnosis_tools, build_concierge_experiment_tools
+    from app.services.builtin_tools import build_health_diagnosis_tools, build_health_experiment_tools
 
-    catalog["concierge_diagnosis"] = _extract(build_concierge_diagnosis_tools("")[0])
-    catalog["concierge_experiments"] = _extract(build_concierge_experiment_tools("")[0])
+    catalog["concierge_diagnosis"] = _extract(build_health_diagnosis_tools("")[0])
+    catalog["concierge_experiments"] = _extract(build_health_experiment_tools("")[0])
     # Flow Lab (#8260): same, one session per call.
     from app.services.builtin_tools import build_flow_lab_tools
 
@@ -289,9 +289,9 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     catalog["concierge_sandbox"] = _extract(sandbox_defs)
 
     # Concierge evaluation (#8257): its own access rule at execution.
-    from app.services.health.evaluation_tools import build_concierge_evaluation_tools
+    from app.services.health.evaluation_tools import build_health_evaluation_tools
 
-    evaluation_defs, _ = build_concierge_evaluation_tools(None, None)  # type: ignore[arg-type]
+    evaluation_defs, _ = build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
     catalog["concierge_evaluation"] = _extract(evaluation_defs)
 
     # Improvement proposals (#8256): every call loads what it needs at execution.
@@ -301,9 +301,9 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     catalog["improvement_proposals"] = _extract(proposal_defs)
 
     # Concierge orchestrator (#8261): every call opens its own session.
-    from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-    co_defs, _ = build_concierge_orchestrator_tools("")
+    co_defs, _ = build_health_orchestrator_tools("")
     catalog["concierge_orchestrator"] = _extract(co_defs)
 
     # Work-item queue tools (#1713). Builders take no real side-effects at build

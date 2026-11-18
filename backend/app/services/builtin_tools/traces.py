@@ -101,9 +101,9 @@ def _concierge_refuses_other_agents() -> bool:
     """Whether the work acts as the Concierge, or a sandbox copy's turn, which never
     reads another agent's traces here: neither the admin bypass nor a supervision
     allow-list (a copy keeps its source's) checks consent."""
-    from app.services.health.identity import in_concierge_reach
+    from app.services.health.identity import in_health_reach
 
-    return in_concierge_reach()
+    return in_health_reach()
 
 
 async def may_read_agent_traces(

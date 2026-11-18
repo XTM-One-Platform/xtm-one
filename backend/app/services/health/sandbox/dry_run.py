@@ -37,12 +37,12 @@ DRY_RUN_AUDIT_ACTION = "concierge.dry_run_write"
 
 async def dry_run_active(db: AsyncSession) -> bool:
     """Whether the running work is the Concierge's and dry-run is on."""
-    from app.services.health.identity import in_concierge_run
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.identity import in_health_run
+    from app.services.health.settings import load_health_settings
 
-    if not in_concierge_run():
+    if not in_health_run():
         return False
-    return bool(getattr(await load_concierge_settings(db), "dry_run", False))
+    return bool(getattr(await load_health_settings(db), "dry_run", False))
 
 
 async def record_dry_run_write(

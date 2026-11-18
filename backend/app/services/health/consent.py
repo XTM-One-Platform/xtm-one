@@ -68,7 +68,7 @@ from app.models.agent import Agent
 from app.models.flow import Flow
 from app.models.user import User
 from app.services.health.availability import concierge_enabled
-from app.services.health.settings import HealthSettings, load_concierge_settings
+from app.services.health.settings import HealthSettings, load_health_settings
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ async def _active_settings(db: AsyncSession) -> HealthSettings | None:
     """The settings when the Concierge is on (flag and Settings), else ``None``."""
     if not concierge_enabled():
         return None
-    current = await load_concierge_settings(db)
+    current = await load_health_settings(db)
     return current if current.enabled else None
 
 

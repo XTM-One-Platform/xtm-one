@@ -1433,21 +1433,21 @@ def _add_platform_builder_tools(
         )
         composite.add_tools(pi_defs, pi_exec)
     if concierge_actor is not None:
-        from app.services.builtin_tools.health_quality import add_concierge_quality_tools
+        from app.services.builtin_tools.health_quality import add_health_quality_tools
 
-        add_concierge_quality_tools(
+        add_health_quality_tools(
             composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id, run_id=run_id
         )
         from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
         add_flow_lab_tools(composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id)
     if "concierge_orchestrator" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
+        from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
         # Acts as the Concierge in an administrator's chat with a fleet agent,
         # as the person otherwise (``concierge.cycle_access``, #8261). Work a
         # cycle delegated never starts another cycle.
-        co_defs, co_exec = build_concierge_orchestrator_tools(
+        co_defs, co_exec = build_health_orchestrator_tools(
             concierge_actor or None, allow_requests=not concierge_alone
         )
         composite.add_tools(co_defs, co_exec)
@@ -1468,10 +1468,10 @@ def _add_platform_builder_tools(
         # Its own access rule (the Concierge or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
     if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None:
-        from app.services.health.evaluation_tools import build_concierge_evaluation_tools
+        from app.services.health.evaluation_tools import build_health_evaluation_tools
 
         # Its own access rule (the Concierge, or an administrator where evaluation is on).
-        composite.add_tools(*build_concierge_evaluation_tools(db, concierge_actor or None, run_id=run_id))
+        composite.add_tools(*build_health_evaluation_tools(db, concierge_actor or None, run_id=run_id))
     if "improvement_proposals" in agent_builtin_tool_ids and concierge_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 

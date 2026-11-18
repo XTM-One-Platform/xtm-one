@@ -55,11 +55,11 @@ async def sandbox_access_refusal(
     """Why the caller may not use the sandbox on this source (logged), ``None`` when it may."""
     from app.models.user import User
     from app.services.health.availability import concierge_enabled
-    from app.services.health.identity import in_concierge_run
+    from app.services.health.identity import in_health_run
 
     if not concierge_enabled():
         return "the CONCIERGE flag is off"
-    if not in_concierge_run():
+    if not in_health_run():
         try:
             caller = await db.get(User, uuid.UUID(str(user_id))) if user_id else None
         except (TypeError, ValueError):
@@ -77,7 +77,7 @@ async def subject_refusal(db: AsyncSession, source_type: str | None, source_id: 
     from app.models.agent import Agent
     from app.models.flow import Flow
     from app.services.health.consent import content_readable, in_supervision_scope
-    from app.services.health.identity import is_concierge_agent
+    from app.services.health.identity import is_health_agent
 
     if source_type not in ("agent", "flow") or source_id is None:
         return "the copy has no source nor an agent it automates"
@@ -86,7 +86,7 @@ async def subject_refusal(db: AsyncSession, source_type: str | None, source_id: 
     except (TypeError, ValueError):
         return "the source id is not valid"
     source = await db.get(Agent if source_type == "agent" else Flow, source_id)
-    if source is None or source.is_sandbox or (source_type == "agent" and is_concierge_agent(source)):
+    if source is None or source.is_sandbox or (source_type == "agent" and is_health_agent(source)):
         return "the source is missing, a copy, or one of the fleet"
     if not await in_supervision_scope(db, source_type, source_id):
         return "the source is outside the supervision scope"
@@ -182,7 +182,7 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
         copy_id: str, input: str | None = None, parameters: Any = None, case_ref: str | None = None
     ) -> str:
         from app.services import orchestration_engine as engine
-        from app.services.health.identity import in_concierge_run
+        from app.services.health.identity import in_health_run
 
         copy, refusal = await _copy_for_run(copy_id)
         if refusal is not None:
@@ -190,7 +190,7 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
         # Only an administrator calling outside a Concierge run is someone to
         # run an owner-less copy as; the Concierge never borrows an admin.
         requested_by = None
-        if not in_concierge_run():
+        if not in_health_run():
             # An administrator runs a copy as its source's owner would run it
             # (live reads with that owner's integrations): said in the audit log.
             await _audit_admin_run(copy)
@@ -204,7 +204,11 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
                 )
                 await db.commit()
                 return json.dumps(
-                    {"sandbox_run_id": str(result.sandbox_run_id), "output": result.output, "report": _summary(result.report)},
+                    {
+                        "sandbox_run_id": str(result.sandbox_run_id),
+                        "output": result.output,
+                        "report": _summary(result.report),
+                    },
                     ensure_ascii=False,
                 )
             payload = parameters if isinstance(parameters, dict) else {}

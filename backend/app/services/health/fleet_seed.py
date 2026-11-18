@@ -21,7 +21,7 @@ The agents are **not** built-in: the PRD makes them "editable like any agent
 (persona, model, skills)", and built-in agents are read-only in XTM One mode
 (``helpers.writable_agent_error``). So the seed creates each one once, keyed by
 its slug, and afterwards only keeps what nothing else may write: its fleet
-role (``identity.set_concierge_role``, the seed's call alone), its fleet
+role (``identity.set_health_role``, the seed's call alone), its fleet
 membership and the skills the levels below ship. A persona, model or tool an
 administrator changed stays changed, except the tool groups that read as the
 run's user with no consent check (:data:`NON_CONSENT_TOOL_GROUPS`): every seed
@@ -361,7 +361,7 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
     return fleet
 
 
-async def seed_concierge_fleet(db: AsyncSession) -> int:
+async def seed_health_fleet(db: AsyncSession) -> int:
     """Create what is missing of the fleet; the number of agents created. Commits.
 
     Idempotent. Called by ``provision_builtin_content`` after the skill seed, so
@@ -370,7 +370,7 @@ async def seed_concierge_fleet(db: AsyncSession) -> int:
     if not concierge_enabled():
         return 0
     from app.api.v1.helpers import resolve_company_managed_owner_id
-    from app.services.health.identity import set_concierge_role
+    from app.services.health.identity import set_health_role
     from app.services.health.naming import DEFAULT_NAMES, load_concierge_name, rename_concierge
 
     owner_id = await resolve_company_managed_owner_id(db)
@@ -395,7 +395,7 @@ async def seed_concierge_fleet(db: AsyncSession) -> int:
             agent = by_slug[spec.slug] = await _create_agent(db, spec, owner_id, name)
             created += 1
         if agent.health_role != spec.role:
-            await set_concierge_role(db, agent, spec.role)
+            await set_health_role(db, agent, spec.role)
         kept = [tool for tool in agent.builtin_tool_ids or [] if tool not in NON_CONSENT_TOOL_GROUPS]
         if kept != list(agent.builtin_tool_ids or []):
             agent.builtin_tool_ids = kept

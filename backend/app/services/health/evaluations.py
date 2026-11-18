@@ -13,7 +13,7 @@
 
 """The Concierge's evaluations (#8257, PRD 6.8, decision B9).
 
-:func:`launch_concierge_evaluation` creates an evaluation on a dataset the
+:func:`launch_health_evaluation` creates an evaluation on a dataset the
 Concierge built, with agents and flows as subjects (sandbox copies of targets of
 its supervision scope: never a production agent or flow), marks it ``concierge_built`` - the mark the engine gate
 reads to run it whatever the mode - and launches it through the same plan and
@@ -27,7 +27,7 @@ run that is not complete, or lost entries to a revocation, gives no verdict.
 
 Budget (PRD 6.12): a launch inside a cycle reserves on it, held past the
 cycle's close (``budget.reserve(hold=...)``); a launch outside one passes the
-budget gate. :func:`settle_concierge_evaluations`, on the Concierge's tick,
+budget gate. :func:`settle_health_evaluations`, on the Concierge's tick,
 charges an evaluation that ended on the cycle that reserved for it, and stops
 one whose measured spend passes a cap.
 """
@@ -115,7 +115,7 @@ async def evaluation_subject_refusal(db: AsyncSession, kind: str, subject_id: uu
     real (decision B2). Its source, when it has one, is in the supervision
     scope and is not one of the fleet's agents.
     """
-    from app.services.health.identity import is_concierge_agent
+    from app.services.health.identity import is_health_agent
     from app.services.health.sandbox.copies import sandbox_copy_of
 
     row = await db.get(Agent if kind == "agent" else Flow, subject_id)
@@ -128,14 +128,14 @@ async def evaluation_subject_refusal(db: AsyncSession, kind: str, subject_id: uu
         return None  # a new flow prototype: nothing in production behind it
     if copy.source_type == "agent":
         source = await db.get(Agent, copy.source_id)
-        if source is None or is_concierge_agent(source):
+        if source is None or is_health_agent(source):
             return "the source is missing or a fleet agent"
     if not await in_supervision_scope(db, copy.source_type, copy.source_id):  # type: ignore[arg-type]
         return "the source is outside the supervision scope"
     return None
 
 
-async def launch_concierge_evaluation(
+async def launch_health_evaluation(
     db: AsyncSession,
     *,
     dataset_id: uuid.UUID,
@@ -356,7 +356,7 @@ def _past_cap(left: budget.BudgetRemaining, held: budget.Reservation, tokens: in
     )
 
 
-async def settle_concierge_evaluations(db: AsyncSession, *, limit: int = 100) -> int:
+async def settle_health_evaluations(db: AsyncSession, *, limit: int = 100) -> int:
     """Charge every held Concierge evaluation that ended on the cycle that reserved
     for it; stop the runs of one whose spend passes a cap. The number charged. Commits."""
     charged = 0

@@ -197,7 +197,7 @@ def _read(stored: object) -> HealthSettings:
         return HealthSettings()
 
 
-async def load_concierge_settings(db: AsyncSession) -> HealthSettings:
+async def load_health_settings(db: AsyncSession) -> HealthSettings:
     """The stored settings, their defaults when none (read on every call: no cache)."""
     from app.models.platform_settings import PlatformSettings
 
@@ -211,7 +211,7 @@ async def load_concierge_settings(db: AsyncSession) -> HealthSettings:
     return _read(stored)
 
 
-async def save_concierge_settings(
+async def save_health_settings(
     db: AsyncSession, new: HealthSettings, *, actor: User, request: Request | None = None
 ) -> tuple[HealthSettings, HealthSettings]:
     """Store *new*; ``(before, after)``. Audited, flushed, not committed.

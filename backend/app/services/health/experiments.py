@@ -28,7 +28,7 @@
   comparison (quality with its 2-point noise margin, cost, latency) and the
   writes the sandbox answered with a model are recorded. A run stopped early
   gives ``incomplete``, never a verdict. The spend is the evaluation's own to
-  charge (``evaluations.settle_concierge_evaluations``).
+  charge (``evaluations.settle_health_evaluations``).
 * **File** (Experimenter): a proposal (level 3) built from the row - the
   verdict is the measurement's, never an argument - or ``unmeasured`` with the
   reason the experiment was not measured, stated as such.
@@ -360,7 +360,7 @@ async def run(
             db, experiment, created_for=f"{EXPERIMENT_COPY_PREFIX}{experiment.id}", author_agent_id=author_agent_id
         )
         # The evaluation reserves the sizing on the cycle and holds it until it
-        # charges what its runs spent (``evaluations.settle_concierge_evaluations``).
+        # charges what its runs spent (``evaluations.settle_health_evaluations``).
         evaluation_id, baseline_runs, variant_runs = await deps.launch(
             db,
             dataset_id=built.dataset_id,

@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.models.health import HealthBudgetMonth, HealthCycle
 from app.services import agentic_gate
 from app.services.health import budget
-from app.services.health.settings import load_concierge_settings
+from app.services.health.settings import load_health_settings
 from tests.health_support import World, concierge_database, configure
 
 pytestmark = pytest.mark.integration
@@ -30,6 +30,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture(autouse=True)
 def _flag_on(monkeypatch):
     monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
+
 
 @pytest.fixture
 def licensed(monkeypatch):
@@ -138,7 +139,7 @@ async def test_a_stale_cycle_is_closed_and_gives_its_reservation_back(licensed) 
             assert (await db.get(HealthCycle, stale)).status == "failed"
             assert (await db.get(HealthCycle, fresh)).status == "open"
             assert (await db.get(HealthBudgetMonth, budget.current_month())).reserved_tokens == 0
-            assert (await load_concierge_settings(db)).enabled is True
+            assert (await load_health_settings(db)).enabled is True
 
 
 async def test_a_late_charge_after_close_keeps_the_other_cycles_reservations(licensed) -> None:

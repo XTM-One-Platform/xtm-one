@@ -312,10 +312,10 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
     from zoneinfo import ZoneInfo
 
     from app.core.utils import next_cron_run
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
     now = now or datetime.now(UTC)
-    settings = await load_concierge_settings(db)
+    settings = await load_health_settings(db)
     tz = ZoneInfo(settings.schedules.timezone)
     started = 0
     for key in SCHEDULE_KEYS:
@@ -530,12 +530,12 @@ async def concierge_tick(*, ai_on: bool) -> None:
     """
     from app.core.database import async_session
     from app.services.health.availability import concierge_enabled
-    from app.services.health.evaluations import settle_concierge_evaluations
+    from app.services.health.evaluations import settle_health_evaluations
     from app.services.health.experiments import settle_running_experiments
 
     # An evaluation outlives the run that launched it: charged (or stopped at a
     # cap) and its experiment's result recorded here, on its original cycle.
-    for settle in (settle_concierge_evaluations, settle_running_experiments):
+    for settle in (settle_health_evaluations, settle_running_experiments):
         try:
             async with async_session() as db:
                 await settle(db)

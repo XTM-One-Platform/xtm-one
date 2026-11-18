@@ -58,10 +58,7 @@ from app.services.health.sandbox.session import SandboxReport, SandboxSession, s
 logger = logging.getLogger(__name__)
 
 #: What a sandbox run is answered with when its source has no one to run as.
-NO_RUNNER = (
-    "This sandbox copy has no user to run as: its source has no owner and no "
-    "administrator asked for the run."
-)
+NO_RUNNER = "This sandbox copy has no user to run as: its source has no owner and no administrator asked for the run."
 #: What a run of a copy whose subject is out of reach is answered with (the reason is logged).
 SUBJECT_REFUSED = "This sandbox copy cannot run: its source is no longer within the Concierge's reach."
 
@@ -86,7 +83,7 @@ async def runner_user_id(
     from app.models.agent import Agent
     from app.models.flow import Flow
     from app.services.health.flow_lab_access import copy_subject
-    from app.services.health.identity import in_concierge_run
+    from app.services.health.identity import in_health_run
 
     subject = await copy_subject(db, copy)
     owner = None
@@ -95,7 +92,7 @@ async def runner_user_id(
         owner = await db.scalar(select(model.user_id).where(model.id == subject[1]))
     if owner is not None:
         return owner
-    return None if in_concierge_run() else requested_by
+    return None if in_health_run() else requested_by
 
 
 async def _subject_refusal(db: AsyncSession, copy: SandboxCopy) -> None:

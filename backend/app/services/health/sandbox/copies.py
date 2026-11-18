@@ -78,7 +78,7 @@ def sandbox_tool_ids(tool_ids: Sequence[str] | None) -> list[str]:
     """*tool_ids* without the groups that read as the runner with no consent
     rule (``fleet_seed.NON_CONSENT_TOOL_GROUPS``): never on a copy, at its
     creation and at each of its turns. Defence in depth: a copy's turn keeps
-    the Concierge's reach whatever it carries (``identity.in_concierge_reach``).
+    the Concierge's reach whatever it carries (``identity.in_health_reach``).
     """
     from app.services.health.fleet_seed import NON_CONSENT_TOOL_GROUPS
 
@@ -162,9 +162,7 @@ async def _copy_flow(db: AsyncSession, source_id: uuid.UUID | None, overrides: S
     )
     db.add(copy)
     await db.flush()
-    await create_flow_version(
-        db, flow_id=copy.id, graph=copy.graph, author_id=None, commit_message="Sandbox copy"
-    )
+    await create_flow_version(db, flow_id=copy.id, graph=copy.graph, author_id=None, commit_message="Sandbox copy")
     return copy.id
 
 
@@ -225,11 +223,11 @@ async def get_sandbox_copy(db: AsyncSession, copy_id: uuid.UUID | str) -> Sandbo
     return await db.get(SandboxCopy, parsed)
 
 
-async def sandbox_copy_of(
-    db: AsyncSession, *, agent_id: Any = None, flow_id: Any = None
-) -> SandboxCopy | None:
+async def sandbox_copy_of(db: AsyncSession, *, agent_id: Any = None, flow_id: Any = None) -> SandboxCopy | None:
     """The copy row whose copied agent or flow is *agent_id* / *flow_id*."""
-    column, value = (SandboxCopy.copy_agent_id, agent_id) if agent_id is not None else (SandboxCopy.copy_flow_id, flow_id)
+    column, value = (
+        (SandboxCopy.copy_agent_id, agent_id) if agent_id is not None else (SandboxCopy.copy_flow_id, flow_id)
+    )
     try:
         parsed = uuid.UUID(str(value))
     except (TypeError, ValueError):
@@ -320,4 +318,3 @@ async def purge_expired_sandbox_copies(db: AsyncSession, *, now: datetime | None
     if doomed:
         logger.info("Sandbox purge: %d expired copies deleted", len(doomed))
     return len(doomed)
-

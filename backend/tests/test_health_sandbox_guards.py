@@ -100,7 +100,7 @@ async def test_a_concierge_turn_while_dry_run_is_on_gets_a_dry_run_session(monke
     async def _settings(_db):
         return HealthSettings(dry_run=True)
 
-    monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
+    monkeypatch.setattr("app.services.health.settings.load_health_settings", _settings)
     agent = MagicMock(is_sandbox=False)
     assert await turns.agent_turn_session(MagicMock(), "u", agent) is None
     with acting_as_concierge(_PRINCIPAL):
@@ -115,7 +115,7 @@ async def test_dry_run_off_binds_nothing(monkeypatch):
     async def _settings(_db):
         return HealthSettings()
 
-    monkeypatch.setattr("app.services.health.settings.load_concierge_settings", _settings)
+    monkeypatch.setattr("app.services.health.settings.load_health_settings", _settings)
     with acting_as_concierge(_PRINCIPAL):
         assert await turns.agent_turn_session(MagicMock(), "u", MagicMock(is_sandbox=False)) is None
 
@@ -130,7 +130,9 @@ async def test_a_service_write_kept_by_dry_run_is_audited_as_the_concierge(monke
 
     monkeypatch.setattr("app.services.audit.log_system_audit", _audit)
     admin = uuid.uuid4()
-    with acting_as_concierge(HealthPrincipal(agent_id=uuid.uuid4(), role="memory_steward", on_behalf_of_admin_id=admin)):
+    with acting_as_concierge(
+        HealthPrincipal(agent_id=uuid.uuid4(), role="memory_steward", on_behalf_of_admin_id=admin)
+    ):
         await dry_run.record_dry_run_write(MagicMock(), action="consolidate lane", target_type="memory", target_id="m1")
     await dry_run.record_dry_run_write(MagicMock(), action="consolidate lane", target_type="memory")
     assert [(e["actor"], e["anchor_user_id"], e["action"], e["entity_id"]) for e in entries] == [

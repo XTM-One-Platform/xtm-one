@@ -350,9 +350,9 @@ async def _build_xtm_tools(
 
     composite.add_tools(*build_sandbox_tools(db, user_id))
     # Concierge evaluation (#8257): administrators, while evaluation is on.
-    from app.services.health.evaluation_tools import build_concierge_evaluation_tools
+    from app.services.health.evaluation_tools import build_health_evaluation_tools
 
-    composite.add_tools(*build_concierge_evaluation_tools(db, user_id))
+    composite.add_tools(*build_health_evaluation_tools(db, user_id))
     # Improvement proposals (#8256): the caller's managed targets; filing
     # stays the Concierge Experimenter's, so an MCP caller is refused it.
     from app.services.builtin_tools.improvements import build_improvement_tools
@@ -360,9 +360,9 @@ async def _build_xtm_tools(
     composite.add_tools(*build_improvement_tools(db, user_id))
 
     # Concierge (#8261): a person's reach - the targets they manage - on every call.
-    from app.services.builtin_tools.health_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-    composite.add_tools(*build_concierge_orchestrator_tools(user_id))
+    composite.add_tools(*build_health_orchestrator_tools(user_id))
 
     # Observability. ``allow_cross_agent`` grants the supervision surface; the
     # tools then gate it on the caller's own admin privilege, so a non-admin
@@ -399,12 +399,12 @@ async def _build_xtm_tools(
 
     # Platform Concierge (#8259): the read half only - a person is never the
     # Concierge, whose agents alone write findings and run experiments.
-    from app.services.builtin_tools.health_experiments import build_concierge_experiment_tools
-    from app.services.builtin_tools.health_quality import build_concierge_diagnosis_tools, concierge_tools_offered
+    from app.services.builtin_tools.health_experiments import build_health_experiment_tools
+    from app.services.builtin_tools.health_quality import build_health_diagnosis_tools, concierge_tools_offered
 
     if concierge_tools_offered():
-        composite.add_tools(*build_concierge_diagnosis_tools(user_id, read_only=True))
-        composite.add_tools(*build_concierge_experiment_tools(user_id, read_only=True))
+        composite.add_tools(*build_health_diagnosis_tools(user_id, read_only=True))
+        composite.add_tools(*build_health_experiment_tools(user_id, read_only=True))
         from app.services.builtin_tools.flow_lab import build_flow_lab_tools
 
         composite.add_tools(*build_flow_lab_tools(user_id, read_only=True))

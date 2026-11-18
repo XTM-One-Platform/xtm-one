@@ -231,7 +231,7 @@ def _experiment_definitions() -> list[ToolDefinition]:
     ]
 
 
-def build_concierge_experiment_tools(
+def build_health_experiment_tools(
     user_id: str, *, read_only: bool = False, run_id: str | None = None, agent_id: str | None = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The Experimenter's tools acting for *user_id* (``read_only``: the reads alone, as on ``/mcp/xtm``),

@@ -140,8 +140,8 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "concierge_diagnosis": bt.build_concierge_diagnosis_tools("")[0],
-        "concierge_experiments": bt.build_concierge_experiment_tools("")[0],
+        "concierge_diagnosis": bt.build_health_diagnosis_tools("")[0],
+        "concierge_experiments": bt.build_health_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
     }
     for group_id, definitions in built.items():

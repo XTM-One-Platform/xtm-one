@@ -3542,12 +3542,12 @@ def agent_tool_admin_bypass(user: HasIsAdmin | None) -> bool:
 
     Never inside a Concierge run or turn, nor a sandbox copy's turn: its reach
     is its scope and consent alone, whoever owns its agent or asked for the
-    work (PRD 9; ``identity.in_concierge_reach``).
+    work (PRD 9; ``identity.in_health_reach``).
     """
     from app.core.security_options import security_option
-    from app.services.health.identity import in_concierge_reach
+    from app.services.health.identity import in_health_reach
 
-    if in_concierge_reach():
+    if in_health_reach():
         return False
     return bool(getattr(user, "is_admin", False)) and not security_option("agent_tools_strict_admin_access")
 
@@ -3604,7 +3604,7 @@ def company_managed_run_scoped[**P, R](
 
     @functools.wraps(fn)
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
-        # The same scope bounds the Concierge mark (``mark_concierge_run``).
+        # The same scope bounds the Concierge mark (``mark_health_run``).
         from app.services.health.identity import concierge_run_scope
 
         token = _NO_ACCOUNT_PROVENANCE.set("")

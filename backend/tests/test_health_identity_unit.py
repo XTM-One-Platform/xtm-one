@@ -30,6 +30,7 @@ def _agent(*, role: str | None = "experimenter", company_managed: bool = True):
 def _user(role: str = "admin", *, active: bool = True):
     return SimpleNamespace(id=uuid.uuid4(), role=role, is_active=active)
 
+
 # ── The flag ──────────────────────────────────────────────────────────────
 
 
@@ -43,11 +44,11 @@ def test_there_is_no_concierge_flag_any_more() -> None:
 
 def test_the_principal_id_is_stable_and_only_it_names_the_concierge() -> None:
     assert identity.concierge_identity_id() == uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
-    assert identity.is_concierge_identity(identity.CONCIERGE_PRINCIPAL_ID) is True
-    assert identity.is_concierge_identity(str(identity.CONCIERGE_PRINCIPAL_ID)) is True
-    assert identity.is_concierge_identity(uuid.uuid4()) is False
-    assert identity.is_concierge_identity("not-a-uuid") is False
-    assert identity.is_concierge_identity(None) is False
+    assert identity.is_health_identity(identity.CONCIERGE_PRINCIPAL_ID) is True
+    assert identity.is_health_identity(str(identity.CONCIERGE_PRINCIPAL_ID)) is True
+    assert identity.is_health_identity(uuid.uuid4()) is False
+    assert identity.is_health_identity("not-a-uuid") is False
+    assert identity.is_health_identity(None) is False
 
 
 @pytest.mark.parametrize(
@@ -80,7 +81,7 @@ def test_the_principal_lives_for_its_scope_with_no_flag(monkeypatch) -> None:
     principal = identity.concierge_principal_for(_agent(), None)
     with identity.acting_as_concierge(principal):
         assert identity.current_concierge() == principal
-        assert identity.in_concierge_run() is True
+        assert identity.in_health_run() is True
     assert identity._CURRENT.get() is None
 
 
@@ -88,10 +89,10 @@ def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope(flag_o
     agent = _agent()
 
     async def scenario() -> None:
-        assert await identity.mark_concierge_run(None, agent, None) is None
+        assert await identity.mark_health_run(None, agent, None) is None
         assert identity.current_concierge() is None
         with identity.concierge_run_scope():
-            marked = await identity.mark_concierge_run(None, agent, None)
+            marked = await identity.mark_health_run(None, agent, None)
             assert marked is not None
             assert identity.current_concierge() == marked
         assert identity.current_concierge() is None
@@ -110,12 +111,12 @@ def test_the_seed_alone_gives_a_role_and_only_a_known_one_to_a_company_managed_a
             return None
 
     agent = _agent(role=None)
-    asyncio.run(identity.set_concierge_role(_Db(), agent, "flow_lab"))
+    asyncio.run(identity.set_health_role(_Db(), agent, "flow_lab"))
     assert agent.health_role == "flow_lab"
     with pytest.raises(ValueError):
-        asyncio.run(identity.set_concierge_role(_Db(), agent, "sandbox"))
+        asyncio.run(identity.set_health_role(_Db(), agent, "sandbox"))
     with pytest.raises(ValueError):
-        asyncio.run(identity.set_concierge_role(_Db(), _agent(role=None, company_managed=False), "flow_lab"))
+        asyncio.run(identity.set_health_role(_Db(), _agent(role=None, company_managed=False), "flow_lab"))
 
 
 # ── Who a run acts as ─────────────────────────────────────────────────────
@@ -174,10 +175,10 @@ def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -
 
     admin = SimpleNamespace(**vars(_user("admin")), is_admin=True)
     assert agent_tool_admin_bypass(admin) is True
-    assert identity.in_concierge_reach() is False
+    assert identity.in_health_reach() is False
     with sandbox_session(SandboxSession(mode="sandbox")):
         assert identity.current_concierge() is None
-        assert identity.in_concierge_reach() is True
+        assert identity.in_health_reach() is True
         assert agent_tool_admin_bypass(admin) is False
     # A dry run is a Concierge turn's own session: it is no sandbox turn.
     with sandbox_session(SandboxSession(mode="dry_run")):
@@ -257,7 +258,6 @@ def test_a_narrowed_scope_is_told_apart(before: dict, after: dict, narrowed: boo
     assert scope_narrowed(HealthSettings(**before), HealthSettings(**after)) is narrowed
 
 
-
 def test_the_assignment_engine_scope_bounds_the_mark(flag_on) -> None:
     from app.api.v1.helpers import company_managed_run_scoped
 
@@ -265,7 +265,7 @@ def test_the_assignment_engine_scope_bounds_the_mark(flag_on) -> None:
 
     @company_managed_run_scoped
     async def run():
-        await identity.mark_concierge_run(None, agent, None)
+        await identity.mark_health_run(None, agent, None)
         return identity.current_concierge()
 
     principal = asyncio.run(run())

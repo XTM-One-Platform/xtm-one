@@ -182,9 +182,9 @@ def surface_filter() -> Any:
 async def watch_days(db: AsyncSession) -> int:
     """The watch window of an agent-filed change, in days (decision B18): Settings >
     Agents and automations > Concierge (``HealthSettings.proposal_watch_days``), read on *db*."""
-    from app.services.health.settings import load_concierge_settings
+    from app.services.health.settings import load_health_settings
 
-    return (await load_concierge_settings(db)).proposal_watch_days
+    return (await load_health_settings(db)).proposal_watch_days
 
 
 def _handler(proposal_type: str) -> ProposalHandler:

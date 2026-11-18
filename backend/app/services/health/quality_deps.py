@@ -192,13 +192,13 @@ async def launch(
     from app.models.evaluation import EvaluationRun
     from app.services.evaluation.launch import LaunchRefusedError
     from app.services.health.budget import BudgetRefusedError
-    from app.services.health.evaluations import HealthEvaluationError, launch_concierge_evaluation
+    from app.services.health.evaluations import HealthEvaluationError, launch_health_evaluation
 
     if (baseline.overrides or variant.overrides) and not SUBJECT_OVERLAYS_AVAILABLE:
         raise EvaluationUnavailableError("per-arm overlay")
     arms = (baseline, variant)
     try:
-        launched = await launch_concierge_evaluation(
+        launched = await launch_health_evaluation(
             db,
             dataset_id=dataset_id,
             subject_agent_ids=[arm.id for arm in arms if arm.kind == "agent"],
@@ -212,9 +212,7 @@ async def launch(
         raise BudgetUnavailableError(exc.code) from exc
     except (HealthEvaluationError, LaunchRefusedError) as exc:
         raise EvaluationUnavailableError(str(exc)) from exc
-    runs = (
-        await db.execute(select(EvaluationRun).where(EvaluationRun.id.in_(launched.run_ids)))
-    ).scalars().all()
+    runs = (await db.execute(select(EvaluationRun).where(EvaluationRun.id.in_(launched.run_ids)))).scalars().all()
     return (
         launched.evaluation_id,
         [run.id for run in runs if run.subject_id == baseline.id],
@@ -238,12 +236,21 @@ async def compare(
         raise EvaluationUnavailableError("an arm has no run")
     baseline_id, variant_id = baseline_run_ids[0], variant_run_ids[0]
     statuses = (
-        await db.execute(select(EvaluationRun.status).where(EvaluationRun.id.in_([baseline_id, variant_id])))
-    ).scalars().all()
+        (await db.execute(select(EvaluationRun.status).where(EvaluationRun.id.in_([baseline_id, variant_id]))))
+        .scalars()
+        .all()
+    )
     if any(status in _RUNNING for status in statuses) or len(statuses) < 2:
         return RunsCompared(
-            finished=False, incomplete=False, quality_metric="score", baseline=None, candidate=None, delta=None,
-            verdict=None, cost_usd={}, latency_s={},
+            finished=False,
+            incomplete=False,
+            quality_metric="score",
+            baseline=None,
+            candidate=None,
+            delta=None,
+            verdict=None,
+            cost_usd={},
+            latency_s={},
         )
     compared = await compare_concierge_runs(db, baseline_run_id=baseline_id, candidate_run_id=variant_id)
     quality = next((m for m in compared.metrics if m["metric"] == compared.quality_metric), {})

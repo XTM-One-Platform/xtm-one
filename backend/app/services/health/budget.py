@@ -56,7 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.health import HealthBudgetMonth, HealthBudgetWork, HealthCycle
 from app.services.health.availability import concierge_active
 from app.services.health.identity import CONCIERGE_ROLES
-from app.services.health.settings import HealthBudgetCaps, load_concierge_settings
+from app.services.health.settings import HealthBudgetCaps, load_health_settings
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +240,7 @@ async def _cap_state(db: AsyncSession, cycle_id: uuid.UUID | None) -> BudgetRefu
     """The Concierge's own switch and caps, without the AI gate."""
     if not await concierge_active(db):
         return "concierge_disabled"
-    caps = (await load_concierge_settings(db)).budget
+    caps = (await load_health_settings(db)).budget
     cycle = await _cycle_row(db, cycle_id, lock=False) if cycle_id is not None else None
     if cycle_id is not None and (cycle is None or cycle.status != "open"):
         return "cycle_closed"
@@ -290,7 +290,7 @@ async def reserve(
     tokens, cost = _tokens(tokens), _cost(cost_usd)
     if not await concierge_active(db):
         raise BudgetRefusedError("concierge_disabled")
-    caps = (await load_concierge_settings(db)).budget
+    caps = (await load_health_settings(db)).budget
     peek = await _cycle_row(db, cycle_id, lock=False)
     if peek is None:
         raise BudgetRefusedError("cycle_closed")
@@ -421,7 +421,7 @@ async def remaining(db: AsyncSession, cycle_id: uuid.UUID | None = None) -> Budg
 
     Read by a run in flight: the Concierge's own switch and caps, never the AI gate.
     """
-    caps = (await load_concierge_settings(db)).budget
+    caps = (await load_health_settings(db)).budget
     cycle = await _cycle_row(db, cycle_id, lock=False) if cycle_id is not None else None
     month = await _month_row(db, cycle.month if cycle is not None else current_month())
     m_tokens = (month.spent_tokens + month.reserved_tokens) if month else 0

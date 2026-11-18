@@ -111,9 +111,9 @@ async def shadow_durations(db: AsyncSession) -> ShadowDurations:
     """The shadow and watch durations: Settings > Agents and automations > Concierge, else B18's defaults."""
     shadow_days, watch_days, min_pairs = DEFAULT_SHADOW_DAYS, DEFAULT_WATCH_DAYS, DEFAULT_MIN_PAIRS
     try:
-        from app.services.health.settings import load_concierge_settings
+        from app.services.health.settings import load_health_settings
 
-        settings = await load_concierge_settings(db)
+        settings = await load_health_settings(db)
         shadow_days = int(getattr(settings, "flow_shadow_days", shadow_days) or shadow_days)
         watch_days = int(getattr(settings, "flow_watch_days", watch_days) or watch_days)
         min_pairs = int(getattr(settings, "flow_shadow_min_pairs", min_pairs) or min_pairs)

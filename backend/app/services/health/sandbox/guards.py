@@ -49,8 +49,8 @@ FLOW_PRODUCTION_WRITES = frozenset({"update_flow_graph", "activate_flow", "deact
 FLOW_SHARED_WRITES = frozenset({"create_flow_event_type"})
 
 
-def in_concierge_run() -> bool:
-    from app.services.health.identity import in_concierge_run as _in_run
+def in_health_run() -> bool:
+    from app.services.health.identity import in_health_run as _in_run
 
     return _in_run()
 
@@ -62,16 +62,14 @@ def _refused(message: str) -> ToolResult:
 def _refused_in_concierge_run(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
     @functools.wraps(handler)
     async def _checked(*args: Any, **kwargs: Any) -> Any:
-        if in_concierge_run():
+        if in_health_run():
             return _refused(BUILDER_REFUSAL)
         return await handler(*args, **kwargs)
 
     return _checked
 
 
-def guard_agent_builder(
-    definitions: list[ToolDefinition], executor: CallableToolExecutor
-) -> list[ToolDefinition]:
+def guard_agent_builder(definitions: list[ToolDefinition], executor: CallableToolExecutor) -> list[ToolDefinition]:
     """``agent_builder`` for a Concierge run: its reads only.
 
     Every write (the shared classifier on the name; an unknown verb is a
@@ -85,7 +83,7 @@ def guard_agent_builder(
     ]
     for name in writes:
         executor.wrap_handler(name, _refused_in_concierge_run)
-    if not in_concierge_run():
+    if not in_health_run():
         return definitions
     withheld = set(writes)
     return [d for d in definitions if d.name not in withheld]
@@ -94,7 +92,7 @@ def guard_agent_builder(
 async def production_flow_refusal(db: Any, flow_id: Any) -> str | None:
     """Why a Concierge run may not act on *flow_id* (``None`` outside one, or
     for a sandbox flow)."""
-    if not in_concierge_run():
+    if not in_health_run():
         return None
     from sqlalchemy import select
 

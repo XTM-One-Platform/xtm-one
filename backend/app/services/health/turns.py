@@ -14,7 +14,7 @@
 """Who an agent turn acts as, for the Concierge (#8261; level 1 left this wiring to level 8).
 
 Level 1 marks an assignment run of a fleet agent as the Concierge
-(``identity.mark_concierge_run``, beside ``mark_company_managed_run``). A chat
+(``identity.mark_health_run``, beside ``mark_company_managed_run``). A chat
 turn, and the turn of an agent another one delegated to or consulted, start in
 ``agent_chat.run_agent_chat`` instead; :func:`concierge_turn_scoped` wraps it so
 each turn acts as exactly what its own agent and user make it:
@@ -29,7 +29,7 @@ each turn acts as exactly what its own agent and user make it:
   sandbox flow's burst), which keeps the principal its runner holds: the
   copy runs as its source's owner, but its run is the Concierge's, so the
   admin bypass stays off and no consent-free read serves it
-  (``identity.in_concierge_reach`` holds there with no principal too).
+  (``identity.in_health_reach`` holds there with no principal too).
 
 The scope ends with the turn, so nothing leaks into the caller's.
 """
@@ -40,7 +40,7 @@ import functools
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.services.health.identity import concierge_run_scope, in_sandbox_turn, mark_concierge_run
+from app.services.health.identity import concierge_run_scope, in_sandbox_turn, mark_health_run
 
 
 def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -56,7 +56,7 @@ def concierge_turn_scoped[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, 
         with concierge_run_scope():
             # An id that names no user is not "no user": such a turn never acts as the Concierge.
             if uid is not None or not user_id:
-                await mark_concierge_run(db, agent, uid)
+                await mark_health_run(db, agent, uid)
             return await fn(*args, **kwargs)
 
     return scoped

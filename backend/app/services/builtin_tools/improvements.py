@@ -121,13 +121,13 @@ def calling_concierge(agent_id: str | None) -> Any | None:
 async def filing_agent(db: AsyncSession, agent_id: str | None) -> Any | None:
     """The Experimenter agent calling the tool in its Concierge run, read again from its row, or ``None``."""
     from app.models.agent import Agent
-    from app.services.health.identity import is_concierge_agent
+    from app.services.health.identity import is_health_agent
 
     principal = calling_concierge(agent_id)
     if principal is None or principal.role != FILING_ROLE:
         return None
     agent = await db.get(Agent, principal.agent_id)
-    if agent is None or not is_concierge_agent(agent) or agent.health_role != FILING_ROLE:
+    if agent is None or not is_health_agent(agent) or agent.health_role != FILING_ROLE:
         return None
     return agent
 

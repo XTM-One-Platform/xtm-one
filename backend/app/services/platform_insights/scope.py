@@ -129,9 +129,9 @@ async def load_scope(db: AsyncSession, user_id: str, *, direct: bool = False) ->
     Refused inside a Concierge run or turn, or a sandbox copy's turn: these
     reads apply no consent rule.
     """
-    from app.services.health.identity import in_concierge_reach
+    from app.services.health.identity import in_health_reach
 
-    if not direct and in_concierge_reach():
+    if not direct and in_health_reach():
         raise InsightRefusedError("Error: platform insights are not available to the Concierge.")
     parsed = safe_uuid(user_id) if user_id else None
     if parsed is None:
