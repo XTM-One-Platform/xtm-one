@@ -2281,6 +2281,7 @@ def seed_large_fleet(token: str, base: str) -> dict[str, dict[str, str]]:
             })
     top = [agents[name] for name, parent in LARGE_FLEET_MEMBERS.items() if parent is None]
     orchestrator = _seed_agent(token, "large orchestrator", dict.fromkeys(top, "delegate"))
+    LAB_AGENTS["large lead"] = agents["Lead"]  # bound to the A2A liaisons (seed_a2a_liaisons, #85)
     fleet = _created(api("POST", "/fleets", token, {
         "name": f"{SEED_NAME} large fleet",
         "description": "Seeded by the lab: one orchestrator, six members, two of them under a lead.",
@@ -4685,6 +4686,58 @@ def seed_a2a_partner(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"A2A partner integration": {"id": integration, "url": url}}
 
 
+#: The agents the A2A liaisons bind, by their ``LAB_AGENTS`` name: a member drawn on the data flow fleet
+#: and one on the large fleet, so both Graph tabs and ``/flows/map`` draw partner nodes (#85).
+A2A_LIAISON_AGENTS = ("flow orchestrator", "large lead")
+#: The outbound registration's partner agent cards, on a reserved host nothing resolves (RFC 2606).
+A2A_LIAISON_CARD_URLS = (
+    "https://partner.invalid/agents/triage/.well-known/agent-card.json",
+    "https://partner.invalid/agents/enrichment/.well-known/agent-card.json",
+)
+
+
+def seed_a2a_liaisons(token: str, base: str) -> dict[str, dict[str, str]]:
+    """An inbound and an outbound A2A liaison on agents the fleet graphs draw (#85).
+
+    ``POST /integrations`` creates an inbound ``oauth_a2a`` integration (its partner credential minted)
+    and an outbound one whose ``card_urls`` name :data:`A2A_LIAISON_CARD_URLS` (two client targets,
+    written by ``provision_settings``; the host is reserved, so no card is ever fetched and nothing is
+    delegated). Both are bound to every :data:`A2A_LIAISON_AGENTS` agent the fleet seeds created.
+    Read back: ``GET /a2a/liaisons`` answers, for each bound agent, an inbound edge into it and an
+    outbound edge to each card. Logged ``seeded A2A liaisons: <base>/flows/map?vis=all``. May raise:
+    the caller logs and skips.
+    """
+    agents = [LAB_AGENTS[name] for name in A2A_LIAISON_AGENTS if name in LAB_AGENTS]
+    if not agents:
+        raise RuntimeError(f"none of {', '.join(A2A_LIAISON_AGENTS)} was seeded")
+    inbound = _created(api("POST", "/integrations", token, {
+        "provider": "oauth_a2a", "name": f"{SEED_NAME} A2A intake partner", "auth_type": "none",
+        "a2a_direction": "inbound", "description": "Seeded by the lab: an inbound A2A liaison, nothing calls it.",
+    }))
+    api("POST", f"/integrations/{inbound}/a2a-credential", token)
+    outbound = _created(api("POST", "/integrations", token, {
+        "provider": "oauth_a2a", "name": f"{SEED_NAME} A2A delegate partner", "auth_type": "none",
+        "a2a_direction": "outbound",
+        "description": "Seeded by the lab: an outbound A2A liaison on a reserved host, nothing is called.",
+        "extra_config": {
+            "card_urls": "\n".join(A2A_LIAISON_CARD_URLS), "token_url": "https://partner.invalid/mcp/oauth/token",
+            "client_id": "lab-only-a2a-client-id", "client_secret": "lab-only-a2a-client-secret",
+        },
+    }))
+    for agent in agents:
+        api("PUT", f"/agents/{agent}", token, {"integration_bindings": {"oauth_a2a": [inbound, outbound]}})
+    liaisons = api("GET", "/a2a/liaisons", token)
+    edges = liaisons.get("edges", []) if isinstance(liaisons, dict) else []
+    for agent in agents:
+        into = [e for e in edges if e.get("target_id") == agent and e.get("direction") == "inbound"]
+        out = [e for e in edges if e.get("source_id") == agent and e.get("direction") == "outbound"]
+        if not into or len(out) < len(A2A_LIAISON_CARD_URLS):
+            raise RuntimeError(f"GET /a2a/liaisons draws {len(into)} inbound and {len(out)} outbound edges for {agent}")
+    url = f"{base}/flows/map?vis=all"
+    log(f"seeded A2A liaisons: {url}")
+    return {"A2A liaisons": {"id": outbound, "url": url}}
+
+
 def seed_oauth_missing_scopes(token: str, base: str) -> dict[str, dict[str, str]]:
     """A connected Google OAuth integration whose token was granted all but one requested scope (#9813).
 
@@ -6529,6 +6582,7 @@ def seed_fleet_flow_states(token: str, base: str, github: str) -> dict[str, dict
         "integration_bindings": {"github": [github]}, "integration_read_only": {"github": [github]},
     })
     orchestrator = _seed_agent(token, "flow orchestrator", dict.fromkeys((watcher, triage), "delegate"))
+    LAB_AGENTS["flow orchestrator"] = orchestrator  # bound to the A2A liaisons (seed_a2a_liaisons, #85)
     fleet = _created(api("POST", "/fleets", token, {
         "name": f"{SEED_NAME} data flow fleet",
         "description": "Seeded by the lab: a source not connected, reads only, a dense source, a disabled trigger.",
@@ -7352,6 +7406,10 @@ def seed_entities() -> None:
         seeded.update(seed_a2a_partner(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["A2A partner integration"] = str(exc)[:600]
+    try:
+        seeded.update(seed_a2a_liaisons(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["A2A liaisons"] = str(exc)[:600]
     # Before the AI switches (Enable fleet is refused while AI is off).
     if peer_id and "opencti" in suite:
         try:

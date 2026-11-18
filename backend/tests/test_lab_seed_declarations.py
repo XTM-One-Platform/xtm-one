@@ -3183,7 +3183,7 @@ def test_the_lab_seeds_a_fleet_whose_data_flow_holds_every_greyed_and_dense_stat
         return flow if path.endswith("/flow") else {"id": next(ids)}
 
     names = ("seed_fleet_flow_states", "_seed_agent", "_created", "SEED_NAME", "FLOW_STATES_PLATFORM_EVENTS")
-    ns = _lab_namespace(*names, api=api, LAB_EVENT_INTEGRATIONS={
+    ns = _lab_namespace(*names, api=api, LAB_AGENTS={}, LAB_EVENT_INTEGRATIONS={
         "Gmail": {"event": "new_email", "body": {"provider": "google", "auth_type": "oauth"}},
     })
     base = "http://localhost:3100"
