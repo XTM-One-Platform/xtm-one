@@ -159,11 +159,15 @@ def test_gpt_6_omits_temperature_while_using_completion_tokens():
     "model", ["gpt-6-luna", "gpt-6-luna-2026-09-01", "gpt-6.2-sol", "gpt-6.2-astra", "openai/gpt-6-luna"]
 )
 def test_gpt_6_is_not_sent_a_temperature(model: str):
-    """gpt-6 models refuse any temperature but 1 (#125); they keep the gpt-6 effort rules."""
+    """gpt-6 models refuse any temperature but 1 (#125)."""
     assert omit_temperature(model) is True
     assert "temperature" not in build_openai_generation_params(model, temperature=0.2, max_tokens=512)
-    assert refuses_effort_with_tools(model) is True
     assert supported_effort(model, "max") == "max"
+
+
+@pytest.mark.parametrize("model", ["gpt-6-luna", "gpt-6-luna-2026-09-01", "openai/gpt-6-luna"])
+def test_gpt_6_luna_is_sent_none_with_tools(model: str):
+    assert refuses_effort_with_tools(model) is True
 
 
 def test_chatgpt_model_keeps_temperature_with_completion_tokens():
