@@ -3554,6 +3554,60 @@ def seed_roi_fleet(token: str, base: str, fleet: str) -> dict[str, dict[str, str
     return {"ROI fleet": {"id": fleet, "url": f"{base}/analytics/outcomes"}}
 
 
+def seed_roi_under_k(token: str, base: str, peer: str) -> dict[str, dict[str, str]]:
+    """One agent and one fleet backed by fewer than k people, so the peer reads his own ROI share (#69).
+
+    The administrator owns an agent, a lab assignment of it and a fleet with the agent as its only
+    member declaring the unit ``threat_report_triaged`` (``per_run``); both are shared read-only with
+    the peer. ``seed_roi_under_k.py`` writes four counted runs through the backend's models (no API
+    writes a record): two attributed to the administrator, two to the peer, so two people stay under
+    k. Read back as the peer on ``GET /roi?scope=agent`` and ``scope=fleet``: ``figures.suppressed``
+    has ``own_share_only`` and ``figures.totals.runs`` is the peer's own 2. Logged ``seeded ROI under k
+    own share (agent|fleet): <url>``. May raise: the caller logs and skips.
+    """
+    read_only = {"shared_user_ids": [peer], "shared_user_permissions": {peer: "read_only"}}
+    agent = _seed_agent(token, "ROI under k")
+    assignment = _created(api("POST", "/assignments", token, {
+        "agent_id": agent, "name": f"{SEED_NAME} ROI under k triage", "description": "Seeded by the lab.",
+        "prompt": "Triage the new threat reports.", "trigger_type": "manual", "trigger_config": {},
+    }))
+    fleet = _created(api("POST", "/fleets", token, {
+        "name": f"{SEED_NAME} ROI under k fleet",
+        "description": "Seeded by the lab: ROI runs of two people, fewer than k, shared read-only with the peer.",
+    }))
+    _created(api("POST", f"/fleets/{fleet}/members", token, {"agent_id": agent, "role_label": "Member"}))
+    api("PUT", f"/roi/declarations?subject_type=fleet&subject_id={fleet}", token, {
+        "unit": ROI_FLEET_UNIT, "count_mode": "per_run", "units_per_count": 1,
+    })
+    api("PUT", f"/agents/{agent}", token, read_only)
+    api("PUT", f"/fleets/{fleet}", token, read_only)
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "roi_under_k.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_roi_under_k.py"), agent, assignment, admin, peer,
+         fleet, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_roi_under_k.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    own = len(json.loads(out.read_text())["runs"]["peer"])
+    login = api("POST", "/auth/login", body={"email": PEER_EMAIL, "password": PEER_PASSWORD})
+    peer_token = login.get("access_token") if isinstance(login, dict) else None
+    if not peer_token:
+        raise RuntimeError("the peer's sign-in answered no access token")
+    seeded: dict[str, dict[str, str]] = {}
+    for scope, subject, url in (("agent", agent, f"{base}/agents/{agent}"), ("fleet", fleet, f"{base}/flows/fleets/{fleet}")):
+        answer = api("GET", f"/roi?window=30d&currency=USD&scope={scope}&id={subject}", peer_token)
+        figures = answer.get("figures") if isinstance(answer, dict) else None
+        suppressed = (figures or {}).get("suppressed") or {}
+        runs = ((figures or {}).get("totals") or {}).get("runs")
+        if not suppressed.get("own_share_only") or runs != own:
+            raise RuntimeError(f"GET /roi?scope={scope} as the peer: suppressed {suppressed}, runs {runs}, {own} expected")
+        log(f"seeded ROI under k own share ({scope}): {url}")
+        seeded[f"ROI under k own share ({scope})"] = {"id": subject, "url": url}
+    return seeded
+
+
 #: The group ``seed_group_manager`` creates: lab-only, managed by the peer.
 LAB_MANAGED_GROUP = "Lab managed group"
 
@@ -7123,6 +7177,13 @@ def seed_entities() -> None:
             skipped["ROI fleet"] = str(exc)[:600]
     else:
         skipped["ROI fleet"] = "no fleet row"
+    if peer_id:
+        try:
+            seeded.update(seed_roi_under_k(token, base, peer_id))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["ROI under k own share"] = str(exc)[:600]
+    else:
+        skipped["ROI under k own share"] = "no peer user"
     if peer_id and "ROI review agent" in seeded:
         try:
             seeded.update(seed_roi_chat_records(token, base, seeded["ROI review agent"]["id"], peer_id))
