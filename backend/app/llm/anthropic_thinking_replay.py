@@ -86,9 +86,6 @@ _REPLAY_REFUSAL_PATTERNS = (
     re.compile(r"\bsignature[`'\"]?\s+(?:in|of|for)\s+(?:the\s+)?[`'\"]?thinking\b"),
     re.compile(r"\bcontent\.\d+\.(?:thinking\.(?:signature|thinking)|redacted_thinking\.data)\b"),
 )
-# A Gemini thought signature, as an OpenAI-compatible route sends it back
-# (``tool_calls[].extra_content.google.thought_signature``) and Google names it.
-_SIGNATURE_REFUSAL = re.compile(r"\bthought[ _]signature\b")
 # The request path a content validation error names (``messages.3.content.0
 # ...``), indexed like the request's ``messages`` array.
 _MESSAGE_PATH = re.compile(r"\bmessages\.(\d+)\.content\b")
@@ -460,11 +457,6 @@ def refuses_replayed_blocks(message: str) -> bool:
     """Whether an API error *message* refuses a thinking block or its signature."""
     message = message.lower()
     return any(pattern.search(message) for pattern in _REPLAY_REFUSAL_PATTERNS)
-
-
-def refuses_replayed_signatures(message: str) -> bool:
-    """Whether an API error *message* names a replayed Gemini thought signature."""
-    return _SIGNATURE_REFUSAL.search(message.lower()) is not None
 
 
 def says_prompt_too_long(message: str) -> bool:

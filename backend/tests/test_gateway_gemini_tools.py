@@ -346,23 +346,14 @@ async def test_a_refusal_not_naming_the_signature_is_not_retried_without_it(thin
         httpx.Response(400, json={"error": {"message": "prompt is too long: 9 tokens > 8 maximum"}}),
     ],
 )
-async def test_a_size_refusal_is_retried_once_without_the_signatures(refusal):
-    gateway = _Gateway(refusal, _ok())
+async def test_a_size_refusal_sheds_the_signatures_for_that_request_only(refusal):
+    gateway = _Gateway(refusal, _ok(), _ok())
     messages = _round_of_two_turns(None, _kept())
-    await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
-    assert [_signature_sent(body) for body in gateway.sent] == [True, False]
-    assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
-
-
-@pytest.mark.asyncio
-async def test_signatures_a_size_refusal_retired_come_back_when_the_retry_is_refused_too():
-    too_big = httpx.Response(413, json={"error": {"message": "request too large"}})
-    other = httpx.Response(400, json={"error": {"message": "bad tool schema"}})
-    gateway = _Gateway(too_big, other)
-    messages = _round_of_two_turns(None, _kept())
-    with pytest.raises(openai.APIStatusError, match="bad tool schema"):
-        await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
+    provider = gateway.provider()
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
     assert not messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+    await provider.chat(messages, model=GEMINI, tools=[DUE])
+    assert [_signature_sent(body) for body in gateway.sent] == [True, False, True]
 
 
 @pytest.mark.asyncio
@@ -375,3 +366,57 @@ async def test_a_signature_the_refusal_named_stays_retired_when_the_retry_is_ref
         await gateway.provider().chat(messages, model=GEMINI, tools=[DUE])
     assert [_signature_sent(body) for body in gateway.sent] == [True, False]
     assert messages[3]._provider_extra[EXTRA_KEY].signatures_refused
+
+
+
+def _signatures_by_turn(body: dict) -> list[str | None]:
+    return [
+        (call.get("extra_content") or {}).get("google", {}).get("thought_signature")
+        for m in body["messages"] if m["role"] == "assistant"
+        for call in m.get("tool_calls") or []
+    ]
+
+
+@pytest.mark.asyncio
+async def test_turns_sharing_call_0_keep_their_own_signatures_through_the_overflow_drop(monkeypatch):
+    """Both turns are ``call_0``: only their position tells them apart."""
+    huge = {"type": "thinking", "thinking": "x", "signature": "s" * 8000}
+    first, second = _kept(signature="Zmlyc3Q="), _kept(signature="c2Vjb25k")
+    first[EXTRA_KEY].blocks = (huge,)
+    gateway = _Gateway(_ok())
+    provider = gateway.provider()
+    monkeypatch.setattr(provider, "_resolve_context_window", lambda model: 1000)
+    await provider.chat(_round_of_two_turns(first, second), model=GEMINI, tools=[BARE, DUE])
+    assert not _blocks_sent(gateway.sent[0])
+    assert _signatures_by_turn(gateway.sent[0]) == ["Zmlyc3Q=", "c2Vjb25k"]
+
+
+@pytest.mark.asyncio
+async def test_turns_sharing_call_0_keep_their_own_signatures_after_a_size_refusal():
+    too_big = httpx.Response(413, json={"error": {"message": "request too large"}})
+    gateway = _Gateway(too_big, _ok(), _ok())
+    provider = gateway.provider()
+    messages = _round_of_two_turns(_kept(signature="Zmlyc3Q="), _kept(signature="c2Vjb25k"))
+    await provider.chat(messages, model=GEMINI, tools=[BARE, DUE])
+    await provider.chat(messages, model=GEMINI, tools=[BARE, DUE])
+    assert [_signatures_by_turn(body) for body in gateway.sent] == [
+        ["Zmlyc3Q=", "c2Vjb25k"], [None, None], ["Zmlyc3Q=", "c2Vjb25k"]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("message", "named"),
+    [
+        ("Corrupted thought signature.", True),
+        ("Invalid thought signatures in request", True),
+        ("thought_signatures are missing", True),
+        ("Function call is missing a thought_signature in functionCall parts", True),
+        ("Invalid thoughtSignature", True),
+        ("Invalid `signature` in `thinking` block", False),
+        ("bad tool schema", False),
+    ],
+)
+def test_a_refusal_names_a_thought_signature(message, named):
+    from app.llm.openai_thinking_blocks import refuses_replayed_signatures
+
+    assert refuses_replayed_signatures(message) is named

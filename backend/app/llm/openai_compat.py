@@ -25,11 +25,7 @@ import httpx
 import openai
 from openai import AsyncOpenAI
 
-from app.llm.anthropic_thinking_replay import (
-    refuses_replayed_blocks,
-    refuses_replayed_signatures,
-    says_prompt_too_long,
-)
+from app.llm.anthropic_thinking_replay import refuses_replayed_blocks, says_prompt_too_long
 from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
@@ -52,7 +48,12 @@ from app.llm.model_capabilities import (
     takes_no_effort,
 )
 from app.llm.model_limits import _normalize_family_key, reported_context_window
-from app.llm.openai_thinking_blocks import BlocksReplay, blocks_of, thought_signature_of
+from app.llm.openai_thinking_blocks import (
+    BlocksReplay,
+    blocks_of,
+    refuses_replayed_signatures,
+    thought_signature_of,
+)
 from app.llm.speech import OpenAISpeechMixin
 from app.llm.video import OpenAIVideosMixin
 from app.tools.base import ToolCall, ToolDefinition

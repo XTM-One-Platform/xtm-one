@@ -11,10 +11,11 @@ turns get theirs back; a refused replay is retried once without them.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from app.llm.anthropic_thinking_replay import THINKING_BLOCK_TYPES, block_chars, refuses_replayed_signatures
+from app.llm.anthropic_thinking_replay import THINKING_BLOCK_TYPES, block_chars
 from app.llm.base import ChatMessage
 from app.tools.base import ToolCall
 
@@ -52,6 +53,16 @@ def blocks_of(obj: object) -> list[dict]:
         if isinstance(block, Mapping) and block.get("type") in THINKING_BLOCK_TYPES:
             out.append(dict(block))
     return out
+
+
+# How Google names a thought signature in a refusal: ``thought signature(s)``,
+# ``thought_signature(s)``, ``thoughtSignature``.
+_SIGNATURE_REFUSAL = re.compile(r"\bthought[ _]?signatures?\b")
+
+
+def refuses_replayed_signatures(message: str) -> bool:
+    """Whether an API error *message* names a replayed Gemini thought signature."""
+    return _SIGNATURE_REFUSAL.search(message.lower()) is not None
 
 
 def thought_signature_of(tool_call: object) -> str | None:
@@ -113,8 +124,8 @@ class BlocksReplay:
     messages: list[dict]
     without: list[dict]
     sent: list[ThinkingBlocks] = field(default_factory=list)
-    #: The turns the last retry retired: ``(turn, its blocks, its signatures)``.
-    retired: list[tuple[ThinkingBlocks, bool, bool]] = field(default_factory=list)
+    #: The turns whose blocks the last retry retired.
+    retired: list[ThinkingBlocks] = field(default_factory=list)
     #: False when thinking is off: the turns' blocks are not sent, only their signatures.
     with_blocks: bool = True
 
@@ -214,16 +225,17 @@ class BlocksReplay:
         return dropped
 
     def restore(self) -> None:
-        """The request failed without them too: they may be sent again."""
-        for kept, blocks, signatures in self.retired:
-            kept.refused = kept.refused and not blocks
-            kept.signatures_refused = kept.signatures_refused and not signatures
+        """The request failed without the blocks too: they may be sent again.
+        A signature a refusal named stays retired."""
+        for kept in self.retired:
+            kept.refused = False
         self.retired = []
 
     def retry_without(self, reason: str, sent: list[dict], *, too_big: bool = False) -> list[dict] | None:
-        """The request was refused: its blocks are never sent again, and its
-        signatures when *reason* names them or the request was *too_big*.
-        ``None`` when that leaves the request as sent, so there is nothing to retry.
+        """The request was refused: its blocks are never sent again, nor its
+        signatures when *reason* names them. A *too_big* request sheds them for
+        this retry only. ``None`` when that leaves the request as sent, so there
+        is nothing to retry.
 
         Returns *sent*, the messages as sent (cache breakpoints included), without them.
         """
@@ -245,9 +257,9 @@ class BlocksReplay:
         )
         for kept, blocks, signed in turns:
             kept.refused = kept.refused or blocks
-            kept.signatures_refused = kept.signatures_refused or signed
-        # A refusal that named the signatures is final: restore() never brings them back.
-        self.retired = [(kept, blocks, signed and not named) for kept, blocks, signed in turns]
+            # Only a refusal naming them retires them, and that is final: restore() never brings them back.
+            kept.signatures_refused = kept.signatures_refused or (signed and named)
+        self.retired = [kept for kept, blocks, _ in turns if blocks]
         self.with_blocks = False
         self.sent = [] if strip else [kept for kept in self.sent if self._sends_signatures(kept)]
         self.messages = [_without_replay(m, signatures=strip) for m in sent]
