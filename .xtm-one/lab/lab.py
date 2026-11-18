@@ -1989,6 +1989,16 @@ def signed_in_url(base: str, token: str) -> str:
     return f"{base}/login#token={token}"
 
 
+def log_session(label: str, row: dict[str, str]) -> None:
+    """Log one ``seeded signed-in session (...)`` line the moment its sign-in answers (#89).
+
+    ``log_seeded`` logs it again at the end of the seed, but a long seed (every CTEM module) keeps that line minutes
+    away: logged here, the session is in the start log within seconds of the preview coming up. ``parse_sessions``
+    keeps the last URL per label, the same token, so the repeat changes nothing.
+    """
+    log(f"seeded {label}: {row['url']}")
+
+
 def _share_read_only(token: str, workspace: str, user_id: str) -> None:
     api("PUT", f"/workspaces/{workspace}", token, {
         "shared_user_ids": [user_id], "shared_user_permissions": {user_id: "read_only"},
@@ -2019,6 +2029,7 @@ def seed_peer(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[st
         return seeded, {"peer user": str(exc)[:200]}
     seeded["peer user"] = {"id": peer, "url": f"{base}/users/{peer}"}
     seeded["signed-in session (peer)"] = {"id": PEER_EMAIL, "url": signed_in_url(base, peer_token)}
+    log_session("signed-in session (peer)", seeded["signed-in session (peer)"])
     rows: list[tuple[str, str, object]] = [
         # The administrator opens /operations/workspaces: "Shared by Lab peer" on this row.
         ("workspace shared by the peer", "/workspaces/{id}", lambda: _shared_workspace(peer_token, admin, "peer")),
@@ -6970,6 +6981,7 @@ def seed_entities() -> None:
     seeded["signed-in session (administrator)"] = {
         "id": os.environ.get("ADMIN_EMAIL", ""), "url": signed_in_url(base, token),
     }
+    log_session("signed-in session (administrator)", seeded["signed-in session (administrator)"])
     # First: every Enterprise Edition row below needs the licence the backend started without.
     if stores_database_licence():
         try:
