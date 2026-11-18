@@ -463,6 +463,58 @@ class TestRestDelegation:
         assert result.partner_task_id == "tasks/abc"
         assert seen[1].url.path == "/agents/triage/a2a/v1/tasks/abc"
 
+    @pytest.mark.parametrize(
+        ("status", "said"),
+        [
+            # Google Agent Engine, resuming a task this platform cancelled.
+            (400, "Task t-77 is in terminal state: canceled"),
+            (404, "Task t-77 not found"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_refused_continuation_fails_the_task_not_the_registration(
+        self, monkeypatch, status, said
+    ):
+        # The request named one task, and the partner refused THAT task: it
+        # has ended, or the partner never kept it. Marked unusable, the
+        # registration refuses every fresh delegation until Verify now.
+        def handler(_request):
+            return httpx.Response(status, json={"error": {"message": said}})
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        settings = _settings()
+        result = await delegation.delegate(
+            RecordingDb(),
+            _integration(),
+            settings,
+            message="Last 7 days",
+            continue_task_id="t-77",
+        )
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert said in (result.partner_reason or "")
+        assert said not in (result.detail or "")
+        assert result.partner_task_id == "t-77"
+        assert settings.usability == USABILITY_USABLE
+        assert settings.unusable_reason is None
+        assert settings.consecutive_transient_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_a_refused_fresh_submission_still_marks_the_registration(
+        self, monkeypatch
+    ):
+        # No task named: the request itself is what the partner refused, and
+        # it will refuse the next one the same way.
+        def handler(_request):
+            return httpx.Response(400, json={"error": {"message": "bad request"}})
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        settings = _settings()
+        result = await delegation.delegate(
+            RecordingDb(), _integration(), settings, message="x"
+        )
+        assert result.outcome == OUTCOME_UNREACHABLE
+        assert settings.usability != USABILITY_USABLE
+
     @pytest.mark.asyncio
     async def test_a_rejected_credential_is_durable_and_named(self, monkeypatch):
         def handler(_request):
