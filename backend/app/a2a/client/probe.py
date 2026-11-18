@@ -107,9 +107,12 @@ async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
 
     # Test Connection tests the credential (#105): an OAuth partner serves its
     # card anonymously, so the stored verdicts below never tried the secret.
+    # The refusal leads while some agent is usable; when none is, the per-agent
+    # verdicts lead and the refusal is appended, so neither hides the other.
     refused = await _mint_refusal(ctx.integration)
-    if refused is not None:
+    if refused is not None and any(t.usability == USABILITY_USABLE for t in targets):
         return ProbeResult.failed(refused)
+    credential = f" Credential: {refused}" if refused is not None else ""
 
     # Aggregated across targets, and the arithmetic is the point: a partner
     # exposing three agents where one has stopped answering is neither
@@ -165,11 +168,14 @@ async def outbound_probe(ctx: ProbeContext) -> ProbeResult | None:
 
     first = broken[0]
     return ProbeResult.failed(
-        _WHAT_TO_DO.get(
-            first.unusable_reason or "",
-            f"Not usable ({first.unusable_reason or 'unknown reason'}).",
+        (
+            _WHAT_TO_DO.get(
+                first.unusable_reason or "",
+                f"Not usable ({first.unusable_reason or 'unknown reason'}).",
+            )
+            if len(targets) == 1
+            else f"None of {len(targets)} agents is reachable. "
+            + "; ".join(f"{_name(t)}: {t.unusable_reason or 'unknown'}" for t in broken)
         )
-        if len(targets) == 1
-        else f"None of {len(targets)} agents is reachable. "
-        + "; ".join(f"{_name(t)}: {t.unusable_reason or 'unknown'}" for t in broken)
+        + credential
     )

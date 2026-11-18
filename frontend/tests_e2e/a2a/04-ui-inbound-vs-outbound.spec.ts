@@ -716,7 +716,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // so the reload is what proves it is gone rather than merely re-rendered.
     await page.reload();
     const reloaded = cardTitled(page, 'Partner credential');
-    await expect(reloaded.getByText('Client ID')).toBeVisible();
+    await expect(reloaded.getByText('Client ID', { exact: true })).toBeVisible();
     await expect(reloaded.getByText('Copy this now: the secret is never shown again')).toHaveCount(0);
 
     await reloaded.getByRole('button', { name: 'Regenerate secret' }).click();

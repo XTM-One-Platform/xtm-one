@@ -92,3 +92,31 @@ class TestThePauseIsReadFromTheBreaker:
         result = await probe.outbound_probe(rig["ctx"])
         assert result.status == "error"
         assert "None of 2" in result.message
+
+
+class TestTheCredentialRefusalNeverHidesTheAgents:
+    async def test_a_refusal_leads_while_an_agent_is_usable(self, rig, monkeypatch):
+        async def _refused(_integration):
+            return "invalid_client for client id c-1."
+
+        monkeypatch.setattr(probe, "_mint_refusal", _refused)
+        rig["targets"] = [_target()]
+        result = await probe.outbound_probe(rig["ctx"])
+        assert result.status == "error"
+        assert result.message == "invalid_client for client id c-1."
+
+    async def test_every_agent_unusable_names_each_then_the_refusal(self, rig, monkeypatch):
+        async def _refused(_integration):
+            return "invalid_client for client id c-1."
+
+        monkeypatch.setattr(probe, "_mint_refusal", _refused)
+        rig["targets"] = [
+            _target(usability="unusable", unusable_reason="card_unfetchable"),
+            _target(usability="unusable", unusable_reason="transport_unverified"),
+        ]
+        result = await probe.outbound_probe(rig["ctx"])
+        assert result.status == "error"
+        assert result.message.startswith("None of 2 agents is reachable")
+        assert "card_unfetchable" in result.message
+        assert "transport_unverified" in result.message
+        assert result.message.endswith("Credential: invalid_client for client id c-1.")
