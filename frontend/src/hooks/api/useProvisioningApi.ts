@@ -10,7 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
-export interface ScimToken {
+interface ScimToken {
   id: string;
   name: string;
   token_prefix: string;
@@ -40,7 +40,7 @@ export interface ScimActivity {
   created_at: string | null;
 }
 
-export interface DeactivationReviewItem {
+interface DeactivationReviewItem {
   key: string;
   kind: string;
   id: string;

@@ -181,7 +181,7 @@ function ActivityCard() {
           <p className="content-compact text-default-secondary">{t_i18n("No SCIM change yet.")}</p>
         )}
         {(data?.length ?? 0) > 0 && (
-          <ul className="divide-y divide-elevation-subtle">
+          <ul className="divide-y divide-[var(--border-elevation-subtle)]">
             {data!.map((row) => (
               <li key={row.id} className="flex items-baseline justify-between gap-3 py-2">
                 <span className="min-w-0 flex-1 truncate content-compact" title={row.summary}>{row.summary}</span>

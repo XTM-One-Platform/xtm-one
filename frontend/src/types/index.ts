@@ -268,7 +268,7 @@ export interface UserListItem {
   group_ids: string[];
 }
 
-export type ProvisioningSource = "scim" | "sso" | "local";
+type ProvisioningSource = "scim" | "sso" | "local";
 
 /** A person as returned by the non-admin `/users/directory` search.
  *  Name and email only — deliberately far less than {@link UserListItem}. */
