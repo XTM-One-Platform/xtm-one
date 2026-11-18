@@ -147,7 +147,7 @@ and profile cards, the Settings section, the fleet seeding, the scheduler, the
 `gate="concierge"` tool groups and `/api/v1/improvement-proposals`. Kept as they were:
 `platform_settings.concierge_settings`, the opt-ins and opt-outs, `agents.concierge_role`,
 the budget ledger, cycle digests, signal states and schedule marks (renamed by the S1
-migration, 2.3). `backend/tests/test_concierge_built_in.py` pins the built-in behaviour.
+migration, 2.3). `backend/tests/test_health_built_in.py` pins the built-in behaviour.
 
 ## 3. Engine
 
