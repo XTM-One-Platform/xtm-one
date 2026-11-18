@@ -224,6 +224,32 @@ def test_a_file_an_earlier_tree_left_outside_the_record_is_named_as_a_leftover()
     assert changes_since(record, entries, paths=["src"]).leftover == ()
 
 
+def test_paths_never_count_an_unedited_leftover_as_added() -> None:
+    """A named path over files a wider tree left, untouched: leftovers, never added; an edit there is added (#237)."""
+    from app.services.sandbox_workspace.checkout import outside_baseline
+
+    before = {"base/api/old.py": _Entry(_sha(b"old\n")), "base/api/same.py": _Entry(_sha(b"same\n"))}
+    record = build_record(
+        provider="github",
+        repository="acme/widgets",
+        ref="main",
+        commit="0123abcd",
+        path="base",
+        sub_paths=("src",),
+        files=[("src/a.py", b"a = 1\n")],
+        outside=outside_baseline("base", ("src",), ("src/a.py",), before),
+    )
+    entries = {**_manifest(record), **before}
+    entries["base/src/a.py"] = _Entry(_sha(b"a = 2\n"))
+    entries["base/api/old.py"] = _Entry(_sha(b"edited\n"))
+    entries["base/api/new.py"] = _Entry(_sha(b"new\n"))
+    changes = changes_since(record, entries, paths=["src", "api"])
+    assert changes.modified == ("src/a.py",)
+    assert changes.added == ("api/new.py", "api/old.py")
+    assert changes.leftover == ("api/same.py",)
+    assert changes.count == 3
+
+
 def test_a_record_without_a_baseline_falls_back_to_its_write_time() -> None:
     @dataclass(frozen=True)
     class _Timed:

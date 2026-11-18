@@ -1800,8 +1800,22 @@ async def test_create_github_commit_from_checkout_commits_exactly_what_the_sandb
     await executor.session.put_bytes("repo/src/lib/new.py", b"NEW = 1\n")
     await executor.session.remove(["repo/src/lib/util.py"])
     await executor.session.put_bytes("repo/README.md", b"# stray\n")
+    # The stray file would be left behind: refused whole, nothing parsed (#237); paths=[the sub_paths] leaves it out.
+    partial = await composite.execute_tool(
+        ToolCall(
+            id="c1a",
+            name="create_github_commit",
+            arguments={"repo": "acme/repo", "message": "feat: x", "from_checkout": "repo"},
+        )
+    )
+    assert "nothing was committed" in partial.content and "README.md" in partial.content, partial.content
+    assert parsed == []
     changed = await composite.execute_tool(
-        ToolCall(id="c1", name="create_github_commit", arguments={"repo": "acme/repo", "message": "feat: x", "from_checkout": "repo"})
+        ToolCall(
+            id="c1",
+            name="create_github_commit",
+            arguments={"repo": "acme/repo", "message": "feat: x", "from_checkout": "repo", "paths": ["src"]},
+        )
     )
     assert "stop here (fixture)" in changed.content
     [(files, deletes)] = parsed

@@ -407,9 +407,12 @@ def changes_since(
     outside the recorded ``sub_paths`` is never a change: the tree never held
     it, so nothing tells an edit from a stray file. A file under a path named
     in *paths* is one wherever it is (a new test beside a narrow checkout):
-    the caller named it. A named path under which nothing changed is listed
-    in ``unmatched``. A Python bytecode cache the record does not hold (what
-    an import from code_interpreter writes) is never a change (#9518).
+    the caller named it, unless it is still byte for byte what the record's
+    out-of-scope baseline holds (a file an earlier, wider tree left that
+    nobody edited): that one is a ``leftover``, never an added file (#237).
+    A named path under which nothing changed is listed in ``unmatched``. A
+    Python bytecode cache the record does not hold (what an import from
+    code_interpreter writes) is never a change (#9518).
     Without *paths*, a file outside the record and its sub_paths is listed in
     ``untracked`` when it differs from the record's out-of-scope baseline
     (added, edited or removed since the first checkout; carried through every
@@ -467,7 +470,11 @@ def changes_since(
             continue
         sha = str(getattr(entry, "sha256", "") or "")
         if selected(repo_path):
-            current[repo_path] = sha
+            if wanted and baseline and sha and repo_path not in record.files and baseline.get(repo_path) == sha:
+                # Named by paths but still as an earlier, wider tree left it: a leftover, never added (#237).
+                leftover.append(repo_path)
+            else:
+                current[repo_path] = sha
             continue
         if wanted or is_generated(repo_path):
             continue
