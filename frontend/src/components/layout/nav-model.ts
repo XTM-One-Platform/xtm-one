@@ -59,7 +59,7 @@ export interface NavFlags {
   dashboardStudio: boolean;
   /** `EVALUATION`: served only where evaluation may run (every mode where AI runs). */
   evaluation: boolean;
-  /** `CONCIERGE` (#8261): the Concierge page (improvements, cycles, signals). */
+  /** The Concierge page (#8261: improvements, cycles, signals); built in since #101 (S1), no flag, so callers pass true. */
   concierge: boolean;
   /** The name the Concierge goes by (Settings > Agents and automations > Concierge): its entry's label, shown as written. */
   conciergeName?: string;

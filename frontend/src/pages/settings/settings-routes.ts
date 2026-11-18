@@ -53,14 +53,14 @@ export function legacySettingsTarget(tab: string | undefined, search: string, ha
 
 /**
  * The sub-section bare `/settings/automations` opens (UX C3): Fleets in
- * XTM One mode, Agent runs in Copilot mode. Concierge with its flag off falls
- * back to this default, and so does an XTM One only section in Copilot mode.
+ * XTM One mode, Agent runs in Copilot mode. An XTM One only section in Copilot
+ * mode falls back to this default; Concierge is built in since #101 (S1).
  * Fleets is in every mode (#9162 scope: fleet member configuration and its
  * presets are generic fleet features); only CTEM stage agents is XTM One only.
  */
 export function automationsSection(
   requested: string | undefined,
-  { isXtmOne, conciergeEnabled }: { isXtmOne: boolean; conciergeEnabled: boolean },
+  { isXtmOne }: { isXtmOne: boolean },
 ): AutomationsSection {
   const fallback: AutomationsSection = isXtmOne ? "fleets" : "agent-runs";
   switch (requested) {
@@ -69,9 +69,8 @@ export function automationsSection(
     case "fleets":
     case "agent-runs":
     case "quality":
-      return requested;
     case "concierge":
-      return conciergeEnabled ? "concierge" : fallback;
+      return requested;
     default:
       return fallback;
   }

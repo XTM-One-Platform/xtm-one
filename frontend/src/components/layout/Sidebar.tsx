@@ -359,8 +359,7 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
   // install teaches users to ignore it.
   const aiLicensed = useAgenticAIEnabled() || !platformConfig;
   const deepInvestigationEnabled = useFeatureFlag("DEEP_INVESTIGATION");
-  const conciergeEnabled = useFeatureFlag("CONCIERGE");
-  const conciergeName = useConciergeName(conciergeEnabled);
+  const conciergeName = useConciergeName();
   const videoStudioEnabled = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudioEnabled = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluationOn = useFeatureFlag("EVALUATION");
@@ -394,12 +393,12 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     aiEnabled,
     aiLicensed,
     deepInvestigation: deepInvestigationEnabled,
-    concierge: conciergeEnabled,
+    concierge: true,
     conciergeName,
     videoStudio: videoStudioEnabled,
     dashboardStudio: dashboardStudioEnabled,
     evaluation: evaluationOn,
-  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn, conciergeEnabled, conciergeName]);
+  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn, conciergeName]);
 
   const sections = useMemo(() => resolveNav(flags, isAdmin, isGroupManager), [flags, isAdmin, isGroupManager]);
   const activePath = useMemo(() => activeNavPath(sections, pathname), [sections, pathname]);

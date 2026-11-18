@@ -15,8 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The user's Concierge companion (#8261), on Profile > Profile: a switch, off
- * by default, and the pet of the library it shows. Only while the
- * `CONCIERGE` flag is on.
+ * by default, and the pet of the library it shows. Built in since #101 (S1).
  */
 import { Sparkles } from "lucide-react";
 
@@ -26,15 +25,13 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useConciergeName } from "@/hooks/api/useConciergeApi";
 import { useCompanion, usePetSpritesheet, usePets, useSaveCompanion } from "@/hooks/api/useConciergeCompanionApi";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { ConciergeCompanion, ConciergePet } from "@/types";
 
 export function ConciergeCompanionCard() {
-  const enabled = useFeatureFlag("CONCIERGE");
-  const { data } = useCompanion(enabled);
-  if (!enabled || !data) return null;
+  const { data } = useCompanion(true);
+  if (!data) return null;
   return <CompanionCard companion={data} />;
 }
 

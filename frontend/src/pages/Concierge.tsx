@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * The Concierge page for administrators (#8261, PRD 6.11): every improvement
  * proposal (search, type and status filters, sort), every cycle with its digest, and the
- * signals currently crossed. Behind the `CONCIERGE` flag; managers find their
+ * signals currently crossed. Built in since #101 (S1); managers find their
  * own targets' proposals and cycles on the agent and flow pages.
  */
 import { Link } from "react-router-dom";

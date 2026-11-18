@@ -34,7 +34,6 @@ import {
   usePets,
   useSaveCompanion,
 } from "@/hooks/api/useConciergeCompanionApi";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { useChatActivity } from "@/lib/companion-chat-activity";
@@ -43,9 +42,8 @@ import { COMPANION_STATE_LABELS, PET_ROW_FOR, companionState } from "@/lib/conci
 import { PetSprite } from "./PetSprite";
 
 export function ConciergeCompanion() {
-  const flagOn = useFeatureFlag("CONCIERGE");
-  const { data: companion } = useCompanion(flagOn);
-  if (!flagOn || !companion?.enabled) return null;
+  const { data: companion } = useCompanion(true);
+  if (!companion?.enabled) return null;
   return <FloatingPet slug={companion.pet} fallback={companion.default_pet} />;
 }
 

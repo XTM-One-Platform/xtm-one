@@ -35,8 +35,8 @@ export function useNavFlags(): NavFlags {
   // As the Sidebar: lock only on a RESOLVED "not licensed".
   const aiLicensed = useAgenticAIEnabled() || !platformConfig;
   const deepInvestigation = useFeatureFlag("DEEP_INVESTIGATION");
-  const concierge = useFeatureFlag("CONCIERGE");
-  const conciergeName = useConciergeName(concierge);
+  const concierge = true;
+  const conciergeName = useConciergeName();
   const videoStudio = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudio = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluation = useFeatureFlag("EVALUATION");

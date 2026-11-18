@@ -16,8 +16,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * The Platform Concierge improvement opt-in of an agent or a flow (#8254):
  * whoever may manage it lets the Concierge read its content to improve it
- * (PRD decision B21), under the consent notice (B16). Rendered only while the
- * `CONCIERGE` flag is on; read-only for a viewer who cannot manage it.
+ * (PRD decision B21), under the consent notice (B16). Built in since #101
+ * (S1), no flag; read-only for a viewer who cannot manage it.
  */
 import { Sparkles } from "lucide-react";
 
@@ -26,7 +26,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { type OptInTarget, useConciergeOptIn, useSetConciergeOptIn } from "@/hooks/api/useConciergeApi";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { Spinner } from "@filigran/design-system";
 
@@ -49,9 +48,8 @@ const TEXTS = {
 } as const satisfies Record<OptInTarget, Record<string, string>>;
 
 export function ConciergeOptInCard({ targetType, targetId }: { targetType: OptInTarget; targetId: string }) {
-  const enabled = useFeatureFlag("CONCIERGE");
-  const { data, isLoading } = useConciergeOptIn(targetType, targetId, enabled);
-  if (!enabled || isLoading || !data || !data.eligible) return null;
+  const { data, isLoading } = useConciergeOptIn(targetType, targetId);
+  if (isLoading || !data || !data.eligible) return null;
   return <OptInCard targetType={targetType} targetId={targetId} optIn={data.opt_in} canManage={data.can_manage} />;
 }
 

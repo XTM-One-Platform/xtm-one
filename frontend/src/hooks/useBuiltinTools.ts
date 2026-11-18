@@ -110,7 +110,6 @@ export function useBuiltinTools(): BuiltinToolCatalog {
   const videoStudioEnabled = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudioEnabled = useFeatureFlag("DASHBOARD_STUDIO");
   const mobileCompanionEnabled = useFeatureFlag("MOBILE_COMPANION");
-  const conciergeEnabled = useFeatureFlag("CONCIERGE");
   const { data: groups, isPending, isError: readFailed } = useBuiltinToolGroups();
   const isReady = groups !== undefined;
   const isError = !isReady && readFailed;
@@ -126,7 +125,8 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       video_studio: videoStudioEnabled,
       dashboard_studio: dashboardStudioEnabled,
       mobile_companion: mobileCompanionEnabled,
-      concierge: conciergeEnabled,
+      // Built in since #101 (S1): the suites of the health specialists carry no flag.
+      concierge: true,
     };
     const toOption = (group: BuiltinToolGroup): BuiltinToolOption => ({
       id: group.id,
@@ -197,7 +197,6 @@ export function useBuiltinTools(): BuiltinToolCatalog {
     videoStudioEnabled,
     dashboardStudioEnabled,
     mobileCompanionEnabled,
-    conciergeEnabled,
     isAdmin,
     userId,
   ]);

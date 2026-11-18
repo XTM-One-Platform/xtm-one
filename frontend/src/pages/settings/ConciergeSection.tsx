@@ -15,8 +15,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * Settings > Agents and automations > Concierge (#8254): turn the Platform Concierge on, choose what it
- * supervises and cap what it spends. Administrators only, behind the
- * `CONCIERGE` flag. One draft of the whole settings object, saved at once;
+ * supervises and cap what it spends. Administrators only, built in since
+ * #101 (S1), no flag. One draft of the whole settings object, saved at once;
  * each block is its own component so later levels add theirs (schedule,
  * signal thresholds, dry-run) as new blocks of the same draft.
  */

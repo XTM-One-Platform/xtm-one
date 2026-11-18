@@ -42,18 +42,17 @@ describe("legacySettingsTarget", () => {
 });
 
 describe("automationsSection (C3)", () => {
-  const xtm = { isXtmOne: true, conciergeEnabled: false };
-  const copilot = { isXtmOne: false, conciergeEnabled: false };
+  const xtm = { isXtmOne: true };
+  const copilot = { isXtmOne: false };
 
   it("opens Fleets in XTM One mode and Agent runs in Copilot mode", () => {
     expect(automationsSection(undefined, xtm)).toBe("fleets");
     expect(automationsSection(undefined, copilot)).toBe("agent-runs");
   });
 
-  it("falls back to that default for Concierge with its flag off", () => {
-    expect(automationsSection("concierge", xtm)).toBe("fleets");
-    expect(automationsSection("concierge", copilot)).toBe("agent-runs");
-    expect(automationsSection("concierge", { isXtmOne: true, conciergeEnabled: true })).toBe("concierge");
+  it("opens Concierge in every mode, built in with no flag (#101 S1)", () => {
+    expect(automationsSection("concierge", xtm)).toBe("concierge");
+    expect(automationsSection("concierge", copilot)).toBe("concierge");
   });
 
   it("never shows an XTM One section in Copilot mode", () => {

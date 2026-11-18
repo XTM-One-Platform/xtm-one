@@ -197,11 +197,10 @@ function SettingsPage() {
   // The video and music models serve the Video Studio alone. Speech
   // stays: the chat reads answers aloud with it.
   const videoStudioEnabled = isFeatureEnabled(authConfig?.enabled_features, "VIDEO_STUDIO");
-  const conciergeEnabled = isFeatureEnabled(authConfig?.enabled_features, "CONCIERGE");
-  // The sub-section of each section, from the URL. A Concierge link while the
-  // flag is off lands on the section's default, never on a blank page (UX C3).
+  // The sub-section of each section, from the URL. An unknown sub-section
+  // lands on the section's default, never on a blank page (UX C3).
   const organizationSection = pickSection<OrganizationSubsection>(rawSection, ["profile", "departments", "units", "rates"]);
-  const automations = automationsSection(rawSection, { isXtmOne, conciergeEnabled: Boolean(authConfig) && conciergeEnabled });
+  const automations = automationsSection(rawSection, { isXtmOne });
   const integrationsSection = pickSection<IntegrationsSettingsSection>(rawSection, ["catalog", "oauth", "channels", "mcp"]);
   const aiSection = pickSection<AiSection>(rawSection, aiLicensed ? ["models", "media", "assistant", "knowledge"] : ["models", "media", "assistant"]);
   const usageSection = pickSection<UsageSection>(rawSection, ["quotas", "observability", "pricing"]);
@@ -421,7 +420,7 @@ function SettingsPage() {
     { key: "platform", label: "Platform", icon: SlidersHorizontal },
   ];
   const automationsSections = AUTOMATIONS_SECTIONS.filter(({ key }) =>
-    key === "ctem-agents" ? isXtmOne : key === "concierge" ? conciergeEnabled : true,
+    key === "ctem-agents" ? isXtmOne : true,
   );
 
   // For custom_openai, litellm, tei and the media providers, compose the compound key from separate fields

@@ -15,8 +15,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * "Improve with Concierge" (#8261): asks the Concierge to investigate one agent
- * or flow the viewer manages. Shown while the `CONCIERGE` flag is on and the
- * viewer may manage the target; disabled, with the reason, while agentic AI is
+ * or flow the viewer manages. Shown while the viewer may manage the target
+ * (built in since #101 S1, no flag); disabled, with the reason, while agentic AI is
  * off; a refusal (another cycle open, outside the scope, budget reached) is
  * said as such.
  */
@@ -26,7 +26,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useConciergeName, useRequestConciergeCycle } from "@/hooks/api/useConciergeApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { conciergeRefusalKey } from "@/lib/concierge";
 import { Spinner } from "@filigran/design-system";
@@ -42,10 +41,9 @@ export function ImproveWithConciergeButton({ targetType, targetId, canManage, si
   const { t_i18n } = useFormatter();
   const conciergeName = useConciergeName();
   const { toast } = useToast();
-  const enabled = useFeatureFlag("CONCIERGE");
   const aiOff = useAiActionDisabled();
   const request = useRequestConciergeCycle();
-  if (!enabled || !canManage) return null;
+  if (!canManage) return null;
 
   const ask = () =>
     request.mutate(

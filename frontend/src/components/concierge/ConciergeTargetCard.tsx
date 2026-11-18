@@ -16,12 +16,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * One agent's or flow's Concierge card (#8261): its improvement proposals,
  * its cycles and their digests, and "Improve with Concierge". Shown only to who
- * may manage the target while the `CONCIERGE` flag is on: the server reads the
+ * may manage the target (built in since #101 S1, no flag): the server reads the
  * same rule (`cycle_access`), so nothing here widens what the viewer sees.
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { ConciergeCyclesList } from "./ConciergeCyclesList";
 import { ImprovementsInbox } from "./ImprovementsInbox";
@@ -39,8 +38,7 @@ export function ConciergeTargetCard({
 }) {
   const { t_i18n } = useFormatter();
   const conciergeName = useConciergeName();
-  const enabled = useFeatureFlag("CONCIERGE");
-  if (!enabled || !canManage) return null;
+  if (!canManage) return null;
   const fixed = targetType === "agent" ? { agent_id: targetId } : { target_type: "flow" as const, target_id: targetId };
   return (
     <Card>

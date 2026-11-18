@@ -687,7 +687,7 @@ export default function App() {
         <Route path="/agents/flow" element={<Page><AgentFlow /></Page>} />
         <Route path="/agents/:id/chats/:conversationId" element={<Page><AgentChatConversation /></Page>} />
         <Route path="/agents/:id/:tab?/:section?" element={<Page><AgentDetail /></Page>} />
-        <Route path="/concierge/:tab?" element={<FeatureFlagGate flag="CONCIERGE"><AdminRoute><Page><Concierge /></Page></AdminRoute></FeatureFlagGate>} />
+        <Route path="/concierge/:tab?" element={<AdminRoute><Page><Concierge /></Page></AdminRoute>} />
         <Route path="/evaluations" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Evaluations /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/new" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><NewEvaluation /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />

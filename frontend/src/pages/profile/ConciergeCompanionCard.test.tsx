@@ -1,5 +1,5 @@
 // Profile > Concierge companion (#8261): off by default, turned on and pointed
-// at a pet through the user's own route; gone while the flag is off.
+// at a pet through the user's own route; built in since #101 (S1), no flag.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -7,9 +7,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
-const flags = vi.hoisted(() => ({ concierge: true }));
 vi.mock("@/lib/api", () => ({ api }));
-vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => flags.concierge }));
 
 import { petUploadErrorKey } from "@/lib/concierge-pet";
 import { ConciergeCompanionCard } from "./ConciergeCompanionCard";
@@ -22,7 +20,6 @@ const PETS = [
 describe("ConciergeCompanionCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    flags.concierge = true;
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
     api.get.mockImplementation((path: string) => {
@@ -53,11 +50,10 @@ describe("ConciergeCompanionCard", () => {
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/concierge/me/companion", { enabled: false, pet: "owl" }));
   });
 
-  it("is gone while the flag is off", () => {
-    flags.concierge = false;
+  it("reads the companion with no feature flag (#101 S1)", async () => {
     renderWithProviders(<ConciergeCompanionCard />);
-    expect(screen.queryByTestId("profile.concierge-companion")).toBeNull();
-    expect(api.get).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/concierge/me/companion"));
+    expect(await screen.findByTestId("profile.concierge-companion")).toBeInTheDocument();
   });
 });
 

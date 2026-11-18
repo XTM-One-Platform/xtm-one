@@ -42,7 +42,6 @@ import { useToast } from "@/components/ui/toast";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { useCommandHandler } from "@/lib/commands/CommandsProvider";
 import { useAuth } from "@/hooks/useAuth";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import {
   useActivateFlow,
   useDeactivateFlow,
@@ -154,7 +153,6 @@ function BuilderInner({ flowId }: { flowId: string }) {
   const [showOwnership, setShowOwnership] = useState(false);
   // The Concierge panel (#8261), shown while no other side panel is.
   const [showConcierge, setShowConcierge] = useState(false);
-  const conciergeOn = useFeatureFlag("CONCIERGE");
   // The dotted guide grid: a per-user preference toggled from the toolbar
   // (off by default — the canvas reads cleaner without it).
   const [showGrid, setShowGrid] = useState<boolean>(
@@ -1691,7 +1689,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
           setShowOwnership(false);
         }}
         onToggleConcierge={
-          conciergeOn && canManage
+          canManage
             ? () => {
                 setShowConcierge((v) => !v);
                 setShowVersions(false);

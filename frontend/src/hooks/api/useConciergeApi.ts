@@ -15,8 +15,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * Platform Concierge (#8254): the improvement opt-in of an agent or a flow, the user's
- * opt-out, Settings > Agents and automations > Concierge and the budget line. Every route is behind the
- * `CONCIERGE` flag; callers pass `enabled` from `useFeatureFlag("CONCIERGE")`.
+ * opt-out, Settings > Agents and automations > Concierge and the budget line. Built in since
+ * #101 (S1): no feature flag gates these routes; callers pass `enabled` for their own reasons.
  * Level 8 (#8261): cycles and their digests, signals, schedule marks, "Improve
  * with Concierge" and the Improvements inbox (Approve / Reject are level 3's).
  */
@@ -26,7 +26,6 @@ import { api } from "@/lib/api";
 import { defaultConciergeName } from "@/lib/concierge";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { usePlatformConfig } from "@/hooks/usePlatformConfig";
 import type {
   ConciergeBudget,
@@ -94,13 +93,10 @@ export function useSetConciergeOptOut() {
  */
 export function useConciergeName(enabled = true): string {
   const platformMode = usePlatformConfig()?.platform_mode;
-  // Asked only while the flag is on: the route answers 403 otherwise, and
-  // callers run their hooks before their own flag check.
-  const flagOn = useFeatureFlag("CONCIERGE");
   const { data } = useQuery<ConciergeName>({
     queryKey: NAME_KEY,
     queryFn: () => api.get("/concierge/name"),
-    enabled: enabled && flagOn,
+    enabled,
     staleTime: 5 * 60_000,
     // The default name stands in: a failed read never takes the page down.
     throwOnError: false,

@@ -101,7 +101,6 @@ export function validatePassword(
  */
 export const KNOWN_FEATURE_FLAGS = [
   "AGENT_WIZARD_ASSIST",
-  "CONCIERGE",
   "DASHBOARD_STUDIO",
   "DEEP_INVESTIGATION",
   "EVALUATION",

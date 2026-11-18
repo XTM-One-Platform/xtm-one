@@ -8,9 +8,8 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
-const flags = vi.hoisted(() => ({ concierge: true, reduced: false }));
+const flags = vi.hoisted(() => ({ reduced: false }));
 vi.mock("@/lib/api", () => ({ api }));
-vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => flags.concierge }));
 vi.mock("@/hooks/usePrefersReducedMotion", () => ({ usePrefersReducedMotion: () => flags.reduced }));
 
 import { ConciergeCompanion } from "./ConciergeCompanion";
@@ -31,7 +30,6 @@ function serve(companion: { enabled: boolean; pet: string }, state = "review") {
 describe("ConciergeCompanion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    flags.concierge = true;
     flags.reduced = false;
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
@@ -45,12 +43,10 @@ describe("ConciergeCompanion", () => {
     expect(api.get).not.toHaveBeenCalledWith("/concierge/me/activity");
   });
 
-  it("shows nothing and reads nothing while the flag is off", async () => {
-    flags.concierge = false;
+  it("reads the companion with no feature flag (#101 S1)", async () => {
     serve({ enabled: true, pet: "alfred" });
     renderWithProviders(<MemoryRouter><ConciergeCompanion /></MemoryRouter>);
-    expect(screen.queryByTestId("concierge.companion")).toBeNull();
-    expect(api.get).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("concierge.companion")).toBeInTheDocument();
   });
 
   it("says what it shows, with the Concierge's name", async () => {

@@ -17,8 +17,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * The user's Platform Concierge opt-out (#8254), on Profile > Memory: the
  * Concierge never reads this user's memories and conversations, and the
  * evaluation cases already built from them are deleted (PRD 6.2). Shown with
- * the same consent notice as the agent opt-in (B16), only while the
- * `CONCIERGE` flag is on.
+ * the same consent notice as the agent opt-in (B16). Built in since #101 (S1),
+ * no flag.
  */
 import { ShieldOff } from "lucide-react";
 
@@ -28,14 +28,12 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useConciergeOptOut, useSetConciergeOptOut } from "@/hooks/api/useConciergeApi";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { Spinner } from "@filigran/design-system";
 
 export function ConciergeOptOutRow() {
-  const enabled = useFeatureFlag("CONCIERGE");
-  const { data } = useConciergeOptOut(enabled);
-  if (!enabled || !data) return null;
+  const { data } = useConciergeOptOut();
+  if (!data) return null;
   return <OptOutCard optOut={data.opt_out} />;
 }
 
