@@ -194,7 +194,7 @@ async def _load_section(db: AsyncSession, name: str, w: Window) -> tuple[Any, bo
         # The level that owns the section is not installed in this build.
         return None, False
     except Exception:
-        logger.exception("Concierge digest: section %s failed", name)
+        logger.exception("Platform Health digest: section %s failed", name)
         return None, False
 
 

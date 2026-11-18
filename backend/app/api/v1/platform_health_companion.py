@@ -146,7 +146,7 @@ async def upload_pet(
         parsed = pets.parse_package([((upload.filename or "")[:255], await _read_bounded(upload)) for upload in files])
         pet = await pets.add_pet(db, parsed, actor_id=admin.id)
     except pets.PetPackageError as exc:
-        logger.info("Concierge pet upload refused: %.200r", str(exc))
+        logger.info("Platform Health pet upload refused: %.200r", str(exc))
         status_code = status.HTTP_409_CONFLICT if exc.code == "slug_taken" else 422
         raise HTTPException(status_code=status_code, detail={"code": exc.code, "message": exc.message}) from None
     await log_audit(

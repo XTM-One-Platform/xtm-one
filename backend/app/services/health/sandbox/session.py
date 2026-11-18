@@ -191,7 +191,7 @@ class SandboxSession:
         self.report.intercepted_writes += 1
         if self.mode == "dry_run":
             self.log_call(tool, "write", "intercepted", arguments)
-            logger.info("Concierge dry-run: write %r logged, not executed", tool[:120])
+            logger.info("Platform Health dry-run: write %r logged, not executed", tool[:120])
             return DRY_RUN_NOTICE, "intercepted"
         grounding = await self._consented(self.replay.outputs_of(tool))
         text, tokens = await self.simulate(tool, arguments, grounding, description) if self.simulate else (None, 0)

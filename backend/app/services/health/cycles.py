@@ -258,7 +258,7 @@ async def start_cycle(
             assignment, agent, payload=run_payload, db=db, trigger_context=trigger_context
         )
     except Exception:
-        logger.exception("Concierge cycle %s: the run of %r could not be started", cycle_id, assignment.name)
+        logger.exception("Platform Health cycle %s: the run of %r could not be started", cycle_id, assignment.name)
         await db.rollback()
         await close_cycle(db, cycle_id, status="failed", reason="The run could not be started.")
         await db.commit()
@@ -344,7 +344,7 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
         if result.started:
             started += 1
         else:
-            logger.info("Concierge schedule %r due, not started: %s", key, result.refusal)
+            logger.info("Platform Health schedule %r due, not started: %s", key, result.refusal)
     return started
 
 
@@ -443,7 +443,7 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     if active:
         cap = (await remaining(db, cycle_id)).refusal
         if cap in _CAPS:
-            logger.info("Concierge cycle %s: %s, its runs are stopped", cycle_id, cap)
+            logger.info("Platform Health cycle %s: %s, its runs are stopped", cycle_id, cap)
             await _stop_runs(db, active, REFUSAL_MESSAGES[cap])
         return 0
     root = next((run for run in tree if run.id == root_id), None)
@@ -461,7 +461,7 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     else:
         status, reason = "cancelled", f"The run ended {root.status}."
     if root.error and status == "failed":
-        logger.info("Concierge cycle %s: run failed: %r", cycle_id, str(root.error)[:300])
+        logger.info("Platform Health cycle %s: run failed: %r", cycle_id, str(root.error)[:300])
     await close_cycle(db, cycle_id, status=status, reason=reason)
     await db.commit()
     return 1
@@ -492,7 +492,7 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
         try:
             closed += await _settle_cycle(db, cycle_id, root_id, now=now)
         except Exception:
-            logger.exception("Concierge cycle %s could not be settled", cycle_id)
+            logger.exception("Platform Health cycle %s could not be settled", cycle_id)
             await db.rollback()
     await close_stale_cycles(db, older_than=STALE_CYCLE_AFTER)
     await db.commit()
@@ -516,7 +516,7 @@ async def settle_cycles(db: AsyncSession, *, limit: int = 50) -> int:
             await build_digest(db, cycle)
             await db.commit()
         except Exception:
-            logger.exception("Concierge cycle %s: the digest could not be built", cycle.id)
+            logger.exception("Platform Health cycle %s: the digest could not be built", cycle.id)
             await db.rollback()
     return closed
 
@@ -540,7 +540,7 @@ async def health_tick(*, ai_on: bool) -> None:
             async with async_session() as db:
                 await settle(db)
         except Exception:
-            logger.exception("Concierge tick: %s failed", settle.__name__)
+            logger.exception("Platform Health tick: %s failed", settle.__name__)
     async with async_session() as db:
         await settle_cycles(db)
     if not ai_on or not health_enabled():

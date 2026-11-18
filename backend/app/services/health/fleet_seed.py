@@ -388,7 +388,7 @@ async def seed_health_fleet(db: AsyncSession) -> int:
             # A personal agent holding the slug is never adopted into the
             # fleet (it would act as the platform); it is left alone and the
             # fleet goes without that member until the slug is free.
-            logger.warning("Concierge seed: slug %r is held by a personal agent, member not seeded", spec.slug)
+            logger.warning("Platform Health seed: slug %r is held by a personal agent, member not seeded", spec.slug)
             by_slug.pop(spec.slug)
             continue
         if agent is None:

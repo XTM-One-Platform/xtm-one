@@ -59,7 +59,7 @@ async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str 
     except (TypeError, ValueError):
         caller = None
     if caller is None or not caller.is_admin or getattr(caller, "is_active", True) is False:
-        return "the caller is neither the Concierge nor an administrator"
+        return "the caller is neither Platform Health nor an administrator"
     if not evaluation_enabled():
         return "the evaluation surface is off for people"
     return None
@@ -101,7 +101,7 @@ def build_health_evaluation_tools(
     async def _refusal() -> str | None:
         reason = await evaluation_tool_refusal(db, user_id)
         if reason is not None:
-            logger.info("Concierge evaluation tool refused for %s: %s", user_id or "the Concierge", reason)
+            logger.info("Platform Health evaluation tool refused for %s: %s", user_id or "Platform Health", reason)
             return REFUSED
         return None
 

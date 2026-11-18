@@ -179,7 +179,7 @@ async def load_reader(
         scope = await _load_scope(db)
     except Exception as exc:
         # Fail closed: without the consent rows nobody reads Platform Health data.
-        logger.warning("Concierge consent scope unreadable: %s", format_exception_message(exc))
+        logger.warning("Platform Health consent scope unreadable: %s", format_exception_message(exc))
         return None
     cycle_id = await _run_cycle(db, run_id) if principal is not None else None
     return Reader(user=user, principal=principal, scope=scope, cycle_id=cycle_id)

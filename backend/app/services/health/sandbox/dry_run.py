@@ -65,7 +65,7 @@ async def record_dry_run_write(
 
     principal = current_health_principal()
     anchor = anchor_user_id or (principal.on_behalf_of_admin_id if principal else None)
-    logger.info("Concierge dry-run: %s on %s %s not executed", action[:80], target_type[:40], target_id)
+    logger.info("Platform Health dry-run: %s on %s %s not executed", action[:80], target_type[:40], target_id)
     if anchor is None:
         return
     await log_system_audit(

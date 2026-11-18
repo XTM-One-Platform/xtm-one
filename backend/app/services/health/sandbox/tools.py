@@ -65,7 +65,7 @@ async def sandbox_access_refusal(
         except (TypeError, ValueError):
             caller = None
         if caller is None or not caller.is_admin or getattr(caller, "is_active", True) is False:
-            return "the caller is neither the Concierge nor an administrator"
+            return "the caller is neither Platform Health nor an administrator"
     return await subject_refusal(db, source_type, source_id)
 
 

@@ -364,7 +364,7 @@ async def settle_health_evaluations(db: AsyncSession, *, limit: int = 100) -> in
         try:
             charged += await _settle_one(db, held)
         except Exception:
-            logger.exception("Concierge evaluation %s: its spend could not be settled", held.hold)
+            logger.exception("Platform Health evaluation %s: its spend could not be settled", held.hold)
             await db.rollback()
     return charged
 
@@ -390,6 +390,6 @@ async def _settle_one(db: AsyncSession, held: budget.Reservation) -> int:
             .where(EvaluationRun.id.in_(active), EvaluationRun.status.in_(_ACTIVE_RUN_STATUSES))
             .values(status="cancelled", error=BUDGET_STOP_ERROR, completed_at=datetime.now(UTC))
         )
-        logger.info("Concierge evaluation %s stopped: its spend passes the budget", evaluation_id)
+        logger.info("Platform Health evaluation %s stopped: its spend passes the budget", evaluation_id)
     await db.commit()
     return 0

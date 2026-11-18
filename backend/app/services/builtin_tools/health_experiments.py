@@ -80,7 +80,7 @@ async def _list_experiments(
     )
     return untrusted_json(
         {"count": len(rows), "experiments": [experiment_payload(e, content=access.content) for e in rows]},
-        "Concierge experiments",
+        "Platform Health experiments",
     )
 
 
@@ -92,7 +92,7 @@ async def _get_experiment(db: AsyncSession, reader: Reader, experiment_id: str =
         # Settling books the spend and records the result: the Experimenter's write.
         await settle(db, experiment)
         await db.commit()
-    return untrusted_json(experiment_payload(experiment, content=access.content), "Concierge experiment")
+    return untrusted_json(experiment_payload(experiment, content=access.content), "Platform Health experiment")
 
 
 async def _run_experiment(
@@ -120,7 +120,7 @@ async def _run_experiment(
         cycle_id=reader.cycle_id,
     )
     await db.commit()
-    return untrusted_json(experiment_payload(experiment, content=access.content), "Concierge experiment")
+    return untrusted_json(experiment_payload(experiment, content=access.content), "Platform Health experiment")
 
 
 async def _propose_from_experiment(db: AsyncSession, reader: Reader, experiment_id: str = "") -> str:

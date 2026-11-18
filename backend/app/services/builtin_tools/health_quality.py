@@ -111,10 +111,10 @@ async def run_tool(
         return f"Error: {exc}"
     except TypeError as exc:
         # An argument the schema does not name.
-        logger.info("Concierge tool %s refused its arguments: %s", name, format_exception_message(exc))
+        logger.info("Platform Health tool %s refused its arguments: %s", name, format_exception_message(exc))
         return "Error: unexpected arguments for this tool."
     except Exception as exc:
-        logger.error("Concierge tool %s failed: %s", name, format_exception_message(exc), exc_info=True)
+        logger.error("Platform Health tool %s failed: %s", name, format_exception_message(exc), exc_info=True)
         return _FAILED
 
 
@@ -173,7 +173,7 @@ async def _get_quality_signals(db: AsyncSession, reader: Reader, agent_id: str =
     access = await agent_access_or_refuse(db, reader, parse_uuid(agent_id, "agent_id"))
     signals = await quality_signals(db, reader, access, days=period_days)
     await db.commit()  # the content-read audit entries
-    return untrusted_json(signals, "Concierge quality signals")
+    return untrusted_json(signals, "Platform Health quality signals")
 
 
 async def _list_findings(
@@ -206,7 +206,7 @@ async def _list_findings(
         shown.append(payload)
         if len(shown) >= limit:
             break
-    return untrusted_json({"count": len(shown), "findings": shown}, "Concierge findings")
+    return untrusted_json({"count": len(shown), "findings": shown}, "Platform Health findings")
 
 
 async def _without_opted_out(db: AsyncSession, reader: Reader, access: Any, evidence: dict[str, Any]) -> dict[str, Any]:

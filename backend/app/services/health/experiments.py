@@ -377,7 +377,7 @@ async def run(
     except Exception as exc:
         # Refused or failed, nothing measures and nothing was reserved; the reason is logged.
         log = logger.info if isinstance(exc, deps.EvaluationUnavailableError) else logger.warning
-        log("Concierge experiment %s not launched: %s", experiment.id, format_exception_message(exc))
+        log("Platform Health experiment %s not launched: %s", experiment.id, format_exception_message(exc))
         experiment.dataset_id = built.dataset_id
         return _skip(experiment, "evaluation_unavailable")
     experiment.dataset_id = built.dataset_id
@@ -405,7 +405,9 @@ async def settle(db: AsyncSession, experiment: HealthExperiment) -> HealthExperi
             db, baseline_run_ids=list(experiment.baseline_run_ids), variant_run_ids=list(experiment.variant_run_ids)
         )
     except Exception as exc:
-        logger.warning("Concierge experiment %s comparison failed: %s", experiment.id, format_exception_message(exc))
+        logger.warning(
+            "Platform Health experiment %s comparison failed: %s", experiment.id, format_exception_message(exc)
+        )
         return experiment
     if not compared.finished:
         return experiment

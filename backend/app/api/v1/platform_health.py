@@ -112,7 +112,7 @@ async def _commit_with_revocation(db: AsyncSession, revocation: Revocation | Non
         await db.commit()
     except Exception:
         await db.rollback()
-        logger.exception("Concierge consent change not applied (%s)", revocation)
+        logger.exception("Platform Health consent change not applied (%s)", revocation)
         raise HTTPException(status_code=500, detail=NOT_APPLIED_DETAIL) from None
 
 

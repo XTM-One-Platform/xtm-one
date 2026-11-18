@@ -515,7 +515,7 @@ async def fire_signals(db: AsyncSession, crossings: list[SignalReading], *, now:
         started += int(result.started)
         if not result.started:
             logger.info(
-                "Concierge signal %s on %s %s: no cycle (%s)",
+                "Platform Health signal %s on %s %s: no cycle (%s)",
                 reading.kind,
                 reading.target_type,
                 reading.target_id,
@@ -562,7 +562,7 @@ async def signals_tick(*, now: datetime | None = None) -> int:
                 await _mark_pass(db, kind, now)
                 await db.commit()
             except Exception:
-                logger.exception("Concierge signal %s: evaluation failed", kind)
+                logger.exception("Platform Health signal %s: evaluation failed", kind)
                 await db.rollback()
                 # Tried again at the signal's next cadence, not on every tick.
                 await _mark_pass(db, kind, now)

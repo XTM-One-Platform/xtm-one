@@ -740,7 +740,7 @@ async def withdraw_for_revocation(db: AsyncSession, revocation: Revocation) -> N
             db, user_id=revocation.user_id, agent_id=revocation.agent_id, flow_id=revocation.flow_id
         )
     if removed:
-        logger.info("Concierge datasets: %d entr(y/ies) withdrawn on %s", removed, revocation.kind)
+        logger.info("Platform Health datasets: %d entr(y/ies) withdrawn on %s", removed, revocation.kind)
 
 
 # Run on every revocation, in the revoking transaction (level 1).

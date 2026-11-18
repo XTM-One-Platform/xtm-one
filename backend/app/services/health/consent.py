@@ -366,7 +366,7 @@ async def audit_content_read(
     agent, flow, user = _uuid(agent_id), _uuid(flow_id), _uuid(user_id)
     anchor = await _anchor_user_id(db, user_id=user, agent_id=agent, flow_id=flow)
     if anchor is None:
-        logger.warning("Concierge read of %s %.80r refused: no user to anchor its audit row on", kind, ref_id)
+        logger.warning("Platform Health read of %s %.80r refused: no user to anchor its audit row on", kind, ref_id)
         raise ConsentDeniedError()
     principal = current_health_principal()
     ref = _uuid(ref_id)
@@ -408,7 +408,11 @@ async def require_content_read(
     others = list(user_ids)
     if not await content_readable(db, agent_id=agent_id, flow_id=flow_id, user_id=user_id, user_ids=others):
         logger.info(
-            "Concierge read of %s %.80r refused by consent (agent %.80r, flow %.80r)", kind, ref_id, agent_id, flow_id
+            "Platform Health read of %s %.80r refused by consent (agent %.80r, flow %.80r)",
+            kind,
+            ref_id,
+            agent_id,
+            flow_id,
         )
         raise ConsentDeniedError()
     await audit_content_read(db, kind=kind, ref_id=ref_id, agent_id=agent_id, flow_id=flow_id, user_id=user_id)

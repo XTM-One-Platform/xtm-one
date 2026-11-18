@@ -280,7 +280,7 @@ async def quality_signals(
     try:
         result["feedback"] = await _feedback(db, reader, access, days)
     except Exception as exc:
-        logger.warning("Concierge feedback read failed for agent %s: %s", agent.id, format_exception_message(exc))
+        logger.warning("Platform Health feedback read failed for agent %s: %s", agent.id, format_exception_message(exc))
         result["feedback"] = None
         result["feedback_unavailable"] = True
 
@@ -395,7 +395,7 @@ async def _agent_trace_ids(
             trace, *_ = await store.get_trace_detail(db, user=_viewer(reader), user_group_ids=[], trace_id=trace_id)
         except Exception as exc:
             # Not found, or not readable: not evidence.
-            logger.debug("Concierge evidence trace %s dropped: %s", trace_id, format_exception_message(exc))
+            logger.debug("Platform Health evidence trace %s dropped: %s", trace_id, format_exception_message(exc))
             continue
         if str(getattr(trace, "agent_id", "") or "") != str(agent_id):
             continue
