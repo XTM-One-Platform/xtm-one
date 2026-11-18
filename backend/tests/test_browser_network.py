@@ -61,7 +61,9 @@ def fresh_process(monkeypatch):
 
 
 def _session(url: str = "https://lab.example/chat") -> browser_tool.BrowserSession:
-    context = SimpleNamespace(storage_state=AsyncMock(return_value=STATE), set_offline=AsyncMock())
+    context = SimpleNamespace(
+        storage_state=AsyncMock(return_value=STATE), set_offline=AsyncMock(), route=AsyncMock(), unroute=AsyncMock()
+    )
     page = SimpleNamespace(url=url)
     return browser_tool.BrowserSession(pw=None, browser=None, context=context, page=page)
 
@@ -152,6 +154,24 @@ async def test_offline_cuts_the_page_and_is_kept_on_the_session(session):
     assert "ERR_INTERNET_DISCONNECTED" in result.content
 
 
+async def test_offline_fails_every_request_through_a_route_not_the_emulation_alone(session):
+    """A request on a reused keep-alive connection passes ``set_offline``: a route aborts every new one."""
+    await _call({"action": "network", "offline": True})
+    await _call({"action": "network", "offline": True})
+
+    session.context.route.assert_awaited_once_with("**/*", browser_tool._fail_offline)
+    route = SimpleNamespace(abort=AsyncMock())
+    await browser_tool._fail_offline(route)
+    route.abort.assert_awaited_once_with("internetdisconnected")
+
+
+async def test_back_online_removes_the_offline_route(session):
+    await _call({"action": "network", "offline": True})
+    await _call({"action": "network", "offline": False})
+
+    session.context.unroute.assert_awaited_once_with("**/*", browser_tool._fail_offline)
+
+
 async def test_offline_false_gives_the_network_back(session):
     await _call({"action": "network", "offline": True})
     result = await _call({"action": "network", "offline": False})
@@ -190,6 +210,7 @@ async def test_a_session_re_created_after_a_resume_opens_offline(redis, fresh_pr
 
     assert launch.context_kwargs["offline"] is True
     assert resumed.offline is True
+    launch.context.route.assert_any_await("**/*", browser_tool._fail_offline)
     assert "the page still offline" in (browser_tool.take_notice(KEY) or "")
 
 
@@ -201,6 +222,7 @@ async def test_a_session_never_cut_opens_online(redis, fresh_process, launch):
 
     assert launch.context_kwargs["offline"] is False
     assert resumed.offline is False
+    assert all(call.args[1] is not browser_tool._fail_offline for call in launch.context.route.await_args_list)
 
 
 async def test_offline_set_while_the_state_read_fails_is_restored_after_a_resume(

@@ -1361,6 +1361,8 @@ async def _launch_session(session_key: str, *, reopen_kept_page: bool = False) -
             **media,
         )
         await context.route("**/*", _route_filter)
+        if offline:
+            await context.route("**/*", _fail_offline)
         page = await context.new_page()
         await redirects.watch_main_frame(context, page)
         page.set_default_timeout(ACTION_TIMEOUT_MS)
@@ -1815,6 +1817,16 @@ async def _route_filter(route: Any) -> None:
         await route.abort("blockedbyclient")
     else:
         await route.continue_()
+
+
+async def _fail_offline(route: Any) -> None:
+    """Route handler of an offline session: every new request fails as a cut network would fail it.
+
+    ``BrowserContext.set_offline`` alone lets a request through on a connection already open (an HTTP keep-alive
+    or HTTP/2 connection to the same origin), so a page's error state could not be provoked. Registered after
+    :func:`_route_filter`, it runs first; removed when the session goes back online.
+    """
+    await route.abort("internetdisconnected")
 
 
 # ── Browser actions ──────────────────────────────────────────────────────────
@@ -3127,8 +3139,9 @@ async def browser_emulate_media(
 async def browser_network(session_key: str, offline: object) -> str:
     """Cut the session's pages from the network or give it back (``BrowserContext.set_offline``), kept until changed.
 
-    Offline, ``navigator.onLine`` is false, the page gets its ``offline`` event and a new request fails with
-    ``net::ERR_INTERNET_DISCONNECTED``; a connection already open (an events stream) is not cut by Chromium's
+    Offline, ``navigator.onLine`` is false, the page gets its ``offline`` event and every new request fails with
+    ``net::ERR_INTERNET_DISCONNECTED``, one sent on a reused keep-alive connection included (:func:`_fail_offline`);
+    a connection already open (an events stream) is not cut by Chromium's
     emulation. Back online the page gets its ``online`` event. Kept with the session's state like the viewport, so
     a session re-created after a resume opens offline too.
     """
@@ -3139,13 +3152,17 @@ async def browser_network(session_key: str, offline: object) -> str:
         session.last_used = time.time()
         await _reopen_resumed_page(session_key, session)
         await session.context.set_offline(offline)
+        if offline and not session.offline:
+            await session.context.route("**/*", _fail_offline)
+        elif not offline:
+            await session.context.unroute("**/*", _fail_offline)
         session.offline = offline
         if await _remember_state(session_key, session) is None:
             await _share_kept_offline(session_key, session)
         if offline:
             return (
                 f"Network offline on {session.page.url}, kept until offline=false or close: navigator.onLine is "
-                "false, the 'offline' event fired, new requests fail with net::ERR_INTERNET_DISCONNECTED. A "
+                "false, the 'offline' event fired, every new request fails with net::ERR_INTERNET_DISCONNECTED. A "
                 "connection already open (an events stream) is not cut by the emulation: the page's own 'offline' "
                 "handling decides."
             )
