@@ -394,6 +394,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   vuln_intel: "Vulnerability Intelligence",
   vulncheck: "VulnCheck",
   wiz: "Wiz",
+  wordsmith: "Wordsmith",
   servicenow: "ServiceNow",
   shodan: "Shodan",
   urlscan: "urlscan.io",

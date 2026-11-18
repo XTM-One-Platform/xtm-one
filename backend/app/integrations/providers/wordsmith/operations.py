@@ -986,10 +986,6 @@ IDEMPOTENT_STARTS: frozenset[tuple[str, str]] = frozenset(
 )
 
 
-def group_by_tool() -> dict[str, Group]:
-    return {group.tool: group for group in GROUPS}
-
-
 def covered_routes() -> dict[tuple[str, str], str]:
     """Every documented ``(method, path)`` and the tool that reaches it."""
     routes: dict[tuple[str, str], str] = {}

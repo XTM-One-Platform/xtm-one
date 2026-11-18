@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1830 tools across 110 providers; 51 held back by hand.
+# 1850 tools across 111 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1730,6 +1730,26 @@ wiz:list_wiz_projects
 wiz:list_wiz_security_frameworks
 wiz:list_wiz_vulnerability_findings
 wiz:search_wiz_cloud_resources
+wordsmith:get_wordsmith_agents
+wordsmith:get_wordsmith_api_request
+wordsmith:get_wordsmith_artifacts
+wordsmith:get_wordsmith_blueprints
+wordsmith:get_wordsmith_directory
+wordsmith:get_wordsmith_events
+wordsmith:get_wordsmith_files
+wordsmith:get_wordsmith_me
+wordsmith:get_wordsmith_operations
+wordsmith:get_wordsmith_playbooks
+wordsmith:get_wordsmith_reports
+wordsmith:get_wordsmith_repositories
+wordsmith:get_wordsmith_reviews
+wordsmith:get_wordsmith_sessions
+wordsmith:get_wordsmith_sharing
+wordsmith:get_wordsmith_skills
+wordsmith:get_wordsmith_tasks
+wordsmith:get_wordsmith_usage
+wordsmith:get_wordsmith_webhook_endpoints
+wordsmith:search_wordsmith_knowledge
 x:get_x_profile
 x:get_x_tweet
 x:get_x_user_profile
