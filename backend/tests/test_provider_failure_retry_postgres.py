@@ -1,4 +1,6 @@
-"""``retry_provider_failures_now`` on a real database, then the sweeper it feeds."""
+"""Provider failures after an embedding provider switch, on a real database:
+which documents count, the batched retry that makes them due, and the sweeper
+that re-queues them."""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
 from app.services import kb_helpers
 from app.services.kb_document_errors import (
     EMBEDDING_PROVIDER_ERROR_MESSAGE,
+    INTERNAL_ERROR_MESSAGE,
     NO_CHUNKS_MESSAGE,
     TIMEOUT_MESSAGE,
     dimension_mismatch_message,
@@ -23,6 +26,7 @@ from tests.scratch_database import ALL_TABLES, scratch_database
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 11, 18, 12, tzinfo=UTC)
+_DUE = {"dims", "provider", "timeout", "legacy"}
 
 
 @pytest.mark.asyncio
@@ -49,21 +53,32 @@ async def test_provider_failures_become_due_and_the_sweeper_requeues_them(monkey
                 "dims": doc("dims", error=dimension_mismatch_message("text-embedding-3-large", "3072", 1536)),
                 "provider": doc("provider", error=EMBEDDING_PROVIDER_ERROR_MESSAGE, retries=1),
                 "timeout": doc("timeout", error=TIMEOUT_MESSAGE),
+                # Raw exception text from a row older than the fixed sentences.
+                "legacy": doc("legacy", error="Error code: 401 - Incorrect API key provided"),
                 "content": doc("content", error=NO_CHUNKS_MESSAGE),
+                "internal": doc("internal", error=INTERNAL_ERROR_MESSAGE),
                 "worker": doc("worker", error=worker_timeout_message(600)),
                 "spent": doc("spent", error=EMBEDDING_PROVIDER_ERROR_MESSAGE, retries=3),
+                "locked": doc("locked", error=EMBEDDING_PROVIDER_ERROR_MESSAGE),
                 "ready": doc("ready", status="ready"),
             }
             db.add_all(docs.values())
             await db.commit()
 
-            assert await kb_helpers.retry_provider_failures_now(db, now=_NOW) == 3
-            await db.commit()
+            assert await kb_helpers.count_provider_failures(db) == len(_DUE) + 1
+
+        # A sweeper tick holding a row is skipped, not waited on; batches of one
+        # still reach every other row.
+        async with scratch.sessions() as holder:
+            await holder.execute(
+                select(KnowledgeDocument).where(KnowledgeDocument.id == docs["locked"].id).with_for_update()
+            )
+            assert await kb_helpers.retry_provider_failures_now(now=_NOW, batch_size=1) == len(_DUE)
+            await holder.rollback()
 
         async with scratch.sessions() as db:
             rows = {r.filename[:-3]: r for r in (await db.execute(select(KnowledgeDocument))).scalars()}
-            due = {name for name, r in rows.items() if r.embedding_next_retry_at is not None}
-            assert due == {"dims", "provider", "timeout"}
+            assert {name for name, r in rows.items() if r.embedding_next_retry_at is not None} == _DUE
             assert rows["dims"].embedding_next_retry_at == _NOW
             # Nothing else is written until the sweeper re-queues: the reason stays.
             assert rows["dims"].status == "error"
@@ -83,5 +98,50 @@ async def test_provider_failures_become_due_and_the_sweeper_requeues_them(monkey
             monkeypatch.setattr(kb_helpers, "_sweep_embedding_state", _embedding_ready)
             requeued = await kb_helpers.recover_failed_documents(db, now=_NOW + timedelta(seconds=1))
 
-            assert requeued == 3
-            assert sorted(enqueued) == sorted(str(rows[n].id) for n in ("dims", "provider", "timeout"))
+            assert requeued == len(_DUE)
+            assert sorted(enqueued) == sorted(str(rows[n].id) for n in _DUE)
+
+
+@pytest.mark.asyncio
+async def test_retry_does_nothing_with_auto_retry_off(monkeypatch):
+    monkeypatch.setattr(kb_helpers.app_settings, "embedding_auto_retry_enabled", False)
+
+    assert await kb_helpers.retry_provider_failures_now(now=_NOW) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_row_runs_on_the_config_the_save_compares_with(monkeypatch):
+    from app.api.v1.settings import _legacy_embedding_config_id
+    from app.core.security import encrypt_value
+    from app.llm import router
+    from app.models.llm_config import LLMProviderConfig
+    from app.models.platform_settings import PlatformSettings
+
+    async with (
+        scratch_database("provlegacy", tables=ALL_TABLES, extensions=("vector",)) as scratch,
+        scratch.sessions() as db,
+    ):
+        configs = [
+            LLMProviderConfig(
+                provider="openai",
+                api_key_enc=encrypt_value("sk-test"),
+                available_models=["text-embedding-3-small"],
+                default_model=model,
+                created_at=_NOW + timedelta(minutes=minutes),
+            )
+            for minutes, model in ((0, "text-embedding-3-small"), (1, "text-embedding-3-large"))
+        ]
+        db.add_all(configs)
+        db.add(PlatformSettings(embedding_provider="openai", embedding_provider_id=None))
+        await db.commit()
+        monkeypatch.setattr(router, "ensure_not_excluded", lambda *_a, **_kw: _noop())
+
+        _provider, model, used = await router.get_embedding_provider(db)
+
+        assert used == configs[1].id
+        assert model == "text-embedding-3-large"
+        assert await _legacy_embedding_config_id(db, "openai") == used
+
+
+async def _noop():
+    return None

@@ -30,7 +30,7 @@ from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import String, cast, delete, event, func, or_, select, update
+from sqlalchemy import String, and_, cast, delete, event, func, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, SessionTransaction
@@ -46,8 +46,9 @@ from app.core.utils import format_exception_message
 from app.models.embedding import Embedding
 from app.models.knowledge_base import KBActivityLog, KnowledgeBase, KnowledgeDocument
 from app.services.kb_document_errors import (
-    DIMENSION_MISMATCH_OPENING,
+    PLATFORM_SENTENCES,
     PROVIDER_FAILURE_SENTENCES,
+    WORKER_TIMEOUT_OPENING,
     worker_timeout_message,
 )
 
@@ -1415,32 +1416,80 @@ def schedule_embedding_retry(
     )
 
 
-async def retry_provider_failures_now(db: AsyncSession, *, now: datetime | None = None) -> int:
-    """Make the documents that failed on the embedding provider due now.
+def _provider_failure_conditions() -> list:
+    """Documents in error another embedding provider can fix, within the attempt cap.
 
-    For a switch to another provider of the same model, which keeps the vectors:
-    :func:`recover_failed_documents` re-queues them within its batch and attempt
-    cap. A dimension mismatch is otherwise never retried. Returns the row count.
+    Any stored reason that is no fixed sentence counts: a dimension mismatch, or
+    raw text from a row older than the sentences, which may be a provider failure.
     """
-    if not app_settings.embedding_auto_retry_enabled:
-        return 0
     conditions = [
         KnowledgeDocument.status == "error",
         or_(
             KnowledgeDocument.error_message.in_(PROVIDER_FAILURE_SENTENCES),
-            KnowledgeDocument.error_message.startswith(DIMENSION_MISMATCH_OPENING, autoescape=True),
+            and_(
+                KnowledgeDocument.error_message.not_in(PLATFORM_SENTENCES),
+                ~KnowledgeDocument.error_message.startswith(WORKER_TIMEOUT_OPENING, autoescape=True),
+            ),
         ),
     ]
     max_attempts = app_settings.embedding_auto_retry_max_attempts
     if max_attempts > 0:
         conditions.append(KnowledgeDocument.embedding_retry_count < max_attempts)
+    return conditions
+
+
+async def count_provider_failures(db: AsyncSession) -> int:
+    """How many documents :func:`retry_provider_failures_now` would make due."""
     result = await db.execute(
-        update(KnowledgeDocument)
-        .where(*conditions)
-        .values(embedding_next_retry_at=now or datetime.now(UTC))
-        .execution_options(synchronize_session=False)
+        select(func.count()).select_from(KnowledgeDocument).where(*_provider_failure_conditions())
     )
-    return int(result.rowcount or 0)
+    return int(result.scalar_one())
+
+
+async def retry_provider_failures_now(*, now: datetime | None = None, batch_size: int | None = None) -> int:
+    """Make the provider failures due now, for :func:`recover_failed_documents`.
+
+    Run after a switch to another provider of the same model, which keeps the
+    vectors; a dimension mismatch is otherwise never retried. Its own session,
+    in committed batches that skip the rows a sweeper tick holds. Returns the
+    row count.
+    """
+    if not app_settings.embedding_auto_retry_enabled:
+        return 0
+    from app.core.database import async_session
+
+    now = now or datetime.now(UTC)
+    limit = max(1, batch_size or app_settings.embedding_auto_retry_batch_size)
+    total = 0
+    try:
+        async with async_session() as db:
+            while True:
+                batch = (
+                    select(KnowledgeDocument.id)
+                    .where(
+                        *_provider_failure_conditions(),
+                        or_(
+                            KnowledgeDocument.embedding_next_retry_at.is_(None),
+                            KnowledgeDocument.embedding_next_retry_at > now,
+                        ),
+                    )
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+                result = await db.execute(
+                    update(KnowledgeDocument)
+                    .where(KnowledgeDocument.id.in_(batch.scalar_subquery()))
+                    .values(embedding_next_retry_at=now)
+                    .execution_options(synchronize_session=False)
+                )
+                await db.commit()
+                if not result.rowcount:
+                    break
+                total += result.rowcount
+    except Exception:
+        logger.error("Retry of provider failures after an embedding provider switch failed", exc_info=True)
+    logger.info("Embedding provider switch: %d failed document(s) due for retry", total)
+    return total
 
 
 async def recover_failed_documents(
