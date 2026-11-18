@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import secrets
 import uuid
 from typing import Any
 
@@ -56,6 +57,7 @@ from app.integrations.providers.wordsmith.operations import (
     Operation,
     covered_routes,
 )
+from app.services import wordsmith_webhooks
 from app.services.content_safety import wrap_untrusted
 from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition, ToolResult
 
@@ -90,6 +92,8 @@ _MAX_BODY_CHARS = 40_000
 #: Keys whose value is a secret Wordsmith returns once; never shown.
 _SECRET_KEYS = frozenset({"secret", "signing_secret", "webhook_secret", "callback_secret", "api_key", "client_secret"})
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+#: An API key; any other credential is an OAuth access token.
+_API_KEY_PREFIX = "sk-ws-"
 
 
 def resolve_base_url(region: str | None) -> str:
@@ -326,10 +330,49 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
     )
 
 
+def _routed_callback_url(client: WordsmithClient, integration_id: str, token: str) -> str:
+    """The receiver URL a routed question's answer is posted to, or an ``Error:`` line.
+
+    Only an OAuth sign-in can be routed: Wordsmith signs its callback with a
+    ``callback_secret`` it returns to the app, while an API key signs with a
+    webhook secret XTM One never holds.
+    """
+    from app.core.config import settings
+
+    if client.credential.startswith(_API_KEY_PREFIX):
+        return (
+            "Error: callback_url 'xtm-one' needs the OAuth sign-in (an API key signs callbacks with a "
+            "secret XTM One does not hold): trigger on operation.succeeded instead, or wait on the operation."
+        )
+    if not integration_id:
+        return "Error: callback_url 'xtm-one' needs a stored Wordsmith integration."
+    url = wordsmith_webhooks.callback_receiver_url(settings.base_url, integration_id, token)
+    if url is None:
+        return "Error: BASE_URL is not a public https URL Wordsmith can call: callback_url 'xtm-one' cannot be used."
+    return url
+
+
+async def _remember_routed_question(integration_id: str, token: str, data: dict[str, Any], agent: str) -> str:
+    """Keep a routed question's signing secret; the line the answer gains."""
+    secret = str(data.get("callback_secret") or "")
+    if not secret:
+        return "\nWordsmith returned no callback_secret: the callback cannot be verified, read the answer with get_question."
+    await wordsmith_webhooks.remember_callback(
+        integration_id,
+        token,
+        secret=secret,
+        question_id=str(data.get("id") or ""),
+        operation_id=str(data.get("operation_id") or ""),
+        agent_id=agent,
+    )
+    return "\nThe answer lands on XTM One and runs the operation.succeeded / operation.failed triggers of this integration."
+
+
 def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> list[ToolDefinition]:
     """Every Wordsmith tool for the stored *token*."""
     client = WordsmithClient(token)
     persist_file_fn = kwargs.get("persist_file_fn")
+    integration_id = str(kwargs.get("integration_id") or "")
     tools = [_group_tool(group, client, executor) for group in GROUPS]
 
     async def get_wordsmith_me() -> str:
@@ -370,11 +413,18 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             body["session_id"] = session_id.strip()
         if visibility.strip():
             body["permissions"] = {"visibility": visibility.strip()}
-        if callback_url.strip():
-            body["callback_url"] = callback_url.strip()
         agent = (agent_id or "default").strip()
         if "/" in agent:
             return "Error: agent_id must be an id or 'default'."
+        route = callback_url.strip().lower() == wordsmith_webhooks.XTM_CALLBACK
+        route_token = secrets.token_urlsafe(24)
+        if route:
+            routed = _routed_callback_url(client, integration_id, route_token)
+            if routed.startswith("Error:"):
+                return routed
+            body["callback_url"] = routed
+        elif callback_url.strip():
+            body["callback_url"] = callback_url.strip()
         key = idempotency_key.strip() or str(uuid.uuid4())
         resp, err = await client.request(
             "POST", f"/agents/{agent}/questions", body=body, idempotency_key=key, action="ask agent"
@@ -385,8 +435,12 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             return "Error: Wordsmith gave no answer."
         answer = _render(resp, "question")
         status = ""
+        data: dict[str, Any] = {}
         with contextlib.suppress(ValueError, AttributeError):
-            status = str(resp.json().get("status") or "")
+            data = dict(resp.json())
+            status = str(data.get("status") or "")
+        if route:
+            answer += await _remember_routed_question(integration_id, route_token, data, agent)
         if status == "in_progress":
             answer += (
                 "\nNot answered yet: read it with get_wordsmith_agents operation=get_question "
@@ -555,7 +609,13 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
                     "urls": {**str_list, "description": "Public URLs of documents."},
                     "wait": {"type": "integer", "description": "Seconds to wait for the answer, 0 to 20."},
                     "visibility": {"type": "string", "enum": ["private", "organization", "public"]},
-                    "callback_url": {"type": "string", "description": "Webhook called when the answer is ready."},
+                    "callback_url": {
+                        "type": "string",
+                        "description": (
+                            "URL called when the answer is ready, or 'xtm-one': the answer runs this integration's "
+                            "operation.succeeded / operation.failed triggers (OAuth sign-in only)."
+                        ),
+                    },
                     "idempotency_key": {"type": "string", "description": "Reuse a previous key to retry safely."},
                 },
                 "required": ["question"],
