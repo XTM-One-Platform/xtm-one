@@ -3608,6 +3608,52 @@ def seed_roi_under_k(token: str, base: str, peer: str) -> dict[str, dict[str, st
     return seeded
 
 
+def seed_roi_chat_only(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Chat-only ROI value in every rolling window: a ``no_agent`` remainder and an agent and fleet with no run.
+
+    The administrator owns an agent and a fleet with the agent as its only member, both with no run.
+    ``seed_roi_chat_only.py`` writes four counted ``roi_chat_records`` lines through the backend's
+    models (no API writes one), all inside the 7-day window: two with no agent, two of the agent
+    stamped with its fleet. Read back on ``GET /roi?window=7d&scope=platform``: ``figures.by_agent``
+    carries a ``no_agent`` row with hours above 0; and on ``scope=agent|fleet``: ``figures.totals``
+    has runs 0 and deliverables 2. Logged ``seeded ROI chat-only (organization|agent|fleet): <url>``.
+    May raise: the caller logs and skips (dev:harness-gaps lab-roi-chat-only-window-seed).
+    """
+    agent = _seed_agent(token, "ROI chat only")
+    fleet = _created(api("POST", "/fleets", token, {
+        "name": f"{SEED_NAME} ROI chat-only fleet",
+        "description": "Seeded by the lab: value from chat deliverables only, no run.",
+    }))
+    _created(api("POST", f"/fleets/{fleet}/members", token, {"agent_id": agent, "role_label": "Member"}))
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "roi_chat_only.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_roi_chat_only.py"), admin, agent, fleet, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_roi_chat_only.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    records = json.loads(out.read_text())["records"]
+    if len(records) != 4:
+        raise RuntimeError(f"seed_roi_chat_only.py wrote {len(records)} lines of 4")
+    answer = api("GET", "/roi?window=7d&currency=USD&scope=platform", token)
+    rows = ((answer.get("figures") if isinstance(answer, dict) else None) or {}).get("by_agent") or []
+    remainder = next((r for r in rows if isinstance(r, dict) and r.get("key") == "no_agent"), None)
+    if not remainder or not remainder.get("hours"):
+        raise RuntimeError(f"GET /roi?window=7d: no no_agent row with hours in By agent ({remainder})")
+    url = f"{base}/value?scope=organization&window=7d"
+    log(f"seeded ROI chat-only (organization): {url}")
+    seeded = {"ROI chat-only no_agent remainder": {"id": "no_agent", "url": url}}
+    for scope, subject, url in (("agent", agent, f"{base}/agents/{agent}"), ("fleet", fleet, f"{base}/flows/fleets/{fleet}")):
+        answer = api("GET", f"/roi?window=7d&currency=USD&scope={scope}&id={subject}", token)
+        totals = (((answer.get("figures") if isinstance(answer, dict) else None) or {}).get("totals")) or {}
+        if totals.get("runs") != 0 or totals.get("deliverables") != 2:
+            raise RuntimeError(f"GET /roi?scope={scope}: totals {totals}, runs 0 and deliverables 2 expected")
+        log(f"seeded ROI chat-only ({scope}): {url}")
+        seeded[f"ROI chat-only ({scope})"] = {"id": subject, "url": url}
+    return seeded
+
+
 #: The group ``seed_group_manager`` creates: lab-only, managed by the peer.
 LAB_MANAGED_GROUP = "Lab managed group"
 
@@ -7236,6 +7282,10 @@ def seed_entities() -> None:
             skipped["ROI under k own share"] = str(exc)[:600]
     else:
         skipped["ROI under k own share"] = "no peer user"
+    try:
+        seeded.update(seed_roi_chat_only(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["ROI chat-only"] = str(exc)[:600]
     if peer_id and "ROI review agent" in seeded:
         try:
             seeded.update(seed_roi_chat_records(token, base, seeded["ROI review agent"]["id"], peer_id))
