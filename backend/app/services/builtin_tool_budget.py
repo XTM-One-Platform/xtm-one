@@ -96,8 +96,11 @@ from app.services.builtin_tool_groups import schema_chars
 #: 460,266 on 15 Nov 2026). Raised to 460,700 for group_by on get_shared_state and
 #: list_work_items (#12105: coordination +~300 on 15 Nov 2026). Raised to 461,000 when the
 #: catalog counted workset_resolve, offered on every implicit corpus since #12168 (#12218:
-#: coordination +279, total 460,976 on 16 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 461_000
+#: coordination +279, total 460,976 on 16 Nov 2026). Raised to 461,600 when Platform Health
+#: became built in and its eight groups joined the ids create_agent, update_agent and
+#: clone_agent advertise (#101: platform +474, concierge_orchestrator +20, total 461,484
+#: on 18 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 461_600
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -114,8 +117,10 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # intent-binding tools (#11865: 144,249 on 14 Nov 2026); 145,600 with the
     # three ROI unit catalog tools (#11881: about 145,370 on 14 Nov 2026); 145,700 with
     # dismiss_fleet_health_findings (#12014: 145,602 on 15 Nov 2026); 146,000 with
-    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033).
-    "platform": 146_000,
+    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033);
+    # 146,100 with Platform Health built in, its groups advertised by the agent builder
+    # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026).
+    "platform": 146_100,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:
