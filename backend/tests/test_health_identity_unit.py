@@ -170,7 +170,7 @@ def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only
 
 def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -> None:
     """A copy runs as its source's owner, often an admin: its turn is the
-    Concierge's reach whoever started it (an evaluation case has no principal)."""
+    Platform Health's reach whoever started it (an evaluation case has no principal)."""
     from app.services.health.sandbox.session import SandboxSession, sandbox_session
 
     admin = SimpleNamespace(**vars(_user("admin")), is_admin=True)
