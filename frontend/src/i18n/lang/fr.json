@@ -2060,6 +2060,7 @@
   "Continued sources": "Sources reprises",
   "Continuous Threat Exposure Management": "Gestion continue de l'exposition aux menaces",
   "Contract Management": "Gestion des contrats",
+  "Legal": "Juridique",
   "Contract:": "Contrat :",
   "Control a headless browser for web automation": "Contrôler un navigateur headless pour l'automatisation web",
   "Control a headless web browser to navigate pages, interact with elements, extract content, and take screenshots. When enabled, agents can automate web interactions: filling forms, scraping dynamic content, testing web applications, and more. The browser session persists across tool calls within the same conversation.": "Contrôlez un navigateur web headless pour naviguer entre les pages, interagir avec les éléments, extraire du contenu et prendre des captures d’écran. Une fois activé, les agents peuvent automatiser les interactions web : remplir des formulaires, extraire du contenu dynamique, tester des applications web et plus encore. La session du navigateur persiste entre les appels d’outils au sein d’une même conversation.",
