@@ -3703,6 +3703,45 @@ def seed_background_tasks(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"background tasks": {"id": parent, "url": url}}
 
 
+def seed_builtin_tools_notice(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One built-in tools release notice in the administrator's bell (kind ``builtin_tools_outside_allowlist``).
+
+    The platform writes it at the first boot of a build whose catalog gained a function in a group an
+    agent's allowlist scopes; a lab boots one build and never sees it. ``seed_builtin_tools_notice.py
+    seed`` limits a lab agent to the first function of one built-in group and writes the notice for
+    the rest of the group through ``builtin_tool_release_notice`` (``agents_left_out``, ``notice``) and
+    ``notify_web_user``. Read back on ``GET /notifications``: an entry of that kind routed to the
+    agent's Tooling section, where each function is added or dismissed (#12245).
+    Logged ``seeded built-in tools notice (<group>, <n> left out): <url>``.
+    May raise: the caller logs and skips (dev:harness-gaps lab-seed-builtin-tools-notice).
+    """
+    agent = _seed_agent(token, "Scoped tools")
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "builtin_tools_notice.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_builtin_tools_notice.py"), "seed", admin, agent,
+         str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"seed_builtin_tools_notice.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
+        )
+    seeded = json.loads(out.read_text())
+    feed = api("GET", "/notifications?limit=50", token)
+    items = feed.get("items", []) if isinstance(feed, dict) else []
+    entry = next(
+        (i for i in items if i.get("kind") == "builtin_tools_outside_allowlist"
+         and str(i.get("route", "")).startswith(f"/agents/{agent}/config/tooling")),
+        None,
+    )
+    if entry is None:
+        raise RuntimeError("GET /notifications: no builtin_tools_outside_allowlist entry for the scoped agent")
+    url = f"{base}{entry['route']}"
+    log(f"seeded built-in tools notice ({seeded['group']}, {len(seeded['left_out'])} left out): {url}")
+    return {"built-in tools notice": {"id": agent, "url": url}}
+
+
 #: The group ``seed_group_manager`` creates: lab-only, managed by the peer.
 LAB_MANAGED_GROUP = "Lab managed group"
 
@@ -7339,6 +7378,10 @@ def seed_entities() -> None:
         seeded.update(seed_background_tasks(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["background tasks"] = str(exc)[:600]
+    try:
+        seeded.update(seed_builtin_tools_notice(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["built-in tools notice"] = str(exc)[:600]
     if peer_id and "ROI review agent" in seeded:
         try:
             seeded.update(seed_roi_chat_records(token, base, seeded["ROI review agent"]["id"], peer_id))
