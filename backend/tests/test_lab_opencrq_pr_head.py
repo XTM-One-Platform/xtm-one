@@ -105,6 +105,34 @@ def test_the_start_refuses_a_checkout_missing_a_sub_path(monkeypatch, tmp_path):
     assert "lacks back" in str(refused.value)
 
 
+def test_a_tenant_is_selected_by_its_membership_order(monkeypatch):
+    """Community Edition shows a user's first tenant by id: the user joins it and leaves the ones sorted before it."""
+    module = _module()
+    calls = []
+
+    def psql(sql, database=module.DATABASE, **params):
+        calls.append((sql, params))
+        return "bbbe7688-581e-4f4d-af65-19085e0c7916" if sql.startswith("SELECT id FROM tenants") else ""
+
+    monkeypatch.setattr(module, "psql", psql)
+    user = "f4ad0db5-4c66-4e5f-8817-7f4dc3b67162"
+    assert module.select_tenant("tarnwick industries", user) == "bbbe7688-581e-4f4d-af65-19085e0c7916"
+    (lookup, lookup_params), (write, write_params) = calls
+    assert "lower(name) = lower(:'name')" in lookup and lookup_params == {"name": "tarnwick industries"}
+    assert "INSERT INTO tenant_users" in write and "ON CONFLICT DO NOTHING" in write
+    assert "DELETE FROM tenant_users WHERE user_id = :'user'::uuid AND tenant_id < :'tenant'::uuid" in write
+    assert write_params == {"tenant": "bbbe7688-581e-4f4d-af65-19085e0c7916", "user": user}
+    assert "tarnwick" not in write.lower()
+
+
+def test_an_unknown_tenant_writes_nothing(monkeypatch):
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "psql", lambda sql, **params: calls.append(sql) or "")
+    assert module.select_tenant("Initech", "f4ad0db5-4c66-4e5f-8817-7f4dc3b67162") is None
+    assert len(calls) == 1 and calls[0].startswith("SELECT id FROM tenants")
+
+
 def test_the_declaration_comment_names_every_sub_path():
     module = _module()
     comment = " ".join(CHECKS.read_text(encoding="utf-8").split("[service.lab-opencrq]")[0].splitlines()[-8:])
