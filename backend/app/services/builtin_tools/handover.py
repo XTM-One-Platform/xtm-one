@@ -193,11 +193,7 @@ def build_sub_agent_tools(
                 )
             )
         ):
-            return None, background_task_refusal(
-                requested,
-                "running a copy of yourself is turned off for this agent "
-                "(allow_self_fanout) or for the platform (AGENT_SELF_FANOUT_ENABLED)",
-            )
+            return None, background_task_refusal(requested, self_fanout_refusal_reason(self_agent, delegation_depth))
         peer = resolve_handover_agent(requested, list(handover_peers or []))
         if peer is not None:
             return None, background_task_refusal(
@@ -1261,6 +1257,30 @@ def self_fanout_enabled(agent: object) -> bool:
     from app.core.config import settings
 
     return bool(settings.agent_self_fanout_enabled) and getattr(agent, "allow_self_fanout", True) is not False
+
+
+def self_fanout_refusal_reason(self_agent: object | None, delegation_depth: int) -> str:
+    """Why a copy of *self_agent* is refused on this turn, naming the condition that holds.
+
+    A run below the top delegation level (a background copy, a consulted
+    agent) is told so first: no switch would let it spawn. The switches are
+    named only when one of them is off; otherwise the turn did not offer it.
+    """
+    if delegation_depth > 0:
+        return (
+            f"this run is itself a delegated run (delegation depth {delegation_depth}), and only "
+            "a top-level run may spawn copies of itself: do the work in this run, or return "
+            "what is left to the run that spawned you"
+        )
+    if self_agent is None or not self_fanout_enabled(self_agent):
+        return (
+            "running a copy of yourself is turned off for this agent "
+            "(allow_self_fanout) or for the platform (AGENT_SELF_FANOUT_ENABLED)"
+        )
+    return (
+        "running a copy of yourself is not offered on this turn: it needs handover allowed "
+        "on the turn and the delegate handover type offered"
+    )
 
 
 def format_self_fanout_prompt(*, has_peers: bool) -> str:
