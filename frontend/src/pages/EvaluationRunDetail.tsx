@@ -931,6 +931,17 @@ function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate
             <span className="min-w-0 content-base line-clamp-1">{result.description || result.input_prompt}</span>
           </button>
           <div className="flex shrink-0 items-center gap-2">
+            {/* A STIX bundle answer opens in the bundle review, object by object: on the
+                entry's own line, so no entry has to be unfolded to find it. */}
+            {bundleReview && (
+              <Link
+                to={`/evaluations/review?results=${result.id}`}
+                className="inline-flex items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+              >
+                <Icon name="file-search" size={16} />
+                {t_i18n("Review bundle")}
+              </Link>
+            )}
             {result.fell_back_to_llm_only && <FallbackEntryBadge />}
             <NeededApprovalBadge tools={result.execution_details?.approval_required_tools} />
             {result.is_reused && (
@@ -1024,16 +1035,6 @@ function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate
 
         {expanded && (
           <div className="mt-4 space-y-4 pl-14">
-            {/* A STIX bundle answer opens in the bundle review, object by object. */}
-            {bundleReview && (
-              <Link
-                to={`/evaluations/review?results=${result.id}`}
-                className="inline-flex items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                <Icon name="file-search" size={16} />
-                {t_i18n("Review bundle")}
-              </Link>
-            )}
             {result.is_reused && (
               <div className="flex items-start gap-3 rounded-sm border border-feedback-success-primary/30 bg-feedback-success-primary/[0.06] px-3 py-2">
                 <Repeat className="h-3.5 w-3.5 text-feedback-success-primary shrink-0 mt-0.5" />

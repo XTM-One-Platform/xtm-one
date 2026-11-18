@@ -9,6 +9,7 @@ import type { BundleReview } from "@/types";
 import {
   EXPECTED,
   NONE,
+  answerName,
   buildModel,
   compareEntity,
   compareRelationship,
@@ -225,5 +226,22 @@ describe("layouts and text", () => {
     assert.equal(tripleText(model.rels[0], "a"), "Cozy Bear → uses → Cobalt Strike");
     assert.equal(tripleText(model.rels[1], "a"), null);
     assert.deepEqual(wordDiff("APT 29 group", "APT 28 group"), { a: ["APT 2", "9", " group"], b: ["APT 2", "8", " group"] });
+  });
+});
+
+describe("answerName", () => {
+  const model = (id: string) => id.toUpperCase();
+  const a = { evaluation_id: "e1", evaluation_name: "STIX", subject_name: "Harvester", model_id: "m" };
+  const b = { evaluation_id: "e1", evaluation_name: "STIX", subject_name: "Grounded", model_id: "m" };
+  it("names answers of one evaluation by their agent", () => {
+    assert.deepEqual(answerName([a, b], b, model), { title: "Grounded", detail: "M" });
+  });
+  it("names answers of several evaluations by their evaluation, the agent in the detail", () => {
+    const other = { ...b, evaluation_id: "e2", evaluation_name: "Golden" };
+    assert.deepEqual(answerName([a, other], other, model), { title: "Golden", detail: "Grounded · M" });
+  });
+  it("falls back on the evaluation when the agent is unknown", () => {
+    const flowless = { ...a, subject_name: null };
+    assert.deepEqual(answerName([flowless], flowless, model), { title: "STIX", detail: "M" });
   });
 });

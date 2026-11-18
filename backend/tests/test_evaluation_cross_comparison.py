@@ -182,7 +182,7 @@ async def test_two_evaluations_compare_on_the_entries_they_share():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_evaluations_of_two_families_or_a_single_one_are_refused():
+async def test_evaluations_of_two_families_or_none_are_refused():
     sessionmaker, cleanup = await _make_db()
     try:
         async with sessionmaker() as session:
@@ -192,15 +192,44 @@ async def test_evaluations_of_two_families_or_a_single_one_are_refused():
             await session.commit()
             with pytest.raises(HTTPException) as families:
                 await compare_evaluations_route(ids=f"{a.id},{b.id}", user=admin, db=session)
-            with pytest.raises(HTTPException) as single:
-                await compare_evaluations_route(ids=f"{a.id},{a.id}", user=admin, db=session)
+            with pytest.raises(HTTPException) as none:
+                await compare_evaluations_route(ids="", user=admin, db=session)
             with pytest.raises(HTTPException) as missing:
                 await compare_evaluations_route(ids=f"{a.id},{uuid.uuid4()}", user=admin, db=session)
     finally:
         await cleanup()
     assert families.value.status_code == 422 and "one family" in families.value.detail
-    assert single.value.status_code == 422
+    assert none.value.status_code == 422
     assert missing.value.status_code == 404
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_one_evaluation_compares_its_models_on_all_its_entries():
+    """One evaluation alone (the same id twice reads as one): its newest run per model, every
+    entry its own and shared by the runs."""
+    sessionmaker, cleanup = await _make_db()
+    try:
+        async with sessionmaker() as session:
+            admin = await _admin(session)
+            a, agent, entries = await _evaluation(session, "A", "CLASSIFICATION", ['["x"]', '["y"]'], "Grounded")
+            await _run(session, a, agent, "m1", entries, [(0, 2), (0, 2)], age_hours=5)
+            m1 = await _run(session, a, agent, "m1", entries, [(1, 2), (2, 2)], age_hours=1)
+            m2 = await _run(session, a, agent, "m2", entries, [(2, 2), (1, 2)], age_hours=2)
+            await session.commit()
+            served = EvaluationComparisonResponse.model_validate(
+                await compare_evaluations_route(ids=f"{a.id},{a.id}", user=admin, db=session)
+            )
+    finally:
+        await cleanup()
+
+    assert [e.id for e in served.evaluations] == [str(a.id)]
+    assert [r.id for r in served.evaluations[0].runs] == [str(m1.id), str(m2.id)]
+    # Its trigger groups runs into launches on the Leaderboard, as Activity groups them.
+    assert {r.trigger_reason for r in served.evaluations[0].run_choices} == {"manual"}
+    assert len(served.entries) == 2 and all(len(e.members) == 1 for e in served.entries)
+    cells = {(c.run_id, c.entry_key): c.metrics[MICRO] for c in served.cells}
+    assert sorted(v for (rid, _), v in cells.items() if rid == str(m2.id)) == [[1.0, 2.0], [2.0, 2.0]]
 
 
 # ── GET /evaluations/bundle-review ──
@@ -219,8 +248,13 @@ async def test_two_evaluations_answers_on_one_stix_entry_are_reviewed_together()
             b, agent_b, [entry_b] = await _evaluation(session, "B", "STIX_BUNDLE", [_bundle(malware, actor, _rel(actor, "uses", malware))], "Grounded")
             entry_a.input_prompt = "Memento Labs uses Dante.\n\n\nPage two."
             results = []
-            for evaluation, agent, entry, answer in ((a, agent_a, entry_a, _bundle(actor)), (b, agent_b, entry_b, expected)):
-                run = EvaluationRun(evaluation_id=evaluation.id, agent_id=agent.id, model_id="m1", trigger_reason="manual", status="completed")
+            # B's run has its judge off: its stored 0-or-60 score is no verdict.
+            for evaluation, agent, entry, answer, scorers in (
+                (a, agent_a, entry_a, _bundle(actor), None),
+                (b, agent_b, entry_b, expected, ["deterministic"]),
+            ):
+                run = EvaluationRun(evaluation_id=evaluation.id, agent_id=agent.id, model_id="m1", trigger_reason="manual",
+                                    status="completed", scorer_selection=scorers)
                 session.add(run)
                 await session.flush()
                 result = EvaluationResult(run_id=run.id, entry_id=entry.id, agent_output=answer, score=60.0)
@@ -247,6 +281,8 @@ async def test_two_evaluations_answers_on_one_stix_entry_are_reviewed_together()
         await cleanup()
 
     assert [a.evaluation_name for a in served.answers] == ["A", "B"]
+    assert [a.subject_name for a in served.answers] == ["Harvester", "Grounded"]
+    assert [a.judge_score for a in served.answers] == [60.0, None]
     assert served.answers[0].metrics == {"stix.entity_prf": 50.0}
     assert served.entry.text_source == "prompt" and served.entry.pages == ["Memento Labs uses Dante.\n\n\nPage two."]
     assert len(served.sources[EXPECTED]) == 2

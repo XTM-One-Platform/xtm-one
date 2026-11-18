@@ -693,7 +693,7 @@ export default function App() {
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets/:id/:tab?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><DatasetDetail /></Page></AdminRoute></FeatureFlagGate>} />
         {/* Static one-segment paths, above `/evaluations/:id/:tab?` which would read them as an id. */}
-        <Route path="/evaluations/compare" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationCompare /></Page></AdminRoute></FeatureFlagGate>} />
+        <Route path="/evaluations/compare/:tab?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationCompare /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/review" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationBundleReview /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/runs/:id" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationRunDetail /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/:evaluationId/compare" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationRunCompare /></Page></AdminRoute></FeatureFlagGate>} />
