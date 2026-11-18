@@ -85,6 +85,26 @@ def test_entra_patch_replace_without_path_and_capitalised_op() -> None:
     assert changes.title_set and changes.title is None
 
 
+def test_patch_of_one_name_part_keeps_the_stored_name() -> None:
+    # Entra PATCHes only the attribute that changed: a surname alone never
+    # overwrites the stored display name with that part.
+    body = {
+        "schemas": [s.PATCH_SCHEMA],
+        "Operations": [{"op": "replace", "path": "name.familyName", "value": "Dupont"}],
+    }
+    changes = s.user_changes_from_patch(body)
+    assert changes.display_name("Ana Martin") == "Ana Martin"
+    # With no stored name yet (a create), the one part names the account.
+    assert changes.display_name(None) == "Dupont"
+    # Both parts, or displayName, still rename it.
+    both = s.user_changes_from_patch(
+        {"Operations": [{"op": "replace", "value": {"name.givenName": "Ana", "name.familyName": "Dupont"}}]}
+    )
+    assert both.display_name("Ana Martin") == "Ana Dupont"
+    shown = s.user_changes_from_patch({"Operations": [{"op": "replace", "path": "displayName", "value": "Ana D."}]})
+    assert shown.display_name("Ana Martin") == "Ana D."
+
+
 def test_patch_refuses_an_unknown_operation() -> None:
     with pytest.raises(s.ScimError) as exc:
         s.user_changes_from_patch({"Operations": [{"op": "move", "path": "title"}]})

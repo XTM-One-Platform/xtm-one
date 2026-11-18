@@ -252,7 +252,7 @@ async def _apply_user(db: AsyncSession, user: User, changes: s.UserChanges, toke
                 raise s.ScimError(409, f"userName {changes.user_name} is taken", "uniqueness")
             user.email = email
             changed.append("userName")
-    full_name = changes.display_name()
+    full_name = changes.display_name(user.full_name)
     if full_name and full_name != user.full_name:
         user.full_name = full_name[:255]
         changed.append("displayName")

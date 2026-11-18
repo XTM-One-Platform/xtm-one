@@ -152,12 +152,20 @@ class UserChanges:
     active: bool | None = None
 
     def display_name(self, current: str | None = None) -> str | None:
+        """The account name these changes ask for; ``current`` is the stored one.
+
+        ``displayName`` / ``name.formatted`` win. Both name parts form a name. A
+        single part (Entra PATCHes only the attribute that changed) never replaces
+        a stored name: it keeps ``current``, and names the account only when there
+        is no stored name yet (a create).
+        """
         if self.full_name:
             return self.full_name
-        parts = [p for p in (self.given_name, self.family_name) if p]
-        if parts:
-            return " ".join(parts)
-        return current
+        if self.given_name and self.family_name:
+            return f"{self.given_name} {self.family_name}"
+        if current:
+            return current
+        return self.given_name or self.family_name
 
 
 def _primary_email(emails: Any) -> str | None:
