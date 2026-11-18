@@ -853,6 +853,21 @@ def test_the_lab_names_one_signed_in_url_per_seeded_account():
     assert "seeded['signed-in session (peer)']" in peer and "signed_in_url(base, peer_token)" in peer
 
 
+def test_lab_logs_each_signed_in_session_at_sign_in_before_the_long_seed():
+    """#89: the session line is in the start log as soon as the sign-in answers, not after the whole seed."""
+    tree = ast.parse(LAB.read_text(encoding="utf-8"))
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    helper = ast.unparse(functions["log_session"])
+    # The same "seeded <label>: <url>" form as log_seeded, so the service's session_log prefix matches it.
+    assert "log(f\"seeded {label}: {row['url']}\")" in helper
+    seed = ast.unparse(functions["seed_entities"])
+    logged = seed.index("log_session('signed-in session (administrator)'")
+    assert seed.index("signed_in_url(base, token)") < logged < seed.index("for entity, route, create in SEEDS")
+    peer = ast.unparse(functions["seed_peer"])
+    assert peer.index("signed_in_url(base, peer_token)") < peer.index("log_session('signed-in session (peer)'")
+    assert peer.index("log_session('signed-in session (peer)'") < peer.index("rows: list")
+
+
 def test_lab_theme_covers_the_peer_before_its_signed_in_link():
     """``LAB_THEME`` is a per-user preference: the peer gets it too, or its session opens dark."""
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
