@@ -40,6 +40,14 @@ seen (:func:`catch_up`), so a delivery Wordsmith gave up on still runs once.
 Events carry IDs only: each run's payload names the read tool that fetches the
 content (:func:`follow_up`).
 
+An asynchronous question asked with ``callback_url`` ``xtm-one`` lands on the
+same receiver (:func:`dispatch_callback`): the URL carries a routing token
+(:data:`CALLBACK_PARAM`), the ``callback_secret`` Wordsmith returns to an
+OAuth app is kept encrypted under that token for :data:`CALLBACK_TTL_SECONDS`,
+and a verified callback runs the assignments of the integration that trigger
+on ``operation.succeeded`` (answered or declined) or ``operation.failed``,
+deduplicated with the endpoint's own event for the same operation.
+
 The state lives in ``trigger_config.wordsmith_webhook`` (``endpoint_id``,
 ``secret_enc``, ``url``, ``event_types``, ``audience``, ``status``, ``error``,
 ``checked_at``, ``caught_up_at``, ``integration_id``).
@@ -49,12 +57,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode
 
 from app.core.security import timing_safe_str_eq
 
@@ -189,7 +199,7 @@ def event_payload(event: Mapping[str, Any]) -> dict[str, Any] | None:
         {
             "provider": PROVIDER,
             "event_id": event_id,
-            "message_id": event_id,
+            "message_id": dedupe_id(event_type, resource, event_id),
             "type": event_type,
             "created_at": event.get("created_at"),
             "resource_type": resource.get("type"),
@@ -197,10 +207,21 @@ def event_payload(event: Mapping[str, Any]) -> dict[str, Any] | None:
             "actor_kind": actor.get("kind"),
             "actor_id": actor.get("id"),
             "data": dict(data),
-            "follow_up_tool": follow_up(event_type),
+            "follow_up_tool": str(event.get("follow_up_tool") or follow_up(event_type)),
         }
     )
     return payload
+
+
+def dedupe_id(event_type: str, resource: Mapping[str, Any], event_id: str) -> str:
+    """The seen-set member of an event: one per operation and outcome, else the event id.
+
+    An operation ends once, whether the endpoint or a question callback tells
+    it: keyed on the operation, the second of the two runs nothing.
+    """
+    if event_type.startswith("operation.") and resource.get("type") == "operation" and resource.get("id"):
+        return f"{event_type}:{resource['id']}"
+    return event_id
 
 
 def subscribed_types(event_type: str) -> list[str]:
@@ -560,6 +581,135 @@ def endpoint_secret(assignment: Any) -> str:
         return ""
 
 
+# -- Question callbacks ------------------------------------------------------
+
+#: The ``callback_url`` value that routes a question's answer to this receiver.
+XTM_CALLBACK = "xtm-one"
+#: Query parameter of the receiver URL naming the routing token of a callback.
+CALLBACK_PARAM = "wordsmith_callback"
+#: Wordsmith retries a callback for 24 hours: the routing record outlives it.
+CALLBACK_TTL_SECONDS = 25 * 3600
+#: The operation event a question callback stands for, by the question's final status.
+_CALLBACK_EVENTS: Mapping[str, str] = {
+    "completed": "operation.succeeded",
+    "filtered": "operation.succeeded",
+    "error": "operation.failed",
+}
+_QUESTION_FOLLOW_UP = "get_wordsmith_agents operation=get_question"
+
+
+def callback_key(integration_id: str, token: str) -> str:
+    return f"wordsmith:callback:{integration_id}:{token}"
+
+
+def callback_receiver_url(base_url: str, integration_id: str, token: str) -> str | None:
+    """The ``callback_url`` of a routed question, ``None`` when Wordsmith cannot reach ``BASE_URL``."""
+    from app.services.jira_webhooks import public_receiver_url
+
+    url = public_receiver_url(base_url, integration_id)
+    return None if url is None else f"{url}?{urlencode({CALLBACK_PARAM: token})}"
+
+
+def callback_event(record: Mapping[str, Any], body: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The operation event a question callback stands for, ``None`` when its status is not final.
+
+    Keyed on the question's operation when the ask answered one, so the
+    endpoint's own ``operation.*`` event for it runs nothing more.
+    """
+    status = str(body.get("status") or "")
+    event_type = _CALLBACK_EVENTS.get(status)
+    question_id = str(body.get("id") or record.get("question_id") or "")
+    if event_type is None or not question_id:
+        return None
+    operation_id = str(record.get("operation_id") or "")
+    resource = {"type": "operation", "id": operation_id} if operation_id else {"type": "question", "id": question_id}
+    return {
+        "id": f"callback:{event_type}:{question_id}",
+        "type": event_type,
+        "created_at": datetime.now(UTC).isoformat(),
+        "resource": resource,
+        "data": {
+            "question_id": question_id,
+            "agent_id": record.get("agent_id"),
+            "session_id": body.get("session_id"),
+            "operation_id": operation_id or None,
+            "status": status,
+        },
+        "follow_up_tool": _QUESTION_FOLLOW_UP,
+    }
+
+
+async def remember_callback(
+    integration_id: str, token: str, *, secret: str, question_id: str, operation_id: str, agent_id: str
+) -> None:
+    """Keep the routing record of one question: its signing secret encrypted, never returned."""
+    from app.core.redis import redis_client
+    from app.core.security import encrypt_value
+
+    record = {
+        "secret_enc": encrypt_value(secret),
+        "question_id": question_id,
+        "operation_id": operation_id,
+        "agent_id": agent_id,
+    }
+    redis = await redis_client()
+    await redis.set(callback_key(integration_id, token), json.dumps(record), ex=CALLBACK_TTL_SECONDS)
+
+
+async def _callback_record(integration_id: str, token: str) -> dict[str, Any]:
+    """The routing record of *token*, empty when none is held."""
+    from app.core.redis import redis_client
+
+    if not token or len(token) > 128:
+        return {}
+    try:
+        raw = await (await redis_client()).get(callback_key(integration_id, token))
+        record = json.loads(raw) if raw else {}
+    except Exception as exc:
+        logger.warning("Wordsmith callback record of integration %s not read: %s", integration_id, exc)
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def callback_secret(record: Mapping[str, Any]) -> str:
+    """The decrypted ``callback_secret`` of a routing record, empty when none."""
+    from app.core.security import decrypt_value
+
+    if not record.get("secret_enc"):
+        return ""
+    try:
+        return decrypt_value(str(record["secret_enc"])) or ""
+    except Exception:
+        return ""
+
+
+async def dispatch_callback(
+    integration_id: str, token: str, headers: Mapping[str, str], body: bytes, payload: Any
+) -> dict[str, Any]:
+    """Verify one question callback against its stored secret, then run the operation assignments.
+
+    Raises 401 when the token names no question of the integration or its
+    secret does not sign the body. A status that is not final runs nothing.
+    """
+    from fastapi import HTTPException
+
+    from app.core.database import async_session
+    from app.services.docusign_connect import provider_assignments
+
+    record = await _callback_record(integration_id, token)
+    secret = callback_secret(record)
+    if not secret or not verify_signature(body, headers.get("wordsmith-signature"), [secret]):
+        raise HTTPException(status_code=401, detail="Invalid Wordsmith callback signature")
+    event = callback_event(record, payload) if isinstance(payload, Mapping) else None
+    triggered: list[dict[str, Any]] = []
+    if event is not None:
+        async with async_session() as db:
+            for wf, agent in await provider_assignments(db, integration_id, PROVIDER, (str(event["type"]),)):
+                triggered.extend(await _dispatch_event(db, wf, agent, event, delivery="wordsmith_callback"))
+    logger.info("Wordsmith question callback for integration %s: %d run(s)", integration_id, len(triggered))
+    return {"status": "ok", "triggered": triggered, "count": len(triggered)}
+
+
 async def _dispatch_event(
     db: Any, assignment: Any, agent: Any, event: Mapping[str, Any], *, delivery: str
 ) -> list[dict[str, Any]]:
@@ -614,18 +764,22 @@ async def _dispatch_event(
 
 
 async def dispatch_delivery(
-    integration_id: str, headers: Mapping[str, str], body: bytes, payload: Any
+    integration_id: str, headers: Mapping[str, str], body: bytes, payload: Any, *, callback_token: str = ""
 ) -> dict[str, Any]:
     """Verify one webhook delivery against its endpoint's secret, then run each assignment it names.
 
-    Raises 401 when no assignment of the integration holds the endpoint the
-    ``Wordsmith-Webhook-Id`` header names, or its secret does not sign the body.
+    A delivery on a routed question's URL (*callback_token*) is a question
+    callback: :func:`dispatch_callback`. Raises 401 when no assignment of the
+    integration holds the endpoint the ``Wordsmith-Webhook-Id`` header names,
+    or its secret does not sign the body.
     """
     from fastapi import HTTPException
 
     from app.core.database import async_session
     from app.services.docusign_connect import provider_assignments
 
+    if callback_token:
+        return await dispatch_callback(integration_id, callback_token, headers, body, payload)
     webhook_id = str(headers.get("wordsmith-webhook-id") or "")
     signature_header = headers.get("wordsmith-signature")
     if not webhook_id or not signature_header:
