@@ -51,3 +51,52 @@ describe("IntegrationCatalogBrowser card name", () => {
     expect(tips[0].textContent).toContain(LONG_NAME);
   });
 });
+
+/**
+ * Filter facets: one line per option, as in OpenCTI and OpenAEV. A label or a group name too
+ * long for the aside is cut with an ellipsis, and the tooltip names it whole on keyboard focus.
+ */
+describe("IntegrationCatalogBrowser filter facets", () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  function facetLabel(text: string): HTMLElement {
+    const aside = document.querySelector("aside");
+    const match = Array.from(aside?.querySelectorAll<HTMLElement>("span") ?? []).find(
+      (node) => node.textContent === text && node.children.length === 0,
+    );
+    if (!match) throw new Error(`no facet label ${text}`);
+    return match;
+  }
+
+  it("draws no tooltip and no extra tab stop when a facet label fits", () => {
+    renderWithProviders(<IntegrationCatalogBrowser catalog={[provider]} onSelect={() => {}} variant="admin" />);
+    expect(facetLabel("Threat Intelligence").getAttribute("tabindex")).toBeNull();
+    expect(facetLabel("Cybersecurity").getAttribute("tabindex")).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("names a cut group name whole in the tooltip on keyboard focus", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    renderWithProviders(<IntegrationCatalogBrowser catalog={[provider]} onSelect={() => {}} variant="admin" />);
+    const group = facetLabel("Cybersecurity");
+    expect(group.getAttribute("tabindex")).toBe("0");
+    act(() => group.focus());
+    await nextFrame();
+    const tips = await screen.findAllByRole("tooltip");
+    expect(tips[0].textContent).toContain("Cybersecurity");
+  });
+
+  it("names a cut facet label whole in the tooltip on keyboard focus", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    renderWithProviders(<IntegrationCatalogBrowser catalog={[provider]} onSelect={() => {}} variant="admin" />);
+    const label = facetLabel("Threat Intelligence");
+    expect(label.getAttribute("tabindex")).toBe("0");
+    act(() => label.focus());
+    await nextFrame();
+    const tips = await screen.findAllByRole("tooltip");
+    expect(tips[0].textContent).toContain("Threat Intelligence");
+  });
+});
