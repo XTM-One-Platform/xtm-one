@@ -56,6 +56,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.core.security import timing_safe_str_eq
+
 logger = logging.getLogger(__name__)
 
 PROVIDER = "wordsmith"
@@ -148,11 +150,13 @@ def verify_signature(body: bytes, header: str | None, secrets: list[str], *, now
     if abs(current - signed_at) > TOLERANCE_SECONDS or not candidates:
         return False
     expected = [signature(secret, signed_at, body) for secret in secrets if secret]
-    # Every pair is compared: no early exit on the first match.
+    # Every pair is compared: no early exit on the first match. The candidate
+    # comes from a request header (latin-1 decoded, possibly non-ASCII), so the
+    # comparison goes through timing_safe_str_eq, which never raises on it.
     matched = False
     for candidate in candidates:
         for value in expected:
-            matched = hmac.compare_digest(candidate, value) or matched
+            matched = timing_safe_str_eq(candidate, value) or matched
     return matched
 
 
