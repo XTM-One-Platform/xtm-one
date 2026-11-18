@@ -106,8 +106,11 @@ _EXIT_TAIL_LINES = 20
 #: Blobs read at once while the checkout's archive is built: a repository checkout holds
 #: thousands of small files, one object-store round trip each.
 _ARCHIVE_READ_CONCURRENCY = 32
-#: Attempts of the checkout copy into a lab: a stalled exec stream is retried once.
+#: Attempts of the checkout copy into a lab: a stalled, refused or lost exec stream is retried once.
 _COPY_ATTEMPTS = 2
+#: Seconds before the second copy when the API server refused the first exec stream (a 404 on a pod it
+#: has not caught up with yet, around a worker loss).
+_COPY_REFUSED_PAUSE_SECONDS = 3.0
 #: Tries of one blob read while the checkout is archived for a lab.
 _BLOB_READ_ATTEMPTS = 2
 #: Delete calls a stop makes before it reads the pod (a timeout under load is transient).
@@ -405,12 +408,14 @@ def _tar(members: list[tuple[str, float, bytes]]) -> bytes:
     return buffer.getvalue()
 
 
-async def copy_checkout(client: KubeClient, name: str, archive: bytes) -> None:
+async def copy_checkout(client: KubeClient, name: str, archive: bytes, *, sleep: Sleep = asyncio.sleep) -> None:
     """Unpack *archive* in the workspace container of pod *name*, within its own copy budget.
 
     Each attempt has ``AGENTIC_LABS_COPY_SECONDS``, apart from the pod start budget. A copy that
     times out or loses its exec stream is tried once more on the same pod (tar overwrites what the
     first attempt wrote): a 165 MB checkout stalled once at 600 s, then unpacked in under 3 minutes.
+    A first stream the API server refused at the handshake (HTTP 404 around a worker loss) is tried
+    again after a short pause.
     A tar that exits non-zero is raised at once.
     """
     from app.core.config import settings
@@ -422,8 +427,10 @@ async def copy_checkout(client: KubeClient, name: str, archive: bytes) -> None:
             result = await client.exec(name, WORKSPACE_CONTAINER, ["sh", "-c", unpack], stdin=archive, timeout=budget)
         except KubeError as exc:
             if attempt == _COPY_ATTEMPTS:
-                raise KubeError(f"{exc}, after {attempt} attempts", exc.status) from exc
+                raise KubeError(f"{exc}, after {attempt} attempts", exc.status, handshake=exc.handshake) from exc
             logger.warning("lab %s: checkout copy attempt %d failed (%s), retrying", name, attempt, exc)
+            if exc.handshake:
+                await sleep(_COPY_REFUSED_PAUSE_SECONDS)
             continue
         if result.exit_code != 0:
             # The archive or the volume is at fault: a retry would fail the same way.
@@ -884,7 +891,7 @@ async def start_lab(
     copied_at = time.time()
     try:
         archive, count = await checkout_archive(workspace, resolved.checkout)
-        await copy_checkout(client, name, archive)
+        await copy_checkout(client, name, archive, sleep=sleep)
     except Exception as exc:
         cause = format_exception_message(first_leaf(exc))
         outcome.text = f"Error: the checkout could not be put in the lab ({cause})."
@@ -967,7 +974,7 @@ async def sync_lab(
                 workspace, resolved.checkout, since=float(since) - _SYNC_SLACK_SECONDS
             )
             if count:
-                await copy_checkout(client, held["pod"], archive)
+                await copy_checkout(client, held["pod"], archive, sleep=sleep)
         except Exception as exc:
             cause = format_exception_message(first_leaf(exc))
             return ServiceOutcome(text=f"Error: the edits could not be put in the lab ({cause}).", refused=True)
