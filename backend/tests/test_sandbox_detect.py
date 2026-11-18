@@ -1725,7 +1725,8 @@ jobs:
       - run: isort --check-only .
 """
     found = detect.detect([".github/workflows/ci.yml"], {".github/workflows/ci.yml": workflow})
-    assert [n for n in found.checks if n.startswith("python-format")] == ["python-format"]
+    # The one check, and its write-mode sibling (test_sandbox_detect_formatter_apply.py).
+    assert [n for n in found.checks if n.startswith("python-format")] == ["python-format", "python-format-apply"]
 
 
 def test_a_narrow_checkout_keeps_the_files_its_package_scripts_name_outside_it():

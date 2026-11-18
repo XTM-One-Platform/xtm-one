@@ -2566,6 +2566,73 @@ def _actions_lint(collector: _Collector, paths: frozenset[str]) -> None:
         collector.found[key] = spec
 
 
+#: The check-mode options a formatter drops to write (black, isort, ``ruff format``, ``cargo fmt``).
+_FORMATTER_CHECK_FLAGS = {
+    "black": frozenset({"--check", "--diff"}),
+    "isort": frozenset({"--check-only", "--check", "-c", "--diff"}),
+    "ruff": frozenset({"--check", "--diff"}),
+    "cargo": frozenset({"--check"}),
+}
+#: The check-mode options prettier swaps for ``--write``.
+_PRETTIER_CHECK_FLAGS = frozenset({"--check", "-c", "--list-different", "-l"})
+#: The check goals of a JVM formatter and their write goals.
+_JVM_APPLY_GOALS = {"spotless:check": "spotless:apply", "spotlessCheck": "spotlessApply"}
+#: The files a Python formatter's write check takes with ``affected=true``.
+PYTHON_FORMAT_GLOBS = ("*.py", "*.pyi")
+
+
+def _write_argv(argv: tuple[str, ...]) -> tuple[tuple[str, ...], str]:
+    """(the write-mode argv of a formatter's check-mode *argv*, the tool), or ``((), "")`` when it is none.
+
+    ``black --check``, ``isort --check-only``, ``ruff format --check`` and ``cargo fmt --check`` lose their
+    check option, ``prettier --check`` gets ``--write``, ``spotless:check`` becomes ``spotless:apply``.
+    """
+    for index, token in enumerate(argv):
+        if token in _JVM_APPLY_GOALS:
+            return (*argv[:index], _JVM_APPLY_GOALS[token], *argv[index + 1 :]), "spotless"
+        tool = posixpath.basename(token)
+        rest = argv[index + 1 :]
+        if tool == "prettier" and any(t in _PRETTIER_CHECK_FLAGS for t in rest):
+            written = tuple(t for t in rest if t not in _PRETTIER_CHECK_FLAGS and t != "--write")
+            return (*argv[: index + 1], "--write", *written), tool
+        flags = _FORMATTER_CHECK_FLAGS.get(tool)
+        if flags is None or (tool == "ruff" and rest[:1] != ("format",)) or (tool == "cargo" and rest[:1] != ("fmt",)):
+            continue
+        kept = tuple(t for t in rest if t not in flags)
+        return ((*argv[: index + 1], *kept), tool) if len(kept) < len(rest) else ((), "")
+    return (), ""
+
+
+def _apply_formatters(collector: _Collector) -> None:
+    """A ``<check>-apply`` check next to every detected formatter check that runs in check mode.
+
+    CI runs a formatter with ``--check``; the sandbox ran only that, so a red format check was fixed by
+    hand with one edit per hunk (connectors: three black diffs). The write check runs the same tool, in
+    the same directory, image and environment, without its check option; a Python or prettier one takes
+    the changed files by default (``affected_by_default``), so it never reformats what the change did not
+    touch. Its ``args`` name other files, or ``.`` for the whole directory.
+    """
+    for (directory, stack, kind), spec in list(collector.found.items()):
+        key = (directory, stack, f"{kind}-apply")
+        if kind.endswith("-apply") or key in collector.found or len(collector.found) >= MAX_CHECKS:
+            continue
+        argv, tool = _write_argv(spec.argv)
+        if not argv:
+            continue
+        files = tool in ("black", "isort", "ruff", "prettier")
+        collector.found[key] = replace(
+            spec,
+            name=f"{spec.name}-apply",
+            argv=argv,
+            report="lines",
+            report_path="",
+            description=f"write mode of {spec.name} ({tool}): rewrites the files it would refuse"[:200],
+            affected="files" if files else spec.affected,
+            affected_globs=PYTHON_FORMAT_GLOBS if tool in ("black", "isort", "ruff") else (),
+            affected_by_default=files,
+        )
+
+
 def _compose(files: Mapping[str, bytes], infra: list[Infra]) -> None:
     for path in sorted(p for p in files if _COMPOSE.match(posixpath.basename(p))):
         services = _yaml(files[path]).get("services")
@@ -2597,6 +2664,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _script_tests(collector, listing)
     _apply_pythons(collector)
     _apply_pnpm(collector, files)
+    _apply_formatters(collector)
     _actions_lint(collector, listing)
     _compose(files, infra)
     unique = list(dict.fromkeys(row for row in infra if row.name))[:MAX_INFRA]
