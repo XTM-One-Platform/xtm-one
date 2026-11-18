@@ -26,8 +26,59 @@ import logging
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.services.tool_classification import infer_tool_type
+from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
+
+#: The filter keys of every Wordsmith event (the event's ``data`` and envelope, lifted).
+_WORDSMITH_FILTER_KEYS: dict[str, str] = {
+    "type": "The Wordsmith event type",
+    "status": "The status the event carries (task, review, report, input request, operation)",
+    "agent_id": "The Wordsmith agent the event names",
+    "assignee_id": "The task's assignee (task.created, task.assigned)",
+    "task_id": "The task the event names",
+    "resource_type": "The type of the object the event is about",
+    "actor_kind": "Who caused the event: user, agent or system",
+}
+#: The label of each Wordsmith event type in the trigger picker.
+_WORDSMITH_EVENT_LABELS: dict[str, str] = {
+    "operation.succeeded": "Wordsmith operation succeeded",
+    "operation.failed": "Wordsmith operation failed",
+    "operation.cancelled": "Wordsmith operation cancelled",
+    "task.created": "Wordsmith task created",
+    "task.assigned": "Wordsmith task assigned",
+    "task.status_changed": "Wordsmith task status changed",
+    "task.comment_added": "Wordsmith task comment added",
+    "review.completed": "Wordsmith review completed",
+    "input_request.created": "Wordsmith input request created",
+    "input_request.resolved": "Wordsmith input request resolved",
+    "repository.documents_added": "Wordsmith repository documents added",
+    "repository.indexing_completed": "Wordsmith repository indexing completed",
+    "report.run_completed": "Wordsmith report run completed",
+    "alert.triggered": "Wordsmith alert triggered",
+    "webhook_endpoint.test": "Wordsmith webhook test event",
+}
+#: One event-specific sentence per Wordsmith event type, as the GitHub and Jira pickers give.
+_WORDSMITH_EVENT_DESCRIPTIONS: dict[str, str] = {
+    "operation.succeeded": "Triggers when a Wordsmith operation succeeds.",
+    "operation.failed": "Triggers when a Wordsmith operation fails.",
+    "operation.cancelled": "Triggers when a Wordsmith operation is cancelled.",
+    "task.created": "Triggers when a Wordsmith task is created.",
+    "task.assigned": "Triggers when a Wordsmith task is assigned.",
+    "task.status_changed": "Triggers when a Wordsmith task changes status.",
+    "task.comment_added": "Triggers when a comment is added to a Wordsmith task.",
+    "review.completed": "Triggers when a Wordsmith review is completed.",
+    "input_request.created": "Triggers when a Wordsmith agent asks for input.",
+    "input_request.resolved": "Triggers when a Wordsmith input request is resolved.",
+    "repository.documents_added": "Triggers when documents are added to a Wordsmith repository.",
+    "repository.indexing_completed": "Triggers when a Wordsmith repository finishes indexing.",
+    "report.run_completed": "Triggers when a Wordsmith report run is completed.",
+    "alert.triggered": (
+        "Triggers when a Wordsmith audit alert rule fires. The Wordsmith key must be allowed to manage "
+        "the organisation's webhooks."
+    ),
+    "webhook_endpoint.test": "Triggers when Wordsmith sends a test event to the webhook.",
+}
 
 #: Providers an XTM One instance only ever gets through a platform
 #: registration, which creates and rewrites them: never created by hand, and
@@ -4637,6 +4688,18 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "business_operations",
         "integration_types": ["legal"],
+        # Wordsmith webhook endpoints (services/wordsmith_webhooks.py): one endpoint
+        # per enabled trigger, signed deliveries, caught up from GET /events.
+        "available_events": [
+            {
+                "event": event,
+                "label": _WORDSMITH_EVENT_LABELS[event],
+                "description": _WORDSMITH_EVENT_DESCRIPTIONS[event],
+                "mechanism": "webhook",
+                "filter_keys": _WORDSMITH_FILTER_KEYS,
+            }
+            for event in _WORDSMITH_EVENTS
+        ],
         "auth_type": "api_key",
         "fields": ["api_key"],
         "extra_fields": {"region": "API Region"},

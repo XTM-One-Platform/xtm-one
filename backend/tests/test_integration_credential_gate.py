@@ -261,6 +261,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # it (integration_visible_filter), a token minted for that administrator.
         "services/organization_opencti.py",
         "services/platform_access.py",
+        # Wordsmith webhook endpoints (#160): the same rule as jira_webhooks, the
+        # token only creates, checks or deletes the assignment's own endpoint and
+        # reads its event log for catch-up.
+        "services/wordsmith_webhooks.py",
     },
     "_refresh_by_id": set(),
     "_try_inline_refresh": set(),
