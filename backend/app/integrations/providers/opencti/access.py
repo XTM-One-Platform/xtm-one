@@ -46,6 +46,76 @@ def _unapplied(action: str, fields: dict[str, object]) -> str | None:
     )
 
 
+# The fields each action of manage_opencti_user / manage_opencti_group reads. Any
+# other field passed is refused by name on EVERY action, reads and relation actions
+# included: a list, get or delete must never answer as if an extra field applied.
+_USER_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"user_id"}),
+    "create": frozenset(
+        {
+            "name",
+            "user_email",
+            "password",
+            "firstname",
+            "lastname",
+            "description",
+            "account_status",
+            "group_ids",
+            "max_confidence",
+            "confidence_overrides",
+        }
+    ),
+    "update": frozenset(
+        {
+            "user_id",
+            "name",
+            "user_email",
+            "firstname",
+            "lastname",
+            "description",
+            "account_status",
+            "max_confidence",
+            "confidence_overrides",
+            "inherit_confidence",
+        }
+    ),
+    "delete": frozenset({"user_id"}),
+    "add_group": frozenset({"user_id", "group_id"}),
+    "remove_group": frozenset({"user_id", "group_id"}),
+    "add_organization": frozenset({"user_id", "organization_id"}),
+    "remove_organization": frozenset({"user_id", "organization_id"}),
+}
+_GROUP_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"group_id"}),
+    "create": frozenset({"name", "description", "max_confidence", "confidence_overrides"}),
+    "update": frozenset({"group_id", "name", "description", "max_confidence", "confidence_overrides"}),
+    "delete": frozenset({"group_id"}),
+    "add_role": frozenset({"group_id", "role_id"}),
+    "remove_role": frozenset({"group_id", "role_id"}),
+}
+_DEFAULT_LIMIT = 20
+
+
+def _refuse_unapplied(
+    action: str,
+    applies: dict[str, frozenset[str]],
+    fields: dict[str, object],
+    extra: dict[str, object],
+) -> str | None:
+    """The refusal of :func:`_unapplied` for every field *action* does not read.
+
+    *fields* are the declared arguments as passed (``limit`` only when it differs
+    from its default), *extra* the undeclared ones. An unknown action is left to the
+    tool's own answer.
+    """
+    allowed = applies.get(action)
+    if allowed is None:
+        return None
+    return _unapplied(action, {**{k: v for k, v in fields.items() if k not in allowed}, **extra})
+
+
 def _confidence_level(
     max_confidence: int | None, overrides: list[dict[str, Any]] | None
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -153,6 +223,31 @@ def register(
         **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _USER_APPLIES,
+            {
+                "user_id": user_id,
+                "name": name,
+                "user_email": user_email,
+                "password": password,
+                "firstname": firstname,
+                "lastname": lastname,
+                "description": description,
+                "account_status": account_status,
+                "group_ids": group_ids,
+                "group_id": group_id,
+                "organization_id": organization_id,
+                "search": search,
+                "limit": None if limit == _DEFAULT_LIMIT else limit,
+                "max_confidence": max_confidence,
+                "confidence_overrides": confidence_overrides,
+                "inherit_confidence": inherit_confidence,
+            },
+            extra,
+        )
+        if refused:
+            return refused
 
         async def _read_user_confidence() -> tuple[dict[str, Any] | None, str | None]:
             query = (
@@ -239,18 +334,6 @@ def register(
         if action == "create":
             if not name:
                 return "name is required for action 'create'."
-            refused = _unapplied(
-                "create",
-                {
-                    "user_id": user_id,
-                    "group_id": group_id,
-                    "organization_id": organization_id,
-                    "inherit_confidence": inherit_confidence,
-                    **extra,
-                },
-            )
-            if refused:
-                return refused
             inp: dict = {"name": name}
             if max_confidence is not None or confidence_overrides:
                 level, level_err = _confidence_level(max_confidence, confidence_overrides)
@@ -284,19 +367,6 @@ def register(
         if action == "update":
             if not user_id:
                 return "user_id is required for action 'update'."
-            refused = _unapplied(
-                "update",
-                {
-                    "password": password,
-                    "group_ids": group_ids,
-                    "group_id": group_id,
-                    "organization_id": organization_id,
-                    "search": search,
-                    **extra,
-                },
-            )
-            if refused:
-                return refused
             sets_confidence = max_confidence is not None or confidence_overrides is not None
             if inherit_confidence and sets_confidence:
                 return (
@@ -422,6 +492,23 @@ def register(
         **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _GROUP_APPLIES,
+            {
+                "group_id": group_id,
+                "name": name,
+                "description": description,
+                "max_confidence": max_confidence,
+                "role_id": role_id,
+                "search": search,
+                "limit": None if limit == _DEFAULT_LIMIT else limit,
+                "confidence_overrides": confidence_overrides,
+            },
+            extra,
+        )
+        if refused:
+            return refused
 
         async def _read_group_confidence() -> tuple[dict[str, Any] | None, str | None]:
             query = (
@@ -489,9 +576,6 @@ def register(
         if action == "create":
             if not name:
                 return "name is required for action 'create'."
-            refused = _unapplied("create", {"group_id": group_id, "role_id": role_id, **extra})
-            if refused:
-                return refused
             level, level_err = _confidence_level(
                 100 if max_confidence is None else max_confidence, confidence_overrides
             )
@@ -518,9 +602,6 @@ def register(
         if action == "update":
             if not group_id:
                 return "group_id is required for action 'update'."
-            refused = _unapplied("update", {"role_id": role_id, "search": search, **extra})
-            if refused:
-                return refused
             edits = _edits(
                 [("name", name or None), ("description", description or None)]
             )
