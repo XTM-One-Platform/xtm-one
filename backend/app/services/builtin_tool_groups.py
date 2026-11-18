@@ -74,9 +74,9 @@ class BuiltinToolGroup:
     #: Acts as the agent, never on the General Assistant (``AGENT_KEYED_BUILTIN_TOOL_IDS``).
     agent_keyed: bool = False
     #: A Platform Health specialist's suite, carried by the fleet's own agents
-    #: (``concierge.fleet_seed``), whose writes refuse anyone but the
+    #: (``health.fleet_seed``), whose writes refuse anyone but the
     #: Platform Health: a chat's session tools never offer it.
-    concierge_only: bool = False
+    health_only: bool = False
     #: Titled with the platform's own name.
     named_after_platform: bool = False
     #: Former ids this group answers to, [DEPRECATED] (``builtin_tool_aliases``).
@@ -315,7 +315,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         icon="Brain",
         gate="concierge",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
     ),
     BuiltinToolGroup(
         id="coordination",
@@ -369,7 +369,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         icon="Stethoscope",
         gate="concierge",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("get_quality_signals", "list_findings"),
     ),
     BuiltinToolGroup(
@@ -381,7 +381,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         icon="FlaskConical",
         gate="concierge",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("list_experiments", "get_experiment"),
     ),
     BuiltinToolGroup(
@@ -393,7 +393,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         icon="Workflow",
         gate="concierge",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),
     ),
 )

@@ -1469,8 +1469,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Concierge specialist's suite, carried by the Concierge fleet's own agents: no session picker offers it. */
-  concierge_only: boolean;
+  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
+  health_only: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */

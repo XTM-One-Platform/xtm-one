@@ -102,10 +102,10 @@ describe("useBuiltinTools session picker", () => {
       gate: "concierge",
       default_on: false,
       agent_keyed: true,
-      concierge_only: true,
+      health_only: true,
     };
-    const orchestrator = { ...steward, id: "concierge_orchestrator", name: "Concierge", concierge_only: false };
-    get.mockResolvedValueOnce([{ ...GROUP, concierge_only: false }, steward, orchestrator] as never);
+    const orchestrator = { ...steward, id: "concierge_orchestrator", name: "Concierge", health_only: false };
+    get.mockResolvedValueOnce([{ ...GROUP, health_only: false }, steward, orchestrator] as never);
     const { result } = renderHook(() => useBuiltinTools(), { wrapper: withProviders(appClient()) });
     await waitFor(() => expect(result.current.isReady).toBe(true));
     const agent = { builtin_tool_ids: ["memory_steward"], user_id: "u1", is_company_managed: false };

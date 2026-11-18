@@ -139,7 +139,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       agentOnly: group.agent_keyed,
       assistantAdminOnly: group.admin_only,
       bindLocked: !!group.bind_admin_only && !isAdmin,
-      healthOnly: group.concierge_only,
+      healthOnly: group.health_only,
       known: true,
       functions: group.functions,
     });

@@ -30,7 +30,7 @@ async def test_a_person_never_writes_through_the_flow_lab(handler):
     from app.services.builtin_tools import flow_lab as tools
 
     answer = await getattr(tools, handler)(None, SimpleNamespace(is_health_principal=False))
-    assert answer == tools._CONCIERGE_ONLY
+    assert answer == tools._HEALTH_ONLY
 
 
 async def test_a_sandbox_flow_shadows_only_an_assignment_whose_agent_reaches_what_it_names(monkeypatch):

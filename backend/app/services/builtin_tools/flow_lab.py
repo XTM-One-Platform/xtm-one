@@ -75,7 +75,7 @@ FLOW_LAB_READ_TOOLS = frozenset(
 _OFF = "Error: Platform Health is not enabled on this platform."
 _FAILED = "Error: the Flow Lab could not complete this request right now."
 _NO_CALLER = "Error: this tool needs an authenticated caller."
-_CONCIERGE_ONLY = "Error: only a Platform Health agent can do this, on sandbox copies."
+_HEALTH_ONLY = "Error: only a Platform Health agent can do this, on sandbox copies."
 
 #: How many replay cases ``get_flow_diagnosis`` lists with their payloads.
 _LISTED_CASES = 20
@@ -350,7 +350,7 @@ async def _create_sandbox_flow(
     from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 
     if not caller.is_health_principal:
-        return _CONCIERGE_ONLY
+        return _HEALTH_ONLY
     checked, refusal = _checked_graph(graph)
     if checked is None:
         return refusal
@@ -539,7 +539,7 @@ async def _update_sandbox_flow(db: AsyncSession, caller: Any, sandbox_flow_id: s
     from app.services.health import flow_lab_access as access
 
     if not caller.is_health_principal:
-        return _CONCIERGE_ONLY
+        return _HEALTH_ONLY
     flow = await access.resolve_sandbox_flow(db, caller, sandbox_flow_id)
     if flow is None:
         return _not_found("sandbox flow")
@@ -569,7 +569,7 @@ async def _run_flow_shadow(db: AsyncSession, caller: Any, assignment: str = "", 
     from app.services.health.flow_shadow import ShadowError, start_shadow
 
     if not caller.is_health_principal:
-        return _CONCIERGE_ONLY
+        return _HEALTH_ONLY
     target = await access.resolve_assignment(db, caller, assignment)
     flow = await access.resolve_sandbox_flow(db, caller, sandbox_flow_id)
     if target is None or flow is None:
