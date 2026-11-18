@@ -76,7 +76,7 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 content-base">
           <ShieldOff className="size-4 text-default-secondary" />
-          {t_i18n("Concierge")}
+          {t_i18n("Platform Health")}
         </CardTitle>
         <CardDescription className="content-compact">
           {t_i18n("The platform's Concierge improves the agents their managers opted in.")}

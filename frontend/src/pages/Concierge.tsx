@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Concierge page for administrators (#8261, PRD 6.11): every improvement
+ * The Platform Health page for administrators (#8261, PRD 6.11; renamed #101 S1): every improvement
  * proposal (search, type and status filters, sort), every cycle with its digest, and the
  * signals currently crossed. Built in since #101 (S1); managers find their
  * own targets' proposals and cycles on the agent and flow pages.
@@ -30,13 +30,11 @@ import { ImprovementsInbox } from "@/components/concierge/ImprovementsInbox";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
 
 type Tab = "improvements" | "cycles" | "signals";
 
 export default function Concierge() {
   const { t_i18n } = useFormatter();
-  const conciergeName = useConciergeName();
   const [tab] = useTabParam<Tab>("improvements");
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
     { key: "improvements", label: "Improvements", icon: Lightbulb },
@@ -45,17 +43,17 @@ export default function Concierge() {
   ];
   return (
     <div className="space-y-6">
-      {/* One header row (#10215); the title is the administrator's name for
-          it, shown as written. Its settings are one click away (#9301 N4: the
+      {/* One header row (#10215); the title is the product name, Platform
+          Health (#101 S1). Its settings are one click away (#9301 N4: the
           page and the setting link to each other). */}
       <ListPageHeader
-        title={conciergeName}
-        infoLabel={t_i18n("About {name}", { name: conciergeName })}
-        info={t_i18n("What {name} found, tried and proposes, cycle by cycle, and the signals it watches.", { name: conciergeName })}
+        title={t_i18n("Platform Health")}
+        infoLabel={t_i18n("About Platform Health")}
+        info={t_i18n("What Platform Health found, tried and proposes, cycle by cycle, and the signals it watches.")}
         actions={
           <Button variant="outline" className="gap-1.5" asChild>
             <Link to={CONCIERGE_SETTINGS_PATH}>
-              <Settings2 className="h-4 w-4" /> {t_i18n("Concierge settings")}
+              <Settings2 className="h-4 w-4" /> {t_i18n("Platform Health settings")}
             </Link>
           </Button>
         }

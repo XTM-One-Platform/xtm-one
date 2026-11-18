@@ -95,7 +95,7 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
           <p className="text-default-secondary">{status}</p>
           <div className="mt-3 flex items-center justify-between gap-2">
             <Button asChild size="sm" variant="secondary">
-              <Link to="/concierge" onClick={() => setOpen(false)}>
+              <Link to="/health" onClick={() => setOpen(false)}>
                 {t_i18n("Open {name}", { name: conciergeName })}
               </Link>
             </Button>

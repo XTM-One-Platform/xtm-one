@@ -142,7 +142,7 @@ const AUTOMATIONS_SECTIONS: readonly SectionNavItem<AutomationsSection>[] = [
   { key: "ctem-agents", label: "CTEM stage agents", icon: Sparkles },
   { key: "agent-runs", label: "Agent runs", icon: Timer },
   { key: "quality", label: "Quality", icon: ClipboardCheck },
-  { key: "concierge", label: "Concierge", icon: Sparkles },
+  { key: "health", label: "Platform Health", icon: Sparkles },
 ];
 const INTEGRATIONS_SECTIONS: readonly SectionNavItem<IntegrationsSettingsSection>[] = [
   { key: "catalog", label: "Catalog", icon: LayoutGrid },
@@ -2455,7 +2455,7 @@ function SettingsPage() {
       {/* Not wrapped: rating agent work and defining what it is scored on
           involve no model, so they stay available with AI off. */}
       {tab === "automations" && automations === "quality" && <FeedbackCriteriaSection />}
-      {tab === "automations" && automations === "concierge" && <ConciergeSection />}
+      {tab === "automations" && automations === "health" && <ConciergeSection />}
 
       {/* ================================================================ */}
       {/* Integrations: catalog, OAuth defaults, channels, MCP endpoint    */}

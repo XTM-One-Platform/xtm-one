@@ -21,13 +21,13 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 export const DEFAULT_SETTINGS_TAB: SettingsTab = "organization";
 
 export type OrganizationSubsection = "profile" | "departments" | "units" | "rates";
-export type AutomationsSection = "fleets" | "ctem-agents" | "agent-runs" | "quality" | "concierge";
+export type AutomationsSection = "fleets" | "ctem-agents" | "agent-runs" | "quality" | "health";
 export type IntegrationsSettingsSection = "catalog" | "oauth" | "channels" | "mcp";
 export type AiSection = "models" | "media" | "assistant" | "knowledge";
 export type UsageSection = "quotas" | "observability" | "pricing";
 
-/** The Concierge settings: the Concierge page links here (#9301 N4). */
-export const CONCIERGE_SETTINGS_PATH = "/settings/automations/concierge";
+/** The Platform Health settings: the Platform Health page links here (#9301 N4, renamed #101 S1). */
+export const CONCIERGE_SETTINGS_PATH = "/settings/automations/health";
 
 /** The old tab segment and where it lives now. */
 export const LEGACY_SETTINGS_ROUTES: Readonly<Record<string, string>> = {
@@ -54,7 +54,8 @@ export function legacySettingsTarget(tab: string | undefined, search: string, ha
 /**
  * The sub-section bare `/settings/automations` opens (UX C3): Fleets in
  * XTM One mode, Agent runs in Copilot mode. An XTM One only section in Copilot
- * mode falls back to this default; Concierge is built in since #101 (S1).
+ * mode falls back to this default; Platform Health is built in since #101 (S1),
+ * and the former `concierge` segment opens it.
  * Fleets is in every mode (#9162 scope: fleet member configuration and its
  * presets are generic fleet features); only CTEM stage agents is XTM One only.
  */
@@ -69,8 +70,10 @@ export function automationsSection(
     case "fleets":
     case "agent-runs":
     case "quality":
-    case "concierge":
+    case "health":
       return requested;
+    case "concierge":
+      return "health";
     default:
       return fallback;
   }

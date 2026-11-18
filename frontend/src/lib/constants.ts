@@ -1110,7 +1110,7 @@ const AUDIT_ENTITY_LABELS = {
   chat_tool_calls: "Chat tool calls",
   concierge_cycle: "Concierge cycle",
   concierge_pet: "Concierge pet",
-  concierge_settings: "Concierge settings",
+  concierge_settings: "Platform Health settings",
   conversation: "Conversation",
   conversation_files: "Conversation files",
   custom_dashboard: "Custom dashboard",

@@ -54,7 +54,7 @@ describe("ConciergeCompanion", () => {
     renderWithProviders(<MemoryRouter><ConciergeCompanion /></MemoryRouter>);
     expect(await screen.findByRole("status")).toHaveTextContent("A proposal is ready for your review.");
     fireEvent.click(await screen.findByRole("button", { name: "Alfred" }));
-    expect(await screen.findByRole("link", { name: "Open Jeeves" })).toHaveAttribute("href", "/concierge");
+    expect(await screen.findByRole("link", { name: "Open Jeeves" })).toHaveAttribute("href", "/health");
   });
 
   it("skips the greeting and holds the state's first frame under reduced motion", async () => {

@@ -326,14 +326,12 @@ test("the family header spaces its title and tab row as Settings does (#10409 UX
   assert.match(source, /return \(\s*<div className="space-y-6">/);
 });
 
-test("the Concierge entry reads its name as written, never as a message id", () => {
+test("the Platform Health entry is a translated label at /health, never a name, and /concierge is no destination (#101 S1)", () => {
   const translate = (id: string) => `t(${id})`;
-  const named = navDestinations(resolveNav({ ...FLAGS, conciergeName: "{Jeeves}" }, true)).find((d) => d.to === "/concierge");
-  assert.ok(named);
-  assert.equal(navLabel(named, translate), "{Jeeves}");
-  const unnamed = navDestinations(resolveNav(FLAGS, true)).find((d) => d.to === "/concierge");
-  assert.ok(unnamed);
-  assert.equal(navLabel(unnamed, translate), "t(Concierge)");
-  const chat = navDestinations(resolveNav({ ...FLAGS, conciergeName: "Jeeves" }, true)).find((d) => d.to === "/chat");
-  assert.equal(chat?.text, undefined);
+  const destinations = navDestinations(resolveNav(FLAGS, true));
+  const health = destinations.find((d) => d.to === "/health");
+  assert.ok(health);
+  assert.equal(health.text, undefined);
+  assert.equal(navLabel(health, translate), "t(Platform Health)");
+  assert.equal(destinations.find((d) => d.to === "/concierge"), undefined);
 });

@@ -25,7 +25,7 @@ describe("legacySettingsTarget", () => {
     expect(legacySettingsTarget("quotas", "", "")).toBe("/settings/usage/quotas");
     expect(legacySettingsTarget("observability", "", "")).toBe("/settings/usage/observability");
     expect(legacySettingsTarget("quality", "", "")).toBe("/settings/automations/quality");
-    expect(legacySettingsTarget("concierge", "", "")).toBe("/settings/automations/concierge");
+    expect(legacySettingsTarget("concierge", "", "")).toBe("/settings/automations/health");
   });
 
   it("keeps the query and the hash", () => {
@@ -50,9 +50,11 @@ describe("automationsSection (C3)", () => {
     expect(automationsSection(undefined, copilot)).toBe("agent-runs");
   });
 
-  it("opens Concierge in every mode, built in with no flag (#101 S1)", () => {
-    expect(automationsSection("concierge", xtm)).toBe("concierge");
-    expect(automationsSection("concierge", copilot)).toBe("concierge");
+  it("opens Platform Health in every mode, built in with no flag, the former segment included (#101 S1)", () => {
+    expect(automationsSection("health", xtm)).toBe("health");
+    expect(automationsSection("health", copilot)).toBe("health");
+    expect(automationsSection("concierge", xtm)).toBe("health");
+    expect(automationsSection("concierge", copilot)).toBe("health");
   });
 
   it("never shows an XTM One section in Copilot mode", () => {

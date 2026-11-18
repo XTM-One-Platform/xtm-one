@@ -38,7 +38,7 @@ const FILES: { path: string; text: string }[] = [...sources(SRC)]
 const text = (path: string): string => FILES.find((file) => file.path === path)?.text ?? "";
 
 /** Destinations of generic AI capabilities: never gated on the mode. */
-const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/concierge", "/intents"];
+const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/health", "/intents"];
 
 type ModeClass = "domain content" | "licence and edition" | "built-in agents" | "branding" | "plumbing";
 

@@ -89,7 +89,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
     <div>
       <BlockTitle
         icon={Power}
-        title={t_i18n("Concierge")}
+        title={t_i18n("Platform Health")}
         hint={t_i18n("While it is off, the Concierge reads nothing and starts no work.")}
       />
       <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
@@ -354,7 +354,7 @@ export function ConciergeSection() {
               {/* The page of what it found and proposes, one click away
                   (#9301 N4: the page and the setting link to each other). */}
               <Button variant="outline" size="sm" className="gap-1.5" asChild>
-                <Link to="/concierge">
+                <Link to="/health">
                   <Compass className="h-3 w-3" /> {t_i18n("Open {name}", { name: conciergeName })}
                 </Link>
               </Button>
