@@ -44,16 +44,21 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.dataset import Dataset, DatasetEntry
 from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
 from app.models.evaluation_metric import EvaluationMetric
 from app.models.flow import Flow
+from app.services.evaluation.answer_facts import is_unreadable, judge_score, metric_counts
+from app.services.evaluation.cross_comparison import COST_KEY
 from app.services.evaluation.metric_package import (
     canonical_stix_bundle,
+    is_macro_key,
     is_pooled_key,
+    metric_suite_version,
     quality_catalog,
     reference_key,
 )
@@ -279,7 +284,7 @@ def _relationship_rows(
 
 
 #: The most answers one review lays side by side.
-MAX_REVIEWED_ANSWERS = 4
+MAX_REVIEWED_ANSWERS = 32
 #: The report text sent for the annotated view, past which it is cut.
 MAX_TEXT_CHARS = 400_000
 
@@ -323,8 +328,13 @@ async def _entry_pages(db: AsyncSession, entry: Any) -> tuple[list[str], str | N
     return kept, attachment.filename, "file"
 
 
-async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) -> dict[str, Any]:
+async def load_bundle_review(
+    db: AsyncSession, result_ids: Sequence[uuid.UUID], *, include_text: bool = True
+) -> dict[str, Any]:
     """The review of these results' answers against the entry the first was scored on.
+
+    *include_text* reads the report text (the attached file's text layer at worst): a
+    batch of reviews for a run's figures leaves it out.
 
     Raises:
         BundleReviewRefusedError: no result, too many, a result missing, one of another
@@ -363,15 +373,30 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
         raise BundleReviewRefusedError("The expected bundle cannot be read, or the STIX backend is unavailable")
 
     pooled = [m["key"] for m in quality_catalog(STIX_BUNDLE) if is_pooled_key(m["key"])]
+    macro = [m["key"] for m in quality_catalog(STIX_BUNDLE) if is_macro_key(m["key"])]
     values: dict[uuid.UUID, dict[str, float | None]] = {r.id: {} for r, _, _ in ordered}
+    costs: dict[uuid.UUID, float | None] = {}
     for rid, metric, value in (
         await db.execute(
             select(EvaluationMetric.result_id, EvaluationMetric.key, EvaluationMetric.value).where(
-                EvaluationMetric.result_id.in_(list(values)), EvaluationMetric.key.in_(pooled)
+                EvaluationMetric.result_id.in_(list(values)),
+                EvaluationMetric.key.in_([*pooled, *macro, COST_KEY]),
             )
         )
     ).all():
-        values[rid][metric] = value
+        if metric == COST_KEY:
+            costs[rid] = value
+        else:
+            values[rid][metric] = value
+
+    # The entry's place in its dataset and the dataset it comes from.
+    dataset_id = entries[0][1]
+    dataset = await db.get(Dataset, dataset_id) if dataset_id else None
+    entry_count = (
+        await db.scalar(select(func.count()).select_from(DatasetEntry).where(DatasetEntry.dataset_id == dataset_id))
+        if dataset_id
+        else None
+    )
 
     # Each answer's agent (or flow) by name: two answers of one evaluation differ by it.
     subject_names: dict[uuid.UUID, str] = {}
@@ -382,17 +407,25 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
     if flow_ids:
         subject_names.update((await db.execute(select(Flow.id, Flow.name).where(Flow.id.in_(flow_ids)))).tuples().all())
 
-    pages, file_name, text_source = await _entry_pages(db, entry)
+    pages, file_name, text_source = await _entry_pages(db, entry) if include_text else ([], None, None)
     return {
         "entry": {
             "label": (getattr(entry, "description", None) or "").strip() or f"Entry {getattr(entry, 'position', 0) + 1}",
+            "key": key,
+            "position": getattr(entry, "position", 0) or 0,
+            "entry_count": entry_count,
+            "dataset_name": dataset.name if dataset else None,
+            "dataset_description": dataset.description if dataset else None,
             "pages": pages,
             "file_name": file_name,
             "text_source": text_source,
         },
+        # The suite this review reads the answers with; each answer says the one it was scored by.
+        "metric_suite_version": metric_suite_version(),
         "answers": [
             {
                 "key": str(result.id),
+                "metric_suite_version": run.metric_suite_version,
                 "result_id": str(result.id),
                 "run_id": str(run.id),
                 "evaluation_id": str(evaluation.id),
@@ -401,9 +434,17 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
                 "subject_id": str(run.agent_id or run.flow_id) if (run.agent_id or run.flow_id) else None,
                 "subject_name": subject_names.get(run.agent_id or run.flow_id) if (run.agent_id or run.flow_id) else None,
                 "created_at": run.created_at.isoformat() if run.created_at else None,
-                "judge_score": _judge_score(result, run),
+                "judge_score": judge_score(
+                    result.score, scorer_selection=run.scorer_selection,
+                    is_judge_failure=result.is_judge_failure, anomaly=result.execution_anomaly_kind,
+                ),
+                "judge_reasoning": result.evaluator_reasoning if include_text else None,
                 "anomaly": result.execution_anomaly_kind,
                 "metrics": values[result.id],
+                "counts": metric_counts(_metric_results(result), pooled),
+                "unreadable": is_unreadable(_metric_results(result)),
+                "cost": costs.get(result.id),
+                "seconds": result.duration_seconds,
             }
             for result, run, evaluation in ordered
         ],
@@ -411,25 +452,34 @@ async def load_bundle_review(db: AsyncSession, result_ids: Sequence[uuid.UUID]) 
     }
 
 
-#: Anomalies that leave an entry out of the judge's scores, as the run's pages read them.
-_JUDGE_EXCLUDED_ANOMALIES = frozenset({"transient_error", "platform_error"})
+def _metric_results(result: EvaluationResult) -> object:
+    details = result.execution_details if isinstance(result.execution_details, dict) else {}
+    return details.get("metric_results")
 
 
-def _judge_score(result: EvaluationResult, run: EvaluationRun) -> float | None:
-    """The judge's score of an answer, or None when there is none: the run's judge was off
-    (``score`` is NOT NULL and then holds 0.0), its verdict failed, or the entry was left out."""
-    judged = run.scorer_selection is None or "judge" in run.scorer_selection
-    if not judged or result.is_judge_failure or result.execution_anomaly_kind in _JUDGE_EXCLUDED_ANOMALIES:
-        return None
-    return result.score
+#: The most groups one batch of reviews takes.
+MAX_REVIEW_GROUPS = 200
+
+
+async def load_bundle_reviews(
+    db: AsyncSession, groups: Sequence[Sequence[uuid.UUID]], *, include_text: bool = False
+) -> list[dict[str, Any]]:
+    """One review per group of results (each as :func:`load_bundle_review`), for the pages
+    that read every entry of a run at once: its figures, the causes of its misses, its
+    history. Without *include_text* no report text is read."""
+    if not 1 <= len(groups) <= MAX_REVIEW_GROUPS:
+        raise BundleReviewRefusedError(f"Review 1 to {MAX_REVIEW_GROUPS} entries at once")
+    return [await load_bundle_review(db, group, include_text=include_text) for group in groups]
 
 
 __all__ = [
     "EXPECTED",
     "MAX_PAIRED_OBJECTS",
     "MAX_REVIEWED_ANSWERS",
+    "MAX_REVIEW_GROUPS",
     "BundleReviewRefusedError",
     "build_review",
     "describe",
     "load_bundle_review",
+    "load_bundle_reviews",
 ]

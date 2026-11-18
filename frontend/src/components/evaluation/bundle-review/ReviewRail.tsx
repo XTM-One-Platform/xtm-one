@@ -68,7 +68,10 @@ export function ReviewRail({
                   type="button"
                   aria-pressed={filters.type === type}
                   onClick={() => onType(filters.type === type ? null : type)}
-                  title={t_i18n("{tp} matched · {fp} spurious · {fn} missing", { tp: c.tp, fp: c.fp, fn: c.fn })}
+                  title={
+                    t_i18n("TP {tp} · FP {fp} · FN {fn}", { tp: c.tp, fp: c.fp, fn: c.fn }) +
+                    (ctx.comparator ? ` · ${ctx.comparator.name} ${formatScore(f1(typeCounts(ctx.fullModel, ctx.comparator.key, whatIf, type)))}` : "")
+                  }
                   className={cn(
                     "w-full rounded-sm px-2 py-1 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus",
                     filters.type === type ? "bg-elevation-highlight" : "hover:bg-elevation-hover",
@@ -111,9 +114,11 @@ export function ReviewRail({
       <p className="content-compact text-default-secondary">
         {filtered ? (
           <>
-            {filters.type
-              ? t_i18n("Filtered on type {type}.", { type: filters.type })
-              : t_i18n("{shown} of {total} statuses shown.", { shown: keys.length - filters.hidden.size, total: keys.length })}{" "}
+            {filters.type && filters.hidden.size > 0
+              ? t_i18n("Filtered on type {type}, {shown} of {total} statuses.", { type: filters.type, shown: keys.length - filters.hidden.size, total: keys.length })
+              : filters.type
+                ? t_i18n("Filtered on type {type}.", { type: filters.type })
+                : t_i18n("{shown} of {total} statuses shown.", { shown: keys.length - filters.hidden.size, total: keys.length })}{" "}
             <Button variant="link" size="sm" className="h-auto p-0" onClick={onClear}>
               {t_i18n("Clear filters")}
             </Button>

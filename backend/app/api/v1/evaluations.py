@@ -73,6 +73,7 @@ from app.api.v1.schemas.evaluation import (
     AlwaysAskToolsResponse,
     BaselineResponse,
     BundleReviewResponse,
+    BundleReviewsRequest,
     CreateEvaluationRequest,
     EvaluationChartResponse,
     EvaluationComparisonResponse,
@@ -146,7 +147,7 @@ from app.models.flow import Flow
 from app.models.user import User
 from app.services.audit import log_audit
 from app.services.evaluation.aggregation import counts_in_headlines
-from app.services.evaluation.bundle_review import BundleReviewRefusedError, load_bundle_review
+from app.services.evaluation.bundle_review import BundleReviewRefusedError, load_bundle_review, load_bundle_reviews
 from app.services.evaluation.cross_comparison import ComparisonRefusedError, compare_evaluations
 from app.services.evaluation.dataset_family_compatibility import (
     check_family_compatibility,
@@ -2793,7 +2794,7 @@ async def get_bundle_review(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """One STIX entry's expected bundle against 1 to 4 answers, object by object
+    """One STIX entry's expected bundle against 1 to 32 answers, object by object
     (``services/evaluation/bundle_review.py``).
 
     Every result's evaluation must be visible to the caller (else 404); answers of another
@@ -2801,16 +2802,41 @@ async def get_bundle_review(
     ``/{evaluation_id}``.
     """
     rids = _id_list(result_ids, "Result ID")
+    await _assert_results_visible(db, user, rids)
+    try:
+        return await load_bundle_review(db, rids)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Evaluation result not found") from None
+    except BundleReviewRefusedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+async def _assert_results_visible(db: AsyncSession, user: User, result_ids: list[uuid.UUID]) -> None:
+    """404 unless every result's evaluation is visible to *user*."""
     user_group_ids = await get_user_group_ids(db, user.id)
     owners = await db.execute(
         select(EvaluationRun.evaluation_id)
         .join(EvaluationResult, EvaluationResult.run_id == EvaluationRun.id)
-        .where(EvaluationResult.id.in_(rids))
+        .where(EvaluationResult.id.in_(result_ids))
     )
     for evaluation_id in {row[0] for row in owners.all()}:
         await _get_user_evaluation(db, user.id, str(evaluation_id), user_group_ids, is_admin=user.is_admin)
+
+
+@router.post("/bundle-reviews", response_model=list[BundleReviewResponse])
+async def get_bundle_reviews(
+    body: BundleReviewsRequest,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Several entries' bundle reviews at once (``load_bundle_reviews``), one group of 1 to
+    32 result ids per entry, without the report text unless ``include_text``: what a run's
+    review reads over every entry (its figures, the causes of its misses, its history).
+    A read: POST only to carry the groups."""
+    groups = [_id_list(",".join(group), "Result ID") for group in body.groups]
+    await _assert_results_visible(db, user, [rid for group in groups for rid in group])
     try:
-        return await load_bundle_review(db, rids)
+        return await load_bundle_reviews(db, groups, include_text=body.include_text)
     except LookupError:
         raise HTTPException(status_code=404, detail="Evaluation result not found") from None
     except BundleReviewRefusedError as exc:

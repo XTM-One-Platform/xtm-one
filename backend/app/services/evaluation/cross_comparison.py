@@ -52,9 +52,11 @@ from app.models.evaluation import Evaluation, EvaluationAgent, EvaluationResult,
 from app.models.evaluation_metric import EvaluationMetric
 from app.models.flow import Flow
 from app.services.evaluation.aggregation import counts_in_headlines
+from app.services.evaluation.answer_facts import is_unreadable, judge_score, metric_counts, setup_of
 from app.services.evaluation.metric_package import (
     is_pooled_key,
     metric_direction,
+    metric_suite_version,
     quality_catalog,
     reference_key,
 )
@@ -149,7 +151,7 @@ def _is_uuid(value: str) -> bool:
 async def _datasets(db: AsyncSession, evaluations: Sequence[Evaluation]) -> dict[uuid.UUID, list[dict[str, Any]]]:
     ids = [e.id for e in evaluations]
     rows = await db.execute(
-        select(EvaluationDataset.evaluation_id, Dataset.id, Dataset.name, Dataset.evaluation_instructions)
+        select(EvaluationDataset.evaluation_id, Dataset.id, Dataset.name, Dataset.evaluation_instructions, Dataset.description)
         .join(Dataset, Dataset.id == EvaluationDataset.dataset_id)
         .where(EvaluationDataset.evaluation_id.in_(ids))
         .order_by(EvaluationDataset.position)
@@ -162,10 +164,10 @@ async def _datasets(db: AsyncSession, evaluations: Sequence[Evaluation]) -> dict
     )
     counts: dict[uuid.UUID, int] = {dataset_id: int(n) for dataset_id, n in count_rows.all()}
     out: dict[uuid.UUID, list[dict[str, Any]]] = defaultdict(list)
-    for evaluation_id, dataset_id, name, instructions in linked:
+    for evaluation_id, dataset_id, name, instructions, description in linked:
         out[evaluation_id].append({
             "id": str(dataset_id), "name": name, "entry_count": int(counts.get(dataset_id, 0)),
-            "instructions_digest": _digest(instructions),
+            "instructions_digest": _digest(instructions), "description": description,
         })
     return out
 
@@ -239,7 +241,8 @@ async def compare_evaluations(
             select(
                 EvaluationResult.id, EvaluationResult.run_id, EvaluationResult.entry_id,
                 EvaluationResult.execution_anomaly_kind, EvaluationResult.is_judge_failure,
-                EvaluationResult.duration_seconds,
+                EvaluationResult.duration_seconds, EvaluationResult.score,
+                EvaluationResult.execution_details["metric_results"],
                 DatasetVersionEntry.entry_id, DatasetVersionEntry.position, DatasetVersionEntry.description,
                 DatasetVersionEntry.input_prompt, DatasetVersionEntry.expected_answer, DatasetVersionEntry.file_ids,
                 DatasetEntry.position, DatasetEntry.description, DatasetEntry.input_prompt,
@@ -251,13 +254,14 @@ async def compare_evaluations(
         )
     ).all()
 
+    prf_keys = tuple(m["key"] for m in pooled_quality_keys(family))
     keys_cache: dict[str, str | None] = {}
     entries: dict[str, dict[str, Any]] = {}
     occupied: dict[tuple[uuid.UUID, str], uuid.UUID | None] = {}
     cells: list[dict[str, Any]] = []
     result_ids: list[uuid.UUID] = []
     for row in results:
-        (rid, run_id, live_id, anomaly, judge_failed, seconds,
+        (rid, run_id, live_id, anomaly, judge_failed, seconds, score, metric_results,
          v_entry, v_pos, v_desc, v_prompt, v_expected, v_files,
          l_pos, l_desc, l_prompt, l_expected, l_files) = row
         snapshot = v_expected is not None
@@ -291,6 +295,13 @@ async def compare_evaluations(
             "run_id": str(run_id), "entry_key": key, "result_id": str(rid),
             "counted": counts_in_headlines(_Counted(anomaly, bool(judge_failed))),
             "anomaly": anomaly, "metrics": {}, "cost": None, "seconds": seconds,  # agent time
+            # tp / fp / fn of the metrics that report them, for precision and recall.
+            "counts": metric_counts(metric_results, prf_keys) if counts_in_headlines(_Counted(anomaly, bool(judge_failed))) else {},
+            "unreadable": is_unreadable(metric_results),
+            "judge_score": judge_score(
+                score, scorer_selection=run_by_id[run_id].scorer_selection,
+                is_judge_failure=bool(judge_failed), anomaly=anomaly,
+            ),
         })
 
     metrics = pooled_quality_keys(family)
@@ -324,14 +335,25 @@ async def compare_evaluations(
             "metric_suite_version": run.metric_suite_version, "execution_mode": run.execution_mode,
             "quality_score": run.quality_score, "completed_entries": run.completed_entries,
             "total_entries": run.total_entries,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            # The judge's run score, None when its judge was off.
+            "judge_score": run.score if run.scorer_selection is None or "judge" in run.scorer_selection else None,
+            "setup_key": setup_of(run)[0],
+            # Why the last re-score failed, None when it did not.
+            "rescore_error": run.rescore_error,
+            "setup": setup_of(run)[1],
         }
 
     return {
         "family": family,
+        # The suite this platform scores with now: a run scored by another reads differently
+        # in the bundle review until it is re-scored.
+        "metric_suite_version": metric_suite_version(),
         "metrics": metrics,
         "evaluations": [
             {
                 "id": str(e.id), "name": e.name, "family": e.family,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
                 "execution_mode": e.execution_mode, "timeout_seconds": e.timeout_seconds,
                 "judge_on": e.scorer_selection is None or "judge" in (e.scorer_selection or []),
                 "evaluator_model": e.evaluator_model, "judge_weights": e.sub_score_weights,

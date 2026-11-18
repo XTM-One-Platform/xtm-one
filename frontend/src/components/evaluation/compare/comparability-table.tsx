@@ -20,9 +20,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { Badge } from "@/components/ui/badge";
 import { useFormatter } from "@/i18n";
-import { cn } from "@/lib/utils";
+import { cn, formatModelLabel } from "@/lib/utils";
 import { comparabilityRows, type Verdict } from "@/lib/evaluation-comparability";
-import type { EvaluationComparison } from "@/types";
+import type { ComparedCell, EvaluationComparison } from "@/types";
 import { EVALUATION_SWATCHES } from "./compare-colors";
 
 /** What each verdict reads as, read by `t_i18n`. @i18n-keys */
@@ -44,9 +44,24 @@ const VERDICT_TONE: Record<Verdict, string> = {
   excluded: "text-feedback-error-primary border-feedback-error-primary/40",
 };
 
-export function ComparabilityMatrix({ comparison, sharedCount }: { comparison: EvaluationComparison; sharedCount: number }) {
-  const { t_i18n } = useFormatter();
-  const rows = comparabilityRows(comparison, sharedCount, t_i18n);
+export function ComparabilityMatrix({
+  comparison,
+  sharedCount,
+  cells,
+}: {
+  comparison: EvaluationComparison;
+  sharedCount: number;
+  /** The cells by run and entry: the answers that reached their time limit are counted from them. */
+  cells?: Map<string, Map<string, ComparedCell>>;
+}) {
+  const { t_i18n, intl } = useFormatter();
+  const rows = comparabilityRows(comparison, sharedCount, t_i18n, (m) => formatModelLabel(m, t_i18n), cells);
+  // When an evaluation started: its creation, else its oldest compared run.
+  const startedOf = (e: EvaluationComparison["evaluations"][number]) => {
+    const at = e.created_at ?? [...e.runs.map((r) => r.created_at ?? "")].filter(Boolean).sort()[0];
+    const time = at ? Date.parse(at) : Number.NaN;
+    return Number.isNaN(time) ? null : intl.formatDate(time, { year: "numeric", month: "short", day: "numeric" });
+  };
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[42rem] content-compact">
@@ -59,6 +74,11 @@ export function ComparabilityMatrix({ comparison, sharedCount }: { comparison: E
                   <span aria-hidden className={cn("h-2.5 w-2.5 rounded-full", EVALUATION_SWATCHES[i % EVALUATION_SWATCHES.length])} />
                   {e.name}
                 </span>
+                {startedOf(e) && (
+                  <span className="block content-caption font-normal text-default-secondary">
+                    {t_i18n("Started {date}", { date: startedOf(e) as string })}
+                  </span>
+                )}
               </th>
             ))}
             <th scope="col" className="px-3 py-2 font-medium">{t_i18n("For this comparison")}</th>
@@ -76,7 +96,7 @@ export function ComparabilityMatrix({ comparison, sharedCount }: { comparison: E
               ))}
               <td className="px-3 py-2">
                 <Badge variant="outline" className={cn("content-caption", VERDICT_TONE[row.verdict])}>
-                  {t_i18n(VERDICT_LABEL[row.verdict])}
+                  {row.pill ?? t_i18n(VERDICT_LABEL[row.verdict])}
                 </Badge>
                 <p className="mt-1 content-caption text-default-secondary">{row.note}</p>
               </td>

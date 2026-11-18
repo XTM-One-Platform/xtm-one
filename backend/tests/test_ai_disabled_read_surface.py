@@ -885,6 +885,11 @@ _EXEMPT_READ_IN_POST = {
     # written. A POST only because the model selection travels in the body,
     # as the trigger's does.
     "estimate_placebo_comparison",
+    # The bundle review of many answer groups at once: stored answers and
+    # their expected bundles, re-read by the deterministic metric suite - no
+    # model, nothing written. A POST only because up to 200 groups of result
+    # ids do not fit a query string (the single review is a GET).
+    "get_bundle_reviews",
     # The Video Studio media token: a short-lived signature over
     # files the caller can already read, so the player can stream them.
     "media_token",

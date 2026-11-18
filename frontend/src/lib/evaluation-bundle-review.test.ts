@@ -57,6 +57,15 @@ const model = buildModel(REVIEW);
 const [actor, tool, phishing, domain] = model.groups;
 
 describe("buildModel", () => {
+  it("reads only some sources, keeping the whole review's ids", () => {
+    const onlyB = buildModel(REVIEW, ["b"]);
+    // The spurious domain only answer "a" has is gone; the other groups keep their ids.
+    assert.deepEqual(onlyB.groups.map((g) => g.id), ["g0", "g1", "g2"]);
+    assert.ok(onlyB.groups.every((g) => !g.by.a));
+    assert.deepEqual(onlyB.rels.map((r) => r.id), ["r0", "r1"]);
+    assert.equal(onlyB.byId.get("g0")?.by.b?.name, model.byId.get("g0")?.by.b?.name);
+  });
+
   it("groups each expected object with its near-misses, in reading order", () => {
     assert.equal(model.groups.length, 4);
     assert.deepEqual(model.types, ["intrusion-set", "tool", "attack-pattern", "domain-name"]);

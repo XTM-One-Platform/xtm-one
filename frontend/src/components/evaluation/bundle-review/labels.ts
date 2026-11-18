@@ -17,6 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // mention kind the page names, and the design-system token each status is drawn with.
 
 import type { DisplayStatus, MentionHow, NearKind, ReviewMode } from "@/lib/evaluation-bundle-review";
+import type { CauseKey } from "@/lib/evaluation-run-review";
 
 /** What each status reads as, per mode, read by `t_i18n`. @i18n-keys */
 const STATUS_LABELS = {
@@ -85,6 +86,18 @@ export const NEAR_KIND_LABELS = {
   length: "Longer or shorter name",
   wording: "Different wording",
 } as const satisfies Record<NearKind, string>;
+
+/** The causes that are not a near-miss kind, read by `t_i18n`. @i18n-keys */
+const PLAIN_CAUSE_LABELS = {
+  missing: "Missing",
+  spurious: "Spurious",
+  duplicates: "Duplicates",
+} as const;
+
+/** A cause of "Where the entity points go": a near-miss kind, or missing, spurious, duplicates. */
+export function causeLabel(key: CauseKey): string {
+  return key in PLAIN_CAUSE_LABELS ? PLAIN_CAUSE_LABELS[key as keyof typeof PLAIN_CAUSE_LABELS] : NEAR_KIND_LABELS[key as keyof typeof NEAR_KIND_LABELS];
+}
 
 /** How a mention was found in the report text, read by `t_i18n`. @i18n-keys */
 export const MENTION_LABELS = {

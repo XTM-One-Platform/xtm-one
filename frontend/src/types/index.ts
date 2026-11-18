@@ -8881,6 +8881,7 @@ interface ComparedDataset {
   name: string;
   entry_count: number;
   instructions_digest: string | null;
+  description?: string | null;
 }
 
 export interface ComparedRun {
@@ -8898,11 +8899,20 @@ export interface ComparedRun {
   quality_score: number | null;
   completed_entries: number;
   total_entries: number;
+  completed_at?: string | null;
+  /** The judge's run score; null when the run's judge was off. */
+  judge_score?: number | null;
+  /** Runs with one key ran one setup (subject version, prompts, skills, settings, mode): reruns. */
+  setup_key?: string | null;
+  setup?: Record<string, unknown>;
+  /** Why the last re-score failed, null when it did not. */
+  rescore_error?: string | null;
 }
 
 export interface ComparedEvaluation {
   id: string;
   name: string;
+  created_at?: string | null;
   family: EvaluationFamily | null;
   execution_mode: string | null;
   timeout_seconds: number | null;
@@ -8944,11 +8954,20 @@ export interface ComparedCell {
   metrics: Record<string, [number, number]>;
   cost: number | null;
   seconds: number | null;
+  /** `[tp, fp, fn]` of the metrics that report them (counted results only). */
+  counts?: Record<string, [number, number, number]>;
+  /** The scorer could not read the answer (it counts as everything missing). */
+  unreadable?: boolean;
+  /** The judge's score of the answer; null without a verdict. */
+  judge_score?: number | null;
 }
 
 /** GET /evaluations/compare */
 export interface EvaluationComparison {
   family: EvaluationFamily;
+  /** The metric suite the platform scores with now; a run scored by another reads
+   *  differently in the bundle review until it is re-scored. */
+  metric_suite_version?: string | null;
   metrics: ComparedMetric[];
   evaluations: ComparedEvaluation[];
   entries: ComparedEntry[];
@@ -8983,15 +9002,32 @@ export interface BundleReviewAnswer {
   created_at: string | null;
   /** Null when there is no judge verdict: the judge was off, failed, or the entry was left out. */
   judge_score: number | null;
+  /** The judge's reasoning (absent from a batch read without text). */
+  judge_reasoning?: string | null;
+  /** The suite the answer's run was scored by. */
+  metric_suite_version?: string | null;
   anomaly: string | null;
   metrics: Record<string, number | null>;
+  /** `[tp, fp, fn]` per metric that reports them. */
+  counts?: Record<string, [number, number, number]>;
+  unreadable?: boolean;
+  cost?: number | null;
+  seconds?: number | null;
 }
 
 /** GET /evaluations/bundle-review: an entry's expected STIX bundle against answers.
  *  Sources are `"expected"` and each answer's `key`. */
 export interface BundleReview {
+  /** The suite this review reads the answers with (the platform's current one). */
+  metric_suite_version?: string | null;
   entry: {
     label: string;
+    /** The entry's reference key, as `GET /compare` names its entries. */
+    key?: string | null;
+    position?: number;
+    entry_count?: number | null;
+    dataset_name?: string | null;
+    dataset_description?: string | null;
     /** The text the agent read: its prompt, else the attached file's text layer, one string per page. */
     pages: string[];
     file_name: string | null;
