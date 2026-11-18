@@ -62,6 +62,37 @@ def test_a_selected_scope_and_an_inactive_one() -> None:
     assert inactive.allows_content(agent_id=A) is False
 
 
+def test_scope_all_reads_enrolled_targets_only(monkeypatch) -> None:
+    """Platform Health S1: scope "all" is every ENROLLED target, never every agent.
+
+    An upgrade with hundreds of agents and no opt-in supervises nothing; an
+    agent an owner already opted in keeps its enrolment.
+    """
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.services.concierge import consent
+
+    async def _settings(_db):
+        return SimpleNamespace(enabled=True, scope_mode="all", scope_agent_ids=[], scope_flow_ids=[])
+
+    # Query order in load_consent_scope: fleet, enrolled agents, enrolled flows, opted-out users.
+    answers = iter([[FLEET], [A], [F], [BOB]])
+
+    class _Db:
+        async def execute(self, _stmt):
+            rows = next(answers)
+            return SimpleNamespace(scalars=lambda: iter(rows))
+
+    monkeypatch.setattr(consent, "_active_settings", _settings)
+    scope = asyncio.run(consent.load_consent_scope(_Db()))
+    assert scope.agent_ids == frozenset({A})
+    assert scope.flow_ids == frozenset({F})
+    assert scope.allows_metrics(agent_id=A) is True
+    assert scope.allows_metrics(agent_id=B) is False, "a non-enrolled agent is never supervised"
+    assert scope.allows_metrics(flow_id=uuid.uuid4()) is False
+
+
 
 def test_every_registered_handler_runs_once_in_order_and_a_failure_propagates(monkeypatch) -> None:
     import asyncio

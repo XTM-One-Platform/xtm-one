@@ -21,6 +21,12 @@ never a re-spelling of it:
 
 * **Metrics** (rollups, counts, costs, ratings without comment text): the
   supervision scope alone, :func:`in_supervision_scope`.
+* **Enrolment** (Platform Health S1, ``dev-docs/platform-health.md`` 1.2): the
+  supervision scope only ever holds ENROLLED targets, an agent or flow whose
+  managers opted it in (``concierge_improvement_opt_in``). ``scope_mode = all``
+  no longer means every agent: it means every enrolled one, and ``selected``
+  narrows that set further. Nothing is supervised on upgrade but what an owner
+  already chose.
 * **Content** (trace payloads, memories, conversation excerpts, a flow run's
   journal): the target is in scope AND opted in by its managers
   (``agents.concierge_improvement_opt_in``, ``flows.concierge_improvement_opt_in``),
@@ -164,13 +170,16 @@ async def load_consent_scope(db: AsyncSession) -> ConsentScope:
     if selected:
         agent_q = agent_q.where(Agent.id.in_(current.scope_agent_ids))
         flow_q = flow_q.where(Flow.id.in_(current.scope_flow_ids))
+    # Enrolled targets only, in both modes: the scope is never "every agent".
+    enrolled_agents = frozenset((await db.execute(agent_q)).scalars())
+    enrolled_flows = frozenset((await db.execute(flow_q)).scalars())
     return ConsentScope(
         active=True,
-        agent_ids=frozenset(current.scope_agent_ids) - fleet if selected else None,
-        flow_ids=frozenset(current.scope_flow_ids) if selected else None,
+        agent_ids=enrolled_agents,
+        flow_ids=enrolled_flows,
         fleet_agent_ids=fleet,
-        content_agent_ids=frozenset((await db.execute(agent_q)).scalars()),
-        content_flow_ids=frozenset((await db.execute(flow_q)).scalars()),
+        content_agent_ids=enrolled_agents,
+        content_flow_ids=enrolled_flows,
         opted_out_user_ids=await opted_out_user_ids(db),
     )
 
@@ -194,13 +203,19 @@ async def in_supervision_scope(db: AsyncSession, target_type: TargetType, target
     target = _uuid(target_id)
     if current is None or target is None:
         return False
+    # Enrolled targets only (module docstring): an agent or flow its managers opted in.
     if target_type == "agent":
-        role = (await db.execute(select(Agent.concierge_role).where(Agent.id == target))).one_or_none()
-        if role is None or role[0] is not None:
+        row = (
+            await db.execute(select(Agent.concierge_role, Agent.concierge_improvement_opt_in).where(Agent.id == target))
+        ).one_or_none()
+        if row is None or row[0] is not None or row[1] is not True:
             return False
         return current.scope_mode == "all" or target in current.scope_agent_ids
     if target_type == "flow":
-        if (await db.execute(select(Flow.id).where(Flow.id == target))).scalar_one_or_none() is None:
+        opted = (
+            await db.execute(select(Flow.concierge_improvement_opt_in).where(Flow.id == target))
+        ).scalar_one_or_none()
+        if opted is not True:
             return False
         return current.scope_mode == "all" or target in current.scope_flow_ids
     return False
