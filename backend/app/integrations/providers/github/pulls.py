@@ -1659,6 +1659,8 @@ def register(
           - ``enable_automerge`` — auto-merge once requirements pass
             (``merge_method`` = merge | squash | rebase).
           - ``disable_automerge`` — cancel a pending auto-merge.
+          - ``dequeue`` — take the PR out of its base's merge queue (nothing
+            written when it is not queued).
         """
         owner, name, rerr = parse_repo(repo)
         if rerr:
@@ -1720,10 +1722,35 @@ def register(
                     return gerr
                 await mark_self_action(repo, number)
                 return f"Auto-merge disabled on PR #{number}."
+            if action == "dequeue":
+                return await _dequeue(client, repo, number, node_id)
             return (
                 "Error: invalid action. Use ready_for_review, convert_to_draft, update_branch, "
-                "enable_automerge, or disable_automerge."
+                "enable_automerge, disable_automerge, or dequeue."
             )
+
+    async def _dequeue(client: Any, repo: str, number: int, node_id: str | None) -> str:
+        """Take a pull request out of its merge queue, or say it is not queued."""
+        read = "query($id:ID!){node(id:$id){... on PullRequest{isInMergeQueue mergeQueueEntry{position state}}}}"
+        data, gerr = await _common.gh_graphql(
+            client, headers, read, {"id": node_id}, action=f"read the merge queue entry of PR #{number}"
+        )
+        if gerr:
+            return gerr
+        node = (data or {}).get("node") or {}
+        entry = node.get("mergeQueueEntry") if isinstance(node, dict) else None
+        if not isinstance(entry, dict) and not (isinstance(node, dict) and node.get("isInMergeQueue")):
+            return f"PR #{number} is not in a merge queue: nothing to do, nothing written."
+        position = entry.get("position") if isinstance(entry, dict) else None
+        mutation = "mutation($id:ID!){dequeuePullRequest(input:{id:$id}){mergeQueueEntry{state}}}"
+        _data, gerr = await _common.gh_graphql(
+            client, headers, mutation, {"id": node_id}, action=f"dequeue PR #{number}"
+        )
+        if gerr:
+            return gerr
+        await mark_self_action(repo, number)
+        where = f" (it was at position {position})" if isinstance(position, int) else ""
+        return f"PR #{number} removed from the merge queue{where}. Push, then merge_github_pr enqueues it again."
 
     executor.register("list_github_prs", list_github_prs)
     executor.register("get_github_pr", get_github_pr)
@@ -2054,7 +2081,8 @@ def register(
                 "toggles draft; update_branch merges the base branch into the PR branch (refused on a conflict, it merges "
                 "line by line on the server and lands when no hunk overlaps, else names the hunks and the "
                 "merge_github_branch call that resolves them); enable_automerge auto-merges "
-                "once all requirements pass (merge_method=merge|squash|rebase); disable_automerge cancels it."
+                "once all requirements pass (merge_method=merge|squash|rebase); disable_automerge cancels it; "
+                "dequeue takes it out of its merge queue (nothing written when it is not queued)."
             ),
             input_schema={
                 "type": "object",
@@ -2063,7 +2091,14 @@ def register(
                     "number": {"type": "integer", "description": "Pull request number"},
                     "action": {
                         "type": "string",
-                        "enum": ["ready_for_review", "convert_to_draft", "update_branch", "enable_automerge", "disable_automerge"],
+                        "enum": [
+                            "ready_for_review",
+                            "convert_to_draft",
+                            "update_branch",
+                            "enable_automerge",
+                            "disable_automerge",
+                            "dequeue",
+                        ],
                     },
                     "merge_method": {"type": "string", "enum": ["merge", "squash", "rebase"], "default": "squash"},
                 },

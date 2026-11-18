@@ -168,7 +168,11 @@ export function KnowledgeGraphView({
       ? t_i18n("The answer on its own, ringed against the expected bundle.")
       : effective === "both"
         ? t_i18n("Both sides in one knowledge graph: the ring is the status, the icon the STIX type.")
-        : t_i18n("One side only; what only the other side has stays as a ghost, at the same place.");
+        : t_i18n("{side} only ({name}). What only {other} has stays as a ghost, at the same place.", {
+            side: effective === "a" ? (ctx.pair.ref === EXPECTED ? t_i18n("Expected") : ctx.letter(ctx.pair.ref)) : ctx.letter(ctx.pair.under),
+            name: ctx.sourceName(effective === "a" ? ctx.pair.ref : ctx.pair.under),
+            other: effective === "a" ? ctx.letter(ctx.pair.under) : ctx.pair.ref === EXPECTED ? t_i18n("the expected bundle") : ctx.letter(ctx.pair.ref),
+          });
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -217,7 +221,7 @@ export function KnowledgeGraphView({
             const x2 = b.x - ux * (R0 + 8);
             const y2 = b.y - uy * (R0 + 8);
             const ghost = effective === "a" ? !it.inA : effective === "b" ? !it.inB : false;
-            const label = edgeLabel(ctx, it, ghost ? "both" : effective);
+            const label = edgeLabel(ctx, it, ghost ? "both" : effective, t_i18n);
             let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
             if (angle > 90 || angle < -90) angle += 180;
             const mx = (x1 + x2) / 2;

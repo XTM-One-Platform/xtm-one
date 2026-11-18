@@ -2656,6 +2656,12 @@ async def _route_pull_request_event(
     event = parse_pull_request_event(provider, event_key, payload)
     if event is None:
         return
+    if event.kind == "ci":
+        # A successful workflow run may meet a blocked item's workflow_run reference:
+        # read back from the code host in the background, signed or not.
+        from app.services.work_item_blocked_refs import schedule_workflow_run_release
+
+        schedule_workflow_run_release(event)
     if not _signed_with_webhook_secret(extra_config_enc):
         if event.kind not in ("closed", "issue_closed"):
             return
@@ -3855,10 +3861,17 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         return await _handle_jira_webhook(integration_id, payload_raw, request)
     if integ_pre and integ_pre.provider == "wordsmith":
         # Wordsmith webhook endpoint: Wordsmith-Signature with the secret of the
-        # endpoint Wordsmith-Webhook-Id names, then deduplicated per event id.
+        # endpoint Wordsmith-Webhook-Id names, then deduplicated per event id;
+        # a routed question's callback: the secret kept under its token.
         from app.services import wordsmith_webhooks
 
-        return await wordsmith_webhooks.dispatch_delivery(integration_id, request.headers, body, payload_raw)
+        return await wordsmith_webhooks.dispatch_delivery(
+            integration_id,
+            request.headers,
+            body,
+            payload_raw,
+            callback_token=str(request.query_params.get(wordsmith_webhooks.CALLBACK_PARAM) or ""),
+        )
     if integ_pre and integ_pre.extra_config_enc:
         # HubSpot signs every delivery with the app client secret, so the
         # signature must be verified for the configured provider regardless of

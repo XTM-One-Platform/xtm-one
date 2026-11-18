@@ -24,6 +24,23 @@ build_agent_builder_tool = builtin_tools_module.build_agent_builder_tool
 
 
 @pytest.fixture(autouse=True)
+def update_audit(monkeypatch):
+    """Records the ``update_agent`` audit rows: these fakes have no audit
+    table and their agents no slug, so the rows are read back in
+    ``tests/test_agent_builder_versions_postgres.py`` and
+    ``tests/test_agent_builder_update_audit.py`` (#251)."""
+    import app.services.audit as audit_module
+
+    entries: list[dict] = []
+
+    async def _record(_db, **kwargs):
+        entries.append(kwargs)
+
+    monkeypatch.setattr(audit_module, "log_audit", _record)
+    return entries
+
+
+@pytest.fixture(autouse=True)
 def version_history(monkeypatch):
     """Records how the builder calls the version history: these fakes have no
     version tables, so the rows are read back in

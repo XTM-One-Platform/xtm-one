@@ -14,39 +14,48 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * One evaluation's Results (#2): each configuration (agent × model) pooled over its runs
- * and entries, ranked with 95% intervals; its figure against its cost or time per entry,
- * with the Pareto frontier; how far reruns of one configuration spread; and how every
- * figure is computed, to publish next to it. Exports the ranking as CSV.
+ * One evaluation's Results (#2): the runs compared (one experiment launch, every rerun of
+ * one setup, the newest run of each configuration, every run); each configuration (agent ×
+ * model) pooled over them and ranked with 95% intervals; its figure against its cost or
+ * time per entry, with the Pareto frontier; how far reruns of one setup spread, and which
+ * expected items they found every time; how every figure is computed, to publish next to
+ * it. Exports the ranking as CSV, each chart as SVG and the methodology as Markdown.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { useBundleReviews } from "@/hooks/api/useEvaluationApi";
 import { useFormatter } from "@/i18n";
-import { rankSpread, seedOf, type Counts } from "@/lib/evaluation-compare";
+import { paretoFront, setupNames, toCsv, type BoardRun, type Launch } from "@/lib/evaluation-leaderboard";
 import {
-  countsOf,
-  paretoFront,
-  perEntry,
-  poolRuns,
-  spreadOf,
-  toCsv,
-  type BoardRun,
-  type Launch,
-} from "@/lib/evaluation-leaderboard";
-import { saveBlobAs } from "@/lib/utils";
-import type { ComparedCell, ComparedMetric, ComparedRun } from "@/types";
+  consistencyRows,
+  consistencySetups,
+  foundGroups,
+  FOUND_PARTS,
+  methodologyMarkdown,
+  rankConfigs,
+  resultSets,
+  runsOfSet,
+  slugOf,
+  tallyFound,
+  type ResultSet,
+} from "@/lib/evaluation-results";
+import { saveChartSvg } from "@/lib/evaluation-results-svg";
+import { cn, saveBlobAs } from "@/lib/utils";
+import type { ComparedCell, ComparedEvaluation, ComparedMetric, ComparedRun } from "@/types";
 import { ConsistencyChart, ForestPlot, ParetoChart } from "./compare-charts";
+import { FOUND_SWATCHES } from "./compare-colors";
+import { launchTag, useLaunchText } from "./leaderboard-launches";
+import { MethodologyList, useMethodology } from "./results-methodology";
 
 const fmt = (v: number) => v.toFixed(1);
 
-type RunSet = "newest" | "all";
 type Axis = "cost" | "time";
-/** The run sets and axes, read by `t_i18n`. @i18n-keys */
-const SET_LABELS = { newest: "Newest run of each configuration", all: "Every run" } as const satisfies Record<RunSet, string>;
+/** The axes, read by `t_i18n`. @i18n-keys */
 const AXIS_LABELS = { cost: "Cost", time: "Time" } as const satisfies Record<Axis, string>;
 
 interface Props {
@@ -57,6 +66,10 @@ interface Props {
   metrics: ComparedMetric[];
   entryCount: number;
   label: (run: ComparedRun) => string;
+  /** The evaluation compared: its datasets, mode, timeout and judge, for the methodology. */
+  evaluation?: ComparedEvaluation;
+  /** Told when a metric is picked here, so the page's other tabs follow. */
+  onMetricChange?: (key: string) => void;
 }
 
 function Section({ title, lead, tools, children }: { title: string; lead?: string; tools?: React.ReactNode; children: React.ReactNode }) {
@@ -68,7 +81,7 @@ function Section({ title, lead, tools, children }: { title: string; lead?: strin
             <h2 className="content-base font-medium">{title}</h2>
             {lead && <p className="mt-1 content-compact text-default-secondary max-w-prose">{lead}</p>}
           </div>
-          {tools}
+          {tools && <div className="flex flex-wrap items-center gap-2">{tools}</div>}
         </div>
         {children}
       </CardContent>
@@ -76,88 +89,136 @@ function Section({ title, lead, tools, children }: { title: string; lead?: strin
   );
 }
 
-export function ResultsTab({ evaluationName, board, cells, metric, metrics, entryCount, label }: Props) {
+function ExportButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <Button variant="ghost" size="sm" className="gap-1.5" onClick={onClick} disabled={disabled}>
+      <Icon name="download" size={16} /> {label}
+    </Button>
+  );
+}
+
+export function ResultsTab({ evaluationName, board, cells, metric, metrics, entryCount, label, evaluation, onMetricChange }: Props) {
   const { t_i18n } = useFormatter();
-  const [set, setSet] = useState<RunSet>("newest");
+  const text = useLaunchText(board.launches);
   const [axis, setAxis] = useState<Axis>("cost");
+  // The tab's metric follows the page's until one is picked here.
+  const [picked, setPicked] = useState<{ key: string; from: string } | null>(null);
+  const current = metrics.find((m) => m.key === (picked && picked.from === metric.key ? picked.key : metric.key)) ?? metric;
+  const key = current.key;
+  const pickMetric = (next: string) => {
+    if (onMetricChange) {
+      onMetricChange(next);
+      setPicked(null);
+    } else setPicked({ key: next, from: metric.key });
+  };
+  const metricLabel = t_i18n(current.label);
+  const slug = slugOf(evaluationName);
 
-  const byConfig = useMemo(() => {
-    const out = new Map<string, BoardRun[]>();
-    for (const r of board.runs) out.set(r.config, [...(out.get(r.config) ?? []), r]);
-    return out;
-  }, [board.runs]);
+  // ── Which runs are compared ──
+  const names = useMemo(() => setupNames(board.runs.map((r) => r.run)), [board.runs]);
+  const sets = useMemo(() => resultSets(board), [board]);
+  const [setId, setSetId] = useState<string | null>(null);
+  const set: ResultSet = sets.find((s) => s.id === setId) ?? sets[0];
+  const setLabel = (s: ResultSet): string => {
+    if (s.kind === "launch") return [launchTag(s.launch), text.date(board.launches[s.launch]), text.note(s.launch)].filter(Boolean).join(" · ");
+    if (s.kind === "setup") {
+      return t_i18n("Every run of “{config}” · {from}–{to} · {count, plural, one {# launch} other {# launches}}", {
+        config: names.get(s.setup) ?? s.setup, from: launchTag(s.launches[0]), to: launchTag(s.launches[s.launches.length - 1]), count: s.launches.length,
+      });
+    }
+    return s.kind === "newest" ? t_i18n("Newest run of each configuration") : t_i18n("Every run");
+  };
+  const setRuns = useMemo(() => runsOfSet(board, set), [board, set]);
+  const setLaunches = new Set(setRuns.map((r) => r.launch)).size;
 
-  // Each configuration pooled over the runs of the set, then ranked.
-  const ranking = useMemo(() => {
-    const rows = [...byConfig.entries()]
-      .map(([config, runs], i) => {
-        const picked = set === "all" ? runs : [runs.reduce((a, b) => ((b.run.created_at ?? "") > (a.run.created_at ?? "") ? b : a))];
-        const perRun: Counts[][] = picked.map((r) => countsOf(cells, r.run.id, metric.key));
-        const interval = poolRuns(perRun, seedOf(config + metric.key + set));
-        if (!interval) return null;
-        const ids = picked.map((r) => r.run.id);
-        return {
-          id: config,
-          label: label(picked[0].run),
-          run: picked[0].run,
-          runs: picked.length,
-          colorIndex: i,
-          cost: perEntry(cells, ids, "cost"),
-          seconds: perEntry(cells, ids, "seconds"),
-          ...interval,
-        };
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => b.value - a.value);
-    return rankSpread(rows);
-  }, [byConfig, cells, metric.key, set, label]);
+  // ── 1 · Ranking ──
+  const ranking = useMemo(() => rankConfigs(setRuns, cells, key, set.id), [setRuns, cells, key, set.id]);
+  const nameOf = (run: ComparedRun) => label(run);
+  const firsts = ranking.filter((r) => r.best === 1);
 
+  // ── 2 · Pareto ──
   const points = ranking
     .map((r) => ({ ...r, x: axis === "cost" ? r.cost : r.seconds }))
     .filter((p): p is typeof p & { x: number } => p.x != null)
     .map((p) => ({ ...p, y: p.value }));
-  const front = new Set(paretoFront(points).map((p) => p.id));
+  const front = paretoFront(points);
+  const onFront = new Set(front.map((p) => p.id));
   const missing = ranking.filter((r) => (axis === "cost" ? r.cost : r.seconds) == null);
+  const axisWord = axis === "cost" ? t_i18n("cost") : t_i18n("time");
 
-  const spreads = [...byConfig.entries()]
-    .map(([config, runs]) => {
-      const values = runs.map((r) => r.values[metric.key]).filter((v): v is number => v != null);
-      const spread = spreadOf(values);
-      return spread ? { id: config, label: label(runs[0].run), values, ...spread } : null;
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null)
-    .sort((a, b) => b.mean - a.mean);
-
-  const firsts = ranking.filter((r) => r.best === 1);
+  // ── 3 · Consistency ──
+  const setups = useMemo(() => consistencySetups(board), [board]);
+  const [setupId, setSetupId] = useState<string | null>(null);
+  const setup = setups.find((s) => s.setup === setupId) ?? setups[0];
+  const spreads = useMemo(() => (setup ? consistencyRows(board, setup.setup, key) : []), [board, setup, key]);
+  const part = FOUND_PARTS[key];
+  const found = useMemo(() => (part ? foundGroups(spreads, cells) : { groups: [], owners: [], skipped: [] }), [part, spreads, cells]);
+  const reviews = useBundleReviews(found.groups, { enabled: !!part && found.groups.length > 0 });
+  const tally = useMemo(
+    () => (part && reviews.data ? tallyFound(reviews.data, found.owners, part) : null),
+    [part, reviews.data, found.owners],
+  );
   const stable = [...spreads].sort((a, b) => a.sd - b.sd);
+  const foundWhat = part === "objects" ? t_i18n("objects") : part === "relationships" ? t_i18n("relationships") : t_i18n("objects and relationships");
+  const foundHead = part === "objects" ? t_i18n("Expected objects found…") : part === "relationships" ? t_i18n("Expected relationships found…") : t_i18n("Expected items found…");
 
+  // ── 4 · Methodology ──
+  const method = useMethodology({ evaluationName, evaluation, runs: board.runs, cells, metrics, entryCount });
+
+  const forestRef = useRef<HTMLDivElement>(null);
+  const paretoRef = useRef<HTMLDivElement>(null);
+  const consistencyRef = useRef<HTMLDivElement>(null);
   const exportCsv = () => {
     const csv = toCsv([
-      ["rank_best", "rank_worst", "configuration", "agent", "model", "runs", "metric", "value", "ci95_low", "ci95_high", "cost_per_entry_usd", "seconds_per_entry"],
+      ["rank_best", "rank_worst", "configuration", "agent", "model_id", "runs_compared", "runs", "metric", "value", "ci95_low", "ci95_high", "precision", "recall", "cost_per_entry_usd", "seconds_per_entry", "unreadable_answers", "answers"],
       ...ranking.map((r) => [
-        r.best, r.worst, r.label, r.run.subject_name, r.run.model_id, r.runs, metric.key,
+        r.best, r.worst, nameOf(r.run), r.run.subject_name, r.run.model_id, setLabel(set), r.runs.length, key,
         r.value.toFixed(2), r.low.toFixed(2), r.high.toFixed(2),
+        r.precision == null ? null : r.precision.toFixed(2), r.recall == null ? null : r.recall.toFixed(2),
         r.cost == null ? null : r.cost.toFixed(5), r.seconds == null ? null : r.seconds.toFixed(1),
+        r.unreadable, r.answers,
       ]),
     ]);
-    const slug = evaluationName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "evaluation";
-    saveBlobAs(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${slug}-results-${metric.key}.csv`);
+    saveBlobAs(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${slug}-results-${slugOf(set.id)}-${slugOf(key)}.csv`);
   };
+  const exportSvg = (ref: React.RefObject<HTMLDivElement | null>, chart: string) =>
+    saveChartSvg(ref.current, `${slug}-results-${slugOf(set.id)}-${slugOf(key)}-${chart}.svg`);
+  const exportMethod = () =>
+    saveBlobAs(
+      new Blob([methodologyMarkdown(t_i18n("Methodology · {name}", { name: evaluationName }), method)], { type: "text/markdown;charset=utf-8" }),
+      `${slug}-methodology.md`,
+    );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <SegmentedFilter
-          options={(Object.keys(SET_LABELS) as RunSet[]).map((key) => ({ key, label: SET_LABELS[key] }))}
-          value={set}
-          onChange={(key: RunSet) => setSet(key)}
-          ariaLabel={t_i18n("Runs pooled")}
-          selection="radio"
-        />
-        <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={!ranking.length}>
-          <Icon name="download" size={16} /> {t_i18n("Export CSV")}
-        </Button>
-      </div>
+      <Card className="layer-1 bg-elevation-default border-elevation-subtle-soft">
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <label className="flex min-w-0 flex-1 basis-80 items-center gap-2 content-compact">
+            <span className="shrink-0 text-default-secondary">{t_i18n("Runs compared")}</span>
+            <SearchableSelect
+              aria-label={t_i18n("Runs compared")}
+              options={sets.map((s) => ({ value: s.id, label: setLabel(s) }))}
+              value={set.id}
+              onValueChange={setSetId}
+              sort={false}
+              searchable="auto"
+              className="min-w-0 flex-1"
+            />
+          </label>
+          {metrics.length > 1 && (
+            <SegmentedFilter
+              options={metrics.map((m) => ({ key: m.key, label: m.label }))}
+              value={key}
+              onChange={(next: string) => pickMetric(next)}
+              ariaLabel={t_i18n("Metric")}
+              selection="radio"
+            />
+          )}
+          <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={!ranking.length}>
+            <Icon name="download" size={16} /> {t_i18n("Export CSV")}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Section
         title={t_i18n("1 · Ranking with 95% intervals")}
@@ -165,15 +226,25 @@ export function ResultsTab({ evaluationName, board, cells, metric, metrics, entr
           !ranking.length
             ? t_i18n("No run has a figure for this metric.")
             : firsts.length > 1
-              ? t_i18n("{count} configurations can be first: their intervals overlap, so no single best can be claimed.", { count: firsts.length })
-              : t_i18n("{label} is first, with no overlap with the next one.", { label: ranking[0].label })
+              ? t_i18n("{count} configurations can be first: {names}. Their intervals overlap, so no single winner can be claimed.", {
+                  count: firsts.length, names: firsts.map((r) => nameOf(r.run)).join(", "),
+                })
+              : t_i18n("{label} is first, with no overlap with the next configuration.", { label: nameOf(ranking[0].run) })
         }
+        tools={<ExportButton label={t_i18n("SVG")} onClick={() => exportSvg(forestRef, "ranking")} disabled={!ranking.length} />}
       >
-        {ranking.length > 0 && <ForestPlot rows={ranking} metricLabel={t_i18n(metric.label)} />}
+        <div ref={forestRef}>
+          {ranking.length > 0 && (
+            <ForestPlot
+              rows={ranking.map((r) => ({ ...r, label: nameOf(r.run), colorIndex: 0, isDefault: r.run.is_default_model, runCount: r.runs.length }))}
+              metricLabel={metricLabel}
+            />
+          )}
+        </div>
         <p className="content-caption text-default-secondary">
-          {set === "all"
-            ? t_i18n("One line per agent and model, pooled over all its runs and their entries. A rank such as 1–4 means it could be anywhere from first to fourth.")
-            : t_i18n("One line per agent and model, its newest run pooled over its entries. A rank such as 1–4 means it could be anywhere from first to fourth.")}
+          {setLaunches > 1
+            ? t_i18n("One line per configuration, pooled over its runs in {launches} launches and the {entries, plural, one {# entry} other {# entries}}. Rank “1–4” means it could be anywhere from 1st to 4th given the intervals.", { launches: setLaunches, entries: entryCount })
+            : t_i18n("One line per configuration, pooled over the {entries, plural, one {# entry} other {# entries}}. Rank “1–4” means it could be anywhere from 1st to 4th given the intervals.", { entries: entryCount })}
         </p>
       </Section>
 
@@ -181,33 +252,41 @@ export function ResultsTab({ evaluationName, board, cells, metric, metrics, entr
         title={axis === "cost" ? t_i18n("2 · Quality against cost") : t_i18n("2 · Quality against time")}
         lead={
           points.length
-            ? t_i18n("Pareto frontier: {front}. Every other configuration is beaten by one of them on both the figure and the {axis}.", {
-                front: points.filter((p) => front.has(p.id)).sort((a, b) => a.x - b.x).map((p) => p.label).join(" → "),
-                axis: axis === "cost" ? t_i18n("cost") : t_i18n("time"),
+            ? t_i18n("Pareto frontier: {front}. Every other configuration is beaten by one of them on both {metric} and {axis}.", {
+                front: front.map((p) => nameOf(p.run)).join(" → "), metric: metricLabel, axis: axisWord,
               })
-            : t_i18n("No configuration has a recorded {axis} per entry.", { axis: axis === "cost" ? t_i18n("cost") : t_i18n("time") })
+            : t_i18n("No configuration has a recorded {axis} per entry.", { axis: axisWord })
         }
         tools={
-          <SegmentedFilter
-            options={(Object.keys(AXIS_LABELS) as Axis[]).map((key) => ({ key, label: AXIS_LABELS[key] }))}
-            value={axis}
-            onChange={(key: Axis) => setAxis(key)}
-            ariaLabel={t_i18n("Axis")}
-            selection="radio"
-          />
+          <>
+            <SegmentedFilter
+              options={(Object.keys(AXIS_LABELS) as Axis[]).map((k) => ({ key: k, label: AXIS_LABELS[k] }))}
+              value={axis}
+              onChange={(k: Axis) => setAxis(k)}
+              ariaLabel={t_i18n("Axis")}
+              selection="radio"
+            />
+            <ExportButton label={t_i18n("SVG")} onClick={() => exportSvg(paretoRef, axis)} disabled={!points.length} />
+          </>
         }
       >
-        {points.length > 0 && (
-          <ParetoChart points={points.map((p) => ({ ...p, onFront: front.has(p.id) }))} axis={axis} metricLabel={t_i18n(metric.label)} />
-        )}
-        {missing.length > 0 && (
-          <p className="content-caption text-default-secondary">
-            {t_i18n("Not shown, no {axis} recorded: {names}.", {
-              axis: axis === "cost" ? t_i18n("cost") : t_i18n("time"),
-              names: missing.map((r) => r.label).join(", "),
-            })}
-          </p>
-        )}
+        <div ref={paretoRef}>
+          {points.length > 0 && (
+            <ParetoChart
+              points={points.map((p) => ({ ...p, label: nameOf(p.run), onFront: onFront.has(p.id), isDefault: p.run.is_default_model }))}
+              axis={axis}
+              metricLabel={metricLabel}
+            />
+          )}
+        </div>
+        <p className="content-caption text-default-secondary">
+          {t_i18n("Green: on the frontier (dashed line, from the origin: not running an agent costs nothing and finds nothing). Vertical bars: 95% intervals.")}
+          {missing.length > 0 &&
+            ` ${t_i18n("Not shown, no {axis} reported: {names}.", {
+              axis: axis === "cost" ? t_i18n("cost") : t_i18n("duration"),
+              names: missing.map((r) => nameOf(r.run)).join(", "),
+            })}`}
+        </p>
       </Section>
 
       <Section
@@ -215,50 +294,72 @@ export function ResultsTab({ evaluationName, board, cells, metric, metrics, entr
         lead={
           stable.length
             ? t_i18n("Most stable: {best} (sd {bestSd}). Least stable: {worst} (sd {worstSd}, {min} to {max}).", {
-                best: stable[0].label, bestSd: fmt(stable[0].sd),
-                worst: stable[stable.length - 1].label, worstSd: fmt(stable[stable.length - 1].sd),
+                best: nameOf(stable[0].run), bestSd: fmt(stable[0].sd),
+                worst: nameOf(stable[stable.length - 1].run), worstSd: fmt(stable[stable.length - 1].sd),
                 min: fmt(stable[stable.length - 1].min), max: fmt(stable[stable.length - 1].max),
               })
-            : t_i18n("No configuration ran more than once: run the evaluation again to see how far its figures move.")
+            : t_i18n("No configuration ran this setup more than once.")
+        }
+        tools={
+          <>
+            {setups.length > 0 && (
+              <SearchableSelect
+                aria-label={t_i18n("Configuration")}
+                options={setups.map((s) => ({
+                  value: s.setup,
+                  label: t_i18n("{config} · {count, plural, one {# launch} other {# launches}}", { config: names.get(s.setup) ?? s.setup, count: s.launches }),
+                }))}
+                value={setup?.setup}
+                onValueChange={setSetupId}
+                sort={false}
+                searchable="auto"
+                className="w-64"
+              />
+            )}
+            <ExportButton label={t_i18n("SVG")} onClick={() => exportSvg(consistencyRef, "consistency")} disabled={!spreads.length} />
+          </>
         }
       >
-        {spreads.length > 0 && <ConsistencyChart rows={spreads} metricLabel={t_i18n(metric.label)} />}
+        <div ref={consistencyRef}>
+          {spreads.length > 0 ? (
+            <ConsistencyChart
+              rows={spreads.map((r) => ({ ...r, label: nameOf(r.run), isDefault: r.run.is_default_model, found: tally?.get(r.id) }))}
+              metricLabel={metricLabel}
+              foundLabel={part ? foundHead : undefined}
+            />
+          ) : (
+            <p className="content-compact text-default-secondary">{t_i18n("No configuration ran this setup more than once.")}</p>
+          )}
+        </div>
+        {part && spreads.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 content-caption text-default-secondary">
+            {(["every", "some", "never"] as const).map((k) => (
+              <span key={k} className="inline-flex items-center gap-1.5">
+                <span className={cn("size-2.5 rounded-sm", FOUND_SWATCHES[k])} aria-hidden />
+                {k === "every" ? t_i18n("In every run") : k === "some" ? t_i18n("In some runs") : t_i18n("Never")}
+              </span>
+            ))}
+            {reviews.isLoading && <span>{t_i18n("Reading which expected items each run found…")}</span>}
+            {reviews.isError && <span>{t_i18n("Which expected items each run found could not be read.")}</span>}
+          </div>
+        )}
         <p className="content-caption text-default-secondary">
-          {t_i18n("The same agent on the same model, run again: a dot per run, its figure on its own entries; the band spans the lowest to the highest, the line is the mean.")}
+          {t_i18n("Same configuration, run again: dots are runs, the bar is the mean, the band is min–max.")}
+          {part &&
+            ` ${t_i18n("Right: expected {what} found in every run, in some runs, never (the strict reading, like τ-bench's pass^k, is “every run”).", { what: foundWhat })}`}
+          {found.skipped.length > 0 &&
+            ` ${t_i18n("Not read for {names}: too many answers at once.", {
+              names: spreads.filter((r) => found.skipped.includes(r.id)).map((r) => nameOf(r.run)).join(", "),
+            })}`}
         </p>
       </Section>
 
-      <Section title={t_i18n("4 · Methodology")} lead={t_i18n("What every figure on this page means, to publish next to it.")}>
-        <dl className="grid gap-x-6 gap-y-2 content-compact sm:grid-cols-[12rem_1fr]">
-          <dt className="font-medium">{t_i18n("Runs")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("{count, plural, =0 {No completed run} one {The # completed run} other {The # completed runs}} of “{name}” (its 50 newest at most); placebo comparison runs are left out. A launch is the runs started in the same minute by the same trigger.", {
-              count: board.runs.length, name: evaluationName,
-            })}
-          </dd>
-          <dt className="font-medium">{t_i18n("Entries")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("{count, plural, one {# entry} other {# entries}} of the evaluation's datasets. An entry a run's headlines leave out (a platform error, a judge failure) is left out here too.", { count: entryCount })}
-          </dd>
-          <dt className="font-medium">{t_i18n("Figures")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("{metrics}: each pooled, its counts added up over the entries then divided once (micro), as the run's own headline; an entry with nothing expected and nothing found counts as correct.", {
-              metrics: metrics.map((m) => t_i18n(m.label)).join(", "),
-            })}
-          </dd>
-          <dt className="font-medium">{t_i18n("Uncertainty")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("95% percentile bootstrap, 1,000 resamples of the runs then of their entries, with a fixed seed. Ranks read best–worst: two configurations whose intervals overlap are tied. With few entries these intervals are optimistic.")}
-          </dd>
-          <dt className="font-medium">{t_i18n("Cost and time")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("The LLM cost the platform recorded per answer, averaged over the answers that have one; the agent's seconds per entry. A configuration with no recorded cost is left out of the cost chart.")}
-          </dd>
-          <dt className="font-medium">{t_i18n("Judge Score")}</dt>
-          <dd className="text-default-secondary">
-            {t_i18n("Not used here: every figure comes from the deterministic metrics.")}
-          </dd>
-        </dl>
+      <Section
+        title={t_i18n("4 · Methodology")}
+        lead={t_i18n("What every figure on this page means, to publish next to it.")}
+        tools={<ExportButton label={t_i18n("Markdown")} onClick={exportMethod} />}
+      >
+        <MethodologyList items={method} />
       </Section>
     </div>
   );

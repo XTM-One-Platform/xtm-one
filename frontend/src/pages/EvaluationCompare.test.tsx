@@ -22,6 +22,11 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 
+vi.mock("@/lib/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/utils")>()),
+  saveBlobAs: vi.fn(),
+}));
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "me" }, isAdmin: true }),
 }));
@@ -74,7 +79,7 @@ const COMPARISON: EvaluationComparison = {
     { key: "k3", label: "Only in Grounded", members: [{ evaluation_id: "eb", entry_id: "6", position: 0, has_file: true }] },
   ],
   cells: [
-    { run_id: "ra", entry_key: "k1", result_id: "res-a1", counted: true, anomaly: null, metrics: { "stix.entity_prf": [0, 34], "stix.relationship_prf": [0, 37] }, cost: 0.9, seconds: 60 },
+    { run_id: "ra", entry_key: "k1", result_id: "res-a1", counted: true, anomaly: null, metrics: { "stix.entity_prf": [0, 34], "stix.relationship_prf": [0, 37] }, cost: 0.9, seconds: 60, unreadable: true },
     { run_id: "ra", entry_key: "k2", result_id: "res-a2", counted: true, anomaly: null, metrics: { "stix.entity_prf": [4, 14], "stix.relationship_prf": [0, 8] }, cost: 1.0, seconds: 80 },
     { run_id: "rb", entry_key: "k1", result_id: "res-b1", counted: true, anomaly: null, metrics: { "stix.entity_prf": [16, 34], "stix.relationship_prf": [6, 37] }, cost: 0.3, seconds: 70 },
     { run_id: "rb", entry_key: "k2", result_id: "res-b2", counted: true, anomaly: null, metrics: { "stix.entity_prf": [2, 14], "stix.relationship_prf": [1, 8] }, cost: 0.4, seconds: 50 },
@@ -126,7 +131,7 @@ describe("EvaluationCompare", () => {
       <MemoryRouter initialEntries={["/evaluations/compare?ids=ea,eb"]}>
         <Routes>
           <Route path="/evaluations/compare" element={<EvaluationCompare />} />
-          <Route path="/evaluations/review" element={<Where />} />
+          <Route path="/evaluations/review/:view?" element={<Where />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -136,29 +141,61 @@ describe("EvaluationCompare", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "STIX Extraction vs Grounded" })).toBeInTheDocument();
     expect(screen.getByText("STIX_BUNDLE · 2 entries in common")).toBeInTheDocument();
-    const agent = screen.getByRole("row", { name: /^Agent/ });
-    expect(agent).toHaveTextContent("Under test");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(crumbs).toHaveTextContent("Evaluations");
+    expect(crumbs).toHaveTextContent("Compare 2 evaluations");
+    for (const name of ["Compare evaluations", "Leaderboard", "Run review", "Results"]) {
+      expect(screen.getByRole("tab", { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    expect(screen.getByText(/^Opened from Evaluations with 2 STIX_BUNDLE evaluations selected\./)).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /^Family/ })).toHaveTextContent("Same output, same metrics.");
+    const entries = screen.getByRole("row", { name: /^Entries/ });
+    expect(entries).toHaveTextContent("2 shared");
+    expect(entries).toHaveTextContent("0 only in the first, 1 only in the second.");
+    expect(screen.getByRole("row", { name: /^Agent/ })).toHaveTextContent("Under test");
     expect(screen.getByRole("row", { name: /^Input/ })).toHaveTextContent("Changed too");
+    expect(screen.getByRole("row", { name: /^Models/ })).toHaveTextContent("1 in common");
     expect(screen.getByRole("row", { name: /^Judge/ })).toHaveTextContent("Not comparable");
-    expect(screen.getByRole("row", { name: /^Metric suite/ })).toHaveTextContent("re-score the older runs");
+    expect(screen.getByRole("row", { name: /^Scorer/ })).toHaveTextContent("re-score the older runs");
+    expect(screen.getByRole("row", { name: /^Run limits/ })).toHaveTextContent("No answer on the shared entries reached its limit (2 runs checked).");
   });
 
-  it("pools the same model's counts on the shared entries and opens an entry's two answers", async () => {
+  it("leads with Bundle F1, pools the same model's counts on the shared entries and diffs an entry's two answers", async () => {
     renderPage();
-    // Entity F1 pooled over the two shared entries: 4/48 → 18/48, never the mean of entry values.
-    expect(await screen.findByText(/scores 37\.5 in Grounded against 8\.3 in STIX Extraction/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^APT_K_47:.*Open both answers side by side/ }));
-    expect(await screen.findByText("at /evaluations/review?results=res-a1,res-b1")).toBeInTheDocument();
+    // Bundle F1 pooled over the two shared entries (objects and relationships together):
+    // 4/93 → 25/93, never the mean of entry values.
+    expect(await screen.findByText(/scores 26\.9 in Grounded against 4\.3 in STIX Extraction/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Bundle F1" })).toBeChecked();
+    expect(screen.getByText("Cost · time per entry")).toBeInTheDocument();
+    expect(screen.getByText(/A hollow dot is an entry without a readable answer/)).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: /^APT_K_47:.*\(no readable answer\).*Click to diff them on this entry/ });
+    fireEvent.click(row);
+    expect(await screen.findByText("at /evaluations/review/diff?run=rb&against=ra&entry=k1")).toBeInTheDocument();
   });
 
-  it("checks the shared entries against each evaluation's others", async () => {
+  it("names the configurations that can be first and the best of each evaluation", async () => {
     renderPage();
-    // The same model in both runs: each reads by its agent alone.
-    const row = await screen.findByRole("row", { name: /^Grounded \d/ });
-    // 23/58 on all three entries, 18/48 shared, 5/10 on its own entry.
-    expect(row).toHaveTextContent("39.7");
-    expect(row).toHaveTextContent("37.5");
-    expect(row).toHaveTextContent("50.0");
+    expect(await screen.findByText("3 · Every configuration on the 2 shared entries")).toBeInTheDocument();
+    expect(screen.getByText(/Best of each: STIX Extraction Harvester 4\.3 · Grounded Grounded 26\.9\./)).toBeInTheDocument();
+  });
+
+  it("checks the shared entries against each evaluation's others, and reviews a run", async () => {
+    renderPage();
+    const row = await screen.findByRole("row", { name: /^Grounded default/ });
+    // 32/109 on all three entries, 25/93 shared, 7/16 on its own entry.
+    expect(row).toHaveTextContent("29.4");
+    expect(row).toHaveTextContent("26.9");
+    expect(row).toHaveTextContent("43.8");
+    expect(row).toHaveTextContent("$0.30");
+    expect(screen.getByText(/Grounded on its 3 entries: the largest gap between the 2 shared entries and the 1 others is −16\.9 points/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review its 3 entries" }));
+    expect(await screen.findByText("at /evaluations/review?run=rb")).toBeInTheDocument();
+  });
+
+  it("exports the ranking as CSV and says where it went", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Export CSV/ }));
+    expect(await screen.findByText(/^Saved stix-extraction-vs-grounded-stix-bundle-f1-\d{4}-\d{2}-\d{2}\.csv$/)).toBeInTheDocument();
   });
 });
 
@@ -182,35 +219,35 @@ describe("EvaluationCompare on one evaluation", () => {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/evaluations/compare/:tab?" element={<EvaluationCompare />} />
-          <Route path="/evaluations/review" element={<Where />} />
+          <Route path="/evaluations/review/:view?" element={<Where />} />
           <Route path="/evaluations/runs/:id" element={<Where />} />
         </Routes>
       </MemoryRouter>,
     );
   }
 
-  it("opens on its Leaderboard: the best run of each launch, then configurations by launch or every run ranked", async () => {
+  it("opens on its Leaderboard: its launches, then configurations by launch or every run ranked, a run opening its review", async () => {
     renderOne("/evaluations/compare?ids=eb");
-    expect(await screen.findByText("Best run of each launch")).toBeInTheDocument();
-    expect(screen.getByText("STIX_BUNDLE · 3 entries · 2 completed runs")).toBeInTheDocument();
+    expect(await screen.findByText("Launches")).toBeInTheDocument();
+    expect(screen.getByText("Dataset “CTI PDFs” · 3 entries · 2 models · 1 launch")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Leaderboard/ })).toHaveAttribute("aria-selected", "true");
-    // Both runs started in one minute: one launch; opus (23/58) leads sonnet (4/58) on Entity F1.
+    // Both runs started in one minute: one launch; opus (32/109) leads sonnet (4/109) on Bundle F1.
     const opus = screen.getByRole("rowheader", { name: /claude-opus-5-5/ });
-    expect(opus.closest("tr")).toHaveTextContent("39.7");
+    expect(opus.closest("tr")).toHaveTextContent("29.4");
     fireEvent.click(screen.getByRole("radio", { name: "Every run, ranked" }));
     const rows = await screen.findAllByTestId("leaderboard-run-row");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("claude-opus-5-5");
     fireEvent.click(rows[1]);
-    expect(await screen.findByText("at /evaluations/runs/rs")).toBeInTheDocument();
+    expect(await screen.findByText(/^at \/evaluations\/review\?run=rs/)).toBeInTheDocument();
   });
 
   it("ranks its configurations with intervals in Results, and says how", async () => {
     renderOne("/evaluations/compare/results?ids=eb");
     expect(await screen.findByText("1 · Ranking with 95% intervals")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Entity F1 of each configuration with its 95% interval/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Bundle F1 of each configuration with its 95% interval/ })).toBeInTheDocument();
     expect(screen.getByText("2 · Quality against cost")).toBeInTheDocument();
-    expect(screen.getByText(/No configuration ran more than once/)).toBeInTheDocument();
+    expect(screen.getAllByText(/No configuration ran this setup more than once/).length).toBeGreaterThan(0);
     expect(screen.getByText("4 · Methodology")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Export CSV/ })).toBeEnabled();
   });
@@ -222,12 +259,13 @@ describe("EvaluationCompare on one evaluation", () => {
     expect(screen.queryByText("1 · What can be compared")).not.toBeInTheDocument();
     expect(screen.queryByText("4 · Do the shared entries stand for each dataset?")).not.toBeInTheDocument();
     expect(screen.getByText("2 · Every run ranked on the same entries")).toBeInTheDocument();
-    // Entity F1 pooled over the three entries: the default model (opus) 23/58, sonnet 4/58;
+    // Bundle F1 pooled over the three entries: the default model (opus) 32/109, sonnet 4/109;
     // one agent ran them all, so the runs read by their model alone.
     expect(
-      screen.getByText(/On the 3 entries both ran, claude-sonnet-5-5 scores 6\.9 against 39\.7 for claude-opus-5-5 \(/),
+      screen.getByText(/On the 3 entries both ran, claude-sonnet-5-5 scores 3\.7 against 29\.4 for claude-opus-5-5 \(/),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^APT_K_47:.*Open both answers side by side/ }));
-    expect(await screen.findByText("at /evaluations/review?results=res-b1,res-s1")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Run against run");
+    fireEvent.click(screen.getByRole("button", { name: /^APT_K_47:.*Click to diff them on this entry/ }));
+    expect(await screen.findByText("at /evaluations/review/diff?run=rs&against=rb&entry=k1")).toBeInTheDocument();
   });
 });

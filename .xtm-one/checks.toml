@@ -388,13 +388,13 @@ lifetime = 7200
 
 # XTM Hub built from the PR head: its backend (tsx) on the lab's PostgreSQL (database xtm_hub) and S3, migrated and
 # development-seeded, Elasticsearch 8.18.3 from the official image's layers (XTM Hub refuses OpenSearch), the front
-# from next dev --webpack with the Google fonts served from local files, the platform administrator lab@filigran.io
+# from next dev --turbopack with the Google fonts served from local files, the platform administrator lab@filigran.io
 # holding seeded API tokens (active, last used, expired, revoked). Before the start:
 # materialize_repository(XTM-Hub/xtm-hub, ref=<the PR head>, sub_paths=["package.json", "yarn.lock", ".yarnrc.yml",
 # "tsconfig.json", "apps/backend", "apps/frontend"], path="<this checkout>/xtm-hub"). Open /lab/sign-in first (it
 # lands on /app/profile), /lab/sign-in/empty for a member with no token; theme: /lab/theme/dark or /lab/theme/light;
 # language: /lab/locale/en, fr or ja; each switch opens ?next=<path>. Heavy (an Elasticsearch image pull and a
-# webpack dev build), started only on purpose.
+# Turbopack dev build), started only on purpose.
 [service.lab-xtm-hub]
 description = "XTM Hub back and front built from a nested xtm-hub/ checkout at the PR head, migrated, development-seeded with API tokens, signed in as lab@filigran.io"
 argv = ["python", ".xtm-one/lab/xtm_hub_pr_head.py"]

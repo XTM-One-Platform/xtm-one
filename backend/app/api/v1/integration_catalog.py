@@ -4700,8 +4700,29 @@ PROVIDER_CATALOG = {
             }
             for event in _WORDSMITH_EVENTS
         ],
+        # API key by default; OAuth 2.1 registers this platform as a client
+        # of Wordsmith by itself (no client id to paste: oauth_registration,
+        # services/integration_oauth_registration.py), PKCE S256 and the REST
+        # API as RFC 8707 resource. Wordsmith registers only the redirect URIs
+        # on its allowlist (support@wordsmith.ai).
         "auth_type": "api_key",
+        "supported_auth_types": ["api_key", "oauth"],
         "fields": ["api_key"],
+        "authorize_url": "https://api.wordsmith.ai/oauth/authorize",
+        "token_url": "https://api.wordsmith.ai/oauth/token",
+        "oauth_registration": {
+            "registration_url": "https://api.wordsmith.ai/oauth/register",
+            "resource": "https://api.wordsmith.ai/api/v1",
+        },
+        # Wordsmith's defaults for the REST API plus webhooks:write (the
+        # integration_event trigger); a :write scope includes its :read one
+        # except files. directory:admin, audit:read and webhooks:admin are
+        # never granted unless asked: an API key covers them.
+        "scopes": (
+            "me:read agents:read sessions:write files:read files:write reviews:write "
+            "playbooks:write blueprints:write skills:write repositories:write reports:write "
+            "tasks:write research:read directory:read usage:read webhooks:write"
+        ),
         "extra_fields": {"region": "API Region"},
         "extra_field_options": {
             "region": [
@@ -4717,6 +4738,7 @@ PROVIDER_CATALOG = {
                 "Create a key named like '{APP_NAME}'. Full access reaches every tool; Selected permissions limits the tools to its scopes.",
                 "Optionally set an expiry; the key starts with sk-ws-api1-.",
                 "Copy the key (shown once) and paste it below. Pick the US region only if your organisation is hosted there.",
+                "OAuth instead of a key: choose the OAuth mode, leave the API key empty, save, then Authorize and approve the scopes on Wordsmith's consent screen. The platform registers itself with Wordsmith; your role needs 'Use the Wordsmith API'. Artifacts accept API keys only.",
             ],
             "permissions": [
                 {
@@ -4732,7 +4754,7 @@ PROVIDER_CATALOG = {
                     "description": "Organisation management, webhook endpoints and the audit log",
                 },
             ],
-            "notes": "Each person can connect their own key, so their XTM One agents reach their own Wordsmith agents, sessions and tasks. Rate limit: 400 requests a minute per organisation.",
+            "notes": "Each person can connect their own key or OAuth grant, so their XTM One agents reach their own Wordsmith agents, sessions and tasks. OAuth needs this platform's redirect URI on Wordsmith's allowlist (support@wordsmith.ai); until then, use an API key. Rate limit: 400 requests a minute per organisation.",
         },
     },
     "concord": {

@@ -1810,7 +1810,51 @@ def _fmt_scenario(s: dict, base_url: str = "") -> str:
         lines.append(f"  Severity: {s['scenario_severity']}")
     if s.get("scenario_main_focus"):
         lines.append(f"  Main focus: {s['scenario_main_focus']}")
+    lines.extend(_scenario_state_lines(s))
     return "\n".join(lines)
+
+
+# OpenAEV marks the scenarios its starter pack installs with this dependency;
+# a scenario without it was created or imported by a user (3.x does not tell
+# those two apart).
+_SCENARIO_BUILTIN_DEPENDENCY = "STARTERPACK"
+
+
+def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
+    """Recurrence, origin, inject count and dates of a scenario, when returned.
+
+    Each line is rendered only when OpenAEV returned the field it reads, so a
+    trimmed payload (an older OpenAEV, a search projection) adds nothing.
+    """
+    lines: list[str] = []
+    if "scenario_recurrence" in s:
+        cron = s.get("scenario_recurrence")
+        if cron:
+            recurrence = f"  Recurrence: {cron} (cron, UTC)"
+            if s.get("scenario_recurrence_start"):
+                recurrence += f", from {s['scenario_recurrence_start']}"
+            if s.get("scenario_recurrence_end"):
+                recurrence += f", until {s['scenario_recurrence_end']}"
+            lines.append(recurrence)
+        else:
+            lines.append("  Recurrence: not planned")
+    if "scenario_dependencies" in s:
+        dependencies = s.get("scenario_dependencies") or []
+        if _SCENARIO_BUILTIN_DEPENDENCY in dependencies:
+            lines.append("  Origin: built-in (starter pack)")
+        else:
+            lines.append("  Origin: created or imported by a user")
+    injects = s.get("scenario_injects")
+    if isinstance(injects, list):
+        lines.append(f"  Injects: {len(injects)}")
+    tags = s.get("scenario_tags")
+    if isinstance(tags, list) and tags:
+        lines.append(f"  Tags: {len(tags)}")
+    if s.get("scenario_created_at"):
+        lines.append(f"  Created: {s['scenario_created_at']}")
+    if s.get("scenario_updated_at"):
+        lines.append(f"  Updated: {s['scenario_updated_at']}")
+    return lines
 
 
 def _fmt_finding(f: dict, base_url: str = "") -> str:
@@ -1918,7 +1962,125 @@ def _fmt_injector_contract(c: dict) -> str:
             lines.append(f"  Produces findings: {', '.join(str(p) for p in providing)}")
         else:
             lines.append(_PRODUCES_NONE_FORK if payload_based else _PRODUCES_NONE_NATIVE)
+    lines.extend(_fmt_contract_fields(c.get("injector_contract_content")))
     return "\n".join(lines)
+
+
+# Input fields of a contract, as ``injector_contract_content`` (a JSON string)
+# declares them: an agent builds valid inject content from this list instead
+# of reading the injector's source code.
+_CONTRACT_FIELDS_MAX = 40
+_CONTRACT_CHOICES_MAX = 25
+_CONTRACT_VALUE_CHARS = 200
+
+
+def _contract_value(value: Any) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    return clip_text(text, _CONTRACT_VALUE_CHARS)
+
+
+def _contract_choices(choices: Any) -> list[str]:
+    """``value (label)`` items of a select (a map) or a choice list."""
+    items: list[str] = []
+    if isinstance(choices, dict):
+        for value, label in choices.items():
+            items.append(f"{value} ({label})" if label not in (None, "", value) else str(value))
+    elif isinstance(choices, list):
+        for choice in choices:
+            if isinstance(choice, dict):
+                value = choice.get("value", choice.get("key"))
+                label = choice.get("label")
+                items.append(f"{value} ({label})" if label not in (None, "", value) else str(value))
+            else:
+                items.append(str(choice))
+    return items
+
+
+def _contract_condition(fields: Any, values: Any) -> str:
+    """``when target_selector = assets`` from the condition fields and values."""
+    keys = [str(k) for k in fields] if isinstance(fields, list) else []
+    parts: list[str] = []
+    for key in keys:
+        if isinstance(values, dict) and key in values:
+            parts.append(f"{key} = {_contract_value(values[key])}")
+        else:
+            parts.append(f"{key} set")
+    if not keys and values:
+        parts.append(_contract_value(values))
+    return " and ".join(parts)
+
+
+def _fmt_contract_fields(content: Any) -> list[str]:
+    """Lines listing the input fields of a contract's ``injector_contract_content``.
+
+    One line per field: key, type, label, mandatory or read-only, cardinality,
+    default, choices, linked fields and the visibility / mandatory conditions.
+    Absent or malformed content adds no line.
+    """
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return []
+    fields = [f for f in content["fields"] if isinstance(f, dict) and f.get("key")]
+    if not fields:
+        return []
+    lines = [f"  Input fields ({len(fields)}; inject_content keys, mandatory ones marked):"]
+    for field in fields[:_CONTRACT_FIELDS_MAX]:
+        head = f"    - {field['key']} [{field.get('type', '?')}]"
+        label = field.get("label")
+        if label and label != field["key"]:
+            head += f" {_contract_value(label)}"
+        flags = []
+        if field.get("mandatory"):
+            flags.append("mandatory")
+        if field.get("readOnly"):
+            flags.append("read-only")
+        if field.get("cardinality"):
+            flags.append(f"cardinality {field['cardinality']}")
+        if flags:
+            head += f" ({', '.join(flags)})"
+        lines.append(head)
+        if field["key"] == "expectations":
+            available = field.get("availableExpectations") or field.get("predefinedExpectations") or []
+            types = [
+                str(e.get("expectation_type")) for e in available if isinstance(e, dict) and e.get("expectation_type")
+            ]
+            if types:
+                lines.append(f"        expectations offered: {', '.join(types)}")
+            continue
+        default = field.get("defaultValue")
+        if default not in (None, "", [], {}):
+            lines.append(f"        default: {_contract_value(default)}")
+        choices = _contract_choices(field.get("choices"))
+        if choices:
+            shown = ", ".join(choices[:_CONTRACT_CHOICES_MAX])
+            more = len(choices) - _CONTRACT_CHOICES_MAX
+            if more > 0:
+                shown += f" (+{more} more)"
+            lines.append(f"        choices: {shown}")
+        linked = [
+            str(lf.get("key")) for lf in field.get("linkedFields") or [] if isinstance(lf, dict) and lf.get("key")
+        ]
+        if linked:
+            lines.append(f"        linked to: {', '.join(linked)}")
+        visible = _contract_condition(field.get("visibleConditionFields"), field.get("visibleConditionValues"))
+        if visible:
+            lines.append(f"        shown when: {visible}")
+        required_when = _contract_condition(
+            field.get("mandatoryConditionFields"), field.get("mandatoryConditionValues")
+        )
+        if required_when:
+            lines.append(f"        mandatory when: {required_when}")
+        groups = field.get("mandatoryGroups")
+        if isinstance(groups, list) and groups:
+            lines.append(f"        one of mandatory with: {', '.join(str(g) for g in groups)}")
+    hidden = len(fields) - _CONTRACT_FIELDS_MAX
+    if hidden > 0:
+        lines.append(f"    ... {hidden} more field(s) not shown")
+    return lines
 
 
 def _fmt_payload(p: dict, base_url: str = "") -> str:
@@ -2164,6 +2326,11 @@ def _fmt_arsenal_action(a: dict, base_url: str = "", *, detailed: bool = False) 
         attack_patterns = a.get("action_attack_patterns_ids") or []
         if attack_patterns:
             lines.append(f"  Attack pattern IDs: {len(attack_patterns)}")
+        if action_id != "N/A":
+            lines.append(
+                "  Input fields (keys, types, choices, defaults, conditions): "
+                f"get_openaev_injector_contract(contract_id='{action_id}')"
+            )
     return "\n".join(lines)
 
 

@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 // What a node and an edge of the two graphs say: a node's name and second line, an edge's label.
 
-import { EXPECTED, nearKind, type EntityItem, type RelationshipItem } from "@/lib/evaluation-bundle-review";
+import { EXPECTED, endName, nearKind, type EntityItem, type RelationshipItem } from "@/lib/evaluation-bundle-review";
 import { NEAR_KIND_LABELS, statusLabel } from "./labels";
 import type { ReviewContext } from "./context";
 
@@ -43,11 +43,51 @@ export function nodeSub(ctx: ReviewContext, it: EntityItem, t_i18n: Translate, s
 }
 
 /** An edge's label: the type, or both types when the two sides disagree. */
-export function edgeLabel(ctx: ReviewContext, it: RelationshipItem, side: "a" | "b" | "both"): string {
+export function edgeLabel(ctx: ReviewContext, it: RelationshipItem, side: "a" | "b" | "both", t_i18n?: Translate): string {
   const { r } = it;
   const { ref: A, under: B } = ctx.pair;
   if (side === "a") return r.kinds[A] ?? "";
-  if (side === "b") return r.kinds[B] ?? "";
+  if (side === "b") {
+    // Alone, a wrong type names the expected one beside it.
+    if (ctx.mode === "alone" && it.st === "type" && t_i18n) return t_i18n("{type} (expected {expected})", { type: r.kinds[B] ?? "", expected: r.kinds[EXPECTED] ?? "" });
+    return r.kinds[B] ?? "";
+  }
   if (it.inA && it.inB && r.kinds[A] !== r.kinds[B]) return `${r.kinds[A]} ≠ ${r.kinds[B]}`;
-  return (it.inB ? r.kinds[B] : r.kinds[A]) ?? "";
+  return it.inB ? edgeLabel(ctx, it, "b", t_i18n) : r.kinds[A] ?? "";
+}
+
+/** The note under a diff row: why two names differ, what broke a relationship, duplicates. */
+export function noteFor(ctx: ReviewContext, it: EntityItem | RelationshipItem, t_i18n: Translate): string {
+  const { ref: A, under: B } = ctx.pair;
+  if (!("r" in it)) {
+    const n = it.g.extra[B];
+    const ex = n ? t_i18n("+{count, plural, one {# duplicate} other {# duplicates}} in {answer}", { count: n, answer: ctx.letter(B) }) : "";
+    if (it.a && it.b && it.a.cid !== it.b.cid) {
+      const kind = t_i18n(NEAR_KIND_LABELS[nearKind(it.a, it.b)]);
+      const tail =
+        ctx.mode === "score"
+          ? ctx.whatIf
+            ? t_i18n("{kind}: different canonical IDs, counted as a match in the what-if", { kind })
+            : t_i18n("{kind}: different canonical IDs, counts as 1 missing + 1 spurious", { kind })
+          : t_i18n("{kind}: different canonical IDs", { kind });
+      return ex ? `${tail} · ${ex}` : tail;
+    }
+    const exp = it.g.by[EXPECTED];
+    if (ctx.mode === "alone" && it.st === "near" && exp && it.b) {
+      const tail = t_i18n("{kind}: the expected bundle has “{name}”", { kind: t_i18n(NEAR_KIND_LABELS[nearKind(exp, it.b)]), name: exp.name });
+      return ex ? `${tail} · ${ex}` : tail;
+    }
+    return ex;
+  }
+  const X = ctx.mode === "runs" ? A : EXPECTED;
+  const c = it.cause ? ctx.model.byId.get(it.cause) : undefined;
+  if (it.pairSt === "cascade" && c) return t_i18n("follows from the {type} named differently: {a} ≈ {b}", { type: c.type, a: endName(c, X), b: endName(c, B) });
+  if (it.pairSt === "type") return t_i18n("same endpoints, relationship type {a} ≠ {b}", { a: it.r.kinds[X] ?? "", b: it.r.kinds[B] ?? "" });
+  if (it.pairSt === "fn" && c) return t_i18n("its endpoint, the {type}, is absent from {answer}", { type: c.type, answer: ctx.letter(B) });
+  if (it.pairSt === "fp" && c) {
+    return ctx.mode === "runs"
+      ? t_i18n("its endpoint, the {type}, is absent from {answer}", { type: c.type, answer: ctx.letter(A) })
+      : t_i18n("its endpoint, the {type}, is not expected", { type: c.type });
+  }
+  return "";
 }

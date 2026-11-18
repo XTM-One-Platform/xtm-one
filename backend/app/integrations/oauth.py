@@ -24,6 +24,7 @@ from app.core.redis import redis_client
 from app.core.security import decrypt_value
 from app.core.utils import format_exception_message
 from app.integrations.token_endpoint import assert_token_endpoint_allowed
+from app.services.integration_oauth_registration import oauth_registration
 from app.services.mcp_oauth_discovery import generate_pkce_pair, oauth_redirect_uri
 from app.services.vault import reveal_json_field
 
@@ -314,6 +315,7 @@ async def build_authorize_url_for_integration(
     authorize_url, _ = await _resolve_tenant_urls(integration, authorize_url, None)
 
     state = secrets.token_urlsafe(32)
+    registration = oauth_registration(integration.provider)
 
     # Store state → {user_id, integration_id, provider} in Redis (5 min TTL)
     state_data = {
@@ -360,11 +362,13 @@ async def build_authorize_url_for_integration(
         # The audience tells Atlassian which API the token will be used for.
         params["audience"] = "api.atlassian.com"
         params["prompt"] = "consent"
-    elif integration.provider in _PKCE_PROVIDERS and not implicit:
+    elif (integration.provider in _PKCE_PROVIDERS or registration is not None) and not implicit:
         params["scope"] = scopes
         # X/Twitter requires OAuth 2.0 with PKCE; OpenAPI integrations send it
-        # too — a generic authorization server may require it (OAuth 2.1
-        # makes it mandatory), and one that does not ignores the parameters.
+        # too, and so does a provider whose clients register themselves
+        # (catalog ``oauth_registration``): a generic authorization server
+        # may require it (OAuth 2.1 makes it mandatory, S256 only), and one
+        # that does not ignores the parameters.
         # Generate code_verifier (43-128 chars, URL-safe) and derive code_challenge.
         code_verifier = secrets.token_urlsafe(64)[:96]
         code_challenge = (
@@ -387,6 +391,10 @@ async def build_authorize_url_for_integration(
         )
     else:
         params["scope"] = scopes
+
+    # RFC 8707: the API the token is for, when the provider names one.
+    if registration is not None and registration.get("resource"):
+        params["resource"] = registration["resource"]
 
     # Percent-encode: scope values are space-separated and redirect_uri contains
     # "://" — a raw "&".join would only work by accident of browser auto-encoding
@@ -557,6 +565,10 @@ async def exchange_code_for_tokens_with_integration(
     # X/Twitter PKCE: include code_verifier in the token exchange
     if code_verifier:
         params["code_verifier"] = code_verifier
+    # RFC 8707: the same resource the authorize request named.
+    registration = oauth_registration(integration.provider)
+    if registration is not None and registration.get("resource"):
+        params["resource"] = registration["resource"]
 
     # build_token_request() applies the provider-specific auth style — e.g.
     # Notion needs HTTP Basic auth + a JSON body (it rejects credentials-in-body

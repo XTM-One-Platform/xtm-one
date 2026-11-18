@@ -23,6 +23,7 @@ import remarkBreaks from "remark-breaks";
 import {
   downloadEvaluationRunResultTrace,
   useEvaluation,
+  useEvaluationComparison,
   useEvaluationRun,
   useRunParams,
   useReplayJudgeResult,
@@ -842,7 +843,7 @@ function JsonFieldBreakdown({ detail }: { detail: JsonFieldAccuracyDetail | null
   );
 }
 
-function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate, bundleReview = false }: { runId: string; result: EvaluationResult; index: number; judgeEnabled: boolean; evaluationSlug: string; runDate: string; bundleReview?: boolean }) {
+function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate, bundleReview = false, entryKey }: { runId: string; result: EvaluationResult; index: number; judgeEnabled: boolean; evaluationSlug: string; runDate: string; bundleReview?: boolean; entryKey?: string }) {
   const { t_i18n, intl } = useFormatter();
   const [expanded, setExpanded] = useState(false);
   const [showJudge, setShowJudge] = useState(false);
@@ -935,7 +936,7 @@ function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate
                 entry's own line, so no entry has to be unfolded to find it. */}
             {bundleReview && (
               <Link
-                to={`/evaluations/review?results=${result.id}`}
+                to={entryKey ? `/evaluations/review?run=${runId}&entry=${encodeURIComponent(entryKey)}` : `/evaluations/review?results=${result.id}`}
                 className="inline-flex items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
               >
                 <Icon name="file-search" size={16} />
@@ -2352,6 +2353,17 @@ export default function EvaluationRunDetail() {
   const { data: run, isLoading } = useEvaluationRun(id || "");
   // The family decides whether an entry's answer opens in the STIX bundle review.
   const { data: evaluation } = useEvaluation(run?.evaluation_id ?? "");
+  // A STIX bundle run's entries open in its run review, on their own report: the
+  // comparison names each result's entry as the review does.
+  const runReviewable = evaluation?.family === "STIX_BUNDLE" && run?.status === "completed";
+  const { data: runComparison } = useEvaluationComparison(
+    runReviewable && run ? [run.evaluation_id] : [],
+    runReviewable && run ? [run.id] : [],
+  );
+  const entryKeyOf = useMemo(
+    () => new Map((runComparison?.cells ?? []).filter((c) => c.run_id === run?.id).map((c) => [c.result_id, c.entry_key])),
+    [runComparison, run?.id],
+  );
   const replayRun = useReplayEvaluationRun({
     onSuccess: (newRun) => navigate(`/evaluations/runs/${newRun.id}`),
   });
@@ -2463,7 +2475,9 @@ export default function EvaluationRunDetail() {
         /* Version provenance on its own line, so the header row stays
            legible: what ran above, which versions below. */
         links={
-              hasVersionChips && (
+              (hasVersionChips || runReviewable) && (
+              <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
+              {hasVersionChips && (
               <div className="flex items-center gap-1 flex-wrap">
                   <RunVersionChips run={run} />
                   {!!run.pinned_dataset_versions && Object.keys(run.pinned_dataset_versions).length > 0 && (
@@ -2503,6 +2517,19 @@ export default function EvaluationRunDetail() {
                       {run.metric_suite_version ? `v${run.metric_suite_version}` : t_i18n("unknown")}
                     </InfoLabel>
                   )}
+              </div>
+              )}
+              {/* A completed STIX bundle run opens in the run review: its figures over
+                  every report, then each report object by object. */}
+              {runReviewable && (
+                <Link
+                  to={`/evaluations/review?run=${run.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-sm content-compact font-medium text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                >
+                  <Icon name="file-search" size={16} />
+                  {t_i18n("Review this run")}
+                </Link>
+              )}
               </div>
               )
         }
@@ -2854,7 +2881,7 @@ export default function EvaluationRunDetail() {
             const evalSlug = (run.evaluation_name || "evaluation").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             const runDate = run.created_at ? run.created_at.slice(0, 10) : "unknown-date";
             return run.results?.map((result, idx) => (
-              <ResultRow key={result.id} runId={run.id} result={result} index={idx} judgeEnabled={runJudged(run)} evaluationSlug={evalSlug} runDate={runDate} bundleReview={evaluation?.family === "STIX_BUNDLE"} />
+              <ResultRow key={result.id} runId={run.id} result={result} index={idx} judgeEnabled={runJudged(run)} evaluationSlug={evalSlug} runDate={runDate} bundleReview={evaluation?.family === "STIX_BUNDLE"} entryKey={entryKeyOf.get(result.id)} />
             ));
           })()}
           {(!run.results || run.results.length === 0) && run.status !== "running" && (

@@ -1957,7 +1957,12 @@ def register_core(
         ToolDefinition(
             name="get_openaev_injector_contract",
             priority=2,
-            description="Get full details of an injector contract by ID.",
+            description=(
+                "Get full details of an injector contract by ID, with its input "
+                "fields (inject_content keys, types, mandatory flags, defaults, "
+                "choices, linked fields and visibility conditions): build inject "
+                "content from them, never from the injector's source code."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
