@@ -17,7 +17,14 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _normalize_output_parsers, _search_body, json_answer
+from ._common import (
+    _api,
+    _normalize_output_parsers,
+    _search_body,
+    inject_targets_line,
+    json_answer,
+    mirror_content_targets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +169,17 @@ def register(
             if action == "update" and not inject_id:
                 return "inject_id is required for 'update'."
             body = _atomic_body(for_create=action == "create")
+            targets_note = ""
+            if content:
+                assets, groups, targets_note, targets_err = mirror_content_targets(
+                    body.get("inject_content"), asset_ids, asset_group_ids
+                )
+                if targets_err:
+                    return targets_err
+                if assets is not None:
+                    body["inject_assets"] = assets
+                if groups is not None:
+                    body["inject_asset_groups"] = groups
             if action == "update" and not body:
                 return (
                     "Provide at least one field to update (title, description, "
@@ -181,7 +199,9 @@ def register(
                 return err
             i = resp.json()
             verb = "Created" if action == "create" else "Updated"
-            return f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."
+            lines = [f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."]
+            lines += [t for t in (targets_note, inject_targets_line(i)) if t]
+            return "\n".join(lines)
 
         if action == "delete":
             if not inject_id:

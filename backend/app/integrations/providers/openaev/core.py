@@ -49,6 +49,8 @@ from ._common import (
     _require_response,
     _resolve_output_types,
     _search_body,
+    inject_targets_line,
+    mirror_content_targets,
     scoped_safe_request,
 )
 
@@ -868,6 +870,11 @@ def register_core(
                 inject_content = {"content": content}
         else:
             inject_content = {}
+        assets, groups, targets_note, targets_err = mirror_content_targets(inject_content, asset_ids, asset_group_ids)
+        if targets_err:
+            return targets_err
+        body["inject_assets"] = assets or []
+        body["inject_asset_groups"] = groups or []
         # Expectations decide what the inject MEASURES once executed.
         #
         # * Caller passed types -> they REPLACE the contract's predefined ones
@@ -914,7 +921,9 @@ def register_core(
         resp = _require_response(resp)
         data = resp.json()
         iid = data.get("inject_id", "unknown")
-        return f"Inject added to scenario {scenario_id}: [{title}] (Inject ID: {iid})"
+        lines = [f"Inject added to scenario {scenario_id}: [{title}] (Inject ID: {iid})"]
+        lines += [t for t in (targets_note, inject_targets_line(data)) if t]
+        return "\n".join(lines)
 
     # ── 19. Search injector contracts ─────────────────────────────────
 
@@ -1046,6 +1055,13 @@ def register_core(
                 body["inject_content"] = {"content": content}
         else:
             body["inject_content"] = {}
+        assets, groups, targets_note, targets_err = mirror_content_targets(
+            body["inject_content"], asset_ids, asset_group_ids
+        )
+        if targets_err:
+            return targets_err
+        body["inject_assets"] = assets or []
+        body["inject_asset_groups"] = groups or []
         async with egress_client(timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
@@ -1061,7 +1077,12 @@ def register_core(
         resp = _require_response(resp)
         data = resp.json()
         aid = data.get("inject_id", "unknown")
-        return f"Atomic test created: [{title}] (ID: {aid})\nURL: {base_url}/admin/atomic_testings/{aid}"
+        lines = [
+            f"Atomic test created: [{title}] (ID: {aid})",
+            f"URL: {base_url}/admin/atomic_testings/{aid}",
+        ]
+        lines += [t for t in (targets_note, inject_targets_line(data)) if t]
+        return "\n".join(lines)
 
     # ── 22. Search findings ───────────────────────────────────────────
 

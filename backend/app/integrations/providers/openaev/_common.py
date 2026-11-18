@@ -67,6 +67,111 @@ def json_answer(value: Any, limit: int = JSON_READ_CHARS) -> str:
     return clip_text(json.dumps(value, default=str), limit)
 
 
+#: Inject content keys that name targets, mapped to the inject relation OpenAEV
+#: actually targets. The "Update the inject" form and the executor both read the
+#: relations (inject_assets, inject_asset_groups); the same ids left in
+#: inject_content alone are ignored: the form shows the field empty and
+#: "Required", the injector receives no target.
+_CONTENT_TARGET_KEYS: tuple[tuple[str, str], ...] = (
+    ("asset_groups", "asset_group_ids"),
+    ("assets", "asset_ids"),
+)
+
+
+def _content_ids(content: dict[str, Any], key: str) -> list[str]:
+    raw = content.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [v.strip() for v in raw if isinstance(v, str) and v.strip()]
+
+
+def mirror_content_targets(
+    content: Any,
+    asset_ids: list[str] | None,
+    asset_group_ids: list[str] | None,
+) -> tuple[list[str] | None, list[str] | None, str, str]:
+    """Carry the targets an inject content names onto the inject relations.
+
+    Returns ``(asset_ids, asset_group_ids, note, error)``. A relation the caller
+    did not pass takes the ids of ``content.asset_groups`` / ``content.assets``,
+    and *note* says so. A relation the caller passed that misses an id the
+    content names is refused in *error* before any write: OpenAEV targets only
+    the relation, so that id would be silently skipped.
+    """
+    if not isinstance(content, dict):
+        return asset_ids, asset_group_ids, "", ""
+    relations: dict[str, list[str] | None] = {
+        "asset_ids": asset_ids,
+        "asset_group_ids": asset_group_ids,
+    }
+    notes: list[str] = []
+    for key, param in _CONTENT_TARGET_KEYS:
+        ids = _content_ids(content, key)
+        if not ids:
+            continue
+        given = relations[param]
+        if given is None:
+            relations[param] = ids
+            notes.append(f"{param} set from content.{key} ({len(ids)})")
+            continue
+        missing = [i for i in ids if i not in given]
+        if missing:
+            return (
+                asset_ids,
+                asset_group_ids,
+                "",
+                (
+                    f"content.{key} names {', '.join(missing)}, absent from {param}. "
+                    f"OpenAEV targets only {param} (the inject form and the executor "
+                    f"read it, never content.{key}): add them to {param} or drop "
+                    f"them from content."
+                ),
+            )
+    note = ""
+    if notes:
+        note = "Targets: " + "; ".join(notes) + ", since OpenAEV targets the inject relations, never the content."
+    return relations["asset_ids"], relations["asset_group_ids"], note, ""
+
+
+def _relation_ids(raw: Any, id_key: str) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for v in raw:
+        if isinstance(v, str) and v:
+            out.append(v)
+        elif isinstance(v, dict) and v.get(id_key):
+            out.append(str(v[id_key]))
+    return out
+
+
+def inject_targets_line(inject: Any) -> str:
+    """One line naming the targets an inject answer stores on its relations.
+
+    Empty when the answer is not an object. A content that selects targets
+    (``target_selector``) with both relations empty is flagged: the injector
+    would receive no target.
+    """
+    if not isinstance(inject, dict):
+        return ""
+    groups = _relation_ids(inject.get("inject_asset_groups"), "asset_group_id")
+    assets = _relation_ids(inject.get("inject_assets"), "asset_id")
+    line = (
+        f"Targets stored: {len(groups)} asset group(s)"
+        + (f" [{', '.join(groups)}]" if groups else "")
+        + f", {len(assets)} asset(s)"
+        + (f" [{', '.join(assets)}]" if assets else "")
+        + "."
+    )
+    content = inject.get("inject_content")
+    if not groups and not assets and isinstance(content, dict) and content.get("target_selector"):
+        line += (
+            " Warning: the content selects targets but no asset or asset group "
+            "is stored: the injector receives no target."
+        )
+    return line
+
+
 # Transient upstream statuses that IDEMPOTENT OpenAEV calls opt into retrying at
 # the HTTP layer (via ``_api(..., retry_transient=True)``). The shared gateway
 # set is 502/503/504; OpenAEV also surfaces its own transient faults (a brief EE
@@ -2449,7 +2554,9 @@ __all__ = [
     "_with_scope_hint",
     "expectation_label",
     "expectation_result_type",
+    "inject_targets_line",
     "json_answer",
     "logger",
+    "mirror_content_targets",
     "scoped_safe_request",
 ]
