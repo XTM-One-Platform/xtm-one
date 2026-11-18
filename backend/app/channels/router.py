@@ -4143,17 +4143,16 @@ async def handle_message(
         if not is_external_channel:
             # Stored at step 3: run_agent_chat appends the turn itself.
             history = without_current_turn(history, inbound.text)
+        _ch_replay: list[ChatMessage] = []
         if turn.held and conv is not None:
             # The tool work of a turn a shutdown cut goes right before this
-            # message, and this turn checkpoints its own, so a cut
-            # resumes from its last completed tool call, as on the web.
+            # message (appended after compaction, 5b), and this turn checkpoints
+            # its own, so a cut resumes from its last completed tool call, as on the web.
             from app.services import turn_checkpoint
 
             _ch_resumed, _ch_replay = await turn_checkpoint.load_replay(
                 db, conv.id, user_id=getattr(user, "id", None)
             )
-            if _ch_replay:
-                history = [*history, *_ch_replay]
             turn.checkpoint = turn_checkpoint.TurnCheckpoint(
                 conv.id,
                 resumed=_ch_resumed,
@@ -4399,6 +4398,10 @@ async def handle_message(
                 agent_id=answering_agent_id,
                 conversation_id=conv.id if conv else None,
             )
+        # After compaction, as on the web: its cut keeps the last messages
+        # and would split a replayed tool call from its result.
+        if _ch_replay:
+            history = [*history, *_ch_replay]
 
         # 5c. @mentions, when the deployment turned them on:
         #     the other agents an identified user names as ``@key`` answer

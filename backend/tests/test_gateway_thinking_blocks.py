@@ -10,6 +10,7 @@ import json
 import uuid
 
 import httpx
+import openai
 import pytest
 
 from app.core.xtm_auth import _normalize_url
@@ -19,6 +20,7 @@ from app.llm.identity import _llm_caller, set_llm_caller
 from app.llm.litellm_provider import LiteLLMProvider
 from app.llm.openai_thinking_blocks import EXTRA_KEY, ThinkingBlocks
 from app.tools.base import ToolCall, ToolDefinition
+from tests.gateway_helpers import gateway_refusal_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 MODEL = "claude-sonnet-4-5"
@@ -72,6 +74,10 @@ class _Gateway:
 
     def assistant_turns(self, index: int = -1) -> list[dict]:
         return [m for m in self.sent[index]["messages"] if m["role"] == "assistant"]
+
+
+def _gateway_refusal(provider_message: str | None, status: str = "400 Bad Request") -> httpx.Response:
+    return httpx.Response(502, json=gateway_refusal_body(provider_message, status=status))
 
 
 def _ok() -> httpx.Response:
@@ -194,7 +200,10 @@ async def test_a_loop_nudge_does_not_end_the_round():
         httpx.Response(400, json={"error": {"message": "Invalid `signature` in `thinking` block"}}),
         httpx.Response(502, json={"error": {"type": "provider_error", "message": "upstream returned status 400",
                                             "retryable": False}}),
+        _gateway_refusal("messages.1.content.0: Invalid `signature` in `thinking` block"),
+        _gateway_refusal("Request exceeds the maximum size", status="413 Request Entity Too Large"),
     ],
+    ids=["direct 400", "gateway 502 without the provider's message", "gateway 502 with it", "gateway 502 for a 413"],
 )
 @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
 async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(refusal, call):
@@ -217,6 +226,26 @@ async def test_a_refused_replay_is_retried_once_without_and_never_sent_again(ref
     assert "thinking_blocks" in gateway.assistant_turns(0)[0]
     assert "thinking_blocks" not in gateway.assistant_turns(1)[0]
     assert messages[1]._provider_extra[EXTRA_KEY].refused
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _gateway_refusal("tools.0.custom.name: String should match pattern"),
+        _gateway_refusal("model: claude-x not found", status="404 Not Found"),
+        _gateway_refusal(None, status="404 Not Found"),
+    ],
+    ids=["400 naming another cause", "404", "404 without the provider's message"],
+)
+async def test_a_gateway_refusal_naming_another_cause_keeps_the_blocks(refusal):
+    """As a direct 404 is: never re-sent without the blocks."""
+    gateway = _Gateway(refusal)
+    messages = _round(_kept())
+    with pytest.raises(openai.InternalServerError):
+        await gateway.provider().chat(messages, model=MODEL, tools=[TOOL])
+    assert len(gateway.sent) == 1
+    assert not messages[1]._provider_extra[EXTRA_KEY].refused
 
 
 REFUSED_BLOCKS = {"error": {"message": "Invalid `signature` in `thinking` block"}}
