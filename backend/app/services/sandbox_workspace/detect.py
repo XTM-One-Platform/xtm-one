@@ -742,6 +742,60 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
     return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
 
 
+#: A Relay ``src`` larger than this is not added to a narrow checkout (OpenCTI's front is about 24 MB).
+MAX_RELAY_SOURCE_BYTES = 64 * 1024 * 1024
+#: The ``src`` of a ``relay.config.js`` / ``.ts`` (``src: './src'``); a JSON config is parsed.
+_RELAY_JS_SRC = re.compile(r"\bsrc\s*:\s*[\"'`]([^\"'`$]+)[\"'`]")
+#: The source files of an added Relay ``src`` whose relative imports outside it are kept.
+RELAY_SOURCE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs")
+
+
+def relay_source_dirs(configs: Mapping[str, bytes], sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:
+    """The Relay ``src`` directories a narrow checkout adds: the compiler reads every fragment of them.
+
+    A checkout of ``opencti-front/src/utils/hooks`` keeps the project's
+    ``relay.config.json`` and the schema it names, but the Relay compiler
+    and the test transform read every ``graphql`` tag of the config's
+    ``src``: a query spreading a fragment defined elsewhere fails as an
+    undefined fragment. *configs* maps the configurations read in or above
+    the sub_paths (:func:`is_referencing_config`) to their content, *sizes*
+    every regular file of the repository. The ``src`` of each
+    ``relay.config.*`` whose directory holds a sub_path is added when it is
+    not under a sub_path already, lies in the repository (never its root)
+    and holds at most :data:`MAX_RELAY_SOURCE_BYTES`; sorted.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+
+    def kept(path: str) -> bool:
+        return any(path == s or path.startswith(s + "/") for s in wanted)
+
+    found: set[str] = set()
+    for path, data in sorted(configs.items()):
+        name = posixpath.basename(path)
+        if not name.startswith("relay.config.") or _skipped(path):
+            continue
+        directory = posixpath.dirname(path)
+        if not any(not directory or s == directory or s.startswith(directory + "/") for s in wanted):
+            continue
+        if name.endswith(".json"):
+            src = _json(data).get("src")
+        else:
+            match = _RELAY_JS_SRC.search(_text(data[:MAX_REQUIREMENTS_BYTES]))
+            src = match.group(1) if match else None
+        target = _script_path(directory, src.strip()) if isinstance(src, str) and src.strip() else None
+        if not target or kept(target) or _skipped(target + "/x"):
+            continue
+        total = sum(size for file, size in sizes.items() if file.startswith(target + "/"))
+        if 0 < total <= MAX_RELAY_SOURCE_BYTES:
+            found.add(target)
+    return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))
+
+
+def is_relay_source(path: str) -> bool:
+    """Whether *path* is a source file of an added Relay ``src`` whose relative imports are followed."""
+    return path.endswith(RELAY_SOURCE_SUFFIXES) and not _skipped(path)
+
+
 def companions(sizes: Mapping[str, int], sub_paths: Iterable[str]) -> list[str]:
     """The files outside *sub_paths* a narrow checkout keeps so its checks are detected.
 
