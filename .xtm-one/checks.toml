@@ -2085,7 +2085,7 @@ report = "lines"
 # new EE directory is named before the push, not one CI cycle later; an edit of an existing file is
 # not (pre_push_on).
 [check.editions]
-description = "the Editions gate: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
+description = "the License edition check: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
 argv = ["python", "scripts/license_headers.py", "--check"]
 cwd = "backend"
 timeout = 300
