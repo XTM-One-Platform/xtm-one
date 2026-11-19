@@ -51,6 +51,12 @@ without widening the snippet into its neighbours or numbering lines that the
 earlier edits of the call shift. ``occurrence`` past the count is refused with
 the count.
 
+An edit may take its replacement from a workspace file: ``replace_from`` (a
+workspace path, ``sandbox_edit_file`` only) instead of ``replace``. The caller
+reads each file named by :func:`replace_from_sources` and passes its text to
+:func:`with_replace_from`; a section drafted in ``work/`` is appended or inserted
+into a source file without re-sending its text.
+
 The diff is a read-back, not a patch: a line longer than :data:`LONG_LINE_CHARS`
 shows only what changed, with :data:`CHANGE_CONTEXT_CHARS` unchanged characters
 around it and the rest counted, so a one-word edit of a 17 KB table row
@@ -67,6 +73,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import replace as replace_fields
 
@@ -171,6 +178,38 @@ def parse_edits(raw: object, *, allow_ranges: bool = False) -> list[Edit]:
         occurrence = _parse_occurrence(i, item, replace_all) if allow_ranges else 0
         edits.append(Edit(find=find, replace=replace, replace_all=replace_all, occurrence=occurrence))
     return edits
+
+
+def replace_from_sources(raw: object) -> list[tuple[int, str]]:
+    """``(index, path)`` of each edit of *raw* whose replacement is a workspace file (``replace_from``).
+
+    Raises :class:`EditError` for a ``replace_from`` that is not a path or that
+    comes with a non-empty ``replace``. Anything else is left to :func:`parse_edits`.
+    """
+    if not isinstance(raw, list):
+        return []
+    sources: list[tuple[int, str]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict) or item.get("replace_from") in (None, ""):
+            continue
+        source = item["replace_from"]
+        if not isinstance(source, str) or not source.strip():
+            raise EditError(f"edit {index + 1}: 'replace_from' must be a workspace path, e.g. work/section.md")
+        if item.get("replace"):
+            raise EditError(f"edit {index + 1}: give either 'replace' or 'replace_from', not both")
+        sources.append((index, source.strip()))
+    return sources
+
+
+def with_replace_from(raw: Sequence[object], texts: dict[int, str]) -> list[object]:
+    """*raw* with the ``replace`` of each edit indexed in *texts* set to that text, ``replace_from`` dropped."""
+    out: list[object] = []
+    for index, item in enumerate(raw):
+        if index in texts and isinstance(item, dict):
+            item = {key: value for key, value in item.items() if key != "replace_from"}
+            item["replace"] = texts[index]
+        out.append(item)
+    return out
 
 
 def _parse_occurrence(i: int, item: dict[str, object], replace_all: bool) -> int:
