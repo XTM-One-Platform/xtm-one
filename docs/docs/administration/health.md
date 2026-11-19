@@ -81,6 +81,8 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Quota near ceiling | Warning | A platform-wide agentic ceiling is 90 % used in its current period (one finding per period). Reading it consumes no quota |
 | Dependency unreachable | Critical | Redis or the object storage does not answer its readiness probe within 4 seconds (one finding per dependency) |
 | Trace backlog | Warning | Over 1,000 traces wait to be written to the trace store, so analytics and traces lag |
+| No worker running | Critical | No worker says it is running, so queued runs, renders and indexing wait until one starts |
+| Model failing | Warning | Over 5 % of a model's calls in the last hour failed, with at least 20 calls (one finding per model) |
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
