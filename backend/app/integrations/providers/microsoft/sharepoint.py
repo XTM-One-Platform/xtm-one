@@ -21,6 +21,7 @@ from ._common import (
 from ._drive import (
     _SHARING_LINK_PATH_RE,
     _WORKBOOK_EXTS,
+    _authorship_lines,
     _encode_drive_path,
     _read_drive_item,
     _read_workbook_worksheet,
@@ -368,7 +369,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 "list site files",
                 params={
                     "$top": str(count),
-                    "$select": "id,name,size,lastModifiedDateTime,webUrl,folder",
+                    "$select": "id,name,size,lastModifiedDateTime,lastModifiedBy,createdBy,webUrl,folder",
                 },
                 expected_statuses={400, 403, 404},
             )
@@ -397,10 +398,15 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     f" ({item.get('size', 0)} bytes)" if not is_folder else ""
                 )
                 lines.append(
-                    f"{prefix}{name}{size_info}\n"
-                    f"  Path: {rel_path}\n"
-                    f"  Modified: {item.get('lastModifiedDateTime', '')}\n"
-                    f"  URL: {item.get('webUrl', '')}"
+                    "\n".join(
+                        [
+                            f"{prefix}{name}{size_info}",
+                            f"  Path: {rel_path}",
+                            f"  Modified: {item.get('lastModifiedDateTime', '')}",
+                            *_authorship_lines(item, indent="  "),
+                            f"  URL: {item.get('webUrl', '')}",
+                        ]
+                    )
                 )
             return "\n---\n".join(lines)
 
@@ -465,7 +471,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 _PROVIDER,
                 "access site file",
                 params={
-                    "$select": "id,name,size,file,folder,webUrl,@microsoft.graph.downloadUrl"
+                    "$select": "id,name,size,file,folder,webUrl,lastModifiedBy,createdBy,@microsoft.graph.downloadUrl"
                 },
             )
             if err:
