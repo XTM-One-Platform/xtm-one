@@ -52,6 +52,7 @@ export const SECURITY_OPTION_LABELS = {
   video_public_links_enabled: "Public video links",
   dashboard_public_links_enabled: "Published dashboard links",
   browser_private_targets: "Browser profiles on private networks",
+  web_fetch_trusted_ca_certificates: "Trusted certificates for web fetches",
   scheduled_work_items_enabled: "Scheduled work items",
   phone_notification_content: "Phone notification content",
   companion_pin_required: "Require a PIN on the mobile companion",
@@ -132,6 +133,8 @@ export const SECURITY_OPTION_DESCRIPTIONS = {
     "Let the people who manage a custom dashboard publish it as a link anyone can open without an account, showing a snapshot of its data read with the publisher's access. Off by default; off, every published link stops working at once and none can be published, and turning it back on restores them.",
   browser_private_targets:
     "Let a browser profile open an application on a private network, on the hosts it declares: its sign-in, the agents browsing with it and Video Studio recordings. Loopback, link-local and cloud metadata addresses stay refused. Off, browser profiles reach public addresses only, like the agent browser tool.",
+  web_fetch_trusted_ca_certificates:
+    "PEM certificates added to the verification of web page fetches (web_fetch, the knowledge base URL crawl, Deep Investigation): a private certificate authority, or a host's self-signed certificate. Verification stays on and the host name must still match. Empty trusts the system store alone.",
   scheduled_work_items_enabled:
     "Let every agent schedule a one-off action from a chat and run it at the time asked, with no assignment. Off, the scheduling tools answer that scheduling is disabled by the administrator and nothing scheduled is run; items that come due meanwhile are marked missed.",
   companion_pin_required:
@@ -449,6 +452,7 @@ const SECURITY_OPTION_EMPTY_LIST = {
   origins: "Empty: no origin is trusted beyond the policy.",
   modules: "Empty: every blocked module stays blocked.",
   tools: "Empty: no tool is screened.",
+  certificates: "Empty: only the system certificate store is trusted.",
 } as const;
 
 /**
@@ -530,6 +534,7 @@ export function groupOptions(options: SecurityOption[]): [string, SecurityOption
 /** The text a number or list field starts from: the value as the admin would type it. */
 export function fieldText(option: SecurityOption, value: SecurityOptionValue): string {
   if (Array.isArray(value)) return value.join(", ");
+  if (option.kind === "certificates" && typeof value === "string") return value;
   return option.kind === "int" && typeof value === "number" ? String(value) : "";
 }
 
@@ -613,9 +618,26 @@ export function listProblem(option: SecurityOption, value: SecurityOptionValue):
     : "Not a Python module name: {entries}";
 }
 
+/** A certificates value as the read-only view shows it, read by `t_i18n(CERTIFICATE_COUNT, { count })`. */
+export const CERTIFICATE_COUNT = "{count, plural, one {# certificate} other {# certificates}}";
+
+/** How many PEM certificates a value holds. */
+export function certificateCount(value: SecurityOptionValue): number {
+  return typeof value === "string" ? (value.match(/-----BEGIN CERTIFICATE-----/g) ?? []).length : 0;
+}
+
+/** A certificates draft that holds no certificate, or text around them, as the message to show, else `null`. */
+export function certificatesProblem(option: SecurityOption, value: SecurityOptionValue): string | null {
+  if (option.kind !== "certificates" || typeof value !== "string" || value.trim() === "") return null;
+  if (/PRIVATE KEY/.test(value)) return "Paste the certificate only, never its private key";
+  const rest = value.replace(/-----BEGIN CERTIFICATE-----\s[\s\S]*?-----END CERTIFICATE-----/g, "").trim();
+  return certificateCount(value) === 0 || rest !== "" ? "Paste PEM certificates only, each from BEGIN CERTIFICATE to END CERTIFICATE" : null;
+}
+
 /** A value as the read-only view shows it (translation keys for booleans and choices). */
 export function displayValue(option: SecurityOption, value: SecurityOptionValue): string {
   if (option.kind === "bool") return value ? "On" : "Off";
+  if (option.kind === "certificates") return certificateCount(value) ? CERTIFICATE_COUNT : "None";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "None";
   if (value === null || value === "") return "None";
   if (option.kind === "choice") {

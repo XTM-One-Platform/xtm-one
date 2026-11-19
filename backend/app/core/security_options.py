@@ -63,6 +63,7 @@ from app.core.config import (
     Settings,
     parse_allowed_modules,
     parse_scanned_tools,
+    parse_trusted_certificates,
     parse_trusted_origins,
 )
 
@@ -81,10 +82,15 @@ SOURCE_DATABASE = "database"
 SOURCE_DEFAULT = "default"
 
 #: ``tools``: tool names (``parse_scanned_tools``), a list like ``origins``.
-OptionKind = Literal["bool", "choice", "int", "origins", "modules", "tools"]
+#: ``certificates``: PEM text (``parse_trusted_certificates``), one string.
+OptionKind = Literal["bool", "choice", "int", "origins", "modules", "tools", "certificates"]
 
 #: The list kinds: typed in as entries, emptied only from the field.
 LIST_KINDS = frozenset({"origins", "modules", "tools"})
+
+#: The kinds whose hardened value is empty, which only the field sets: a
+#: blank variable counts as unset.
+EMPTIED_IN_THE_FIELD_KINDS = LIST_KINDS | {"certificates"}
 
 #: Bounds on list values an administrator types in, far above any real use.
 MAX_LIST_ENTRIES = 50
@@ -162,6 +168,8 @@ class SecurityOption:
             return value if isinstance(value, frozenset) else parse_allowed_modules(value)
         if self.kind == "choice":
             return str(value or "").strip().lower()
+        if self.kind == "certificates":
+            return str(value or "")
         return value
 
     def normalize(self, value: Any) -> Any:
@@ -191,6 +199,11 @@ class SecurityOption:
                     raise ValueError(f"must be {self.off_value} (off), or between {self.minimum} and {self.maximum}")
                 raise ValueError(f"must be between {self.minimum} and {self.maximum}")
             return value
+        if self.kind == "certificates":
+            if not isinstance(value, str):
+                raise ValueError("must be PEM text")
+            # The message names the field's variable, as the boot refusal does.
+            return parse_trusted_certificates(value, "the value")
         if self.kind == "tools":
             return tuple(parse_scanned_tools(_list_entries(value, max_entries=MAX_SCANNED_TOOLS), self.env_var))
         entries = _list_entries(value)
@@ -401,6 +414,12 @@ SECURITY_OPTIONS: Mapping[str, SecurityOption] = MappingProxyType(
             SecurityOption("video_public_links_enabled", "bool", "access", "Public video links"),
             SecurityOption("dashboard_public_links_enabled", "bool", "access", "Published dashboard links"),
             SecurityOption("browser_private_targets", "bool", "tools", "Browser profiles on private networks"),
+            SecurityOption(
+                "web_fetch_trusted_ca_certificates",
+                "certificates",
+                "network",
+                "Trusted certificates for web fetches",
+            ),
             SecurityOption("scheduled_work_items_enabled", "bool", "agents", "Scheduled work items"),
             SecurityOption("companion_pin_required", "bool", "authentication", "Require a PIN on the mobile companion"),
             SecurityOption(
@@ -699,7 +718,7 @@ def where_to_set(key: str, env_value: str, *, sentence_start: bool = False) -> s
     option = SECURITY_OPTIONS[key]
     name = f'"{option.label}"'
     locked = is_environment_locked(key)
-    if option.kind in LIST_KINDS and not env_value:
+    if option.kind in EMPTIED_IN_THE_FIELD_KINDS and not env_value:
         text = (
             f"unset {option.env_var} and restart (the variable locks the {name} field in "
             f"{SECURITY_OPTIONS_PATH}), and leave that field empty"

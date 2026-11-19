@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.config import count_trusted_certificates
 from app.core.proxy_headers import TRUST_PROXY_HEADERS_RISK, UPGRADING_SECTION
 from app.core.security_options import (
     REFRESH_INTERVAL_SECONDS,
@@ -71,6 +72,11 @@ _RELAXATION_WARNINGS: Mapping[str, str] = {
         "A2A outbound destination guard relaxed for %s (Settings > Access and security) - "
         "development only, and every other destination is still refused. Clear "
         "the field outside local testing."
+    ),
+    "web_fetch_trusted_ca_certificates": (
+        "Web page fetches trust administrator-supplied certificates (%s; Settings > Access and "
+        "security > Trusted certificates for web fetches) on top of the system store. Verification "
+        "stays on. Clear the field to trust the system store alone."
     ),
     # Its variable is reported at boot by ``core/proxy_headers.py``.
     "trust_proxy_headers": (
@@ -122,6 +128,9 @@ def publish_security_options(values: Mapping[str, Any], *, ticket: int | None = 
         if value and _warned.get(key) != value:
             if isinstance(value, bool):
                 logger.warning(message)
+            elif isinstance(value, str):
+                # A PEM value: its count, never the certificates themselves.
+                logger.warning(message, _display(value))
             else:
                 logger.warning(message, ", ".join(value))
         _warned[key] = value
@@ -194,6 +203,12 @@ def _display(wire: Any) -> str:
         return "on" if wire else "off"
     if isinstance(wire, list):
         return ", ".join(wire) if wire else "an empty list"
+    if isinstance(wire, str) and "-----BEGIN CERTIFICATE-----" in wire:
+        # The certificates themselves are in the entry's details, not its summary.
+        count = count_trusted_certificates(wire)
+        return f"{count} certificate" + ("" if count == 1 else "s")
+    if wire == "":
+        return "empty"
     return str(wire)
 
 

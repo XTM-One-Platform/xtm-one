@@ -34,6 +34,7 @@ import { SettingsGroupTitle, SettingsSaveBar } from "@/components/ui/settings-fo
 import { TagInput } from "@/components/ui/tag-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@filigran/design-system";
 import { Tip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import { useSecurityOptions, useUpdateSecurityOptions } from "@/hooks/api/useSettingsApi";
@@ -45,9 +46,12 @@ import type { SecurityOption, SecurityOptionValue } from "@/types";
 import { ConfigCode, ConfigText } from "./ConfigText";
 import { ScannedToolsField, ScannedToolsSummary } from "./ScannedToolsField";
 import {
+  CERTIFICATE_COUNT,
   SECURITY_OPTION_CHOICE_LABELS,
   SECURITY_OPTION_LIST_EXAMPLES,
   auditFindingPath,
+  certificateCount,
+  certificatesProblem,
   changedValues,
   displayValue,
   fieldText,
@@ -173,7 +177,10 @@ function OptionsCard({ options, target }: { options: SecurityOption[]; target: s
   const editable = options.some((option) => !option.locked);
   const invalid = options.some(
     (option) =>
-      !option.locked && (intProblem(option, valueOf(option)) !== null || listProblem(option, valueOf(option)) !== null),
+      !option.locked &&
+      (intProblem(option, valueOf(option)) !== null ||
+        listProblem(option, valueOf(option)) !== null ||
+        certificatesProblem(option, valueOf(option)) !== null),
   );
   const dirty = Object.keys(changedValues(options, draft)).length > 0;
 
@@ -214,6 +221,7 @@ function OptionsCard({ options, target }: { options: SecurityOption[]; target: s
 
   const shown = (option: SecurityOption, value: SecurityOptionValue) => {
     const text = displayValue(option, value);
+    if (text === CERTIFICATE_COUNT) return t_i18n(text, { count: certificateCount(value) });
     return option.kind === "bool" || option.kind === "choice" || text === "None" ? t_i18n(text) : text;
   };
 
@@ -280,6 +288,32 @@ function OptionsCard({ options, target }: { options: SecurityOption[]; target: s
                 minimum: option.minimum ?? 0,
                 maximum: option.maximum ?? 0,
               })}
+            </span>
+          )}
+        </div>
+      );
+    }
+    if (option.kind === "certificates") {
+      // PEM text, pasted whole: one or more certificates, never a key.
+      const problem = certificatesProblem(option, value);
+      return (
+        <div className="flex w-full flex-col gap-1 sm:w-96">
+          <Textarea
+            {...labelled}
+            aria-describedby={problem ? `${ids.description} ${ids.problem}` : ids.description}
+            aria-invalid={problem !== null}
+            className="min-h-28 font-mono text-xs"
+            spellCheck={false}
+            placeholder="-----BEGIN CERTIFICATE-----"
+            value={texts[option.key] ?? ""}
+            onChange={(event) => {
+              setText(option.key, event.target.value);
+              setValue(option.key, event.target.value);
+            }}
+          />
+          {problem && (
+            <span id={ids.problem} className="content-compact text-feedback-error-primary">
+              {t_i18n(problem)}
             </span>
           )}
         </div>

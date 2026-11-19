@@ -274,6 +274,10 @@ def format_value(value: Any) -> str:
         return "true" if value else "false"
     if value is None:
         return "unset"
+    if isinstance(value, str) and "-----BEGIN CERTIFICATE-----" in value:
+        # PEM certificates: how many, never the text.
+        count = value.count("-----BEGIN CERTIFICATE-----")
+        return f"{count} certificate" + ("" if count == 1 else "s")
     if isinstance(value, str):
         return value.strip() or "empty"
     if isinstance(value, set | frozenset | list | tuple):
@@ -1025,6 +1029,18 @@ SECURITY_CONTROLS: tuple[SecurityControl, ...] = (
             "address; only a vault on the platform's own host (a Vault Agent, a 1Password Connect "
             "server beside it) needs its origin listed. Link-local and cloud metadata addresses stay "
             "refused whatever the list holds, and vaults declared in the environment are not affected."
+        ),
+    ),
+    SecurityControl(
+        id="network.web_fetch_trusted_certificates",
+        title="Web page fetches trust the system certificate store alone",
+        setting="web_fetch_trusted_ca_certificates",
+        hardened="empty",
+        enforced=_is_empty("web_fetch_trusted_ca_certificates"),
+        impact=(
+            "web_fetch, the knowledge base URL crawl and Deep Investigation pages no longer reach a host "
+            "whose certificate is self-signed or issued by a private authority. A listed certificate is "
+            "added to verification, never a reason to skip it: the host name must still match."
         ),
     ),
     # -- web -----------------------------------------------------------------

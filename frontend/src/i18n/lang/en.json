@@ -8501,6 +8501,7 @@
   "Loopback token URL origins (development)": "Loopback token URL origins (development)",
   "MCP server URL policy": "MCP server URL policy",
   "Trusted MCP server origins": "Trusted MCP server origins",
+  "Trusted certificates for web fetches": "Trusted certificates for web fetches",
   "Require webhook secrets": "Require webhook secrets",
   "Require verified integration notifications": "Require verified integration notifications",
   "Strict widget rendering": "Strict widget rendering",
@@ -19500,5 +19501,10 @@
   "Connect again to restore your connection.": "Connect again to restore your connection.",
   "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.",
   "Connect again": "Connect again",
-  "Disconnect your account": "Disconnect your account"
+  "Disconnect your account": "Disconnect your account",
+  "PEM certificates added to the verification of web page fetches (web_fetch, the knowledge base URL crawl, Deep Investigation): a private certificate authority, or a host's self-signed certificate. Verification stays on and the host name must still match. Empty trusts the system store alone.": "PEM certificates added to the verification of web page fetches (web_fetch, the knowledge base URL crawl, Deep Investigation): a private certificate authority, or a host's self-signed certificate. Verification stays on and the host name must still match. Empty trusts the system store alone.",
+  "Empty: only the system certificate store is trusted.": "Empty: only the system certificate store is trusted.",
+  "{count, plural, one {# certificate} other {# certificates}}": "{count, plural, one {# certificate} other {# certificates}}",
+  "Paste the certificate only, never its private key": "Paste the certificate only, never its private key",
+  "Paste PEM certificates only, each from BEGIN CERTIFICATE to END CERTIFICATE": "Paste PEM certificates only, each from BEGIN CERTIFICATE to END CERTIFICATE"
 }
