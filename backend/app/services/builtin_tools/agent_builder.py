@@ -4885,6 +4885,13 @@ def build_agent_builder_tool(
                     _token_caller, agent, group_ids
                 )
 
+            # Self fan-out: the stored setting and what it does once the
+            # platform switch and the delegation depth are applied.
+            from app.services.builtin_tools.handover import self_fanout_effective_text
+
+            _self_fanout_stored = _g("allow_self_fanout", True) is not False
+            _self_fanout_effective = self_fanout_effective_text(_self_fanout_stored)
+
             # Who the agent is shared with, named: groups with their member
             # count and people by name and email, each with its tier and id.
             # A caller with no account reads the company-wide tier alone, whose
@@ -4971,7 +4978,8 @@ def build_agent_builder_tool(
                 "",
                 "Handover:",
                 f"  • Handover routing: {_fmt_handovers()}",
-                f"  • Parallel copies of itself: {_yn(_g('allow_self_fanout', True) is not False)}",
+                f"  • Parallel copies of itself (agent setting): {_yn(_self_fanout_stored)}",
+                f"  • Parallel copies of itself (effective): {_self_fanout_effective}",
                 "",
                 "Memory:",
                 f"  • Short-term: {_yn(_g('memory_short_term_enabled', True))}",
