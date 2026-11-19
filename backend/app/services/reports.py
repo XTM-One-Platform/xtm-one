@@ -130,12 +130,34 @@ async def resolve_default_report_template_id(db: AsyncSession) -> uuid.UUID | No
     return None
 
 
+async def _template_has_theme_variants(db: AsyncSession, container_id: uuid.UUID) -> bool:
+    """Whether a template declares a palette per scheme (``theme_variants``).
+
+    Only decides HOW the palette is read; whether the caller may read it at all
+    stays with the visibility-checked loader of ``resolve_template_theme``.
+    """
+    from app.models.template_container import TemplateContainer
+    from app.services.presentations import THEME_VARIANTS_KEY
+
+    meta = (
+        await db.execute(select(TemplateContainer.extra_metadata).where(TemplateContainer.id == container_id))
+    ).scalar_one_or_none()
+    if not isinstance(meta, dict):
+        return False
+    variants = meta.get(THEME_VARIANTS_KEY)
+    return isinstance(variants, dict) and bool(variants)
+
+
 async def effective_report_template(
     db: AsyncSession, container_id: uuid.UUID | None, report_theme: str | None
 ) -> tuple[uuid.UUID | None, str | None]:
     """The template a report is drawn with and the scheme its palette is read for.
 
-    A linked template is applied as authored (``None`` scheme), exactly as
+    A linked template that carries ``theme_variants`` (the seeded brand reports,
+    or any template authored with a second scheme) is read for the report's own
+    scheme, exactly as the brand default is: one template and one theme give one
+    look, whether the template was named or defaulted. A linked template
+    without variants is applied as authored (``None`` scheme), exactly as
     before the brand default existed, so no report skin an author made changes
     look. With none linked, the platform's brand
     (:func:`resolve_default_report_template_id`) is read for the report's own
@@ -143,6 +165,8 @@ async def effective_report_template(
     a light report is the brand on paper and a dark one the brand on screen.
     """
     if container_id is not None:
+        if await _template_has_theme_variants(db, container_id):
+            return container_id, report_theme or DEFAULT_REPORT_THEME
         return container_id, None
     return (
         await resolve_default_report_template_id(db),

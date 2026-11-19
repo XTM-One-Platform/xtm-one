@@ -54,6 +54,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   --report-controlled: hsl(158 65% 28%);
   --report-heading-font: "Geologica", system-ui, sans-serif;
   --report-body-font: "IBM Plex Sans", system-ui, sans-serif;
+  /* The accent as ink on the dark masthead and callout (`--report-bg`): mostly
+     white, so a light scheme's paper-tuned accent stays readable there
+     (pinned in backend/tests/test_reports.py at 4.5:1 on both gradient stops). */
+  --report-accent-on-bg: color-mix(in srgb, var(--report-accent) 30%, white);
 
   --report-radius: 18px;
   --report-shadow: 0 18px 45px hsl(215 57% 10% / 0.1);
@@ -170,7 +174,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--report-accent) 55%, white);
+  color: var(--report-accent-on-bg);
 }
 
 .report-hero h1 {
@@ -217,7 +221,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--report-accent) 55%, white);
+  color: var(--report-accent-on-bg);
 }
 
 .report-verdict-grade {
@@ -739,13 +743,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   color: hsl(215 45% 90%);
 }
 
+.report-callout .report-secno {
+  color: var(--report-accent-on-bg);
+}
+
 .report-score {
   font-family: var(--report-heading-font);
   font-size: 54px;
   font-weight: 900;
   line-height: 1;
   text-align: right;
-  color: color-mix(in srgb, var(--report-accent) 70%, white);
+  color: var(--report-accent-on-bg);
 }
 
 .report-score-label {

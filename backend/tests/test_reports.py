@@ -1053,15 +1053,109 @@ def test_a_report_with_no_template_wears_the_platform_brand(seeded, expected):
     assert scheme == "light"
 
 
-def test_a_linked_template_wins_and_is_applied_as_authored():
-    """An explicit template is never replaced by the brand, and it is read with
-    no scheme, exactly as before the default existed."""
+class _MetadataSession:
+    """A session answering the linked template's ``extra_metadata`` read."""
+
+    def __init__(self, extra_metadata):
+        self.extra_metadata = extra_metadata
+        self.statements: list[str] = []
+
+    async def execute(self, stmt):
+        self.statements.append(str(stmt))
+        value = self.extra_metadata
+
+        class _Result:
+            def scalar_one_or_none(self):
+                return value
+
+        return _Result()
+
+
+@pytest.mark.parametrize("extra_metadata", [None, {}, {"theme_variants": {}}, {"guidance": "x"}])
+def test_a_linked_template_without_variants_is_applied_as_authored(extra_metadata):
+    """An explicit template is never replaced by the brand, and one with a
+    single palette is read with no scheme, exactly as before the default existed."""
     from app.services.reports import effective_report_template
 
     linked = uuid.uuid4()
-    session, asked = _resolver_session({"filigran-report": uuid.uuid4()})
+    session = _MetadataSession(extra_metadata)
     assert asyncio.run(effective_report_template(session, linked, "dark")) == (linked, None)
-    assert asked == [], "a linked template asks nothing of the database"
+    assert all("slug:" not in sql for sql in session.statements), "the brand is never looked up"
+
+
+@pytest.mark.parametrize(("theme", "scheme"), [("light", "light"), ("dark", "dark"), (None, "light")])
+def test_a_linked_template_with_variants_is_read_for_the_report_s_theme(theme, scheme):
+    """Naming the brand template explicitly gives the look of not naming it:
+    a template with ``theme_variants`` is read for the report's own scheme
+    (UX round 1 on #492, B2: a linked brand report printed its dark palette on
+    a light report)."""
+    from app.services.reports import effective_report_template
+
+    linked = uuid.uuid4()
+    session = _MetadataSession({"theme_variants": {"light": {"paper": "#ffffff"}}})
+    assert asyncio.run(effective_report_template(session, linked, theme)) == (linked, scheme)
+
+
+def _css_rgb(value: str) -> tuple[float, float, float]:
+    """``#rrggbb`` or space-syntax ``hsl()`` (what the report seeds use) as sRGB fractions."""
+    import re
+
+    from app.services.presentations import _hsl_to_rgb
+
+    text = value.strip().lower()
+    if text.startswith("#"):
+        return tuple(int(text[i : i + 2], 16) / 255.0 for i in (1, 3, 5))  # type: ignore[return-value]
+    match = re.fullmatch(r"hsl\(([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\)", text)
+    assert match, value
+    return _hsl_to_rgb(float(match[1]), float(match[2]) / 100, float(match[3]) / 100)
+
+
+def _mix_with_white(rgb: tuple[float, float, float], share: float) -> str:
+    """CSS ``color-mix(in srgb, COLOUR share, white)`` as ``#rrggbb``."""
+    return "#" + "".join(f"{round((c * share + (1 - share)) * 255):02x}" for c in rgb)
+
+
+def test_the_accent_ink_on_the_masthead_and_callout_is_readable():
+    """The masthead eyebrow, the verdict label, the callout number and score are
+    drawn in ``--report-accent-on-bg`` on ``--report-bg`` (the callout) and on
+    the masthead gradient from ``background`` to 82% background + white. In both
+    schemes of every brand report that ink reaches 4.5:1 on both stops (UX
+    round 1 on #492, B1: the light accent, tuned for paper, was drawn on the
+    dark masthead at 1.56:1)."""
+    import re
+
+    from app.services.presentations import (
+        css_color_luminance,
+        sanitize_theme_config,
+        scheme_palette,
+        template_theme_variant,
+    )
+    from app.services.reports import REPORT_THEME_CONFIG_KEYS
+    from app.services.template_container_seed import BUILTIN_TEMPLATE_CONTAINERS
+
+    css = (FRONTEND_ROOT / "src" / "components" / "report" / "report.css").read_text(encoding="utf-8")
+    match = re.search(r"--report-accent-on-bg:\s*color-mix\(in srgb, var\(--report-accent\) (\d+)%, white\);", css)
+    assert match, "report.css defines the accent ink for the dark surfaces"
+    share = int(match[1]) / 100
+    for selector in (".report-eyebrow", ".report-verdict-label", ".report-callout .report-secno", ".report-score"):
+        rule = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert rule and "color: var(--report-accent-on-bg)" in rule[1], selector
+
+    def ratio(a: str, b: str) -> float:
+        la, lb = css_color_luminance(a), css_color_luminance(b)
+        assert la is not None and lb is not None, (a, b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+    for seed in (c for c in BUILTIN_TEMPLATE_CONTAINERS if c["kind"] == "report"):
+        base = sanitize_theme_config(seed["theme_config"], keys=REPORT_THEME_CONFIG_KEYS)
+        for scheme in ("dark", "light"):
+            variant = template_theme_variant(seed["extra_metadata"], scheme, keys=REPORT_THEME_CONFIG_KEYS)
+            palette = scheme_palette(base, variant, scheme)
+            ink = _mix_with_white(_css_rgb(palette["accent"]), share)
+            dark_stop = _mix_with_white(_css_rgb(palette["background"]), 1.0)
+            light_stop = _mix_with_white(_css_rgb(palette["background"]), 0.82)
+            for stop in (dark_stop, light_stop):
+                assert ratio(ink, stop) >= 4.5, (seed["slug"], scheme, ink, stop)
 
 
 def test_a_dark_report_reads_the_brand_s_dark_palette():
