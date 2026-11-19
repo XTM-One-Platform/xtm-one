@@ -598,6 +598,47 @@ def extract_from_html(
     return text, title
 
 
+#: The elements a sanitised page drops whole (``sanitize_html``): what runs, styles or fetches
+#: something, never the text a fixture is kept for.
+SANITIZE_DROPPED_ELEMENTS = (
+    "script",
+    "style",
+    "noscript",
+    "svg",
+    "img",
+    "picture",
+    "video",
+    "audio",
+    "source",
+    "track",
+    "iframe",
+    "frame",
+    "object",
+    "embed",
+    "canvas",
+    "link",
+    "template",
+)
+
+
+def sanitize_html(body: bytes) -> bytes:
+    """*body*, an HTML page, without its active and media elements, as UTF-8.
+
+    Drops every element of :data:`SANITIZE_DROPPED_ELEMENTS` with its content and every
+    ``on*`` event attribute, so a page fetched to the workspace is a test fixture as it is
+    (``web_fetch`` ``sanitize``). The text, the headings and the structure stay.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(body, "html.parser")
+    for element in soup.find_all(SANITIZE_DROPPED_ELEMENTS):
+        element.decompose()
+    for element in soup.find_all(True):
+        for name in [attribute for attribute in element.attrs if attribute.lower().startswith("on")]:
+            del element.attrs[name]
+    return soup.decode().encode("utf-8")
+
+
 def validate_outbound_url(url: str, *, allow_private: bool = False) -> str:
     """Validate a URL against the module SSRF policy and return a sanitized copy.
 
