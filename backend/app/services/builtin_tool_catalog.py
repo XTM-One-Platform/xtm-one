@@ -262,6 +262,13 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     oc_defs, _ = build_organization_context_write_tools(user_id=None, caller_is_admin=False)
     catalog["organization_context"] = _extract(oc_defs)
 
+    # User administration (#250): every call checks the acting person is an
+    # administrator, so the builder needs no identity here.
+    from app.services.builtin_tools import build_user_admin_tools
+
+    ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
+    catalog["user_admin"] = _extract(ua_defs)
+
     # Memory Steward (#8258): every call checks the work is the Concierge's.
     from app.services.builtin_tools import build_memory_steward_tools
 

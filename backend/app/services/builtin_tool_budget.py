@@ -100,7 +100,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: Raised to 461,700 for ``extract_stix_from_document``, the ``stix_extractor`` group's grounded
 #: extraction (#9126: +629, total 461,605 on 16 Nov 2026).
 #: Raised to 461,800 for list_shared_state's key_prefix (coordination +~80 on 18 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 461_800
+#: Raised to 466,800 for the user_admin group (#250: eleven tools, 4,873, opt-in and
+#: administrator-only, total 466,669 on 18 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 466_800
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

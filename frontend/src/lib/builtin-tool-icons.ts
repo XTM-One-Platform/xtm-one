@@ -19,16 +19,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * component. A name the map does not know falls back to `Sparkles`.
  */
 import {
-  Activity, BarChart3, Blocks, Boxes, Building2, ChartLine, Clapperboard, Code2, Database, FileChartColumn, FileText,
-  FlaskConical, Globe, LayoutGrid, LayoutTemplate, Library, ListTodo, Monitor, MonitorCog, Palette, Presentation, Scale,
-  ScanEye, ShieldCheck, Smartphone, Sparkles, Telescope, Workflow,
+  Activity, BarChart3, Blocks, Boxes, Brain, Building2, ChartLine, Clapperboard, Code2, Compass, Database, FileChartColumn,
+  FileText, FlaskConical, Globe, LayoutGrid, LayoutTemplate, Library, ListTodo, Monitor, MonitorCog, Palette, Presentation,
+  Scale, ScanEye, ShieldCheck, Smartphone, Sparkles, Stethoscope, Telescope, UserCog, Workflow,
   type LucideIcon,
 } from "lucide-react";
 
+// Every `icon` of backend/app/services/builtin_tool_groups.py is a key here
+// (backend/tests/test_builtin_tool_groups.py pins it).
 const BUILTIN_TOOL_ICONS: Readonly<Record<string, LucideIcon>> = {
-  Activity, BarChart3, Blocks, Boxes, Building2, ChartLine, Clapperboard, Code2, Database, FileChartColumn, FileText,
-  FlaskConical, Globe, LayoutGrid, LayoutTemplate, Library, ListTodo, Monitor, MonitorCog, Palette, Presentation, Scale,
-  ScanEye, ShieldCheck, Smartphone, Sparkles, Telescope, Workflow,
+  Activity, BarChart3, Blocks, Boxes, Brain, Building2, ChartLine, Clapperboard, Code2, Compass, Database, FileChartColumn,
+  FileText, FlaskConical, Globe, LayoutGrid, LayoutTemplate, Library, ListTodo, Monitor, MonitorCog, Palette, Presentation,
+  Scale, ScanEye, ShieldCheck, Smartphone, Sparkles, Stethoscope, Telescope, UserCog, Workflow,
 };
 
 export function builtinToolIcon(name: string | undefined): LucideIcon {

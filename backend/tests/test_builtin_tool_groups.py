@@ -56,8 +56,9 @@ def test_one_group_per_catalog_id():
     # improvement proposals, 19 with Concierge evaluation, 20 with its memory
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
-    # the grounded STIX extraction, its own group so Threat Intelligence never carries it.
-    assert len(_IDS) == len(set(_IDS)) == 26
+    # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
+    # 27 with user administration (#250).
+    assert len(_IDS) == len(set(_IDS)) == 27
     assert set(_IDS) == set(catalog)
 
 
@@ -91,6 +92,20 @@ def test_concierge_only_groups_are_the_specialists_suites():
 def test_every_group_has_its_card():
     for group in BUILTIN_TOOL_GROUPS:
         assert group.name and group.tagline and group.category and group.icon, group.id
+
+
+def test_every_group_icon_is_resolved_by_the_frontend_map():
+    """An ``icon`` the frontend map does not know renders as the ``Sparkles`` fallback."""
+    import re
+
+    source = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "builtin-tool-icons.ts").read_text(
+        encoding="utf-8"
+    )
+    body = re.search(r"BUILTIN_TOOL_ICONS[^=]*=\s*\{(.*?)\};", source, re.S)
+    assert body, "BUILTIN_TOOL_ICONS not found in builtin-tool-icons.ts"
+    mapped = set(re.findall(r"\b([A-Z][A-Za-z0-9]*)\b", body.group(1)))
+    missing = {group.id: group.icon for group in BUILTIN_TOOL_GROUPS if group.icon not in mapped}
+    assert not missing, f"add these icons to frontend/src/lib/builtin-tool-icons.ts: {missing}"
 
 
 def test_no_card_copy_carries_an_em_dash():

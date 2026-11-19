@@ -4563,6 +4563,14 @@ async def run_agent_chat(
                         ),
                     )
                 )
+            # User and group administration (#250): the same rule, bound by an
+            # administrator, wired for an administrator's turn; each executor checks again.
+            from app.services.builtin_tools import build_user_admin_tools, offers_user_admin
+
+            if offers_user_admin(agent_builtin_tool_ids, acting_user_id=user_id, acting_is_admin=_caller_admin):
+                composite.add_tools(
+                    *build_user_admin_tools(user_id=user_id, caller_is_admin=_caller_admin, agent_name=agent.name)
+                )
             # The CTEM case tools (#11545): the Remediation Coordinator and
             # the Mobilization Analyst, as the person asking, XTM One only.
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
