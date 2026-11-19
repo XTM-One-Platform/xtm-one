@@ -191,21 +191,34 @@ _SCO_ORDERING_ALIASES: dict[str, str] = {
 }
 
 
+def _default_ordering(search: str | None) -> str:
+    """The ``orderBy`` of a call that names none: relevance for a keyword search.
+
+    OpenCTI ranks the matches of a ``search`` by ``_score`` (its own search
+    page sorts by it); sending ``created_at`` instead returns the newest of
+    possibly thousands of keyword matches, not the best ones. Without a
+    keyword there is no score, so the newest come first.
+    """
+    return "_score" if (search or "").strip() else "created_at"
+
+
 def _resolve_ordering(
     order_by: str | None,
     valid: tuple[str, ...],
     aliases: dict[str, str],
     enum_name: str,
+    search: str | None = None,
 ) -> tuple[str, str | None]:
     """Return ``(key, error)``: the enum key ``order_by`` names, or an error listing them.
 
     A key of the enum passes as is, an alias or a case variant is mapped, an
-    empty value falls back to ``created_at``; anything else is refused before
-    the call with the valid values, so the agent corrects it in one step.
+    empty value falls back to :func:`_default_ordering` (``_score`` with a
+    *search*, else ``created_at``); anything else is refused before the call
+    with the valid values, so the agent corrects it in one step.
     """
     raw = (order_by or "").strip()
     if not raw:
-        return "created_at", None
+        return _default_ordering(search), None
     if raw in valid:
         return raw, None
     lowered = raw.lower()
@@ -1530,7 +1543,7 @@ def register_knowledge(
                     "search": search,
                     "types": types,
                     "first": min(limit, 50),
-                    "orderBy": "created_at",
+                    "orderBy": _default_ordering(search),
                     "orderMode": "desc",
                 },
             )
@@ -1604,7 +1617,7 @@ def register_knowledge(
         types: list[str] | None = None,
         search: str = "",
         limit: int = 15,
-        order_by: str = "created_at",
+        order_by: str = "",
         order_mode: str = "desc",
         filters: str = "",
     ) -> str | ToolResult:
@@ -1616,7 +1629,7 @@ def register_knowledge(
         if (routed := await _label_type_route(types, search, limit)) is not None:
             return routed
         order_by, order_err = _resolve_ordering(
-            order_by, _SDO_ORDERINGS, _SDO_ORDERING_ALIASES, "StixDomainObjectsOrdering"
+            order_by, _SDO_ORDERINGS, _SDO_ORDERING_ALIASES, "StixDomainObjectsOrdering", search
         )
         if order_err:
             return order_err
@@ -1683,12 +1696,12 @@ def register_knowledge(
         types: list[str] | None = None,
         search: str = "",
         limit: int = 15,
-        order_by: str = "created_at",
+        order_by: str = "",
         order_mode: str = "desc",
     ) -> str:
         """List STIX cyber observables, optionally filtered by type and search."""
         order_by, order_err = _resolve_ordering(
-            order_by, _SCO_ORDERINGS, _SCO_ORDERING_ALIASES, "StixCyberObservablesOrdering"
+            order_by, _SCO_ORDERINGS, _SCO_ORDERING_ALIASES, "StixCyberObservablesOrdering", search
         )
         if order_err:
             return order_err
@@ -5312,8 +5325,8 @@ def register_knowledge(
             description=(
                 "Search for entities in OpenCTI by keyword. Returns STIX domain objects "
                 "(threat actors, malware, indicators, reports, incidents, etc.) and "
-                "STIX cyber observables (IPs, domains, URLs, hashes, etc.). "
-                "Use 'types' to filter by entity type."
+                "STIX cyber observables (IPs, domains, URLs, hashes, etc.), best match "
+                "first. Use 'types' to filter by entity type."
                 + _ENTITY_LISTING_CUT_NOTE
             ),
             input_schema={
@@ -5423,10 +5436,10 @@ def register_knowledge(
                     "order_by": {
                         "type": "string",
                         "description": (
-                            "A StixDomainObjectsOrdering key (default created_at), e.g. created_at, updated_at, "
-                            "created, modified, name, confidence, published. An invalid one is answered with all keys."
+                            "A StixDomainObjectsOrdering key, e.g. created_at, updated_at, created, modified, "
+                            "name, confidence, published, _score. Default: _score (relevance, best match first) "
+                            "with a search, created_at otherwise. An invalid one is answered with all keys."
                         ),
-                        "default": "created_at",
                     },
                     "order_mode": {
                         "type": "string",
@@ -5486,10 +5499,10 @@ def register_knowledge(
                     "order_by": {
                         "type": "string",
                         "description": (
-                            "Sort key (default created_at): entity_type, created_at, updated_at, "
-                            "observable_value (value), objectMarking, createdBy, creator, _score"
+                            "Sort key: entity_type, created_at, updated_at, observable_value (value), "
+                            "objectMarking, createdBy, creator, _score. Default: _score (relevance, best "
+                            "match first) with a search, created_at otherwise."
                         ),
-                        "default": "created_at",
                     },
                     "order_mode": {
                         "type": "string",

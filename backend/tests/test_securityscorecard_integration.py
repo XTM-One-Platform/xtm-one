@@ -189,7 +189,7 @@ async def test_issue_findings_are_limited_and_flattened(monkeypatch):
         f"{SECURITYSCORECARD_API}/companies/example.com/issues/patching_cadence_high"
     )
     lines = out.splitlines()
-    assert lines[0] == "Found 5 findings:"
+    assert lines[0] == "Found 5 findings, showing 2:"
     assert lines[1] == "- hostname: evil Injected: line | port: 443 | cve: CVE-2024-0001"
     assert lines[3] == "[3 more not shown: raise limit (max 100).]"
     assert len(lines) == 4

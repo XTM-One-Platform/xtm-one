@@ -170,7 +170,7 @@ async def test_limit_caps_the_listing_and_says_so(monkeypatch):
 
     out = await fn(limit=1)
 
-    assert out.startswith("Found 4 alert rules:")
+    assert out.startswith("Found 4 alert rules, showing 1:")
     assert "Showing 1 of 4 rules" in out
 
 

@@ -3,6 +3,10 @@
 OpenCTI refuses an ``orderBy`` outside its GraphQL enum with a raw
 BAD_USER_INPUT error. The listing tools map common aliases (``value`` on
 observables) and refuse anything else before the call, listing the valid keys.
+
+A keyword search with no ``order_by`` ranks its matches by relevance
+(``_score``), as OpenCTI's own search page does: ordering thousands of keyword
+matches by ``created_at`` returns the newest, not the one the keyword names.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from app.integrations.providers.opencti import build_tools
 from app.tools.base import CallableToolExecutor, ToolCall
 
 LISTS = {
+    "search_opencti": {"data": {"stixCoreObjects": {"edges": [], "pageInfo": {"globalCount": 0}}}},
     "list_opencti_observables": {"data": {"stixCyberObservables": {"edges": [], "pageInfo": {"globalCount": 0}}}},
     "list_opencti_entities": {"data": {"stixDomainObjects": {"edges": [], "pageInfo": {"globalCount": 0}}}},
 }
@@ -82,3 +87,23 @@ async def test_an_invalid_value_is_refused_before_the_call_with_the_valid_keys(
     assert "Valid values:" in content
     assert a_valid_key in content
     assert "BAD_USER_INPUT" not in content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", ["search_opencti", "list_opencti_observables", "list_opencti_entities"])
+async def test_a_keyword_search_ranks_by_relevance(tool: str) -> None:
+    _, sent = await _call(tool, {"search": "an incident keyword"})
+    assert _order_by(sent) == ["_score"]
+
+
+@pytest.mark.asyncio
+async def test_search_opencti_without_a_keyword_lists_the_newest() -> None:
+    _, sent = await _call("search_opencti", {"search": "  "})
+    assert _order_by(sent) == ["created_at"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", ["list_opencti_observables", "list_opencti_entities"])
+async def test_an_order_the_caller_names_wins_over_relevance(tool: str) -> None:
+    _, sent = await _call(tool, {"search": "an incident keyword", "order_by": "created_at"})
+    assert _order_by(sent) == ["created_at"]

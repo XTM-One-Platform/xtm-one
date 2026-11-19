@@ -1180,6 +1180,7 @@ def build_tools(
                 items,
                 _fmt_group,
                 noun="group with IOCs",
+                plural="groups with IOCs",
                 empty_msg="No groups with IOCs found.",
             )
         # Per-group indicators, usually keyed by type.
@@ -1235,6 +1236,7 @@ def build_tools(
                 items,
                 _fmt_group,
                 noun="group with YARA rules",
+                plural="groups with YARA rules",
                 empty_msg="No groups with YARA rules found.",
             )
         data, err = await _get(
@@ -1283,6 +1285,7 @@ def build_tools(
                 items,
                 _fmt_group,
                 noun="group with negotiations",
+                plural="groups with negotiations",
                 empty_msg="No groups with negotiation chats found.",
             )
         data, err = await _get(
@@ -1411,6 +1414,7 @@ def build_tools(
                 items,
                 _fmt_group,
                 noun="group with ransom notes",
+                plural="groups with ransom notes",
                 empty_msg="No groups with ransom notes found.",
             )
         data, err = await _get(
