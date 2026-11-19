@@ -223,7 +223,6 @@ An agent can post an Adaptive Card in Teams as the account that authorized the i
 An agent can open a SharePoint or OneDrive folder shared with the account that authorized the integration from its link alone: the `Copy link` sharing link, or the folder's address in the browser. The folder does not need to be on a site the account is a member of, and no site has to be looked up first. The tool is `list_microsoft_folder_by_url`.
 
 - **What the agent gets.** Every item of the folder with its kind (folder or file), its size, when it last changed, its web address and the URL the other file tools take. A file is read with `get_microsoft_file_by_url` or kept in the conversation with `download_microsoft_file`. A subfolder is listed the same way, or by adding its name to the folder's link (the link followed by `/Contracts`). A large folder is listed page by page, 50 items at a time by default and up to 200.
-- **Who changed it.** The folder listing, `list_microsoft_site_files`, `list_microsoft_drive_files` and the file reads (`get_microsoft_file_by_url`, `get_microsoft_file_content`, `get_microsoft_site_file_content`) name who last modified each item and who created it, when Microsoft returns it, so an agent can tell which copy of a file is current before it renames or deletes one.
 - **A folder given to the file tools.** `get_microsoft_file_by_url` answers a folder's link with the folder's first items and downloads nothing. `download_microsoft_file` refuses a folder.
 - **Search.** Files newly shared with the account can take a while to show in `search_microsoft_files`; listing their folder shows them at once.
 - **Sites.** `list_microsoft_site_files` takes a site by the ID `list_microsoft_sharepoint_sites` gives, by its address (`https://contoso.sharepoint.com/sites/finance`), or as `contoso.sharepoint.com:/sites/finance`. When the account cannot open the site, which is the case when all it holds there is a folder shared with it, the tool says the site is not accessible and points to `list_microsoft_folder_by_url`.
@@ -342,13 +341,24 @@ An agent connected to Ashby works the recruiting pipeline the way a recruiter re
 - **Permissions.** Each Ashby API key holds read and write permissions per module. `Test connection` names the key and the permissions it holds (when the key has `API Keys Read`), and a tool the key may not use says which permission to grant. Without the key's `Allow access to confidential jobs and projects` setting, candidates of confidential jobs are invisible to the agent, as if they did not exist.
 - A read-only binding of the integration offers only the reading tools.
 
+### HiBob: who is writing to the agent
+
+An agent with a HiBob integration bound knows who it is talking to without a tool call. In a chat, a Teams or Slack conversation or an email it answers, the agent receives a short **Sender directory profile** read from HiBob for the sender's email: name, job title, department and sub-department, site and time zone, manager, direct reports (named when there are 10 or fewer) and start date.
+
+- **Read through the agent's binding.** The lookup uses the HiBob integration bound to the agent, so that integration's permissions apply.
+- **Allow-listed fields only.** Only the fields above are requested from HiBob and shown: never compensation, performance, personal contact, health or equity, whatever the integration may read.
+- **Not in the directory.** A sender HiBob does not know (a partner, a customer, a service account) is shown as not in the company directory.
+- **Never in the way.** When HiBob does not answer in time, the profile says the directory is unavailable and the conversation goes on.
+- **Read once a day.** The profile is kept for 24 hours, so the next messages of the conversation make no new HiBob request.
+- **Turning it off.** Set `sender_directory_context` to `false` in the agent's configuration.
+
 ### DocuSign: sending a document for signature
 
 A DocuSign integration lets an agent send a PDF or Word file of the conversation for e-signature and bring the signed copy back.
 
 - **Two ways to connect.** *OAuth* (the default): create an app in DocuSign Admin > Apps and Keys, add the redirect URI shown in the setup guide, paste the Integration Key as Client ID and its Secret Key as Client Secret, then Authorize. *API Key* (the JWT Grant, for unattended assignments): generate an RSA keypair on the app, paste the private key in the API Key field, the Integration Key and your User ID in the extra fields, grant consent once with the link of the setup guide, then Test Connection. Pick the *Environment*: production, or demo for a developer account (test signatures only).
 - **Sending.** `create_docusign_envelope` takes the `file_id` of one to ten PDF or Word files (attached, generated or downloaded in the conversation), a subject, a message, the signers (name, email, optional signing order) and optional carbon copies. With *anchor tabs* the signature, date or name fields are placed on a text of the document (for example `/sig1/`); without them the signer places the fields. The envelope is sent at once, or kept as a draft (`status: created`) to send later with `send_docusign_envelope`.
-- **Following.** `get_docusign_envelope` reports the status (sent, delivered, completed, declined, voided), the sender and every recipient's progress; `list_docusign_envelopes` lists what changed since a date; `resend_docusign_envelope` nudges the signers still pending; `void_docusign_envelope` cancels a sent envelope with a reason.
+- **Following.** `get_docusign_envelope` reports the status (sent, delivered, completed, declined, voided) and every recipient's progress; `list_docusign_envelopes` lists what changed since a date; `resend_docusign_envelope` nudges the signers still pending; `void_docusign_envelope` cancels a sent envelope with a reason.
 - **The signed copy.** `download_docusign_document` brings the signed PDF (every document combined, or one of them, the certificate of completion on request) into the conversation as a file you can download or forward to another tool. Like every download, it asks for approval unless the tool is whitelisted.
 - **Templates.** `list_docusign_templates` and `create_docusign_envelope_from_template` fill a template's roles with named signers.
 - **Read-only bindings** keep the status, listing, template and download tools; the sending, voiding and resending tools are withheld.
