@@ -524,6 +524,41 @@ async def test_get_fleet_prerequisites_lists_the_live_checklist_without_writing(
 
 
 @pytest.mark.asyncio
+async def test_a_second_generation_is_refused_without_waiting_on_the_fleet_row(monkeypatch, session):
+    # #429: the tool read the fleet FOR UPDATE and held the row across the model call, so a
+    # second call waited on it until the statement timeout and answered the generic failure.
+    from app.services import fleet_doc_generation as gen
+    from app.services import fleet_doc_on_create as on_create
+
+    user = _caller(monkeypatch)
+    fleet = _doc_fleet()
+    locks: list = []
+
+    async def _manageable(_db, _model, _uid, _entity_uuid, **kw):
+        locks.append(kw.get("lock"))
+        return fleet, None
+
+    async def _taken(_fleet_id):
+        return False
+
+    async def _state(_fleet_id):
+        return on_create.DocGeneration(generating=True, started_at="2026-11-19T10:38:00+00:00")
+
+    async def _never(*_a, **_kw):
+        raise AssertionError("no second generation starts")
+
+    monkeypatch.setattr(fleet_tools._builder, "_load_manageable_entity_for_builder", _manageable)
+    monkeypatch.setattr(on_create, "claim_generation", _taken)
+    monkeypatch.setattr(on_create, "generation_state", _state)
+    monkeypatch.setattr(gen, "regenerate_fleet_documentation", _never)
+    answer = await _call(str(user.id), "regenerate_fleet_documentation", fleet_id=str(fleet.id))
+    assert answer.startswith("A generation of the documentation of fleet Desk is already running."), answer
+    assert "documentation_generating: true (started 2026-11-19T10:38:00+00:00 UTC" in answer
+    assert locks == [False]
+    assert (session.commits, session.rollbacks) == (0, 1)
+
+
+@pytest.mark.asyncio
 async def test_a_refused_generation_saves_nothing(monkeypatch, session):
     from app.services import fleet_doc_generation as gen
 

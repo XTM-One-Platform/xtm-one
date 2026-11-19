@@ -432,11 +432,14 @@ def build_fleet_tools(
         fields: set[str] | None = None,
         *,
         builtin_ok: bool = False,
+        lock: bool = True,
     ) -> Fleet:
         """A fleet the caller may write, locked; a built-in one only for its writable *fields*.
 
         *builtin_ok*: a write a built-in fleet takes whatever it is (its
         documentation, regenerated as a local version, as the REST route does).
+        *lock*: False for a write serialized another way, which must not hold
+        the row for its whole duration (a documentation generation, #429).
         """
         from app.models.fleet import Fleet
         from app.services.fleets import ensure_builtin_fleet_writable
@@ -445,7 +448,7 @@ def build_fleet_tools(
         # so two concurrent roster or exposure replacements are serialized
         # instead of committing the union of their snapshots.
         fleet, err = await _builder._load_manageable_entity_for_builder(
-            db, Fleet, user.id, fleet_id, action=action, entity_label="fleet", lock=True
+            db, Fleet, user.id, fleet_id, action=action, entity_label="fleet", lock=lock
         )
         if err is not None or fleet is None:
             raise _RefusedError(err or f"Fleet `{fleet_id}` not found or you don't have access.")
@@ -1962,7 +1965,11 @@ def build_fleet_tools(
             fleet_uuid = _one_id(fleet_id, "fleet_id")
             # Same permission as a configuration edit; a built-in fleet gets a
             # local version the next boot keeps (the About page's button).
-            fleet = await _manageable_fleet(db, user, fleet_uuid, builtin_ok=True)
+            # No row lock (#429): the generation marker below serializes two
+            # generations, as on the REST route. A lock held across the model
+            # call made a second call wait on it until the statement timeout and
+            # answer a generic failure instead of the "already running" refusal.
+            fleet = await _manageable_fleet(db, user, fleet_uuid, builtin_ok=True, lock=False)
             wanted = str(section or "").strip() or None
             try:
                 # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
