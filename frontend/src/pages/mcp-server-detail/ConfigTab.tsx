@@ -394,7 +394,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
           {isRemote && (
             <AuthModePicker value={editAuthMode} onChange={setEditAuthMode}>
               {willDropTokens && (
-                <p className="content-compact text-feedback-warning-primary pt-1">
+                <p className="content-compact text-feedback-warning-primary light:text-feedback-warning-tertiary pt-1">
                   {t_i18n("Switching to Secret Headers discards the stored OAuth tokens: you would have to authorize this server again.")}
                 </p>
               )}
@@ -405,7 +405,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
           {isOAuth && (
             <CredentialModePicker value={editCredentialMode} onChange={setEditCredentialMode}>
               {credentialModeChanged && (
-                <p className="content-compact text-feedback-warning-primary pt-1">
+                <p className="content-compact text-feedback-warning-primary light:text-feedback-warning-tertiary pt-1">
                   {editCredentialMode === "per_user"
                     ? t_i18n("Saving discards the shared connection: each person then connects their own account.")
                     : t_i18n("Saving disconnects every person's own account: the server then has to be authorized once for everyone.")}
