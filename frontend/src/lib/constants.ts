@@ -1121,9 +1121,11 @@ const AUDIT_ENTITY_LABELS = {
   browser_profile: "Browser profile",
   channel_bot: "Channel Bot",
   chat_tool_calls: "Chat tool calls",
-  concierge_cycle: "Platform Health cycle",
-  concierge_pet: "Platform Health pet",
-  concierge_settings: "Platform Health settings",
+  concierge_cycle: "Platform Health cycle", // legacy alias for historical audit entries
+  concierge_pet: "Platform Health pet", // legacy alias for historical audit entries
+  concierge_settings: "Platform Health settings", // legacy alias for historical audit entries
+  health_cycle: "Platform Health cycle",
+  health_pet: "Platform Health pet",
   health_settings: "Platform Health settings",
   conversation: "Conversation",
   conversation_files: "Conversation files",

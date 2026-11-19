@@ -110,9 +110,7 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
         async with sessions() as db:
             rows = (await db.execute(select(HealthPet))).scalars().all()
             audits = (
-                (await db.execute(select(AuditLog.action).where(AuditLog.entity_type == "concierge_pet")))
-                .scalars()
-                .all()
+                (await db.execute(select(AuditLog.action).where(AuditLog.entity_type == "health_pet"))).scalars().all()
             )
     assert refused.status_code == 403
     assert created.status_code == 201 and created.json()["slug"] == "owl"
@@ -183,7 +181,7 @@ async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> No
                 (
                     await db.execute(
                         select(AuditLog.action)
-                        .where(AuditLog.entity_type == "concierge_pet")
+                        .where(AuditLog.entity_type == "health_pet")
                         .order_by(AuditLog.created_at)
                     )
                 )

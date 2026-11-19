@@ -209,7 +209,7 @@ async def request_cycle(
         db,
         user=user,
         action="trigger",
-        entity_type="concierge_cycle",
+        entity_type="health_cycle",
         entity_id=result.cycle_id,
         entity_name=target.name,
         summary=f"Asked Platform Health to improve the {body.target_type} '{target.name}'",

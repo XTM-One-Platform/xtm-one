@@ -129,6 +129,10 @@ alias for one minor release (section 2.3).
   renames the row still carrying it in place (schedule, enabled state and history kept, no
   second row) and `fleet_assignment` finds either name meanwhile, so no migration is needed
   for the names (`test_a_reseed_renames_an_assignment_still_under_its_former_name`).
+- Audit entity types: new entries are written `health_cycle`, `health_pet` and
+  `health_settings`. Historical rows keep `concierge_cycle`, `concierge_pet` and
+  `concierge_settings` (the audit log is never rewritten); the frontend
+  `AUDIT_ENTITY_LABELS` maps both forms to the same label.
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no
