@@ -24,6 +24,7 @@ import httpx
 from app.core.egress import egress_client
 from app.core.utils import format_exception_message
 from app.integrations.base import BaseIntegration, OAuthDefaults
+from app.integrations.directory import MAX_NAMED_REPORTS, DirectoryProfile
 from app.integrations.file_delivery import (
     deliver_file,
     fetch_file,
@@ -1205,6 +1206,116 @@ def _format_key_result(fields: Any) -> str:
     if progress is not None:
         parts.append(f"Progress: {progress}%")
     return " | ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Directory lookup (services/sender_directory.py)
+# ---------------------------------------------------------------------------
+
+#: The only fields a directory lookup requests. Anything else the service
+#: user could read (pay, performance, personal contact, health, equity) is
+#: never requested, so it never reaches the platform. A field id the account
+#: does not hold is silently omitted by the API.
+_DIRECTORY_FIELDS: tuple[str, ...] = (
+    "root.id",
+    "root.email",
+    "root.displayName",
+    "work.title",
+    "work.department",
+    "work.division",
+    "work.site",
+    "work.siteTimezone",
+    "work.startDate",
+    "work.reportsTo",
+)
+#: The fields read of every employee to name a manager and direct reports.
+_DIRECTORY_ROSTER_FIELDS: tuple[str, ...] = (
+    "root.id",
+    "root.displayName",
+    "work.title",
+    "work.reportsTo",
+)
+_DIRECTORY_TIMEOUT_SECONDS = 10
+
+
+def _directory_value(emp: dict[str, Any], path: str) -> str:
+    value = _extract_field(emp, path, default="").strip()
+    return "" if value in {"N/A", "None"} else value
+
+
+def _manager_id(emp: dict[str, Any]) -> str:
+    """The id of the employee *emp* reports to, in any of the API's shapes."""
+    for key in ("/work/reportsTo", "/work/reportsTo/id"):
+        value = emp.get(key)
+        if isinstance(value, dict):
+            inner = value.get("value", value)
+            value = inner.get("id") if isinstance(inner, dict) else inner
+        if value:
+            return str(value)
+    work = emp.get("work")
+    if isinstance(work, dict):
+        reports_to = work.get("reportsTo")
+        if isinstance(reports_to, dict) and reports_to.get("id"):
+            return str(reports_to["id"])
+        if isinstance(reports_to, str) and reports_to:
+            return reports_to
+    return ""
+
+
+async def _directory_search(
+    headers: dict[str, str], fields: tuple[str, ...], email: str = ""
+) -> list[dict[str, Any]]:
+    body: dict[str, Any] = {"showInactive": False, "fields": list(fields)}
+    if email:
+        body["filters"] = [{"fieldPath": "root.email", "operator": "equals", "values": [email]}]
+    async with _client(_DIRECTORY_TIMEOUT_SECONDS) as client:
+        resp, err = await safe_request(
+            client, "post", f"{_BASE_URL}/people/search", _PROVIDER, "read the directory", headers=headers, json=body
+        )
+    if err or resp is None:
+        raise RuntimeError(err or "HiBob directory read failed")
+    employees = resp.json().get("employees", [])
+    return [emp for emp in employees if isinstance(emp, dict)]
+
+
+async def lookup_directory_profile(token: str, email: str) -> DirectoryProfile | None:
+    """The directory profile of *email* (``app.integrations.directory``).
+
+    ``None`` when no active employee has that email; raises on any API
+    failure. Two reads: the person, then the roster (id, name, title,
+    manager) for their manager's title and their direct reports.
+    """
+    headers = _build_headers(token)
+    matches = await _directory_search(headers, _DIRECTORY_FIELDS, email=email.strip())
+    if not matches:
+        return None
+    person = matches[0]
+    person_id = _directory_value(person, "root.id") or str(person.get("id") or "")
+    manager_id = _manager_id(person)
+    roster = await _directory_search(headers, _DIRECTORY_ROSTER_FIELDS)
+    manager_name = manager_title = ""
+    reports: list[str] = []
+    for emp in roster:
+        emp_id = _directory_value(emp, "root.id") or str(emp.get("id") or "")
+        if manager_id and emp_id == manager_id:
+            manager_name = _directory_value(emp, "root.displayName")
+            manager_title = _directory_value(emp, "work.title")
+        if person_id and emp_id != person_id and _manager_id(emp) == person_id:
+            reports.append(_directory_value(emp, "root.displayName"))
+    named = tuple(sorted(name for name in reports if name)) if len(reports) <= MAX_NAMED_REPORTS else ()
+    return DirectoryProfile(
+        display_name=_directory_value(person, "root.displayName"),
+        title=_directory_value(person, "work.title"),
+        department=_directory_value(person, "work.department"),
+        sub_department=_directory_value(person, "work.division"),
+        site=_directory_value(person, "work.site"),
+        timezone=_directory_value(person, "work.siteTimezone"),
+        manager_name=manager_name,
+        manager_title=manager_title,
+        direct_report_count=len(reports),
+        direct_report_names=named,
+        start_date=_directory_value(person, "work.startDate"),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -249,6 +249,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # OpenCRQ job-run events: polled for the assignment's acting user (#8991 S2d).
         "services/event_poller.py",
         "services/investigation_queriers.py",
+        # The sender's directory profile: the company directory bound to the
+        # agent of the turn, for the turn's acting user; the lookup requests the
+        # allow-listed directory fields only (services/sender_directory.py).
+        "services/sender_directory.py",
         # Jira dynamic webhooks (#11036 S2): the one Jira OAuth integration bound
         # to the assignment or its agent, for the assignment's run-as user
         # (provisioning_user_id); the token only registers, refreshes or deletes

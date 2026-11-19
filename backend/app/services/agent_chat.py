@@ -3691,6 +3691,25 @@ async def run_agent_chat(
         # before the security anchor, so the cached prefix is the same on
         # every run of this agent configuration.
         _tail_parts: list[str] = list(_identity_parts)
+        # The sender's directory profile, read through the agent's bound
+        # company directory (services/sender_directory.py): live
+        # conversations only, never an evaluation or a turn answering an agent.
+        if not _evaluation_chain:
+            from app.services.output_format import answers_live_chat
+            from app.services.sender_directory import build_sender_directory_block
+
+            if answers_live_chat(handover_context):
+                _sender_email = (
+                    getattr(interlocutor_record, "email", None)
+                    if interlocutor_record is not None
+                    else ((context or {}).get("sender_email") if identity_from_platform else None)
+                )
+                _directory_block = await build_sender_directory_block(
+                    db, agent, _sender_email, user_id=user_id if not is_anonymous_user else None
+                )
+                if _directory_block:
+                    _identity_parts.append(_directory_block)
+                    _tail_parts.append(_directory_block)
         from app.services.content_safety import UNTRUSTED_HEADER
 
         # A platform-reported identity is quarantined by the builder.
