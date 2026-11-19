@@ -74,9 +74,9 @@ async def test_every_tool_refuses_generically_without_reading(monkeypatch):
     definitions, executor = evaluation_tools.build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
     calls = {
         "build_dataset_from_traces": {"target_type": "agent", "target_id": str(uuid.uuid4())},
-        "run_concierge_evaluation": {"dataset_id": str(uuid.uuid4())},
-        "get_concierge_evaluation": {"evaluation_id": str(uuid.uuid4())},
-        "compare_concierge_runs": {"baseline_run_id": str(uuid.uuid4()), "candidate_run_id": str(uuid.uuid4())},
+        "run_health_evaluation": {"dataset_id": str(uuid.uuid4())},
+        "get_health_evaluation": {"evaluation_id": str(uuid.uuid4())},
+        "compare_health_runs": {"baseline_run_id": str(uuid.uuid4()), "candidate_run_id": str(uuid.uuid4())},
     }
 
     assert {d.name for d in definitions} == set(calls)
@@ -120,7 +120,7 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
     db = _AdminDb()
     _defs, executor = evaluation_tools.build_health_evaluation_tools(db, str(uuid.uuid4()))  # type: ignore[arg-type]
 
-    launched = await executor._handlers["run_concierge_evaluation"](
+    launched = await executor._handlers["run_health_evaluation"](
         dataset_id=str(dataset_id), agent_ids=[str(uuid.uuid4())]
     )
     await executor._handlers["build_dataset_from_traces"](
@@ -306,7 +306,7 @@ async def test_a_launch_is_refused_before_anything_is_written(case):
 async def test_a_comparison_states_its_verdict_or_why_there_is_none(candidate, verdict, reason):
     import app.models  # noqa: F401
     from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
-    from app.services.health.evaluations import compare_concierge_runs
+    from app.services.health.evaluations import compare_health_runs
     from tests.scratch_database import ALL_TABLES, scratch_database
 
     async with (
@@ -340,7 +340,7 @@ async def test_a_comparison_states_its_verdict_or_why_there_is_none(candidate, v
             )
         )
         await s.commit()
-        comparison = await compare_concierge_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
+        comparison = await compare_health_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
 
     data = json.loads(json.dumps(comparison.to_dict()))
     assert (data["verdict"], data["reason"], data["quality_metric"]) == (verdict, reason, "score")
@@ -355,7 +355,7 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
     from app.models.evaluation import Evaluation, EvaluationRun
     from app.services.health.evaluations import (
         HealthEvaluationError,
-        compare_concierge_runs,
+        compare_health_runs,
         health_evaluation_runs,
     )
     from tests.scratch_database import ALL_TABLES, scratch_database
@@ -379,7 +379,7 @@ async def test_a_person_s_evaluation_is_never_read_or_compared():
         with pytest.raises(HealthEvaluationError):
             await health_evaluation_runs(s, evaluation.id)
         with pytest.raises(HealthEvaluationError):
-            await compare_concierge_runs(s, baseline_run_id=runs[0].id, candidate_run_id=runs[1].id)
+            await compare_health_runs(s, baseline_run_id=runs[0].id, candidate_run_id=runs[1].id)
 
 
 # --- Budget ------------------------------------------------------------------
@@ -464,7 +464,7 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
     from app.services.health import budget
     from app.services.health.evaluations import (
         BUDGET_STOP_ERROR,
-        compare_concierge_runs,
+        compare_health_runs,
         launch_health_evaluation,
         settle_health_evaluations,
     )
@@ -497,7 +497,7 @@ async def test_an_evaluation_past_a_cap_is_stopped_and_reads_budget_reached(monk
         await s.refresh(cand)
         stopped = (cand.status, cand.error)
         assert await settle_health_evaluations(s) == 1
-        comparison = await compare_concierge_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
+        comparison = await compare_health_runs(s, baseline_run_id=base.id, candidate_run_id=cand.id)
         cycle = await s.get(HealthCycle, cycle_id)
         await s.refresh(cycle)
 

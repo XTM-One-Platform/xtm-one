@@ -230,7 +230,7 @@ async def compare(
     from sqlalchemy import select
 
     from app.models.evaluation import EvaluationRun
-    from app.services.health.evaluations import compare_concierge_runs
+    from app.services.health.evaluations import compare_health_runs
 
     if not baseline_run_ids or not variant_run_ids:
         raise EvaluationUnavailableError("an arm has no run")
@@ -252,7 +252,7 @@ async def compare(
             cost_usd={},
             latency_s={},
         )
-    compared = await compare_concierge_runs(db, baseline_run_id=baseline_id, candidate_run_id=variant_id)
+    compared = await compare_health_runs(db, baseline_run_id=baseline_id, candidate_run_id=variant_id)
     quality = next((m for m in compared.metrics if m["metric"] == compared.quality_metric), {})
     perf = compared.performance
     cost = perf.get("performance.cost.llm") or {}

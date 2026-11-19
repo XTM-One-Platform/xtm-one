@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 """Platform Health's evaluation tools (#8257, PRD section 8): ``build_dataset_from_traces``,
-``run_concierge_evaluation``, ``get_concierge_evaluation``, ``compare_concierge_runs``.
+``run_health_evaluation``, ``get_health_evaluation``, ``compare_health_runs``.
 
 The built-in group ``concierge_evaluation`` for Platform Health's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
@@ -34,6 +34,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.builtin_tool_aliases import RENAMED_BUILTIN_FUNCTIONS
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 EVALUATION_SUITE_ID = "concierge_evaluation"
 _SOURCE = f"builtin:{EVALUATION_SUITE_ID}"
 REFUSED = "Refused: Platform Health evaluation is not available to this caller for this target."
+
+
+def _former_names(current: str) -> tuple[str, ...]:
+    """The [DEPRECATED] ``*_concierge_*`` names of *current*, declared as its aliases."""
+    return tuple(former for former, name in RENAMED_BUILTIN_FUNCTIONS.items() if name == current)
 
 
 async def evaluation_tool_refusal(db: AsyncSession, user_id: str | None) -> str | None:
@@ -167,7 +173,7 @@ def build_health_evaluation_tools(
         await db.commit()
         return json.dumps({"dataset_id": str(result.dataset_id), "added": result.added, "skipped": result.skipped})
 
-    async def _run_concierge_evaluation(
+    async def _run_health_evaluation(
         dataset_id: str, agent_ids: Any = None, flow_ids: Any = None, model_ids: Any = None, name: str | None = None
     ) -> str:
         if (refused := await _refusal()) is not None:
@@ -191,7 +197,7 @@ def build_health_evaluation_tools(
             return f"Not launched: {exc.message}"
         except evaluations.HealthEvaluationError as exc:
             await db.rollback()
-            logger.info("run_concierge_evaluation refused: %s", exc)
+            logger.info("run_health_evaluation refused: %s", exc)
             return REFUSED
         except LaunchRefusedError as exc:
             await db.rollback()
@@ -202,7 +208,7 @@ def build_health_evaluation_tools(
         await db.commit()
         return json.dumps({"evaluation_id": str(launch.evaluation_id), "run_ids": [str(r) for r in launch.run_ids]})
 
-    async def _get_concierge_evaluation(evaluation_id: str) -> str:
+    async def _get_health_evaluation(evaluation_id: str) -> str:
         if (refused := await _refusal()) is not None:
             return refused
         evaluation = _uuid(evaluation_id)
@@ -234,24 +240,30 @@ def build_health_evaluation_tools(
             }
         )
 
-    async def _compare_concierge_runs(baseline_run_id: str, candidate_run_id: str) -> str:
+    async def _compare_health_runs(baseline_run_id: str, candidate_run_id: str) -> str:
         if (refused := await _refusal()) is not None:
             return refused
         baseline, candidate = _uuid(baseline_run_id), _uuid(candidate_run_id)
         if baseline is None or candidate is None:
             return REFUSED
         try:
-            comparison = await evaluations.compare_concierge_runs(
-                db, baseline_run_id=baseline, candidate_run_id=candidate
-            )
+            comparison = await evaluations.compare_health_runs(db, baseline_run_id=baseline, candidate_run_id=candidate)
         except evaluations.HealthEvaluationError:
             return REFUSED
         return json.dumps(comparison.to_dict())
 
-    executor.register("build_dataset_from_traces", _build_dataset_from_traces)
-    executor.register("run_concierge_evaluation", _run_concierge_evaluation)
-    executor.register("get_concierge_evaluation", _get_concierge_evaluation)
-    executor.register("compare_concierge_runs", _compare_concierge_runs)
+    handlers = {
+        "build_dataset_from_traces": _build_dataset_from_traces,
+        "run_health_evaluation": _run_health_evaluation,
+        "get_health_evaluation": _get_health_evaluation,
+        "compare_health_runs": _compare_health_runs,
+    }
+    for name, handler in handlers.items():
+        executor.register(name, handler)
+        # The [DEPRECATED] ``*_concierge_*`` names run the same handlers for a
+        # caller holding this executor directly; no definition is offered under them.
+        for former in _former_names(name):
+            executor.register(former, handler)
     return _DEFINITIONS, executor
 
 
@@ -284,11 +296,11 @@ _DEFINITIONS = [
         source=_SOURCE,
     ),
     ToolDefinition(
-        name="run_concierge_evaluation",
+        name="run_health_evaluation",
         description=(
             "Evaluate sandbox copies of agents and flows (create_sandbox_copy; never production ones) on a Platform Health dataset. "
             "Without model_ids each agent runs on its own model; a flow runs on its nodes' models. Returns the "
-            "evaluation id and its run ids; read them with get_concierge_evaluation."
+            "evaluation id and its run ids; read them with get_health_evaluation."
         ),
         input_schema={
             "type": "object",
@@ -302,15 +314,17 @@ _DEFINITIONS = [
             "required": ["dataset_id"],
         },
         source=_SOURCE,
+        aliases=_former_names("run_health_evaluation"),
     ),
     ToolDefinition(
-        name="get_concierge_evaluation",
+        name="get_health_evaluation",
         description="A Platform Health evaluation's runs: subject, model, status, progress and headline scores.",
         input_schema={"type": "object", "properties": {"evaluation_id": _ID}, "required": ["evaluation_id"]},
         source=_SOURCE,
+        aliases=_former_names("get_health_evaluation"),
     ),
     ToolDefinition(
-        name="compare_concierge_runs",
+        name="compare_health_runs",
         description=(
             "Compare two completed runs of one Platform Health evaluation: the quality verdict against the noise margin "
             "(progression, neutral, regression, or none with the reason), every compared score, cost, tokens and "
@@ -322,5 +336,6 @@ _DEFINITIONS = [
             "required": ["baseline_run_id", "candidate_run_id"],
         },
         source=_SOURCE,
+        aliases=_former_names("compare_health_runs"),
     ),
 ]

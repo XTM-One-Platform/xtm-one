@@ -356,6 +356,10 @@ RENAMED_BUILTIN_FUNCTIONS: dict[str, str] = {
     "list_concierge_cycles": "list_health_cycles",
     "get_concierge_cycle": "get_health_cycle",
     "request_concierge_cycle": "request_health_cycle",
+    # ... and so are its evaluation tools.
+    "run_concierge_evaluation": "run_health_evaluation",
+    "get_concierge_evaluation": "get_health_evaluation",
+    "compare_concierge_runs": "compare_health_runs",
 }
 
 

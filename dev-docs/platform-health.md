@@ -137,7 +137,11 @@ alias for one minor release (section 2.3).
   `get_health_cycle` and `request_health_cycle`. The former `*_concierge_*` names stay in
   `RENAMED_BUILTIN_FUNCTIONS` (`builtin_tool_aliases.py`): each definition declares them as
   `ToolDefinition.aliases`, the executor runs them, and a stored `builtin_allowed_tools` or
-  deny list naming one keeps its meaning (`test_health_orchestrator_renames.py`).
+  deny list naming one keeps its meaning (`test_health_orchestrator_renames.py`). The
+  evaluation tools follow the same path: `run_health_evaluation`, `get_health_evaluation` and
+  `compare_health_runs`, formerly `run_concierge_evaluation`, `get_concierge_evaluation` and
+  `compare_concierge_runs`; the MCP read-only list names both forms of the comparison
+  (`test_health_evaluation_renames.py`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no

@@ -48,7 +48,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 | `agent_id`, `flow_id`, `flow_version_number` | The subject: an agent, or a flow (#8257), exactly one (`ck_evaluation_runs_one_subject`); a flow's version is stamped when the run starts. |
 | `model_id` | The model, or `model-independent` for a `skip_llm` agent or a flow: one run, `is_default_model` false. |
 | `owner_execution_id` | The execution that last made the run `pending` or `running`, written in that transaction. No FK. Read only through `services/evaluation/run_ownership.py`. |
-| `trigger_reason` | `manual` (Run, API, agent tool, replay, bulk "Re-run full"), `schedule`, `persona_improvement`, `concierge` (`run_concierge_evaluation`, #8257), `import` (or the exported run's reason). `on_agent_change` is staged by an agent update but creates no run (open: #3566). |
+| `trigger_reason` | `manual` (Run, API, agent tool, replay, bulk "Re-run full"), `schedule`, `persona_improvement`, `concierge` (`run_health_evaluation`, formerly `run_concierge_evaluation`, #8257), `import` (or the exported run's reason). `on_agent_change` is staged by an agent update but creates no run (open: #3566). |
 | `metric_suite_version`, `scorer_selection` | What produced the stored scores; a rescore restamps both. |
 | `execution_mode`, `apply_prompt_guards`, `require_tool_approval` | Stamped at start; NULL on older runs. |
 | `persona_version_number`, `prompt_versions`, `agent_config_versions`, `skill_versions`, `pinned_dataset_versions` | Snapshot at creation. `pinned_dataset_versions` is `{dataset_id: version_number}`; NULL on an older run, rendered from live entries. |

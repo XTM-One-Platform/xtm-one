@@ -56,6 +56,8 @@ _SHORTENED_MARKER = "X"
 _READ_ONLY_NAMES = frozenset(
     {
         # Compares two evaluation runs of the health suite, reading both.
+        "compare_health_runs",
+        # Its [DEPRECATED] name (dev-docs/platform-health.md section 2.3).
         "compare_concierge_runs",
         "inspect_agent_traces",
         "inspect_my_traces",

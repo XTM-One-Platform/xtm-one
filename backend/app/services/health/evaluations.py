@@ -19,7 +19,7 @@ its supervision scope: never a production agent or flow), marks it ``concierge_b
 reads to run it whatever the mode - and launches it through the same plan and
 runs as every other launch (``services/evaluation/launch.py``).
 
-:func:`compare_concierge_runs` compares two completed runs of one such
+:func:`compare_health_runs` compares two completed runs of one such
 evaluation: the quality metric (``QUALITY_METRIC``) and every compared
 score through ``compare_metric`` with its noise margin, cost, tokens and latency
 beside them, and how many writes a model simulated in each (decision B17). A
@@ -70,7 +70,7 @@ ENTRY_TOKENS_ESTIMATE = 25_000
 #: The work kind a Platform Health evaluation holds its reservation under.
 HOLD_KIND = "evaluation"
 _ACTIVE_RUN_STATUSES = ("pending", "queued", "running")
-#: What a run stopped at a budget cap says; :func:`compare_concierge_runs` reads it back.
+#: What a run stopped at a budget cap says; :func:`compare_health_runs` reads it back.
 BUDGET_STOP_ERROR = "Stopped: Platform Health's budget is reached."
 #: The same stop as stored before the rename to Platform Health: such runs still read as a budget stop.
 _BUDGET_STOP_ERRORS = frozenset({BUDGET_STOP_ERROR, "Stopped: the Concierge's budget is reached."})
@@ -256,7 +256,7 @@ async def _simulated_writes(db: AsyncSession, run_id: uuid.UUID) -> int:
     return sum(int((d or {}).get(SANDBOX_KEY, {}).get("simulated_writes") or 0) for d in details if isinstance(d, dict))
 
 
-async def compare_concierge_runs(
+async def compare_health_runs(
     db: AsyncSession, *, baseline_run_id: uuid.UUID, candidate_run_id: uuid.UUID
 ) -> RunComparison:
     """Compare two runs of one Platform Health evaluation (any two subjects: an agent and its variant, an agent and a flow)."""
