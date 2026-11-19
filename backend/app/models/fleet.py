@@ -221,6 +221,10 @@ class Fleet(VisibilityColumns, Base):
     #: assignments is its health check. A deletion of the seeded check records
     #: ``off``. Operations state: a regenerate never writes it, a fork never copies it.
     health_check: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
+    #: Platform Health enrolment of the fleet (#101 S2, dev-docs/platform-health.md
+    #: 1.2): its home members are checked while they stay in it. Off by default;
+    #: operations state, a regenerate never writes it, a fork never copies it.
+    health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     #: Hide the activity of the home members and of the fleet's workspace
     #: (runs, traces, work items, shared state) from non-administrators
     #: (#11624, ``services/activity_visibility``). Off by default, built-in
