@@ -37,7 +37,6 @@ Slack, Teams, WhatsApp, Telegram, Discord, Google Chat and web chat: an adapter 
 - Inbound files go through `_download_channel_file()`, bounded by `MAX_UPLOAD_SIZE_BYTES`; never `resp.content` before the size check. A file-only message gets `FILE_ONLY_PLACEHOLDER`.
 - Outbound: split with `chunk_message()` (`CHANNEL_MAX_CHARS`); Slack text via `markdown_to_slack()`; wrap `handle_message()` in `typing_keepalive()`.
 - No marker reaches a channel raw: `[[FILE:id]]`, `[[PRESENTATION:id]]`, `[[REPORT:id]]`, `[[VIDEO:id]]` and image addresses become links only via `resolve_channel_*` (`base.py`), scoped to the conversation and user (no scope signs nothing); `[[INVESTIGATION:id]]`, `[[WORK_ITEM:id]]` are stripped (`strip_channel_*_markers()`).
-- An external image goes out as an image only on a host of `integration_tools.PROVIDER_MEDIA_HOSTS` (`trusted_media_hosts()`); adapters read image bytes only through `fetch_embedded_image()`.
 - Bare platform hosts and WhatsApp links: `services/outbound_links.py` (patterns doc).
 - On a processing error, tell the user (DMs, @mentions), never silence after a typing indicator.
 - Slack: never subscribe to both `message.channels` and `app_mention` (double replies).
