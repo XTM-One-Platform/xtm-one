@@ -875,7 +875,10 @@ def build_shared_state_tools(
             removed = state["unset_keys"]
             lines.append(f"  - keys removed: {', '.join(removed)[:_WRITE_KEY_CHARS * 4] if removed else 'none (not present)'}")
         for list_key, counts in (state.get("list_changes") or {}).items():
-            size = len((state.get("value") or {}).get(list_key) or [])
+            # A list changed under a write path is keyed "a.b.list": walk the
+            # dotted path into the nested value, as a read with that path does.
+            held, _missing = _resolve_path(state.get("value") or {}, list_key)
+            size = len(held) if isinstance(held, list) else 0
             trimmed = (
                 f"{counts['trimmed']} trimmed, " if counts.get("trimmed") is not None else ""
             )
