@@ -724,7 +724,7 @@ async def _own_trace_by_id(
             if run_refusal:
                 return None, run_refusal
             if by_run is None:
-                return None, not_found
+                return None, await _unfinished_background_task_note(db, value, own_agent_id) or not_found
             resolved = by_run
         parsed = uuid.UUID(str(resolved))
     else:
@@ -752,8 +752,64 @@ async def _own_trace_by_id(
             except HTTPException:
                 trace = None
     if trace is None or _canonical_agent_id(trace.agent_id) != own_agent_id:
-        return None, not_found
+        return None, await _unfinished_background_task_note(db, value, own_agent_id) or not_found
     return trace, ""
+
+
+#: Background task states whose trace is not stored yet: a turn writes its
+#: trace when it ends (see ``app.services.tracing.background_run``).
+_UNFINISHED_TASK_STATES = ("pending", "running")
+
+
+async def _unfinished_background_task_note(db: AsyncSession, value: str, own_agent_id: str | None) -> str:
+    """The answer to the id of a background task this agent spawned or runs
+    that has not ended yet (a full id or its 8+ hex prefix), else ``""``.
+
+    Its trace is written when its turn ends, so "trace not found" read as
+    "this run never happened"; the answer names the task's state and the
+    tools that follow it instead. Only tasks this agent spawned or executes
+    are matched, so it reads no wider than the self-only listing.
+    """
+    if own_agent_id is None:
+        return ""
+    from sqlalchemy import or_
+
+    from app.models.sub_agent_task import SubAgentTask
+
+    raw = (value or "").strip()
+    prefix = id_prefix(raw)
+    if prefix is not None:
+        id_clause = id_prefix_clause(SubAgentTask.id, prefix)
+    else:
+        try:
+            id_clause = SubAgentTask.id == uuid.UUID(raw)
+        except (TypeError, ValueError, AttributeError):
+            return ""
+    me = uuid.UUID(own_agent_id)
+    try:
+        rows = (
+            await db.execute(
+                select(SubAgentTask.id, SubAgentTask.status, SubAgentTask.started_at)
+                .where(
+                    id_clause,
+                    or_(SubAgentTask.parent_agent_id == me, SubAgentTask.target_agent_id == me),
+                    SubAgentTask.status.in_(_UNFINISHED_TASK_STATES),
+                )
+                .limit(2)
+            )
+        ).all()
+    except Exception:
+        logger.debug("inspect_my_traces: background task lookup failed", exc_info=True)
+        return ""
+    if len(rows) != 1:
+        return ""
+    task_id, status, started_at = rows[0]
+    since = f" since {started_at.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}" if started_at else ""
+    return (
+        f"Background task {task_id} is {status}{since}: its trace is stored when its turn ends, "
+        "so there is none to read yet. Follow it with check_task_status, then read its trace "
+        "with this tool once it has ended."
+    )
 
 
 def _canonical_agent_id(value: str | None) -> str | None:
