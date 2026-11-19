@@ -891,6 +891,7 @@ def build_fleet_tools(
         announce_instructions: object = False,
         confirm: object = False,
         health_check: str | None = None,
+        is_company_managed: object = None,
     ) -> str:
         from app.services.fleet_autonomy import (
             effective_level,
@@ -919,6 +920,7 @@ def build_fleet_tools(
                     ("autonomy_level", autonomy_level),
                     ("instructions_position", instructions_position),
                     ("health_check", health_check),
+                    ("is_company_managed", is_company_managed),
                 )
                 if value is not None
             }
@@ -986,6 +988,13 @@ def build_fleet_tools(
                 except FleetActionRefusedError as exc:
                     raise _RefusedError(exc.detail) from None
                 changed.append("health_check")
+            company, err, company_provided = _builder._parse_bool_arg(is_company_managed, "is_company_managed")
+            if err:
+                raise _RefusedError(err)
+            if company_provided and bool(company) != bool(fleet.is_company_managed):
+                # #398: an existing fleet changes audience in place, its id kept.
+                await _set_fleet_company_managed(db, user, fleet, bool(company), workspace_id)
+                changed.append("is_company_managed")
             if workspace_id is not None and workspace_id.strip():
                 target = _one_id(workspace_id, "workspace_id")
                 if target != fleet.workspace_id:
@@ -1021,7 +1030,7 @@ def build_fleet_tools(
                     )
                 raise _RefusedError(
                     "Nothing to change: pass a name, description, workspace_id, orchestrator_agent_id, archived, "
-                    "member_defaults, health_check, an autonomy_level or an instructions_position."
+                    "member_defaults, health_check, is_company_managed, an autonomy_level or an instructions_position."
                 )
             await db.flush()
             await _audit(db, user, fleet, "update", f"Updated fleet '{fleet.name}'", fields=sorted(changed))
@@ -1046,10 +1055,69 @@ def build_fleet_tools(
                     **position_change,
                 )
             headline = f"Fleet **{fleet.name}** updated."
+            if "is_company_managed" in changed:
+                # Read back from the row as flushed.
+                headline += " Company-managed." if fleet.is_company_managed else " Personal again."
             if level_change is not None:
                 # Read back from the row as flushed, not from the argument.
                 headline += f" Autonomy level applied: {_level_text(fleet.autonomy_level)}."
             return await _describe(db, user, fleet, headline=headline)
+
+        async def _set_fleet_company_managed(
+            db: AsyncSession, user: User, fleet: Fleet, company: bool, workspace_id: str | None
+        ) -> None:
+            """Turn *fleet* company-managed or personal; the creation's rules, refused before any write (#398)."""
+            from sqlalchemy import select
+
+            from app.api.v1.helpers import handle_company_managed_toggle
+            from app.models.agent import Agent
+            from app.models.fleet import FLEET_ROLE_MEMBER, FleetMember
+            from app.models.workspace import Workspace
+
+            if not user.is_admin:
+                raise _RefusedError("Only admins can change whether a fleet is company-managed. Nothing was saved.")
+            if company:
+                personal = (
+                    (
+                        await db.execute(
+                            select(Agent.name)
+                            .join(FleetMember, FleetMember.agent_id == Agent.id)
+                            .where(
+                                FleetMember.fleet_id == fleet.id,
+                                FleetMember.role == FLEET_ROLE_MEMBER,
+                                Agent.is_company_managed.is_(False),
+                            )
+                            .order_by(Agent.name)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if personal:
+                    raise _RefusedError(
+                        "A company-managed fleet contains only company-managed agents; these home members are "
+                        f"personal: {', '.join(personal)}. Make them company-managed (update_agent) or remove "
+                        "them first. Nothing was saved."
+                    )
+                moving = (
+                    workspace_id is not None
+                    and workspace_id.strip()
+                    and (_one_id(workspace_id, "workspace_id") != fleet.workspace_id)
+                )
+                if not moving:
+                    current = (
+                        await db.execute(select(Workspace).where(Workspace.id == fleet.workspace_id))
+                    ).scalar_one()
+                    if not current.is_company_managed:
+                        raise _RefusedError(
+                            f"A company-managed fleet needs a company-managed workspace; its workspace "
+                            f"**{current.name}** (`{current.id}`) is personal. Make it company-managed first "
+                            "(update_workspace is_company_managed=true), or pass workspace_id of a company-managed "
+                            "one. Nothing was saved."
+                        )
+            await handle_company_managed_toggle(
+                db, user, fleet, company, agent_field=None, keep_grants=bool(getattr(fleet, "access_restricted", False))
+            )
 
         def _check_autonomy_raise(user: User, fleet: Fleet, previous_level: str, new_level: str) -> None:
             """Refuse a raise unless an administrator asked for it in a chat and confirmed it (#10439)."""
@@ -2276,6 +2344,7 @@ def build_fleet_tools(
                     "announce_instructions": {"type": "boolean"},
                     "confirm": {"type": "boolean"},
                     "health_check": {"type": "string"},
+                    "is_company_managed": {"type": "boolean", "description": "Admin only."},
                     "member_defaults": {
                         "type": "object",
                         "description": "Inherited unless a member sets its own.",
