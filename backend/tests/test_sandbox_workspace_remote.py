@@ -117,6 +117,67 @@ async def test_reconcile_removes_what_the_manifest_no_longer_lists(container):
     assert not stray.exists()
 
 
+async def test_a_large_stage_is_sent_in_parts_and_removals_go_with_the_first(container, monkeypatch):
+    store = MemoryWorkspaceStore()
+    workspace = _session(store)
+    await workspace.put_tree([("a.txt", b"a" * 10), ("b.txt", b"b" * 10), ("c.txt", b"c" * 10)])
+    await remote.install_tool(container)
+    ws = container.local(remote.REMOTE_WORKSPACE)
+    ws.mkdir(parents=True, exist_ok=True)
+    stray = ws / "stray.bin"
+    stray.write_bytes(b"left over")
+    monkeypatch.setattr(remote, "UPLOAD_PART_BYTES", 15)
+    sent: list[bytes] = []
+    real_upload = remote._upload
+
+    async def counting_upload(sandbox, archive, removals):
+        sent.append(removals)
+        await real_upload(sandbox, archive, removals)
+
+    monkeypatch.setattr(remote, "_upload", counting_upload)
+    state = await remote.reconcile(container, workspace, await workspace.entries(refresh=True))
+    assert sorted(p.name for p in ws.iterdir()) == ["a.txt", "b.txt", "c.txt"]
+    assert state.bytes_read == 30
+    assert len(sent) == 3
+    assert json.loads(sent[0]) == ["stray.bin"]
+    assert [json.loads(r) for r in sent[1:]] == [[], []]
+
+
+async def test_a_part_that_failed_leaves_the_parts_sent_and_the_next_call_sends_the_rest(container, monkeypatch):
+    store = MemoryWorkspaceStore()
+    workspace = _session(store)
+    await workspace.put_tree([("a.txt", b"a" * 10), ("b.txt", b"b" * 10)])
+    await remote.install_tool(container)
+    monkeypatch.setattr(remote, "UPLOAD_PART_BYTES", 10)
+    real_upload = remote._upload
+    calls = {"n": 0}
+
+    async def second_part_fails_once(sandbox, archive, removals):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise remote.UploadError("cut")
+        await real_upload(sandbox, archive, removals)
+
+    monkeypatch.setattr(remote, "_upload", second_part_fails_once)
+    entries = await workspace.entries(refresh=True)
+    with pytest.raises(remote.UploadError):
+        await remote.reconcile(container, workspace, entries)
+    ws = container.local(remote.REMOTE_WORKSPACE)
+    assert sorted(p.name for p in ws.iterdir()) == ["a.txt"]
+    state = await remote.reconcile(container, workspace, entries)
+    assert sorted(p.name for p in ws.iterdir()) == ["a.txt", "b.txt"]
+    assert state.bytes_read == 10
+
+
+def test_upload_parts_keep_order_and_put_an_oversized_file_alone(monkeypatch):
+    monkeypatch.setattr(remote, "UPLOAD_PART_BYTES", 10)
+    entries = [SimpleNamespace(path=name, sha256=name) for name in ("s1", "big", "s2", "s3")]
+    blobs = {"s1": b"x" * 4, "big": b"x" * 25, "s2": b"x" * 4, "s3": b"x" * 4}
+    parts = remote._upload_parts(entries, blobs)
+    assert [[e.path for e in part] for part in parts] == [["s1"], ["big"], ["s2", "s3"]]
+    assert remote._upload_parts([], {}) == [[]]
+
+
 async def test_a_change_past_the_quota_is_refused_before_anything_is_fetched(container):
     store = MemoryWorkspaceStore()
     workspace = _session(store, quota=10)

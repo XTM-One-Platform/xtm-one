@@ -62,6 +62,12 @@ BLOB_READ_ATTEMPTS = 2
 #: Tries of the archive write and unpack before :func:`reconcile` gives up: a write cut by
 #: the network, or an archive the helper finds short or different, is sent once more.
 UPLOAD_ATTEMPTS = 2
+#: Bytes of file content one archive of :func:`reconcile` carries at most. A fresh
+#: container (after a rollout or an idle stop) receives the whole checkout: 140 MB
+#: or more in one write failed whole and was sent whole again. Cut in parts, a
+#: failed write resends one part and the parts already unpacked stay. A file
+#: larger than the bound travels alone in its own part.
+UPLOAD_PART_BYTES = 32 * 1024 * 1024
 
 
 class UploadError(RuntimeError):
@@ -694,21 +700,49 @@ async def reconcile(
                 reads.create_task(read(sha256))
     except BaseExceptionGroup as group:
         raise first_leaf(group) from group
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as tf:
-        for entry in wanted:
-            data = blobs[entry.sha256]
-            info = tarfile.TarInfo(entry.path)
-            info.size = len(data)
-            info.mtime = entry.mtime
-            info.mode = 0o644
-            tf.addfile(info, io.BytesIO(data))
-            state.bytes_read += len(data)
-    await _upload(sandbox, buffer.getvalue(), json.dumps(extra).encode("utf-8"))
+    parts = _upload_parts(wanted, blobs)
+    for index, part in enumerate(parts):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as tf:
+            for entry in part:
+                data = blobs[entry.sha256]
+                info = tarfile.TarInfo(entry.path)
+                info.size = len(data)
+                info.mtime = entry.mtime
+                info.mode = 0o644
+                tf.addfile(info, io.BytesIO(data))
+                state.bytes_read += len(data)
+        # The removals travel with the first part alone: a later part never removes again.
+        removals = extra if index == 0 else []
+        await _upload(sandbox, buffer.getvalue(), json.dumps(removals).encode("utf-8"))
     elapsed = time.monotonic() - started
     metrics.observe_sync("materialize", elapsed)
-    logger.info("Workspace reconciled: %d files, %.1f MB sent in %.1f s", len(wanted), state.bytes_read / 1e6, elapsed)
+    logger.info(
+        "Workspace reconciled: %d files, %.1f MB sent in %d part(s) in %.1f s",
+        len(wanted),
+        state.bytes_read / 1e6,
+        len(parts),
+        elapsed,
+    )
     return state
+
+
+def _upload_parts(wanted: list[ManifestEntry], blobs: dict[str, bytes]) -> list[list[ManifestEntry]]:
+    """*wanted* cut in order into parts of at most :data:`UPLOAD_PART_BYTES` of content each.
+
+    Always one part at least, empty when nothing is sent, so the removals still reach the
+    container; a file larger than the bound is a part of its own.
+    """
+    parts: list[list[ManifestEntry]] = [[]]
+    size = 0
+    for entry in wanted:
+        length = len(blobs[entry.sha256])
+        if parts[-1] and size + length > UPLOAD_PART_BYTES:
+            parts.append([])
+            size = 0
+        parts[-1].append(entry)
+        size += length
+    return parts
 
 
 def _stage_files() -> dict[str, str]:
