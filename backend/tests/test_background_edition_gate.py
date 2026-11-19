@@ -2102,6 +2102,10 @@ _TOGGLE_ONLY_READERS: dict[str, str] = {
         "Video Studio carries no licence gate"
     ),
     "services/telemetry.py": "reports the switch's state, gates nothing",
+    "services/health/agent_checks.py": (
+        "the health engine's agent checks read counts and statuses, call no model and "
+        "start nothing; with AI off agents do not run, so they record nothing"
+    ),
 }
 
 #: Modules that start or continue background AI work. They must never decide
