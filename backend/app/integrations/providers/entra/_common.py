@@ -38,6 +38,7 @@ The single Graph audience makes the mode selection trivial: a compound token
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -330,6 +331,21 @@ def odata_quote(value: str) -> str:
     return value.replace("'", "''")
 
 
+_QUALIFIED_SEARCH = re.compile(r"^[A-Za-z][A-Za-z0-9_]*:")
+
+
+def _quote_search_term(term: str) -> str:
+    escaped = term.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _search_expression(search: str, search_fields: tuple[str, ...]) -> str:
+    term = search.strip()
+    if not search_fields or _QUALIFIED_SEARCH.match(term):
+        return _quote_search_term(term)
+    return " OR ".join(_quote_search_term(f"{field}:{term}") for field in search_fields)
+
+
 def build_search_params(
     *,
     search: str = "",
@@ -337,11 +353,17 @@ def build_search_params(
     select: str = "",
     orderby: str = "",
     skiptoken: str = "",
+    search_fields: tuple[str, ...] = (),
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Build the ``params`` + ``extra_headers`` for a Graph list/search call.
 
     ``$search`` (and ``$count``) require the ``ConsistencyLevel: eventual``
-    header (advanced query). Returns ``(params, extra_headers)``.
+    header (advanced query). Graph only accepts ``"property:value"`` clauses
+    in ``$search`` on directory objects, so a free-text term (no
+    ``property:`` prefix) is expanded into one clause per ``search_fields``
+    property joined by ``OR``; a term the caller already qualified
+    (``displayName:jane``) is kept as one clause. Returns
+    ``(params, extra_headers)``.
     """
     params: dict[str, Any] = {}
     extra_headers: dict[str, str] = {}
@@ -351,8 +373,7 @@ def build_search_params(
         # embedded backslashes/quotes before the outer quote-wrap so a term
         # containing either stays a syntactically valid quoted value (an
         # unescaped " or \ otherwise makes Graph return HTTP 400).
-        escaped = search.replace("\\", "\\\\").replace('"', '\\"')
-        params["$search"] = f'"{escaped}"'
+        params["$search"] = _search_expression(search, search_fields)
         params["$count"] = "true"
         extra_headers["ConsistencyLevel"] = "eventual"
     if odata_filter:
