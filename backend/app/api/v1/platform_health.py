@@ -145,10 +145,12 @@ async def set_agent_opt_in(
 ) -> OptInResponse:
     groups = await get_user_group_ids(db, user.id)
     agent = await get_user_agent(db, user.id, agent_id, groups, is_admin=user.is_admin)
-    if not can_manage(user, agent, groups):
-        raise HTTPException(status_code=403, detail="You cannot manage this agent.")
+    # A Platform Health agent is checked before the manage rule: since it is built in and
+    # read-only, can_manage refuses everyone, and the conflict is the more precise answer.
     if agent.health_role is not None:
         raise HTTPException(status_code=409, detail="A Platform Health agent is never improved by Platform Health.")
+    if not can_manage(user, agent, groups):
+        raise HTTPException(status_code=403, detail="You cannot manage this agent.")
     was = bool(agent.health_enrolled)
     if was != body.opt_in:
         agent.health_enrolled = body.opt_in
