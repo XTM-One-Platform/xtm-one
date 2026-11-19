@@ -56,7 +56,9 @@ from app.services.sandbox_workspace.jsonmerge import MAX_JSON_MERGE_BYTES, _dump
 
 #: Files one call changes at most.
 MAX_FILES = 20
-#: Keys one call names at most (set, rename, remove and get together).
+#: Keys one call names at most for one file (its own set, the ``*`` set, rename,
+#: remove and get together), so a call over several catalogs is not refused
+#: for their sum.
 MAX_KEYS = 500
 #: Characters of one value ``get`` shows before it is shortened.
 GET_VALUE_CHARS = 300
@@ -367,9 +369,14 @@ def change_keys(
             raise JsonKeysError(f"rename[{old}] must be the new key (a non-empty string).")
     if len(set(renames.values())) != len(renames):
         raise JsonKeysError("rename gives two keys the same new name.")
-    named = sum(len(v) for v in sets.values()) + len(renames) + len(removes) + len(gets)
+    shared = len(sets.get("*", {})) + len(renames) + len(removes) + len(gets)
+    heaviest = max(texts, key=lambda p: len(sets.get(p, {})))
+    named = shared + len(sets.get(heaviest, {}))
     if named > MAX_KEYS:
-        raise JsonKeysError(f"{named} keys named, at most {MAX_KEYS} per call.")
+        raise JsonKeysError(
+            f"{named} keys named for {heaviest}, at most {MAX_KEYS} per file: "
+            "split that file's keys over several calls. Nothing was written."
+        )
 
     out: list[FileChange] = []
     for path, text in texts.items():
