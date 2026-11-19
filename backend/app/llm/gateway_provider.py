@@ -71,6 +71,8 @@ logger = logging.getLogger(__name__)
 
 # A model the gateway does not list is looked up again after this.
 _OWNER_MISS_TTL_SECONDS = 30.0
+#: The upstreams the gateway edits images through (XTM-One-Platform/ai-gateway#358); any other answers 403 policy_denied.
+_IMAGE_EDIT_UPSTREAMS = frozenset({"openai", "litellm", "custom_openai", "custom", "custom-openai"})
 
 # An owner lookup on the chat path never waits out the SDK's retries or read timeout.
 _OWNER_LISTING_TIMEOUT = httpx.Timeout(5.0)
@@ -338,6 +340,7 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         out: list[GatewayModel] = []
         for m in response.data:
             owner = getattr(m, "owned_by", None) or "gateway"
+            self._owner_cache[m.id] = owner
             out.append(GatewayModel(m.id, owner, _types_of(m)))
         return out
 
@@ -525,6 +528,40 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         m = model or self.default_model
         response = await self.client.images.generate(
             model=m, prompt=prompt, n=1, size=size, extra_headers=await self._target_headers(m)
+        )
+        return base64.b64decode(response.data[0].b64_json)
+
+    def image_reference_limit(self, model: str | None) -> int:
+        """As OpenAI direct for the GPT image models, unless their upstream is one the gateway refuses edits for."""
+        from app.llm.openai_provider import OpenAIProvider
+
+        m = model or self.default_model
+        # Sync, so only a pinned target or an owner already listed: an unknown one is left to the gateway.
+        owner = (self._target or self._owner_cache.get(m) or "gateway").lower()
+        if owner != "gateway" and owner not in _IMAGE_EDIT_UPSTREAMS:
+            return 0
+        return OpenAIProvider._GPT_IMAGE_REFERENCES if "gpt-image" in m.lower() else 0
+
+    def image_takes_mask(self, model: str | None) -> bool:
+        return self.image_reference_limit(model) > 0
+
+    async def edit_image(
+        self,
+        prompt: str,
+        images: list[tuple[bytes, str]],
+        *,
+        mask: tuple[bytes, str] | None = None,
+        model: str | None = None,
+        size: str = "1024x1024",
+    ) -> bytes:
+        """An image from the gateway's /v1/images/edits, which forwards OpenAI's multipart request unchanged."""
+        import base64
+
+        from app.llm.openai_provider import OpenAIProvider
+
+        m = model or self.default_model
+        response = await self.client.images.edit(
+            **OpenAIProvider.image_edit_params(prompt, images, mask, m, size), extra_headers=await self._target_headers(m)
         )
         return base64.b64decode(response.data[0].b64_json)
 

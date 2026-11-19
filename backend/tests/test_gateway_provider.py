@@ -1461,3 +1461,130 @@ class TestToolCap:
     async def test_a_pinned_target_is_read_in_any_case(self):
         provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||Anthropic")
         assert await provider.max_tools_for("house-alias") == 1024
+
+
+def _png() -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8), (40, 120, 200)).save(out, format="PNG")
+    return out.getvalue()
+
+
+class TestImageEdits:
+    """Reference pictures and a mask through the gateway's ``/v1/images/edits`` (XTM-One-Platform/ai-gateway#358)."""
+
+    @staticmethod
+    def _gateway(asked: list[httpx.Request], answer: httpx.Response | None = None) -> FiligranGatewayProvider:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [
+                    {"id": "gpt-image-1", "object": "model", "owned_by": "openai", "type": "image"},
+                ]})
+            request.read()
+            asked.append(request)
+            return answer or httpx.Response(200, json={"data": [{"b64_json": "SU1H"}]})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    def test_gpt_image_models_take_three_pictures_and_a_mask(self):
+        provider = FiligranGatewayProvider(api_key=GATEWAY_URL)
+        assert provider.image_reference_limit("gpt-image-1") == 3 and provider.image_takes_mask("gpt-image-1")
+        for model in ("dall-e-3", "imagen-4.0", "gemini-2.5-flash-image"):
+            assert provider.image_reference_limit(model) == 0 and not provider.image_takes_mask(model)
+
+    @pytest.mark.asyncio
+    async def test_no_pictures_where_the_gateway_refuses_edits(self):
+        # The gateway edits only through openai, litellm and custom_openai (403 policy_denied otherwise).
+        for pinned, limit in (("Azure_OpenAI", 0), ("gemini", 0), ("Custom", 3), ("litellm", 3)):
+            assert FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||{pinned}").image_reference_limit("gpt-image-1") == limit
+        provider = _listing_provider(
+            {"id": "gpt-image-1", "object": "model", "owned_by": "azure_openai", "type": "image"},
+            {"id": "gpt-image-1.5", "object": "model", "owned_by": "custom_openai", "type": "image"},
+        )
+        set_llm_caller(USER_ID, EMAIL)
+        await provider.list_image_models()
+        assert provider.image_reference_limit("gpt-image-1") == 0 and not provider.image_takes_mask("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1.5") == 3
+
+    @pytest.mark.asyncio
+    async def test_edit_sends_the_pictures_the_mask_and_the_target(self):
+        asked: list[httpx.Request] = []
+        picture = _png()
+        made = await self._gateway(asked).edit_image(
+            "Put the mark on the wall", [(picture, "image/png"), (picture, "image/png")],
+            mask=(picture, "image/png"), model="gpt-image-1", size="1536x1024",
+        )
+        assert made == b"IMG"
+        (request,) = asked
+        _assert_gateway_auth(request)
+        assert request.url.path == "/v1/images/edits"
+        assert request.headers["X-Target-Provider"] == "openai"
+        assert request.headers["Content-Type"].startswith("multipart/form-data; boundary=")
+        body = request.content
+        assert body.count(b'name="image[]"') == 2 and b'name="mask"; filename="mask.png"' in body
+        for field, value in (("model", b"gpt-image-1"), ("prompt", b"Put the mark on the wall"), ("size", b"1536x1024")):
+            assert f'name="{field}"\r\n\r\n'.encode() + value in body
+
+    @pytest.mark.asyncio
+    async def test_one_picture_is_sent_as_image(self):
+        asked: list[httpx.Request] = []
+        await self._gateway(asked).edit_image("Emboss it", [(_png(), "image/png")], model="gpt-image-1")
+        body = asked[0].content
+        assert b'name="image"; filename="reference-1.png"' in body and b"image[]" not in body
+        assert b'name="mask"' not in body
+
+    @pytest.mark.asyncio
+    async def test_an_oversized_upload_reads_as_too_large(self):
+        from app.llm.images import failure_message
+
+        too_large = httpx.Response(413, json={"error": {
+            "message": "request body exceeds the 50 MiB limit", "type": "invalid_request_error",
+            "code": "request_too_large", "retryable": False,
+        }})
+        provider = self._gateway([], too_large)
+        with pytest.raises(openai.APIStatusError) as raised:
+            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
+        assert "too large" in failure_message(raised.value, "gpt-image-1")
+
+
+@pytest.mark.asyncio
+async def test_the_image_tool_no_longer_refuses_pictures_on_the_gateway(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.models.user import User
+    from app.services import file_access
+    from app.services.builtin_tools import media
+    from app.services.file_storage import file_storage
+
+    class _Db:
+        async def get(self, model, key):
+            if model is User:
+                return SimpleNamespace(id=key, role="user")
+            return SimpleNamespace(filename="mark.png", content_type="image/png", s3_object_name=str(key))
+
+    class _Session:
+        async def __aenter__(self):
+            return _Db()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def can_read(_row, _user, _db):
+        return True
+
+    async def download(name):
+        return b"PNG"
+
+    monkeypatch.setattr(media, "_own_session", _Session)
+    monkeypatch.setattr(file_access, "can_read_file", can_read)
+    monkeypatch.setattr(file_storage, "download", download)
+    provider = FiligranGatewayProvider(api_key=GATEWAY_URL)
+    picture, mask = str(uuid.uuid4()), str(uuid.uuid4())
+    pictures, got = await media._image_inputs(provider, "gpt-image-1", str(USER_ID), [picture], mask)
+    assert pictures == [(b"PNG", "image/png")] and got == (b"PNG", "image/png")
+    with pytest.raises(media.ImageInputError, match="draws from no reference picture"):
+        await media._image_inputs(provider, "imagen-4.0", str(USER_ID), [picture], None)
