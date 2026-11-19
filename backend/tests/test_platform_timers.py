@@ -162,7 +162,7 @@ class _Session:
         self.rollbacks += 1
 
 
-def _patch(monkeypatch, session, published, unless=None, heard=True):
+def _patch(monkeypatch, session, published, unless=None, heard=True, others=()):
     from app.core import database
 
     async def _publish(name, data, *, event_id=None):
@@ -183,6 +183,17 @@ def _patch(monkeypatch, session, published, unless=None, heard=True):
     monkeypatch.setattr(platform_events, "publish", _publish)
     monkeypatch.setattr(platform_timers, "unless_reason", _unless)
     monkeypatch.setattr(platform_timers, "timer_listeners", _listeners)
+    _others(monkeypatch, others)
+
+
+def _others(monkeypatch, others=()):
+    async def _other(data):
+        assert data["object_type"] == "timer"
+        if isinstance(others, Exception):
+            raise others
+        return list(others)
+
+    monkeypatch.setattr(platform_timers, "other_listeners", _other)
 
 
 @pytest.mark.asyncio
@@ -220,8 +231,35 @@ async def test_a_timer_no_assignment_takes_fires_unheard_and_says_so(monkeypatch
     assert name == TIMER_DUE_EVENT and event_id == str(timer.id) and commits_before == 1
     assert data == timer_due_data(timer)
     assert timer.state == TIMER_FIRED_UNHEARD and session.states_at_commit == [TIMER_FIRED_UNHEARD]
-    assert "no platform_event assignment takes it" in timer.outcome
+    assert "no platform_event assignment, task watch or flow takes it" in timer.outcome
     assert "fired unheard" in caplog.text and "schedule:thread-42" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("other", ["task watch w1", "flow f1"])
+async def test_a_timer_a_task_watch_or_a_flow_takes_is_fired_not_unheard(monkeypatch, caplog, other):
+    # dispatch_event delivers timer.due to task watches and flows too: one that takes it is a listener.
+    timer = _timer()
+    session = _Session([timer])
+    published = []
+    _patch(monkeypatch, session, published, heard=False, others=[other])
+
+    with caplog.at_level("WARNING", logger="app.services.platform_timers"):
+        assert await platform_timers.fire_due_timers(now=_NOW) == 1
+
+    assert timer.state == TIMER_FIRED and len(published) == 1
+    assert "fired unheard" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unreadable_task_watches_or_flows_never_record_an_unheard_fire(monkeypatch):
+    timer = _timer()
+    session = _Session([timer])
+    published = []
+    _patch(monkeypatch, session, published, heard=False, others=RuntimeError("db down"))
+
+    assert await platform_timers.fire_due_timers(now=_NOW) == 1
+    assert timer.state == TIMER_FIRED and len(published) == 1
 
 
 @pytest.mark.asyncio
@@ -242,12 +280,13 @@ def test_fired_unheard_is_an_ended_state():
 # -- Listeners -------------------------------------------------------------------
 
 
-def _live(monkeypatch, subs):
+def _live(monkeypatch, subs, others=()):
     async def _subs(name):
         assert name == TIMER_DUE_EVENT
         return list(subs)
 
     monkeypatch.setattr(platform_events, "live_subscriptions", _subs)
+    _others(monkeypatch, others)
 
 
 @pytest.mark.asyncio
@@ -295,6 +334,42 @@ async def test_the_warning_says_when_the_agent_has_no_listener_at_all(monkeypatc
     warning = await platform_timers.unheard_warning(platform_timers.serialize_timer(timer), user_id=str(timer.user_id))
 
     assert "no enabled platform_event assignment" in warning
+
+
+@pytest.mark.asyncio
+async def test_no_warning_when_a_task_watch_or_a_flow_takes_the_key(monkeypatch):
+    timer = _timer(correlation_key="followup:x")
+    _live(monkeypatch, [_sub(timer.agent_id, timer.user_id, {"correlation_key": "schedule:"})], others=["flow f1"])
+
+    assert (
+        await platform_timers.unheard_warning(platform_timers.serialize_timer(timer), user_id=str(timer.user_id))
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_other_listeners_ask_the_task_watch_and_flow_dispatchers(monkeypatch):
+    from app.services import flow_triggers, platform_event_task_watches
+
+    timer = _timer()
+    seen = []
+
+    async def _watches(name, payload):
+        seen.append(("watches", name, payload["event"], payload["correlation_key"]))
+        return [SimpleNamespace(id="w1")]
+
+    async def _flows(name, payload):
+        seen.append(("flows", name, payload["event"], payload["correlation_key"]))
+        return ["f1"]
+
+    monkeypatch.setattr(platform_event_task_watches, "watches_taking", _watches)
+    monkeypatch.setattr(flow_triggers, "flows_taking_platform_event", _flows)
+
+    assert await platform_timers.other_listeners(timer_due_data(timer)) == ["task watch w1", "flow f1"]
+    assert seen == [
+        ("watches", TIMER_DUE_EVENT, TIMER_DUE_EVENT, "schedule:thread-42"),
+        ("flows", TIMER_DUE_EVENT, TIMER_DUE_EVENT, "schedule:thread-42"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -600,7 +675,7 @@ async def test_arm_tool_arms_and_warns_only_when_no_listener_takes_the_key(monke
         return platform_timers.serialize_timer(timer), None
 
     flt = {"correlation_key": {"starts_with": "schedule:" if heard else "calendar:"}}
-    _live(monkeypatch, [_sub(timer.agent_id, timer.user_id, flt)])
+    _live(monkeypatch, [_sub(timer.agent_id, timer.user_id, flt)])  # no task watch, no flow
     monkeypatch.setattr(platform_timers, "arm_timer", _arm)
     _defs, executor = build_timer_tools(str(timer.user_id), str(timer.agent_id))
     call = ToolCall(

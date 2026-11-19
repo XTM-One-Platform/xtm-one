@@ -16,8 +16,8 @@ a cron that polls every object.
 * The row lives in Postgres, so a rollout between arm and due loses nothing.
   The state is written ``fired`` before the event is raised: a timer fires at
   most once.
-* ``fired_unheard``: fired while no ``platform_event`` assignment took
-  ``timer.due`` for its key, so no run started: the follow-up it stood for is
+* ``fired_unheard``: fired while no listener (``platform_event`` assignment,
+  task watch or flow trigger) took ``timer.due`` for its key, so no run started: the follow-up it stood for is
   visible as lost instead of reading like any fired timer.
 """
 
