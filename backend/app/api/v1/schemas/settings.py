@@ -1068,7 +1068,7 @@ class SecurityOptionItem(BaseModel):
 
     key: str
     env_var: str
-    kind: Literal["bool", "choice", "int", "origins", "modules", "tools"]
+    kind: Literal["bool", "choice", "int", "origins", "modules", "tools", "certificates"]
     group: str
     choices: list[str] = Field(default_factory=list)
     minimum: int | None = None
@@ -1078,7 +1078,7 @@ class SecurityOptionItem(BaseModel):
     off_value: int | None = None
     # The effective value, the default, and what the database holds (null
     # when nothing is stored). ``bool`` / ``str`` / ``int`` / ``list[str]``
-    # by ``kind``.
+    # by ``kind`` (``certificates``: PEM text, a ``str``).
     value: bool | int | str | list[str] | None = None
     default: bool | int | str | list[str] | None = None
     stored: bool | int | str | list[str] | None = None

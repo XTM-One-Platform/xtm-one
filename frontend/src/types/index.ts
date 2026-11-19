@@ -5322,7 +5322,7 @@ export interface LangfuseConfig {
 }
 
 /** Kind of a Settings > Access and security option (`app/core/security_options.py`). */
-type SecurityOptionKind = "bool" | "choice" | "int" | "origins" | "modules" | "tools";
+type SecurityOptionKind = "bool" | "choice" | "int" | "origins" | "modules" | "tools" | "certificates";
 export type SecurityOptionValue = boolean | number | string | string[] | null;
 
 /** One security option: the environment variable wins and locks it. */

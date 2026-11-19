@@ -8500,6 +8500,7 @@
   "Loopback token URL origins (development)": "Origines d'URL de jeton en loopback (développement)",
   "MCP server URL policy": "Politique d'URL des serveurs MCP",
   "Trusted MCP server origins": "Origines de serveurs MCP de confiance",
+  "Trusted certificates for web fetches": "Certificats de confiance pour les récupérations web",
   "Require webhook secrets": "Exiger les secrets de webhook",
   "Require verified integration notifications": "Exiger des notifications d'intégration vérifiées",
   "Strict widget rendering": "Rendu strict du widget",
@@ -19500,5 +19501,10 @@
   "Connect again to restore your connection.": "Connectez-vous à nouveau pour rétablir votre connexion.",
   "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "Chaque personne utilise son propre compte sur ce serveur. Tant que vous n'êtes pas connecté, ses outils sont appelés pour vous sans compte et échouent.",
   "Connect again": "Se reconnecter",
-  "Disconnect your account": "Déconnecter votre compte"
+  "Disconnect your account": "Déconnecter votre compte",
+  "PEM certificates added to the verification of web page fetches (web_fetch, the knowledge base URL crawl, Deep Investigation): a private certificate authority, or a host's self-signed certificate. Verification stays on and the host name must still match. Empty trusts the system store alone.": "Certificats PEM ajoutés à la vérification des récupérations de pages web (web_fetch, l'exploration d'URL de la base de connaissances, Deep Investigation) : une autorité de certification privée, ou le certificat auto-signé d'un hôte. La vérification reste active et le nom d'hôte doit toujours correspondre. Vide, seul le magasin du système est approuvé.",
+  "Empty: only the system certificate store is trusted.": "Vide : seul le magasin de certificats du système est approuvé.",
+  "{count, plural, one {# certificate} other {# certificates}}": "{count, plural, one {# certificat} other {# certificats}}",
+  "Paste the certificate only, never its private key": "Collez uniquement le certificat, jamais sa clé privée",
+  "Paste PEM certificates only, each from BEGIN CERTIFICATE to END CERTIFICATE": "Collez uniquement des certificats PEM, chacun de BEGIN CERTIFICATE à END CERTIFICATE"
 }

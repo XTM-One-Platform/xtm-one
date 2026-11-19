@@ -173,6 +173,60 @@ def parse_trusted_origins(v: object, env_var_name: str, example: str) -> list[st
     return list(dict.fromkeys(parsed))
 
 
+#: Bounds on the certificates an administrator adds to the web fetch trust
+#: store: far above a real private CA chain, low enough to keep the PEM a
+#: setting rather than a bundle.
+MAX_TRUSTED_CERTIFICATES = 20
+MAX_TRUSTED_CERTIFICATES_CHARS = 64_000
+
+_PEM_CERTIFICATE = re.compile(r"-----BEGIN CERTIFICATE-----\s.*?-----END CERTIFICATE-----", re.S)
+
+
+def parse_trusted_certificates(v: object, env_var_name: str) -> str:
+    """Validate PEM certificates an administrator trusts; return them normalised.
+
+    The certificates (a private CA, or a host's self-signed certificate) are
+    ADDED to the trust store of the web fetches: verification stays on, the
+    host name must still match. Raises on anything that is not certificates,
+    so a mistyped value never reads as accepted while it trusts nothing: a
+    private key pasted by mistake is refused by name (it must never sit in a
+    setting), and every block must load into an SSL context. Empty = none.
+    The same parse validates the Settings > Access and security field.
+    """
+    import ssl
+
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise ValueError(f"{env_var_name} must be PEM text")
+    text = v.replace("\r\n", "\n").strip()
+    if not text:
+        return ""
+    if "PRIVATE KEY" in text:
+        raise ValueError(f"{env_var_name} holds a private key: paste the certificate only, never its key")
+    if len(text) > MAX_TRUSTED_CERTIFICATES_CHARS:
+        raise ValueError(f"{env_var_name} must be at most {MAX_TRUSTED_CERTIFICATES_CHARS} characters long")
+    blocks = _PEM_CERTIFICATE.findall(text)
+    if not blocks or _PEM_CERTIFICATE.sub("", text).strip():
+        raise ValueError(
+            f"{env_var_name} must hold PEM certificates only, each between -----BEGIN CERTIFICATE----- "
+            "and -----END CERTIFICATE-----"
+        )
+    if len(blocks) > MAX_TRUSTED_CERTIFICATES:
+        raise ValueError(f"{env_var_name} must hold at most {MAX_TRUSTED_CERTIFICATES} certificates")
+    normalised = "\n".join(dict.fromkeys(block.strip() for block in blocks)) + "\n"
+    try:
+        ssl.create_default_context().load_verify_locations(cadata=normalised)
+    except (ssl.SSLError, ValueError) as exc:
+        raise ValueError(f"{env_var_name} holds a certificate that cannot be read: {exc}") from None
+    return normalised
+
+
+def count_trusted_certificates(pem: str) -> int:
+    """How many certificates a value of :func:`parse_trusted_certificates` holds."""
+    return len(_PEM_CERTIFICATE.findall(pem or ""))
+
+
 #: The values ``PLATFORM_MODE`` accepts once trimmed and lowercased; the
 #: validator refuses any other. ``apps/generate-manifests.sh`` accepts the same
 #: ones (``tests/test_generate_manifests.py``).
@@ -1527,6 +1581,16 @@ class Settings(BaseSettings):
     # reach public addresses only, like the agent browser tool. Also in
     # Settings > Access and security: the variable, when set, wins and locks it.
     browser_private_targets: bool = False
+
+    # --- Web fetch trust ---
+    # PEM certificates (a private CA, or a host's self-signed certificate)
+    # ADDED to the trust store of the web page fetches (web_fetch, the
+    # knowledge base URL crawl, Deep Investigation pages, HTTP sources;
+    # core/pinned_request.py). Verification stays on and the host name must
+    # still match: nothing is ever fetched with verification off. Empty =
+    # the system store alone. Also in Settings > Access and security: the
+    # variable, when set, wins and locks the field.
+    web_fetch_trusted_ca_certificates: str = ""
 
     # --- Video Studio ---
     # The encoder binaries (the platform image ships both); blank = the ones
@@ -3949,6 +4013,12 @@ class Settings(BaseSettings):
         # Same normalisation and refusal of a malformed entry: it widens the
         # destination policy of the vaults connected in the UI.
         return parse_trusted_origins(v, "SECRET_VAULT_TRUSTED_ORIGINS", "http://127.0.0.1:8200")
+
+    @field_validator("web_fetch_trusted_ca_certificates", mode="before")
+    @classmethod
+    def _parse_web_fetch_trusted_ca_certificates(cls, v: object) -> str:
+        # A malformed value refuses the boot: it widens whom the fetches trust.
+        return parse_trusted_certificates(v, "WEB_FETCH_TRUSTED_CA_CERTIFICATES")
 
     @field_validator("mcp_server_trusted_origins", mode="before")
     @classmethod

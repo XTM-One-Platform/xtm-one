@@ -8500,6 +8500,7 @@
   "Loopback token URL origins (development)": "ループバックのトークン URL オリジン（開発用）",
   "MCP server URL policy": "MCP サーバー URL ポリシー",
   "Trusted MCP server origins": "信頼する MCP サーバーのオリジン",
+  "Trusted certificates for web fetches": "Web 取得で信頼する証明書",
   "Require webhook secrets": "Webhook シークレットを必須にする",
   "Require verified integration notifications": "検証済みのインテグレーション通知を必須にする",
   "Strict widget rendering": "ウィジェットの厳格な表示",
@@ -19500,5 +19501,10 @@
   "Connect again to restore your connection.": "接続を回復するには再接続してください。",
   "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "このサーバーでは各ユーザーが自分のアカウントを使います。接続するまで、あなたのためのツール呼び出しはアカウントなしで行われ、失敗します。",
   "Connect again": "再接続",
-  "Disconnect your account": "アカウントの接続を解除"
+  "Disconnect your account": "アカウントの接続を解除",
+  "PEM certificates added to the verification of web page fetches (web_fetch, the knowledge base URL crawl, Deep Investigation): a private certificate authority, or a host's self-signed certificate. Verification stays on and the host name must still match. Empty trusts the system store alone.": "Web ページ取得 (web_fetch、ナレッジベースの URL クロール、Deep Investigation) の検証に追加する PEM 証明書: プライベート認証局、またはホストの自己署名証明書。検証は有効のままで、ホスト名も一致する必要があります。空の場合はシステムのストアのみを信頼します。",
+  "Empty: only the system certificate store is trusted.": "空: システムの証明書ストアのみを信頼します。",
+  "{count, plural, one {# certificate} other {# certificates}}": "{count, plural, other {# 件の証明書}}",
+  "Paste the certificate only, never its private key": "証明書のみを貼り付けてください。秘密鍵は貼り付けないでください",
+  "Paste PEM certificates only, each from BEGIN CERTIFICATE to END CERTIFICATE": "PEM 証明書のみを貼り付けてください (それぞれ BEGIN CERTIFICATE から END CERTIFICATE まで)"
 }

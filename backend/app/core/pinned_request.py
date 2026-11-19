@@ -26,6 +26,10 @@ redirect followed by httpx. Redirects are the caller's: each hop is a new
 (``SSL_CERT_FILE`` / ``SSL_CERT_DIR``) are still honoured - they decide whom
 the platform trusts, not where it connects - through an SSL context built
 here, since httpx reads them only for a client that trusts the environment.
+The certificates an administrator trusts in Settings > Access and security
+(``web_fetch_trusted_ca_certificates``: a private CA, or a host's self-signed
+certificate) are ADDED to that store: verification stays on, the name must
+still match, and nothing here ever turns it off (:func:`fetch_ssl_context`).
 A deployment that reaches the web only through a proxy is told once at
 startup that these requests bypass it (:func:`log_environment_proxy_bypass`).
 
@@ -38,6 +42,7 @@ an oracle on the internal network.
 from __future__ import annotations
 
 import asyncio
+import functools
 import ipaddress
 import logging
 import os
@@ -162,6 +167,35 @@ def _tls_failure(exc: BaseException) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=4)
+def _ssl_context(extra_certificates: str, cert_file: str, cert_dir: str) -> ssl.SSLContext:
+    # The variables are part of the key: the context reads them when it is made.
+    del cert_file, cert_dir
+    context = httpx.create_ssl_context(trust_env=True)
+    if extra_certificates:
+        # Validated when it was set (``parse_trusted_certificates``).
+        context.load_verify_locations(cadata=extra_certificates)
+    return context
+
+
+def fetch_ssl_context() -> ssl.SSLContext:
+    """The verification these fetches use: ``SSL_CERT_FILE`` / ``SSL_CERT_DIR``
+    or certifi, plus the certificates an administrator trusts.
+
+    Built once per value (a context reads its store when it is made): a change
+    in Settings > Access and security applies to the next fetch. Never a
+    context that skips verification: ``verify_mode`` stays ``CERT_REQUIRED``
+    and ``check_hostname`` stays on.
+    """
+    from app.core.security_options import security_option
+
+    return _ssl_context(
+        str(security_option("web_fetch_trusted_ca_certificates") or ""),
+        os.environ.get("SSL_CERT_FILE", ""),
+        os.environ.get("SSL_CERT_DIR", ""),
+    )
+
+
 def pinned_client(
     *, timeout: float | httpx.Timeout, headers: dict[str, str] | None = None
 ) -> httpx.AsyncClient:
@@ -172,12 +206,14 @@ def pinned_client(
     never goes through a relay route, so the destination policy is never
     skipped for it. Certificates are verified against ``SSL_CERT_FILE`` /
     ``SSL_CERT_DIR`` when set (certifi otherwise), read the way httpx reads
-    them, while ``trust_env=False`` keeps the environment's proxies out.
+    them, plus the certificates an administrator trusts
+    (:func:`fetch_ssl_context`), while ``trust_env=False`` keeps the
+    environment's proxies out.
     """
     client = httpx.AsyncClient(
         http1=True,
         http2=False,
-        verify=httpx.create_ssl_context(trust_env=True),
+        verify=fetch_ssl_context(),
         trust_env=False,
         follow_redirects=False,
         limits=httpx.Limits(max_keepalive_connections=0),

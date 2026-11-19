@@ -153,6 +153,8 @@ def test_defaults_are_exactly_todays_defaults():
         "companion_pin_required": False,
         # Recordings reach public addresses only, like the browser tool.
         "browser_private_targets": False,
+        # The system certificate store alone.
+        "web_fetch_trusted_ca_certificates": "",
         # No tool result is screened, nothing is withheld.
         "prompt_guard_scanned_tools": (),
         "prompt_guard_block_tool_results": False,
