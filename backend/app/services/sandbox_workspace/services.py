@@ -84,6 +84,13 @@ MAX_LOG_CHARS = 60_000
 MAX_LOG_SCAN_LINES = 20_000
 #: Characters a ``pattern`` may hold.
 MAX_LOG_PATTERN_CHARS = 500
+#: Characters one log line keeps; the rest is cut and counted (a one-line JSON stack trace).
+MAX_LOG_LINE_CHARS = 1_000
+#: Times are masked when two log lines are compared for the repeat fold: ISO dates and times, clock
+#: times and epoch stamps of 10 digits or more; any other digit (a count, a line number) keeps lines apart.
+_TIMES = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?|\b\d{10,}\b"
+)
 #: Variables every service gets on top of the container's own and its declaration.
 SERVICE_ENV = {
     "CI": "1",
@@ -658,22 +665,67 @@ def compile_log_pattern(pattern: str, *, ignore_case: bool = False) -> re.Patter
         return f"Error: pattern {pattern!r} is not a valid regular expression: {exc}."
 
 
+def cut_line(line: str) -> str:
+    """*line* cut to :data:`MAX_LOG_LINE_CHARS` characters, the characters left out counted."""
+    if len(line) <= MAX_LOG_LINE_CHARS:
+        return line
+    return f"{line[:MAX_LOG_LINE_CHARS]} [+{len(line) - MAX_LOG_LINE_CHARS} chars]"
+
+
+def fold_repeats(lines: list[str]) -> list[tuple[str, int]]:
+    """*lines* with each repeated line kept once, at its newest place, with its count.
+
+    Two lines repeat when they are equal once their times are masked (:data:`_TIMES`), so a recurring
+    error stamped with a new time each round reads once with its count.
+    """
+    counts: dict[str, int] = {}
+    for line in lines:
+        key = _TIMES.sub("T", line)
+        counts[key] = counts.get(key, 0) + 1
+    seen: dict[str, int] = {}
+    kept: list[tuple[str, int]] = []
+    for line in lines:
+        key = _TIMES.sub("T", line)
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] == counts[key]:
+            kept.append((line, counts[key]))
+    return kept
+
+
+def _shown(lines: list[str]) -> tuple[list[str], int]:
+    """*lines* folded (:func:`fold_repeats`), each one cut (:func:`cut_line`) then followed by ``(xN)``
+    when it repeats; answers them and how many lines were folded away."""
+    folded = fold_repeats(lines)
+    shown = [f"{cut_line(line)} (x{count})" if count > 1 else cut_line(line) for line, count in folded]
+    return shown, len(lines) - len(folded)
+
+
+def _folded_note(dropped: int) -> str:
+    return f", {dropped} repeated line(s) folded" if dropped else ""
+
+
 def log_section(name: str, source: str, text: str, lines: int, regex: re.Pattern[str] | None) -> str:
     """One service's block of a logs answer: its last *lines* lines, or its last *lines* lines matching *regex*.
 
     A filtered block scans the newest :data:`MAX_LOG_SCAN_LINES` lines and its heading names how many
     matched out of how many were scanned, so a caller reads a lab's few relevant lines without its banners.
+    Repeated lines are folded into their newest occurrence with a ``(xN)`` count and each line keeps at
+    most :data:`MAX_LOG_LINE_CHARS` characters, so a recurring one-line stack trace cannot fill the answer.
     """
     if regex is None:
-        return f"== {name} (last {lines} lines of {source}) ==\n" + tail(text, lines)
+        shown, dropped = _shown(text.splitlines()[-MAX_LOG_SCAN_LINES:])
+        return f"== {name} (last {lines} lines of {source}{_folded_note(dropped)}) ==\n" + tail("\n".join(shown), lines)
     scanned = text.splitlines()[-MAX_LOG_SCAN_LINES:]
     matched = [line for line in scanned if regex.search(line)]
     if not matched:
         return f"== {name}: 0 of {len(scanned)} lines of {source} match {regex.pattern!r} =="
-    kept = min(lines, len(matched))
-    head = f"== {name} ({len(matched)} of {len(scanned)} lines of {source} match {regex.pattern!r}"
-    head += f", last {kept} shown) ==" if kept < len(matched) else ") =="
-    return head + "\n" + tail("\n".join(matched), lines)
+    shown, dropped = _shown(matched)
+    kept = min(lines, len(shown))
+    head = (
+        f"== {name} ({len(matched)} of {len(scanned)} lines of {source} match {regex.pattern!r}{_folded_note(dropped)}"
+    )
+    head += f", last {kept} shown) ==" if kept < len(shown) else ") =="
+    return head + "\n" + tail("\n".join(shown), lines)
 
 
 async def service_logs(
