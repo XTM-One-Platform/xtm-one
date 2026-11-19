@@ -629,8 +629,10 @@ def is_request_too_large_error(exc: Exception) -> bool:
 
 
 def _is_size_error(exc: BaseException) -> bool:
+    from app.services.failure_causes import exception_status_code
+
     # A 413 is a size error whatever its wording (the AI Gateway's names no keyword).
-    if getattr(exc, "status_code", None) == 413:
+    if exception_status_code(exc) == 413:
         return True
     msg = str(exc).lower()
     return any(kw in msg for kw in REQUEST_TOO_LARGE_KEYWORDS)

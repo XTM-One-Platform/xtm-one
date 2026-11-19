@@ -681,3 +681,29 @@ def test_gateway_400_invalid_request_is_not_request_too_large():
     from app.llm.router import is_request_too_large_error
 
     assert is_request_too_large_error(_gateway_error(400, "invalid_request")) is False
+
+
+@pytest.mark.asyncio
+async def test_gateway_413_short_circuits_remaining_chain():
+    from app.llm.router import AllProvidersFailedError
+
+    primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
+    gateway = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    untouched = _RecordingProvider("gemini")
+    provider = _make_failover(primary, [gateway, untouched])
+
+    with pytest.raises(AllProvidersFailedError):
+        await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert untouched.calls == 0
+
+
+def test_httpx_413_without_keyword_is_request_too_large():
+    """The status read off ``.response`` counts too (httpx-based providers)."""
+    import httpx
+
+    from app.llm.router import is_request_too_large_error
+
+    request = httpx.Request("POST", "https://provider.example/v1/chat")
+    response = httpx.Response(413, request=request)
+    exc = httpx.HTTPStatusError("the body is over the limit", request=request, response=response)
+    assert is_request_too_large_error(exc) is True
