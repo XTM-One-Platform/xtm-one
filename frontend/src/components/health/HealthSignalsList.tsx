@@ -214,8 +214,9 @@ export function HealthSignalsList() {
       ]}
       searchPlaceholder={t_i18n("Search...")}
       filters={filters}
-      exportName="concierge-signals"
+      exportName="health-signals"
       urlKey="cs_"
+      // Persisted column layout key: kept from the former name so saved layouts survive (#101 S1).
       storageKey="concierge-signals"
       isLoading={isLoading}
       isError={isError}

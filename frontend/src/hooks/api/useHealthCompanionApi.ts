@@ -24,8 +24,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { HealthActivity, HealthCompanion, HealthPet } from "@/types";
 
-const PETS_KEY = ["concierge", "pets"] as const;
-const COMPANION_KEY = ["concierge", "companion"] as const;
+const PETS_KEY = ["health", "pets"] as const;
+const COMPANION_KEY = ["health", "companion"] as const;
 /** How often the pet asks what to show: every read is a few counts, no model call. */
 const ACTIVITY_INTERVAL_MS = 30_000;
 
@@ -59,7 +59,7 @@ export function useDeletePet() {
 /** An object URL of a pet's spritesheet, fetched with the session, revoked when it changes. */
 export function usePetSpritesheet(slug: string | undefined, sha256: string | undefined): string | null {
   const { data } = useQuery<Blob>({
-    queryKey: ["concierge", "pet-spritesheet", slug, sha256],
+    queryKey: ["health", "pet-spritesheet", slug, sha256],
     queryFn: async () => (await api.download(`/health/pets/${encodeURIComponent(slug as string)}/spritesheet`)).blob,
     enabled: Boolean(slug),
     staleTime: Infinity,
@@ -97,7 +97,7 @@ export function useSaveCompanion() {
 
 export function useCompanionActivity(enabled: boolean) {
   return useQuery<HealthActivity>({
-    queryKey: ["concierge", "activity"],
+    queryKey: ["health", "activity"],
     queryFn: () => api.get("/health/me/activity"),
     enabled,
     refetchInterval: enabled ? ACTIVITY_INTERVAL_MS : false,

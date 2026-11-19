@@ -23,7 +23,7 @@ const FLAGS: NavFlags = {
   aiEnabled: true,
   aiLicensed: true,
   deepInvestigation: true,
-  concierge: true,
+  health: true,
   videoStudio: true,
   dashboardStudio: true,
   evaluation: true,

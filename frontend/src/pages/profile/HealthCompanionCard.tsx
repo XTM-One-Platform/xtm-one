@@ -46,7 +46,7 @@ function CompanionCard({ companion }: { companion: HealthCompanion }) {
       onError: () => toast({ title: t_i18n("Your companion was not changed"), variant: "error" }),
     });
   return (
-    <Card data-testid="profile.concierge-companion">
+    <Card data-testid="profile.health-companion">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 content-base">
           <Sparkles className="size-4 text-default-secondary" />

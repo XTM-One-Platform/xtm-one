@@ -80,7 +80,7 @@ function OptInCard({
     });
 
   return (
-    <Card data-testid={`${targetType}.concierge-opt-in`}>
+    <Card data-testid={`${targetType}.health-opt-in`}>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 content-base">
           <Sparkles className="size-4 text-accent" />

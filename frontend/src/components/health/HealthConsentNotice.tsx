@@ -34,7 +34,7 @@ export function HealthConsentNotice({ targetType = "agent" }: { targetType?: key
   return (
     <div
       className="flex items-start gap-2.5 rounded-sm border border-elevation-subtle-soft bg-elevation-hover px-3 py-2.5"
-      data-testid="concierge.consent-notice"
+      data-testid="health.consent-notice"
     >
       <Icon name="info" size={16} className="mt-px shrink-0 text-default-secondary" />
       <p className="content-compact text-default-secondary">{t_i18n(NOTICES[targetType])}</p>

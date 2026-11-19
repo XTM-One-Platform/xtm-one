@@ -94,7 +94,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
       <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
         {!editing ? (
           // At rest (#10855): read tiles, never disabled controls.
-          <SettingsReadGrid data-testid="concierge.read.enable">
+          <SettingsReadGrid data-testid="health.read.enable">
             <SettingsReadField
               label={t_i18n("Enable Platform Health")}
               info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
@@ -104,7 +104,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
               label={t_i18n("Name")}
               info={t_i18n("The name shown on Platform Health's page, in the inbox and on its agent, e.g. Jeeves. Up to {max} characters. Left empty: {name}.", { max: MAX_NAME_LENGTH, name: defaultName })}
               value={draft.name?.trim() || defaultName}
-              data-testid="concierge.name"
+              data-testid="health.name"
             />
           </SettingsReadGrid>
         ) : (
@@ -131,7 +131,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
             placeholder={defaultName}
             maxLength={MAX_NAME_LENGTH}
             onChange={(event) => onChange({ ...draft, name: event.target.value === "" ? null : event.target.value })}
-            data-testid="concierge.name"
+            data-testid="health.name"
           />
         </SettingsField>
         </>
@@ -161,7 +161,7 @@ function ScopeBlock({ draft, editing, onChange }: BlockProps) {
             label={t_i18n("Supervise")}
             info={t_i18n("All: every agent and flow whose managers opted in. Selected: only the agents and flows picked below. Platform Health's sweeps and schedules read it.")}
             value={selected ? t_i18n("Selected agents and flows") : t_i18n("All agents and flows")}
-            data-testid="concierge.read.scope-mode"
+            data-testid="health.read.scope-mode"
           />
         ) : (
         <SettingsField
@@ -193,7 +193,7 @@ function ScopeBlock({ draft, editing, onChange }: BlockProps) {
           (editing ? (
             <ScopePickers draft={draft} onChange={onChange} />
           ) : (
-            <p className="text-default-secondary" data-testid="concierge.scope-summary">
+            <p className="text-default-secondary" data-testid="health.scope-summary">
               {t_i18n("{agents, plural, one {# agent} other {# agents}} and {flows, plural, one {# flow} other {# flows}} supervised", {
                 agents: draft.scope_agent_ids.length,
                 flows: draft.scope_flow_ids.length,
@@ -286,7 +286,7 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
           })}
         </SettingsFieldGrid>
         {budget && (
-          <div className="mt-2 border-t border-elevation-subtle-soft pt-2 content-compact text-default-secondary" data-testid="concierge.budget-usage">
+          <div className="mt-2 border-t border-elevation-subtle-soft pt-2 content-compact text-default-secondary" data-testid="health.budget-usage">
             {t_i18n("Spent in {month}: {tokens} tokens, {cost} USD.", {
               month: budget.month,
               tokens: n(budget.used.tokens),
@@ -340,7 +340,7 @@ export function HealthSection() {
   };
 
   return (
-    <div className="space-y-5 rounded-sm border border-accent/15 bg-gradient-to-br from-accent/[0.03] to-transparent p-5" data-testid="settings.concierge">
+    <div className="space-y-5 rounded-sm border border-accent/15 bg-gradient-to-br from-accent/[0.03] to-transparent p-5" data-testid="settings.health">
       <div className="flex items-center justify-between">
         <p className="content-compact text-default-secondary">
           {t_i18n(

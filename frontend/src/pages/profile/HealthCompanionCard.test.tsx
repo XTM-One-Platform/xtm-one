@@ -53,7 +53,7 @@ describe("HealthCompanionCard", () => {
   it("reads the companion with no feature flag (#101 S1)", async () => {
     renderWithProviders(<HealthCompanionCard />);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/me/companion"));
-    expect(await screen.findByTestId("profile.concierge-companion")).toBeInTheDocument();
+    expect(await screen.findByTestId("profile.health-companion")).toBeInTheDocument();
   });
 });
 

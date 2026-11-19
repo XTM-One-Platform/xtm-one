@@ -34,16 +34,16 @@ export function useNavFlags(): NavFlags {
   // As the Sidebar: lock only on a RESOLVED "not licensed".
   const aiLicensed = useAgenticAIEnabled() || !platformConfig;
   const deepInvestigation = useFeatureFlag("DEEP_INVESTIGATION");
-  const concierge = true;
+  const health = true;
   const videoStudio = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudio = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluation = useFeatureFlag("EVALUATION");
   const aiAdoption = platformConfig?.features.ai_adoption !== false;
   return useMemo(() => ({
     chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
-    deepInvestigation, concierge, videoStudio, dashboardStudio, evaluation,
+    deepInvestigation, health, videoStudio, dashboardStudio, evaluation,
   }), [chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
-    deepInvestigation, concierge, videoStudio, dashboardStudio, evaluation]);
+    deepInvestigation, health, videoStudio, dashboardStudio, evaluation]);
 }
 
 /** The group `id` as the current reader resolves it. */

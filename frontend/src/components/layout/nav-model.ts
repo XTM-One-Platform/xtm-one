@@ -60,7 +60,7 @@ export interface NavFlags {
   /** `EVALUATION`: served only where evaluation may run (every mode where AI runs). */
   evaluation: boolean;
   /** The Platform Health page (#8261: improvements, cycles, signals); built in since #101 (S1), no flag, so callers pass true. */
-  concierge: boolean;
+  health: boolean;
 }
 
 /** Why a `locked` entry is locked — picks the tooltip that explains it. */
@@ -361,7 +361,7 @@ export const NAV_SECTIONS: NavSection[] = [
       aiLeaf("/ai-adoption", Sprout, "AI Adoption", (f) => f.aiAdoption),
       aiLeaf("/evaluations", FlaskConical, "Evaluations", (f) => f.evaluation),
       /* Platform Health (#101 S1): a translated label, never the administrator's name; `/concierge` redirects here. */
-      aiLeaf("/health", Compass, "Platform Health", (f) => f.concierge),
+      aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
          guards unchanged (/users behind AdminRoute, /groups not; r2 A5). */
       {

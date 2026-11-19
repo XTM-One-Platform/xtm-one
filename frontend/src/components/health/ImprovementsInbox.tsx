@@ -285,7 +285,7 @@ export function ImprovementsInbox({ fixed }: { fixed?: ImprovementListFilters })
       urlKey={URL_KEY}
       searchPlaceholder={t_i18n("Search proposals...")}
       filters={tableFilters}
-      exportName="concierge-improvements"
+      exportName="health-improvements"
       isLoading={isLoading}
       isError={isError}
       errorLabel={t_i18n("The improvement proposals could not be loaded.")}

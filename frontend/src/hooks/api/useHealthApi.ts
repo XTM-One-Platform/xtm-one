@@ -42,15 +42,15 @@ import type {
   ImprovementListResponse,
 } from "@/types";
 
-const SETTINGS_KEY = ["concierge", "settings"] as const;
-const BUDGET_KEY = ["concierge", "budget"] as const;
-const OPT_OUT_KEY = ["concierge", "opt-out"] as const;
-const NAME_KEY = ["concierge", "name"] as const;
+const SETTINGS_KEY = ["health", "settings"] as const;
+const BUDGET_KEY = ["health", "budget"] as const;
+const OPT_OUT_KEY = ["health", "opt-out"] as const;
+const NAME_KEY = ["health", "name"] as const;
 
 /** What a manager opts in to improvement: an agent or a flow, on the same route shape. */
 export type OptInTarget = "agent" | "flow";
 
-const optInKey = (targetType: OptInTarget, targetId: string) => ["concierge", `${targetType}-opt-in`, targetId] as const;
+const optInKey = (targetType: OptInTarget, targetId: string) => ["health", `${targetType}-opt-in`, targetId] as const;
 
 export function useHealthOptIn(targetType: OptInTarget, targetId: string, enabled = true) {
   return useQuery<HealthOptIn>({
@@ -153,7 +153,7 @@ function targetParams({ targetType, targetId }: TargetRef, extra: Record<string,
 /** The cycles the viewer may read, newest first; polled while one is open. */
 export function useHealthCycles(target: TargetRef = {}, options: { status?: string; enabled?: boolean } = {}) {
   return useQuery<HealthCycle[]>({
-    queryKey: ["concierge-cycles", target.targetType ?? null, target.targetId ?? null, options.status ?? null],
+    queryKey: ["health-cycles", target.targetType ?? null, target.targetId ?? null, options.status ?? null],
     queryFn: () => api.get(`/health/cycles${targetParams(target, { status: options.status })}`),
     enabled: options.enabled ?? true,
     throwOnError: false,
@@ -164,7 +164,7 @@ export function useHealthCycles(target: TargetRef = {}, options: { status?: stri
 
 export function useHealthSignals(target: TargetRef = {}, options: { enabled?: boolean } = {}) {
   return useQuery<HealthSignal[]>({
-    queryKey: ["concierge-signals", target.targetType ?? null, target.targetId ?? null],
+    queryKey: ["health-signals", target.targetType ?? null, target.targetId ?? null],
     queryFn: () => api.get(`/health/signals${targetParams(target)}`),
     enabled: options.enabled ?? true,
     throwOnError: false,
@@ -173,7 +173,7 @@ export function useHealthSignals(target: TargetRef = {}, options: { enabled?: bo
 
 export function useHealthScheduleMarks() {
   return useQuery<HealthScheduleMark[]>({
-    queryKey: ["concierge-schedule-marks"],
+    queryKey: ["health-schedule-marks"],
     queryFn: () => api.get("/health/schedules"),
     throwOnError: false,
   });
@@ -187,7 +187,7 @@ export function useRequestHealthCycle() {
       api.post<HealthCycleStart>("/health/cycles", body),
     // The button says why nothing started (`healthRefusalKey`).
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["concierge-cycles"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["health-cycles"] }),
   });
 }
 

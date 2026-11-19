@@ -71,7 +71,7 @@ function OptOutCard({ optOut }: { optOut: boolean }) {
   };
 
   return (
-    <Card data-testid="profile.concierge-opt-out">
+    <Card data-testid="profile.health-opt-out">
       {ConfirmEl}
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 content-base">

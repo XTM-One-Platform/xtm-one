@@ -39,14 +39,14 @@ describe("HealthCompanion", () => {
     serve({ enabled: false, pet: "alfred" });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/me/companion"));
-    expect(screen.queryByTestId("concierge.companion")).toBeNull();
+    expect(screen.queryByTestId("health.companion")).toBeNull();
     expect(api.get).not.toHaveBeenCalledWith("/health/me/activity");
   });
 
   it("reads the companion with no feature flag (#101 S1)", async () => {
     serve({ enabled: true, pet: "alfred" });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
-    expect(await screen.findByTestId("concierge.companion")).toBeInTheDocument();
+    expect(await screen.findByTestId("health.companion")).toBeInTheDocument();
   });
 
   it("says what it shows, with the Concierge's name", async () => {
@@ -79,6 +79,6 @@ describe("HealthCompanion", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Alfred" }));
     fireEvent.click(await screen.findByRole("button", { name: "Hide" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "alfred" }));
-    await waitFor(() => expect(screen.queryByTestId("concierge.companion")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("health.companion")).toBeNull());
   });
 });

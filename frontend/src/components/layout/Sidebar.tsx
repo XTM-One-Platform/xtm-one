@@ -391,7 +391,7 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     aiEnabled,
     aiLicensed,
     deepInvestigation: deepInvestigationEnabled,
-    concierge: true,
+    health: true,
     videoStudio: videoStudioEnabled,
     dashboardStudio: dashboardStudioEnabled,
     evaluation: evaluationOn,

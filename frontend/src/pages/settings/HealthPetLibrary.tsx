@@ -54,7 +54,7 @@ export function HealthPetLibrary() {
   };
 
   return (
-    <div data-testid="concierge.pet-library">
+    <div data-testid="health.pet-library">
       <BlockTitle
         icon={PawPrint}
         title={t_i18n("Companion pets")}
