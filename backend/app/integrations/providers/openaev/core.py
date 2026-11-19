@@ -30,6 +30,7 @@ from ._common import (
     PAYLOAD_TYPES,
     PLATFORMS,
     SCENARIO_CATEGORIES,
+    SCENARIO_INJECT_COUNT_KEY,
     SCENARIO_MAIN_FOCUS,
     SCENARIO_SEVERITIES,
     _aev_link,
@@ -53,6 +54,7 @@ from ._common import (
     _search_body,
     _simulation_state_lines,
     asset_group_member_ids_lines,
+    count_scenario_injects,
     fmt_asset_group_members,
     inject_targets_line,
     mirror_content_targets,
@@ -541,11 +543,31 @@ def register_core(
                 "fetch scenario",
                 headers=hdrs,
             )
-        if err:
-            return err
-        resp = _require_response(resp)
-        data = resp.json()
-        return _fmt_scenario(data, base_url) if data else f"Scenario '{scenario_id}' not found."
+            if err:
+                return err
+            resp = _require_response(resp)
+            data = resp.json()
+            if not data:
+                return f"Scenario '{scenario_id}' not found."
+            if isinstance(data, dict) and not isinstance(data.get("scenario_injects"), list):
+                # The scenario read (ScenarioOutput) carries no injects: count them
+                # from the scenario's inject list, or say the count was not returned.
+                count_resp, count_err = await scoped_safe_request(
+                    client,
+                    "get",
+                    f"{base_url}/api/scenarios/{scenario_id}/injects",
+                    _PROVIDER,
+                    "count scenario injects",
+                    headers=hdrs,
+                )
+                count = None
+                if not count_err and count_resp is not None:
+                    try:
+                        count = count_scenario_injects(count_resp.json())
+                    except ValueError:
+                        count = None
+                data = {**data, SCENARIO_INJECT_COUNT_KEY: count}
+        return _fmt_scenario(data, base_url)
 
     # ── 12. Create scenario ───────────────────────────────────────────
 
