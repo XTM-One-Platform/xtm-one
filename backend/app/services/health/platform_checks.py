@@ -31,9 +31,11 @@ Check                              Severity    Category       Fails when
 ``xtm_one.default_model``          critical    configuration  no default model is set, so agents without a model of their own cannot run
 ``xtm_one.embedding_model``        critical    configuration  no embedding model is set, so knowledge bases cannot index or search
 ``xtm_one.quota_near_ceiling``     warning     capacity       a platform-wide agentic ceiling is over 90 % used in its current period
+``xtm_one.dependency_unreachable`` critical    availability   Redis or the object storage does not answer its probe within 4 s
+``xtm_one.trace_backlog``          warning     capacity       over 1,000 traces wait in the tracing overflow queue
 =================================  ==========  =============  ==============================================
 
-The four last checks answer one result per subject (an integration, a server, a
+The per-subject checks answer one result per subject (an integration, a server, a
 knowledge base) and close out the open findings whose subject they no longer
 read (:func:`app.services.health.engine.close_out`), so fixing or deleting the
 subject resolves its finding.
@@ -47,16 +49,21 @@ calls no model, reaches no network and is never metered.
 
 The quota check reads the counters the gates read and moves none of them.
 
-The remaining 4.2 checks (scheduler lag, queues, probes, sandbox latency,
-provider error rates, version, certificates) follow in a later slice; the
-security audit stays its own page.
+The dependency probe is the readiness probe of ``/health/ready`` (a Redis
+``PING``, the bucket of the object storage), each bounded by
+:data:`PROBE_TIMEOUT_SECONDS`; PostgreSQL needs no probe, the pass itself runs
+on it. The trace backlog reads the length of the tracing overflow list.
+
+The remaining 4.2 checks (scheduler lag, sandbox latency, provider error
+rates, version, certificates) follow in a later slice; the security audit
+stays its own page.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,6 +81,12 @@ KB_STALLED_AFTER = timedelta(hours=1)
 BROKEN_INTEGRATION_STATUSES = frozenset({"error", "reauthorize"})
 #: A platform-wide agentic ceiling used past this share of its period raises a warning.
 QUOTA_WARNING_RATIO = 0.9
+#: A dependency probe slower than this counts as unreachable (the readiness probe's bound).
+PROBE_TIMEOUT_SECONDS = 4.0
+#: Traces waiting in the tracing overflow list past this count raise a warning.
+TRACE_BACKLOG_WARNING = 1000
+#: The dependencies probed, in the order findings are recorded.
+PROBED_DEPENDENCIES = ("redis", "object_storage")
 #: Where a finding of these checks is explained.
 DOC_LINK = "/docs/administration/health#platform-checks"
 
@@ -397,6 +410,90 @@ async def quota_near_ceiling(db: AsyncSession, now: datetime) -> list[CheckResul
     return results + await close_out(db, "xtm_one.quota_near_ceiling", results)
 
 
+async def _probe_redis() -> None:
+    from app.core.redis import redis_client
+
+    client = await redis_client()
+    # redis-py 7.x stubs type ping() as Awaitable[bool] | bool (as /health/ready reads it).
+    await cast(Awaitable[bool], client.ping())
+
+
+async def _probe_object_storage() -> None:
+    import asyncio
+
+    from app.services.file_storage import file_storage
+
+    if not await asyncio.to_thread(lambda: file_storage.client.bucket_exists(file_storage._bucket)):
+        raise RuntimeError("bucket not found")
+
+
+_PROBES: dict[str, Callable[[], Awaitable[None]]] = {
+    "redis": _probe_redis,
+    "object_storage": _probe_object_storage,
+}
+
+
+async def _probe(name: str) -> str:
+    """``"ok"`` or the error the probe of ``name`` met, bounded by :data:`PROBE_TIMEOUT_SECONDS`."""
+    import asyncio
+
+    try:
+        await asyncio.wait_for(_PROBES[name](), timeout=PROBE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        return f"timed out after {PROBE_TIMEOUT_SECONDS:g} s"
+    except Exception as exc:  # any failure is the finding
+        return f"{type(exc).__name__}: {exc}"[:200]
+    return "ok"
+
+
+async def dependency_unreachable(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """Redis or the object storage does not answer: runs, files and sessions stop."""
+    results = []
+    for name in PROBED_DEPENDENCIES:
+        outcome = await _probe(name)
+        results.append(
+            _result(
+                "xtm_one.dependency_unreachable",
+                "critical",
+                "availability",
+                outcome != "ok",
+                subject={"dependency": name},
+                evidence={"values": {"probe": outcome}, "source": "readiness probe"},
+                recommendation=f"Check that {name.replace('_', ' ')} is up and reachable from the backend and the worker.",
+            )
+        )
+    return results
+
+
+async def _trace_backlog_length() -> int:
+    """Traces waiting in the tracing overflow list (a read, nothing popped)."""
+    from app.core.redis import redis_client
+    from app.services.tracing.dispatcher import OVERFLOW_KEY
+
+    client = await redis_client()
+    return int(await cast(Awaitable[int], client.llen(OVERFLOW_KEY)) or 0)
+
+
+async def trace_backlog(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """Traces pile up in the overflow list: the trace store is slow or down, analytics lag."""
+    from app.services.tracing.dispatcher import OVERFLOW_KEY
+
+    try:
+        waiting = await _trace_backlog_length()
+    except Exception:  # Redis down is the dependency check's finding
+        return []
+    return [
+        _result(
+            "xtm_one.trace_backlog",
+            "warning",
+            "capacity",
+            waiting > TRACE_BACKLOG_WARNING,
+            evidence={"values": {"waiting": waiting}, "threshold": TRACE_BACKLOG_WARNING, "source": OVERFLOW_KEY},
+            recommendation="Check the trace store: traces are queued until it accepts them again.",
+        )
+    ]
+
+
 for _check_id, _run in (
     ("xtm_one.registration_token", registration_token),
     ("xtm_one.licence", licence),
@@ -410,6 +507,8 @@ for _check_id, _run in (
     ("xtm_one.default_model", default_model),
     ("xtm_one.embedding_model", embedding_model),
     ("xtm_one.quota_near_ceiling", quota_near_ceiling),
+    ("xtm_one.dependency_unreachable", dependency_unreachable),
+    ("xtm_one.trace_backlog", trace_backlog),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))

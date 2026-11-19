@@ -316,8 +316,15 @@ no model of their own cannot run, knowledge bases cannot index) and
 `xtm_one.quota_near_ceiling` (warning, one finding per capped period, when a platform-wide
 agentic ceiling is 90 % used). The quota read is `services/quota.platform_agentic_usage`,
 the same counters the gates read, no counter moved (pinned by
-`test_the_platform_usage_read_moves_no_counter`). The rows still owed (scheduler lag,
-queues, probes, sandbox latency, provider error rates, version, certificates) follow in S4d.
+`test_the_platform_usage_read_moves_no_counter`).
+
+**Implementation (S4d).** Two availability and capacity checks:
+`xtm_one.dependency_unreachable` (critical, one finding per dependency: the readiness
+probe of `/health/ready` on Redis and the object storage, each bounded at 4 s; PostgreSQL
+needs none, the pass runs on it) and `xtm_one.trace_backlog` (warning when the tracing
+overflow list `tracing:overflow` holds over 1,000 traces; nothing recorded when Redis
+cannot be read, that is the dependency finding). The rows still owed (scheduler lag,
+sandbox latency, provider error rates, version, certificates) follow in S4e.
 
 ### 4.3 OpenCTI (XTM One mode, automatic)
 

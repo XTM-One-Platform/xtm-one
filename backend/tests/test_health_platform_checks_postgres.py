@@ -27,6 +27,7 @@ from tests.test_provisioning_postgres import _temp_database
 pytestmark = pytest.mark.integration
 
 T0 = datetime(2026, 11, 19, 20, 0, tzinfo=UTC)
+_real_probe = platform_checks._probe
 CHECKS = [c for c in engine.registered_checks() if c.module == "xtm_one"]
 
 
@@ -62,7 +63,17 @@ def _world(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(router, "get_platform_default_model", default_model)
     monkeypatch.setattr(platform_checks, "_platform_settings", settings_row)
     monkeypatch.setattr(quota, "platform_agentic_usage", no_ceiling)
+    monkeypatch.setattr(platform_checks, "_probe", _probe_ok)
+    monkeypatch.setattr(platform_checks, "_trace_backlog_length", _no_backlog)
     engine._LAST_RUN.clear()
+
+
+async def _probe_ok(name: str) -> str:
+    return "ok"
+
+
+async def _no_backlog() -> int:
+    return 0
 
 
 async def _open(db: AsyncSession) -> dict[str, HealthCheckFinding]:
@@ -89,6 +100,8 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.default_model",
         "xtm_one.embedding_model",
         "xtm_one.quota_near_ceiling",
+        "xtm_one.dependency_unreachable",
+        "xtm_one.trace_backlog",
     }
     assert {c.interval for c in CHECKS} == {platform_checks.PLATFORM_CHECK_INTERVAL}
 
@@ -103,7 +116,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 12
+        assert totals["checks"] == 14
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"
@@ -366,3 +379,67 @@ async def test_the_platform_usage_read_moves_no_counter(monkeypatch: pytest.Monk
     rows = await _real_platform_agentic_usage(None, T0)  # type: ignore[arg-type]
     assert rows == [{"period": "daily", "used": 47, "limit": 50}]
     assert counts == {"agentic": 40, "sandbox": 7}
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_dependency_is_critical_per_dependency_and_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S4d: a probe that fails opens one critical finding for that dependency, resolved once it answers."""
+    down = {"object_storage"}
+
+    async def probe(name: str) -> str:
+        return "timed out after 4 s" if name in down else "ok"
+
+    async with _temp_database("hpc_probes") as sessions, sessions() as db:
+        monkeypatch.setattr(platform_checks, "_probe", probe)
+        await _pass(db, T0)
+        rows = [r for r in (await db.execute(select(HealthCheckFinding))).scalars().all() if r.status == STATUS_OPEN]
+        probe_rows = [r for r in rows if r.check_id == "xtm_one.dependency_unreachable"]
+        assert [r.subject for r in probe_rows] == [{"dependency": "object_storage"}]
+        assert probe_rows[0].severity == "critical"
+        assert probe_rows[0].evidence["values"] == {"probe": "timed out after 4 s"}
+
+        down = set()
+        await _pass(db, T0 + timedelta(minutes=5))
+        await _pass(db, T0 + timedelta(minutes=10))
+        assert "xtm_one.dependency_unreachable" not in await _open(db)
+
+
+@pytest.mark.asyncio
+async def test_the_probe_reports_a_timeout_and_an_error() -> None:
+    """S4d: the probe is bounded and turns any failure into its text, never raises."""
+    import asyncio
+
+    async def hang() -> None:
+        await asyncio.sleep(60)
+
+    async def boom() -> None:
+        raise ConnectionError("refused")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(platform_checks, "PROBE_TIMEOUT_SECONDS", 0.01)
+        mp.setattr(platform_checks, "_PROBES", {"redis": hang, "object_storage": boom})
+        assert (await _real_probe("redis")).startswith("timed out")
+        assert await _real_probe("object_storage") == "ConnectionError: refused"
+
+
+@pytest.mark.asyncio
+async def test_a_trace_backlog_over_1000_is_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4d: over 1,000 traces in the overflow list opens a capacity warning; an unreadable Redis records nothing."""
+
+    async def backlog() -> int:
+        return 1500
+
+    async def unreadable() -> int:
+        raise ConnectionError("down")
+
+    async with _temp_database("hpc_traces") as sessions, sessions() as db:
+        monkeypatch.setattr(platform_checks, "_trace_backlog_length", backlog)
+        await _pass(db, T0)
+        found = await _open(db)
+        assert found["xtm_one.trace_backlog"].category == "capacity"
+        assert found["xtm_one.trace_backlog"].evidence["values"] == {"waiting": 1500}
+
+    monkeypatch.setattr(platform_checks, "_trace_backlog_length", unreadable)
+    assert await platform_checks.trace_backlog(None, T0) == []  # type: ignore[arg-type]
