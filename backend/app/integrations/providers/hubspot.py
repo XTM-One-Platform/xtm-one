@@ -57,8 +57,10 @@ from app.integrations.providers.hubspot_records import (
     ENGAGEMENT_SPECS,
     association_label,
     association_type_text,
+    epoch_ms,
     format_engagement,
     normalize_engagement,
+    parse_hubspot_time,
     record_properties,
     split_names,
 )
@@ -279,6 +281,23 @@ _HUBSPOT_NO_VALUE_OPERATORS = {"HAS_PROPERTY", "NOT_HAS_PROPERTY"}  # take no va
 # upgrades to NOT_IN — using IN would flip the filter's polarity from "exclude"
 # to "include" (e.g. NEQ ["a","b"] means "neither a nor b", i.e. NOT_IN).
 _HUBSPOT_NEGATED_SCALAR_OPERATORS = {"NEQ", "NOT_CONTAINS_TOKEN"}
+# Range operators: on a date or datetime property HubSpot reads epoch
+# milliseconds; a custom date property refuses an ISO date with a bare 400.
+_HUBSPOT_RANGE_OPERATORS = {"GT", "GTE", "LT", "LTE", "BETWEEN"}
+_ISO_DATE_VALUE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$")
+
+
+def _range_bound(value: str) -> str:
+    """An ISO date or time bounding a range, as the epoch milliseconds HubSpot reads.
+
+    ``2026-11-18`` is midnight UTC (HubSpot stores a date property there),
+    a time with no offset is UTC. Any other value is kept as written.
+    """
+    text = value.strip()
+    if not _ISO_DATE_VALUE_RE.match(text):
+        return value
+    moment = parse_hubspot_time(text.replace(" ", "T", 1))
+    return str(epoch_ms(moment)) if moment is not None else value
 
 
 def _coerce_scalar_str(value: Any) -> str | None:
@@ -338,6 +357,9 @@ def _normalize_filter(flt: Any) -> dict | None:
       * ``IN``/``NOT_IN`` given the list under ``value`` instead of
         ``values`` — move it across and drop ``value``;
       * ``HAS_PROPERTY``/``NOT_HAS_PROPERTY`` carrying a stray value — drop it;
+      * an ISO date or time bounding a range (``GT``/``GTE``/``LT``/``LTE``/
+        ``BETWEEN``) — send its epoch milliseconds, which date and datetime
+        properties both read;
       * non-string scalars — stringify.
 
     Returns ``None`` for a filter that can't be made schema-valid so the
@@ -376,8 +398,8 @@ def _normalize_filter(flt: Any) -> dict | None:
         if low is None or high is None:
             # BETWEEN needs both endpoints; a half-open range still 400s.
             return None
-        out["value"] = low
-        out["highValue"] = high
+        out["value"] = _range_bound(low)
+        out["highValue"] = _range_bound(high)
         return out
 
     # Scalar operators (EQ, NEQ, GT, GTE, LT, LTE, CONTAINS_TOKEN, ...).
@@ -400,7 +422,7 @@ def _normalize_filter(flt: Any) -> dict | None:
     if scalar is None:
         # A scalar operator requires a value; drop it when none can be coerced.
         return None
-    out["value"] = scalar
+    out["value"] = _range_bound(scalar) if operator in _HUBSPOT_RANGE_OPERATORS else scalar
     return out
 
 
