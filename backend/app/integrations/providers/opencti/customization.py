@@ -21,6 +21,7 @@ import logging
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql, _graphql_upload
+from .access import _refuse_unapplied
 from .workflow import fetch_type_workflows, format_type_workflow, resolve_filters_json, with_status_notes
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,80 @@ _RETENTION_SCOPES = ("knowledge", "file", "workbench", "history", "activity")
 _RETENTION_UNITS = ("minutes", "hours", "days")
 _STATUS_ACTIONS = ("add_status", "update_status", "delete_status")
 _STATUS_SCOPES = {"global": "GLOBAL", "request_access": "REQUEST_ACCESS"}
+
+# The fields each action of a customization tool reads; any other field passed (an
+# argument the tool does not declare included) is refused by name and nothing is sent.
+# A field left at its default (limit, scope) counts as not passed.
+_ENTITY_SETTING_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"limit"}),
+    "get_by_type": frozenset({"target_type"}),
+    "patch": frozenset(
+        {
+            "target_type",
+            "platform_hidden_type",
+            "enforce_reference",
+            "platform_entity_files_ref",
+            "attributes_configuration",
+        }
+    ),
+    "add_status": frozenset({"target_type", "template_id", "order", "scope"}),
+    "update_status": frozenset({"target_type", "status_id", "order", "template_id"}),
+    "delete_status": frozenset({"target_type", "status_id"}),
+}
+_VOCABULARY_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"category", "search", "limit"}),
+    "get": frozenset({"vocabulary_id"}),
+    "create": frozenset({"name", "category", "description", "aliases", "order"}),
+    "update": frozenset({"vocabulary_id", "name", "description", "aliases", "order"}),
+    "delete": frozenset({"vocabulary_id"}),
+}
+_STATUS_TEMPLATE_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"template_id"}),
+    "create": frozenset({"name", "color"}),
+    "update": frozenset({"template_id", "name", "color"}),
+    "delete": frozenset({"template_id"}),
+}
+_DECAY_FIELDS = frozenset(
+    {
+        "name",
+        "description",
+        "order",
+        "active",
+        "decay_lifetime",
+        "decay_pound",
+        "decay_points",
+        "decay_revoke_score",
+        "decay_filters",
+    }
+)
+_DECAY_RULE_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"decay_rule_id"}),
+    "create": _DECAY_FIELDS,
+    "update": _DECAY_FIELDS | {"decay_rule_id"},
+    "delete": frozenset({"decay_rule_id"}),
+}
+_RETENTION_RULE_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"retention_rule_id"}),
+    "create": frozenset({"name", "max_retention", "retention_unit", "scope", "filters"}),
+    "check": frozenset({"name", "max_retention", "retention_unit", "scope", "filters"}),
+    "update": frozenset({"retention_rule_id", "name", "max_retention", "retention_unit", "filters"}),
+    "delete": frozenset({"retention_rule_id"}),
+}
+_EXCLUSION_LIST_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"exclusion_list_id"}),
+    "create": frozenset({"name", "description", "entity_types", "content"}),
+    "update": frozenset({"exclusion_list_id", "name", "description", "enabled"}),
+    "delete": frozenset({"exclusion_list_id"}),
+}
+
+
+def _unless(value: object, default: object) -> object:
+    """*value*, or None when it is the parameter's default (a default is not a field passed)."""
+    return None if value == default else value
 
 
 def register(
@@ -63,8 +138,28 @@ def register(
         status_id: str = "",
         order: int | None = None,
         scope: str = "global",
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _ENTITY_SETTING_APPLIES,
+            {
+                "target_type": target_type,
+                "platform_hidden_type": platform_hidden_type,
+                "enforce_reference": enforce_reference,
+                "platform_entity_files_ref": platform_entity_files_ref,
+                "attributes_configuration": attributes_configuration,
+                "limit": _unless(limit, 100),
+                "template_id": template_id,
+                "status_id": status_id,
+                "order": order,
+                "scope": _unless(scope, "global"),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action in _STATUS_ACTIONS:
             return await _edit_type_status(
@@ -239,8 +334,26 @@ def register(
         order: int | None = None,
         search: str = "",
         limit: int = 50,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _VOCABULARY_APPLIES,
+            {
+                "vocabulary_id": vocabulary_id,
+                "category": category,
+                "name": name,
+                "description": description,
+                "aliases": aliases,
+                "order": order,
+                "search": search,
+                "limit": _unless(limit, 50),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -362,8 +475,23 @@ def register(
         color: str = "",
         search: str = "",
         limit: int = 100,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _STATUS_TEMPLATE_APPLIES,
+            {
+                "template_id": template_id,
+                "name": name,
+                "color": color,
+                "search": search,
+                "limit": _unless(limit, 100),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -480,8 +608,30 @@ def register(
         decay_filters: str = "",
         search: str = "",
         limit: int = 50,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _DECAY_RULE_APPLIES,
+            {
+                "decay_rule_id": decay_rule_id,
+                "name": name,
+                "description": description,
+                "order": order,
+                "active": active,
+                "decay_lifetime": decay_lifetime,
+                "decay_pound": decay_pound,
+                "decay_points": decay_points,
+                "decay_revoke_score": decay_revoke_score,
+                "decay_filters": decay_filters,
+                "search": search,
+                "limit": _unless(limit, 50),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -640,8 +790,26 @@ def register(
         filters: str = "",
         search: str = "",
         limit: int = 50,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _RETENTION_RULE_APPLIES,
+            {
+                "retention_rule_id": retention_rule_id,
+                "name": name,
+                "max_retention": max_retention,
+                "retention_unit": retention_unit,
+                "scope": _unless(scope, "knowledge"),
+                "filters": filters,
+                "search": search,
+                "limit": _unless(limit, 50),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -804,8 +972,26 @@ def register(
         enabled: bool | None = None,
         search: str = "",
         limit: int = 50,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _EXCLUSION_LIST_APPLIES,
+            {
+                "exclusion_list_id": exclusion_list_id,
+                "name": name,
+                "description": description,
+                "entity_types": entity_types,
+                "content": content,
+                "enabled": enabled,
+                "search": search,
+                "limit": _unless(limit, 50),
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
