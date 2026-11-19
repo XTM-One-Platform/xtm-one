@@ -511,6 +511,28 @@ class TestFailureDetail:
         )
         assert detail == "Execution record lost"
 
+    async def test_a_run_failed_by_the_stale_sweep_says_it_was_interrupted(self):
+        """An orphaned run is named for what it is, not 'Task execution failed',
+        and the sweep's internal timings never cross to the partner."""
+        from app.services.autonomous import STALE_ASSIGNMENT_CLEANUP_ERROR_PREFIX
+
+        run = _Run("failed")
+        run.error = f"{STALE_ASSIGNMENT_CLEANUP_ERROR_PREFIX} The run sat in running for 1138s."
+        detail = await task_svc.failure_detail(_DB([run]), _Task(run_id=run.id))
+        assert detail == task_svc.ORPHANED_ERROR_TEXT
+        assert "1138" not in detail
+
+    def test_the_stale_sweep_prefix_is_the_one_the_sweep_writes(self):
+        from app.services.autonomous import STALE_ASSIGNMENT_CLEANUP_ERROR_PREFIX
+
+        assert task_svc._STALE_RUN_CLEANUP_PREFIX == STALE_ASSIGNMENT_CLEANUP_ERROR_PREFIX
+
+    async def test_an_arbitrary_error_stays_generic(self):
+        run = _Run("failed")
+        run.error = "sqlalchemy error: SELECT secret FROM t"
+        detail = await task_svc.failure_detail(_DB([run]), _Task(run_id=run.id))
+        assert detail == "Task execution failed"
+
     def test_status_message_deserialises_for_a_v03_partner(self):
         """The failed task's stated cause must itself be a valid Message —
         an unparseable explanation is worse than none."""

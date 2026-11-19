@@ -402,6 +402,26 @@ def _status_text(payload: dict) -> list[str]:
     return _parts_text((payload.get("status") or {}).get("message"))
 
 
+def _terminal_reason(payload: dict[str, Any]) -> str | None:
+    """What the partner gave as the reason of a failed or canceled task.
+
+    A2A carries it in the status message; a ``status.reason`` some partners
+    add is kept in front of it. ``None`` when the partner said nothing.
+    """
+    reason = (payload.get("status") or {}).get("reason")
+    said = [str(reason)] if isinstance(reason, str) and reason.strip() else []
+    said += [text for text in _status_text(payload) if text not in said]
+    return _bounded(said) or None
+
+
+def _terminal_detail(state: A2AState | None, payload: dict[str, Any]) -> str:
+    """Our own line on a failed or canceled task: the state seen, and whether the partner said why."""
+    seen = state.value if state is not None else "unknown"
+    if _terminal_reason(payload):
+        return f"The partner ended the task in state '{seen}' and gave the reason in partner_reason."
+    return f"The partner ended the task in state '{seen}' and gave no reason."
+
+
 def _bounded(chunks: list[str]) -> str:
     """Join, bounded by ``a2a_max_message_chars`` — the inbound half's ceiling (FR-027)."""
     text = "\n".join(chunks)
@@ -2077,7 +2097,8 @@ async def delegate(
             )
             result = DelegationResult(
                 outcome=outcome,
-                partner_reason=(payload.get("status") or {}).get("reason"),
+                partner_reason=_terminal_reason(payload),
+                detail=_terminal_detail(state, payload),
                 partner_task_id=task_id,
                 protocol_version=version,
                 signature_state=signature_state,
