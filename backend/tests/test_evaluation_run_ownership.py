@@ -127,7 +127,7 @@ async def test_execute_evaluation_runs_only_the_runs_it_owns(monkeypatch):
     execution_a, execution_b = uuid.uuid4(), uuid.uuid4()
     executed: list[str] = []
 
-    async def _fake_execute_run(_db, run_id):
+    async def _fake_execute_run(_db, run_id, **_kw):
         executed.append(run_id)
 
     monkeypatch.setattr(
@@ -732,7 +732,7 @@ async def test_unowned_pending_runs_are_claimed_exclusively(monkeypatch):
 
         current: dict[str, uuid.UUID] = {}
 
-        async def _fake_execute_run(_db, run_id):
+        async def _fake_execute_run(_db, run_id, **_kw):
             dispatched.append((current["id"], run_id))
 
         monkeypatch.setattr(

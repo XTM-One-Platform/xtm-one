@@ -89,6 +89,9 @@ async def test_a_worker_that_said_it_stopped_is_gone(redis):
     assert "xtm:orchestration:worker:w-stopped" not in redis.values
     gone = await worker_presence.gone(["w-stopped"], me="me")
     assert gone["w-stopped"]["state"] == "stopped" and gone["w-stopped"]["signal"] == "SIGTERM"
+    # It stopped its executions that stop on a lost lease before saying so: an evaluation it ran is taken back at
+    # once (``orchestration_reconciler.waits_for_lease_of``).
+    assert gone["w-stopped"][worker_presence.STOPS_LEASE_LOSS_WORK] is True
 
 
 async def test_a_container_restarted_in_place_finds_its_predecessor_gone_at_once(redis, monkeypatch):

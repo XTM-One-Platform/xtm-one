@@ -1709,7 +1709,7 @@ async def test_the_real_sequential_loop_raises_rather_than_breaking(monkeypatch)
 
         cancel_event = asyncio.Event()
 
-        async def _runner(rid: str) -> None:
+        async def _runner(rid: str, **_kw) -> None:
             # The lease moves while the FIRST run is in flight, so the stop has
             # to come from the sequential dispatch itself.
             ran.append(rid)

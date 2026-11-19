@@ -51,7 +51,7 @@ async def test_retry_fails_the_runs_its_own_crashed_attempt_abandoned(monkeypatc
     execution = uuid.uuid4()
     dispatched: list[str] = []
 
-    async def _fake_execute_run(db, run_id):
+    async def _fake_execute_run(db, run_id, **_kw):
         dispatched.append(run_id)
         run = await db.get(EvaluationRun, uuid.UUID(run_id))
         run.status = "completed"
@@ -133,7 +133,7 @@ async def test_reclaim_fails_its_own_and_unowned_running_runs_never_anothers(
 
     mine, theirs = uuid.uuid4(), uuid.uuid4()
 
-    async def _fake_execute_run(_db, _run_id):
+    async def _fake_execute_run(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -182,7 +182,7 @@ async def test_reclaim_leaves_an_unowned_run_another_live_execution_may_hold(
 
     mine = uuid.uuid4()
 
-    async def _fake_execute_run(_db, _run_id):
+    async def _fake_execute_run(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -274,7 +274,7 @@ async def test_reclaim_leaves_terminal_and_cancelled_runs_alone(monkeypatch):
 
     execution = uuid.uuid4()
 
-    async def _fake_execute_run(_db, _run_id):
+    async def _fake_execute_run(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -316,7 +316,7 @@ async def test_reclaim_leaves_callback_parked_runs_alone(monkeypatch, parked_sta
 
     execution = uuid.uuid4()
 
-    async def _fake_execute_run(_db, _run_id):
+    async def _fake_execute_run(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -392,7 +392,7 @@ async def test_reclaim_repairs_the_orphaned_episode_of_a_parked_run(monkeypatch,
 
     execution = uuid.uuid4()
 
-    async def _noop(_db, _run_id):
+    async def _noop(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -679,7 +679,7 @@ async def test_reclaim_repairs_episodes_of_the_runs_it_just_failed(monkeypatch):
 
     execution = uuid.uuid4()
 
-    async def _noop(_db, _run_id):
+    async def _noop(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -1076,7 +1076,7 @@ async def test_repair_leaves_a_run_that_is_only_running_for_a_rescore(monkeypatc
     execution = uuid.uuid4()
     started = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
-    async def _noop(_db, _run_id):
+    async def _noop(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(
@@ -1217,7 +1217,7 @@ async def test_repair_reconciles_when_the_callback_resolved_first(monkeypatch):
 
     execution = uuid.uuid4()
 
-    async def _noop(_db, _run_id):
+    async def _noop(_db, _run_id, **_kw):
         return None
 
     monkeypatch.setattr(

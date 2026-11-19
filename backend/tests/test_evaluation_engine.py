@@ -791,7 +791,7 @@ def test_every_episode_write_in_the_loop_is_under_its_run_lock():
     )
 
     kinds = {
-        "LOCK": ["_lock_run_before_episode_writes(db, run_uuid)"],
+        "LOCK": ["_lock_run_before_episode_writes(db, run_uuid"],
         "WRITE": [
             "ConversationContinuationService.append_step(",
             "ConversationContinuationService.pause_for_callback(",

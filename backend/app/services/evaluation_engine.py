@@ -20,6 +20,7 @@ and scores the output via an LLM judge comparing against the expected answer.
 
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import math
@@ -31,7 +32,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any, Final, Protocol, Self, cast
 
-from sqlalchemy import ColumnElement, Numeric, case, func, select, text, tuple_, update
+from sqlalchemy import ColumnElement, Numeric, case, delete, func, select, text, tuple_, update
 from sqlalchemy import cast as sql_cast  # ``cast`` is taken by typing.cast above
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,6 +129,7 @@ from app.services.evaluation.sandbox_cases import case_ref as sandbox_case_ref
 from app.services.evaluation.scorers.registry import judge_enabled
 from app.services.evaluation_continuation import (
     PARKED_EPISODE_STATUSES,
+    TERMINAL_EPISODE_STATUSES,
     ConversationContinuationService,
     fail_orphaned_episodes,
 )
@@ -3005,8 +3007,23 @@ async def _nothing_counted(db: AsyncSession, run_uuid: uuid.UUID) -> bool:
     return total > 0 and counted == 0
 
 
-async def _lock_run_before_episode_writes(db: AsyncSession, run_uuid) -> None:
-    """Take the RUN lock before this entry writes its episode.
+#: The orchestration execution a run is executed under and the worker holding its lease, ``(execution_id,
+#: worker_id)``: what fences a run's writes (:func:`_lock_run_before_episode_writes`). ``None`` for a caller that
+#: holds no lease.
+RunLease = tuple[uuid.UUID, str]
+
+
+async def _lock_run_before_episode_writes(
+    db: AsyncSession, run_uuid, *, lease: RunLease | None = None
+) -> None:
+    """Take the RUN lock before this entry writes its episode, under the lease fence when there is one.
+
+    With *lease*, the EXECUTION row is locked first and checked to still be
+    this worker's (:func:`_fence_on_lease`), held with the run lock to the
+    end-of-entry commit: a worker whose evaluation was taken back (its stop
+    said, its presence lapsed in a stall) writes no entry beside the worker
+    that resumes it, and leaves on ``LeaseLostError``. The same order as the
+    pre-dispatch reclaim, execution then run.
 
     The lock order is EXECUTION -> RUN -> EPISODE. Without this lock the entry
     loop takes them implicitly the other way: ``finalize_episode`` and
@@ -3021,9 +3038,25 @@ async def _lock_run_before_episode_writes(db: AsyncSession, run_uuid) -> None:
     the iteration would hold the run across both model calls and block
     cancellation for minutes.
     """
+    if lease is not None:
+        await _fence_on_lease(db, lease[0], lease[1], f"evaluation run {run_uuid}: entry write")
     await db.execute(
         select(EvaluationRun.id).where(EvaluationRun.id == run_uuid).with_for_update()
     )
+
+
+async def _lease_still_ours(db: AsyncSession, lease: RunLease | None) -> bool:
+    """Whether the execution's lease is still this worker's: read, not locked, before an entry starts."""
+    if lease is None or lease[1] == NO_LEASE:
+        return True
+    from app.models.orchestration import OrchestrationExecution
+
+    owner = (
+        await db.execute(
+            select(OrchestrationExecution.lease_owner).where(OrchestrationExecution.id == lease[0])
+        )
+    ).scalar_one_or_none()
+    return owner == lease[1]
 
 
 async def _stop_if_the_user_cancelled(db: AsyncSession, run_uuid, run_id: str, where: str) -> bool:
@@ -3075,15 +3108,105 @@ async def _stop_if_the_user_cancelled(db: AsyncSession, run_uuid, run_id: str, w
     return True
 
 
+async def _pause_for_the_stop(
+    db: AsyncSession, run_uuid: uuid.UUID, run_id: str, where: str, lease: RunLease | None
+) -> None:
+    """Put a run its stopping worker pauses back to ``pending``, at an entry boundary.
+
+    Conditional on ``"running"``, so a cancel committed meanwhile stands, and
+    under the lease fence, so a worker whose evaluation was already taken back
+    never flips the run its new worker is running. The entries it finished
+    stay; the next worker resumes from them (:func:`_settled_entries`). Never
+    raises: a pause that cannot be written (a lost lease, a database error)
+    leaves the run ``running``, which the next attempt resumes on the stop's
+    word (``_resume_runs_cut_by_a_stop``) - failing it here would lose its
+    entries. Same precondition as :func:`_stop_if_the_user_cancelled`:
+    nothing of the run left unflushed.
+    """
+    try:
+        if lease is not None and lease[1] != NO_LEASE:
+            await _fence_on_lease(db, lease[0], lease[1], f"evaluation run {run_id}: pause")
+        paused = (
+            await db.execute(
+                update(EvaluationRun)
+                .where(EvaluationRun.id == run_uuid, EvaluationRun.status == "running")
+                .values(status="pending")
+                .returning(EvaluationRun.id)
+            )
+        ).first()
+        await db.commit()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Evaluation run %s not paused %s, left running for the next worker to resume: %s",
+            run_id,
+            where,
+            format_exception_message(exc),
+        )
+        return
+    if paused is not None:
+        logger.warning(
+            "Evaluation run %s paused %s: its worker is stopping, it resumes on the next worker",
+            run_id,
+            where,
+        )
+
+
+#: The episode states a resumed run leaves as they are: the entry finished (closed), or waits on its callback.
+_SETTLED_EPISODE_STATUSES = (*TERMINAL_EPISODE_STATUSES, *PARKED_EPISODE_STATUSES)
+
+
+async def _settled_entries(db: AsyncSession, run_uuid: uuid.UUID) -> set[uuid.UUID]:
+    """The entries of a run that a resume skips: closed, parked on a callback, or with a result.
+
+    A fresh run has none. A run resumed after its worker stopped (paused at an
+    entry boundary, or put back by ``_resume_runs_cut_by_a_stop``) keeps every
+    entry it finished: an entry closes its episode and stores its result in
+    one commit, and a callback entry that failed or timed out closes its
+    episode with no result. Only the entry the stop cut is left: its episode
+    ``running`` or ``pending``, deleted by the reclaim, or none.
+    """
+    with_result = select(EvaluationResult.entry_id).where(EvaluationResult.run_id == run_uuid)
+    settled = select(EvaluationEpisode.entry_id).where(
+        EvaluationEpisode.run_id == run_uuid,
+        EvaluationEpisode.status.in_(_SETTLED_EPISODE_STATUSES),
+    )
+    rows = await db.execute(with_result.union(settled))
+    return set(rows.scalars().all())
+
+
 @known_secrets_scoped("run_id")
-async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
+async def execute_evaluation_run(
+    db: AsyncSession,
+    run_id: str,
+    *,
+    stopping: "asyncio.Event | None" = None,
+    lease: RunLease | None = None,
+) -> None:
     """Execute a single evaluation run (one agent + one model).
 
     A run cancelled out of band keeps its ``cancelled`` status — the
     completion path never rewrites it as ``completed``. A stop of the whole
     execution (emergency stop, lease loss) interrupts the run from outside,
     through the fan-out (:func:`execute_evaluation`).
+
+    *stopping* set (its worker is stopping: a deploy, a restart): a run not
+    started yet stays ``pending``, and a running one pauses at its next entry
+    boundary, ``pending`` again (:func:`_pause_for_the_stop`). A run that
+    finished entries before resumes from them: they are skipped and counted
+    in its totals (:func:`_settled_entries`).
+
+    *lease* (``(execution_id, worker_id)``): each entry starts only while the
+    execution's lease is this worker's, and writes under its fence
+    (:func:`_lock_run_before_episode_writes`). Once the evaluation was taken
+    back, the run leaves at the next check without writing: its new worker
+    resumes it.
     """
+    # Bound before the handlers below name it; lazy, as elsewhere here: the
+    # engine imports the adapter registry.
+    from app.services.orchestration_engine import LeaseLostError
+
     run_uuid = uuid.UUID(run_id)
     result = await db.execute(
         # LOCKED, so the ``status != "pending"`` guard and the transition after
@@ -3116,9 +3239,18 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
             run.status,
         )
         return
+    if stopping is not None and stopping.is_set():
+        # Its worker is stopping: not started here, left ``pending`` for the
+        # next one. The rollback releases the row lock.
+        await db.rollback()
+        logger.info("Evaluation run %s not started: its worker is stopping", run_id)
+        return
 
+    # A run its stopping worker left (paused, or put back by the next
+    # attempt's reclaim) already started: it resumes, and keeps its first start.
+    resumed = run.started_at is not None
     run.status = "running"
-    run.started_at = datetime.now(UTC)
+    run.started_at = run.started_at or datetime.now(UTC)
     await db.commit()
     logger.info(
         "Evaluation run %s started (agent=%s model=%s)",
@@ -3259,6 +3391,36 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
         counted_flags: list[bool] = []
         total_agent_ms = 0
         run_uuid = run.id
+        # Resumed after its worker stopped: the entries it finished are
+        # skipped, and their results counted in the totals written at the end
+        # as if this loop had stored them.
+        settled_entries = await _settled_entries(db, run_uuid) if resumed else set()
+        if settled_entries:
+            # The columns the totals read, not the rows: a result's
+            # ``execution_details`` is large and the run would hold every one.
+            prior_results = (
+                await db.execute(
+                    select(
+                        EvaluationResult.execution_anomaly_kind,
+                        EvaluationResult.is_judge_failure,
+                        EvaluationResult.duration_seconds,
+                    ).where(EvaluationResult.run_id == run_uuid)
+                )
+            ).all()
+            anomaly_flags.extend(r.execution_anomaly_kind is not None for r in prior_results)
+            counted_flags.extend(counts_in_headlines(r) for r in prior_results)
+            # A callback run's agent time is its first turns' alone: a
+            # result its callback stored is not counted, as on a run never
+            # resumed.
+            if not ((getattr(evaluation, "trigger_config", None) or {}).get("await_callback")):
+                total_agent_ms += round(sum(r.duration_seconds or 0 for r in prior_results) * 1000)
+            logger.warning(
+                "Evaluation run %s resumes after its worker stopped: %d of %d entries "
+                "already finished",
+                run_id,
+                len(settled_entries),
+                len(entries),
+            )
         model_id = run.model_id
         evaluation_instructions = evaluation.evaluation_instructions
         evaluator_model = evaluation.evaluator_model
@@ -3282,37 +3444,49 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
             if agent_is_skip_llm
             else execution_mode_default
         )
+        # A resumed run carries on under the settings it was stamped with when
+        # it started, never an edit made to the evaluation meanwhile: its
+        # entries are scored alike, under the label it shows. Stamped is not
+        # started: ``started_at`` commits before the stamps (written with the
+        # lineage below, before the first entry), so a run cut during its setup
+        # has none and reads the evaluation as a fresh run does.
+        stamped = resumed and run.execution_mode is not None
+        if stamped:
+            run_execution_mode = run.execution_mode
         # Judge gating reads ``judge_enabled`` on the RAW selection so an
         # explicit judge-off is honoured.
-        judge_selected = judge_enabled(getattr(evaluation, "scorer_selection", None))
+        judge_selected = judge_enabled(
+            run.scorer_selection if stamped else getattr(evaluation, "scorer_selection", None)
+        )
         # Judge provenance, stamped next to the gate it records. On the
         # run, so a later edit to the evaluation cannot claim a past run was
         # judged: the headline pass reads this snapshot, never the parent.
         #
         # Copied, not aliased: a shared list would let an in-place edit to the
         # evaluation rewrite the snapshot too.
-        run.scorer_selection = _snapshot_selection(
-            getattr(evaluation, "scorer_selection", None)
-        )
+        if not stamped:
+            run.scorer_selection = _snapshot_selection(
+                getattr(evaluation, "scorer_selection", None)
+            )
         # What the run's label reads, for the same reason: the
         # evaluation's mode can change. Committed with the lineage stamps
-        # below, before the first entry. Written once: nothing returns a
-        # started run to pending (the reclaim fails a lost run, a replay or
-        # re-run is a new run, an episode resume runs no agent).
+        # below, before the first entry. Written once: a run its stopping
+        # worker returned to pending resumes under it (``stamped`` above); a
+        # replay or re-run is a new run, an episode resume runs no agent.
         run.execution_mode = run_execution_mode
         # Whether the run checks its prompts and answers with the prompt guard,
         # stamped beside the mode for the same reason. ``False`` when
         # the run is not Full Loop: LLM Only and the skip_llm pipeline never
         # reach a guard check, so off is what such a run applied.
         run_apply_prompt_guards = run_execution_mode == "full_loop" and bool(
-            evaluation.apply_prompt_guards
+            run.apply_prompt_guards if stamped else evaluation.apply_prompt_guards
         )
         run.apply_prompt_guards = run_apply_prompt_guards
         # Whether the run holds tool calls that need approval, stamped
         # the same way. ``False`` outside Full Loop: LLM Only calls no tool, and
         # a pipeline turn returns before the gate is installed.
         run_require_tool_approval = run_execution_mode == "full_loop" and bool(
-            evaluation.require_tool_approval
+            run.require_tool_approval if stamped else evaluation.require_tool_approval
         )
         run.require_tool_approval = run_require_tool_approval
         # The contract the delivery step reads: an answer delivered under another one is
@@ -3479,9 +3653,31 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                 db, run_uuid, run_id, f"at entry {entry_idx} of {len(entries)}"
             ):
                 return
+            # Its worker is stopping: paused here, between two entries, rather
+            # than cut in the middle of one when the stop's grace runs out. Not
+            # a callback-backed run: its parked entries are driven by their
+            # callbacks, and it stays as it was.
+            if stopping is not None and stopping.is_set() and not await_callback:
+                await _pause_for_the_stop(
+                    db, run_uuid, run_id, f"at entry {entry_idx} of {len(entries)}", lease
+                )
+                return
+            # Taken back meanwhile (its worker said it stopped, or its presence
+            # lapsed in a stall): the new worker runs it now, so no entry starts here.
+            if not await _lease_still_ours(db, lease):
+                await db.rollback()
+                logger.warning(
+                    "Evaluation run %s: its evaluation was taken back, stopping at entry %d of %d",
+                    run_id,
+                    entry_idx,
+                    len(entries),
+                )
+                return
 
             entry_record = entry_records[entry_idx - 1]
             entry_id = entry_record["id"]
+            if entry_id in settled_entries:
+                continue
             input_prompt = entry_record["input_prompt"]
             file_ids = entry_record["file_ids"]
             expected_answer = entry_record["expected_answer"]
@@ -3802,7 +3998,7 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                     # appends and ``pause_for_callback`` take the episode lock,
                     # then ``completed_entries`` takes the run lock at the commit.
                     # The agent call is done, so the hold is DB-only.
-                    await _lock_run_before_episode_writes(db, run_uuid)
+                    await _lock_run_before_episode_writes(db, run_uuid, lease=lease)
                     if agent_trace_ids:
                         for trace_id in agent_trace_ids:
                             await ConversationContinuationService.append_step(
@@ -3950,7 +4146,7 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                 # RUN before EPISODE for the rest of this entry: covers
                 # every episode write below and the run update at the commit.
                 # See the helper for why here and not higher.
-                await _lock_run_before_episode_writes(db, run_uuid)
+                await _lock_run_before_episode_writes(db, run_uuid, lease=lease)
 
                 judge_trace_id = score_data.get("judge_trace_id")
                 linked_traces: list[tuple[str, str]] = []
@@ -4149,6 +4345,10 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                     )
 
             except Exception as e:
+                if isinstance(e, LeaseLostError):
+                    # Not an entry that failed: the evaluation is another
+                    # worker's now. Nothing of this entry is written.
+                    raise
                 if isinstance(e, ContextOverflowError):
                     logger.info(
                         "Entry %s failed — context overflow: ~%s tokens vs %s limit",
@@ -4181,7 +4381,7 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                 try:
                     # Same order on the failure path: it also writes an episode
                     # before the end-of-entry commit.
-                    await _lock_run_before_episode_writes(db, run_uuid)
+                    await _lock_run_before_episode_writes(db, run_uuid, lease=lease)
                     episode = await ConversationContinuationService.start_episode(
                         db,
                         run_id=run_uuid,
@@ -4346,6 +4546,16 @@ async def execute_evaluation_run(db: AsyncSession, run_id: str) -> None:
                 headline_err,
             )
 
+    except LeaseLostError:
+        # Taken back mid-entry: the worker that resumes the run owns it, its
+        # status included. Nothing is written here.
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Evaluation run %s: its evaluation was taken back during an entry; "
+            "nothing written, its new worker redoes the entry",
+            run_id,
+        )
     except Exception as e:
         if isinstance(e, ContextOverflowError):
             logger.warning(
@@ -5648,12 +5858,44 @@ async def is_rescore_pending_for_run(db: AsyncSession, run_id: str) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def _execute_run_with_own_session(run_id: str) -> None:
+async def _execute_run_with_own_session(
+    run_id: str, *, stopping: "asyncio.Event | None" = None, lease: RunLease | None = None
+) -> None:
     """Execute a single run with its own DB session (for parallel execution)."""
     from app.core.database import async_session
 
     async with async_session() as session:
-        await execute_evaluation_run(session, run_id)
+        await execute_evaluation_run(session, run_id, stopping=stopping, lease=lease)
+
+
+async def _runs_left_pending(db: AsyncSession, run_ids: list[str]) -> bool:
+    """Whether any of *run_ids* is still ``pending``: paused by a stop, or never started.
+
+    Asked only of a stopping worker. Unreadable (a database blip) reads as
+    yes: handed back, the next attempt finds what each run is, whereas a
+    raise here would fail the evaluation and every run it paused.
+    """
+    try:
+        left = await db.execute(
+            select(EvaluationRun.id)
+            .where(
+                EvaluationRun.id.in_([uuid.UUID(r) for r in run_ids]),
+                EvaluationRun.status == "pending",
+            )
+            .limit(1)
+        )
+        found = left.first() is not None
+        # Read on the caller's session: release its connection again.
+        await db.commit()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Evaluation runs left pending not read while stopping, handed back: %s",
+            format_exception_message(exc),
+        )
+        return True
+    return found
 
 
 async def _run_unless_stopped(
@@ -5898,6 +6140,237 @@ async def _gather_runs_bounded(
         raise asyncio.CancelledError()
 
 
+#: What a run its worker abandoned says: the attempt's worker went without a word (a crash, an out-of-memory kill).
+ABANDONED_RUN_ERROR = "Abandoned by a worker that did not survive its attempt — re-run to retry"
+#: How many resumes of one run after a worker stop in a row may find it with no new result before it is failed
+#: instead: an entry longer than the time between two rollouts is cut and redone at each one, paid each time.
+MAX_STOP_RESUMES_WITHOUT_PROGRESS = 3
+#: A resume counts as one without progress only when the run had this long to work since the one before: a run
+#: taken from worker to worker within one rolling restart, a few seconds on each, did not stall.
+STOP_RESUME_MIN_WORK_SECONDS = 300
+#: The execution payload key recording the resumes after a stop: ``{"runs": {run_id: {results, stalled, at}},
+#: "consumed": <the stop marker last resumed from>}``.
+STOP_RESUMES_PAYLOAD_KEY = "stop_resumes"
+#: The execution payload key the evaluation adapter's hand-back writes, ``{"at": <ISO time>}``: a stop marker that
+#: survives the claims, retries and AI holds before the reclaim resumes from it.
+HANDED_BACK_PAYLOAD_KEY = "evaluation_handed_back"
+
+
+def _parsed_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def pending_stop_cut(payload: Mapping[str, Any] | None) -> datetime | None:
+    """When the last stop outside the work this execution has not resumed from yet happened, else ``None``.
+
+    A stop outside the work: its stopping worker handed it back
+    (:data:`HANDED_BACK_PAYLOAD_KEY`), or it was taken back from a worker that
+    said it was stopping or that a deploy replaced (the ``lease_expired``
+    record, ``orchestration_engine.stopped_on_its_word``). Every take-back
+    rewrites that record, so a crash or a lost lease after the stop reads as
+    what it is. Consumed by the reclaim that resumed from it
+    (:func:`_resume_runs_cut_by_a_stop`), in its own transaction: an attempt
+    that ends before, a retry or an AI hold, leaves it to the next one, and
+    one after is not resumed on it again.
+    """
+    from app.services.orchestration_engine import LEASE_EXPIRY_PAYLOAD_KEY, stopped_on_its_word
+
+    payload = payload or {}
+    marks: list[datetime] = []
+    handed = payload.get(HANDED_BACK_PAYLOAD_KEY)
+    if isinstance(handed, dict) and (at := _parsed_time(handed.get("at"))) is not None:
+        marks.append(at)
+    record = payload.get(LEASE_EXPIRY_PAYLOAD_KEY)
+    if (
+        isinstance(record, dict)
+        and stopped_on_its_word(record.get("owner_record"))
+        and (at := _parsed_time(record.get("at"))) is not None
+    ):
+        marks.append(at)
+    if not marks:
+        return None
+    latest = max(marks)
+    resumes = payload.get(STOP_RESUMES_PAYLOAD_KEY)
+    consumed = _parsed_time(resumes.get("consumed")) if isinstance(resumes, dict) else None
+    return None if consumed is not None and consumed >= latest else latest
+
+
+def _abandoned_values(error: str, now: datetime) -> dict[str, Any]:
+    """What a run failed by the pre-dispatch reclaim is written with: *error*, ended *now*, its duration."""
+    return {
+        "status": "failed",
+        "error": error[:500],
+        "completed_at": now,
+        "duration_seconds": case(
+            (EvaluationRun.started_at.is_(None), None),
+            else_=func.round(
+                sql_cast(func.extract("epoch", now - EvaluationRun.started_at), Numeric),
+                2,
+            ),
+        ),
+    }
+
+
+def _stalled_resumes(
+    record: Mapping[str, Any], cut: list[uuid.UUID], results: Mapping[uuid.UUID, int], now: datetime
+) -> tuple[dict[str, Any], list[uuid.UUID]]:
+    """The runs' resume records after one more resume of *cut*, and the runs past the no-progress bound.
+
+    Per run: a new result since its last resume resets its count; none, after
+    at least :data:`STOP_RESUME_MIN_WORK_SECONDS` of work, adds one; none in
+    less (a hop within one rolling restart) leaves it. A run past the bound
+    is dropped from the records, so a later resume of it starts afresh.
+    """
+    runs = dict(record) if isinstance(record, Mapping) else {}
+    refused: list[uuid.UUID] = []
+    for run_id in cut:
+        previous = runs.get(str(run_id))
+        previous = previous if isinstance(previous, dict) else {}
+        count = results.get(run_id, 0)
+        before, stalled, at = previous.get("results"), previous.get("stalled"), _parsed_time(previous.get("at"))
+        stalled = stalled if isinstance(stalled, int) else 0
+        if isinstance(before, int) and count > before:
+            stalled = 0
+        elif isinstance(before, int) and at is not None and (now - at).total_seconds() >= STOP_RESUME_MIN_WORK_SECONDS:
+            stalled += 1
+        if stalled >= MAX_STOP_RESUMES_WITHOUT_PROGRESS:
+            refused.append(run_id)
+            runs.pop(str(run_id), None)
+            continue
+        runs[str(run_id)] = {"results": count, "stalled": stalled, "at": now.isoformat()}
+    return runs, refused
+
+
+async def _resume_runs_cut_by_a_stop(
+    db: AsyncSession,
+    eid: uuid.UUID,
+    execution_id: uuid.UUID,
+    parked: ColumnElement[bool],
+    evaluation_id: str,
+) -> list[uuid.UUID]:
+    """Put the runs a stopping worker left ``"running"`` back to ``pending``; return the ones it refuses.
+
+    Called inside the pre-dispatch reclaim's transaction, under its lease
+    fence, which holds the execution row: its stop marker is consumed
+    (:func:`pending_stop_cut`) and its resume records written in the same
+    commit as the runs. What a run finished stays: each closed episode (a
+    callback entry's failure or timeout included, which stores no result)
+    is an entry the resumed run skips (:func:`_settled_entries`). The entry
+    the stop cut is the only one redone: its episode, still ``running`` or
+    ``pending``, is deleted, so the resume neither keeps its partial steps
+    nor trips the one-episode-per-entry constraint. A run with a parked
+    (callback) episode is left to the failing UPDATE's ``~parked`` rule, as
+    before.
+
+    Returns the runs past :data:`MAX_STOP_RESUMES_WITHOUT_PROGRESS`, left
+    ``running`` for the caller to fail with the reason. An execution with no
+    row (a caller that holds no lease) consumes nothing and is not bounded.
+    """
+    from app.models.orchestration import OrchestrationExecution
+
+    now = datetime.now(UTC)
+    execution = await db.get(OrchestrationExecution, execution_id)
+    payload = dict((execution.payload if execution is not None else None) or {})
+    marker = pending_stop_cut(payload)
+    record = payload.get(STOP_RESUMES_PAYLOAD_KEY)
+    record = dict(record) if isinstance(record, dict) else {}
+
+    cut = list(
+        (
+            await db.execute(
+                select(EvaluationRun.id).where(
+                    EvaluationRun.evaluation_id == eid,
+                    runs_this_execution_may_touch(execution_id, repeating_is_harmless=False),
+                    EvaluationRun.status == "running",
+                    # As in the failing UPDATE: a finished run ``"running"``
+                    # again for a rescore is the rescore's.
+                    EvaluationRun.completed_at.is_(None),
+                    ~parked,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    refused: list[uuid.UUID] = []
+    if cut and execution is not None:
+        counts = dict(
+            (
+                await db.execute(
+                    select(EvaluationResult.run_id, func.count(EvaluationResult.id))
+                    .where(EvaluationResult.run_id.in_(cut))
+                    .group_by(EvaluationResult.run_id)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        record["runs"], refused = _stalled_resumes(record.get("runs") or {}, cut, counts, now)
+    if execution is not None and (cut or marker is not None):
+        if marker is not None:
+            record["consumed"] = marker.isoformat()
+        execution.payload = {**payload, STOP_RESUMES_PAYLOAD_KEY: record}
+    if refused:
+        logger.warning(
+            "execute_evaluation: execution %s fails %d run(s) of evaluation %s cut by %d worker stops in a row "
+            "with no entry finished between them: %s",
+            execution_id,
+            len(refused),
+            evaluation_id,
+            MAX_STOP_RESUMES_WITHOUT_PROGRESS + 1,
+            [str(r) for r in refused[:_ABANDONED_LOG_SAMPLE]],
+        )
+    to_resume = [run_id for run_id in cut if run_id not in refused]
+    if not to_resume:
+        return refused
+    resumed = list(
+        (
+            await db.execute(
+                update(EvaluationRun)
+                .where(
+                    EvaluationRun.id.in_(to_resume),
+                    EvaluationRun.status == "running",
+                    EvaluationRun.completed_at.is_(None),
+                )
+                .values(status="pending")
+                .returning(EvaluationRun.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if resumed:
+        await db.execute(
+            delete(EvaluationEpisode).where(
+                EvaluationEpisode.run_id.in_(resumed),
+                EvaluationEpisode.status.notin_(_SETTLED_EPISODE_STATUSES),
+            )
+        )
+        logger.warning(
+            "execute_evaluation: execution %s resumes %d run(s) its stopping worker "
+            "left running for evaluation %s, from their finished entries; first %d: %s",
+            execution_id,
+            len(resumed),
+            evaluation_id,
+            min(len(resumed), _ABANDONED_LOG_SAMPLE),
+            [str(r) for r in resumed[:_ABANDONED_LOG_SAMPLE]],
+        )
+    return refused
+
+
+#: What a run its resumes past :data:`MAX_STOP_RESUMES_WITHOUT_PROGRESS` fail with.
+STALLED_RUN_ERROR = (
+    f"Cut by {MAX_STOP_RESUMES_WITHOUT_PROGRESS + 1} worker stops in a row before it finished an entry "
+    "— re-run to retry"
+)
+
+
 async def execute_evaluation(
     db: AsyncSession,
     evaluation_id: str,
@@ -5906,8 +6379,20 @@ async def execute_evaluation(
     cancel_event: "asyncio.Event | None" = None,
     *,
     worker_id: str,
-) -> None:
+    stopping: "asyncio.Event | None" = None,
+    resume_stopped_runs: bool = False,
+) -> bool:
     """Execute all pending runs this execution owns (parallel or sequential).
+
+    Returns ``True`` when it was handed back: *stopping* (its worker is
+    stopping: a deploy, a restart) was set and each run in flight paused at
+    an entry boundary, ``pending`` again, with nothing written at batch end.
+    The caller hands the execution back for the next worker to resume.
+
+    *resume_stopped_runs*: this attempt follows a take-back from a worker that
+    said it was stopping (or that a deploy replaced). The runs it left
+    ``"running"`` resume from their finished entries instead of being failed
+    as abandoned: the entry it was cut on is the only work redone.
 
     ``execution_id`` is the orchestration execution driving this call. Runs are
     selected by ownership, not just by evaluation: two launches of one
@@ -6051,6 +6536,34 @@ async def execute_evaluation(
         await _fence_on_lease(
             db, execution_id, worker_id, f"execute_evaluation: evaluation {eid}"
         )
+        stalled: list[uuid.UUID] = []
+        if resume_stopped_runs:
+            # Its previous attempt's worker said it was stopping (a rollout, a
+            # node drain): the work did not kill it. The runs it owned go back
+            # to ``pending`` and resume from their finished entries, BEFORE the
+            # failing UPDATE below, which then reaches only the unowned rows.
+            # Owned rows only: an unowned one may be another release's. A run
+            # past its bound of resumes with no progress is failed with the reason.
+            refused = await _resume_runs_cut_by_a_stop(
+                db, eid, execution_id, parked, evaluation_id
+            )
+            if refused:
+                stalled = list(
+                    (
+                        await db.execute(
+                            update(EvaluationRun)
+                            .where(
+                                EvaluationRun.id.in_(refused),
+                                EvaluationRun.status == "running",
+                                EvaluationRun.completed_at.is_(None),
+                            )
+                            .values(**_abandoned_values(STALLED_RUN_ERROR, abandoned_now))
+                            .returning(EvaluationRun.id)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
         abandoned = (
             await db.execute(
                 update(EvaluationRun)
@@ -6069,26 +6582,7 @@ async def execute_evaluation(
                     EvaluationRun.completed_at.is_(None),
                     ~parked,
                 )
-                .values(
-                    status="failed",
-                    error=(
-                        "Abandoned by a worker that did not survive its attempt — "
-                        "re-run to retry"
-                    )[:500],
-                    completed_at=abandoned_now,
-                    duration_seconds=case(
-                        (EvaluationRun.started_at.is_(None), None),
-                        else_=func.round(
-                            sql_cast(
-                                func.extract(
-                                    "epoch", abandoned_now - EvaluationRun.started_at
-                                ),
-                                Numeric,
-                            ),
-                            2,
-                        ),
-                    ),
-                )
+                .values(**_abandoned_values(ABANDONED_RUN_ERROR, abandoned_now))
                 .returning(EvaluationRun.id)
             )
         ).scalars().all()
@@ -6141,16 +6635,13 @@ async def execute_evaluation(
                 )
             )
         ).scalars().all()
-        if still_active or abandoned:
+        if still_active or abandoned or stalled:
             repaired = await fail_orphaned_episodes(
                 db,
                 owned_run_ids=list(still_active),
-                reclaimed_run_ids=list(abandoned),
+                reclaimed_run_ids=[*stalled, *abandoned],
                 execution_id=execution_id,
-                error=(
-                    "Abandoned by a worker that did not survive its attempt — "
-                    "re-run to retry"
-                ),
+                error=ABANDONED_RUN_ERROR,
             )
             # One commit for reclaim and repair, under the fence taken at the
             # TOP of this transaction: it cannot land after the lease moved and
@@ -6247,7 +6738,11 @@ async def execute_evaluation(
             "execute_evaluation: evaluation %s has no pending runs to execute",
             evaluation_id,
         )
-        return
+        # Resumed after a stop that cut the batch-end pass itself: its runs
+        # all finished, and their headlines and placebo settlement are still
+        # this execution's to write, below.
+        if not resume_stopped_runs:
+            return False
     # Runs beyond the cap stay ``pending`` while QUEUED (safe from the
     # reclaim, which touches ``"running"`` rows only). The queue depth bounds
     # wall-clock time and is the first thing to know about a slow or partly
@@ -6273,16 +6768,49 @@ async def execute_evaluation(
     # Sequential dispatch is the SAME fan-out with a cap of one: never
     # two model loads at once, and a stop interrupts the run in flight and
     # raises, rather than waiting for a boundary or returning normally.
-    await _gather_runs_bounded(
-        run_ids,
-        1 if sequential else cap,
-        _execute_run_with_own_session,
-        cancel_event=cancel_event,
-    )
+    if run_ids:
+        await _gather_runs_bounded(
+            run_ids,
+            1 if sequential else cap,
+            functools.partial(
+                _execute_run_with_own_session,
+                stopping=stopping,
+                lease=None if worker_id == NO_LEASE else (execution_id, worker_id),
+            ),
+            cancel_event=cancel_event,
+        )
 
     # The batch finished, which is NOT still owning it: the lease can move
     # between the last run's commit and this write.
     _stop_if_no_longer_ours(cancel_event, f"execute_evaluation: evaluation {eid}")
+
+    # Its worker is stopping and a run paused at an entry boundary (or never
+    # started): handed back whole, nothing written at batch end. The headlines
+    # and the placebo settlement are the batch's, computed once its runs
+    # finish on the next worker.
+    if run_ids and stopping is not None and stopping.is_set() and await _runs_left_pending(db, run_ids):
+        logger.warning(
+            "execute_evaluation: evaluation %s handed back by its stopping worker "
+            "after %ss, its unfinished runs paused at an entry boundary",
+            evaluation_id,
+            round(time.perf_counter() - started, 2),
+        )
+        return True
+
+    # A batch resumed after a stop is also every run this execution finished
+    # before it: a stopping worker writes nothing at batch end, so the
+    # headlines and placebo settlement of the runs it completed are this
+    # batch's to compute.
+    batch_run_ids = run_ids
+    if resume_stopped_runs:
+        owned = await db.execute(
+            select(EvaluationRun.id).where(
+                EvaluationRun.evaluation_id == eid,
+                runs_this_execution_may_touch(execution_id, repeating_is_harmless=False),
+            )
+        )
+        batch_run_ids = sorted({*run_ids, *(str(r) for r in owned.scalars().all())})
+        await db.commit()
 
     # The batch scope applies to the judge and quality headlines; Overall
     # Performance rescores the whole evaluation, so a second batch never
@@ -6293,7 +6821,7 @@ async def execute_evaluation(
         # Raced, not just pre-checked: the lease can move WHILE this
         # evaluation-scoped write runs.
         await _run_unless_stopped(
-            _compute_run_headlines(session, eid, batch_run_ids=run_ids),
+            _compute_run_headlines(session, eid, batch_run_ids=batch_run_ids),
             cancel_event,
             f"execute_evaluation: evaluation {eid}",
         )
@@ -6302,7 +6830,7 @@ async def execute_evaluation(
         try:
             from app.services.evaluation.placebo_comparisons import settle_comparisons_of_runs
 
-            await settle_comparisons_of_runs(session, run_ids)
+            await settle_comparisons_of_runs(session, batch_run_ids)
         except Exception as settle_err:
             await session.rollback()
             logger.warning(
@@ -6341,3 +6869,4 @@ async def execute_evaluation(
             evaluation_id,
             still_pending,
         )
+    return False

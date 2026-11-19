@@ -286,6 +286,10 @@ async def run_on_postgres(
     pinned=False,
     await_callback=False,
     before_resume=None,
+    stopping=None,
+    before_run=None,
+    lease_holder=None,
+    lease_worker="this-worker",
 ):
     """One real ``execute_evaluation_run`` on PostgreSQL, the agent and the judge stubbed.
 
@@ -303,7 +307,10 @@ async def run_on_postgres(
     snapshot of the entries, whose live expected answers are edited afterwards. With
     ``await_callback`` each entry pauses after its first turn and resumes from a callback
     carrying the same answer, before ``then``, ``before_resume(session, run_id)`` running
-    between the pause and the callbacks. Returns the stored run and its results,
+    between the pause and the callbacks. ``stopping`` is handed to the run as its
+    worker's stop event, and ``before_run(session, run_id)`` runs just before it.
+    With ``lease_holder`` the run is executed under an ``evaluation`` execution
+    whose lease that worker holds, as ``lease_worker``. Returns the stored run and its results,
     in entry order. Skips if PostgreSQL is unavailable.
     """
     import uuid
@@ -423,8 +430,28 @@ async def run_on_postgres(
             await s.commit()
             run_id = run.id
 
+        lease = None
+        if lease_holder is not None:
+            from datetime import timedelta
+
+            from app.models.orchestration import OrchestrationExecution
+
+            async with sm() as s:
+                execution = OrchestrationExecution(
+                    adapter="evaluation",
+                    state="running",
+                    payload={},
+                    lease_owner=lease_holder,
+                    lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+                )
+                s.add(execution)
+                await s.commit()
+                lease = (execution.id, lease_worker)
+        if before_run is not None:
+            async with sm() as s:
+                await before_run(s, run_id)
         async with sm() as s:
-            await ee.execute_evaluation_run(s, str(run_id))
+            await ee.execute_evaluation_run(s, str(run_id), stopping=stopping, lease=lease)
         if await_callback:
             if before_resume is not None:
                 async with sm() as s:

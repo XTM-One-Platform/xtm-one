@@ -744,7 +744,7 @@ class Settings(BaseSettings):
     #
     # Sizing constraint — MUST stay well below the orchestrator's kill
     # deadline: SAQ only runs the worker's shutdown hook (Langfuse flush,
-    # Redis queue close) AFTER this grace elapses, so the grace plus ~10 s
+    # Redis queue close) AFTER this grace elapses, so the grace plus ~15 s
     # of teardown headroom must fit inside Kubernetes'
     # ``terminationGracePeriodSeconds`` (default 30 s) / Docker Compose's
     # ``stop_grace_period``.  A value >= the kill deadline guarantees the

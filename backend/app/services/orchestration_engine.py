@@ -1950,10 +1950,13 @@ async def reclaim_from_gone_owners(
     reason_of=None,
     bound_of: Callable[[str, int], int] | None = None,
     silent_loss_given_back: Callable[[str, dict], str | bool | None] | None = None,
+    waits_for_lease: Callable[[str, dict], bool] | None = None,
 ) -> list[OrchestrationExecution]:
     """Take back at once the ``running`` executions of *adapters* leased by a worker that is gone.
 
-    *bound_of*, *silent_loss_given_back*: as :func:`_take_back`.
+    *bound_of*, *silent_loss_given_back*: as :func:`_take_back`. *waits_for_lease* (adapter name, holder's last
+    record) -> whether that holder may still be writing to the work after it went: its row is left until its
+    lease expires, then taken back on the same last word.
 
     *gone* maps each holder known gone (``worker_presence.gone``) to its last
     record; *reason_of* words why it went (``worker_presence.stop_reason``).
@@ -1989,6 +1992,14 @@ async def reclaim_from_gone_owners(
         if _renewed_since_its_word(row, record, now):
             # Its holder wrote the row after its last word: alive after all. Left to it; the next cycle decides
             # on fresh presence and lease.
+            continue
+        if (
+            waits_for_lease is not None
+            and row.lease_expires_at is not None
+            and _aware(row.lease_expires_at) >= now
+            and waits_for_lease(row.adapter, record)
+        ):
+            # Its holder may still be writing to the work: taken back once its lease ran out.
             continue
         why = reason_of(record) if reason_of is not None else "Its worker is gone"
         why = why[:1].upper() + why[1:]
