@@ -15066,6 +15066,8 @@
   "Users who picked it see the default pet instead.": "Les utilisateurs qui l'avaient choisi voient l'animal par défaut à la place.",
   "Your companion was not changed": "Votre compagnon n'a pas été modifié",
   "pet.json is missing or does not follow the pet format.": "pet.json est absent ou ne suit pas le format des animaux.",
+  "{name} is at work.": "{name} est au travail.",
+  "{name} is standing by.": "{name} se tient prêt.",
   "{pet} added to the library": "{pet} ajouté à la bibliothèque",
   "{pet}, the companion": "{pet}, le compagnon",
   "Improvement proposal": "Proposition d'amélioration",
@@ -19418,8 +19420,14 @@
   "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.": "Un objet que la suite plus récente apparie peut apparaître ici comme trouvé alors que les chiffres du run le comptent encore comme manqué. Re-scorez le run pour que ses chiffres et cette revue concordent.",
   "Score the stored answers again with the current suite; the agents do not run again.": "Note à nouveau les réponses stockées avec la suite actuelle ; les agents ne tournent pas à nouveau.",
   "The last re-score failed: {reason}": "Le dernier re-scoring a échoué : {reason}",
-  "{name} is checking the platform.": "{name} vérifie la plateforme.",
-  "{count, plural, one {# critical finding is open} other {# critical findings are open}}": "{count, plural, one {# constat critique ouvert} other {# constats critiques ouverts}}",
-  "{count, plural, one {# warning is open} other {# warnings are open}}": "{count, plural, one {# avertissement ouvert} other {# avertissements ouverts}}",
-  "No open finding.": "Aucun constat ouvert."
+  "Account {name} provisioned": "Compte {name} provisionné",
+  "Account {name} changed": "Compte {name} modifié",
+  "Account {name} deprovisioned": "Compte {name} déprovisionné",
+  "Account {name} deactivated": "Compte {name} désactivé",
+  "Account {name} reactivated": "Compte {name} réactivé",
+  "Group {name} provisioned": "Groupe {name} provisionné",
+  "Group {name} changed": "Groupe {name} modifié",
+  "Group {name} deleted": "Groupe {name} supprimé",
+  "SCIM token {name} generated": "Jeton SCIM {name} généré",
+  "SCIM token {name} revoked": "Jeton SCIM {name} révoqué"
 }

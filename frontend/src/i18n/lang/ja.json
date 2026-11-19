@@ -15066,6 +15066,8 @@
   "Users who picked it see the default pet instead.": "このペットを選んだユーザーには既定のペットが表示されます。",
   "Your companion was not changed": "コンパニオンは変更されませんでした",
   "pet.json is missing or does not follow the pet format.": "pet.json がないか、ペット形式に従っていません。",
+  "{name} is at work.": "{name}は作業中です。",
+  "{name} is standing by.": "{name}は待機中です。",
   "{pet} added to the library": "{pet}をライブラリに追加しました",
   "{pet}, the companion": "コンパニオンの{pet}",
   "Improvement proposal": "改善提案",
@@ -19418,8 +19420,14 @@
   "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.": "新しいスイートが一致と判定するオブジェクトは、ここでは検出済みと表示されても、実行の数値ではまだ見落としとして数えられることがあります。数値とこのレビューを一致させるには実行を再採点してください。",
   "Score the stored answers again with the current suite; the agents do not run again.": "保存済みの回答を現在のスイートで再採点します。エージェントは再実行されません。",
   "The last re-score failed: {reason}": "前回の再採点に失敗しました: {reason}",
-  "{name} is checking the platform.": "{name}がプラットフォームを確認しています。",
-  "{count, plural, one {# critical finding is open} other {# critical findings are open}}": "{count, plural, other {重大な検出事項が#件未対応です}}",
-  "{count, plural, one {# warning is open} other {# warnings are open}}": "{count, plural, other {警告が#件未対応です}}",
-  "No open finding.": "未対応の検出事項はありません。"
+  "Account {name} provisioned": "アカウント {name} をプロビジョニングしました",
+  "Account {name} changed": "アカウント {name} を変更しました",
+  "Account {name} deprovisioned": "アカウント {name} のプロビジョニングを解除しました",
+  "Account {name} deactivated": "アカウント {name} を無効化しました",
+  "Account {name} reactivated": "アカウント {name} を再有効化しました",
+  "Group {name} provisioned": "グループ {name} をプロビジョニングしました",
+  "Group {name} changed": "グループ {name} を変更しました",
+  "Group {name} deleted": "グループ {name} を削除しました",
+  "SCIM token {name} generated": "SCIM トークン {name} を生成しました",
+  "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました"
 }
