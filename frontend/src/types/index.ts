@@ -1463,7 +1463,7 @@ export interface BuiltinToolGroup {
   category: string;
   /** A lucide-react icon name. */
   icon: string;
-  gate: "code_interpreter" | "runners" | "dashboard_studio" | "concierge" | "flow_builder" | "deep_investigation" | "video_studio" | "mobile_companion" | null;
+  gate: "code_interpreter" | "runners" | "dashboard_studio" | "health" | "flow_builder" | "deep_investigation" | "video_studio" | "mobile_companion" | null;
   default_on: boolean;
   admin_only: boolean;
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */

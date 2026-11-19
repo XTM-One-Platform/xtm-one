@@ -44,7 +44,7 @@ BuiltinToolGate = Literal[
     "video_studio",
     "mobile_companion",
     "dashboard_studio",
-    "concierge",
+    "health",
 ]
 
 
@@ -124,7 +124,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Make hidden copies of agents and flows and run them in the sandbox: calls recorded in the source traces are replayed, reads run live, and every write is intercepted and answered by a simulated result, counted per case. For Platform Health and administrators, within the supervision scope.",
         category="platform",
         icon="FlaskConical",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -134,7 +134,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Turn rated answers and failed runs of consented agents and flows into evaluation datasets, evaluate agents, flows and their sandbox copies on them, and compare runs on quality, cost and latency with the simulated writes stated. For Platform Health, and for administrators where evaluation is on.",
         category="platform",
         icon="Scale",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -144,7 +144,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="List the improvement proposals on the agents, skills, assignments and flows the caller may read, with the verdict of their experiment or that they are unmeasured. Platform Health's Experimenter files new ones, with their evidence and measurement; the target's managers approve or reject them, and a regression is rolled back.",
         category="platform",
         icon="Sparkles",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -326,7 +326,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Platform Health's memory consolidation: list the memory lanes it may read, run a pass over one (merge duplicates, settle contradictions, demote time-bound entries, promote recurring observations) and count what was applied. Every change is reversible by the lane's owner from their profile. Only the Platform Health identity may call these tools.",
         category="platform",
         icon="Brain",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
         health_only=True,
     ),
@@ -360,7 +360,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="The Platform Health orchestrator's tools: the signals crossed, the cycles and their digests, and a request to investigate one agent or flow. In a person's chat they read only the targets that person manages; in a Platform Health run, its supervision scope.",
         category="platform",
         icon="Compass",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -380,7 +380,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Platform Health's Quality Analyst: reads the quality signals of the agents in its supervision scope, records each finding once with its evidence, and drafts the variant an experiment will measure. Works only inside a Platform Health run.",
         category="observability",
         icon="Stethoscope",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
         health_only=True,
         core=("get_quality_signals", "list_findings"),
@@ -392,7 +392,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Platform Health's Experimenter: sizes each experiment to the Platform Health budget, evaluates the current configuration and a variant as sandbox copies on the same production cases, and files the improvement proposal the measurement earned, or unmeasured with its reason. Works only inside a Platform Health run.",
         category="observability",
         icon="FlaskConical",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
         health_only=True,
         core=("list_experiments", "get_experiment"),
@@ -404,7 +404,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         detail="Platform Health's Flow Lab: diagnoses a supervised flow's failed runs and costs, finds the tool-call sequences users repeat, checks whether an assignment follows a path a flow could reproduce, and measures a sandbox flow on an assignment's live triggers with every write intercepted. Works only inside a Platform Health run; the reads are also served to the managers of the flow or assignment.",
         category="flows",
         icon="Workflow",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
         health_only=True,
         core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),

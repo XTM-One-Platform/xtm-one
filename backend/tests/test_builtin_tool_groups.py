@@ -78,7 +78,7 @@ def test_health_only_groups_are_the_specialists_suites():
     assert health_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
     for group in BUILTIN_TOOL_GROUPS:
         if group.health_only:
-            assert group.gate == "concierge" and group.agent_keyed, group.id
+            assert group.gate == "health" and group.agent_keyed, group.id
     # Carried by the fleet's specialists, none of which takes a chat; the
     # chattable orchestrator carries none of them.
     carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in health_only}

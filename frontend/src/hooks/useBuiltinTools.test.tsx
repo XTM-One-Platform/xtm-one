@@ -99,7 +99,7 @@ describe("useBuiltinTools session picker", () => {
       ...GROUP,
       id: "memory_steward",
       name: "Memory Steward",
-      gate: "concierge",
+      gate: "health",
       default_on: false,
       agent_keyed: true,
       health_only: true,

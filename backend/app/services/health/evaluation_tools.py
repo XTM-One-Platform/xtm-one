@@ -35,6 +35,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.builtin_tool_aliases import RENAMED_BUILTIN_FUNCTIONS
+from app.services.health import audit_actions
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ def build_health_evaluation_tools(
             await db.rollback()
             logger.info("build_dataset_from_traces refused: %s", exc)
             return REFUSED
-        await _audit_admin("concierge.dataset_build", "dataset", result.dataset_id, "Built a dataset from production")
+        await _audit_admin(audit_actions.DATASET_BUILD, "dataset", result.dataset_id, "Built a dataset from production")
         await db.commit()
         return json.dumps({"dataset_id": str(result.dataset_id), "added": result.added, "skipped": result.skipped})
 
@@ -203,7 +204,7 @@ def build_health_evaluation_tools(
             await db.rollback()
             return f"Not launched: {exc.detail}"
         await _audit_admin(
-            "concierge.evaluation_launch", "evaluation", launch.evaluation_id, "Launched a Platform Health evaluation"
+            audit_actions.EVALUATION_LAUNCH, "evaluation", launch.evaluation_id, "Launched a Platform Health evaluation"
         )
         await db.commit()
         return json.dumps({"evaluation_id": str(launch.evaluation_id), "run_ids": [str(r) for r in launch.run_ids]})

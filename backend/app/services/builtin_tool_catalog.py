@@ -45,7 +45,7 @@ def withhold_evaluation_tools(catalog: dict[str, list[dict]]) -> dict[str, list[
 
 
 def withhold_health_tools(catalog: dict[str, list[dict]]) -> dict[str, list[dict]]:
-    """Drop every Platform Health group (``gate="concierge"``) while Platform Health is not available.
+    """Drop every Platform Health group (``gate="health"``) while Platform Health is not available.
 
     For what an endpoint offers; the registry itself keeps them, so an agent
     already carrying one stays valid.
@@ -56,7 +56,7 @@ def withhold_health_tools(catalog: dict[str, list[dict]]) -> dict[str, list[dict
     if health_enabled():
         return catalog
     for group in BUILTIN_TOOL_GROUPS:
-        if group.gate == "concierge":
+        if group.gate == "health":
             catalog.pop(group.id, None)
     return catalog
 

@@ -30,9 +30,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.health.audit_actions import DRY_RUN_WRITE
+
 logger = logging.getLogger(__name__)
 
-DRY_RUN_AUDIT_ACTION = "concierge.dry_run_write"
+DRY_RUN_AUDIT_ACTION = DRY_RUN_WRITE
 
 
 async def dry_run_active(db: AsyncSession) -> bool:

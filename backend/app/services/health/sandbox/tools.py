@@ -247,12 +247,13 @@ def build_sandbox_tools(db: AsyncSession, user_id: str | None) -> tuple[list[Too
     async def _audit_admin_run(copy: Any) -> None:
         from app.models.user import User
         from app.services.audit import log_audit
+        from app.services.health.audit_actions import SANDBOX_RUN
 
         caller = await db.get(User, uuid.UUID(str(user_id)))
         await log_audit(
             db,
             user=caller,
-            action="concierge.sandbox_run",
+            action=SANDBOX_RUN,
             entity_type=copy.source_type,
             entity_id=copy.source_id,
             summary="Ran a sandbox copy as its source's owner",

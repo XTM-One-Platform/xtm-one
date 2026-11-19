@@ -133,6 +133,13 @@ alias for one minor release (section 2.3).
   `health_settings`. Historical rows keep `concierge_cycle`, `concierge_pet` and
   `concierge_settings` (the audit log is never rewritten); the frontend
   `AUDIT_ENTITY_LABELS` maps both forms to the same label.
+- Audit actions: new entries are written `health.dataset_build`, `health.evaluation_launch`,
+  `health.dry_run_write` and `health.sandbox_run` (`services/health/audit_actions.py`).
+  Historical rows keep their `concierge.*` action; `LEGACY_AUDIT_ACTIONS` names each former
+  action and `action_names()` gives a reader both forms (`test_health_audit_actions.py`).
+- Tool group gate: the Platform Health groups are `gate="health"` (formerly
+  `gate="concierge"`), in the backend `BuiltinToolGate` and the frontend `BuiltinToolGroup`
+  type. The gate is computed from the registry on every read, never stored, so no migration.
 - LLM tool names: the orchestrator reads are `list_health_signals`, `list_health_cycles`,
   `get_health_cycle` and `request_health_cycle`. The former `*_concierge_*` names stay in
   `RENAMED_BUILTIN_FUNCTIONS` (`builtin_tool_aliases.py`): each definition declares them as
@@ -157,7 +164,7 @@ works is the admin switch alone (`concierge_settings.enabled`, off by default,
 `health_active`). Every gate the flag held is now open: the identity, consent reads
 (enrolled targets only, section 1.2), the budget, `/api/v1/concierge/*`, the agent, flow
 and profile cards, the Settings section, the fleet seeding, the scheduler, the
-`gate="concierge"` tool groups and `/api/v1/improvement-proposals`. Kept as they were:
+`gate="health"` tool groups and `/api/v1/improvement-proposals`. Kept as they were:
 `platform_settings.concierge_settings`, the opt-ins and opt-outs, `agents.concierge_role`,
 the budget ledger, cycle digests, signal states and schedule marks (renamed by the S1
 migration, 2.3). `backend/tests/test_health_built_in.py` pins the built-in behaviour.

@@ -1,7 +1,7 @@
 """The Concierge is built in (#101 S1): no ``CONCIERGE`` flag gates its surfaces.
 
 Pinned here, with ``ENABLED_FEATURES`` empty: every built-in group gated on the
-Concierge (``gate="concierge"``) is offered and kept by the registry, and the
+Concierge (``gate="health"``) is offered and kept by the registry, and the
 agent builder advertises the memory steward; a chat turn wires the Concierge's
 tool groups; the improvement proposal routes are served; the listing rule shows
 the seeded fleet (``health_role``) to everyone the listing allows.
@@ -21,7 +21,7 @@ from app.models.user import User
 from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.tools.base import CompositeToolExecutor
 
-_CONCIERGE_GROUPS = {group.id for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"}
+_CONCIERGE_GROUPS = {group.id for group in BUILTIN_TOOL_GROUPS if group.gate == "health"}
 
 
 @pytest.fixture(autouse=True)

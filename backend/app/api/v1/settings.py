@@ -8153,7 +8153,7 @@ async def get_builtin_tool_catalog(
 
     ``deep_investigation`` is withheld the same way while "DEEP_INVESTIGATION"
     is off, ``video_studio`` while "VIDEO_STUDIO" is off and ``phone`` while
-    "MOBILE_COMPANION" is off, and every ``gate="concierge"`` group while
+    "MOBILE_COMPANION" is off, and every ``gate="health"`` group while
     Platform Health is not available; they stay registry keys for the same reason, and the
     flags also withhold the tool at run time. The evaluation tools leave the ``agent_builder``
     alias the same way while evaluation is off.

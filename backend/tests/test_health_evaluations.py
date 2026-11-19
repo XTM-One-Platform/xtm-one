@@ -129,8 +129,8 @@ async def test_an_administrator_s_launch_is_audited_and_a_bare_date_is_utc(monke
 
     assert json.loads(launched) == {"evaluation_id": str(evaluation_id), "run_ids": [str(run_id)]}
     assert audited == [
-        ("concierge.evaluation_launch", "evaluation", evaluation_id, ADMIN),
-        ("concierge.dataset_build", "dataset", dataset_id, ADMIN),
+        ("health.evaluation_launch", "evaluation", evaluation_id, ADMIN),
+        ("health.dataset_build", "dataset", dataset_id, ADMIN),
     ]
     assert db.commits == 2
     assert built == [datetime(2026, 11, 1, tzinfo=UTC)]
