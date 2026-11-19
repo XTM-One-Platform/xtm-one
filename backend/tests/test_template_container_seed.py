@@ -355,7 +355,7 @@ def test_no_linked_deck_means_no_retirement_notice(monkeypatch, caplog):
 
 def test_a_second_boot_after_the_retirement_moves_and_deletes_nothing(monkeypatch):
     heir = _heir()
-    session = _Session([heir, _thread_deck(), _xtm_one_deck(), *_video_templates()])
+    session = _Session([heir, _thread_deck(), _xtm_one_deck(), *_video_templates(), *_report_templates()])
     inserted = _boot(monkeypatch, session)
 
     assert inserted == 0
@@ -417,6 +417,24 @@ def _xtm_one_deck() -> TemplateContainer:
 
 def _thread_deck() -> TemplateContainer:
     return _builtin("thread-brand", name="THREAD Conference Deck")
+
+
+def _report_templates() -> list[TemplateContainer]:
+    """The built-in report templates as a previous Copilot boot left them."""
+    return [
+        _builtin("filigran-report", name="Filigran Brand Report", kind="report"),
+        _builtin("xtm-one-report", name="XTM One Brand Report", kind="report"),
+    ]
+
+
+def test_each_mode_ships_its_brand_report():
+    """A report that names no template wears the platform's brand: the Filigran
+    report on Copilot only, the XTM One report everywhere, like the decks."""
+    targets = {c["slug"]: c["platform_targets"] for c in seed_mod.BUILTIN_TEMPLATE_CONTAINERS}
+    assert targets["filigran-report"] == ["copilot"]
+    assert targets["xtm-one-report"] == ["global"]
+    reports = {c["slug"]: c for c in seed_mod.BUILTIN_TEMPLATE_CONTAINERS if c["kind"] == "report"}
+    assert set(reports) == {"filigran-report", "xtm-one-report"}
 
 
 def _video_templates() -> list[TemplateContainer]:

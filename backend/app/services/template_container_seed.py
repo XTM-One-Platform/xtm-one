@@ -1575,6 +1575,142 @@ BUILTIN_TEMPLATE_CONTAINERS.extend(
 )
 
 
+# ── Report templates ─────────────────────────────────────────────────
+#
+# A report that names no template wears the platform's brand
+# (``reports.resolve_default_report_template_id``, read time): the Filigran
+# report in Copilot mode, the XTM One report everywhere else, the same split as
+# the decks. Report keys only (``reports.REPORT_THEME_CONFIG_KEYS``): the
+# masthead ``background`` stays dark in both schemes (the masthead ink is
+# white), ``paper`` / ``card`` / ``line`` are the document surfaces, and the
+# four risk grades are drawn as TEXT on the card, so each is 4.5:1 or more on
+# ``card`` and ``paper`` of its scheme. The base is the dark palette; the light
+# variant (the default report theme, made for print and PDF) is complete, as
+# ``presentations.scheme_palette`` drops the base's scheme-bound keys for it.
+
+_REPORT_FONTS: dict[str, str] = {
+    "heading_font": "'Geologica', system-ui, sans-serif",
+    "body_font": "'IBM Plex Sans', system-ui, sans-serif",
+}
+
+BUILTIN_TEMPLATE_CONTAINERS.extend(
+    [
+        {
+            # The Filigran report: the brand deck's palette on paper. Copilot
+            # only, like the deck whose brand it carries.
+            "slug": "filigran-report",
+            "platform_targets": ["copilot"],
+            "name": "Filigran Brand Report",
+            "description": (
+                "The Filigran house style for agent-generated reports, from the "
+                "Filigran design system: a navy masthead, Royal Blue accents on an "
+                "ice blue page with white cards for print and PDF (light, the "
+                "default), Sky Blue on the #0A0C1C page for a screen readout "
+                "(dark), Geologica and IBM Plex typefaces, the Filigran logos. "
+                "The template a report wears when it names none, on Filigran "
+                "Copilot. Read-only: it is kept in sync with the platform on every "
+                "startup; duplicate it to derive your own palette."
+            ),
+            "kind": "report",
+            "tags": ["brand", "filigran", "report", BUILTIN_TAG],
+            "theme": None,
+            "theme_config": {
+                "background": "#0d172b",
+                "foreground": "#fbfbfb",
+                "accent": "#0fbcff",
+                "muted": "#b9bcc6",
+                "paper": "#0a0c1c",
+                "card": "#0d172b",
+                "line": "#1f3965",
+                "critical": "#ff6f61",
+                "elevated": "#f9a825",
+                "moderate": "#0fbcff",
+                "controlled": "#4caf50",
+                **_REPORT_FONTS,
+            },
+            "aspect_ratio": "A4",
+            "extra_metadata": {
+                "supported_schemes": ["dark", "light"],
+                "theme_variants": {
+                    "light": {
+                        # The masthead in Navy, the brand's Royal Blue on the
+                        # ice blue page and white cards, Jaguar ink.
+                        "background": "#071578",
+                        "foreground": "#00020c",
+                        "accent": "#001bda",
+                        "muted": "#4b4e5c",
+                        "paper": "#e6f7ff",
+                        "card": "#ffffff",
+                        "line": "#c7d0f5",
+                        "critical": "#a82626",
+                        "elevated": "#a05a00",
+                        "moderate": "#071578",
+                        "controlled": "#256628",
+                    },
+                },
+                "brand": {"source": "Filigran design system", "deck": "filigran-brand"},
+            },
+        },
+        {
+            # The XTM One report: the product palette, every mode.
+            "slug": "xtm-one-report",
+            "platform_targets": ["global"],
+            "name": "XTM One Brand Report",
+            "description": (
+                "XTM One product template for agent-generated reports: a dark "
+                "navy masthead, the XTM One purple accent on a light page with "
+                "white cards for print and PDF (light, the default), on the dark "
+                "product surface for a screen readout (dark), product typefaces, "
+                "the XTM One logos. The template a report wears when it names "
+                "none, wherever the Filigran report does not ship. Read-only: it "
+                "is kept in sync with the platform on every startup; duplicate it "
+                "to derive your own palette."
+            ),
+            "kind": "report",
+            "tags": ["brand", "xtm-one", "report", BUILTIN_TAG],
+            "theme": None,
+            "theme_config": {
+                "background": "hsl(220 45% 12%)",
+                "foreground": "hsl(0 0% 100%)",
+                "accent": "hsl(270 100% 72%)",
+                "muted": "hsl(230 4% 70%)",
+                "paper": "hsl(220 54% 8%)",
+                "card": "hsl(220 45% 12%)",
+                "line": "hsl(220 30% 22%)",
+                "critical": "hsl(4 88% 64%)",
+                "elevated": "hsl(32 95% 55%)",
+                "moderate": "hsl(197 100% 53%)",
+                "controlled": "hsl(142 70% 45%)",
+                **_REPORT_FONTS,
+            },
+            "aspect_ratio": "A4",
+            "extra_metadata": {
+                "supported_schemes": ["dark", "light"],
+                "theme_variants": {
+                    "light": {
+                        # The product navy masthead, the XTM One purple read
+                        # for paper (7.85:1 on white, the brand deck's
+                        # light brand_1), slate ink.
+                        "background": "hsl(220 54% 8%)",
+                        "foreground": "hsl(220 34% 15%)",
+                        "accent": "#5e1ad5",
+                        "muted": "hsl(217 14% 38%)",
+                        "paper": "hsl(220 30% 97%)",
+                        "card": "#ffffff",
+                        "line": "hsl(220 20% 88%)",
+                        "critical": "#a82626",
+                        "elevated": "#a05a00",
+                        "moderate": "#0b5f8f",
+                        "controlled": "#256628",
+                    },
+                },
+                "brand": {"source": "frontend design tokens", "deck": "xtm-one-brand"},
+            },
+        },
+    ]
+)
+
+
 def _extract_slug(container: TemplateContainer) -> str | None:
     for tag in container.tags or []:
         if isinstance(tag, str) and tag.startswith(SLUG_TAG_PREFIX):

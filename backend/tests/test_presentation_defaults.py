@@ -479,7 +479,7 @@ def test_seeded_deck_defaults_pass_through_the_whitelist():
 
     decks = [c for c in BUILTIN_TEMPLATE_CONTAINERS if c["kind"] == "presentation"]
     assert {c["slug"] for c in decks} == {"filigran-brand", "thread-brand", "xtm-one-brand"}
-    assert {c["kind"] for c in BUILTIN_TEMPLATE_CONTAINERS} == {"presentation", "video"}
+    assert {c["kind"] for c in BUILTIN_TEMPLATE_CONTAINERS} == {"presentation", "video", "report"}
     for container in decks:
         declared = (container.get("extra_metadata") or {}).get("deck_defaults") or {}
         assert declared, container["slug"]

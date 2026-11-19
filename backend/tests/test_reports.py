@@ -1008,6 +1008,109 @@ def test_report_theme_values_are_css_safe(raw, expected):
     assert sanitize_theme_config(raw, keys=REPORT_THEME_CONFIG_KEYS) == expected
 
 
+def _resolver_session(found: dict[str, uuid.UUID]):
+    """A session answering the default resolver's slug lookups from *found*."""
+    asked: list[str] = []
+
+    class _Result:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+    class _Session:
+        async def execute(self, stmt):
+            sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+            for slug, container_id in found.items():
+                if f"slug:{slug}" in sql:
+                    asked.append(slug)
+                    return _Result(container_id)
+            asked.append("?")
+            return _Result(None)
+
+    return _Session(), asked
+
+
+@pytest.mark.parametrize(
+    ("seeded", "expected"),
+    [
+        (("filigran-report", "xtm-one-report"), "filigran-report"),
+        (("xtm-one-report",), "xtm-one-report"),
+        ((), None),
+    ],
+)
+def test_a_report_with_no_template_wears_the_platform_brand(seeded, expected):
+    """Copilot mode seeds both brand reports and picks Filigran; an XTM One
+    platform seeds only its own; a platform before the seed keeps the built-in."""
+    from app.services.reports import DEFAULT_REPORT_TEMPLATE_SLUGS, effective_report_template
+
+    assert DEFAULT_REPORT_TEMPLATE_SLUGS == ("filigran-report", "xtm-one-report")
+    ids = {slug: uuid.uuid4() for slug in seeded}
+    session, _asked = _resolver_session(ids)
+    template_id, scheme = asyncio.run(effective_report_template(session, None, None))
+    assert template_id == (ids[expected] if expected else None)
+    assert scheme == "light"
+
+
+def test_a_linked_template_wins_and_is_applied_as_authored():
+    """An explicit template is never replaced by the brand, and it is read with
+    no scheme, exactly as before the default existed."""
+    from app.services.reports import effective_report_template
+
+    linked = uuid.uuid4()
+    session, asked = _resolver_session({"filigran-report": uuid.uuid4()})
+    assert asyncio.run(effective_report_template(session, linked, "dark")) == (linked, None)
+    assert asked == [], "a linked template asks nothing of the database"
+
+
+def test_a_dark_report_reads_the_brand_s_dark_palette():
+    from app.services.reports import effective_report_template
+
+    brand = uuid.uuid4()
+    session, _asked = _resolver_session({"xtm-one-report": brand})
+    assert asyncio.run(effective_report_template(session, None, "dark")) == (brand, "dark")
+
+
+def test_the_seeded_brand_reports_are_complete_and_readable():
+    """Each brand report carries every report key in both schemes, survives the
+    sanitizer whole, and draws every ink at 4.5:1 or more on its page and card."""
+    from app.services.presentations import (
+        css_color_luminance,
+        sanitize_theme_config,
+        scheme_palette,
+        template_theme_variant,
+    )
+    from app.services.reports import DEFAULT_REPORT_TEMPLATE_SLUGS, REPORT_THEME_CONFIG_KEYS
+    from app.services.template_container_seed import BUILTIN_TEMPLATE_CONTAINERS
+
+    def ratio(a: str, b: str) -> float:
+        la, lb = css_color_luminance(a), css_color_luminance(b)
+        assert la is not None and lb is not None, (a, b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+    seeds = {c["slug"]: c for c in BUILTIN_TEMPLATE_CONTAINERS if c["kind"] == "report"}
+    assert set(seeds) == set(DEFAULT_REPORT_TEMPLATE_SLUGS)
+    for slug, seed in seeds.items():
+        base = sanitize_theme_config(seed["theme_config"], keys=REPORT_THEME_CONFIG_KEYS)
+        assert set(base) == set(REPORT_THEME_CONFIG_KEYS), slug
+        for scheme in ("dark", "light"):
+            variant = template_theme_variant(seed["extra_metadata"], scheme, keys=REPORT_THEME_CONFIG_KEYS)
+            palette = scheme_palette(base, variant, scheme)
+            assert set(palette) == set(REPORT_THEME_CONFIG_KEYS), (slug, scheme)
+            assert ratio(palette["background"], "#ffffff") >= 7, (slug, scheme, "masthead")
+            for ink in ("foreground", "muted", "accent", "critical", "elevated", "moderate", "controlled"):
+                for surface in ("paper", "card"):
+                    assert ratio(palette[ink], palette[surface]) >= 4.5, (slug, scheme, ink, surface)
+
+
+def test_the_default_report_skin_has_no_coral_accent():
+    """The renderer's own fallback accent follows the product theme: the coral
+    of the old built-in skin is what a report with no brand looked like."""
+    css = (FRONTEND_ROOT / "src" / "components" / "report" / "report.css").read_text(encoding="utf-8")
+    assert "--report-accent: hsl(17 100% 50%)" not in css
+
+
 def test_report_theme_resolution_is_visibility_checked():
     """A container un-shared since the report was generated must contribute
     nothing rather than leak its brand config."""

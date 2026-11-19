@@ -93,22 +93,87 @@ def serialize_report(
     }
 
 
+#: The seeded report templates, in the order they are tried when a report links
+#: none: the Filigran report where it ships (Copilot mode only), else the XTM One
+#: report, which ships in every mode. The report twin of
+#: ``presentations.DEFAULT_TEMPLATE_SLUGS``.
+DEFAULT_REPORT_TEMPLATE_SLUGS: tuple[str, ...] = ("filigran-report", "xtm-one-report")
+
+#: The theme a report is drawn in when its spec names none (``ReportSpec.theme``).
+DEFAULT_REPORT_THEME = "light"
+
+
+async def resolve_default_report_template_id(db: AsyncSession) -> uuid.UUID | None:
+    """The template a report wears when it links none: the platform's brand.
+
+    The first seeded report container found (:data:`DEFAULT_REPORT_TEMPLATE_SLUGS`),
+    else ``None`` (the renderer's built-in palette, a platform whose seed has
+    not run). Resolved at READ time, never stored on the report: a report made
+    before the brand templates existed is branded too, and a brand change
+    ships with a deploy. Only ever a company-managed container, so it is visible
+    to every reader.
+    """
+    from app.models.template_container import TemplateContainer
+    from app.services.template_container_seed import builtin_container_filter
+
+    for slug in DEFAULT_REPORT_TEMPLATE_SLUGS:
+        builtin = (
+            await db.execute(
+                select(TemplateContainer.id)
+                .where(builtin_container_filter(slug))
+                .order_by(TemplateContainer.created_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if builtin is not None:
+            return builtin
+    return None
+
+
+async def effective_report_template(
+    db: AsyncSession, container_id: uuid.UUID | None, report_theme: str | None
+) -> tuple[uuid.UUID | None, str | None]:
+    """The template a report is drawn with and the scheme its palette is read for.
+
+    A linked template is applied as authored (``None`` scheme), exactly as
+    before the brand default existed, so no report skin an author made changes
+    look. With none linked, the platform's brand
+    (:func:`resolve_default_report_template_id`) is read for the report's own
+    scheme (``light`` / ``dark``): its ``theme_variants`` entry over the base, so
+    a light report is the brand on paper and a dark one the brand on screen.
+    """
+    if container_id is not None:
+        return container_id, None
+    return (
+        await resolve_default_report_template_id(db),
+        report_theme or DEFAULT_REPORT_THEME,
+    )
+
+
 async def resolve_report_theme(
     db: AsyncSession,
     container_id: uuid.UUID | None,
     *,
     user_id: uuid.UUID | None,
+    report_theme: str | None = None,
 ) -> dict[str, str]:
-    """Return the whitelisted ``theme_config`` of a report's linked template.
+    """Return the whitelisted ``theme_config`` a report is drawn with.
 
-    Thin wrapper over the deck resolver with the report whitelist: the visibility
-    logic is shared on purpose (a second copy could fall behind and start leaking
-    an un-shared container's brand config), only the key set differs.
+    The linked template, else the platform's brand
+    (:func:`effective_report_template`). Thin wrapper over the deck resolver
+    with the report whitelist: the visibility logic is shared on purpose (a
+    second copy could fall behind and start leaking an un-shared container's
+    brand config), only the key set differs.
     """
     from app.services.presentations import resolve_template_theme
 
+    template_id, scheme = await effective_report_template(db, container_id, report_theme)
     return await resolve_template_theme(
-        db, container_id, user_id=user_id, keys=REPORT_THEME_CONFIG_KEYS
+        db,
+        template_id,
+        user_id=user_id,
+        keys=REPORT_THEME_CONFIG_KEYS,
+        deck_theme=scheme,
     )
 
 
@@ -117,13 +182,20 @@ async def resolve_report_export_stamp(
     container_id: uuid.UUID | None,
     *,
     user_id: uuid.UUID | None,
+    report_theme: str | None = None,
 ) -> str:
     """What a report's export depends on besides its revision: its template's
-    render inputs and asset versions (see ``presentations.resolve_template_export_stamp``)."""
+    render inputs and asset versions (see ``presentations.resolve_template_export_stamp``),
+    the platform's brand template included when the report links none."""
     from app.services.presentations import resolve_template_export_stamp
 
+    template_id, scheme = await effective_report_template(db, container_id, report_theme)
     return await resolve_template_export_stamp(
-        db, container_id, user_id=user_id, keys=REPORT_THEME_CONFIG_KEYS
+        db,
+        template_id,
+        user_id=user_id,
+        keys=REPORT_THEME_CONFIG_KEYS,
+        deck_theme=scheme,
     )
 
 
@@ -150,7 +222,7 @@ async def save_report(
     """
     spec = validate_spec(spec_payload)
     title = str(spec["title"])
-    theme = str(spec.get("theme") or "light")
+    theme = str(spec.get("theme") or DEFAULT_REPORT_THEME)
     block_count = len(spec.get("blocks") or [])
 
     if report is None:

@@ -43,7 +43,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   /* Defaults are the light theme; the [data-report-theme] blocks below override. */
   --report-bg: hsl(215 62% 10%);
   --report-fg: hsl(220 34% 15%);
-  --report-accent: hsl(17 100% 50%);
+  --report-accent: var(--color-accent);
   --report-muted: hsl(217 14% 42%);
   --report-paper: hsl(210 20% 96%);
   --report-card: hsl(0 0% 100%);
