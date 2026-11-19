@@ -722,6 +722,16 @@ def register(
                     run = (resp.json() or {}) if not rerr and resp is not None else {}
                     if no_jobs_run(run, 0):
                         return _no_jobs_answer(run, run_id, repo)
+                    current = _coerce_int(run.get("run_attempt")) or 1
+                    if current > 1:
+                        # A re-run attempt that has not queued its jobs yet: the empty list is
+                        # attempt N's, the failure to read is attempt N-1's (#355).
+                        previous = await _previous_attempt_line(_jobs_of, run_id, current - 1, repo)
+                        head = f"No jobs yet for run {run_id} attempt {current} (latest) in {repo}: it has not started."
+                        hint = (
+                            f"\nlist_github_workflow_jobs(run_id={run_id}, attempt={current - 1}) lists the one before."
+                        )
+                        return head + (previous or hint)
                 return "\n".join(s for s in (f"No jobs found for {scope} in {repo}.", source_line) if s)
             previous_line = ""
             latest = max(int(j.get("run_attempt") or 1) for j in jobs)
