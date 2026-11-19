@@ -230,6 +230,20 @@ def _level_text(value: object) -> str:
     return f"{LEVEL_LABELS[level]} ({level})"
 
 
+def _instructions_text(position: object, announced: object) -> str:
+    """A fleet's instructions position as an answer states it: label, stored value, announced or not.
+
+    Display only (never a platform gate); unset reads "not set", so a reader
+    needs no audit log to learn it (#10000).
+    """
+    from app.services.fleet_autonomy import INSTRUCTIONS_POSITION_LABELS, INSTRUCTIONS_POSITIONS
+
+    if position not in INSTRUCTIONS_POSITIONS:
+        return "not set"
+    told = "announced to the members" if announced else "not announced to the members"
+    return f"{INSTRUCTIONS_POSITION_LABELS[position]} ({position}), {told}, not enforced by the platform"
+
+
 def _quoted_label(label: str) -> str:
     """A role label as an answer quotes it; an empty one reads as none."""
     return f'"{label}"' if label else "none"
@@ -550,6 +564,13 @@ def build_fleet_tools(
         if fleet.is_archived:
             lines.append("  • Archived")
         lines.append(f"  • Autonomy level: {_level_text(getattr(fleet, 'autonomy_level', None))}")
+        lines.append(
+            "  • Instructions position: "
+            + _instructions_text(
+                getattr(fleet, "instructions_position", None),
+                getattr(fleet, "instructions_position_announced", None),
+            )
+        )
         fleet_scope = resolve_organization_scope(fleet.organization_scope, None)
         lines.append(f"  • Organization scope: {_scope_text(fleet_scope)}")
         lines.append(f"  • Home members ({len(homes)}):")
