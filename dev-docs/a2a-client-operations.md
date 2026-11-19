@@ -271,8 +271,10 @@ resumed, so for that path:
   assignments for that person;
 - a later run of the SAME agent for the SAME user may collect the task with
   `continue_task_id` and no message (`_scoped_to_caller`: the run that started
-  it, or a run of that agent in a terminal status); another agent, another
-  user, or a run still going stays refused `continuation_not_owned` (FR-046);
+  it, a run of that agent in a terminal status, or, #448, a run of that agent
+  in the SAME conversation, since every chat turn is its own run); another
+  agent, another user, or another conversation's run still going stays refused
+  `continuation_not_owned` (FR-046);
 - a collect (no message) of a task whose rows for this caller all concluded
   answers the newest row from the record, nothing sent, when that row ended
   with an outcome the partner itself decided (`partner_failed`;
