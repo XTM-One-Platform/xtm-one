@@ -787,6 +787,56 @@ async def test_list_applications_filters_hires_server_side_and_pages_with_the_cu
 
 
 @pytest.mark.asyncio
+async def test_list_applications_count_only_pages_every_application_and_breaks_it_down():
+    def page(body):
+        start = int(body.get("cursor") or 0)
+        size = body["limit"]
+        rows = [
+            {
+                "id": f"app-{i}",
+                "status": "Active" if i % 3 else "Archived",
+                "job": {"id": f"job-{i % 2}", "title": "SRE" if i % 2 else "PM"},
+            }
+            for i in range(start, min(start + size, 230))
+        ]
+        more = start + size < 230
+        return ok(rows, moreDataAvailable=more, nextCursor=str(start + size) if more else None)
+
+    api = FakeAshby({"application.list": page})
+    with fake_api(api):
+        result = await call(_executor(), "list_ashby_applications", created_after="2026-01-01", count_only=True)
+    assert not result.is_error, result.content
+    sent = api.sent("application.list")
+    assert [b["limit"] for b in sent] == [100, 100, 100]
+    assert all(b["createdAfter"] == 1767225600000 for b in sent)
+    assert result.content.startswith("230 applications with created_after=2026-01-01")
+    assert "Active 153, Archived 77" in result.content
+    assert "SRE (ID: job-1): 115" in result.content
+    assert "PM (ID: job-0): 115" in result.content
+    assert "app-0" not in result.content
+
+
+@pytest.mark.asyncio
+async def test_list_applications_count_only_says_at_least_when_it_stops(monkeypatch):
+    from app.integrations.providers.ashby import applications
+
+    monkeypatch.setattr(applications, "COUNT_MAX", 2)
+    api = FakeAshby(
+        {
+            "application.list": lambda body: ok(
+                [{"id": "a", "status": "Active"}, {"id": "b", "status": "Active"}][: body["limit"]],
+                moreDataAvailable=True,
+                nextCursor="c-2",
+            )
+        }
+    )
+    with fake_api(api):
+        result = await call(_executor(), "list_ashby_applications", status="active", count_only=True)
+    assert result.content.startswith("At least 2 applications with status=Active")
+    assert 'cursor="c-2"' in result.content
+
+
+@pytest.mark.asyncio
 async def test_list_applications_refuses_an_unknown_status():
     result = await call(_executor(), "list_ashby_applications", status="Rejected")
     assert result.is_error

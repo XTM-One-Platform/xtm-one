@@ -32,6 +32,10 @@ from ._common import (
 )
 
 APPLICATION_STATUSES = ["Active", "Hired", "Archived", "Lead"]
+#: Most applications one count reads (pages of MAX_PAGE) before it answers "at least".
+COUNT_MAX = 5000
+#: Jobs named in a count's breakdown; the rest are summed as "other jobs".
+COUNT_TOP_JOBS = 10
 
 
 def _history(application: dict[str, Any]) -> list[dict[str, Any]]:
@@ -119,6 +123,37 @@ def fmt_application(a: dict[str, Any], *, detailed: bool = False) -> str:
     return "\n".join(lines)
 
 
+def fmt_count(items: list[dict[str, Any]], *, filters: str, capped: bool, next_cursor: str | None) -> str:
+    """A count of *items* with its breakdown by status and by job."""
+    scope = f" with {filters}" if filters else ""
+    total = len(items)
+    head = f"At least {total} applications{scope}" if capped else f"{total} applications{scope}"
+    lines = [head + " (counted by reading every page)."]
+    if not items:
+        return lines[0]
+    by_status: dict[str, int] = {}
+    by_job: dict[str, int] = {}
+    for a in items:
+        status = a.get("status") or "unknown"
+        by_status[status] = by_status.get(status, 0) + 1
+        job = a.get("job") or {}
+        label = f"{job.get('title') or 'Untitled job'} (ID: {job.get('id', '?')})" if job else "no job"
+        by_job[label] = by_job.get(label, 0) + 1
+    lines.append("By status: " + ", ".join(f"{k} {v}" for k, v in sorted(by_status.items(), key=lambda kv: -kv[1])))
+    ranked = sorted(by_job.items(), key=lambda kv: (-kv[1], kv[0]))
+    lines.append("By job:")
+    lines.extend(f"  {label}: {count}" for label, count in ranked[:COUNT_TOP_JOBS])
+    rest = sum(count for _, count in ranked[COUNT_TOP_JOBS:])
+    if rest:
+        lines.append(f"  {len(ranked) - COUNT_TOP_JOBS} other jobs: {rest}")
+    if capped:
+        lines.append(
+            f"[Stopped at {COUNT_MAX} applications; narrow created_after / created_before or "
+            f'continue the count with cursor="{next_cursor}" and add the totals]'
+        )
+    return "\n".join(lines)
+
+
 def _parse_ts(value: Any) -> datetime | None:
     if not value:
         return None
@@ -145,6 +180,7 @@ def register(ctx: AshbyContext, executor: CallableToolExecutor) -> list[ToolDefi
         limit: int = DEFAULT_PAGE,
         cursor: str = "",
         include_hire_dates: bool = False,
+        count_only: bool = False,
     ) -> str:
         body: dict[str, Any] = {}
         if status:
@@ -161,6 +197,23 @@ def register(ctx: AshbyContext, executor: CallableToolExecutor) -> list[ToolDefi
             if err:
                 return err
             set_if(body, key, ms)
+        filters = ", ".join(
+            f"{k}={v}"
+            for k, v in (
+                ("status", body.get("status", "")),
+                ("job", job_id),
+                ("created_after", created_after),
+                ("created_before", created_before),
+            )
+            if v
+        )
+        if count_only:
+            async with ctx.client() as client:
+                page, err = await ctx.page(client, "application.list", body, limit=COUNT_MAX, cursor=cursor)
+            if err or page is None:
+                return err or "Error: Ashby answered no page."
+            capped = bool(page.next_cursor) and len(page.items) >= COUNT_MAX
+            return fmt_count(page.items, filters=filters, capped=capped, next_cursor=page.next_cursor)
         async with ctx.client() as client:
             page, err = await ctx.page(client, "application.list", body, limit=clamp(limit), cursor=cursor)
             if err:
@@ -170,7 +223,6 @@ def register(ctx: AshbyContext, executor: CallableToolExecutor) -> list[ToolDefi
                 hired = [a["id"] for a in items if a.get("status") == "Hired" and a.get("id")]
                 full = await ctx.applications(client, hired)
                 items = [{**a, **full.get(a.get("id"), {})} if a.get("id") in full else a for a in items]
-        filters = ", ".join(f"{k}={v}" for k, v in (("status", status), ("job", job_id)) if v)
         empty = f"No applications{f' with {filters}' if filters else ''}."
         return format_entity_list(items, fmt_application, noun="application", empty_msg=empty) + page_footer(
             page, noun="application"
@@ -395,7 +447,9 @@ def register(ctx: AshbyContext, executor: CallableToolExecutor) -> list[ToolDefi
             "status (e.g. 'Hired' to enumerate hires), job_id and creation time - Ashby "
             "filters server-side, so hires are found without paging through archives. "
             "include_hire_dates reads each hired application's hire date (one extra read "
-            "per hire).",
+            "per hire). count_only answers how many applications match (e.g. this week's: "
+            "created_after='-7d') with a breakdown by status and by job, paging server-side "
+            f"up to {COUNT_MAX} instead of listing them.",
             {
                 "status": {
                     "type": "string",
@@ -410,6 +464,14 @@ def register(ctx: AshbyContext, executor: CallableToolExecutor) -> list[ToolDefi
                 "include_hire_dates": {
                     "type": "boolean",
                     "description": "Add the hire date of each hired application",
+                    "default": False,
+                },
+                "count_only": {
+                    "type": "boolean",
+                    "description": (
+                        "Answer the number of matching applications with a breakdown by status "
+                        "and job, instead of the list (limit and include_hire_dates ignored)"
+                    ),
                     "default": False,
                 },
             },
