@@ -182,6 +182,13 @@ _RETRY_COLLECT_HINT = (
     "The delegation is still outstanding: collect again in a few seconds with "
     "the same continue_task_id and no message. The answer is not lost."
 )
+# A continuation that carries a follow-up was refused before anything was
+# sent: the collect hint would make the caller drop its message (#320).
+_RETRY_SEND_HINT = (
+    "The delegation is still outstanding but your follow-up message was NOT "
+    "sent: send it again in a few seconds with the same continue_task_id and "
+    "the same message."
+)
 
 
 class PreflightRefusedError(Exception):
@@ -1529,21 +1536,23 @@ async def _conclude(
 
 
 async def _refuse_collect_for_now(
-    integration: Any, target: Any, result: DelegationResult, task_id: str
+    integration: Any, target: Any, result: DelegationResult, task_id: str, *, message_unsent: bool = False
 ) -> DelegationResult:
     """Hand back a retryable refusal of a collect without recording it.
 
     Counted like any refusal, but never passed to ``_record``: with the task
     id it would conclude the outstanding row, without it it would insert a
     concluded second one. The row stays outstanding for the caller's next
-    collect and for the floor.
+    collect and for the floor. ``message_unsent`` says the attempt carried a
+    follow-up message, which the hint then asks the caller to send again.
     """
     from app.a2a import metrics as a2a_metrics
 
     await _commit_target_outcome(target)
     a2a_metrics.record_delegation_refused(integration.provider, result.partner_reason or "unknown")
     result.partner_task_id = task_id
-    result.detail = f"{result.detail} {_RETRY_COLLECT_HINT}" if result.detail else _RETRY_COLLECT_HINT
+    hint = _RETRY_SEND_HINT if message_unsent else _RETRY_COLLECT_HINT
+    result.detail = f"{result.detail} {hint}" if result.detail else hint
     return result
 
 
@@ -1878,7 +1887,9 @@ async def delegate(
             # A transient refusal of a collect says nothing about the task:
             # concluding its row would end a delegation that is still running,
             # which the floor then skips and the next collect duplicates.
-            return await _refuse_collect_for_now(integration, target, refused, owned_task_id)
+            return await _refuse_collect_for_now(
+                integration, target, refused, owned_task_id, message_unsent=bool(message)
+            )
         concluded: DelegationResult = await conclude(refused)
         return concluded
 
