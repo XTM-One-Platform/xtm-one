@@ -55,6 +55,8 @@ def test_the_group_carries_the_update_and_the_proposal_tools():
         module.ORGANIZATION_LIST_SYNCS_TOOL,
         module.ORGANIZATION_CREATE_SYNC_TOOL,
         module.ORGANIZATION_RUN_SYNC_TOOL,
+        module.ORGANIZATION_LIST_PROPOSALS_TOOL,
+        module.ORGANIZATION_DECIDE_PROPOSAL_TOOL,
     }
     assert all(d.source == f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}" for d in defs)
     assert executor.handler(ORGANIZATION_UPDATE_TOOL) is not None
@@ -374,6 +376,132 @@ async def test_the_import_preview_carries_the_shared_context_notice(monkeypatch)
     answer = json.loads(await executor.handler(module.ORGANIZATION_IMPORT_TOOL)(section="assets", source="opencti"))
     assert answer["applied"] is False
     assert answer["notice"] == module.SHARED_CONTEXT_NOTICE
+
+
+def _proposal_row(**overrides):
+    row = SimpleNamespace(
+        id=uuid.uuid4(),
+        kind="fields",
+        organization_id=uuid.uuid4(),
+        status="pending",
+        proposals=[{"field": "tech_stack", "value": [{"product": "Postgres"}], "basis": "chat"}],
+        based_on_version=13,
+        author_user_id=None,
+        created_at="2026-11-17T08:00:00Z",
+    )
+    for key, value in overrides.items():
+        setattr(row, key, value)
+    return row
+
+
+class _ProposalSession(_SyncSession):
+    """The sync double, with a stored proposal read under a row lock."""
+
+    async def get(self, model, _id, with_for_update=False):
+        if model.__name__ == "OrganizationContextProposal":
+            self.locked = with_for_update
+            return self.stored if self.stored is not None and self.stored.id == _id else None
+        return await super().get(model, _id)
+
+
+@pytest.mark.asyncio
+async def test_the_proposal_tools_refuse_a_former_administrator(monkeypatch):  # #475
+    from app.core import database
+    from app.services import organization_context_proposals as proposals
+
+    async def _must_not_run(*_args, **_kwargs):  # pragma: no cover - the refusal comes first
+        raise AssertionError("a proposal was read or decided for a non-administrator")
+
+    monkeypatch.setattr(database, "async_session", lambda: _ProposalSession(admin=False))
+    monkeypatch.setattr(proposals, "list_proposals", _must_not_run)
+    monkeypatch.setattr(proposals, "decide", _must_not_run)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
+    assert await executor.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)() == module.REFUSAL
+    decide = executor.handler(module.ORGANIZATION_DECIDE_PROPOSAL_TOOL)
+    assert await decide(proposal_id=str(uuid.uuid4()), accept=[]) == module.REFUSAL
+    _, refused = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=False)
+    assert await refused.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)() == module.REFUSAL
+
+
+@pytest.mark.asyncio
+async def test_list_proposals_answers_the_stored_proposals(monkeypatch):  # #475
+    import json
+
+    from app.core import database
+    from app.services import organization_context_proposals as proposals
+
+    row = _proposal_row()
+    asked: list = []
+
+    async def _list(_db, *, status, limit):
+        asked.append((status, limit))
+        return [row]
+
+    monkeypatch.setattr(database, "async_session", lambda: _ProposalSession())
+    monkeypatch.setattr(proposals, "list_proposals", _list)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
+    answer = json.loads(await executor.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)(status="pending", limit=5))
+    assert asked == [("pending", 5)]
+    assert answer["proposals"][0]["id"] == str(row.id)
+    assert answer["proposals"][0]["entries"][0]["field"] == "tech_stack"
+    assert answer["proposals"][0]["based_on_version"] == 13
+    bad = await executor.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)(status="stale")
+    assert bad.startswith("Not read: status is one of pending")
+
+
+@pytest.mark.asyncio
+async def test_decide_rejects_with_an_empty_accept_and_writes_an_audit_entry(monkeypatch):  # #475
+    import json
+
+    from app.core import database
+    from app.services import audit
+    from app.services import organization_context_proposals as proposals
+
+    row = _proposal_row()
+    session = _ProposalSession(stored=row)
+    calls: dict = {}
+
+    async def _decide(_db, proposal, *, admin_user_id, accept):
+        calls["decide"] = (proposal.id, admin_user_id, accept)
+        return {"status": "rejected", "version": None, "created": []}
+
+    async def _log_audit(_db, **kwargs):
+        calls["audit"] = kwargs
+
+    monkeypatch.setattr(database, "async_session", lambda: session)
+    monkeypatch.setattr(proposals, "decide", _decide)
+    monkeypatch.setattr(audit, "log_audit", _log_audit)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True, agent_name="Ops")
+    answer = json.loads(
+        await executor.handler(module.ORGANIZATION_DECIDE_PROPOSAL_TOOL)(proposal_id=str(row.id), accept=[])
+    )
+    assert answer == {"proposal_id": str(row.id), "status": "rejected", "version": None, "created": []}
+    assert calls["decide"] == (row.id, uuid.UUID(_ADMIN_ID), [])
+    assert session.locked is True
+    assert calls["audit"]["entity_type"] == "organization_context_proposal"
+    assert calls["audit"]["details"]["agent"] == "Ops"
+    assert session.committed
+
+
+@pytest.mark.asyncio
+async def test_decide_names_a_refusal_and_commits_nothing(monkeypatch):  # #475
+    from app.core import database
+    from app.services import organization_context_proposals as proposals
+
+    row = _proposal_row(status="accepted")
+    session = _ProposalSession(stored=row)
+
+    async def _decide(_db, proposal, **_kwargs):
+        raise proposals.ProposalError(f"This proposal is already {proposal.status}.")
+
+    monkeypatch.setattr(database, "async_session", lambda: session)
+    monkeypatch.setattr(proposals, "decide", _decide)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
+    decide = executor.handler(module.ORGANIZATION_DECIDE_PROPOSAL_TOOL)
+    assert await decide(proposal_id=str(row.id), accept=[]) == "Not decided: This proposal is already accepted."
+    assert not session.committed
+    assert (await decide(proposal_id=str(uuid.uuid4()), accept=[])).startswith("Not decided: no proposal")
+    assert (await decide(proposal_id="nope", accept=[])).startswith("Not decided: proposal_id")
 
 
 def test_binding_by_a_non_admin_is_refused_and_an_admin_may_bind():
