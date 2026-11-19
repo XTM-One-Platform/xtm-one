@@ -19419,5 +19419,13 @@
   "{runs} scored by metric suite {versions}; this review reads the answers with {current}.": "{runs} scored by metric suite {versions}; this review reads the answers with {current}.",
   "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.": "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.",
   "Score the stored answers again with the current suite; the agents do not run again.": "Score the stored answers again with the current suite; the agents do not run again.",
-  "The last re-score failed: {reason}": "The last re-score failed: {reason}"
+  "The last re-score failed: {reason}": "The last re-score failed: {reason}",
+  "Account {name} provisioned": "Account {name} provisioned",
+  "Account {name} changed": "Account {name} changed",
+  "Account {name} deprovisioned": "Account {name} deprovisioned",
+  "Group {name} provisioned": "Group {name} provisioned",
+  "Group {name} changed": "Group {name} changed",
+  "Group {name} deleted": "Group {name} deleted",
+  "SCIM token {name} generated": "SCIM token {name} generated",
+  "SCIM token {name} revoked": "SCIM token {name} revoked"
 }

@@ -19419,5 +19419,13 @@
   "{runs} scored by metric suite {versions}; this review reads the answers with {current}.": "{runs} puntuado por la suite de métricas {versions}; esta revisión lee las respuestas con {current}.",
   "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.": "Un objeto que la suite más reciente empareja puede aparecer aquí como encontrado mientras las cifras de la ejecución aún lo cuentan como omitido. Vuelva a puntuar la ejecución para que sus cifras y esta revisión coincidan.",
   "Score the stored answers again with the current suite; the agents do not run again.": "Vuelve a puntuar las respuestas guardadas con la suite actual; los agentes no se ejecutan de nuevo.",
-  "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}"
+  "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}",
+  "Account {name} provisioned": "Cuenta {name} aprovisionada",
+  "Account {name} changed": "Cuenta {name} modificada",
+  "Account {name} deprovisioned": "Cuenta {name} desaprovisionada",
+  "Group {name} provisioned": "Grupo {name} aprovisionado",
+  "Group {name} changed": "Grupo {name} modificado",
+  "Group {name} deleted": "Grupo {name} eliminado",
+  "SCIM token {name} generated": "Token SCIM {name} generado",
+  "SCIM token {name} revoked": "Token SCIM {name} revocado"
 }
