@@ -230,7 +230,9 @@ async def test_load_custom_and_mcp_tools_overlaps_and_orders(monkeypatch):
         composite.add_tools(["custom_tool"], object())
         timeline.append("custom-end")
 
-    async def _fake_mcp(db, ids, composite, allowed_tools=None, artifact_scope=None):
+    async def _fake_mcp(
+        db, ids, composite, allowed_tools=None, artifact_scope=None, acting_user_id=None
+    ):
         timeline.append("mcp-start")
         await rendezvous.arrive("mcp")
         composite.add_tools(["mcp_tool"], object())
@@ -289,7 +291,9 @@ async def test_load_custom_and_mcp_tools_single_loader_fast_paths(monkeypatch):
     async def _fake_custom(db, ids, composite, **_kwargs):
         calls.append("custom")
 
-    async def _fake_mcp(db, ids, composite, allowed_tools=None, artifact_scope=None):
+    async def _fake_mcp(
+        db, ids, composite, allowed_tools=None, artifact_scope=None, acting_user_id=None
+    ):
         calls.append("mcp")
         return "manager"
 
