@@ -2197,6 +2197,9 @@ class BaseLLMProvider(ABC):
     # for an unpinned flow Classify node only while its listing declares one (a
     # pin or the platform Decision Model still reaches it).
     decisions_only_when_listed: bool = False
+    # The ``error.code`` of a 413 for the provider's own body cap, not the
+    # model's: another provider may still take the request, so it fails over.
+    body_cap_error_code: str | None = None
     # Whether ``decision_listing()``, once whole, declares every decision
     # model the provider serves, so a model it omits is not served there.
     # False for a provider serving typed ids no listing reports (OpenRouter).

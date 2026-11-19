@@ -650,12 +650,10 @@ def _classify_own_exception(exc: BaseException) -> FailureClassification | None:
 def _classify_request_too_large(exc: BaseException) -> FailureClassification | None:
     """A raw 413 the failover wrapper re-raised as non-failoverable.
 
-    ``is_request_too_large_error`` matches keywords internally, so this is a
-    HEURISTIC determination — but it is the platform's single source of truth
-    for 413 detection and it drives failover itself, so it is consulted right
-    after the structural steps rather than left to the generic ladder. A 413
-    that arrives with a real ``status_code`` never reaches here: it is already
-    structural by then.
+    A 413 with a real ``status_code`` never reaches here: it is already
+    structural by then. What is left is ``is_request_too_large_error``'s
+    keyword match, a HEURISTIC determination, consulted right after the
+    structural steps because the same predicate drives failover.
     """
     try:
         from app.llm.router import is_request_too_large_error
