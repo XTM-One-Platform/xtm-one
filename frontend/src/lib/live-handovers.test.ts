@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   LIVE_HANDOVER_WINDOW_MS,
   isLiveHandover,
+  liveEdgesKey,
   liveHandoverEdges,
   type LiveHandoverSource,
 } from "./live-handovers.ts";
@@ -74,4 +75,20 @@ test("an edge carries its newest live handover and the node mapping", () => {
 test("no delegations, no live edge", () => {
   assert.equal(liveHandoverEdges(undefined, NOW).size, 0);
   assert.equal(liveHandoverEdges([], NOW).size, 0);
+});
+
+test("liveEdgesKey: a clock tick that changes no live edge keeps the key", () => {
+  const delegations = [
+    handover({ status: "running", created_at: iso(2 * MIN) }),
+    handover({ parent_agent_id: "c", target_agent_id: "d", status: "completed", created_at: iso(5 * MIN), completed_at: iso(4 * MIN) }),
+  ];
+  const before = liveHandoverEdges(delegations, NOW);
+  const after = liveHandoverEdges(delegations, NOW + 30 * 1000);
+  assert.notEqual(before, after);
+  assert.equal(liveEdgesKey(after), liveEdgesKey(before));
+  // A status change or an edge leaving the window changes it.
+  const ended = liveHandoverEdges([{ ...delegations[0], status: "completed", completed_at: iso(0) }, delegations[1]], NOW);
+  assert.notEqual(liveEdgesKey(ended), liveEdgesKey(before));
+  assert.notEqual(liveEdgesKey(liveHandoverEdges(delegations, NOW + LIVE_HANDOVER_WINDOW_MS)), liveEdgesKey(before));
+  assert.equal(liveEdgesKey(undefined), "");
 });

@@ -113,6 +113,75 @@ describe("AgentFlowGraph fillHeight", () => {
   });
 });
 
+describe("AgentFlowGraph poll ticks (the periodic flash of the fleet graph)", () => {
+  const live = (status: "running" | "completed") =>
+    new Map([["a->b", { status, firedAt: "2026-11-19T13:00:00Z" }]]);
+  const particles = (container: HTMLElement) => [...container.querySelectorAll("circle")];
+
+  it("redraws nothing for a tick that rebuilds the same running agents and live edges", () => {
+    const props = { layout: "force" as const, activeAgentIds: new Set(["a", "b"]), liveEdges: live("running") };
+    const { container, rerender } = renderWithProviders(<AgentFlowGraph agents={AGENTS} {...props} />);
+    const svg = container.querySelector("svg[viewBox]")!;
+    const before = { viewBox: svg.getAttribute("viewBox"), circles: particles(container), html: svg.innerHTML };
+    const toggles: (string | null)[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records) if (r.attributeName === "data-animating") toggles.push(svg.getAttribute("data-animating"));
+    });
+    observer.observe(svg, { attributes: true });
+    // New references, same content, members in another order: what a poll hands back.
+    rerender(<AgentFlowGraph agents={AGENTS.map((a) => ({ ...a }))} layout="force" activeAgentIds={new Set(["b", "a"])} liveEdges={live("running")} />);
+    observer.disconnect();
+    expect(toggles).toEqual([]);
+    expect(svg.getAttribute("viewBox")).toBe(before.viewBox);
+    expect(svg.innerHTML).toBe(before.html);
+    // The same circle elements: no beam particle or mote was remounted, so none restarts.
+    const after = particles(container);
+    expect(after.length).toBe(before.circles.length);
+    after.forEach((c, i) => expect(c).toBe(before.circles[i]));
+  });
+
+  it("still draws a change of the running agents or of a live edge", () => {
+    const { container, rerender } = renderWithProviders(
+      <AgentFlowGraph agents={AGENTS} layout="force" activeAgentIds={new Set(["a"])} liveEdges={live("running")} />,
+    );
+    const html = container.querySelector("svg[viewBox]")!.innerHTML;
+    rerender(<AgentFlowGraph agents={AGENTS} layout="force" activeAgentIds={new Set(["a", "c"])} liveEdges={live("running")} />);
+    const running = container.querySelector("svg[viewBox]")!.innerHTML;
+    expect(running).not.toBe(html);
+    // The edge leaves the live window: it is drawn still again.
+    rerender(<AgentFlowGraph agents={AGENTS} layout="force" activeAgentIds={new Set(["a", "c"])} liveEdges={new Map()} />);
+    expect(container.querySelector("svg[viewBox]")!.innerHTML).not.toBe(running);
+  });
+
+  it("commits the view of a resized box before the next paint (fillHeight)", () => {
+    let resized: (() => void) | null = null;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(cb: () => void) { resized = cb; }
+      observe() {}
+      disconnect() {}
+    });
+    Object.defineProperty(SVGElement.prototype, "clientWidth", { configurable: true, get: () => 1000 });
+    let height = 700;
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(() => ({
+      x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: height, width: 1000, height, toJSON: () => ({}),
+    } as DOMRect));
+    try {
+      const { container } = draw({ layout: "force", fillHeight: true });
+      expect(Number(viewBox(container)!.split(" ")[3])).toBeCloseTo(980);
+      // A sibling panel grows the card by 30 px: the observer fires, outside any act().
+      height = 730;
+      resized!();
+      // The view already matches the box, in the observer's own call: the drawing is
+      // never painted stretched to the new box with the old view.
+      expect(Number(viewBox(container)!.split(" ")[3])).toBeCloseTo(1022);
+    } finally {
+      rect.mockRestore();
+      delete (SVGElement.prototype as { clientWidth?: number }).clientWidth;
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("AgentFlowGraph wrapNames (the fleet About flow, #9647 UX round 2)", () => {
   // A dense left-to-right fleet: one hub handing over to 16 members.
   const DENSE = [
