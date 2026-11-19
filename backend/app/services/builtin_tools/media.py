@@ -635,11 +635,39 @@ def _format_mount_line(mounted: list[str], skipped: list[str]) -> str:
     return line + "]"
 
 
-def _unmounted_paths_hint(file_context: FileContext | None) -> str:
-    """For a run that did not name ``attachments`` and failed to open a file:
-    where the conversation files would have been (metadata only, no download)."""
+#: Said when the code fails on ``attachments/input.json`` in a run that holds
+#: no input document: the path exists only for a detached ``$input``.
+NO_INPUT_DOCUMENT_HINT = (
+    "[No input document is mounted in this run: attachments/input.json exists only when "
+    "the run's message carried a JSON document detached as $input (agent config "
+    'output_mode "patch" or input_reference true, or a document too large for the context). '
+    "Read the document from the message instead.]"
+)
+
+
+def _opens_absent_input_document(error_text: str, file_context: FileContext | None) -> bool:
+    """The code failed on ``attachments/input.json`` and the run mounts no input document."""
+    from app.tools.session_input import INPUT_MOUNT_NAME
+
+    if f"attachments/{INPUT_MOUNT_NAME}" not in error_text:
+        return False
+    if not re.search(r"FileNotFoundError|No such file or directory", error_text):
+        return False
+    return not (getattr(file_context, "sandbox_inputs", None) or {}).get(INPUT_MOUNT_NAME)
+
+
+def _unmounted_paths_hint(file_context: FileContext | None, error_text: str = "") -> str:
+    """For a run that failed to open a file: what was not there.
+
+    The input document's path (``attachments/input.json``) opened in a run that
+    mounts none is answered as such; otherwise, for a run that did not name
+    ``attachments``, where the conversation files would have been (metadata
+    only, no download).
+    """
     from app.services.code_interpreter import mount_path_hint
 
+    if _opens_absent_input_document(error_text, file_context):
+        return NO_INPUT_DOCUMENT_HINT
     if file_context is None or file_context.is_empty:
         return ""
     refs = file_context.list_files()
@@ -786,8 +814,10 @@ def build_code_interpreter_tool(
             mount_line = _format_mount_line(mounted, not_mounted)
             if mount_line:
                 text = f"{mount_line}\n\n{text}"
+            if "input.json" not in planned and _opens_absent_input_document(text, file_context):
+                text = f"{text}\n\n{NO_INPUT_DOCUMENT_HINT}"
         elif re.search(r"FileNotFoundError|No such file or directory", text):
-            hint = _unmounted_paths_hint(file_context)
+            hint = _unmounted_paths_hint(file_context, text)
             if hint:
                 text = f"{text}\n\n{hint}"
 
