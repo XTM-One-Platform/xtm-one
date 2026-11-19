@@ -550,7 +550,7 @@ async def test_a_search_pages_200_at_a_time_up_to_the_count():
     with fake_api(api):
         result = await call(executor, "search_hubspot_contacts", count=450)
     assert limits == [200, 200, 50] and cursors == [None, "200", "400"]
-    assert result.content.startswith("Found 1000 contacts:")
+    assert result.content.startswith("Found 1000 contacts, showing 450:")
     assert result.content.count("| ID: ") == 450 and 'after="450"' in result.content
 
 
@@ -573,7 +573,7 @@ async def test_a_search_page_without_a_cursor_goes_on_from_the_offset_while_the_
     with fake_api(api):
         result = await call(executor, "search_hubspot_deals", count=200)
     assert cursors == [None, "100"] and limits == [200, 100]
-    assert result.content.startswith("Found 230 deals:")
+    assert result.content.startswith("Found 230 deals, showing 200:")
     assert result.content.count("| ID: ") == 200
     assert "Showing 200 of 230" in result.content and 'after="200"' in result.content
 

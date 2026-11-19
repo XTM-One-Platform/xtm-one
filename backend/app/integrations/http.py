@@ -1250,6 +1250,24 @@ async def safe_request(
 # ---------------------------------------------------------------------------
 
 
+def plural_noun(noun: str) -> str:
+    """The English plural of *noun*, inflecting its last word.
+
+    ``entity`` -> ``entities``, ``KEV entry`` -> ``KEV entries``, ``address``
+    -> ``addresses``, ``index`` -> ``indexes``, ``match`` -> ``matches``,
+    ``key`` -> ``keys``; anything else takes an ``s``. A noun whose plural is
+    not on its last word (``group with IOCs``) is spelled by its caller.
+    """
+    if not noun:
+        return noun
+    lowered = noun.lower()
+    if lowered.endswith("y") and len(noun) > 1 and lowered[-2] not in "aeiou":
+        return f"{noun[:-1]}ies"
+    if lowered.endswith(("s", "x", "z", "ch", "sh")):
+        return f"{noun}es"
+    return f"{noun}s"
+
+
 def format_entity_list(
     items: list[dict[str, Any]],
     formatter: Callable[[dict[str, Any]], str],
@@ -1257,11 +1275,14 @@ def format_entity_list(
     noun: str = "item",
     total: int | None = None,
     empty_msg: str | None = None,
+    plural: str | None = None,
 ) -> str:
     """Format a list of entities with a consistent header and body.
 
-    Returns *empty_msg* (or ``"No {noun}s found."``) when *items* is empty,
-    otherwise ``"Found N {noun}(s):\\n…"``.
+    Returns *empty_msg* (or ``"No {nouns} found."``) when *items* is empty,
+    otherwise ``"Found N {noun or nouns}:\\n…"``. When *total* exceeds what
+    *items* holds, the header says how many are shown (``"Found 30145
+    entities, showing 2:"``), so the caller never reads a page as the whole.
 
     Parameters
     ----------
@@ -1276,11 +1297,15 @@ def format_entity_list(
         ``len(items)``.
     empty_msg:
         Custom empty-state message.
+    plural:
+        The plural of *noun* when :func:`plural_noun` cannot form it.
     """
+    nouns = plural or plural_noun(noun)
     if not items:
-        return empty_msg or f"No {noun}s found."
+        return empty_msg or f"No {nouns} found."
     count = total if total is not None else len(items)
-    header = f"Found {count} {noun}{'s' if count != 1 else ''}:"
+    shown = f", showing {len(items)}" if count > len(items) else ""
+    header = f"Found {count} {noun if count == 1 else nouns}{shown}:"
     body = "\n".join(formatter(item) for item in items)
     return f"{header}\n{body}"
 
