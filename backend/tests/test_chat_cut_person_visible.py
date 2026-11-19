@@ -136,6 +136,84 @@ def test_the_resume_never_raises_on_a_bad_record(monkeypatch: pytest.MonkeyPatch
     parent_wake._note_resumed_chat_cut(cut, SimpleNamespace())
 
 
+def test_the_evidence_splits_the_restart_from_the_total_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded, _ = _capture(monkeypatch)
+    frictions.note_chat_turn_resumed(
+        agent_id=AGENT,
+        user_id=USER,
+        run_id=RUN,
+        conversation_id="c1",
+        entry="web",
+        channel=None,
+        waited_seconds=900.0,
+        resumes=1,
+        start_latency_seconds=42.4,
+    )
+    [(_, _, _, evidence, _)] = recorded
+    assert "after 900 s" in evidence and "resume started 42 s after its latest cut" in evidence
+
+
+def test_no_start_latency_keeps_the_evidence_as_before(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded, _ = _capture(monkeypatch)
+    _note(waited_seconds=190.0)
+    [(_, _, _, evidence, _)] = recorded
+    assert "resume started" not in evidence
+
+
+def test_the_resume_passes_its_start_latency(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict[str, Any]] = []
+
+    def fake_note(**kwargs: Any) -> bool:
+        seen.append(kwargs)
+        return True
+
+    monkeypatch.setattr(frictions, "note_chat_turn_resumed", fake_note)
+    cut = SimpleNamespace(
+        first_cut=datetime.now(UTC).isoformat(),
+        user_id=str(USER),
+        parent_run_id=None,
+        conversation_id="c1",
+        entry="web",
+        resumes=0,
+    )
+    parent_wake._note_resumed_chat_cut(cut, SimpleNamespace(), start_latency=12.0)
+    assert seen[0]["start_latency_seconds"] == 12.0
+
+
+def test_seconds_since_is_never_negative_and_none_when_unknown() -> None:
+    assert parent_wake._seconds_since(None) is None
+    assert parent_wake._seconds_since(datetime.now(UTC) + timedelta(seconds=30)) == 0.0
+    assert 55 <= (parent_wake._seconds_since(datetime.now(UTC) - timedelta(seconds=60)) or 0) <= 70
+
+
+def test_the_start_histogram_observes_and_skips_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: list[float] = []
+
+    class Child:
+        def observe(self, value: float) -> None:
+            observed.append(value)
+
+    class Histogram:
+        def labels(self, **kwargs: str) -> Child:
+            assert set(kwargs) == {"version"}
+            return Child()
+
+    monkeypatch.setattr(rollout_counters, "CHAT_TURN_RESUME_START_SECONDS", Histogram())
+    rollout_counters.observe_chat_turn_resume_start(37.0)
+    rollout_counters.observe_chat_turn_resume_start(None)
+    rollout_counters.observe_chat_turn_resume_start(-1.0)
+    assert observed == [37.0]
+
+
+def test_the_start_histogram_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Broken:
+        def labels(self, **kwargs: str) -> None:
+            raise RuntimeError("registry")
+
+    monkeypatch.setattr(rollout_counters, "CHAT_TURN_RESUME_START_SECONDS", Broken())
+    rollout_counters.observe_chat_turn_resume_start(10.0)
+
+
 def test_the_counter_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     class Broken:
         def labels(self, **kwargs: str) -> None:

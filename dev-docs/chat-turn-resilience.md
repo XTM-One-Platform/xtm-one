@@ -1256,6 +1256,16 @@ build (`rollout_counters.count_chat_turn_cut`): the cut count per rollout,
 before and after a drain change, is read off it. A turn the person moved on
 from or stopped is not resumed and records nothing.
 
+The wait above mixes the restart with the resumed turn's own remaining work
+(#498). `resume_cut_turn` also measures the restart alone: the seconds from
+the hop's cut (`CutTurn.cut_at`) to the start of its resume. It is logged on
+the "Resuming the chat turn" line, observed on the histogram
+`xtmone_chat_turn_resume_start_seconds{version}`
+(`rollout_counters.observe_chat_turn_resume_start`), and named in the ledger
+row: "... after 900 s (resume started 42 s after its latest cut)". A long
+total with a short start is the turn's own work; a long start is the drain,
+the sweep, the build defer or the lock grace.
+
 Tests: `tests/test_chat_cut_person_visible.py`.
 
 ### 11.za A cut Slack or Teams turn is answered within seconds of the new pod (#11924 S3)

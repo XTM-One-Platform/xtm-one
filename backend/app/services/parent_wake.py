@@ -811,15 +811,20 @@ async def resume_cut_turn(cut, *, on_start: Callable[[], None] | None = None) ->
         cut_trace = cut.trace_id or await cut_turn_trace_id(
             db, cut, not_before=getattr(msg, "created_at", None)
         )
+        # The restart latency alone: from this hop's cut to its resume's
+        # start, apart from the resumed turn's own remaining work.
+        start_latency = _seconds_since(cut_at)
+        _observe_resume_start(start_latency)
         logger.warning(
             "Resuming the chat turn of conversation %s cut by a platform %s (automatic resume %d of %d, "
-            "%d completed tool call(s) replayed, cut trace %s)",
+            "%d completed tool call(s) replayed, cut trace %s, started %s s after the cut)",
             conv_uuid,
             cut.cause,
             cut.resumes + 1,
             _max_auto_resumes(),
             sum(len(m.tool_calls or ()) for m in resumed.messages),
             cut_trace or "unknown",
+            f"{start_latency:.0f}" if start_latency is not None else "unknown",
         )
         trace_link: RootTraceLink | None = None
         requeued = False
@@ -913,16 +918,33 @@ async def resume_cut_turn(cut, *, on_start: Callable[[], None] | None = None) ->
             with contextlib.suppress(Exception):
                 await turn_checkpoint.discard(db, conv_uuid)
                 await db.commit()
-        _note_resumed_chat_cut(cut, conv_snap)
+        _note_resumed_chat_cut(cut, conv_snap, start_latency=start_latency)
         return True
 
 
-def _note_resumed_chat_cut(cut: Any, conversation: Any) -> None:
+def _seconds_since(moment: datetime | None) -> float | None:
+    """Seconds from *moment* to now, ``None`` when unknown."""
+    if moment is None:
+        return None
+    return max(0.0, (datetime.now(UTC) - moment).total_seconds())
+
+
+def _observe_resume_start(seconds: float | None) -> None:
+    """Observe a cut chat turn's restart latency on the rollout histogram; never raises."""
+    from app.services.rollout_counters import observe_chat_turn_resume_start
+
+    with contextlib.suppress(Exception):
+        observe_chat_turn_resume_start(seconds)
+
+
+def _note_resumed_chat_cut(cut: Any, conversation: Any, *, start_latency: float | None = None) -> None:
     """Record the answered resume of *cut* in the friction ledger and the rollout counter.
 
     How long the person waited runs from the first cut of the message to now,
     when the resumed answer is stored: past the person-visible bound it is an
-    undisposed ``turn_resumed`` friction of the agent (#11924). Never raises.
+    undisposed ``turn_resumed`` friction of the agent (#11924). *start_latency*
+    is how long this hop waited for its resume to start after its cut, so the
+    record splits the restart from the resumed turn's own work. Never raises.
     """
     from app.services.frictions import note_chat_turn_resumed
 
@@ -938,6 +960,7 @@ def _note_resumed_chat_cut(cut: Any, conversation: Any) -> None:
             channel=getattr(conversation, "channel", None),
             waited_seconds=waited,
             resumes=cut.resumes,
+            start_latency_seconds=start_latency,
         )
     except Exception:
         logger.debug("Resumed chat cut not recorded", exc_info=True)

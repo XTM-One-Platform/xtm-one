@@ -433,6 +433,7 @@ def note_chat_turn_resumed(
     channel: str | None,
     waited_seconds: float | None,
     resumes: int,
+    start_latency_seconds: float | None = None,
 ) -> bool:
     """A chat turn cut by a platform stop answered on its automatic resume: one ``turn_resumed`` friction.
 
@@ -442,6 +443,9 @@ def note_chat_turn_resumed(
     hand and never auto-accepted. Any other resumed chat turn is written
     disposed (``platform_acceptable``, ``accepted``). The rollout counter
     ``xtmone_chat_turn_cuts_total`` counts both, by visibility and build.
+    *start_latency_seconds*, how long the latest hop waited for its resume to
+    start, is named in the evidence apart from the total wait, so a long wait
+    reads as restart latency or as the resumed turn's own work.
     Whether the cut was person-visible; never raises.
     """
     from app.services.rollout_counters import count_chat_turn_cut
@@ -456,6 +460,8 @@ def note_chat_turn_resumed(
         f"chat turn of conversation {conversation_id} ({entry}, channel {channel or 'web'}) cut by a platform "
         f"stop and answered by automatic resume {resumes + 1} after {waited}"
     )
+    if start_latency_seconds is not None:
+        evidence += f" (resume started {start_latency_seconds:.0f} s after its latest cut)"
     if visible:
         _schedule(_record_quietly(scope, "turn_resumed", "", f"person-visible cut: {evidence}"))
     else:
