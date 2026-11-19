@@ -109,9 +109,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: Raised to 467,400 when Platform Health became built in and its eight groups joined the ids
 #: create_agent, update_agent and clone_agent advertise (#101: platform +474,
 #: health_orchestrator +20, on top of user_admin, 19 Nov 2026).
-#: Raised to 468,900 for the knowledge base sync-source tools (#469: platform +~1,400,
-#: total 468,798 on 19 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 468_900
+#: Raised to 468,300 for list_organization_proposals and decide_organization_proposal (#475:
+#: organization_context +~830, opt-in and administrator-only, 19 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 468_300
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -130,9 +130,8 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # dismiss_fleet_health_findings (#12014: 145,602 on 15 Nov 2026); 146,000 with
     # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033);
     # 146,100 with Platform Health built in, its groups advertised by the agent builder
-    # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026);
-    # 147,600 with the three knowledge base sync-source tools (#469: 147,482 on 19 Nov 2026).
-    "platform": 147_600,
+    # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026).
+    "platform": 146_100,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:
