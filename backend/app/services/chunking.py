@@ -333,13 +333,103 @@ def extraction_extension(filename: str) -> str:
 #: Nesting depth up to which a table inside a table cell is read.
 _DOCX_MAX_TABLE_DEPTH = 3
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 
-def _docx_cell_text(cell: Any) -> str:
-    text = " ".join(p.text.strip() for p in cell.paragraphs if p.text.strip())
-    return text.replace("|", "\\|")
+#: Run children read as text, as ``python-docx`` reads them (``Run.text``):
+#: a column or page break reads as nothing, a line break as a new line.
+_DOCX_RUN_TEXT = {
+    f"{_W_NS}tab": "\t",
+    f"{_W_NS}ptab": "\t",
+    f"{_W_NS}cr": "\n",
+    f"{_W_NS}noBreakHyphen": "-",
+}
+
+#: Never read: deleted or moved-away revisions, field codes, properties (the
+#: tab stops of a ``w:pPr`` are ``w:tab`` too), and the VML fallback of a
+#: drawing whose ``mc:Choice`` already holds the same text box.
+_DOCX_SKIPPED = {
+    f"{_W_NS}del",
+    f"{_W_NS}moveFrom",
+    f"{_W_NS}instrText",
+    f"{_W_NS}delInstrText",
+    f"{_W_NS}pPr",
+    f"{_W_NS}rPr",
+    f"{_W_NS}sdtPr",
+    f"{_W_NS}sdtEndPr",
+    _MC_FALLBACK,
+}
+
+#: Wrappers whose children are read in their place: content controls, custom
+#: XML and smart tags, tracked insertions.
+_DOCX_WRAPPERS = {
+    f"{_W_NS}sdt",
+    f"{_W_NS}sdtContent",
+    f"{_W_NS}customXml",
+    f"{_W_NS}smartTag",
+    f"{_W_NS}ins",
+    f"{_W_NS}moveTo",
+}
 
 
-def _docx_table_lines(table: Any, depth: int) -> list[str]:
+def _docx_paragraph_text(p: Any, boxes: list[Any]) -> str:
+    """The text of a ``w:p``, every run it holds included.
+
+    ``Paragraph.text`` reads the paragraph's own runs and hyperlinks only: a
+    run inside an inline content control, a simple field, a smart tag or a
+    tracked insertion was dropped. Text boxes anchored in the paragraph are
+    appended to *boxes*, read after it.
+    """
+    out: list[str] = []
+
+    def walk(el: Any) -> None:
+        for child in el:
+            tag = child.tag
+            if not isinstance(tag, str) or tag in _DOCX_SKIPPED:
+                continue
+            if tag == f"{_W_NS}t":
+                out.append(child.text or "")
+            elif tag == f"{_W_NS}br":
+                if child.get(f"{_W_NS}type") in (None, "textWrapping"):
+                    out.append("\n")
+            elif tag in _DOCX_RUN_TEXT:
+                out.append(_DOCX_RUN_TEXT[tag])
+            elif tag == f"{_W_NS}txbxContent":
+                boxes.append(child)
+            else:
+                walk(child)
+
+    walk(p)
+    return "".join(out)
+
+
+def _docx_children(el: Any, wanted: str) -> list[Any]:
+    """The *wanted* children of *el*, through content controls and wrappers
+    (a repeating-section control wraps whole rows, a cell control a cell)."""
+    found: list[Any] = []
+    for child in el:
+        tag = child.tag
+        if tag == wanted:
+            found.append(child)
+        elif tag in _DOCX_WRAPPERS:
+            found.extend(_docx_children(child, wanted))
+    return found
+
+
+def _docx_cell_text(tc: Any, nested: list[str], depth: int) -> str:
+    parts = [line.strip() for line in _docx_block_items(tc, depth, nested) if line.strip()]
+    return " ".join(parts).replace("|", "\\|")
+
+
+def _docx_vmerge(tc: Any) -> str | None:
+    tc_pr = tc.find(f"{_W_NS}tcPr")
+    merge = tc_pr.find(f"{_W_NS}vMerge") if tc_pr is not None else None
+    if merge is None:
+        return None
+    return merge.get(f"{_W_NS}val") or "continue"
+
+
+def _docx_table_lines(tbl: Any, depth: int) -> list[str]:
     """One ``| a | b |`` line per row, nested tables after their row.
 
     The row's own ``w:tc`` elements are read, not ``row.cells``: python-docx
@@ -347,49 +437,67 @@ def _docx_table_lines(table: Any, depth: int) -> list[str]:
     vertically merged one by recursing up the rows it spans - quadratic, and a
     ``RecursionError`` past ~1,000 rows. A merged cell is written once, where
     it starts; the rows it continues into carry an empty cell in its place.
+    Rows and cells wrapped in a content control are read too.
     """
-    from docx.table import _Cell
-
     lines: list[str] = []
-    for row in table.rows:
+    for tr in _docx_children(tbl, f"{_W_NS}tr"):
         cells: list[str] = []
         nested: list[str] = []
-        for tc in row._tr.tc_lst:
-            if tc.vMerge == "continue":
+        for tc in _docx_children(tr, f"{_W_NS}tc"):
+            if _docx_vmerge(tc) == "continue":
                 cells.append("")
                 continue
-            cell = _Cell(tc, table)
-            cells.append(_docx_cell_text(cell))
-            if depth < _DOCX_MAX_TABLE_DEPTH:
-                for inner in cell.tables:
-                    nested.extend(_docx_table_lines(inner, depth + 1))
+            cells.append(_docx_cell_text(tc, nested, depth))
         if any(cells):
             lines.append("| " + " | ".join(cells) + " |")
         lines.extend(nested)
     return lines
 
 
-def _docx_blocks(container: Any) -> list[str]:
-    """Paragraphs and tables of a body, header or footer, in reading order."""
-    from docx.table import Table
+def _docx_block_items(el: Any, depth: int, nested: list[str] | None = None) -> list[str]:
+    """The paragraphs of a block container (body, header, footer, cell, text
+    box) in reading order, through content controls.
 
+    A table yields its rows as one block; inside a cell (*nested* given) it
+    goes to *nested*, written after the cell's row, down to
+    :data:`_DOCX_MAX_TABLE_DEPTH`. A text box is read after the paragraph that
+    anchors it.
+    """
     blocks: list[str] = []
-    for item in container.iter_inner_content():
-        if isinstance(item, Table):
-            lines = _docx_table_lines(item, 1)
-            if lines:
-                blocks.append("\n".join(lines))
-        elif item.text.strip():
-            blocks.append(item.text)
+    for child in el:
+        tag = child.tag
+        if tag == f"{_W_NS}p":
+            boxes: list[Any] = []
+            text = _docx_paragraph_text(child, boxes)
+            if text.strip():
+                blocks.append(text)
+            for box in boxes:
+                blocks.extend(_docx_block_items(box, depth, nested))
+        elif tag == f"{_W_NS}tbl":
+            if nested is None:
+                lines = _docx_table_lines(child, depth)
+                if lines:
+                    blocks.append("\n".join(lines))
+            elif depth < _DOCX_MAX_TABLE_DEPTH:
+                nested.extend(_docx_table_lines(child, depth + 1))
+        elif tag in _DOCX_WRAPPERS:
+            blocks.extend(_docx_block_items(child, depth, nested))
     return blocks
+
+
+def _docx_blocks(container: Any) -> list[str]:
+    """Paragraphs and tables of a body, header or footer, in reading order:
+    content controls, text boxes, fields and table cells included."""
+    return _docx_block_items(container._element, 1)
 
 
 def _extract_docx_text(content: bytes) -> str:
     """The text of a Word document: headers, body, footers, tables included.
 
     ``Document.paragraphs`` is the body's top-level paragraphs only, so a
-    table's cells - where meeting minutes keep their action items - and the
-    page headers / footers never reached a reader or an index.
+    table's cells - where meeting minutes keep their action items - the page
+    headers / footers, content controls (a template's whole body) and text
+    boxes never reached a reader or an index.
     """
     import io
 
@@ -423,7 +531,7 @@ def _extract_docx_text(content: bytes) -> str:
 
     headers = _parts(("header", "first_page_header", "even_page_header"), "Header")
     footers = _parts(("footer", "first_page_footer", "even_page_footer"), "Footer")
-    return "\n\n".join([*headers, *_docx_blocks(doc), *footers])
+    return "\n\n".join([*headers, *_docx_block_items(doc.element.body, 1), *footers])
 
 
 def _extract_docx_paragraphs(content: bytes) -> str:
