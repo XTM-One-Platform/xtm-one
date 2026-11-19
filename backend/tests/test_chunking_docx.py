@@ -236,6 +236,144 @@ def test_a_paragraph_only_docx_reads_as_before():
     assert extract_text_from_file(_save(doc), "t.docx") == "First\n\nSecond"
 
 
+# --- Content controls, text boxes and inline wrappers (issue #463) ---------
+#
+# A Word template keeps its whole body in content controls (``w:sdt``); a
+# list kept in a table of controls, a text box, or a run inside an inline
+# control / simple field never reached ``Document.paragraphs`` nor
+# ``Paragraph.text``: the document synced "ready" with its headings only.
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _xml(fragment: str):
+    from docx.oxml import parse_xml
+
+    return parse_xml(f'<w:root xmlns:w="{_W}">{fragment}</w:root>')[0]
+
+
+def _p(text: str) -> str:
+    return f'<w:p><w:r><w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+
+def _body(*fragments: str) -> bytes:
+    doc = Document()
+    body = doc.element.body
+    sect = body[-1]
+    for fragment in fragments:
+        sect.addprevious(_xml(fragment))
+    return _save(doc)
+
+
+def test_docx_text_only_in_a_block_content_control_is_extracted():
+    data = _body(
+        _p("1. Introduction"),
+        '<w:sdt><w:sdtPr><w:alias w:val="Intro"/></w:sdtPr><w:sdtContent>'
+        + _p("The parties agree to keep each other's information confidential.")
+        + _p("This agreement starts on the signature date.")
+        + "</w:sdtContent></w:sdt>",
+        _p("2. Term"),
+    )
+
+    text = extract_text_from_file(data, "nda.docx")
+
+    assert text == (
+        "1. Introduction\n\n"
+        "The parties agree to keep each other's information confidential.\n\n"
+        "This agreement starts on the signature date.\n\n"
+        "2. Term"
+    )
+
+
+def test_docx_text_only_in_an_inline_content_control_is_extracted():
+    data = _body(
+        '<w:p><w:r><w:t xml:space="preserve">Signed by </w:t></w:r>'
+        "<w:sdt><w:sdtPr><w:text/></w:sdtPr><w:sdtContent>"
+        "<w:r><w:t>Jane Doe</w:t></w:r></w:sdtContent></w:sdt>"
+        '<w:r><w:t xml:space="preserve"> on </w:t></w:r>'
+        '<w:fldSimple w:instr="DATE"><w:r><w:t>1 March 2026</w:t></w:r></w:fldSimple>'
+        "</w:p>"
+    )
+
+    assert extract_text_from_file(data, "t.docx") == "Signed by Jane Doe on 1 March 2026"
+
+
+def test_docx_table_rows_inside_content_controls_are_extracted():
+    """A repeating-section control wraps whole rows; a cell's text can sit
+    in a block control of its own."""
+    cell = lambda text: f"<w:tc><w:tcPr/>{text}</w:tc>"  # noqa: E731
+    data = _body(
+        _p("List of subprocessors"),
+        "<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>"
+        "<w:tr>" + cell(_p("Name")) + cell(_p("Purpose")) + "</w:tr>"
+        "<w:sdt><w:sdtPr/><w:sdtContent>"
+        "<w:tr>"
+        + cell(_p("Acme Hosting"))
+        + cell("<w:sdt><w:sdtContent>" + _p("Cloud hosting") + "</w:sdtContent></w:sdt>")
+        + "</w:tr>"
+        "<w:tr>" + cell(_p("Mailer Inc")) + cell(_p("Transactional email")) + "</w:tr>"
+        "</w:sdtContent></w:sdt>"
+        "</w:tbl>",
+    )
+
+    text = extract_text_from_file(data, "subprocessors.docx")
+
+    assert text == (
+        "List of subprocessors\n\n"
+        "| Name | Purpose |\n"
+        "| Acme Hosting | Cloud hosting |\n"
+        "| Mailer Inc | Transactional email |"
+    )
+
+
+_WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def test_docx_text_only_in_a_text_box_is_extracted_once_after_its_anchor():
+    """A DrawingML text box carries a VML copy in ``mc:Fallback``: the box is
+    read once."""
+    box = _p("Box line one") + _p("Box line two")
+    data = _body(
+        f'<w:p xmlns:mc="{_MC}" xmlns:wps="{_WPS}"'
+        ' xmlns:v="urn:schemas-microsoft-com:vml">'
+        "<w:r><w:t>Anchor</w:t></w:r>"
+        "<w:r><mc:AlternateContent>"
+        f'<mc:Choice Requires="wps"><w:drawing><wps:txbx><w:txbxContent>{box}'
+        "</w:txbxContent></wps:txbx></w:drawing></mc:Choice>"
+        f"<mc:Fallback><w:pict><v:textbox><w:txbxContent>{box}"
+        "</w:txbxContent></v:textbox></w:pict></mc:Fallback>"
+        "</mc:AlternateContent></w:r></w:p>",
+        _p("After"),
+    )
+
+    text = extract_text_from_file(data, "t.docx")
+
+    assert text == "Anchor\n\nBox line one\n\nBox line two\n\nAfter"
+
+
+def test_docx_deleted_revisions_and_field_codes_are_not_read():
+    data = _body(
+        '<w:p><w:r><w:t xml:space="preserve">Kept </w:t></w:r>'
+        '<w:del w:id="1" w:author="a"><w:r><w:delText>gone</w:delText></w:r></w:del>'
+        '<w:ins w:id="2" w:author="a"><w:r><w:t>added</w:t></w:r></w:ins>'
+        "<w:r><w:instrText> PAGE </w:instrText></w:r>"
+        "</w:p>"
+    )
+
+    assert extract_text_from_file(data, "t.docx") == "Kept added"
+
+
+def test_docx_tabs_and_line_breaks_read_as_python_docx_reads_them():
+    data = _body(
+        '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr>'
+        "<w:r><w:t>a</w:t><w:tab/><w:t>b</w:t><w:br/><w:t>c</w:t>"
+        '<w:br w:type="page"/><w:t>d</w:t></w:r></w:p>'
+    )
+
+    assert extract_text_from_file(data, "t.docx") == "a\tb\ncd"
+
+
 def test_a_corrupt_docx_extracts_to_empty_not_zip_bytes():
     corrupt = b"PK\x03\x04" + b"\x00garbage" * 50
 

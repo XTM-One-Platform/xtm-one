@@ -4731,6 +4731,7 @@ async def handle_message(
                 resolve_channel_video_markers,
                 strip_channel_investigation_markers,
                 strip_channel_work_item_markers,
+                trusted_media_hosts,
             )
             from app.core.config import settings as _cfg
             from app.services.chat_charts import charts_as_tables
@@ -4810,10 +4811,12 @@ async def handle_message(
                 conversation_id=conv.id if conv else None,
                 user_id=user.id if user else None,
             )
+            # An image on a media integration's host goes out as an image too.
             outbound_text, embedded_images = resolve_channel_images(
                 outbound_text,
                 _cfg.base_url,
                 allowed_ids=image_scope,
+                media_hosts=trusted_media_hosts(),
             )
             if embedded_images:
                 outbound_meta["embedded_images"] = [

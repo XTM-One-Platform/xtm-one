@@ -30,7 +30,10 @@ off by default:
 - ``list_organization_syncs``, ``create_organization_sync`` and
   ``run_organization_sync`` read, schedule and run now the scheduled syncs
   of Settings > Organization > Syncs (``organization_context_sync``, #11913),
-  saved by the administrator the turn acts for (#11888).
+  saved by the administrator the turn acts for (#11888);
+- ``list_organization_proposals`` and ``decide_organization_proposal`` read
+  and accept or reject the pending proposals, the review of Settings >
+  Organization (``organization_context_proposals.decide``, #475).
 
 Authorization is enforced twice, as Settings > Organization is admin-only:
 the turn wires the group only when the person it acts for is a platform
@@ -58,6 +61,9 @@ ORGANIZATION_IMPORT_TOOL = "run_organization_import"
 ORGANIZATION_LIST_SYNCS_TOOL = "list_organization_syncs"
 ORGANIZATION_CREATE_SYNC_TOOL = "create_organization_sync"
 ORGANIZATION_RUN_SYNC_TOOL = "run_organization_sync"
+ORGANIZATION_LIST_PROPOSALS_TOOL = "list_organization_proposals"
+ORGANIZATION_DECIDE_PROPOSAL_TOOL = "decide_organization_proposal"
+_PROPOSAL_STATUSES = ("pending", "accepted", "rejected")
 _SOURCE = f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}"
 REFUSAL = "Refused: only an administrator can change the organization profile."
 #: The shared-context warning of every organization context import, sync and write (#11994): one text,
@@ -424,6 +430,77 @@ def build_organization_context_write_tools(
             logger.warning("Organization sync run failed", exc_info=True)
             return "Error: the sync could not run right now. Say so; nothing was changed."
 
+    def _proposal_dict(row: Any) -> dict[str, Any]:
+        return {
+            "id": str(row.id),
+            "kind": row.kind,
+            "organization_id": str(row.organization_id) if row.organization_id else None,
+            "status": row.status,
+            "entries": list(row.proposals or []),
+            "based_on_version": row.based_on_version,
+            "author_user_id": str(row.author_user_id) if row.author_user_id else None,
+            "created_at": row.created_at,
+        }
+
+    async def _list_proposals(status: str = "pending", limit: int = 50) -> str:
+        import json
+
+        from app.core.database import async_session
+        from app.services import organization_context_proposals as proposals
+
+        if status not in _PROPOSAL_STATUSES:
+            return f"Not read: status is one of {', '.join(_PROPOSAL_STATUSES)}."
+        try:
+            async with async_session() as db:
+                if await _admin(db) is None:
+                    return REFUSAL
+                rows = await proposals.list_proposals(db, status=status, limit=int(limit or 50))
+                return json.dumps({"status": status, "proposals": [_proposal_dict(r) for r in rows]}, default=str)
+        except Exception:
+            logger.warning("Organization proposals listing failed", exc_info=True)
+            return "Error: the proposals could not be read right now. Say so."
+
+    async def _decide_proposal(proposal_id: str = "", accept: list[Any] | None = None) -> str:
+        import json
+
+        from app.core.database import async_session
+        from app.models.organization_context import OrganizationContextProposal
+        from app.services import organization_context_proposals as proposals
+        from app.services.audit import log_audit
+
+        try:
+            wanted = uuid.UUID(str(proposal_id))
+        except ValueError:
+            return "Not decided: proposal_id must be an id list_organization_proposals gives."
+        accepted = [str(a) for a in (accept or [])]
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                row = await db.get(OrganizationContextProposal, wanted, with_for_update=True)
+                if row is None:
+                    return "Not decided: no proposal with that id. Read list_organization_proposals."
+                # A tracked organization keeps the platform link its draft pre-set; another one is picked in Settings.
+                outcome = await proposals.decide(db, row, admin_user_id=person.id, accept=accepted)
+                await log_audit(
+                    db,
+                    user=person,
+                    action="update",
+                    entity_type="organization_context_proposal",
+                    entity_id=str(row.id),
+                    entity_name=f"{row.kind} proposal",
+                    summary=f"Organization proposal {outcome['status']} by agent {agent_name or 'unknown'}"[:500],
+                    details={"agent": agent_name, "accept": accepted, **outcome},
+                )
+                await db.commit()
+        except proposals.ProposalError as exc:
+            return f"Not decided: {exc}"
+        except Exception:
+            logger.warning("Organization proposal decision failed", exc_info=True)
+            return "Error: the proposal could not be decided right now. Say so; nothing was changed."
+        return json.dumps({"proposal_id": str(wanted), **outcome}, default=str)
+
     executor = CallableToolExecutor()
     executor.register(ORGANIZATION_UPDATE_TOOL, _update)
     executor.register(ORGANIZATION_UPSERT_ROWS_TOOL, _upsert_rows)
@@ -432,6 +509,8 @@ def build_organization_context_write_tools(
     executor.register(ORGANIZATION_LIST_SYNCS_TOOL, _list_syncs)
     executor.register(ORGANIZATION_CREATE_SYNC_TOOL, _create_sync)
     executor.register(ORGANIZATION_RUN_SYNC_TOOL, _run_sync)
+    executor.register(ORGANIZATION_LIST_PROPOSALS_TOOL, _list_proposals)
+    executor.register(ORGANIZATION_DECIDE_PROPOSAL_TOOL, _decide_proposal)
     _apply = {"type": "boolean", "description": "false (default): preview only. true: save a new version."}
     # The platforms and formats are declared by the services, never named here (invariant 18).
     from app.services.organization_context_import import SECTION_SOURCES
@@ -583,6 +662,44 @@ def build_organization_context_write_tools(
                 "type": "object",
                 "properties": {"sync_id": {"type": "string"}},
                 "required": ["sync_id"],
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
+        ToolDefinition(
+            name=ORGANIZATION_LIST_PROPOSALS_TOOL,
+            description=(
+                "The organization profile proposals of Settings > Organization, newest first: id, kind, "
+                "organization, entries, based_on_version. Read it before deciding one."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": list(_PROPOSAL_STATUSES)},
+                    "limit": {"type": "integer", "description": "1 to 200 (default 50)."},
+                },
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
+        ToolDefinition(
+            name=ORGANIZATION_DECIDE_PROPOSAL_TOOL,
+            description=(
+                "Accept or reject a pending proposal, as the administrator you act for (the Settings > Organization "
+                "review). accept names the fields or organizations kept; empty rejects it, e.g. one already applied "
+                "with update_organization_context."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "proposal_id": {"type": "string"},
+                    "accept": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Field paths or organization names to accept; empty rejects.",
+                    },
+                },
+                "required": ["proposal_id", "accept"],
             },
             source=_SOURCE,
             priority=0,
