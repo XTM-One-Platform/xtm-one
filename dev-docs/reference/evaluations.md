@@ -62,7 +62,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 |---|---|---|
 | none | `pending` | A launch creates the run and its execution in one transaction. |
 | `pending` | `running` | Its execution starts it. |
-| `pending`, `running` | `failed` | From `pending`: the engine gate off (`EVALUATION` off and not a Concierge launch); agentic AI unavailable past the hold (`services/ai_hold.py`). From either: agent or evaluation gone; model no longer served; a pinned snapshot missing; its placebo could not be built; no entry counted in any headline; a callback entry failed or timed out; the execution dead-lettered; an abandoned attempt reclaimed; the stranded sweep. |
+| `pending`, `running` | `failed` | From `pending`: the engine gate off (`EVALUATION` off and not a health launch); agentic AI unavailable past the hold (`services/ai_hold.py`). From either: agent or evaluation gone; model no longer served; a pinned snapshot missing; its placebo could not be built; no entry counted in any headline; a callback entry failed or timed out; the execution dead-lettered; an abandoned attempt reclaimed; the stranded sweep. |
 | `pending`, `running` | `cancelled` | Cancel or emergency stop; never ever rewritten afterwards. |
 | `running` | `completed` | Every entry processed and one counted; a callback run once every episode is terminal. |
 | `completed`, `failed`, `cancelled` | `running`, then the previous status | Rescore: the payload's `previous_statuses` holds each run's status, given back on success and on failure (failure text in `rescore_error`). |
@@ -125,7 +125,7 @@ A version holds the entries (position, description, prompts, expected answer, ev
 - A dataset or evaluation family change re-checks every link and returns `family_conflicts`, removing none.
 - `GET /datasets/for-evaluation/{evaluation_id}` serves each link's `family`, `needs_family` and `family_conflict` (the `check_family_compatibility` message, or null), shown on the evaluation's Dataset tab.
 - Creating an evaluation with `dataset_ids` applies the same check: a dataset of another family is a 409 naming it, and nothing is saved. Unknown ids are skipped.
-- A dataset made private keeps its links: evaluations, their links and the evaluation agent tools are reachable only by admins, who see every dataset, and by the Concierge on the datasets it built (its evaluation tools refuse any other caller), so no link is left to a user who can no longer see the dataset. The company-managed toggle of a dataset or an evaluation (`handle_company_managed_toggle`, `agent_field=None`) sweeps no reference. Should evaluations open to non-admins, a dataset going private would need to drop the links of the evaluations whose owner loses it.
+- A dataset made private keeps its links: evaluations, their links and the evaluation agent tools are reachable only by admins, who see every dataset, and by Platform Health on the datasets it built (its evaluation tools refuse any other caller), so no link is left to a user who can no longer see the dataset. The company-managed toggle of a dataset or an evaluation (`handle_company_managed_toggle`, `agent_field=None`) sweeps no reference. Should evaluations open to non-admins, a dataset going private would need to drop the links of the evaluations whose owner loses it.
 
 ### Read-only
 
@@ -166,7 +166,7 @@ Handlers: `api/v1/evaluations.py`, `api/v1/datasets.py`; schemas: `api/v1/schema
 
 ### Feature flag
 
-Both routers (and `POST /api/v1/improvement-proposals/persona`, with the persona rewrites a person asked for) carry the dependency `require_evaluation` (`services/evaluation/availability.py`). While `EVALUATION` is off, every route answers 403 naming the flag, before authentication, `POST /evaluations/resume` included, and none appears in `/api/openapi.json`. Everything else the flag switches off, and the engine gate that lets a Concierge launch run whatever the mode: `dev-docs/evaluation-feature-flag.md`.
+Both routers (and `POST /api/v1/improvement-proposals/persona`, with the persona rewrites a person asked for) carry the dependency `require_evaluation` (`services/evaluation/availability.py`). While `EVALUATION` is off, every route answers 403 naming the flag, before authentication, `POST /evaluations/resume` included, and none appears in `/api/openapi.json`. Everything else the flag switches off, and the engine gate that lets a health launch run whatever the mode: `dev-docs/evaluation-feature-flag.md`.
 
 ### Gates
 

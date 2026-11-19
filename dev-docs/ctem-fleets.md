@@ -739,7 +739,7 @@ the decide body, the run estimate, failed batches) live in
 batch reopens the dialog with that batch's names, as a new run.
 
 **Chat.** A built-in tool `propose_organization_context_change` (CTEM
-Assistant and Concierge; administrators only, refused otherwise) takes the
+Assistant and Platform Health; administrators only, refused otherwise) takes the
 field changes or a new tracked organization from the conversation and
 stores them as a pending proposal (`organization_context_proposals`: id,
 organization, proposals, author, conversation, created_at, decided_at). It

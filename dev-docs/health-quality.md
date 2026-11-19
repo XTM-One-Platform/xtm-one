@@ -1,8 +1,8 @@
-# Quality Analyst and Experimenter (Platform Concierge, level 6)
+# Quality Analyst and Experimenter (Platform Health, level 6)
 
 Issue #8259, epic #1783. PRD: `dev-docs/platform-concierge.md` sections 6.5 and 6.6.
 
-The Quality Analyst reads the quality signals of the agents in the Concierge's supervision scope and records what it finds; the Experimenter measures a variant on sandbox copies and files the proposal (level 3) the measurement earned. Neither writes an agent, a skill or an assignment: a variant lives in its experiment row and in sandbox copies, and the only path to production is the proposal its managers approve.
+The Quality Analyst reads the quality signals of the agents in Platform Health's supervision scope and records what it finds; the Experimenter measures a variant on sandbox copies and files the proposal (level 3) the measurement earned. Neither writes an agent, a skill or an assignment: a variant lives in its experiment row and in sandbox copies, and the only path to production is the proposal its managers approve.
 
 ## Findings
 
@@ -25,8 +25,8 @@ The Quality Analyst reads the quality signals of the agents in the Concierge's s
 
 - Each change type registers an `ExperimentKind` (`register_experiment_kind`): `prepare_draft`, `check_stale`, `dataset_target`, `subjects`, `proposal_content`. Level 6 registers `persona`, `skill` and `assignment_prompt` (`text_kinds.py`, the #1044 rules of `variants.py`); level 7 its flow types. The run, settle and file steps are the same for every kind.
 - Draft: one open experiment per finding, change and target. A skill variant only on a skill whose managers all read the agent's conversations (a proposal on the skill goes to them), never a skill synced from its source or with bundled files.
-- Run (`experiments.run`): refused outside a Concierge cycle (nothing could book its spend); the base read again (a human edit makes it `stale`); no consent, no measurement (`skipped`, `no_consent`); the budget of the run's Concierge cycle read first and the cases sized to it (`size_to_budget`: two arms, the judge's quarter on top; a cost cap with no measured cost per run launches nothing); a dataset of the target's consented production cases (level 4); two sandbox copies (level 2) evaluated on the same cases. The evaluation reserves the sizing on the cycle and holds it past the cycle's close until it charges what its runs measured (`evaluations.settle_concierge_evaluations`, which also stops its runs past a cap). A refused or failed launch reserves nothing and is `skipped` with its reason.
-- Settle (`settle`, on the Concierge's tick or when the Experimenter reads the experiment): once both arms ended, the comparison (quality with its 2-point margin, cost, latency) and the writes the sandbox answered per case (`result["simulated_writes"]`, level 8's digest). An arm with no verdict states why: stopped at a cap (`incomplete`, `budget_reached_mid_run`), entries withdrawn (`incomplete`, `no_consent`), otherwise `failed`, `evaluation_unavailable`.
+- Run (`experiments.run`): refused outside a health cycle (nothing could book its spend); the base read again (a human edit makes it `stale`); no consent, no measurement (`skipped`, `no_consent`); the budget of the run's health cycle read first and the cases sized to it (`size_to_budget`: two arms, the judge's quarter on top; a cost cap with no measured cost per run launches nothing); a dataset of the target's consented production cases (level 4); two sandbox copies (level 2) evaluated on the same cases. The evaluation reserves the sizing on the cycle and holds it past the cycle's close until it charges what its runs measured (`evaluations.settle_concierge_evaluations`, which also stops its runs past a cap). A refused or failed launch reserves nothing and is `skipped` with its reason.
+- Settle (`settle`, on Platform Health's tick or when the Experimenter reads the experiment): once both arms ended, the comparison (quality with its 2-point margin, cost, latency) and the writes the sandbox answered per case (`result["simulated_writes"]`, level 8's digest). An arm with no verdict states why: stopped at a cap (`incomplete`, `budget_reached_mid_run`), entries withdrawn (`incomplete`, `no_consent`), otherwise `failed`, `evaluation_unavailable`.
 - File (`propose`): `progression`, or `neutral` with a shorter text or a cost per run 5 % lower; a regression or a neutral result with no gain files nothing; `skipped`, `incomplete` or `failed` with a known reason files `unmeasured`, stating it. Never over a stale target. A finding drawn from conversations files only while they are still readable, its refs as the consent rows allow them now.
 - `status_counts` counts every status as itself: `skipped` and `incomplete` are never `completed`.
 - `quality_deps.py` is the one adapter on levels 1 to 4. It states what level 4 does not offer yet: one run per arm (`MAX_TRIALS = 1`) and no per-arm evaluation overlay (`SUBJECT_OVERLAYS_AVAILABLE = False`), so skill and assignment-prompt variants are skipped as `evaluation_unavailable` for now.
@@ -35,9 +35,9 @@ The Quality Analyst reads the quality signals of the agents in the Concierge's s
 
 `services/concierge/access.py`, read on the rows at every call, on every surface:
 
-- The Concierge: a call is the Concierge's only when the agent calling the tool is the bound principal's own (level 3's `calling_health_principal`); an agent its run executes inline, a sandbox copy's turn, reads as its runner. It reads the agents of its supervision scope (level 1's consent scope, no admin bypass), their content only while opted in. Its run's cycle is read from the run (level 5's `run_cycle_id`).
+- Platform Health: a call is Platform Health's only when the agent calling the tool is the bound principal's own (level 3's `calling_health_principal`); an agent its run executes inline, a sandbox copy's turn, reads as its runner. It reads the agents of its supervision scope (level 1's consent scope, no admin bypass), their content only while opted in. Its run's cycle is read from the run (level 5's `run_cycle_id`).
 - A person: the findings, signals and experiments of an agent whose feedback they may read (its managers), their content only with the chats right (`may_read_agent_traces`).
-- Writes are the Concierge's, each held by one role: `record_finding` and `draft_variant` the `quality_analyst`'s, `run_experiment`, `propose_from_experiment` and settling the `experimenter`'s.
+- Writes are Platform Health's, each held by one role: `record_finding` and `draft_variant` the `quality_analyst`'s, `run_experiment`, `propose_from_experiment` and settling the `experimenter`'s.
 - An agent out of reach answers the same refusal whether it exists or not.
 
 ## Tools

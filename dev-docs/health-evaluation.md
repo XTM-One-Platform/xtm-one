@@ -1,6 +1,6 @@
-# Concierge evaluation
+# Health evaluation
 
-Level 4 of the Platform Concierge (#1783, issue #8257; PRD `dev-docs/platform-concierge.md`, sections 6.7 and 6.8). Code: `backend/app/services/evaluation/availability.py`, `services/evaluation/flow_subject.py`, `services/evaluation/sandbox_cases.py`, `services/concierge/datasets.py`, `services/concierge/evaluations.py`, `services/concierge/evaluation_tools.py`.
+Level 4 of Platform Health (#1783, issue #8257; PRD `dev-docs/platform-concierge.md`, sections 6.7 and 6.8). Code: `backend/app/services/evaluation/availability.py`, `services/evaluation/flow_subject.py`, `services/evaluation/sandbox_cases.py`, `services/concierge/datasets.py`, `services/concierge/evaluations.py`, `services/concierge/evaluation_tools.py`.
 
 ## Two gates (decision B9)
 
@@ -9,7 +9,7 @@ Level 4 of the Platform Concierge (#1783, issue #8257; PRD `dev-docs/platform-co
 | Surface, `evaluation_enabled()` | `EVALUATION` in a mode where AI runs (`xtm_one`, `copilot`, `dev`) | Every human surface, as `dev-docs/evaluation-feature-flag.md` lists them |
 | Engine, `engine_accepts()` | The surface gate, or `CONCIERGE` on and `evaluations.concierge_built` | Whether a queued evaluation or rescore runs |
 
-The Concierge has no user row: its evaluations and datasets have `user_id` NULL, are not company-managed and not shared, so administrators see them and nobody else. `concierge_built` is set only by the Concierge's tools; no copy, export or import carries it.
+Platform Health has no user row: its evaluations and datasets have `user_id` NULL, are not company-managed and not shared, so administrators see them and nobody else. `concierge_built` is set only by Platform Health's tools; no copy, export or import carries it.
 
 ## A flow as subject
 
@@ -54,8 +54,8 @@ The entries go with their dataset-version copies and the results scored on them;
 
 ## Tools
 
-Group `concierge_evaluation` (gate `concierge`), also on `/mcp/xtm`: `build_dataset_from_traces`, `run_health_evaluation`, `get_health_evaluation`, `compare_health_runs` (former names `run_concierge_evaluation`, `get_concierge_evaluation`, `compare_concierge_runs` kept as aliases, `platform-health.md` section 2.3). One rule on every surface: the `CONCIERGE` flag, then the Concierge, or an administrator while the evaluation surface is on. A launch takes a Concierge-built dataset and subjects that are sandbox copies only (an evaluation runs its subject's tools: a production agent or flow would write for real, B2), whose source is in the supervision scope and not a fleet agent; it never reuses an earlier answer (`reuse_default` off). Refusals are generic; reasons go to the logs. Budget: a launch in a Concierge run reserves on the run's cycle (its entries at `ENTRY_TOKENS_ESTIMATE`, or the experiment's sizing), held past the cycle's close; the tick charges what the runs measured once they end and stops them past a cap (`settle_concierge_evaluations`). A launch outside a cycle (an administrator over MCP) passes the budget gate and is not booked. A budget refusal is stated (`Not launched: ...`).
+Group `concierge_evaluation` (gate `concierge`), also on `/mcp/xtm`: `build_dataset_from_traces`, `run_health_evaluation`, `get_health_evaluation`, `compare_health_runs` (former names `run_concierge_evaluation`, `get_concierge_evaluation`, `compare_concierge_runs` kept as aliases, `platform-health.md` section 2.3). One rule on every surface: the `CONCIERGE` flag, then Platform Health, or an administrator while the evaluation surface is on. A launch takes a health-built dataset and subjects that are sandbox copies only (an evaluation runs its subject's tools: a production agent or flow would write for real, B2), whose source is in the supervision scope and not a fleet agent; it never reuses an earlier answer (`reuse_default` off). Refusals are generic; reasons go to the logs. Budget: a launch in a health run reserves on the run's cycle (its entries at `ENTRY_TOKENS_ESTIMATE`, or the experiment's sizing), held past the cycle's close; the tick charges what the runs measured once they end and stops them past a cap (`settle_concierge_evaluations`). A launch outside a cycle (an administrator over MCP) passes the budget gate and is not booked. A budget refusal is stated (`Not launched: ...`).
 
 ## Read paths
 
-Every human read of an evaluation names a flow subject as such: the detail lists `flows` beside `agents` (`agent_ids` holds agents only), a run serves `subject_kind`, `flow_id` and the flow's name in `agent_name`, the chart and the run search key series by subject, the admin agent tools read flow runs under the same tier rule (`user_visible_filter` on the flow). A copy keeps the flow subjects and never the Concierge's mark; an export (a package of agents) and a placebo launch refuse a flow subject with a 422. The frontend links a flow subject to its builder (`lib/evaluation-subject.ts`). Shared helpers: `services/evaluation/subjects.py`.
+Every human read of an evaluation names a flow subject as such: the detail lists `flows` beside `agents` (`agent_ids` holds agents only), a run serves `subject_kind`, `flow_id` and the flow's name in `agent_name`, the chart and the run search key series by subject, the admin agent tools read flow runs under the same tier rule (`user_visible_filter` on the flow). A copy keeps the flow subjects and never Platform Health's mark; an export (a package of agents) and a placebo launch refuse a flow subject with a 422. The frontend links a flow subject to its builder (`lib/evaluation-subject.ts`). Shared helpers: `services/evaluation/subjects.py`.

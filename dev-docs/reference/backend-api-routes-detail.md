@@ -37,7 +37,7 @@ One row per router `app/main.py` registers (`File` is relative to `backend/app/a
 | `/api/v1/learning`       | `v1/learning.py`       | Document ingestion, style learning             | Authenticated        |
 | `/api/v1/annotations`    | `v1/annotations.py`    | Ratings of agent work                          | Authenticated        |
 | `/api/v1/feedback-criteria` | `v1/feedback_criteria.py` | Feedback criteria                        | List: Authenticated; create, update, delete: **Admin** |
-| `/api/v1/improvement-proposals` | `v1/improvement_proposals.py` | Improvement proposals (persona rewrites and the Concierge's changes) | Authenticated (list / get: the target's managers; `POST /persona`: **Admin**; approve / reject: the target's managers) |
+| `/api/v1/improvement-proposals` | `v1/improvement_proposals.py` | Improvement proposals (persona rewrites and Platform Health's changes) | Authenticated (list / get: the target's managers; `POST /persona`: **Admin**; approve / reject: the target's managers) |
 | `/api/v1/traces`         | `v1/traces.py`         | Native LLM trace storage: list, detail, stats, analytics, export bundles, scores | Authenticated (per-user / per-group cost, export bundles, scores, delete: **Admin**) |
 | `/api/v1/hitl-whitelist` | `v1/hitl_whitelist.py` | The platform-wide list of tools exempt from human approval | **Admin** (`GET /catalog`: Authenticated) |
 | `/api/v1/tool-approvals` | `v1/tool_approvals.py` | The caller's own standing "Yes, always" approvals | Authenticated (`GET /usage`: **Admin**) |

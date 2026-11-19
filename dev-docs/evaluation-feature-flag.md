@@ -36,22 +36,22 @@ mode check of its own.
 
 ## Two gates: the surfaces and the engine
 
-Since the Platform Concierge (#8257, decision B9 of
+Since Platform Health (#8257, decision B9 of
 `dev-docs/platform-concierge.md`) the rule above is the **surface gate**, and
 the engine has a gate of its own:
 
 | Gate | Function | Holds when |
 | ---- | -------- | ---------- |
 | Surface | `evaluation_enabled()`, `require_evaluation` | `EVALUATION` is enabled in a mode where AI runs (`xtm_one`, `copilot`, `dev`) |
-| Engine | `engine_accepts(db, evaluation_id)`, `engine_accepts_runs(db, run_ids)` | The surface gate holds, **or** the Concierge is on (the `CONCIERGE` flag and Settings > Concierge, `health_active`) and built the evaluation (`Evaluation.concierge_built`, read on the row), whatever the mode |
+| Engine | `engine_accepts(db, evaluation_id)`, `engine_accepts_runs(db, run_ids)` | The surface gate holds, **or** Platform Health is on (the `CONCIERGE` flag and Settings > Platform Health, `health_active`) and built the evaluation (`Evaluation.concierge_built`, read on the row), whatever the mode |
 
 The surface gate keeps every human surface of the table below exactly as it
 was: in XTM One mode no page, route, user tool, analytics source, Admin
 Objects type or seeded benchmark appears, `CONCIERGE` on or off. The engine
-gate only decides whether a queued evaluation or rescore runs, so the
-Concierge measures its experiments in every mode. The Concierge never reaches
+gate only decides whether a queued evaluation or rescore runs, so Platform
+Health measures its experiments in every mode. Platform Health never reaches
 the REST routes (its identity cannot log in): it launches through its own
-tools, which check the engine gate before staging anything. The Concierge has
+tools, which check the engine gate before staging anything. Platform Health has
 no user row, so its evaluations have no owner; `concierge_built` is set only by
 those tools, never by REST, a copy, an export or an import
 (`EVALUATION_NOT_SETTINGS`).
@@ -61,9 +61,9 @@ those tools, never by REST, a copy, an export or an import
 | Surface | With evaluation off |
 | ------- | ------------------- |
 | `/api/v1/evaluations*`, `/api/v1/datasets*`, `POST /api/v1/improvement-proposals/persona` | Every route answers 403 naming the flag (`require_evaluation`, evaluated before authentication), the signed `POST /evaluations/resume` callback included, and the routes are absent from `/api/openapi.json`. The other `/api/v1/improvement-proposals` routes stay published, but leave out the persona rewrites a person asked for (`surface_enabled`): those are reachable with evaluation on only |
-| Scheduled evaluations | Not triggered (`autonomous.py`, step 9), one the Concierge built included: the Concierge launches on its own cycle |
+| Scheduled evaluations | Not triggered (`autonomous.py`, step 9), one Platform Health built included: Platform Health launches on its own cycle |
 | Run on agent change | Not triggered (`update_agent`, `api/v1/agents.py`) |
-| Queued executions (`EvaluationAdapter.execute`) | Read through the **engine gate**: an evaluation the Concierge built runs. Any other fresh evaluation does not start and its pending runs fail with the reason; a rescore hands each run back with its previous status and the reason in `rescore_error`. A resumed callback episode is work in flight and continues |
+| Queued executions (`EvaluationAdapter.execute`) | Read through the **engine gate**: an evaluation Platform Health built runs. Any other fresh evaluation does not start and its pending runs fail with the reason; a rescore hands each run back with its previous status and the reason in `rescore_error`. A resumed callback episode is work in flight and continues |
 | Evaluation agent tools | `list_evaluations`, `get_evaluation`, `list_evaluation_runs`, `get_evaluation_run_values`, `trigger_evaluation`, `get_placebo_comparison` and `compare_evaluation_runs` are neither defined nor registered (`build_evaluation_tools`), in chats and assignment runs. `get_agent_feedback` reads ratings, not evaluations, and stays |
 | `GET /settings/builtin-tools/catalog`, `GET /hitl-whitelist/catalog` | The evaluation tools leave the `agent_builder` list (`withhold_evaluation_tools`); `build_builtin_tool_catalog` keeps them, as the registry skill packages and the refusal classifier read. The prompt-guard scope keeps listing them: they never run while off, and an entry that read as stale would be dropped from the scope |
 | Built-in OCR benchmark dataset and evaluation | Not synced: the seed calls are skipped, not run with nothing declared, since both are full syncs that would delete them (`provisioning.py`) |
@@ -121,4 +121,4 @@ when the flag goes, since the mode rule does; only its `features` entry loses
 
 `backend/tests/test_evaluation_feature_flag.py` pins the gates. Removing the
 flag leaves the engine gate in place: it reduces to the mode rule or a
-Concierge launch.
+health launch.
