@@ -1315,6 +1315,17 @@ def build_generate_file_tool(
             file_context.add(ref)
         return ref
 
+    def _deleted(ref: FileRef) -> ToolResult:
+        """The answer for a file whose bytes are gone (a tombstone): a clear sentence, never an exception."""
+        return ToolResult(
+            tool_call_id="",
+            content=(
+                f"Error: {ref.deleted_notice} Its content cannot be read any more (file_id={ref.file_id}, "
+                f"{ref.filename}); say so, and make it again if it is still needed."
+            ),
+            is_error=True,
+        )
+
     def _unresolved(file_context: FileContext | None, file_id: object) -> ToolResult:
         refusal = ambiguous.pop(file_id, None) if isinstance(file_id, str) else None
         return ToolResult(
@@ -1330,6 +1341,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, source_file_id)
         if ref is None or file_context is None:
             return _unresolved(file_context, source_file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if not is_renderable_source_file(ref.filename, ref.content_type):
             return ToolResult(
                 tool_call_id="",
@@ -1692,6 +1705,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -1955,6 +1970,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -2004,6 +2021,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -2145,6 +2164,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         # One line of plain text: whitespace (line breaks included) collapses
         # to single spaces, and the C0 / C1 control characters ``split`` does
         # not treat as whitespace (NUL, ESC, ...) are dropped - a NUL fails

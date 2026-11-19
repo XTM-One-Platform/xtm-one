@@ -1449,10 +1449,19 @@ class FileRef:
     # the bytes from, ``None`` otherwise: a commit made from a checkout file
     # moves that checkout's record (``create_github_commit`` files[]).
     workspace_path: str | None = field(default=None, compare=False)
+    # The one sentence a deleted file reads as (``file_retention.deleted_notice``):
+    # set when the row is a tombstone, its bytes gone. Every read answers it
+    # instead of an exception (:meth:`is_deleted`).
+    deleted_notice: str | None = field(default=None, compare=False)
 
     @staticmethod
     def from_attachment(fa: object) -> FileRef:
         """Build a FileRef from a :class:`FileAttachment` ORM instance."""
+        notice = None
+        if getattr(fa, "deleted_at", None) is not None:
+            from app.services.file_retention import deleted_notice
+
+            notice = deleted_notice(fa)
         return FileRef(
             file_id=str(fa.id),  # type: ignore[attr-defined]
             filename=fa.filename,  # type: ignore[attr-defined]
@@ -1461,7 +1470,13 @@ class FileRef:
             s3_object_name=fa.s3_object_name,  # type: ignore[attr-defined]
             source=getattr(fa, "source", None),
             notes=(getattr(fa, "description", None) or None),
+            deleted_notice=notice,
         )
+
+    @property
+    def is_deleted(self) -> bool:
+        """True when the file's bytes were deleted (a retention, its owner, an administrator)."""
+        return self.deleted_notice is not None
 
     @staticmethod
     def from_bytes(

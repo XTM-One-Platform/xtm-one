@@ -343,6 +343,8 @@ async def _load_bytes(file_ref: FileRef) -> bytes | None:
     try:
         if file_ref.has_inline_data:
             return file_ref._data
+        if getattr(file_ref, "is_deleted", False):
+            return None
         key = stored_object_key(file_ref.s3_object_name, file_ref.size)
         if key is not None:
             cached = STORED_BYTES.get(key)
@@ -847,6 +849,9 @@ async def _extract_fallback(
     from app.services.code_interpreter import code_interpreter_offered
     from app.tools.base import offered_tools
 
+    if getattr(file_ref, "is_deleted", False):
+        # A tombstone: its bytes are gone; the model reads the notice, never an error.
+        return FallbackText(text=f"{file_label(file_ref)}\n\n[{file_ref.deleted_notice}]", filename=file_ref.filename)
     if _is_media(file_ref):
         # An MP4 decoded as UTF-8 is its ftyp/moov/mdat bytes: 80,000 characters
         # of noise in every request that carries it (a browser recording).

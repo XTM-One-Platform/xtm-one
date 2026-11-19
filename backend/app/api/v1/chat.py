@@ -10854,6 +10854,9 @@ async def get_file_public(
     file_att = result.scalar_one_or_none()
     if not file_att or not file_att.s3_object_name:
         raise HTTPException(status_code=404, detail="File not found")
+    from app.services.file_retention import raise_if_deleted
+
+    raise_if_deleted(file_att)
 
     not_modified = file_not_modified(
         file_att, if_none_match, max_age=token_max_age(expires)
@@ -10935,6 +10938,10 @@ async def download_message_file(
     file_att = file_result.scalar_one_or_none()
     if not file_att:
         raise HTTPException(status_code=404, detail="File not found")
+    from app.services.file_retention import raise_if_deleted, touch
+
+    raise_if_deleted(file_att)
+    await touch(db, [file_att.id])
 
     not_modified = file_not_modified(file_att, if_none_match)
     if not_modified is not None:
@@ -11007,9 +11014,12 @@ async def download_file(
     already held (a template asset replaced in place keeps this URL).
     """
     from app.services.file_access import load_readable_file
+    from app.services.file_retention import raise_if_deleted, touch
     from app.services.file_storage import FileNotFoundInStorageError, file_storage
 
     file_att = await load_readable_file(db, file_id, user)
+    raise_if_deleted(file_att)
+    await touch(db, [file_att.id])
 
     not_modified = file_not_modified(file_att, if_none_match)
     if not_modified is not None:
