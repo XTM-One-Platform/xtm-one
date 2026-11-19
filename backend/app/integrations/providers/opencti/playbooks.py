@@ -668,6 +668,67 @@ def _positions_payload(positions: str) -> tuple[list[dict[str, Any]] | None, str
     return payload, None
 
 
+# OpenCTI's PlaybookExecute answers this for every playbook not eligible for
+# the entity, not only for a missing one (playbook-domain.ts).
+_INELIGIBLE_ERROR = "does not exist for this entity"
+
+# The components a playbook can start from (playbook-components.ts).
+_ENTRY_COMPONENTS = {
+    "PLAYBOOK_INTERNAL_DATA_STREAM",
+    "PLAYBOOK_INTERNAL_MANUAL_TRIGGER",
+    "PLAYBOOK_INTERNAL_DATA_CRON",
+}
+
+
+def _entry_nodes(nodes: list[dict[str, Any]], links: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The nodes no link points to: the playbook's entry (one in a valid graph)."""
+    targets = {str((link.get("to") or {}).get("id")) for link in links}
+    return [n for n in nodes if n.get("id") and str(n.get("id")) not in targets]
+
+
+def _ineligible_hint(playbook_id: str, entity_id: str, pb: dict[str, Any] | None, read_error: str | None) -> str:
+    """What an agent checks when OpenCTI refuses to execute *pb* on an entity.
+
+    OpenCTI words every ineligibility as "Playbook does not exist for this
+    entity": the entity does not match the entry component's filters, the
+    entry is not a stream listener or a manual trigger, manual enrollment is
+    off on it, or Enterprise Edition is off. The entry node and its
+    configuration (its filters) are shown so the mismatch can be checked.
+    """
+    lines = [
+        f"Hint: OpenCTI gives this error when playbook {playbook_id} exists but is not "
+        f"eligible for entity {entity_id}: most often the entity does not match the "
+        "filters of the playbook's entry component; also when the entry is neither a "
+        "live stream listener nor a manual trigger, manual enrollment is off on it, "
+        "or Enterprise Edition is off. Compare the entity with the entry filters "
+        "below, then change the entity or the filters and execute again."
+    ]
+    if read_error or not pb:
+        lines.append(
+            f"The playbook could not be read to show its entry ({read_error or 'not found'}); "
+            "read it with action 'get'."
+        )
+        return "\n".join(lines)
+    state = "running" if pb.get("playbook_running") else "stopped"
+    lines.append(f"Playbook '{pb.get('name', '?')}' is {state}.")
+    graph = _parse_graph(pb.get("playbook_definition"))
+    entries = _entry_nodes(*graph) if graph else []
+    if not entries:
+        lines.append("Its entry node could not be read; read the playbook with action 'get'.")
+        return "\n".join(lines)
+    for node in entries:
+        component = str(node.get("component_id") or "?")
+        kind = "" if component in _ENTRY_COMPONENTS else " (not an entry component)"
+        config = node.get("configuration")
+        text = config if isinstance(config, str) else _compact_json(config) if config else ""
+        if len(text) > _GRAPH_CONFIG_LIMIT:
+            text = text[:_GRAPH_CONFIG_LIMIT] + " ... (truncated)"
+        detail = f"entry node {node.get('id')} [{component}]{kind}, configuration: {text or '(none)'}"
+        # Node names and configurations are text the platform's users wrote.
+        lines.append(wrap_untrusted(detail, f"OpenCTI playbook {playbook_id} entry"))
+    return "\n".join(lines)
+
+
 def _fmt_playbook(node: dict) -> str:
     running = node.get("playbook_running")
     state = "running" if running else "stopped"
@@ -857,6 +918,14 @@ def register(
                 "  playbookExecute(id: $id, entityId: $entityId) }"
             )
             data, err = await _gql(query, {"id": playbook_id, "entityId": entity_id})
+            if err and _INELIGIBLE_ERROR in err.lower():
+                pb_data, read_err = await _gql(
+                    "query Playbook($id: String!) {"
+                    "  playbook(id: $id) { id name playbook_running playbook_definition } }",
+                    {"id": playbook_id},
+                )
+                pb = None if read_err else pb_data.get("playbook")
+                return f"{err}\n{_ineligible_hint(playbook_id, entity_id, pb, read_err)}"
             if err:
                 return err
             return (
