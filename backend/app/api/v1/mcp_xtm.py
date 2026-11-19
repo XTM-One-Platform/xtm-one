@@ -169,6 +169,7 @@ XTM_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "get_knowledge_base",
         "list_kb_documents",
         "get_kb_document",
+        "get_knowledge_base_sources",
         "list_custom_tools",
         "get_custom_tool",
         "list_mcp_servers",

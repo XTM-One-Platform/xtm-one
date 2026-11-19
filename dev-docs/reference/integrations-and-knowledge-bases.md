@@ -247,6 +247,17 @@ external system of record (a policy wiki, a spec repo) is the most important
 shape of ground truth, and freezing its refresh would silently rot it. Disable
 its sources as well to freeze a synced KB completely.
 
+The agent tools `get_knowledge_base_sources`, `update_knowledge_base_source` and
+`resync_knowledge_base` (`services/builtin_tools/kb_sync_sources.py`) call the
+REST handlers of `/knowledge-bases/{id}/sync-sources` (`list_sync_sources`,
+`update_sync_source`, `trigger_sync_source`, `force_resync_source`) with the
+caller's user and session, so the licence, package-origin and manage gates are
+the route's, never re-spelled in the tool. A drive source's scope is two config
+keys the engine applies, `folder_paths` (several start folders, `folder_path`
+kept as the first for the UI) and `exclude` (`kb_sync.drive_item_excluded`: a
+name at any depth, a path, or a glob): an excluded folder is never walked, so
+the stale-document pass of the next sync removes what the new scope leaves out.
+
 Unlocking is a config change gated by the normal manage check and written to the
 audit log — deliberate and traceable, but not privileged beyond ownership.
 
