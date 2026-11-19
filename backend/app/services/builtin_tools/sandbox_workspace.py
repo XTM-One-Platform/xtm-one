@@ -1539,10 +1539,16 @@ def build_sandbox_workspace_tools(
         )
         last_error = ""
         for definition in candidates:
+            arguments: dict[str, Any] = {"repo": repository, "ref": ref}
+            # An archive tool that narrows to paths (GitHub: a repository whose whole archive is over its
+            # in-memory limit) gets the sub_paths and the extra files, so a narrow checkout of a heavy
+            # repository is never refused for the media it leaves out.
+            if subs and "paths" in ((definition.input_schema or {}).get("properties") or {}):
+                arguments["paths"] = [*subs, *(extra_files or [])]
             call = ToolCall(
                 id=f"materialize-{uuid.uuid4().hex[:12]}",
                 name=definition.name,
-                arguments={"repo": repository, "ref": ref},
+                arguments=arguments,
             )
             # This call passed the approval gate (when the run has one): the
             # download it makes is the one that was approved. A gate raised
@@ -1564,6 +1570,9 @@ def build_sandbox_workspace_tools(
                 tree = extract_tree(
                     data, sub_paths=subs, max_bytes=remaining or session.limits.quota_bytes, extra_files=extra_files
                 )
+                left_out = (result.structured or {}).get("left_out") if isinstance(result.structured, dict) else None
+                if left_out:
+                    tree.skipped.extend(f"{p} (outside the sub_paths of an archive over its limit)" for p in left_out)
             except (ArchiveTooLargeError, WorkspacePathError) as exc:
                 metrics.operation(operation, "refused")
                 return _error(f"{repository} was not written: {exc}.")

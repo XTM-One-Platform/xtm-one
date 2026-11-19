@@ -1748,6 +1748,59 @@ async def test_materialize_repository_checks_out_the_selected_tree_and_no_creden
     assert run["stdout"].split() == ["['.xtm-checkout.json',", "'src']", "False"]
 
 
+async def test_materialize_repository_passes_sub_paths_to_an_archive_tool_that_narrows(store):
+    """#414: a tool offering ``paths`` gets the sub_paths, and the files it left out are named, never silent."""
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    seen: list = []
+    executor = CallableToolExecutor()
+
+    async def download_github_repository_archive(repo: str, ref: str = "", paths: list | None = None) -> ToolResult:
+        seen.append((repo, ref, paths))
+        return ToolResult(
+            tool_call_id="",
+            content="archive",
+            files=[FileRef.from_bytes(data=_fixture_archive(), filename="a.tar.gz", content_type="application/gzip")],
+            structured={"left_out": ["public/video.mp4"]},
+        )
+
+    executor.register("download_github_repository_archive", download_github_repository_archive)
+    composite.add_tools(
+        [
+            ToolDefinition(
+                name="download_github_repository_archive",
+                description="archive",
+                input_schema={
+                    "type": "object",
+                    "properties": {"repo": {"type": "string"}, "ref": {"type": "string"}, "paths": {"type": "array"}},
+                },
+                source="integration:github",
+                source_label="GitHub",
+                workspace_ingest=True,
+                repository_archive=True,
+            )
+        ],
+        executor,
+    )
+    with offering_tools(composite.all_tools):
+        result = await composite.execute_tool(
+            ToolCall(
+                id="m1",
+                name="materialize_repository",
+                arguments={
+                    "provider": "github",
+                    "repository": "acme/repo",
+                    "ref": "v1",
+                    "sub_paths": ["src"],
+                    "path": "repo",
+                },
+            )
+        )
+    assert not result.is_error, result.content
+    assert seen == [("acme/repo", "v1", ["src"])]
+    assert "public/video.mp4 (outside the sub_paths of an archive over its limit)" in result.content
+
+
 async def test_materialize_repository_writes_a_checkout_record_next_to_the_tree(store):
     from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord
 

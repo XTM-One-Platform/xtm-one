@@ -30,6 +30,7 @@ import tarfile
 import zipfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from typing import IO
 
 from app.services.sandbox_workspace.checks import CHECKS_FILE, ChecksError, CheckSpec, load_checks
 from app.services.sandbox_workspace.detect import (
@@ -395,3 +396,89 @@ def extract_tree(
             )
         tree.files.append((rel, read()))
     return tree
+
+
+#: A file outside the paths of :func:`narrow_archive` larger than this is left unread: the files the companion
+#: detection reads there (manifests, lock files, workflows, configs, the scripts a check names) are smaller.
+NARROW_OUTSIDE_MAX_BYTES = 8 * 1024 * 1024
+
+#: Extensions of the media and binary files :func:`narrow_archive` leaves unread outside its paths: no check
+#: reads them, and they are what makes a repository archive heavy (a site's ``public/``).
+_MEDIA_EXTENSIONS = frozenset(
+    {
+        ".7z", ".avi", ".avif", ".bin", ".bmp", ".dmg", ".eot", ".exe", ".flac", ".gif", ".gz", ".heic",
+        ".ico", ".iso", ".jar", ".jpeg", ".jpg", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4", ".mpeg",
+        ".ogg", ".otf", ".pdf", ".png", ".psd", ".rar", ".tar", ".tgz", ".tif", ".tiff", ".ttf", ".wav", ".webm",
+        ".webp", ".woff", ".woff2", ".xz", ".zip",
+    }
+)  # fmt: skip
+
+
+@dataclass
+class NarrowedArchive:
+    """What :func:`narrow_archive` kept: a tar.gz of the selected members, their names unchanged."""
+
+    data: bytes
+    #: Regular files kept under the paths, and outside them.
+    kept_under: int = 0
+    kept_outside: int = 0
+    #: The files left unread outside the paths (repository paths below the top directory), with their bytes.
+    left_out: list[str] = field(default_factory=list)
+    left_out_bytes: int = 0
+
+
+def _under_any(rel: str, paths: list[str]) -> bool:
+    return any(rel == sub or rel.startswith(sub + "/") for sub in paths)
+
+
+def narrow_archive(
+    source: IO[bytes], paths: list[str], *, max_bytes: int, outside_max_bytes: int = NARROW_OUTSIDE_MAX_BYTES
+) -> NarrowedArchive:
+    """A repository tar archive read as a stream, repacked with only what a checkout under *paths* reads.
+
+    Kept: every regular file under *paths* (repository paths, below the archive's single top directory), and
+    outside them every regular file up to *outside_max_bytes* that is not a media or binary file by its
+    extension, so :func:`extract_tree` still finds the companions, the declared checks and the directories it
+    widens to. Left out (named in ``left_out``): the media files and the large files outside *paths*. Member
+    names are kept as they are, the top directory included (it names the commit). Raises
+    :class:`ArchiveTooLargeError` once the kept files pass *max_bytes*, or when *source* is not a tar archive.
+    The archive is read once, member by member, so its size is bounded by the disk it is streamed from, never
+    by memory.
+    """
+    wanted = [normalize(sub) for sub in paths if str(sub).strip().strip("/")]
+    out = io.BytesIO()
+    narrowed = NarrowedArchive(data=b"")
+    total = 0
+    try:
+        # Opened apart so a stream that is not a tar is refused with its reason; entered by the ``with`` below.
+        reader = tarfile.open(fileobj=source, mode="r|*")  # noqa: SIM115
+    except tarfile.TarError as exc:
+        raise ArchiveTooLargeError(f"the archive could not be read as a tar archive ({exc})") from exc
+    with reader, tarfile.open(fileobj=out, mode="w:gz", compresslevel=1) as writer:
+        for info in reader:
+            if not info.isfile():
+                continue
+            name = _clean(info.name)
+            rel = name.split("/", 1)[1] if "/" in name else name
+            if not rel or ".git" in rel.split("/"):
+                continue
+            under = _under_any(rel, wanted)
+            if not under:
+                suffix = ("." + rel.rsplit(".", 1)[1].casefold()) if "." in rel.rsplit("/", 1)[-1] else ""
+                if info.size > outside_max_bytes or suffix in _MEDIA_EXTENSIONS:
+                    narrowed.left_out.append(rel)
+                    narrowed.left_out_bytes += info.size
+                    continue
+            total += info.size
+            if total > max_bytes:
+                raise ArchiveTooLargeError(
+                    f"the files under {', '.join(wanted)} are over {max_bytes // (1024 * 1024)} MB: narrow the sub_paths"
+                )
+            handle = reader.extractfile(info)
+            writer.addfile(info, handle)
+            if under:
+                narrowed.kept_under += 1
+            else:
+                narrowed.kept_outside += 1
+    narrowed.data = out.getvalue()
+    return narrowed

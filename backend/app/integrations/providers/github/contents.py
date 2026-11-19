@@ -52,6 +52,8 @@ _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 _MAX_COMMIT_BYTES = 50 * 1024 * 1024
 # A repository archive is read in memory: bounded.
 _MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+# An archive narrowed to paths is streamed to a temporary file, never held whole: this bounds the disk it takes.
+_MAX_STREAMED_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 
 
 #: Characters of a file get_github_file returns per call by default, and at most.
@@ -1599,18 +1601,97 @@ def register(
             details=[f"{repo} @ {branch}: {path}"],
         )
 
-    async def download_github_repository_archive(repo: str, ref: str = "") -> str | ToolResult:
+    async def _narrowed_archive(
+        repo: str, owner: str, name: str, ref: str, paths: list[str]
+    ) -> tuple[bytes, list[str], int] | str:
+        """The tarball at *ref* streamed to a temporary file: whole when it is within the in-memory limit, else
+        repacked with what a checkout under *paths* reads (``repository.narrow_archive``). ``(bytes, the files
+        left out, their total bytes)``, or the error."""
+        import tempfile
+
+        from app.services.sandbox_workspace.repository import ArchiveTooLargeError, narrow_archive
+
+        url = f"{_BASE_URL}/repos/{owner}/{name}/tarball/{_enc(ref)}"
+        if err := _common.request_path_error(url):
+            return err
+        with tempfile.TemporaryFile(prefix="github-archive-") as spool:
+            size = 0
+            try:
+                async with (
+                    egress_client(timeout=600, follow_redirects=True) as client,
+                    client.stream("GET", url, headers=headers) as resp,
+                ):
+                    if resp.status_code >= 400:
+                        await resp.aread()
+                        return f"Error: GitHub answered HTTP {resp.status_code} to download the archive of {repo} at {ref}."
+                    async for chunk in resp.aiter_bytes():
+                        size += len(chunk)
+                        if size > _MAX_STREAMED_ARCHIVE_BYTES:
+                            return (
+                                f"Error: the archive of {repo} at {ref} is over "
+                                f"{_MAX_STREAMED_ARCHIVE_BYTES // 1024 // 1024 // 1024} GB, even narrowed to paths."
+                            )
+                        spool.write(chunk)
+            except httpx.HTTPError as exc:
+                return f"Error: GitHub could not be reached to download the archive of {repo} at {ref}: {type(exc).__name__}."
+            spool.seek(0)
+            if size <= _MAX_ARCHIVE_BYTES:
+                # Within the limit: the whole archive, as without paths.
+                return spool.read(), [], 0
+            try:
+                narrowed = await asyncio.to_thread(narrow_archive, spool, paths, max_bytes=_MAX_ARCHIVE_BYTES)
+            except ArchiveTooLargeError as exc:
+                return f"Error: the archive of {repo} at {ref} was not narrowed: {exc}."
+        logger.info(
+            "github archive %s@%s narrowed to %s: %d bytes streamed, %d kept, %d left out",
+            repo,
+            ref,
+            paths,
+            size,
+            len(narrowed.data),
+            len(narrowed.left_out),
+        )
+        return narrowed.data, narrowed.left_out, narrowed.left_out_bytes
+
+    async def download_github_repository_archive(
+        repo: str, ref: str = "", paths: list[str] | None = None
+    ) -> str | ToolResult:
         """A repository's tree at *ref* as one tar.gz archive (what ``materialize_repository`` reads).
 
         GitHub answers with a redirect to a short-lived codeload URL; httpx
         drops the ``Authorization`` header when it follows a redirect to
-        another host, so the token never leaves api.github.com.
+        another host, so the token never leaves api.github.com. With *paths*
+        the archive is streamed to a temporary file and narrowed to the files
+        under them plus the small non-media files a checkout's check
+        detection reads, so a repository whose whole archive is over the
+        in-memory limit can still be checked out narrowly.
         """
         from app.llm.base import FileRef
 
         owner, name, rerr = parse_repo(repo)
         if rerr:
             return rerr
+        wanted = [str(p).strip().strip("/") for p in paths or [] if str(p).strip().strip("/")]
+        if wanted:
+            async with egress_client(timeout=30) as client:
+                resolved, ref_err = await _resolve_branch(client, headers, repo, owner, name, ref)
+            if ref_err or not resolved:
+                return ref_err or f"Error: the ref of {repo} could not be resolved."
+            ref = resolved
+            narrowed = await _narrowed_archive(repo, owner, name, ref, wanted)
+            if isinstance(narrowed, str):
+                return narrowed
+            data, left_out, left_out_bytes = narrowed
+            note = (
+                f" The whole archive is over {_MAX_ARCHIVE_BYTES // 1024 // 1024} MB: narrowed to {', '.join(wanted)}; "
+                f"{len(left_out)} media or large file(s) outside them left out "
+                f"({round(left_out_bytes / 1024 / 1024, 1)} MB): {', '.join(left_out[:5])}"
+                + (f" and {len(left_out) - 5} more" if len(left_out) > 5 else "")
+                + "."
+                if left_out
+                else ""
+            )
+            return await _archive_result(data, repo, name, ref, FileRef, note=note, left_out=left_out)
         async with egress_client(timeout=300) as client:
             ref, ref_err = await _resolve_branch(client, headers, repo, owner, name, ref)
             if ref_err:
@@ -1630,18 +1711,34 @@ def register(
         if len(data) > _MAX_ARCHIVE_BYTES:
             return (
                 f"Error: the archive of {repo} at {ref} is {round(len(data) / 1024 / 1024, 1)} MB, over the "
-                f"{_MAX_ARCHIVE_BYTES // 1024 // 1024} MB limit."
+                f"{_MAX_ARCHIVE_BYTES // 1024 // 1024} MB limit: pass paths (materialize_repository: sub_paths) "
+                "to keep only the directories and files you need."
             )
+        return await _archive_result(data, repo, name, ref, FileRef)
+
+    async def _archive_result(
+        data: bytes,
+        repo: str,
+        name: str,
+        ref: str,
+        FileRef: Any,  # noqa: N803
+        *,
+        note: str = "",
+        left_out: list[str] | None = None,
+    ) -> str | ToolResult:
         filename = f"{name}-{ref.replace('/', '-')}.tar.gz"
         if workspace_ingest_requested():
             # Read by ``materialize_repository`` (or written by
             # ``to_workspace_path``): kept in memory, never a conversation file.
+            # ``structured.left_out`` names the files a narrowed archive dropped,
+            # so the checkout's answer lists them too.
             ref_file = FileRef.from_bytes(data=data, filename=filename, content_type="application/gzip")
             register_fetched_file(None, ref_file)
             return ToolResult(
                 tool_call_id="",
-                content=f"Archive of {repo} at {ref}: {round(len(data) / 1024, 1)} KB.",
+                content=f"Archive of {repo} at {ref}: {round(len(data) / 1024, 1)} KB.{note}",
                 files=[ref_file],
+                structured={"left_out": list(left_out or [])},
             )
         return await deliver_file(
             data=data,
@@ -1649,7 +1746,7 @@ def register(
             content_type="application/gzip",
             source="GitHub",
             persist_file_fn=persist_file_fn,
-            details=[f"{repo} @ {ref}: the repository's tree (no .git history)"],
+            details=[f"{repo} @ {ref}: the repository's tree (no .git history){note}"],
         )
 
     async def get_github_repository_tree(repo: str, ref: str = "", path: str = "", count: int = 200) -> str:
@@ -2796,6 +2893,11 @@ def register(
                 "properties": {
                     "repo": {"type": "string", "description": "Repository in format owner/name"},
                     "ref": {"type": "string", "description": "Branch, tag or commit SHA (default: the repository's default branch)"},
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Over 256 MB: keep only these paths (media outside them left out, named)",
+                    },
                 },
                 "required": ["repo"],
             },
