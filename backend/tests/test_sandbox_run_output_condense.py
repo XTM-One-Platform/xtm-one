@@ -92,6 +92,32 @@ def test_an_istanbul_table_is_left_out():
     assert lines[0].startswith("[... coverage table, ") and lines[-1] == "Test Files  1 failed (1)"
 
 
+def test_a_vite_asset_listing_is_left_out_and_its_warning_kept() -> None:
+    text = "\n".join(
+        [
+            "vite v6.0.0 building for production...",
+            "✓ 2412 modules transformed.",
+            "dist/index.html                       0.46 kB │ gzip:   0.30 kB",
+            "dist/assets/index-BdC1x9.css         12.34 kB │ gzip:   3.21 kB",
+            "dist/assets/vendor-AbCd12.js        812.00 kB │ gzip: 245.10 kB │ map: 3,201.55 kB",
+            "dist/assets/index-EfGh34.js       1,234.56 kB │ gzip: 345.67 kB",
+            "",
+            "(!) Some chunks are larger than 500 kB after minification.",
+            "✓ built in 12.31s",
+        ]
+    )
+    lines = checks.condense(text).splitlines()
+    assert not any("dist/assets" in line for line in lines)
+    assert "[... build asset listing, 4 file(s), left out: see the run directory ...]" in lines
+    assert "(!) Some chunks are larger than 500 kB after minification." in lines
+    assert lines[-1] == "✓ built in 12.31s"
+
+
+def test_one_or_two_size_lines_are_not_a_listing() -> None:
+    text = "dist/report.json 1.2 kB\nwritten\nbuild/out.txt 3 B"
+    assert checks.condense(text) == text
+
+
 def test_plain_output_is_unchanged():
     text = "line 1\nline 2\n\nline 3"
     assert checks.condense(text) == text
