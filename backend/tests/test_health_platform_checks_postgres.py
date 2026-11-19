@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.models.mcp_server import MCPServer
 from app.models.platform_settings import PlatformSettings
 from app.models.xtm_hub_registration import STATUS_LOST_CONNECTIVITY, STATUS_REGISTERED, XtmHubRegistration
 from app.services.health import engine, platform_checks
+from app.services.quota import platform_agentic_usage as _real_platform_agentic_usage
 from tests.test_provisioning_postgres import _temp_database
 
 pytestmark = pytest.mark.integration
@@ -38,14 +40,28 @@ def _licence(validated: bool, expires: datetime | None = None, reason: str = "")
 
 @pytest.fixture(autouse=True)
 def _world(monkeypatch: pytest.MonkeyPatch) -> None:
-    """XTM One mode, a configured token, SMTP set, no licence installed."""
+    """XTM One mode, a configured token, SMTP set, no licence installed, models set, no ceiling."""
     import app.core.registration_token as registration_token
+    import app.llm.router as router
     import app.services.email as email
+    import app.services.quota as quota
+
+    async def default_model(db: AsyncSession) -> str:
+        return "model-a"
+
+    async def settings_row(db: AsyncSession) -> SimpleNamespace:
+        return SimpleNamespace(embedding_model="embed-a")
+
+    async def no_ceiling(db: AsyncSession, now: datetime | None = None) -> list[dict[str, Any]]:
+        return []
 
     monkeypatch.setattr(settings, "platform_mode", "xtm_one")
     monkeypatch.setattr(settings, "enterprise_license", "")
     monkeypatch.setattr(registration_token, "registration_token_state", lambda: "configured")
     monkeypatch.setattr(email, "is_email_configured", lambda: True)
+    monkeypatch.setattr(router, "get_platform_default_model", default_model)
+    monkeypatch.setattr(platform_checks, "_platform_settings", settings_row)
+    monkeypatch.setattr(quota, "platform_agentic_usage", no_ceiling)
     engine._LAST_RUN.clear()
 
 
@@ -70,6 +86,9 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.mcp_server_broken",
         "xtm_one.kb_indexing_stalled",
         "xtm_one.kb_stale_embeddings",
+        "xtm_one.default_model",
+        "xtm_one.embedding_model",
+        "xtm_one.quota_near_ceiling",
     }
     assert {c.interval for c in CHECKS} == {platform_checks.PLATFORM_CHECK_INTERVAL}
 
@@ -84,7 +103,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 9
+        assert totals["checks"] == 12
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"
@@ -278,3 +297,72 @@ async def test_a_stalled_indexing_and_stale_embeddings_are_findings_per_knowledg
         embeddings = [r for r in rows if r.check_id == "xtm_one.kb_stale_embeddings"]
         assert [r.subject for r in embeddings] == [{"knowledge_base_id": str(stale.id)}]
         assert embeddings[0].evidence["values"] == {"model": "embed-old", "platform_model": "embed-new"}
+
+
+@pytest.mark.asyncio
+async def test_an_unset_default_or_embedding_model_is_critical(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4c: no default model or no embedding model opens a critical configuration finding."""
+    import app.llm.router as router
+
+    async def unset(db: AsyncSession) -> None:
+        return None
+
+    async def no_embedding(db: AsyncSession) -> SimpleNamespace:
+        return SimpleNamespace(embedding_model=None)
+
+    async with _temp_database("hpc_models") as sessions, sessions() as db:
+        monkeypatch.setattr(router, "get_platform_default_model", unset)
+        monkeypatch.setattr(platform_checks, "_platform_settings", no_embedding)
+        await _pass(db, T0)
+        found = await _open(db)
+        assert found["xtm_one.default_model"].severity == "critical"
+        assert found["xtm_one.embedding_model"].evidence["values"] == {"model": "unset"}
+
+
+@pytest.mark.asyncio
+async def test_a_ceiling_over_90_percent_is_a_warning_per_period_and_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4c: one finding per platform-wide ceiling over 90 %, closed out once the period is under it."""
+    import app.services.quota as quota
+
+    usage = [{"period": "daily", "used": 95, "limit": 100}, {"period": "monthly", "used": 500, "limit": 3000}]
+
+    async def read(db: AsyncSession, now: datetime | None = None) -> list[dict[str, Any]]:
+        return usage
+
+    async with _temp_database("hpc_quota") as sessions, sessions() as db:
+        monkeypatch.setattr(quota, "platform_agentic_usage", read)
+        await _pass(db, T0)
+        rows = [r for r in (await db.execute(select(HealthCheckFinding))).scalars().all() if r.status == STATUS_OPEN]
+        quota_rows = [r for r in rows if r.check_id == "xtm_one.quota_near_ceiling"]
+        assert [r.subject for r in quota_rows] == [{"period": "daily"}]
+        assert quota_rows[0].category == "capacity"
+        assert quota_rows[0].evidence["values"] == {"period": "daily", "used": 95, "limit": 100}
+
+        usage = [{"period": "daily", "used": 3, "limit": 100}]
+        await _pass(db, T0 + timedelta(minutes=5))
+        await _pass(db, T0 + timedelta(minutes=10))
+        assert "xtm_one.quota_near_ceiling" not in await _open(db)
+
+
+@pytest.mark.asyncio
+async def test_the_platform_usage_read_moves_no_counter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acceptance 3: reading the ceilings for health changes no agentic counter."""
+    import app.services.quota as quota
+
+    counts = {"agentic": 40, "sandbox": 7}
+
+    async def ceilings(db: AsyncSession) -> dict[str, int]:
+        return {"daily": 50}
+
+    async def global_count(redis: object, usage_type: str, period_key: str) -> int:
+        return counts[usage_type]
+
+    async def client() -> object:
+        return object()
+
+    monkeypatch.setattr(quota, "get_xtm_agentic_ceilings", ceilings)
+    monkeypatch.setattr(quota, "_get_global_count", global_count)
+    monkeypatch.setattr(quota, "redis_client", client)
+    rows = await _real_platform_agentic_usage(None, T0)  # type: ignore[arg-type]
+    assert rows == [{"period": "daily", "used": 47, "limit": 50}]
+    assert counts == {"agentic": 40, "sandbox": 7}

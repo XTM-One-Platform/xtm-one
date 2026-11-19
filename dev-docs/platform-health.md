@@ -308,8 +308,16 @@ servers whose OAuth refresh failed), `xtm_one.kb_indexing_stalled` (documents in
 platform's). Each closes out the open findings whose subject it no longer reads through
 `engine.close_out` (moved out of `agent_checks.py`, which now calls it), so a fixed or
 deleted subject resolves after two passes. Personal integrations and servers stay out:
-their owner sees them on the agent checks. The rows still owed (scheduler lag, queues,
-probes, sandbox latency, providers, quota, version, certificates) follow in S4c.
+their owner sees them on the agent checks.
+
+**Implementation (S4c).** Three more configuration and capacity checks:
+`xtm_one.default_model` and `xtm_one.embedding_model` (critical when unset: agents with
+no model of their own cannot run, knowledge bases cannot index) and
+`xtm_one.quota_near_ceiling` (warning, one finding per capped period, when a platform-wide
+agentic ceiling is 90 % used). The quota read is `services/quota.platform_agentic_usage`,
+the same counters the gates read, no counter moved (pinned by
+`test_the_platform_usage_read_moves_no_counter`). The rows still owed (scheduler lag,
+queues, probes, sandbox latency, provider error rates, version, certificates) follow in S4d.
 
 ### 4.3 OpenCTI (XTM One mode, automatic)
 
