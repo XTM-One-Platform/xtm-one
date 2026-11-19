@@ -1153,7 +1153,8 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     from app.services.fleet_docs import DOC_SECTIONS, documentation_view
 
     group_ids = await get_user_group_ids(db, user.id)
-    manager = can_manage(user, fleet, group_ids)
+    # Platform Health takes no Generate nor suggestion write (#101 S1b, UX r1 B3).
+    manager = _can_manage_fleet(user, fleet, group_ids)
     view = await documentation_view(db, fleet, can_edit=manager)
     if not view.version and view.structured is None:
         from app.services.fleet_doc_generation import configuration_facts
@@ -1516,7 +1517,7 @@ async def get_fleet_documentation_history_endpoint(
 
     fleet = await _visible_fleet(db, user, fleet_id)
     # Generator notes and the Regenerate flag are for the people who manage the fleet (#10246).
-    managed = can_manage(user, fleet, await get_user_group_ids(db, user.id))
+    managed = _can_manage_fleet(user, fleet, await get_user_group_ids(db, user.id))
     return FleetDocumentationHistoryResponse(
         versions=[
             FleetDocumentationVersion(**vars(entry)) for entry in documentation_history(fleet, with_notes=managed)

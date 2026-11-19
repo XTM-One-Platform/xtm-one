@@ -70,6 +70,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import { Boxes, CopyPlus, Crown, GitFork, Lock, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BuiltinBadge } from "@/components/ui/builtin-badge";
+import { ReadOnlyBadge } from "@/components/ui/read-only-badge";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -437,15 +438,17 @@ export default function FleetPage() {
     setSettingsSection(undefined);
     setSettingsOpen(true);
   };
+  // Platform Health takes no write, a fork included (`read_only_reason`, UX r1 B3 on #464).
+  const readOnlyReason = fleet.read_only_reason ?? null;
   const moreActions: OverflowMenuItem[] = [
-    {
+    ...(readOnlyReason ? [] : [{
       id: "duplicate",
       label: t_i18n("Duplicate"),
       icon: CopyPlus,
       onSelect: () => setForkOpen(true),
       disabled: aiOff,
       disabledReason: aiOffReason ?? undefined,
-    },
+    }]),
     { id: "settings", label: t_i18n("Settings"), icon: Settings2, onSelect: openSettings },
   ];
   // ROI is its managers' tab: anyone else lands on the page's default, About,
@@ -524,6 +527,11 @@ export default function FleetPage() {
                 <BuiltinBadge />
               </span>
             )}
+            {readOnlyReason && (
+              <span className="inline-flex shrink-0">
+                <ReadOnlyBadge tooltip={t_i18n("Platform Health is built in and read-only.")} />
+              </span>
+            )}
             {fleet.is_archived && (
               <Badge variant="secondary" className="shrink-0">
                 {t_i18n("Archived")}
@@ -571,7 +579,9 @@ export default function FleetPage() {
                 at every width while the Modify with AI panel takes its room (UX r1 B2). */}
             {!aiOpen && (
               <EntityHeaderWideOnly>
-                <DuplicateButton size="default" onDuplicate={() => setForkOpen(true)} hint={t_i18n("Create an editable copy of this fleet")} />
+                {!readOnlyReason && (
+                  <DuplicateButton size="default" onDuplicate={() => setForkOpen(true)} hint={t_i18n("Create an editable copy of this fleet")} />
+                )}
                 <Button type="button" variant="outline" className="gap-1.5" onClick={openSettings}>
                   <Settings2 className="h-4 w-4" aria-hidden />
                   {t_i18n("Settings")}
@@ -633,6 +643,7 @@ export default function FleetPage() {
           onOpenGraph={() => openFullGraph(null)}
           onOpenMembers={() => setView("members")}
           onOpenView={setView}
+          readOnly={!!readOnlyReason}
           orchestratorId={fleet.orchestrator_agent_id}
           flow={
             // The Graph view's own drawing as a fixed mini graph (#9757): the

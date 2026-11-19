@@ -230,15 +230,16 @@ export default function AgentDetail() {
   const canDelete = canManage && !isLinkedGA;
   // Below 1280 px Duplicate, Export and Delete are rows of the
   // "More actions" menu, with the gates and disabled states of the buttons.
+  // Platform Health refuses a duplicate with 403: no Duplicate on it.
   const moreActions: OverflowMenuItem[] = [
-    {
+    ...(healthLocked ? [] : [{
       id: "duplicate",
       label: t_i18n("Duplicate"),
       icon: CopyPlus,
       disabled: duplicate.isPending || aiOff,
       disabledReason: aiOff ? aiOffReason ?? undefined : undefined,
       onSelect: () => (agenticEnabled ? duplicateAgent() : setDuplicateGateOpen(true)),
-    },
+    }]),
     {
       id: "export",
       label: t_i18n("Export"),
@@ -329,6 +330,7 @@ export default function AgentDetail() {
                   (design-system doc, "Page-title actions"). Below xl
                   the secondary ones fold into More actions. */}
               <EntityHeaderWideOnly>
+              {!healthLocked && (
               <AgenticGateDialog feature="Duplicating agents">
                 <Tip content={t_i18n("Create a private copy of this agent")}>
                   <Button
@@ -344,6 +346,7 @@ export default function AgentDetail() {
                   </Button>
                 </Tip>
               </AgenticGateDialog>
+              )}
               <Tip content={t_i18n("Export agent as a bundle or an AgentSchema document")}>
                 <Button
                   variant="ghost"
@@ -377,7 +380,7 @@ export default function AgentDetail() {
                   {agent.disable_chat ? <MessageSquareOff className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />} {t_i18n("Chat with Agent")}
                 </Button>
               </Tip>
-              {(canManage || isAdmin) && !isLinkedGA && (
+              {(canManage || isAdmin) && !isLinkedGA && !healthLocked && (
                 <Tip content={agent.enabled ? t_i18n("Disable") : t_i18n("Enable")}>
                   <IconButton
                     variant="default"

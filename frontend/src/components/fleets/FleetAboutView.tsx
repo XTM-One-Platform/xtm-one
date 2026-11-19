@@ -75,9 +75,12 @@ export function FleetAboutView({
   onOpenView,
   orchestratorId,
   flow,
+  readOnly = false,
 }: {
   fleetId: string;
   onOpenGraph: () => void;
+  /** A fleet nobody may write (Platform Health, `read_only_reason`): no setup or fix action. */
+  readOnly?: boolean;
   /** Opens another tab of the fleet: the KPI tiles' links (#10123). */
   onOpenView?: (view: FleetView) => void;
   /** The fleet's orchestrator: its member card comes first. */
@@ -111,6 +114,7 @@ export function FleetAboutView({
       onOpenView={onOpenView}
       orchestratorId={orchestratorId}
       flow={flow}
+      readOnly={readOnly}
     />
   );
 }
@@ -124,10 +128,12 @@ function FleetDocumentationReader({
   onOpenView,
   orchestratorId,
   flow,
+  readOnly,
 }: {
   fleetId: string;
   doc: FleetDocumentation;
   health: FleetHealth | undefined;
+  readOnly: boolean;
   onOpenGraph: () => void;
   onOpenMembers: () => void;
   onOpenView?: (view: FleetView) => void;
@@ -303,7 +309,9 @@ function FleetDocumentationReader({
       </DashboardNotice>
     ) : (
       <DashboardNotice variant="info" icon={BookOpen} title={t_i18n("No documentation yet")}>
-        {doc.editable
+        {readOnly
+          ? t_i18n("Platform Health is built in and read-only.")
+          : doc.editable
           ? t_i18n("Generate documentation, at the top right, has the AI read the fleet's members, settings, automations and handovers and write its documentation. One generation, counted like a chat message.")
           : t_i18n("The owner of this fleet has not generated its documentation yet.")}
       </DashboardNotice>
@@ -328,6 +336,7 @@ function FleetDocumentationReader({
             onOpenView={onOpenView}
             flow={flow}
             onOpenGraph={onOpenGraph}
+            readOnly={readOnly}
           />
         ) : (
           flow && <FleetAboutFlow flow={flow} onOpenGraph={onOpenGraph} />
@@ -377,6 +386,7 @@ function FleetDocumentationReader({
         onOpenView={onOpenView}
         flow={flow}
         onOpenGraph={onOpenGraph}
+        readOnly={readOnly}
       />
     </div>
   );

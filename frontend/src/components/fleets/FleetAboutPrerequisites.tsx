@@ -157,7 +157,16 @@ function useConfirmLine(fleetId: string) {
  * while a manual line waits for a fleet manager, "All prerequisites met" and
  * nothing else once all are (a confirmed manual line counts as met).
  */
-export function FleetPrerequisitesChip({ fleetId, lines }: { fleetId: string; lines: readonly FleetLivePrerequisite[] }) {
+export function FleetPrerequisitesChip({
+  fleetId,
+  lines,
+  readOnly = false,
+}: {
+  fleetId: string;
+  lines: readonly FleetLivePrerequisite[];
+  /** A fleet nobody may write (Platform Health): the counts alone, no Confirm and no Fix with AI. */
+  readOnly?: boolean;
+}) {
   const { t_i18n } = useFormatter();
   const confirm = useConfirmLine(fleetId);
   const { met, total, failing, fixable, toConfirm } = prerequisiteSummary(lines);
@@ -169,7 +178,7 @@ export function FleetPrerequisitesChip({ fleetId, lines }: { fleetId: string; li
       </Badge>
     );
   }
-  const only = toConfirm.length === 1 && toConfirm[0].can_confirm ? toConfirm[0] : null;
+  const only = !readOnly && toConfirm.length === 1 && toConfirm[0].can_confirm ? toConfirm[0] : null;
   return (
     <span className="flex flex-wrap items-center gap-2">
       <Badge variant={failing.length ? "warning" : "secondary"} data-testid="about-prerequisites-chip">
@@ -194,7 +203,7 @@ export function FleetPrerequisitesChip({ fleetId, lines }: { fleetId: string; li
           {t_i18n("Confirm")}
         </Button>
       )}
-      <FixWithAiButton fleetId={fleetId} fixable={fixable} />
+      {!readOnly && <FixWithAiButton fleetId={fleetId} fixable={fixable} />}
     </span>
   );
 }

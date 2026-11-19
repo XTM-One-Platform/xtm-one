@@ -221,6 +221,21 @@ describe("FleetPrerequisitesChip", () => {
     expect(screen.getByTestId("about-prerequisites-chip").textContent).toBe("Prerequisites 1/2");
     expect(screen.getByRole("button", { name: "Fix with AI" })).toBeTruthy();
   });
+
+  it("on a read-only fleet keeps the counts and offers no Confirm and no Fix with AI (UX r1 B3 on #464)", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <FleetPrerequisitesChip
+          fleetId="f1"
+          readOnly
+          lines={[line({ check: "b", state: "not_met", reason_code: "deleted" }), manual({ can_confirm: true })]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("about-prerequisites-chip").textContent).toBe("Prerequisites 0/2");
+    expect(screen.queryByRole("button", { name: "Fix with AI" })).toBeNull();
+    expect(screen.queryByTestId("prerequisites-chip-confirm")).toBeNull();
+  });
 });
 
 describe("prerequisite helpers", () => {

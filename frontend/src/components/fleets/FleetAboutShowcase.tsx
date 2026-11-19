@@ -173,7 +173,10 @@ export function FleetAboutShowcase({
   onOpenView,
   flow,
   onOpenGraph,
+  readOnly = false,
 }: {
+  /** A fleet nobody may write (Platform Health, `read_only_reason`): no Set up, no Fix with AI, the lock stated instead (UX r1 B3 on #464). */
+  readOnly?: boolean;
   /** The fleet's id: the Fix with AI request names it (#10258). */
   fleetId: string;
   doc: FleetDocumentation;
@@ -249,7 +252,7 @@ export function FleetAboutShowcase({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               {status && <FleetOptInBadge optIn={status} />}
-              <FleetPrerequisitesChip fleetId={fleetId} lines={live} />
+              <FleetPrerequisitesChip fleetId={fleetId} lines={live} readOnly={readOnly} />
               <Badge variant="outline" className="gap-1" data-testid="about-autonomy">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 {autonomyChipLabel(level, doc.autonomy_catalog, gates.data?.instructions_position, t_i18n)}
@@ -263,10 +266,12 @@ export function FleetAboutShowcase({
                 onOpenMembers={onManageAutomations}
               />
             </div>
-            <Button type="button" size="sm" className="h-8 gap-1.5" onClick={onManageAutomations} data-testid="about-primary-action">
-              <Settings2 className="h-4 w-4" aria-hidden />
-              {status === "not_set_up" ? t_i18n("Set up") : t_i18n("Manage automations")}
-            </Button>
+            {!readOnly && (
+              <Button type="button" size="sm" className="h-8 gap-1.5" onClick={onManageAutomations} data-testid="about-primary-action">
+                <Settings2 className="h-4 w-4" aria-hidden />
+                {status === "not_set_up" ? t_i18n("Set up") : t_i18n("Manage automations")}
+              </Button>
+            )}
           </div>
           {s.purpose_line && <p className="content-base text-default-primary" data-testid="about-purpose-line">{s.purpose_line}</p>}
           {(s.serves?.length ?? 0) > 0 && (
@@ -287,7 +292,9 @@ export function FleetAboutShowcase({
           <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-3 p-4">
             <p className="flex min-w-0 flex-1 items-center gap-2 content-compact font-medium">
               <CircleDashed className="h-5 w-5 shrink-0 text-default-secondary" aria-hidden />
-              {t_i18n("Not set up yet: nothing runs until an automation is switched on")}
+              {readOnly
+                ? t_i18n("Platform Health is built in and read-only.")
+                : t_i18n("Not set up yet: nothing runs until an automation is switched on")}
             </p>
             <dl className="flex flex-wrap items-center gap-x-8 gap-y-2 content-compact">
               <div data-testid="about-setup-automations">
