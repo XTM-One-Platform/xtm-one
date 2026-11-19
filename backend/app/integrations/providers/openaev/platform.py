@@ -51,6 +51,47 @@ def _version_from_body(body: str | None) -> str:
     return str(data).strip("\"'").strip()
 
 
+def _runtime_settings_answer(settings: Any) -> str:
+    """The ``runtime_settings`` of ``GET /api/settings`` as one line per setting.
+
+    OpenAEV lists the settings an administrator may change at runtime (the
+    inject execution threshold among them) with the value in force and its
+    source; the full settings object is long enough to be cut by
+    ``json_answer``, so this reads the list alone, whole. An OpenAEV without
+    the list (before the release carrying OpenAEV #9416) is named as such.
+    """
+    items = settings.get("runtime_settings") if isinstance(settings, dict) else None
+    if not isinstance(items, list):
+        return (
+            "This OpenAEV does not expose runtime settings (no 'runtime_settings' "
+            "in GET /api/settings): it predates the release that makes the inject "
+            "execution threshold settable at runtime. Its value is then the "
+            "environment variable or the configuration default, changed only by "
+            "a redeploy."
+        )
+    if not items:
+        return "OpenAEV lists no runtime setting."
+    lines = [f"OpenAEV runtime settings ({len(items)}):"]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        line = (
+            f"  - {item.get('key', '?')} = {item.get('value', '')} "
+            f"(source {item.get('source', '?')}, type {item.get('type', '?')}"
+        )
+        if item.get("min") is not None or item.get("max") is not None:
+            line += f", range {item.get('min', '')}..{item.get('max', '')}"
+        if item.get("enterprise_only"):
+            line += ", Enterprise Edition only"
+        line += ")"
+        if item.get("locked"):
+            line += f" LOCKED by env var {item.get('env_var', '?')}: update_runtime refuses it"
+        elif item.get("env_var"):
+            line += f" env var {item['env_var']} unset: settable"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:openaev"
@@ -565,6 +606,33 @@ def register(
                 return err
             return json_answer(resp.json())
 
+        if action == "get_runtime":
+            resp, err = await _api(base_url, headers, "get", "/api/settings", "get settings")
+            if err:
+                return err
+            return _runtime_settings_answer(resp.json() if resp is not None else None)
+
+        if action == "update_runtime":
+            values = extra.get("settings", extra) if extra else {}
+            if not isinstance(values, dict) or not values:
+                return (
+                    "config is required for 'update_runtime': a JSON object of "
+                    "runtime setting key -> value, e.g. "
+                    '{"inject_execution_threshold_minutes": 60}. Read the keys, '
+                    "bounds and locks with action 'get_runtime' first."
+                )
+            resp, err = await _api(
+                base_url,
+                headers,
+                "put",
+                "/api/settings/runtime",
+                "update runtime settings",
+                json={"settings": values},
+            )
+            if err:
+                return err
+            return "Updated runtime settings.\n" + _runtime_settings_answer(resp.json() if resp is not None else None)
+
         if action == "version":
             resp, err = await _api(
                 base_url, headers, "get", "/api/settings/version", "get version"
@@ -602,7 +670,8 @@ def register(
             return "Updated enterprise edition settings."
 
         return (
-            f"Unknown action '{action}'. Valid actions: get, version, update_policies, "
+            f"Unknown action '{action}'. Valid actions: capabilities, filter_keys, "
+            "get, get_runtime, update_runtime, version, update_policies, "
             "update_enterprise."
         )
 
@@ -741,7 +810,13 @@ def register(
                 "(class_name - the valid filter 'key' names for an entity; "
                 "OpenAEV silently coerces an unknown filter operator to 'eq' "
                 "instead of erroring, so never guess keys), 'get' (full "
-                "settings), 'version', 'update_policies' (config = JSON of policy "
+                "settings), 'get_runtime' (the runtime settings in full: inject "
+                "execution threshold, agent jobs and queue, agent auto-update, each "
+                "with its value, source env/ui/default, bounds and lock), "
+                "'update_runtime' (config = JSON of runtime key -> value, e.g. "
+                '{"inject_execution_threshold_minutes": 60}; a setting pinned by '
+                "its environment variable is refused, admin), 'version', "
+                "'update_policies' (config = JSON of policy "
                 "fields, admin), 'update_enterprise' (config = JSON "
                 "enterprise-edition settings, admin)."
             ),
@@ -751,7 +826,8 @@ def register(
                     "action": {
                         "type": "string",
                         "enum": [
-                            "capabilities", "filter_keys", "get", "version",
+                            "capabilities", "filter_keys", "get", "get_runtime",
+                            "update_runtime", "version",
                             "update_policies", "update_enterprise",
                         ],
                     },
