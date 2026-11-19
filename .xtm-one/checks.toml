@@ -407,6 +407,27 @@ needs = [".xtm-one/lab", ".xtm-one/stores.py"]
 timeout = 1500
 lifetime = 7200
 
+# The public website (FiligranHQ/website, Payload CMS + Next.js) built from the PR head: migrated and day-1 seeded on
+# the lab's PostgreSQL (database filigran_website), media on local disk, no mail, no AI, no access to the staging or
+# production database or blob store; the reviewer lab@filigran.io (Site Admin) is seeded with the repository's e2e
+# TOTP secret, so /lab/sign-in passes the password and the code server-side and opens /admin. Before the start:
+# materialize_repository(FiligranHQ/website, ref=<the PR head>, sub_paths=["package.json", "pnpm-lock.yaml",
+# "pnpm-workspace.yaml", "patches", "next.config.ts", "redirects.ts", "tsconfig.json", "tailwind.config.mjs",
+# "postcss.config.js", "components.json", "scripts", "public", "src/payload.config.ts", "src/app"],
+# path="<this checkout>/website"), then add_paths for the rest of src folder by folder (src/migrations/*.ts only,
+# never the *.json snapshots) and src/endpoints/seed/assets one folder at a time. Pages: /, /fr, /ja.
+[service.lab-website]
+description = "Filigran public website (next dev) from a nested website/ checkout at the PR head, migrated, day-1 seeded, EN/FR/JA, /admin signed in as lab@filigran.io (TOTP passed by the lab)"
+argv = ["python", ".xtm-one/lab/website_pr_head.py"]
+port = 4200
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py"]
+timeout = 1800
+lifetime = 7200
+
 # OpenAEV built from the PR head (xtm-one #11799, item 5): its own backend (Maven reactor, Flyway migrations) on
 # the lab's PostgreSQL and S3, OpenSearch and RabbitMQ from the OpenCTI lab's store services, the front from Vite
 # over it, seeded through the API (assets, an asset group, a scenario, a simulation), the platform administrator
