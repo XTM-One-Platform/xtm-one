@@ -37,6 +37,13 @@ An edit may also insert: ``{insert_after_line, expect_first?, replace}`` puts
 replaces nothing; ``expect_first`` (or ``expect_first_blank``) checks that line
 as for a range, and is not asked for line 0.
 
+An edit may move a block: ``{start_line, end_line, expect_first, expect_last?,
+move_to_after_line, expect_target?, replace: ""}`` moves lines ``start_line``
+to ``end_line`` after line ``move_to_after_line`` (0: the top of the file),
+both numbered in the text before the move; the block is anchored as a range is,
+the target line by ``expect_target`` (or ``expect_target_blank``), not asked for
+line 0. A doc comment or a function is moved without copying it into a call.
+
 A ``find`` that occurs several times may name the one to replace with
 ``occurrence`` (1-based, counted in the text as the previous edits left it;
 ``sandbox_edit_file`` only): the second of three identical blocks is changed
@@ -108,10 +115,18 @@ class Edit:
     """Line an insert edit goes after (0: the top of the file); -1 for any other edit."""
     occurrence: int = 0
     """The occurrence of ``find`` to replace (1-based); 0: the find must be unique, or ``replace_all``."""
+    move_after: int = -1
+    """Line a moved range goes after (0: the top of the file); -1 for any other edit."""
+    expect_target: str = ""
+    target_blank: bool = False
+
+    @property
+    def is_move(self) -> bool:
+        return self.move_after >= 0
 
     @property
     def is_range(self) -> bool:
-        return self.start_line > 0
+        return self.start_line > 0 and not self.is_move
 
     @property
     def is_insert(self) -> bool:
@@ -135,6 +150,9 @@ def parse_edits(raw: object, *, allow_ranges: bool = False) -> list[Edit]:
     for i, item in enumerate(raw, start=1):
         if not isinstance(item, dict):
             raise EditError(f"edit {i} is not an object")
+        if allow_ranges and "move_to_after_line" in item:
+            edits.append(_parse_move(i, item))
+            continue
         if allow_ranges and "insert_after_line" in item:
             edits.append(_parse_insert(i, item))
             continue
@@ -236,6 +254,41 @@ def _parse_insert(i: int, item: dict) -> Edit:
     return Edit(find="", replace=replace, expect_first=first, first_blank=blank and after > 0, insert_after=after)
 
 
+def _parse_move(i: int, item: dict[str, object]) -> Edit:
+    if item.get("find") or "insert_after_line" in item:
+        raise EditError(
+            f"edit {i}: a move takes 'start_line'/'end_line' and 'move_to_after_line', "
+            "not 'find' or 'insert_after_line'"
+        )
+    if item.get("replace"):
+        raise EditError(f"edit {i}: a move writes no text: leave 'replace' empty (the block is moved as it is)")
+    if "start_line" not in item:
+        raise EditError(f"edit {i}: a move needs 'start_line' (and 'end_line' for several lines), the block to move")
+    block = _parse_range(i, {**item, "replace": ""})
+    target = item.get("move_to_after_line")
+    if not isinstance(target, int) or isinstance(target, bool) or target < 0:
+        raise EditError(
+            f"edit {i}: 'move_to_after_line' must be an integer >= 0 (0 moves the block to the top of the file)"
+        )
+    if block.start_line - 1 <= target <= block.end_line:
+        raise EditError(
+            f"edit {i}: move_to_after_line {target} is inside lines {block.start_line}-{block.end_line} or right "
+            "before them: the block would not move. Nothing was written."
+        )
+    blank = _flag(i, item, "expect_target_blank")
+    want = item.get("expect_target", "")
+    if not isinstance(want, str):
+        raise EditError(f"edit {i}: 'expect_target' must be a string")
+    if target > 0 and not want.strip() and not blank:
+        raise EditError(
+            f"edit {i}: a move after line {target} needs 'expect_target', text of that line as the file reads "
+            "(expect_target_blank=true when it is blank), so a stale line number is refused"
+        )
+    if len(want) > MAX_SNIPPET_CHARS:
+        raise EditError(f"edit {i}: a snippet is at most {MAX_SNIPPET_CHARS:,} characters")
+    return replace_fields(block, move_after=target, expect_target=want, target_blank=blank and target > 0)
+
+
 def _check_line(i: int, label: str, want: str, blank: bool, line: str, number: int) -> None:
     """Refuse when *line* (number *number*) does not hold *want*, or is not blank when *blank* asks it."""
     shown = _preview(line.rstrip("\r\n"))
@@ -288,6 +341,29 @@ def _apply_range(i: int, text: str, edit: Edit) -> str:
     return "".join(lines[: edit.start_line - 1]) + replace + "".join(lines[edit.end_line :])
 
 
+def _apply_move(i: int, text: str, edit: Edit) -> str:
+    """*text* with lines ``start_line``..``end_line`` moved after line ``move_after``, both numbered before the move."""
+    lines = text.splitlines(keepends=True)
+    start, end, target = edit.start_line, edit.end_line, edit.move_after
+    if max(end, target) > len(lines):
+        raise EditError(
+            f"edit {i}: the move of lines {start}-{end} after line {target} runs past the end ({len(lines)} lines). "
+            "Nothing was written."
+        )
+    _check_line(i, "expect_first", edit.expect_first, edit.first_blank, lines[start - 1], start)
+    _check_line(i, "expect_last", edit.expect_last, edit.last_blank, lines[end - 1], end)
+    if target:
+        _check_line(i, "expect_target", edit.expect_target, edit.target_blank, lines[target - 1], target)
+    for at in (end - 1, target - 1):
+        # A line without an ending (the last of the file) gets one before it is followed by another.
+        if at >= 0 and not lines[at].endswith(("\n", "\r")):
+            lines[at] += "\n"
+    block = lines[start - 1 : end]
+    rest = lines[: start - 1] + lines[end:]
+    at = target if target < start else target - len(block)
+    return "".join(rest[:at] + block + rest[at:])
+
+
 def _line_of(text: str, index: int) -> int:
     return text.count("\n", 0, index) + 1
 
@@ -323,6 +399,10 @@ def apply_edits(text: str, edits: list[Edit], *, read_with: str = "sandbox_read_
 def _apply(text: str, edits: list[Edit], read_with: str) -> Applied:
     counts: list[int] = []
     for i, edit in enumerate(edits, start=1):
+        if edit.is_move:
+            text = _apply_move(i, text, edit)
+            counts.append(1)
+            continue
         if edit.is_range:
             text = _apply_range(i, text, edit)
             counts.append(1)

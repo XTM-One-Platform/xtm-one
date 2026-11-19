@@ -24,7 +24,9 @@ first repeat (``turn_checkpoint.in_flight_writes``).
 
 A line-range or ``insert_after_line`` edit is told from the lines at its
 number (the replacing or inserted block is there, or the anchor line still
-holds its expected text) when it is the call's only line-numbered edit.
+holds its expected text) when it is the call's only line-numbered edit. A
+move (``move_to_after_line``) writes no text to look for: it gets no verdict,
+and its key names its range and target.
 
 The same verdict is the tool's ``landed_probe`` (:func:`edit_probe`) and its
 anchors the tool's ``landed_key`` (:func:`edit_key`): a REWORDED repeat of an
@@ -162,6 +164,11 @@ def edit_key(arguments: Mapping[str, Any]) -> str | None:
             return None
         if "insert_after_line" in edit:
             anchors.append(f"insert after {edit.get('insert_after_line')}: {edit.get('expect_first') or ''}")
+        elif "move_to_after_line" in edit:
+            anchors.append(
+                f"move {edit.get('start_line')}-{edit.get('end_line', edit.get('start_line'))} after "
+                f"{edit.get('move_to_after_line')}: {edit.get('expect_first') or ''}"
+            )
         elif _line_edit(edit):
             anchors.append(
                 f"lines {edit.get('start_line')}-{edit.get('end_line', edit.get('start_line'))}: "
