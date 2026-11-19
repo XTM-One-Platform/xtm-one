@@ -39,10 +39,24 @@ from app.core.utils import format_exception_message
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _graphql
+from .access import _refuse_unapplied
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
+# The fields each action of manage_opencti_connector reads; any other field is refused.
+_CONNECTOR_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset(),
+    "get": frozenset({"connector_id"}),
+    "logs": frozenset({"connector_id", "tail"}),
+    "deploy": frozenset(
+        {"name", "manager_contract_image", "catalog_id", "config", "user_id", "automatic_user", "confidence_level"}
+    ),
+    "update_config": frozenset({"connector_id", "name", "config", "user_id"}),
+    "start": frozenset({"connector_id"}),
+    "stop": frozenset({"connector_id"}),
+    "delete": frozenset({"connector_id"}),
+}
 
 # Substrings that mark a configuration key as sensitive. OpenCTI encrypts
 # password-format values server-side, but its ``ManagerContractConfiguration``
@@ -449,8 +463,29 @@ def register(
         automatic_user: bool = False,
         confidence_level: int | None = None,
         tail: int | None = None,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        # A field the action ignores (or an undeclared one) is refused by name:
+        # nothing is sent, never a silent "Deleted" or "Started".
+        refused = _refuse_unapplied(
+            action,
+            _CONNECTOR_APPLIES,
+            {
+                "connector_id": connector_id,
+                "name": name,
+                "manager_contract_image": manager_contract_image,
+                "catalog_id": catalog_id,
+                "config": config,
+                "user_id": user_id,
+                "automatic_user": automatic_user,
+                "confidence_level": confidence_level,
+                "tail": tail,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         parsed_config: dict = {}
         if config:
