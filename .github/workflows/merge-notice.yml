@@ -1,83 +1,49 @@
 name: Merge notice
 
-# Posts each pull request merged into `main` to the team's Teams channel, with
-# who merged it. Since `main` takes pull requests through the merge queue, the
-# push to `main` comes from `github-merge-queue[bot]`, so the GitHub app's
-# `commits` feed names the bot; the pull request's `merged_by` still names the
-# person who added it to the queue.
+# Hands every push to main to XTM-One-Platform/release (merge-notice.yml),
+# which posts the pull requests it merged to the team's Teams channel with who
+# merged them. The merge queue pushes to main as github-merge-queue[bot], so
+# the GitHub app's commits feed names the bot; the pull request's merged_by
+# still names the person who added it to the queue. The Teams webhook is a
+# secret of the release repository: this one keeps none.
 #
-# The channel side is a Teams Workflows webhook ("Post to a channel when a
-# webhook request is received"), whose URL is the `TEAMS_MERGE_WEBHOOK_URL`
-# secret; without it the job skips.
+# Apart from Deploy on purpose: it dispatches at once, without waiting for
+# Deploy's checks, and has no concurrency group, so a burst of merges never
+# replaces a pending run and skips a push. The push's old and new head are
+# all it sends: release reads the rest from GitHub and checks both.
 #
-# `pull_request_target` so the secret is there for pull requests from forks
-# too. Safe: nothing is checked out, the pull request's fields reach the shell
-# only through env and the JSON is built by jq.
+# The only credential is the release GitHub App, in the deploy-trigger
+# environment (main and release tags only), as in deploy.yml.
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [main]
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
-  notify:
-    name: Post the merge to Teams
-    if: github.event.pull_request.merged == true
+  dispatch:
+    name: Dispatch the merge notice
     runs-on: ubuntu-26.04
     timeout-minutes: 5
+    environment: deploy-trigger
     steps:
-      - name: Post the card
+      - name: Token of the release App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: XTM-One-Platform
+          repositories: release
+          permission-actions: write
+
+      - name: Dispatch
         env:
-          WEBHOOK_URL: ${{ secrets.TEAMS_MERGE_WEBHOOK_URL }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          SERVER_URL: ${{ github.server_url }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
         run: |
-          set -euo pipefail
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "::notice::TEAMS_MERGE_WEBHOOK_URL is not set, no card posted"
-            exit 0
-          fi
-          merged_by="${MERGED_BY:-$PR_AUTHOR}"
-          if [ "$merged_by" = "$PR_AUTHOR" ]; then
-            who="by **$PR_AUTHOR**"
-          else
-            who="by **$PR_AUTHOR**, merged by **$merged_by**"
-          fi
-          short_sha="${MERGE_SHA:0:7}"
-          jq -n \
-            --arg repo "$REPO" \
-            --arg title "$PR_TITLE" \
-            --arg number "$PR_NUMBER" \
-            --arg url "$PR_URL" \
-            --arg who "$who" \
-            --arg sha "$short_sha" \
-            --arg commit_url "$SERVER_URL/$REPO/commit/$MERGE_SHA" \
-            '{
-              type: "message",
-              attachments: [{
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: {
-                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                  type: "AdaptiveCard",
-                  version: "1.4",
-                  msteams: { width: "Full" },
-                  body: [
-                    { type: "TextBlock", size: "Small", isSubtle: true, wrap: true,
-                      text: ("Merged into " + $repo + ":main · [" + $sha + "](" + $commit_url + ")") },
-                    { type: "TextBlock", weight: "Bolder", wrap: true,
-                      text: ("[" + $title + " (#" + $number + ")](" + $url + ")") },
-                    { type: "TextBlock", spacing: "Small", wrap: true, text: $who }
-                  ]
-                }
-              }]
-            }' > card.json
-          curl --fail-with-body --silent --show-error --max-time 30 \
-            -H 'Content-Type: application/json' \
-            --data @card.json "$WEBHOOK_URL"
+          gh workflow run merge-notice.yml --repo XTM-One-Platform/release --ref main \
+            -f before="$BEFORE" -f after="$AFTER"
+          echo "Merge notice of $BEFORE..$AFTER dispatched to XTM-One-Platform/release" >> "$GITHUB_STEP_SUMMARY"
