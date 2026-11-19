@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import hashlib
 import hmac
 import inspect
@@ -35,6 +36,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.security import secret_key_is_guessable
 
@@ -610,6 +612,21 @@ _FILE_SCHEME_IMAGE_RE = re.compile(
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})>?(?:\s+\"[^\"\n]*\")?\s*\)"
 )
 
+# A Markdown image at an https address: ``![alt](https://host/path)``, angle
+# brackets and a quoted title accepted. Sent as an image only when its host is
+# a trusted media host (:func:`trusted_media_hosts`).
+_EXTERNAL_IMAGE_RE = re.compile(
+    r"!\[([^\]\n]*)\]\(\s*<?(https://[^\s<>()]+)>?(?:\s+\"[^\"\n]*\")?\s*\)",
+    re.IGNORECASE,
+)
+
+#: ``EmbeddedImage.source`` of an image at a trusted media host's address.
+EXTERNAL_IMAGE_SOURCE = "external"
+#: External images a reply sends at most, the rest keep their Markdown line.
+MAX_EXTERNAL_CHANNEL_IMAGES = 4
+#: The size an adapter that uploads bytes downloads at most for one of them.
+MAX_EXTERNAL_IMAGE_BYTES = 8 * 1024 * 1024
+
 
 def file_scheme_images_to_api(text: str) -> str:
     """*text* with every ``![alt](file:<uuid>)`` pointing at the file's download path.
@@ -633,7 +650,7 @@ class EmbeddedImage:
     alt_text: str
     original_path: str
     public_url: str
-    source: str  # "images" or "files"
+    source: str  # "images", "files" or EXTERNAL_IMAGE_SOURCE
 
 
 # Matches [[FILE:uuid]] download-card markers emitted by file-generating
@@ -1262,23 +1279,75 @@ async def channel_image_scope(
     return allowed
 
 
+@functools.cache
+def trusted_media_hosts() -> frozenset[str]:
+    """The hosts whose images an external channel sends as images.
+
+    Declared by the integration providers that serve media
+    (``integration_tools.PROVIDER_MEDIA_HOSTS``), lower-case, each standing
+    for itself and its subdomains. The address of an image is LLM-controlled:
+    only a media CDN, where a query string reaches no one who could read it,
+    is fetched or forwarded; any other host keeps its Markdown line.
+    """
+    from app.services.integration_tools import PROVIDER_MEDIA_HOSTS
+
+    return frozenset(
+        host.strip(".").lower() for hosts in PROVIDER_MEDIA_HOSTS.values() for host in hosts if host.strip(".")
+    )
+
+
+def is_trusted_media_url(url: str, hosts: Collection[str]) -> bool:
+    """Whether *url* is an https address on one of *hosts* or a subdomain.
+
+    No userinfo and no port but 443, so ``https://media.example@evil.example``
+    or ``https://evil.example/?media.example`` never pass.
+    """
+    try:
+        parsed = urlsplit(url or "")
+        port = parsed.port
+    except ValueError:
+        return False
+    if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
+        return False
+    if port not in (None, 443):
+        return False
+    host = (parsed.hostname or "").rstrip(".").lower()
+    return bool(host) and any(host == trusted or host.endswith(f".{trusted}") for trusted in hosts)
+
+
+def external_image_id(url: str) -> str:
+    """A stable id for an external image (adapters key cards on it)."""
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:32]
+
+
 def resolve_channel_images(
-    text: str, base_url: str, *, allowed_ids: Collection[str] | None = None
+    text: str,
+    base_url: str,
+    *,
+    allowed_ids: Collection[str] | None = None,
+    media_hosts: Collection[str] = (),
 ) -> tuple[str, list[EmbeddedImage]]:
     """Replace internal image paths with publicly accessible signed URLs.
 
     Returns the rewritten text and a list of extracted ``EmbeddedImage``
-    objects (useful for channels that need to upload images natively).
+    objects (useful for channels that need to upload images natively), in
+    the order they appear.
 
     ``base_url`` should be the platform's external base URL
     (e.g. ``https://xtm-one.example.com``). Only an id of *allowed_ids*
     (:func:`channel_image_scope`) is signed; any other image keeps its alt
     text and gets no link, and without a scope nothing is signed.
+
+    An https image on one of *media_hosts* (:func:`trusted_media_hosts`) is
+    extracted too, as source :data:`EXTERNAL_IMAGE_SOURCE` with its own address
+    as ``public_url`` (a GIF a media integration found): its line stays as it is,
+    each address once, at most :data:`MAX_EXTERNAL_CHANNEL_IMAGES`. Any other
+    external image is left alone, never fetched nor forwarded.
     """
     from app.core.security import generate_image_token
 
     allowed = {str(resource_id).lower() for resource_id in allowed_ids or ()}
-    images: list[EmbeddedImage] = []
+    found: list[tuple[int, EmbeddedImage]] = []
 
     def _replace(m: re.Match[str]) -> str:
         alt = m.group(1)
@@ -1289,19 +1358,47 @@ def resolve_channel_images(
             return alt
         token, expires = generate_image_token(resource_id)
         public_url = f"{base_url.rstrip('/')}/api/v1/chat/{source}/{resource_id}/public?token={token}&expires={expires}"
-        images.append(
-            EmbeddedImage(
-                image_id=resource_id,
-                alt_text=alt,
-                original_path=original_path,
-                public_url=public_url,
-                source=source,
+        found.append(
+            (
+                m.start(),
+                EmbeddedImage(
+                    image_id=resource_id,
+                    alt_text=alt,
+                    original_path=original_path,
+                    public_url=public_url,
+                    source=source,
+                ),
             )
         )
         return f"![{alt}]({public_url})"
 
+    # Read on the text as written: the signed links the substitution writes
+    # are https addresses too, never to be taken for external images.
+    seen: set[str] = set()
+    if media_hosts and text:
+        for m in _EXTERNAL_IMAGE_RE.finditer(text):
+            url = m.group(2)
+            if url in seen or not is_trusted_media_url(url, media_hosts):
+                continue
+            if len(seen) >= MAX_EXTERNAL_CHANNEL_IMAGES:
+                break
+            seen.add(url)
+            found.append(
+                (
+                    m.start(),
+                    EmbeddedImage(
+                        image_id=external_image_id(url),
+                        alt_text=m.group(1),
+                        original_path=url,
+                        public_url=url,
+                        source=EXTERNAL_IMAGE_SOURCE,
+                    ),
+                )
+            )
+
     resolved_text = _INTERNAL_IMAGE_RE.sub(_replace, text)
-    return resolved_text, images
+    found.sort(key=lambda item: item[0])
+    return resolved_text, [image for _, image in found]
 
 
 async def fetch_image_bytes(
@@ -1352,3 +1449,59 @@ async def fetch_image_bytes(
             "Failed to fetch image bytes for %s (%s): %s", resource_id, source, format_exception_message(exc)
         )
     return None
+
+
+async def fetch_external_image_bytes(url: str) -> tuple[bytes, str] | None:
+    """The bytes and type of an image at a trusted media host, or ``None``.
+
+    Checked again against :func:`trusted_media_hosts` (an adapter never
+    fetches an address the resolver did not vouch for), downloaded through
+    the outbound URL policy on every hop (``social_media.fetch_public_media``),
+    bounded by :data:`MAX_EXTERNAL_IMAGE_BYTES`, and typed by its magic number,
+    never by the header the host sent: anything but PNG, JPEG, GIF or WebP is
+    ``None``.
+    """
+    if not is_trusted_media_url(url, trusted_media_hosts()):
+        return None
+    from app.integrations.providers.social_media import fetch_public_media
+    from app.services.builtin_tools.image_assets import sniff_raster_type
+
+    fetched = await fetch_public_media(url, source="The image host", max_bytes=MAX_EXTERNAL_IMAGE_BYTES, what="image")
+    if isinstance(fetched, str):
+        # A FetchError: refused, over the cap or a failed answer. No address logged.
+        logger.debug("External channel image not fetched: %s", log_preview(fetched))
+        return None
+    content_type = sniff_raster_type(fetched.data)
+    if content_type is None:
+        return None
+    return fetched.data, content_type
+
+
+async def fetch_embedded_image(img_info: dict[str, Any]) -> tuple[bytes, str] | None:
+    """The bytes of an embedded image (``OutboundMessage.metadata["embedded_images"]``).
+
+    The one reader of the adapters that upload bytes (Slack, Telegram,
+    Discord): a platform image or file by its id, an external one by its
+    address (:func:`fetch_external_image_bytes`).
+    """
+    source = str(img_info.get("source") or "images")
+    if source == EXTERNAL_IMAGE_SOURCE:
+        return await fetch_external_image_bytes(str(img_info.get("public_url") or ""))
+    return await fetch_image_bytes(str(img_info.get("image_id") or ""), source=source)
+
+
+_UPLOAD_EXTENSIONS: dict[str, str] = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
+
+
+def image_upload_filename(stem: str, content_type: str) -> str:
+    """*stem* with the extension of *content_type* (``.png`` when unknown).
+
+    A platform reads the extension: a GIF uploaded as ``.png`` is drawn still.
+    """
+    base = (content_type or "").split(";", 1)[0].strip().lower()
+    return f"{stem}{_UPLOAD_EXTENSIONS.get(base, '.png')}"

@@ -84,6 +84,8 @@ from app.integrations.providers.filigran_ai import build_tools as filigran_ai_to
 from app.integrations.providers.flashpoint import build_tools as flashpoint_tools
 from app.integrations.providers.fortisiem import build_tools as fortisiem_tools
 from app.integrations.providers.gemini import build_tools as gemini_tools
+from app.integrations.providers.giphy import MEDIA_HOSTS as GIPHY_MEDIA_HOSTS
+from app.integrations.providers.giphy import build_tools as giphy_tools
 from app.integrations.providers.github import build_tools as github_tools
 from app.integrations.providers.gitlab import build_tools as gitlab_tools
 from app.integrations.providers.google import build_tools as google_tools
@@ -935,6 +937,7 @@ PROVIDER_TOOLS = {
     "rss": rss_tools,
     "google_search": google_search_tools,
     "brave_search": brave_search_tools,
+    "giphy": giphy_tools,
     "grafana": grafana_tools,
     "figma": figma_tools,
     "filigran_ai": filigran_ai_tools,
@@ -1026,6 +1029,14 @@ PROVIDER_TOOLS = {
     "zendesk": zendesk_tools,
     "mattermost": mattermost_tools,
     "anyrun": anyrun_tools,
+}
+
+#: Provider → the hosts it serves media from (its module's ``MEDIA_HOSTS``,
+#: a host or any of its subdomains). An external channel sends a Markdown
+#: image at one of them as an image (``channels.base.trusted_media_hosts``);
+#: a provider absent here never makes a reply fetch or forward an address.
+PROVIDER_MEDIA_HOSTS: dict[str, tuple[str, ...]] = {
+    "giphy": GIPHY_MEDIA_HOSTS,
 }
 
 # Channel bot provider → tool builder mapping (dedicated ChannelBot entity)

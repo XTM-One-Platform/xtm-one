@@ -171,18 +171,15 @@ class SlackChannel(BaseChannel):
         upload URL) + raw POST of the bytes + ``files.completeUploadExternal``
         (finalize and share to the channel/thread).
         """
-        from app.channels.base import fetch_image_bytes
+        from app.channels.base import fetch_embedded_image, image_upload_filename
 
         for img_info in embedded_images:
             try:
-                result = await fetch_image_bytes(
-                    img_info["image_id"],
-                    source=img_info.get("source", "images"),
-                )
+                result = await fetch_embedded_image(img_info)
                 if not result:
                     continue
                 image_data, content_type = result
-                filename = f"{img_info.get('alt_text', 'image')[:50]}.png"
+                filename = image_upload_filename(img_info.get("alt_text", "image")[:50] or "image", content_type)
 
                 async with httpx.AsyncClient(timeout=30) as client:
                     # Step 1: reserve an upload URL

@@ -124,6 +124,8 @@ When an agent's answer on a channel includes a file — a report, an export, a g
 - PDFs, plain-text, Markdown and CSV files, WebVTT subtitles, JSON files (JSON Lines and `+json` types such as JSON-LD included), audio, video, and images (PNG, JPEG, GIF, WebP, AVIF, BMP, TIFF, ICO, HEIC / HEIF, JPEG XL, JPEG 2000) open in the browser. A browser that cannot display or play a format, such as TIFF or HEIC outside Safari, or CSV and JSON Lines in Chrome, saves it instead.
 - HTML pages, SVG drawings, XML files, and every other type are downloaded, never opened: a file an agent or a user wrote can never run as a page on your platform's address.
 
+An image the answer links from the web, such as a GIF found with the GIPHY integration, is sent as an image only when it comes from the media host of an integration (GIPHY's). An image from any other address stays a link: its address is written by the model, and fetching it could hand data from the conversation to whoever owns that address. A reply sends at most four such images.
+
 ## How the bot knows who is talking
 
 XTM One matches the sender to an account by email address:

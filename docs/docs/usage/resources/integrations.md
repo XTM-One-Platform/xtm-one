@@ -446,6 +446,17 @@ A PagerDuty integration lets an agent page the people on call when an exposure c
 - **Who is on call.** `list_pagerduty_oncalls` names the responders on call now per escalation level, `get_pagerduty_user` their contact details.
 - A read-only binding keeps the reading tools; opening, changing and annotating incidents asks for approval unless whitelisted.
 
+### GIPHY: GIFs in a conversation
+
+A GIPHY integration lets a conversational agent answer with a GIF or a sticker when you ask it to, for example to celebrate a resolved incident.
+
+- **Connecting.** Create an API key in the GIPHY Developers dashboard (choose API, not SDK), paste it in the API Key field and run Test Connection. A new key is a beta key that GIPHY limits to a few calls per hour: apply for a production key from the same dashboard once the agent is in use.
+- **Telling the agent when.** Bind the integration to the agent and say in its instructions when a GIF fits, for instance "end a resolved incident with a celebration GIF" or "only use a GIF when the user asks for one". Without one, the agent judges by itself when a GIF fits.
+- **What the agent can do.** Search GIFs or stickers by words, ask for the single best GIF for a phrase or a feeling, draw a random GIF for a tag, or list the trending ones.
+- **Content rating.** Every search asks GIPHY for GIFs rated G by default; the agent can go up to PG-13 when its instructions ask for it, never to R.
+- **Where it shows.** The GIF appears in the web chat, and as an image in Microsoft Teams, Slack, Telegram, Discord and Google Chat. WhatsApp takes only JPEG and PNG pictures, so a GIF reaches it as a link.
+- **A GIF library of your own.** A knowledge base can hold your favourite GIFs as a list of GIPHY links with when to use each one; an agent that reads it can answer with one of them, shown the same way, even without the integration.
+
 ### SecurityScorecard: ratings, factors and findings
 
 A SecurityScorecard integration shows an agent how an organisation looks from the outside, its own or a vendor's.

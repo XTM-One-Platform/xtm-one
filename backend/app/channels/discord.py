@@ -144,19 +144,16 @@ class DiscordChannel(BaseChannel):
         embedded_images: list[dict],
     ) -> str | None:
         """Send a message with image file attachments to Discord."""
-        from app.channels.base import fetch_image_bytes
+        from app.channels.base import fetch_embedded_image, image_upload_filename
 
         files_data: list[tuple[str, tuple[str, bytes, str]]] = []
         for i, img_info in enumerate(embedded_images):
             try:
-                result = await fetch_image_bytes(
-                    img_info["image_id"],
-                    source=img_info.get("source", "images"),
-                )
+                result = await fetch_embedded_image(img_info)
                 if not result:
                     continue
                 image_data, content_type = result
-                filename = f"image_{i}.png"
+                filename = image_upload_filename(f"image_{i}", content_type)
                 files_data.append((f"files[{i}]", (filename, image_data, content_type)))
             except Exception as exc:
                 logger.warning("Discord image fetch error: %s", format_exception_message(exc))
