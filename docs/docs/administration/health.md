@@ -79,6 +79,8 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Default model | Critical | No default model is set, so agents without a model of their own cannot run |
 | Embedding model | Critical | No embedding model is set, so knowledge bases can neither index nor search |
 | Quota near ceiling | Warning | A platform-wide agentic ceiling is 90 % used in its current period (one finding per period). Reading it consumes no quota |
+| Dependency unreachable | Critical | Redis or the object storage does not answer its readiness probe within 4 seconds (one finding per dependency) |
+| Trace backlog | Warning | Over 1,000 traces wait to be written to the trace store, so analytics and traces lag |
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
