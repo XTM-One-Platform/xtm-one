@@ -33,6 +33,7 @@ from urllib.parse import quote, urlencode
 import httpx
 
 from app.core.egress import egress_client
+from app.core.redaction import redact_secrets
 from app.integrations.file_delivery import deliver_file, fetch_file, link_lines
 from app.integrations.http import (
     TRANSIENT_RETRY_STATUSES,
@@ -140,6 +141,44 @@ async def _grafana_request(
     """
     kwargs.setdefault("retry_statuses", TRANSIENT_RETRY_STATUSES)
     return await safe_request(client, method, url, provider, action, **kwargs)
+
+
+#: The longest upstream detail a Loki server error quotes.
+_LOKI_ERROR_DETAIL_CHARS = 300
+_TIMEOUT_WORDS_RE = re.compile(r"time[d ]?out|deadline|context canceled", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _loki_server_error(err: str, resp: httpx.Response | None, elapsed_ms: int) -> str:
+    """A Loki query's server error with its upstream cause and elapsed time.
+
+    A 502/503/504 from the datasource proxy (after the transient retries)
+    otherwise reads "temporarily unavailable" whatever the cause: a heavy
+    unanchored query that hits the gateway timeout needs a narrower query,
+    an outage a later retry. Other failures pass through unchanged.
+    """
+    if resp is None or resp.status_code < 500:
+        return err
+    status = resp.status_code
+    text = _HTML_TAG_RE.sub(" ", resp.text or "")
+    detail = redact_secrets(" ".join(text.split()))[:_LOKI_ERROR_DETAIL_CHARS]
+    lines = [err, f"HTTP {status} after {elapsed_ms} ms (retries included)."]
+    if detail:
+        lines.append(f"Upstream said: {detail}")
+    if status == 504 or _TIMEOUT_WORDS_RE.search(detail):
+        lines.append(
+            "Verdict: gateway timeout. The query is too heavy for the proxy: "
+            "narrow the time range, add stream labels to the selector, or drop "
+            "a regex line filter, then query again."
+        )
+    else:
+        lines.append(
+            "Verdict: upstream unavailable (no timeout named). Retry later; "
+            "if it persists, check_datasource_health shows whether Grafana "
+            "reaches Loki."
+        )
+    return "\n".join(lines)
+
 
 # Grafana's Alertmanager-compatible API is namespaced by datasource. The
 # "grafana" segment targets the built-in Grafana-managed Alertmanager; the
@@ -1114,7 +1153,10 @@ def build_tools(
             f"{base_url}/api/datasources/proxy/{datasource_id}/loki/api/v1/query_range"
         )
 
+        started = time.monotonic()
         async with egress_client(timeout=_TIMEOUT_QUERY) as client:
+            # expected_statuses=set(): the failed response comes back so a
+            # server error names its upstream cause (_loki_server_error).
             resp, err = await _grafana_request(
                 client,
                 "get",
@@ -1123,9 +1165,11 @@ def build_tools(
                 "query Loki logs",
                 headers=headers,
                 params=params,
+                expected_statuses=set(),
             )
             if err:
-                return err
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                return _loki_server_error(err, resp, elapsed_ms)
             return _format_loki_logs(resp.json())
 
     async def get_loki_labels(
