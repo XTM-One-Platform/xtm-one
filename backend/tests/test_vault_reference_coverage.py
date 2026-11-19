@@ -28,6 +28,8 @@ NOT_A_TYPED_SECRET: dict[tuple[str, str], str] = {
     ("mcp_servers", "refresh_token_enc"): "written by the platform from an OAuth flow, never typed",
     ("integration_user_credentials", "access_token_enc"): "written by the platform from a user's OAuth flow",
     ("integration_user_credentials", "refresh_token_enc"): "written by the platform from a user's OAuth flow",
+    ("mcp_server_user_credentials", "access_token_enc"): "written by the platform from a user's OAuth flow",
+    ("mcp_server_user_credentials", "refresh_token_enc"): "written by the platform from a user's OAuth flow",
     ("browser_profiles", "storage_state_enc"): "the cookies a browser session captured, never typed",
     ("agent_account_subscriptions", "client_state_enc"): "the platform's own client state for a subscription",
     ("xtm_hub_registrations", "token_enc"): "the token XTM Hub issued at registration",

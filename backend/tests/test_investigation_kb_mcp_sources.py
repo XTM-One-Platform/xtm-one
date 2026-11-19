@@ -35,7 +35,7 @@ from app.services.investigation_packs import SOURCE_KINDS, SourceDefinition
 def _async_runtime(build):
     """``build_mcp_runtime`` is a coroutine (it reads vault references)."""
 
-    async def _build(server):
+    async def _build(server, _credential=None):
         return build(server)
 
     return _build

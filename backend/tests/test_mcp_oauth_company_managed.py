@@ -119,7 +119,7 @@ def _oauth_stubs(monkeypatch):
         calls["ensure"] = int(calls["ensure"]) + 1
         return discovery_module.MCPOAuthClientSetup()
 
-    async def _build(srv, user_id):
+    async def _build(srv, user_id, **_kw):
         calls["built_for"] = (srv, user_id)
         return AUTHORIZE_URL
 

@@ -411,12 +411,13 @@ async def test_the_sweep_selects_only_connected_and_error_rows():
     assert await token_refresh.refresh_expiring_tokens(db) == 0
 
     # The integrations, the people's own credentials on per_user ones,
-    # the MCP servers.
-    integrations_select, credentials_select, mcp_select = db.statements
+    # the MCP servers, the people's own credentials on per_user MCP servers.
+    integrations_select, credentials_select, mcp_select, mcp_credentials_select = db.statements
     for statement, column in (
         (integrations_select, "status"),
         (credentials_select, "status"),
         (mcp_select, "oauth_status"),
+        (mcp_credentials_select, "oauth_status"),
     ):
         compiled = statement.compile(dialect=postgresql.dialect())
         status_filters = [value for key, value in compiled.params.items() if key.startswith(f"{column}_")]

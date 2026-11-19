@@ -812,14 +812,24 @@ async def _get_mcp_auth_failure_count(server_key: str) -> int:
         return 0
 
 
-def _auth_escalation_fix_hint(is_company_managed: bool | None) -> str:
+#: The remediation of a credential failure on a ``per_user`` MCP server.
+_PER_USER_REMEDIATION = (
+    "This MCP server uses each person's own account: the person this run acts as "
+    "must connect (or reconnect) their account on the MCP server's page."
+)
+
+
+def _auth_escalation_fix_hint(is_company_managed: bool | None, per_user: bool = False) -> str:
     """Return the operator remediation sentence for the auth-failure escalation.
 
     Mirrors the ownership-driven wording of :func:`_build_mcp_error_message`:
     ``True`` escalates to an administrator, ``False`` keeps the self-service
     wording, and ``None`` (runtime built without a DB record) falls back to a
-    neutral conditional hint.
+    neutral conditional hint. On a ``per_user`` server the account is the
+    acting person's own, whoever manages the server.
     """
+    if per_user:
+        return _PER_USER_REMEDIATION
     if is_company_managed is True:
         return (
             "This MCP server is company-managed — an administrator must "
@@ -1170,6 +1180,7 @@ def _build_mcp_error_message(
     exc: Exception,
     schema: dict[str, Any] | None,
     is_company_managed: bool | None = None,
+    per_user: bool = False,
 ) -> str:
     """Build a detailed, actionable error message from an MCP execution failure.
 
@@ -1203,7 +1214,9 @@ def _build_mcp_error_message(
         return "\n".join(parts)
 
     if is_auth_or_permission_error(raw_error):
-        if is_company_managed is True:
+        if per_user:
+            remediation = _PER_USER_REMEDIATION[0].lower() + _PER_USER_REMEDIATION[1:]
+        elif is_company_managed is True:
             remediation = (
                 "this MCP server is company-managed, so only an "
                 "administrator can fix it — ask an administrator to "
@@ -1301,15 +1314,30 @@ class MCPServerRuntime:
     # ``None`` = direct. Resolved to its route when the connection opens.
     relay_group_id: str | None = None
 
+    # A ``per_user`` OAuth server (``MCPServer.credential_mode``): the token is
+    # the acting person's own, so a credential failure is theirs to fix.
+    per_user: bool = False
+    # Whose failures the cross-run counters track on a ``per_user`` server (the
+    # acting person's id, ``anonymous`` without one): one person's missing
+    # account never opens the circuit for everyone. ``None`` = the server's.
+    failure_scope: str | None = None
+
     @property
     def failure_key(self) -> str:
         """Redis key component for cross-run failure tracking.
 
-        The stable DB UUID when available, the server name otherwise.
+        The stable DB UUID when available, the server name otherwise, with the
+        acting person appended on a ``per_user`` server.
         Single source of truth shared by :class:`MCPConnection` and
         ``builtin_tools.loaders.load_mcp_tools`` so the counter, circuit
         breaker, and first-failure timestamp always address the same keys.
         """
+        key = self.server_id or self.name
+        return f"{key}:user:{self.failure_scope}" if self.failure_scope else key
+
+    @property
+    def server_key(self) -> str:
+        """The server itself (id, else name), whoever acts: what a resource link and a route name."""
         return self.server_id or self.name
 
 
@@ -1386,7 +1414,7 @@ def _resource_link_line(block: Any, config: MCPServerRuntime) -> str:
     tail = f" - {description}" if description else ""
     return (
         f"[Resource link: {name}{suffix} - {uri}{tail} - from MCP server '{config.name}', not "
-        f'downloaded; {READ_RESOURCE_TOOL_NAME}(uri, server="{config.failure_key}") stores it as a file]'
+        f'downloaded; {READ_RESOURCE_TOOL_NAME}(uri, server="{config.server_key}") stores it as a file]'
     )
 
 
@@ -2341,13 +2369,13 @@ class MCPConnection:
                         "is likely expired, revoked, or missing. %s",
                         self.config.name,
                         consecutive,
-                        _auth_escalation_fix_hint(self.config.is_company_managed),
+                        _auth_escalation_fix_hint(self.config.is_company_managed, self.config.per_user),
                     )
             schema = self._get_tool_schema(call.name)
             return ToolResult(
                 tool_call_id=call.id,
                 content=_build_mcp_error_message(
-                    call.name, exc, schema, self.config.is_company_managed
+                    call.name, exc, schema, self.config.is_company_managed, self.config.per_user
                 ),
                 is_error=True,
             )
@@ -2547,10 +2575,10 @@ class MCPManager(ToolExecutor):
         holders = [
             conn
             for conn in self._connections
-            if conn.linked_resource(uri) and (not server or server in (conn.config.failure_key, conn.config.name))
+            if conn.linked_resource(uri) and (not server or server in (conn.config.server_key, conn.config.name))
         ]
         if len(holders) > 1:
-            servers = ", ".join(sorted(f'"{conn.config.failure_key}" ({conn.config.name})' for conn in holders))
+            servers = ", ".join(sorted(f'"{conn.config.server_key}" ({conn.config.name})' for conn in holders))
             return ToolResult(
                 tool_call_id=call.id,
                 content=f"Several MCP servers linked '{uri}': pass server= one of {servers}.",

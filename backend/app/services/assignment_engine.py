@@ -5330,6 +5330,9 @@ async def execute_assignment_run(
                 composite,
                 allowed_tools=agent.mcp_allowed_tools or {},
                 artifact_scope=mcp_scope,
+                # A per_user MCP server carries the account of the person the
+                # run acts as, never the agent owner's lent to someone else.
+                acting_user_id=effective_user_id,
             )
 
             # Surface MCP tool unavailability in the system prompt so the LLM

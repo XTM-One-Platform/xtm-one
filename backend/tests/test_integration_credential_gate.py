@@ -203,10 +203,6 @@ EXEMPT_READS: dict[str, str] = {
     "services/token_refresh.py:stored_tokens": (
         "ciphertexts compared to tell a replaced grant; never decrypted"
     ),
-    "api/v1/helpers.py:build_mcp_runtime": (
-        "MCPServer.access_token_enc - an MCP server's own OAuth token, a "
-        "different entity with its own consent model"
-    ),
     "services/token_refresh.py:_refresh_one_mcp": (
         "MCPServer.refresh_token_enc - same"
     ),
@@ -224,6 +220,11 @@ EXEMPT_READS: dict[str, str] = {
     ),
     "services/token_refresh.py:_refresh_mcp_in_use": (
         "MCPServer.refresh_token_enc - same"
+    ),
+    "api/v1/helpers.py:build_mcp_runtime": (
+        "MCPServer.access_token_enc, or on a per_user server the acting person's own "
+        "MCPServerUserCredential (never another person's) - an MCP server's own OAuth "
+        "token, a different entity with its own consent model"
     ),
 }
 

@@ -24,7 +24,7 @@ from app.tools.base import ToolCall
 def _async_runtime(build):
     """``build_mcp_runtime`` is a coroutine (it reads vault references)."""
 
-    async def _build(server):
+    async def _build(server, _credential=None):
         return build(server)
 
     return _build
@@ -180,7 +180,7 @@ async def test_load_custom_and_mcp_tools_scopes_mcp_like_the_run(monkeypatch):
 
     seen: dict = {}
 
-    async def _fake_load_mcp(_db, _ids, _composite, allowed_tools=None, artifact_scope=None):
+    async def _fake_load_mcp(_db, _ids, _composite, allowed_tools=None, artifact_scope=None, acting_user_id=None):
         seen["scope"] = artifact_scope
         return None
 
