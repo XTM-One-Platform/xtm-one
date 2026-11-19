@@ -113,7 +113,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: organization_context +~830, opt-in and administrator-only, 19 Nov 2026).
 #: Raised to 469,700 for the knowledge base sync-source tools (#469: platform +~1,400,
 #: on top of #475, 19 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 469_700
+#: Raised to 470,300 for get_user_default_agents (#529: platform_insights +520,
+#: 19 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 470_300
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

@@ -223,6 +223,13 @@ class User(Base):
     default_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    #: Who set ``default_agent_id``: ``user`` (the person, from their profile)
+    #: or ``platform`` (provisioning wired the CTEM Assistant for someone with
+    #: none). NULL on a row written before the column existed: read by
+    #: ``platform_insights.default_agents``, which tells the two apart there.
+    default_agent_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When ``default_agent_id`` was last set; NULL when unknown.
+    default_agent_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # The custom dashboard this person chose as their dashboard: shown on
     # ``/dashboard`` (and on the home page when it is the dashboard) instead of

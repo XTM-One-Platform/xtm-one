@@ -20,6 +20,7 @@ import re
 import time
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from enum import StrEnum
 from types import SimpleNamespace
 from typing import NamedTuple
@@ -471,6 +472,8 @@ async def _get_or_create_sso_user(
         ctem_id = ctem_r.scalar_one_or_none()
         if ctem_id:
             user.default_agent_id = ctem_id
+            user.default_agent_source = "platform"
+            user.default_agent_set_at = datetime.now(UTC)
 
     db.add(user)
     await db.flush()

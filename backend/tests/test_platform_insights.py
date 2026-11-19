@@ -30,6 +30,8 @@ TOOLS = {
     "get_platform_overview",
     "query_platform_metrics",
     "query_platform_frictions",
+    # Each person's own default chat agent (#529).
+    "get_user_default_agents",
     "render_chart",
     # The admin-only platform AI settings read.
     "get_platform_ai_settings",

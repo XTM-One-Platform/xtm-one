@@ -140,6 +140,7 @@ _READ_ONLY_TRACES = frozenset(
 # its sibling ``update_platform_ai_settings`` is a write and stays gated.
 # ``query_platform_metrics`` reads the in-process Prometheus registry.
 # ``query_platform_frictions`` counts the friction ledger's rows.
+# ``get_user_default_agents`` reads each person's own default chat agent.
 # ``list_oauth_defaults`` reads which providers have an admin OAuth default
 # (booleans, never a value); its upsert and delete siblings stay gated.
 _READ_ONLY_PLATFORM_INSIGHTS = frozenset(
@@ -147,6 +148,7 @@ _READ_ONLY_PLATFORM_INSIGHTS = frozenset(
         "get_platform_ai_settings",
         "get_platform_overview",
         "get_platform_release_history",
+        "get_user_default_agents",
         "list_oauth_defaults",
         "list_platform_sessions",
         "list_platform_traces",

@@ -1432,7 +1432,7 @@ def _add_platform_builder_tools(
         from app.services.builtin_tools import build_platform_insights_tools
 
         pi_defs, pi_exec = build_platform_insights_tools(
-            actor_id, chart_sink=chart_sink, conversation_id=conversation_id
+            actor_id, chart_sink=chart_sink, conversation_id=conversation_id, agent_id=agent_id
         )
         composite.add_tools(pi_defs, pi_exec)
     if health_actor is not None:
