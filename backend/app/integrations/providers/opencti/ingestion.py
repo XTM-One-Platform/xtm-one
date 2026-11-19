@@ -24,11 +24,39 @@ from typing import Any
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql, _graphql_upload
+from .access import _refuse_unapplied
 from .markings import fetch_markings, resolve_author, resolve_markings
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
+
+#: The fields each action of manage_opencti_ingestion reads. Any other field passed
+#: (an undeclared argument included) is refused by name with nothing written: a
+#: list that ignores ``uri`` must never answer as if it had filtered on it.
+_INGESTION_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"feed_id"}),
+    "create": frozenset(
+        {
+            "name",
+            "description",
+            "uri",
+            "user_id",
+            "scheduling_period",
+            "authentication_type",
+            "authentication_value",
+            "running",
+            "config",
+        }
+    ),
+    "update": frozenset({"feed_id", "name", "description", "uri", "config"}),
+    "toggle": frozenset({"feed_id", "running"}),
+    "reset": frozenset({"feed_id"}),
+    "delete": frozenset({"feed_id"}),
+    "test": frozenset({"name", "uri", "user_id", "authentication_type", "authentication_value", "config"}),
+}
+_DEFAULT_FEED_LIMIT = 50
 
 #: config keys an agent may try for an RSS label import switch OpenCTI does not have.
 _LABEL_IMPORT_KEYS = ("label_import", "import_labels", "ingest_labels", "labels_import")
@@ -256,7 +284,8 @@ def register(
         running: bool = True,
         config: str = "",
         search: str = "",
-        limit: int = 50,
+        limit: int = _DEFAULT_FEED_LIMIT,
+        **extra_args: object,
     ) -> str:
         action = (action or "").strip().lower()
         feed_type = (feed_type or "").strip().lower()
@@ -265,6 +294,28 @@ def register(
             return (
                 f"feed_type must be one of: {', '.join(_FEEDS)}."
             )
+        # Defaults count as not passed: a field is refused only when the caller set it.
+        refused = _refuse_unapplied(
+            action,
+            _INGESTION_APPLIES,
+            {
+                "feed_id": feed_id,
+                "name": name,
+                "description": description,
+                "uri": uri,
+                "user_id": user_id,
+                "scheduling_period": scheduling_period,
+                "authentication_type": "" if (authentication_type or "none") == "none" else authentication_type,
+                "authentication_value": authentication_value,
+                "running": None if running else "false",
+                "config": config,
+                "search": search,
+                "limit": None if limit == _DEFAULT_FEED_LIMIT else limit,
+            },
+            dict(extra_args),
+        )
+        if refused:
+            return refused
 
         extra: dict = {}
         if config:
@@ -662,7 +713,9 @@ def register(
                 "confidence_to_score; taxii_collection -> authorized_members, "
                 "confidence_to_score. Marking refs take an internal id, a STIX id or a "
                 "name (TLP:CLEAR; list_opencti_markings), the author an id or an exact "
-                "identity name; an unknown ref is an error and nothing is written. create "
+                "identity name; an unknown ref is an error and nothing is written. A field "
+                "the action does not apply (uri on list, name on get) is refused by name "
+                "and nothing is sent. create "
                 "and get show the stored markings, author and ingestion user. No RSS label "
                 "setting: new category labels need the ingestion user's Manage labels."
             ),
