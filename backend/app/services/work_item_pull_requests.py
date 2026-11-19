@@ -1837,12 +1837,15 @@ async def handle_pull_request_event(event: PullRequestEvent) -> dict:
     Returns ``{"items": n, "actions": [...]}``. Never raises.
     """
     from app.core.database import async_session
-    from app.services.work_item_blocked_refs import release_blocked_on_refs
+    from app.services.work_item_blocked_refs import release_blocked_on_refs, surface_on_dequeue
 
     released: dict = {}
     if event.kind in ("closed", "issue_closed"):
         # The items blocked on this pull request or issue go back to the queue.
         released = await release_blocked_on_refs(event)
+    elif event.kind == "dequeued":
+        # The items blocked on its merge by reference alone: no closing will come (#397).
+        released = await surface_on_dequeue(event)
     if event.kind == "issue_closed":
         return {"items": 0, "actions": [], "released": released}
     now = _now()
