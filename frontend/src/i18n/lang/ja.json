@@ -19431,5 +19431,6 @@
   "Group {name} changed": "グループ {name} を変更しました",
   "Group {name} deleted": "グループ {name} を削除しました",
   "SCIM token {name} generated": "SCIM トークン {name} を生成しました",
-  "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました"
+  "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました",
+  "Platform Health is built in and read-only.": "Platform Health はプラットフォームに組み込まれており、読み取り専用です。"
 }

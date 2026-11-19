@@ -19431,5 +19431,6 @@
   "Group {name} changed": "Groupe {name} modifié",
   "Group {name} deleted": "Groupe {name} supprimé",
   "SCIM token {name} generated": "Jeton SCIM {name} généré",
-  "SCIM token {name} revoked": "Jeton SCIM {name} révoqué"
+  "SCIM token {name} revoked": "Jeton SCIM {name} révoqué",
+  "Platform Health is built in and read-only.": "Platform Health est intégré à la plateforme et en lecture seule."
 }
