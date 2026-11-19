@@ -37,6 +37,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from app.core.utils import safe_uuid
+from app.services import kb_sync as _kb_sync
 from app.tools.base import ToolDefinition
 
 from . import agent_builder as _builder
@@ -52,8 +53,9 @@ UPDATE_TOOL = "update_knowledge_base_source"
 RESYNC_TOOL = "resync_knowledge_base"
 KB_SYNC_SOURCE_TOOL_NAMES = frozenset({LIST_TOOL, UPDATE_TOOL, RESYNC_TOOL})
 
-#: The source types whose scope ``update_knowledge_base_source`` sets.
-DRIVE_SCOPE_SOURCE_TYPES = frozenset({"microsoft-drive"})
+#: The source types whose scope ``update_knowledge_base_source`` sets, as the
+#: sync engine declares them (``kb_sync.DRIVE_SCOPE_SOURCE_TYPES``).
+DRIVE_SCOPE_SOURCE_TYPES = _kb_sync.DRIVE_SCOPE_SOURCE_TYPES
 
 _ANONYMOUS_REFUSAL = "Knowledge base sync sources are not available for anonymous users."
 

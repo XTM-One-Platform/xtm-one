@@ -100,6 +100,8 @@ _DESTRUCTIVE_TOKENS = frozenset(
         "rename",
         "replace",
         "reset",
+        # ``resync_knowledge_base`` re-reads a source; with ``full`` it purges its documents first.
+        "resync",
         "restore",
         "retire",
         "revoke",

@@ -2591,6 +2591,12 @@ async def _resolve_sharepoint_drive(
     return f"{site_base}/drive", folder_path
 
 
+#: The sync source types whose engine applies the ``folder_paths`` / ``exclude``
+#: scope of their config (:func:`sync_microsoft_drive`): what
+#: ``update_knowledge_base_source`` may set.
+DRIVE_SCOPE_SOURCE_TYPES = frozenset({"microsoft-drive"})
+
+
 def _drive_scope_list(value: object) -> list[str]:
     """A drive source's list setting (``folder_paths``, ``exclude``) as stored:
     a list, or one string with one entry per line or comma."""
