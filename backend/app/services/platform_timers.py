@@ -40,14 +40,24 @@ Rules:
   nothing; a timer due while no scheduler ran fires on the next tick.
 * **No model call** at arm time or at fire time: the event wakes whatever
   assignment subscribes to it.
+* **Heard or not.** A key no listener takes would fire into the void: a
+  listener is a ``platform_event`` assignment, a task watch or a flow trigger,
+  the three subscribers ``platform_events.dispatch_event`` delivers to, each
+  tested by its own dispatcher's rule. ``arm_timer`` still arms such a key but
+  warns, naming the filters the agent's ``timer.due`` assignments hear
+  (:func:`unheard_warning`), and a timer that fires while none of the three
+  takes it ends ``fired_unheard`` with a warning log line (the event is still
+  raised, its payload unchanged).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
@@ -56,11 +66,15 @@ from app.models.platform_timer import (
     TIMER_ARMED,
     TIMER_CANCELLED,
     TIMER_FIRED,
+    TIMER_FIRED_UNHEARD,
     TIMER_REPLACED,
     TIMER_SKIPPED,
     TIMER_STATES,
     PlatformTimer,
 )
+
+if TYPE_CHECKING:
+    from app.services.platform_events import Subscription
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +92,9 @@ MAX_ARMED_PER_AGENT = 2_000
 
 #: The list states :func:`list_timers` accepts.
 LIST_STATES: tuple[str, ...] = ("armed", "ended", "all")
+
+#: How many listener filters an ``arm_timer`` warning names.
+MAX_HEARD_FILTERS = 10
 
 
 class TimerError(ValueError):
@@ -108,8 +125,6 @@ def parse_due(value: Any, *, now: datetime | None = None) -> datetime:
 
 def check_payload(payload: Any) -> dict:
     """The timer's payload: a JSON object within :data:`MAX_PAYLOAD_CHARS`."""
-    import json
-
     if payload in (None, ""):
         return {}
     if isinstance(payload, str):
@@ -334,22 +349,144 @@ async def unless_reason(timer: PlatformTimer) -> str | None:
     return None
 
 
+def _due_data(
+    *,
+    timer_id: str,
+    correlation_key: str,
+    due_at: str | None,
+    payload: Mapping[str, Any] | None,
+    run_id: str | None,
+    agent_id: str,
+    user_id: str,
+) -> dict[str, Any]:
+    return {
+        "timer_id": timer_id,
+        "correlation_key": correlation_key,
+        "due_at": due_at,
+        "payload": dict(payload or {}),
+        "armed_by_run_id": run_id,
+        "agent_id": agent_id,
+        "participant_agent_ids": [agent_id],
+        "object_type": "timer",
+        "object_id": timer_id,
+        "user_id": user_id,
+        # A timer is a personal object of the person it runs for.
+        "personal_owner_id": user_id,
+    }
+
+
 def timer_due_data(timer: PlatformTimer) -> dict[str, Any]:
     """The payload of the ``timer.due`` event raised by *timer*."""
-    return {
-        "timer_id": str(timer.id),
-        "correlation_key": timer.correlation_key,
-        "due_at": timer.due_at.isoformat(),
-        "payload": timer.payload or {},
-        "armed_by_run_id": str(timer.run_id) if timer.run_id else None,
-        "agent_id": str(timer.agent_id),
-        "participant_agent_ids": [str(timer.agent_id)],
-        "object_type": "timer",
-        "object_id": str(timer.id),
-        "user_id": str(timer.user_id),
-        # A timer is a personal object of the person it runs for.
-        "personal_owner_id": str(timer.user_id),
-    }
+    return _due_data(
+        timer_id=str(timer.id),
+        correlation_key=timer.correlation_key,
+        due_at=timer.due_at.isoformat(),
+        payload=timer.payload,
+        run_id=str(timer.run_id) if timer.run_id else None,
+        agent_id=str(timer.agent_id),
+        user_id=str(timer.user_id),
+    )
+
+
+async def timer_listeners(data: Mapping[str, Any]) -> tuple[list[Subscription], list[Subscription]]:
+    """The ``timer.due`` assignments in scope of the timer *data* is about, then those that take it.
+
+    *data* is a ``timer.due`` payload (:func:`timer_due_data`). Scope and filter
+    are tested exactly as :func:`platform_events.dispatch_event` tests them.
+    """
+    from app.services import platform_events
+
+    event = {**dict(data), "event": TIMER_DUE_EVENT}
+    subscriptions = await platform_events.live_subscriptions(TIMER_DUE_EVENT)
+    in_scope = [sub for sub in subscriptions if platform_events.in_scope(sub, event)]
+    taking = [sub for sub in in_scope if platform_events.mismatch_reason(sub, TIMER_DUE_EVENT, event) is None]
+    return in_scope, taking
+
+
+async def other_listeners(data: Mapping[str, Any]) -> list[str]:
+    """The task watches and flows that take the ``timer.due`` *data* is about, as ``kind id`` lines.
+
+    :func:`platform_events.dispatch_event` delivers every event to them as well
+    as to the assignments; each is tested by its own dispatcher's rule
+    (``platform_event_task_watches.watches_taking``,
+    ``flow_triggers.flows_taking_platform_event``). Raises when they cannot be read.
+    """
+    from app.services.flow_triggers import flows_taking_platform_event
+    from app.services.platform_event_task_watches import watches_taking
+
+    event = {**dict(data), "event": TIMER_DUE_EVENT}
+    watches = await watches_taking(TIMER_DUE_EVENT, event)
+    flows = await flows_taking_platform_event(TIMER_DUE_EVENT, event)
+    return [f"task watch {w.id}" for w in watches] + [f"flow {f}" for f in flows]
+
+
+async def _taken(data: Mapping[str, Any]) -> tuple[list[Subscription], bool]:
+    """The assignments in scope of *data*, and whether any listener (assignment, task watch, flow) takes it."""
+    in_scope, taking = await timer_listeners(data)
+    if taking:
+        return in_scope, True
+    return in_scope, bool(await other_listeners(data))
+
+
+def _filter_text(flt: Mapping[str, Any]) -> str:
+    if not flt:
+        return "every key (no filter)"
+    text = json.dumps(flt, sort_keys=True, default=str)
+    return text if len(text) <= 160 else f"{text[:159]}…"
+
+
+async def unheard_warning(timer: Mapping[str, Any], *, user_id: str) -> str | None:
+    """The warning for an armed *timer* (as :func:`serialize_timer` writes it) no listener takes, else ``None``.
+
+    ``None`` too when the listeners cannot be read: a warning is advice, never
+    a reason to refuse or fail the arm.
+    """
+    data = _due_data(
+        timer_id=str(timer.get("id") or ""),
+        correlation_key=str(timer.get("correlation_key") or ""),
+        due_at=timer.get("due_at"),
+        payload=timer.get("payload") or {},
+        run_id=timer.get("run_id"),
+        agent_id=str(timer.get("agent_id") or ""),
+        user_id=str(user_id),
+    )
+    try:
+        in_scope, taken = await _taken(data)
+    except Exception as exc:
+        logger.warning("Timer listeners of %s unreadable: %s", data["correlation_key"], format_exception_message(exc))
+        return None
+    if taken:
+        return None
+    key = data["correlation_key"]
+    if not in_scope:
+        heard = (
+            f"this agent has no enabled platform_event assignment on {TIMER_DUE_EVENT} for this person, so no "
+            "key is heard by an assignment"
+        )
+    else:
+        filters = list(dict.fromkeys(_filter_text(sub.filter) for sub in in_scope))
+        shown = ", ".join(f"`{text}`" for text in filters[:MAX_HEARD_FILTERS])
+        more = f" and {len(filters) - MAX_HEARD_FILTERS} more" if len(filters) > MAX_HEARD_FILTERS else ""
+        heard = f"the {TIMER_DUE_EVENT} assignments of this agent hear: {shown}{more}"
+    return (
+        f"Warning: no {TIMER_DUE_EVENT} listener (assignment, task watch or flow) takes `{key}` now: if none "
+        f"takes it when it fires, nothing runs and the timer ends {TIMER_FIRED_UNHEARD}; {heard}. Re-arm it "
+        f"under a key a listener takes, or add a platform_event assignment on {TIMER_DUE_EVENT} whose filter "
+        "takes it."
+    )
+
+
+async def _heard(timer: PlatformTimer, data: Mapping[str, Any]) -> bool:
+    """Whether a listener (assignment, task watch, flow) takes *timer*'s ``timer.due``.
+
+    ``True`` when that cannot be read: never record a fire as unheard on a guess.
+    """
+    try:
+        _in_scope, taken = await _taken(data)
+    except Exception as exc:
+        logger.warning("Timer %s: listeners unreadable: %s", timer.id, format_exception_message(exc))
+        return True
+    return taken
 
 
 async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> int:
@@ -392,11 +529,28 @@ async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> i
                     timer.outcome = reason
                     await db.commit()
                     continue
-                timer.state = TIMER_FIRED
-                timer.event_id = str(timer.id)
-                timer.outcome = f"{TIMER_DUE_EVENT} raised"
                 data = timer_due_data(timer)
+                heard = await _heard(timer, data)
+                timer.event_id = str(timer.id)
+                if heard:
+                    timer.state = TIMER_FIRED
+                    timer.outcome = f"{TIMER_DUE_EVENT} raised"
+                else:
+                    timer.state = TIMER_FIRED_UNHEARD
+                    timer.outcome = (
+                        f"{TIMER_DUE_EVENT} raised, but no platform_event assignment, task watch or flow "
+                        "takes it: nothing hears this correlation_key, so no run started"
+                    )
                 await db.commit()
+                if not heard:
+                    logger.warning(
+                        "Timer %s of agent %s fired unheard: no %s assignment, task watch or flow takes "
+                        "correlation_key %r",
+                        timer.id,
+                        timer.agent_id,
+                        TIMER_DUE_EVENT,
+                        timer.correlation_key,
+                    )
             except Exception as exc:
                 logger.warning("Timer %s not fired: %s", timer_id, format_exception_message(exc))
                 await db.rollback()
@@ -409,6 +563,7 @@ async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> i
 __all__ = [
     "LIST_STATES",
     "MAX_ARMED_PER_AGENT",
+    "MAX_HEARD_FILTERS",
     "MAX_HORIZON_DAYS",
     "MAX_PAYLOAD_CHARS",
     "TIMER_DUE_EVENT",
@@ -422,5 +577,7 @@ __all__ = [
     "parse_due",
     "serialize_timer",
     "timer_due_data",
+    "timer_listeners",
+    "unheard_warning",
     "unless_reason",
 ]

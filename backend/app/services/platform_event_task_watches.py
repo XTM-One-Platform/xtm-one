@@ -352,10 +352,53 @@ async def deliver(watch: Any, name: str, payload: Mapping[str, Any]) -> str:
     return f"watch {claimed.id} started task {task.id}"
 
 
+def _subscription(watch: Any) -> Any:
+    """The ``scope: own`` subscription *watch* stands for, as the dispatcher tests it."""
+    from app.services import platform_events as pe
+
+    return pe.Subscription(
+        assignment_id=watch.id,
+        agent_id=watch.agent_id,
+        events=tuple(watch.events or ()),
+        filter=dict(watch.filter or {}),
+        scope_all=False,
+        user_id=watch.user_id,
+        once=True,
+    )
+
+
+async def _taking(watches: list[Any], name: str, payload: Mapping[str, Any]) -> list[Any]:
+    """The *watches* that take event *name*: filter, scope and readable workspaces."""
+    from app.services import platform_events as pe
+
+    readable: dict[str, set[str]] = {}
+    taking = []
+    for watch in watches:
+        sub = _subscription(watch)
+        if pe.mismatch_reason(sub, name, payload) is not None:
+            continue
+        if not await pe.can_read_workspace(sub, payload, readable):
+            continue
+        taking.append(watch)
+    return taking
+
+
+async def watches_taking(name: str, payload: Mapping[str, Any]) -> list[Any]:
+    """The armed task watches event *name* would start, as :func:`dispatch_event` tests them; read-only.
+
+    For a publisher that must know whether anything hears an event before it
+    raises it (``platform_timers``). Raises when the watches cannot be read.
+    """
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        watches = await _armed_for(db, name)
+    return await _taking(watches, name, payload)
+
+
 async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
     """Deliver event *name* to every armed task watch in scope; one outcome per delivery."""
     from app.core.database import async_session
-    from app.services import platform_events as pe
 
     try:
         async with async_session() as db:
@@ -364,21 +407,7 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
         logger.warning("Platform event %s: task watches unreadable: %s", name, format_exception_message(exc))
         return []
     outcomes: list[str] = []
-    readable: dict[str, set[str]] = {}
-    for watch in watches:
-        sub = pe.Subscription(
-            assignment_id=watch.id,
-            agent_id=watch.agent_id,
-            events=tuple(watch.events or ()),
-            filter=dict(watch.filter or {}),
-            scope_all=False,
-            user_id=watch.user_id,
-            once=True,
-        )
-        if pe.mismatch_reason(sub, name, payload) is not None:
-            continue
-        if not await pe.can_read_workspace(sub, payload, readable):
-            continue
+    for watch in await _taking(watches, name, payload):
         try:
             outcomes.append(await deliver(watch, name, payload))
         except Exception as exc:

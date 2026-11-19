@@ -191,6 +191,7 @@ A run that must come back to one object at a given time (a reminder an hour befo
 - Arming the same `correlation_key` again replaces the earlier timer; `cancel_timer` cancels one and `list_timers` lists them.
 - `unless_work_item_id` or `unless_shared_state_key`: the timer never fires if that work item is done or cancelled, or that shared-state entry is resolved, by its due time.
 - A timer fires at most once, within a minute of its due time, and is kept in the database: a platform restart between the arm and the due time does not lose it.
+- When nothing takes the key (no assignment of the agent on `timer.due`, no task watch and no flow trigger), `arm_timer` still arms the timer but its answer ends with a warning naming the key and the filters the agent's `timer.due` assignments do take. A timer that fires while none of them takes it ends `fired_unheard` in `list_timers` (state `ended`), so a follow-up that no run picked up is visible instead of lost.
 - The tools come with the agent's shared state tools; no model is called to arm or fire a timer.
 
 ## Importing an agent

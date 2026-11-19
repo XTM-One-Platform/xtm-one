@@ -981,6 +981,19 @@ async def _subscriptions(db: Any, name: str) -> list[tuple[Subscription, Any, An
     return out
 
 
+async def live_subscriptions(name: str) -> list[Subscription]:
+    """Every live subscription to event *name*: the ones :func:`dispatch_event` would test.
+
+    For a publisher that must know, before or as it raises the event, whether
+    any assignment can take it (a timer armed under a key no listener hears).
+    Assignments only: task watches and flows read their own subscriptions.
+    """
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        return [sub for sub, _assignment, _agent in await _subscriptions(db, name)]
+
+
 async def _fleet_members(db: Any, agent_ids: set[uuid.UUID]) -> dict[uuid.UUID, frozenset[str]]:
     """The home members of each agent's home fleet, for the ``scope: fleet`` subscribers of one dispatch.
 
