@@ -172,6 +172,8 @@ An agent holding the **agent-builder tools** may also delegate to any agent its 
 
 **Reading part of an agent (#277).** `get_agent` takes `sections`, parsed by `parse_get_agent_sections` and applied by `project_get_agent_sections` (`backend/app/services/builtin_tools/agent_builder.py`). `GET_AGENT_SECTIONS` maps each section name to the heading that opens its block of the answer; the answer lines are split into blocks at each empty line, and a block whose heading is not in the map (the identity block, the created / updated stamps) is always kept. A multi-line value (the persona) is one element, so its own blank lines never split it. An unknown name is refused before any query, naming the valid ones; no `sections` returns the whole answer unchanged. A new block in `_get_agent` gets its heading in `GET_AGENT_SECTIONS` in the same change, else it is always shown.
 
+**Reading part of an assignment (#283).** `get_assignment` takes `sections` the same way, parsed by `parse_get_assignment_sections` and applied by `project_answer_sections`, the shared helpers `get_agent` now goes through too (`parse_answer_sections` takes the tool name and its section map). `GET_ASSIGNMENT_SECTIONS` maps `gates`, `activation_prompt`, `prompt`, `ai_label_prompt` and `human_in_the_loop_prompt` to the heading `_get_assignment` writes, read from the map itself so the two never drift. The first block (name, id, agent, trigger and its config, every execution setting, schedule and delivery) is always kept. A new block in `_get_assignment` gets its heading in `GET_ASSIGNMENT_SECTIONS` in the same change, else it is always shown.
+
 ### Output Format
 
 Agents have a configurable `output_format` that controls response formatting:
