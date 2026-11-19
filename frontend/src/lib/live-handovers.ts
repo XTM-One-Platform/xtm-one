@@ -83,3 +83,13 @@ export function liveHandoverEdges(
   }
   return edges;
 }
+
+/**
+ * The content of a set of live edges as one string: two sets with the same
+ * edges, statuses and firing times give the same key, whatever their order,
+ * so a poll or a clock tick that changes none of them is recognised as such.
+ */
+export function liveEdgesKey(edges: ReadonlyMap<string, LiveHandover> | null | undefined): string {
+  if (!edges) return "";
+  return [...edges].map(([key, live]) => `${key}|${live.status}|${live.firedAt}`).sort().join("\n");
+}
