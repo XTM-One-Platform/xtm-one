@@ -2092,6 +2092,21 @@ install_first = false
 git_repo = true
 needs = ["LICENSE", "licensing"]
 
+# The Editions gate's fix: `license_headers.py --fix` adds, updates or removes the EE headers
+# and the copyright.md files, reading the notice from LICENSE, so a red Editions check is fixed
+# by the script and never by a header copied by hand. What it writes comes back to the checkout
+# like any check's; read sandbox_checkout_diff after it.
+[check.editions-fix]
+description = "the Editions fix, as `make license`: license_headers.py --fix writes the EE headers and copyright.md files in the checkout (whole tree checkout); read the diff after it"
+argv = ["python", "scripts/license_headers.py", "--fix"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+install_first = false
+git_repo = true
+needs = ["LICENSE", "licensing"]
+
 # agents-md-hygiene.yml: every AGENTS.md under its size budget, no issue number cited, no
 # dead dev-docs/ pointer. A pre-push guard on any AGENTS.md. `needs` brings dev-docs/ and the
 # root AGENTS.md to a narrow checkout; there the script checks the AGENTS.md files it holds only.

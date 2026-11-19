@@ -134,9 +134,12 @@ def test_a_git_repo_run_never_saves_the_throwaway_repository_back():
 def test_the_repository_declares_its_git_reading_ci_gates_as_git_repo_checks():
     declared = tomllib.loads((ROOT / checks.CHECKS_FILE).read_text(encoding="utf-8"))["check"]
     specs = checks.load_checks((ROOT / checks.CHECKS_FILE).read_text(encoding="utf-8"))
-    for name in ("editions", "agents-md-hygiene"):
+    for name in ("editions", "editions-fix", "agents-md-hygiene"):
         assert specs[name].git_repo is True, name
     assert declared["editions"]["argv"] == ["python", "scripts/license_headers.py", "--check"]
+    # The gate's fix is declared next to it, so a red Editions check is fixed by the script, never by hand.
+    assert declared["editions-fix"]["argv"] == ["python", "scripts/license_headers.py", "--fix"]
+    assert specs["editions-fix"].needs == specs["editions"].needs
     assert declared["agents-md-hygiene"]["argv"] == ["bash", "scripts/check-agents-md-hygiene.sh"]
     # A narrow checkout takes what each gate reads, so neither reports a file it lacks.
     assert specs["editions"].needs == ("LICENSE", "licensing")
