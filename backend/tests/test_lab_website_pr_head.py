@@ -87,6 +87,19 @@ def test_a_seed_svg_loses_only_what_payload_refuses(tmp_path):
     assert (assets / "blur.svg").read_text(encoding="utf-8") == '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'
 
 
+def test_plain_tldr_and_faq_questions_become_rich_text_only():
+    module = _module()
+    rich = {"root": {"children": []}}
+    guide = {"tldr": [{"text": "a"}, {"text": rich}],
+             "layout": [{"blockType": "faq", "items": [{"question": "q", "answer": rich}]},
+                        {"blockType": "content", "text": "kept"}]}
+    assert module.lexicalize({"guides": [{"locales": {"en": guide}}]}) == 2
+    assert guide["tldr"][0]["text"]["root"]["children"][0]["children"][0]["text"] == "a"
+    assert guide["tldr"][1]["text"] is rich and guide["layout"][0]["items"][0]["answer"] is rich
+    assert guide["layout"][0]["items"][0]["question"]["root"]["type"] == "root"
+    assert guide["layout"][1]["text"] == "kept"
+
+
 def test_the_start_refuses_a_checkout_missing_a_sub_path(monkeypatch, tmp_path):
     module = _module()
     where = tmp_path / "website"

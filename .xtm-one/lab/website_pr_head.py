@@ -190,6 +190,50 @@ def sanitize_seed_svgs(root: Path) -> list[str]:
     return changed
 
 
+def lexical(text: str) -> dict:
+    """One paragraph of plain text as a Lexical rich-text value."""
+    leaf = {"type": "text", "text": text, "format": 0, "mode": "normal", "style": "", "detail": 0, "version": 1}
+    paragraph = {"type": "paragraph", "format": "", "indent": 0, "version": 1, "direction": "ltr",
+                 "textFormat": 0, "children": [leaf]}
+    return {"root": {"type": "root", "format": "", "indent": 0, "version": 1, "direction": "ltr",
+                     "children": [paragraph]}}
+
+
+#: Rich-text fields the guides snapshot still writes as plain strings: (array key, field) pairs.
+PLAIN_RICH_TEXT = (("tldr", "text"), ("items", "question"))
+
+
+def lexicalize(node, parent: str = "") -> int:
+    """Wrap, in place, every plain string at a ``PLAIN_RICH_TEXT`` field; the count wrapped."""
+    count = 0
+    if isinstance(node, list):
+        for item in node:
+            if isinstance(item, dict):
+                for array, field in PLAIN_RICH_TEXT:
+                    if parent == array and isinstance(item.get(field), str):
+                        item[field] = lexical(item[field])
+                        count += 1
+            count += lexicalize(item, parent)
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            count += lexicalize(value, key)
+    return count
+
+
+def lexicalize_guides(root: Path) -> int:
+    """The lab's throwaway guides snapshot made valid: TL;DR texts and FAQ questions are rich text in the schema
+    (src/collections/Guides, src/blocks/FAQ) and plain strings in guides-data/guides.json, so the seed of a fresh
+    database stops at the first guide. The checkout under review is never committed from here."""
+    snapshot = root / "src" / "endpoints" / "seed" / "guides-data" / "guides.json"
+    if not snapshot.is_file():
+        return 0
+    data = json.loads(snapshot.read_text(encoding="utf-8"))
+    count = lexicalize(data)
+    if count:
+        snapshot.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return count
+
+
 def seed_user(root: Path, run_env: dict[str, str]) -> None:
     script = root / ".lab" / "seed-user.ts"
     script.parent.mkdir(exist_ok=True)
@@ -297,6 +341,9 @@ def main() -> None:
     lab.run("migrate", [str(pnpm), "run", "migrate"], cwd=root, env=run_env)
     for changed in sanitize_seed_svgs(root):
         lab.log(f"seed asset made uploadable for the lab (Payload refuses it as is): {changed}")
+    wrapped = lexicalize_guides(root)
+    if wrapped:
+        lab.log(f"guides snapshot: {wrapped} plain TL;DR text(s) and FAQ question(s) wrapped as rich text for the lab")
     lab.run("seed", [str(pnpm), "run", "seed"], cwd=root, env=run_env)
     seed_user(root, run_env)
     lab.log(f"seeded the day-1 content and {LAB_ADMIN_EMAIL} (Site Admin, TOTP enrolled)")
