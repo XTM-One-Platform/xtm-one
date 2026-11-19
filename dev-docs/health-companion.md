@@ -1,6 +1,6 @@
 # The Concierge companion and its pets (#8261)
 
-A floating, animated pet in the web app that shows what the Concierge, and the user's own work, is doing. Per user, off by default, behind `CONCIERGE`. Code: `backend/app/services/concierge/pets.py` (the package format and the library), `companion.py` (the preference and the activity), `api/v1/platform_health_companion.py`, model `models/concierge_pet.py`, migrations `c8cnc8254083` (the library) and `c8cnc8254084` (`users.concierge_companion`); the built-in Alfred under `app/agents/seed_data/concierge_pets/alfred/`, drawn by `backend/scripts/generate_alfred_pet.py`.
+A floating, animated pet in the web app that shows what the Concierge, and the user's own work, is doing. Per user, off by default, behind `CONCIERGE`. Code: `backend/app/services/health/pets.py` (the package format and the library), `companion.py` (the preference and the activity), `api/v1/platform_health_companion.py`, model `models/health_pet.py`, migrations `c8cnc8254083` (the library) and `c8cnc8254084` (`users.concierge_companion`); the built-in Alfred under `app/agents/seed_data/health_pets/alfred/`, drawn by `backend/scripts/generate_alfred_pet.py`.
 
 ## The pet package (Codex pet format)
 

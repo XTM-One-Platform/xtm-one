@@ -70,7 +70,7 @@ MAX_PACKAGE_BYTES: Final = 8 * 1024 * 1024
 MAX_MANIFEST_BYTES: Final = 16 * 1024
 MAX_ZIP_ENTRIES: Final = 32
 
-BUILTIN_DIR: Final = Path(__file__).resolve().parents[2] / "agents" / "seed_data" / "concierge_pets"
+BUILTIN_DIR: Final = Path(__file__).resolve().parents[2] / "agents" / "seed_data" / "health_pets"
 #: Shipped with the platform, listed first; Alfred is every user's default.
 BUILTIN_SLUGS: Final[tuple[str, ...]] = ("alfred",)
 DEFAULT_PET: Final = "alfred"

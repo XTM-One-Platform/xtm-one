@@ -7,7 +7,7 @@ the output is regenerated from it alone:
 
     cd backend && uv run python scripts/generate_alfred_pet.py
 
-It writes ``app/agents/seed_data/concierge_pets/alfred/pet.json`` and
+It writes ``app/agents/seed_data/health_pets/alfred/pet.json`` and
 ``spritesheet.webp``: a version 1 Codex pet atlas, 8 columns of 192x208 cells
 and 9 rows, one state a row with the format's frame counts
 (``app/services/health/pets.py``, ``STATES``). Each cell is drawn on a
@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.services.health.pets import CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS_BY_VERSION, STATES
 
-OUT_DIR = ROOT / "app" / "agents" / "seed_data" / "concierge_pets" / "alfred"
+OUT_DIR = ROOT / "app" / "agents" / "seed_data" / "health_pets" / "alfred"
 GRID_W, GRID_H = 48, 52
 SCALE = CELL_WIDTH // GRID_W
 if GRID_W * SCALE != CELL_WIDTH or GRID_H * SCALE != CELL_HEIGHT:
