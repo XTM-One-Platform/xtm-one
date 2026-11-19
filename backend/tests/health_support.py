@@ -1,4 +1,4 @@
-"""Shared fixtures of the Platform Concierge PostgreSQL tests (#8254): a scratch
+"""Shared fixtures of Platform Health PostgreSQL tests (#8254): a scratch
 database, users with every kind of access to an agent and a flow, and the
 settings an administrator saves."""
 

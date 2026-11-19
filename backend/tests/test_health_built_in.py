@@ -1,4 +1,4 @@
-"""The Concierge is built in (#101 S1): no ``CONCIERGE`` flag gates its surfaces.
+"""Platform Health is built in (#101 S1): no ``CONCIERGE`` flag gates its surfaces.
 
 Pinned here, with ``ENABLED_FEATURES`` empty: every built-in group gated on the
 Concierge (``gate="health"``) is offered and kept by the registry, and the

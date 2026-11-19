@@ -89,7 +89,7 @@ async def test_a_skill_variant_runs_as_the_variant_arm_s_stand_in(monkeypatch, o
         assert (experiment.target_type, experiment.base_text) == ("skill", SKILL)
         await run_experiment(db, agent, experiment)
         if not overlays:
-            # A Concierge launch takes no per-arm overlay yet: stated, nothing copied or launched.
+            # A Platform Health launch takes no per-arm overlay yet: stated, nothing copied or launched.
             assert (experiment.status, experiment.status_reason) == (STATUS_SKIPPED, "evaluation_unavailable")
             assert "create_agent_copy" not in deps.calls
             assert "launch" not in deps.calls

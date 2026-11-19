@@ -1,4 +1,4 @@
-"""The Platform Health fleet's agent slugs (#101 S1): the Concierge's slugs renamed.
+"""The Platform Health fleet's agent slugs (#101 S1): the former Concierge slugs renamed.
 
 * The seed specs carry no ``concierge`` slug, handover, assignment slug or tag;
   every former slug maps to one current slug and its persona file follows.
@@ -87,7 +87,7 @@ async def test_a_fleet_seeded_under_the_former_slugs_is_adopted_in_place(monkeyp
             agents = (await db.execute(select(Agent).where(Agent.slug.in_(list(_FORMER.values()))))).scalars().all()
             before = {agent.slug: (agent.id, list(agent.handover_agent_ids or [])) for agent in agents}
             assignments = {row.id for row in (await db.execute(select(Assignment))).scalars()}
-            # A deployment seeded before #101 S1 carries the Concierge's slugs and tag.
+            # A deployment seeded before #101 S1 carries the former Concierge slugs and tag.
             current_to_former = {current: former for former, current in _FORMER.items()}
             for agent in agents:
                 agent.slug = current_to_former[agent.slug]

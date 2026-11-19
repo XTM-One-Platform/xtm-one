@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254): the one consent rule against PostgreSQL.
+"""Platform Health level 1 (#8254): the one consent rule against PostgreSQL.
 
 * The predicate, the SQL filter and the snapshot give the same answer on one
   matrix of targets, users and scopes, read live (no cache).

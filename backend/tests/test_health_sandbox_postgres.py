@@ -659,7 +659,7 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
                 async with runs.sandbox_case(session, agent_copy, recorded_calls=[]):
                     pass
             run = await runs.start_sandbox_flow_run(session, allowed)
-        # The basis agent's owner, never the administrator the Concierge acts for.
+        # The basis agent's owner, never the administrator Platform Health acts for.
         assert run.user_id == owner.id
         rows = (await session.execute(select(SandboxRun.copy_id))).scalars().all()
         assert rows == [allowed.id]

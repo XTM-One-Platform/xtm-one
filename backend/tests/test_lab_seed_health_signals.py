@@ -1,4 +1,4 @@
-"""The xtm-one lab seeds crossed Concierge signals and cycles (dev:lab-seed-concierge-signals).
+"""The xtm-one lab seeds crossed Platform Health signals and cycles (dev:lab-seed-concierge-signals).
 
 The planned rows must cover every signal kind, every target type, a cycle started, the known and an
 unknown refusal, a ``fired_at`` null and a ``last_value`` null, so the Signals tab renders every state

@@ -1,4 +1,4 @@
-"""Shared fakes of the Concierge experiment tests (#8259): spies standing in for
+"""Shared fakes of Platform Health experiment tests (#8259): spies standing in for
 levels 1 to 4 at ``quality_deps``, the one seam, and a seeded agent with a
 finding."""
 

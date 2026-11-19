@@ -1,4 +1,4 @@
-"""The Concierge's name (#8261) against PostgreSQL: the routes, the seed and the rename.
+"""Platform Health's name (#8261) against PostgreSQL: the routes, the seed and the rename.
 
 * ``GET /concierge/name`` answers every signed-in person, admin or not; a
   hostile name is a 422 from ``PUT /concierge/settings``, never a 500.

@@ -1,4 +1,4 @@
-"""The Memory Steward's model call on the Concierge budget (#8258).
+"""The Memory Steward's model call on Platform Health budget (#8258).
 
 Level 8's cycle runner sets ``trigger_context["concierge_cycle_id"]`` on a
 Concierge run (#8261); a delegated child run takes its root run's. The pass's

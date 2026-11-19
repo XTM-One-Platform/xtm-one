@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254), without a database: the consent snapshot.
+"""Platform Health level 1 (#8254), without a database: the consent snapshot.
 The predicate and the SQL filter against PostgreSQL: ``test_health_consent_postgres.py``.
 """
 

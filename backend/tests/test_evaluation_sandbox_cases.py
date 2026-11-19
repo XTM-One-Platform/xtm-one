@@ -1,4 +1,4 @@
-"""An evaluation entry run on a Concierge sandbox agent copy (#8257).
+"""An evaluation entry run on a Platform Health sandbox agent copy (#8257).
 
 A copy's turn runs as one case of level 2's interception, on the entry's own
 recordings and under a case ref naming the run and the entry; any other agent

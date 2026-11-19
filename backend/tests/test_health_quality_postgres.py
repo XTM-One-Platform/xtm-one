@@ -178,7 +178,7 @@ async def _call(user_id: str, name: str, **arguments) -> str:
         }
         else build_health_experiment_tools
     )
-    # The calling agent is the bound principal's own, as in its Concierge run.
+    # The calling agent is the bound principal's own, as in its Platform Health run.
     principal = current_health_principal()
     _defs, executor = builder(user_id, agent_id=str(principal.agent_id) if principal else None)
     result = await executor.execute_tool(ToolCall(id="c1", name=name, arguments=arguments))
@@ -367,7 +367,7 @@ async def _drafted(sessions, world: World) -> uuid.UUID:
 
 
 async def _cycle_run(sessions, world: World) -> tuple[uuid.UUID, uuid.UUID]:
-    """An assignment run of the Experimenter that a Concierge cycle started: ``(run, cycle)``."""
+    """An assignment run of the Experimenter that a Platform Health cycle started: ``(run, cycle)``."""
     from app.models.assignment import AssignmentRun
     from app.services.health.memory_steward_deps import CYCLE_KEY
 
@@ -411,7 +411,7 @@ async def test_a_concierge_run_s_experiment_is_sized_on_its_cycle(monkeypatch):
         assert call["cycle_id"] == cycle
         assert call["experiment"].id == experiment_id
         async with sessions() as db:
-            # A person is never the Concierge: no cycle is read for them.
+            # A person is never Platform Health: no cycle is read for them.
             assert (await load_reader(db, str(world.owner.id), run_id=str(run_id))).cycle_id is None
 
 

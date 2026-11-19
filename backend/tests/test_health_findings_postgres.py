@@ -1,4 +1,4 @@
-"""The Concierge finding store on PostgreSQL (#8259): a pattern is recorded once
+"""Platform Health finding store on PostgreSQL (#8259): a pattern is recorded once
 across cycles, a resolved one reopens, a dismissed one stays silent, and the
 digest counts tell new findings from known ones."""
 

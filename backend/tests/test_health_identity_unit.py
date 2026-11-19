@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254), without a database: the flag, the
+"""Platform Health level 1 (#8254), without a database: the flag, the
 identity rules and the settings model. Against PostgreSQL:
 ``test_health_identity_postgres.py``.
 """
@@ -96,7 +96,7 @@ def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope() -> N
 
 
 def test_a_concierge_run_never_takes_the_admin_bypass() -> None:
-    # A Concierge run has no user (a company-managed assignment run).
+    # A Platform Health run has no user (a company-managed assignment run).
     assert agent_tool_admin_bypass(None) is False
 
 
@@ -141,7 +141,7 @@ def test_the_concierge_acts_alone_only_with_nobody_behind_it() -> None:
 
 
 def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only(monkeypatch) -> None:
-    """``sub_agent_tasks.user_id`` needs a row: the owner of record, offered only to the Concierge acting alone."""
+    """``sub_agent_tasks.user_id`` needs a row: the owner of record, offered only to Platform Health acting alone."""
     owner, fallback = uuid.uuid4(), uuid.uuid4()
     fleet = SimpleNamespace(**vars(_agent(role="orchestrator")), user_id=owner)
     ownerless = SimpleNamespace(**vars(_agent(role="quality_analyst")), user_id=None)
@@ -175,7 +175,7 @@ def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not() -> None:
         assert identity.current_health_principal() is None
         assert identity.in_health_reach() is True
         assert agent_tool_admin_bypass(admin) is False
-    # A dry run is a Concierge turn's own session: it is no sandbox turn.
+    # A dry run is a Platform Health turn's own session: it is no sandbox turn.
     with sandbox_session(SandboxSession(mode="dry_run")):
         assert identity.in_sandbox_turn() is False
     with identity.acting_as_health_principal(identity.health_principal_for(_agent(), admin)):

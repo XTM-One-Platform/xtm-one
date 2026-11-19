@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254), without a database: the budget's
+"""Platform Health level 1 (#8254), without a database: the budget's
 arithmetic. Against PostgreSQL: ``test_health_budget_postgres.py``.
 """
 
@@ -42,7 +42,7 @@ def test_with_nothing_more_a_reached_cap_refuses_new_work() -> None:
 
 
 def test_a_month_with_no_row_yet_has_used_nothing() -> None:
-    # A cap of 0 stops the Concierge from the month's first cycle on.
+    # A cap of 0 stops Platform Health from the month's first cycle on.
     zero = HealthBudgetCaps(cycle_tokens=None, cycle_cost_usd=None, month_tokens=0, month_cost_usd=None)
     assert budget._cap_refusal(zero, None, None) == "month_budget_reached"
     assert budget._cap_refusal(CAPS, None, None) is None

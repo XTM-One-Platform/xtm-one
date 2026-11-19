@@ -296,12 +296,12 @@ def test_every_skipped_copy_field_is_identity_ownership_or_activation():
         # The owner's grant to lend their personal integrations through this
         # agent: an ownership/sharing grant, never inherited by a copy.
         "integration_lending",
-        # Platform Concierge (#8254): the managers' consent (a grant, like a
+        # Platform Health (#8254): the managers' consent (a grant, like a
         # share) and the fleet role (platform-managed identity) never travel.
         "health_enrolled",
         "health_content_opt_in",
         "health_role",
-        # A sandbox copy (#8255) is the Concierge's own row: a duplicate is an
+        # A sandbox copy (#8255) is Platform Health's own row: a duplicate is an
         # ordinary agent, whatever it was copied from.
         "is_sandbox",
         # Activity hidden from non-admins (#11624): an administrator's switch

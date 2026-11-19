@@ -1,4 +1,4 @@
-"""The evaluation engine gate opens to the Concierge, the surfaces do not (#8257, decision B9).
+"""The evaluation engine gate opens to Platform Health, the surfaces do not (#8257, decision B9).
 
 ``engine_accepts`` holds where the surface gate (``evaluation_enabled``) does,
 and also for an evaluation the Concierge built (``concierge_built``, read on the
@@ -26,7 +26,7 @@ from app.services.evaluation.availability import (
 
 @pytest.fixture
 def concierge(monkeypatch):
-    """The Concierge on or off (flag and Settings), as the gate reads it."""
+    """Platform Health on or off (flag and Settings), as the gate reads it."""
     state = SimpleNamespace(enabled=True)
 
     async def _active(_db) -> bool:
@@ -146,7 +146,7 @@ async def test_in_xtm_one_mode_the_adapter_runs_a_concierge_launch_and_refuses_a
     from app.services import agentic_gate, evaluation_engine
     from tests.scratch_database import ALL_TABLES, scratch_database
 
-    # The surface off (no EVALUATION): only the Concierge's own launch runs.
+    # The surface off (no EVALUATION): only Platform Health's own launch runs.
     _mode(monkeypatch, "xtm_one", "")
     started: list[str] = []
 

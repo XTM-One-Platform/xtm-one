@@ -1,4 +1,4 @@
-"""A Concierge run gets no production write through the builders (#8255).
+"""A Platform Health run gets no production write through the builders (#8255).
 
 Enforced where the tools are built and in the executor, on the real tool
 sets: ``agent_builder`` keeps its reads only, ``flow_builder`` refuses its

@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254): the ``/api/v1/health`` routes against PostgreSQL.
+"""Platform Health level 1 (#8254): the ``/api/v1/health`` routes against PostgreSQL.
 
 * The improvement opt-in as owner, admin, ``read_only`` / ``config`` grantee,
   group grant, revoked share, stranger, on a company-managed agent and on a

@@ -1,4 +1,4 @@
-"""The xtm-one lab seeds Concierge improvement proposals and a builder-safe flow (#10401).
+"""The xtm-one lab seeds Platform Health improvement proposals and a builder-safe flow (#10401).
 
 The planned rows must cover every proposal type on its own target type, every status, every
 experiment verdict and a person's request, keep one open change per target (the table's partial
@@ -69,7 +69,7 @@ def test_one_open_change_per_target_and_pending_rows_start_from_the_live_text():
         if row["proposal_type"] in ("persona", "skill", "assignment_prompt"):
             assert row["base_content"] == texts[key_of[row["target_id"]]]
             assert row["proposed_content"] != row["base_content"]
-    # The seeded Concierge flow carries rows of its own, with a valid graph change.
+    # The seeded Platform Health flow carries rows of its own, with a valid graph change.
     flow_rows = [row for row in rows if row["target_id"] == targets["flow"]]
     assert flow_rows and all(row["change"]["graph"]["viewport"] for row in flow_rows)
     assert all(row["requested_by_user_id"] == admin for row in rows if row["experiment_verdict"] is None)

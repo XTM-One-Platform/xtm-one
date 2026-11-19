@@ -1,4 +1,4 @@
-"""Evaluation datasets the Concierge builds from production (#8257, PRD 6.7, B15, B16).
+"""Evaluation datasets Platform Health builds from production (#8257, PRD 6.7, B15, B16).
 
 Rated answers and failed runs of a consented agent become entries, unredacted,
 each with its source and recorded tool calls; what consent does not cover is

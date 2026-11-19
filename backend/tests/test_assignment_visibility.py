@@ -314,7 +314,7 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     ("services/shared_state.py", "_visible_state_query"): (
         "orders the visible rows of a company-managed agent's lookup; it filters nothing"
     ),
-    # The Concierge fleet seed (#8261) finds its own rows: the fleet's agents,
+    # Platform Health fleet seed (#8261) finds its own rows: the fleet's agents,
     # assignments, fleet and skills are company-managed by construction, and a
     # personal row holding a fleet slug or role is never adopted. No caller's read.
     ("services/health/fleet_seed.py", "_skill_ids_by_slug"): (

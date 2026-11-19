@@ -1,4 +1,4 @@
-"""Flow shadows on the Concierge's budget, consent and switches, and locked decisions (#8260), on PostgreSQL.
+"""Flow shadows on Platform Health's budget, consent and switches, and locked decisions (#8260), on PostgreSQL.
 
 On the shadow suite's fixtures (``test_health_flow_shadow_postgres``):
 

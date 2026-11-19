@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254): the budget line against PostgreSQL.
+"""Platform Health level 1 (#8254): the budget line against PostgreSQL.
 
 The licence gate first, caps per cycle and per month, two concurrent
 reservations at the cap, charge, release, close, stale cycles.

@@ -6,7 +6,7 @@ import uuid
 
 
 async def test_an_agent_its_run_executes_inline_reads_as_its_runner(monkeypatch):
-    """Only the principal's own agent is the Concierge; a sandbox copy's turn or a consulted agent is not."""
+    """Only the principal's own agent is Platform Health; a sandbox copy's turn or a consulted agent is not."""
     from app.services.health import identity
     from app.services.health.flow_lab_access import resolve_caller
     from app.services.health.identity import HealthPrincipal, acting_as_health_principal

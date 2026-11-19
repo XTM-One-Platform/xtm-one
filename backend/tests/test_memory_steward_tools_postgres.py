@@ -1,4 +1,4 @@
-"""Memory Steward tools on PostgreSQL (#8258): the Concierge only, counts only.
+"""Memory Steward tools on PostgreSQL (#8258): Platform Health only, counts only.
 
 Outside a Concierge run (any login, an administrator's included), and inside
 one while ``CONCIERGE`` is off, every tool refuses and nothing is read. Inside

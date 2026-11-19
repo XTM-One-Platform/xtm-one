@@ -1,4 +1,4 @@
-"""Platform Concierge level 8 (#8261): the rules that need no database.
+"""Platform Health level 8 (#8261): the rules that need no database.
 
 Signal thresholds at their boundaries (decision B18), the digest status that
 never reads a non-success as a success, the Settings > Agents and automations > Concierge bounds, and
@@ -120,7 +120,7 @@ def test_digest_status_never_shows_a_non_success_as_completed(cycle_status, run_
     assert digest_status(cycle_status, run_status, skipped) == expected
 
 
-# ── Settings > Agents and automations > Concierge ────────────────────────────────────────────────────
+# ── Settings > Agents and automations > Platform Health ────────────────────────────────────────────────────
 
 
 def test_settings_defaults_are_decision_b18():
@@ -237,7 +237,7 @@ async def test_turn_scope_gives_a_delegated_specialist_its_own_role(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_a_user_id_that_names_no_user_never_acts_as_the_concierge(monkeypatch):
-    """Only a turn with no user at all acts as the Concierge; an id that parses to no user acts as no one."""
+    """Only a turn with no user at all acts as Platform Health; an id that parses to no user acts as no one."""
     from app.services.health import identity
     from app.services.health.turns import health_turn_scoped
 
@@ -281,7 +281,7 @@ def test_an_untriggered_fleet_run_is_gated_as_no_person():
 @pytest.mark.parametrize(
     ("who", "wired"),
     [
-        # A task the Concierge delegated with nobody behind it: its own groups, as its principal.
+        # A task Platform Health delegated with nobody behind it: its own groups, as its principal.
         ("concierge_alone", {"create_sandbox_copy", "list_improvements"}),
         # The same turn with no principal (the flag switched off): an anonymous caller, nothing.
         ("nobody", set()),

@@ -1,4 +1,4 @@
-"""Platform Concierge level 1 (#8254): the identity and the settings against PostgreSQL.
+"""Platform Health level 1 (#8254): the identity and the settings against PostgreSQL.
 
 * Settings > Agents and automations > Concierge saved and read back, audited, and ``health_active``
   answering the flag AND the administrator's switch.

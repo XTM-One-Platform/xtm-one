@@ -52,8 +52,8 @@ def test_one_group_per_catalog_id():
     catalog = build_builtin_tool_catalog(include_disabled=True)
     # 16 ids: the two trace ids merge into ``observability``, twelve ids into
     # design, web, cti, coordination and files, and agent_builder, fleets and
-    # flow_builder into platform; 17 with the Concierge sandbox, 18 with its
-    # improvement proposals, 19 with Concierge evaluation, 20 with its memory
+    # flow_builder into platform; 17 with Platform Health sandbox, 18 with its
+    # improvement proposals, 19 with Platform Health evaluation, 20 with its memory
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
     # the grounded STIX extraction, its own group so Threat Intelligence never carries it,

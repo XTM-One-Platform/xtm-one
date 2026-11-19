@@ -1,4 +1,4 @@
-"""The pure rules of Concierge findings and variants (#8259): fingerprint, keys,
+"""The pure rules of Platform Health findings and variants (#8259): fingerprint, keys,
 evidence merge, the #1044 length rule and template placeholders."""
 
 from __future__ import annotations

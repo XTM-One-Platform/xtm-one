@@ -1,4 +1,4 @@
-"""The Concierge companion's pet packages (#8261): the format, the built-in Alfred, hostile uploads.
+"""Platform Health companion's pet packages (#8261): the format, the built-in Alfred, hostile uploads.
 
 Every refusal is asserted by its code, one case per family: size, container,
 manifest, path, image type, image size, image content.

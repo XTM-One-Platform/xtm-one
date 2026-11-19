@@ -125,7 +125,7 @@ def sandbox(monkeypatch) -> FakeSandbox:
 
 
 def install_fake_sandbox(monkeypatch) -> FakeSandbox:
-    """Level 2 faked, the Concierge's gates open, and any production flow run refused."""
+    """Level 2 faked, Platform Health's gates open, and any production flow run refused."""
     from app.services import flow_runner
     from app.services.health import availability, budget, consent
 

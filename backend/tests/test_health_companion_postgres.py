@@ -1,4 +1,4 @@
-"""The Concierge companion (#8261) against PostgreSQL: the preference and the activity.
+"""Platform Health companion (#8261) against PostgreSQL: the preference and the activity.
 
 * The preference: the signed-in user's own, off by default; an unknown pet
   or a malformed body is a 422; a removed pet falls back to the default.

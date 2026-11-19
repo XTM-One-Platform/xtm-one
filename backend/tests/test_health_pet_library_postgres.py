@@ -1,4 +1,4 @@
-"""The Concierge companion's pet library (#8261) against PostgreSQL.
+"""Platform Health companion's pet library (#8261) against PostgreSQL.
 
 Every signed-in user lists pets and reads a spritesheet; only administrators
 add or remove one; a hostile upload is a 422 and stores nothing; a built-in

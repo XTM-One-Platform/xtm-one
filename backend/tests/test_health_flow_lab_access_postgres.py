@@ -141,7 +141,7 @@ async def test_a_name_others_share_still_resolves_to_the_one_flow_within_reach()
 
 @pytest.fixture
 def concierge(monkeypatch):
-    """The Concierge acting, level 1's consent recorded at its call site."""
+    """Platform Health acting, level 1's consent recorded at its call site."""
     from app.services.health import consent
     from app.services.health.identity import HealthPrincipal, acting_as_health_principal
 

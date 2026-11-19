@@ -1,4 +1,4 @@
-"""Platform Concierge level 8 (#8261) against a real PostgreSQL.
+"""Platform Health level 8 (#8261) against a real PostgreSQL.
 
 Pinned here: the fleet seed (five company-managed agents with their roles,
 manual assignments, a company-managed fleet in a company-managed workspace;
@@ -151,7 +151,7 @@ async def test_an_admin_edit_survives_the_next_seed(concierge_on):
 
 
 async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concierge_on):
-    """An assignment seeded as "Concierge ..." is renamed in place (#101 S1): same row,
+    """An assignment seeded as "Platform Health ..." is renamed in place (#101 S1): same row,
     schedule and enabled state kept, no second assignment, still found by its key."""
     async with _scratch("cc_seed_rename") as sessions, sessions() as db:
         db.add(_user("admin"))
@@ -188,7 +188,7 @@ async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps
         await db.commit()
         await fleet_seed.seed_health_fleet(db)
         agents = (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars().all()
-        # The fleet's own loops; the weekly fleet health check (#11700) is not a Concierge assignment.
+        # The fleet's own loops; the weekly fleet health check (#11700) is not a Platform Health assignment.
         caps = {
             a.name: a.max_iterations
             for a in (await db.execute(select(Assignment))).scalars()
@@ -248,7 +248,7 @@ async def test_a_cycle_run_has_no_user_and_acts_as_the_concierge_alone(concierge
 
 
 async def test_what_a_cycle_delegates_acts_with_no_user_either(concierge_on):
-    """A task the Concierge delegates with nobody behind it is recorded under
+    """A task Platform Health delegates with nobody behind it is recorded under
     the fleet agent's owner (the row needs one) and marked: its run has no
     user, and the worker runs its turn with none. An administrator's own chat
     with the orchestrator delegates as that administrator, as before."""
