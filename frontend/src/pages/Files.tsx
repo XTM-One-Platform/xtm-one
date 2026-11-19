@@ -270,17 +270,20 @@ function FileRow({
           </Badge>
         ) : null}
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <Tip content={t_i18n("Download")}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={download}
-              aria-label={t_i18n("Download")}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          </Tip>
+          {/* A deleted file offers no download (UX r3 B2 on #405, Standards s.5). */}
+          {!deleted && (
+            <Tip content={t_i18n("Download")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={download}
+                aria-label={t_i18n("Download")}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </Tip>
+          )}
           {contextHref && (
             <Tip content={file.context === "run" ? t_i18n("Open run") : t_i18n("Open conversation")}>
               <Button
@@ -504,7 +507,9 @@ export default function Files() {
         </div>
       </div>
 
-      {landing || isLoading ? (
+      {/* The toolbar stays mounted while a new filter combination loads, so the Filters pill keeps
+          its panel open and the focus (UX r3 B1 on #405): only the list area shows the skeleton. */}
+      {landing ? (
         <ListSkeleton label={t_i18n("Loading...")} rows={3} variant="card" data-testid="list-skeleton" />
       ) : (
         <>
@@ -573,7 +578,9 @@ export default function Files() {
             </div>
           )}
 
-          {repositoryEmpty ? (
+          {isLoading ? (
+            <ListSkeleton label={t_i18n("Loading...")} rows={3} variant="card" data-testid="list-skeleton" />
+          ) : repositoryEmpty ? (
             <EmptyState
               icon={FolderOpen}
               title="No files yet"

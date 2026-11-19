@@ -29,6 +29,22 @@ test("no SegmentedFilter is drawn on the toolbar row outside the pill", () => {
   assert.equal(/<SegmentedFilter\b/.test(outside), false);
 });
 
+test("the toolbar stays mounted while a filter change loads (UX r3 B1)", () => {
+  // Only the landing redirect replaces the whole page; a loading list replaces the list area,
+  // drawn after the toolbar, so the Filters pill keeps its open panel and the focus.
+  assert.equal(/\{landing \|\| isLoading \?/.test(source), false, "no page-wide skeleton on isLoading");
+  const pill = source.indexOf("<FiltersPill");
+  const listSkeleton = source.indexOf("{isLoading ? (");
+  assert.ok(pill > 0 && listSkeleton > pill, "the loading skeleton sits below the toolbar");
+});
+
+test("a deleted row draws no Download control (UX r3 B2)", () => {
+  const row = source.match(/group-hover:opacity-100[\s\S]*?\{contextHref &&/);
+  assert.ok(row, "the hover action group of a file row");
+  assert.match(row[0], /\{!deleted && \(\s*<Tip content=\{t_i18n\("Download"\)\}>/);
+  assert.match(source, /\.\.\.\(deleted \? \[\] : \[\{ id: "download"/, "the overflow menu drops Download");
+});
+
 test("the pill counts the active secondary filters", () => {
   assert.match(source, /<FiltersPill\b[^>]*count=\{secondaryFilterCount\}/);
   assert.match(source, /\[context, origin, status\]\.filter\(\(v\) => v !== "all"\)\.length/);
