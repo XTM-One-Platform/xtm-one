@@ -297,3 +297,41 @@ def test_a_secondary_npm_package_bump_without_its_lock_names_the_install_guard()
         modified=("apps/microsoft-office/src/taskpane.ts", "frontend/package.json"), added=(), removed=()
     )
     assert prepush.touched(other, spec) == []
+
+
+def test_a_file_added_in_a_new_ee_directory_names_the_editions_gate_and_an_edit_does_not() -> None:
+    """Gap pre-push-guard-misses-editions-new-dir: a file added under a new directory was pushed without the Editions
+    gate, which declared no pre_push, and CI's Editions job went red one cycle later. The gate guards a source file
+    added or removed anywhere in the checkout (git_repo: the whole tree), never an edit of an existing file."""
+    from pathlib import Path
+
+    spec = load_checks((Path(__file__).resolve().parents[2] / CHECKS_FILE).read_text())["editions"]
+    assert spec.git_repo and spec.pre_push_on == ("added", "removed")
+    added = CheckoutChanges(
+        modified=("backend/app/x.py",),
+        added=("backend/app/services/newpkg/__init__.py", "frontend/src/pages/new/page.tsx", "docs/new.md"),
+        removed=("apps/relay/src/old.rs",),
+    )
+    assert prepush.touched(added, spec) == [
+        "backend/app/services/newpkg/__init__.py",
+        "frontend/src/pages/new/page.tsx",
+        "apps/relay/src/old.rs",
+    ]
+    session = _Session()
+    entries = asyncio.run(session.entries())
+    text = prepush.warning(session.record, added, entries, [spec], {}, checkout="repo")
+    assert "editions never ran on this checkout (backend/app/services/newpkg/__init__.py" in text
+    edit = CheckoutChanges(modified=("backend/app/x.py", "frontend/src/a.ts"), added=(), removed=())
+    assert prepush.touched(edit, spec) == []
+
+
+def test_pre_push_on_defaults_to_every_change_and_refuses_an_unknown_kind() -> None:
+    specs = load_checks(CHECKS.decode())
+    assert specs["frontend-knip"].pre_push_on == ("added", "modified", "removed")
+    for bad in ('"added"', "[]", '["renamed"]'):
+        with pytest.raises(ChecksError, match="pre_push_on"):
+            load_checks(f'[check.x]\nargv = ["true"]\npre_push = ["*.py"]\npre_push_on = {bad}\n')
+    only_added = load_checks('[check.x]\nargv = ["true"]\npre_push = ["*.py"]\npre_push_on = ["removed", "added"]\n')
+    assert only_added["x"].pre_push_on == ("added", "removed")
+    changes = CheckoutChanges(modified=("a.py",), added=("b.py",), removed=("c.py",))
+    assert prepush.touched(changes, only_added["x"]) == ["b.py", "c.py"]
