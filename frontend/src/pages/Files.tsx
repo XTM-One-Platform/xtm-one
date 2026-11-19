@@ -68,11 +68,17 @@ import {
   resolveAttachmentMime,
 } from "./chat/fileVisuals";
 import { formatTimeAgo } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
+import { useDeletedFileNotice } from "@/pages/chat/deleted-file-notice";
 
 const PAGE_SIZE = 50;
 
 type ContextFilter = FileContext | "all";
 type OriginFilter = ConversationFileOrigin | "all";
+/** Whether the file's content is kept (#396): every file, kept ones, deleted ones. */
+type StatusFilter = "all" | "live" | "deleted";
+const STATUS_VALUES: readonly StatusFilter[] = ["all", "live", "deleted"];
+const PARAM_STATUS = "status";
 
 /* URL parameter names. Short on purpose — these are shared as links. */
 const PARAM_SEARCH = "q";
@@ -174,9 +180,12 @@ function FileRow({
         : sourceLabel(file.source, t_i18n);
 
   const download = () => void authenticatedDownload(file.download_url, file.filename);
+  // A deleted file (#396): its row stays, muted, without a download.
+  const deleted = !!file.deleted_at;
+  const deletedNotice = useDeletedFileNotice();
 
   const items: OverflowMenuItem[] = [
-    { id: "download", label: t_i18n("Download"), icon: Download, onSelect: download },
+    ...(deleted ? [] : [{ id: "download", label: t_i18n("Download"), icon: Download, onSelect: download }]),
     ...(contextHref
       ? [
           {
@@ -207,17 +216,36 @@ function FileRow({
       </div>
       <button
         type="button"
-        onClick={download}
-        className="min-w-0 flex-1 text-left"
-        aria-label={t_i18n("Download {name}", { name: file.filename })}
+        onClick={deleted ? undefined : download}
+        disabled={deleted}
+        className="min-w-0 flex-1 text-left disabled:cursor-default"
+        aria-label={
+          deleted
+            ? t_i18n("{filename}: {why}", { filename: file.filename, why: deletedNotice(file.deleted_at!, file.deleted_reason) })
+            : t_i18n("Download {name}", { name: file.filename })
+        }
+        data-testid={deleted ? "files.row.deleted" : undefined}
       >
-        <p className="truncate content-base font-medium">{file.filename}</p>
+        <p className={cn("truncate content-base font-medium", deleted && "text-default-secondary")}>{file.filename}</p>
         <p className="flex flex-wrap items-center gap-x-1.5 truncate text-[11px] text-default-secondary">
           <span>{formatFileSize(file.size)}</span>
           <span aria-hidden>·</span>
           <span>{extension ? extension.toUpperCase() : typeLabel}</span>
           <span aria-hidden>·</span>
           <span>{formatTimeAgo(intl, file.created_at)}</span>
+          {deleted ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>{deletedNotice(file.deleted_at!, file.deleted_reason)}</span>
+            </>
+          ) : file.expires_at ? (
+            <>
+              <span aria-hidden>·</span>
+              <span title={intl.formatDate(new Date(file.expires_at), { dateStyle: "medium", timeStyle: "short" })}>
+                {t_i18n("Expires {date} if unused", { date: intl.formatDate(new Date(file.expires_at), { dateStyle: "medium" }) })}
+              </span>
+            </>
+          ) : null}
           {showContext && (
             <>
               <span aria-hidden>·</span>
@@ -325,6 +353,7 @@ export default function Files() {
 
   const context = pick(searchParams.get(PARAM_CONTEXT), CONTEXT_VALUES, "all");
   const origin = pick(searchParams.get(PARAM_ORIGIN), ORIGIN_VALUES, "all");
+  const status = pick(searchParams.get(PARAM_STATUS), STATUS_VALUES, "all");
   const conversationId = searchParams.get(PARAM_CONVERSATION) ?? undefined;
   const runId = searchParams.get(PARAM_RUN) ?? undefined;
   // Each segment's count under the other filters, the numbers on the filter.
@@ -374,8 +403,9 @@ export default function Files() {
       vis: visibilityQuery(visibility),
       conversation_id: conversationId,
       assignment_run_id: runId,
+      status: status === "all" ? undefined : status,
     }),
-    [page, debouncedSearch, context, origin, visibility, conversationId, runId],
+    [page, debouncedSearch, context, origin, visibility, conversationId, runId, status],
   );
   const { data, isLoading, isFetching } = useFiles(query, { enabled: !landing });
   // The same filters over every segment, asked on an empty Mine only: the hint reads it.
@@ -390,7 +420,7 @@ export default function Files() {
   const groups = useMemo(() => groupFiles(files, t_i18n), [files, t_i18n]);
   // The filters besides the segment: with none, an empty page is an empty repository.
   const otherFiltersActive =
-    Boolean(debouncedSearch) || context !== "all" || origin !== "all"
+    Boolean(debouncedSearch) || context !== "all" || origin !== "all" || status !== "all"
     || Boolean(conversationId) || Boolean(runId);
   const repositoryEmpty = total === 0 && !otherFiltersActive
     && (visibility === "all" || (visibility === "mine" && allSegments?.total === 0));
@@ -452,6 +482,11 @@ export default function Files() {
     { key: "uploaded", label: "Uploaded" },
     { key: "generated", label: "Generated" },
   ];
+  const statusOptions: SegmentedFilterOption<StatusFilter>[] = [
+    { key: "all", label: "Any state" },
+    { key: "live", label: "Available" },
+    { key: "deleted", label: "Deleted" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -481,6 +516,12 @@ export default function Files() {
               onChange={(v) => setParam(PARAM_ORIGIN, v)}
               options={originOptions}
               ariaLabel={t_i18n("How the file got there")}
+            />
+            <SegmentedFilter
+              value={status}
+              onChange={(v) => setParam(PARAM_STATUS, v)}
+              options={statusOptions}
+              ariaLabel={t_i18n("Whether the file's content is kept")}
             />
             <VisibilityFilter value={visibility} onChange={setVisibility} counts={segmentCounts} />
             <div className="ml-auto flex items-center gap-3">

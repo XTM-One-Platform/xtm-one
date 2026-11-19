@@ -1677,6 +1677,9 @@ async def get_run_detail(
                         ),
                         "created_at": _isoformat_or_none(getattr(att, "created_at", None)),
                         "sha256": getattr(att, "sha256", None) or None,
+                        # The tombstone (#396): the chip shows the file deleted.
+                        "deleted_at": _isoformat_or_none(getattr(att, "deleted_at", None)),
+                        "deleted_reason": getattr(att, "deleted_reason", None),
                     }
                     for att in _att_rows
                 ]

@@ -33,6 +33,7 @@ import { cn, formatTime } from "@/lib/utils";
 import { inlineChipClass } from "./inline-chip";
 import { fileCardFacts, newerRevisionId, type FileCardFacts } from "@/pages/chat/file-revisions";
 import { useFileRevision } from "@/pages/chat/file-revisions-context";
+import { useDeletedFileNotice } from "@/pages/chat/deleted-file-notice";
 import {
   authenticatedDownload,
   formatFileSize,
@@ -149,7 +150,62 @@ function NewerVersionLink({ fileId }: { fileId: string | null | undefined }) {
   );
 }
 
+/**
+ * The card of a file whose content was deleted (#396): its icon, name and size,
+ * muted, with when and why. Never asks for its bytes, so never a broken image or
+ * a 410 on click. `compact` is the inline chip of a working file.
+ */
+function DeletedFileCard({ att, compact = false }: { att: ChatMessageAttachment; compact?: boolean }) {
+  const { t_i18n } = useFormatter();
+  const notice = useDeletedFileNotice();
+  const mime = resolveAttachmentMime(att);
+  const { icon: Icon } = mimeVisual(mime);
+  const size = formatFileSize(att.size);
+  const why = att.deleted_at ? notice(att.deleted_at, att.deleted_reason) : t_i18n("Deleted");
+  if (compact) {
+    return (
+      <span
+        className={cn(inlineChipClass(), "opacity-80")}
+        {...fileAnchor(att.file_id)}
+        data-testid="file-chip-deleted"
+        aria-label={t_i18n("{filename}: {why}", { filename: att.filename, why })}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-default-secondary" aria-hidden />
+        <span className="truncate font-medium text-default-secondary line-through decoration-1">{att.filename}</span>
+        <span className="shrink-0 text-default-secondary">{why}</span>
+      </span>
+    );
+  }
+  return (
+    <div
+      {...fileAnchor(att.file_id)}
+      data-testid="file-card-deleted"
+      className="inline-flex max-w-[320px] min-w-[200px] items-start gap-2.5 rounded-sm border border-dashed border-elevation-subtle-soft px-3 py-2.5"
+    >
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-default-secondary" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate content-base font-medium leading-tight text-default-secondary">{att.filename}</span>
+          {size && <span className="shrink-0 text-[11px] text-default-secondary">{size}</span>}
+        </div>
+        <div className="mt-1 content-compact text-default-secondary">{why}</div>
+      </div>
+    </div>
+  );
+}
+
 export function FileChip({
+  att,
+  autoFocusOnMount = false,
+}: {
+  att: ChatMessageAttachment;
+  autoFocusOnMount?: boolean;
+}) {
+  if (att.deleted_at) return <DeletedFileCard att={att} />;
+  return <LiveFileChip att={att} autoFocusOnMount={autoFocusOnMount} />;
+}
+
+function LiveFileChip({
   att,
   autoFocusOnMount = false,
 }: {
@@ -262,6 +318,11 @@ export function FileChip({
 }
 
 export function WorkingFileChip({ att }: { att: ChatMessageAttachment }) {
+  if (att.deleted_at) return <DeletedFileCard att={att} compact />;
+  return <LiveWorkingFileChip att={att} />;
+}
+
+function LiveWorkingFileChip({ att }: { att: ChatMessageAttachment }) {
   const mime = resolveAttachmentMime(att);
   const { icon: Icon, color } = mimeVisual(mime);
   const typeLabel = mimeLabel(att, mime);
@@ -389,7 +450,8 @@ export function WorkingFilesDisclosure({ files }: { files: ChatMessageAttachment
       <ul id={listId} hidden={!open} className="mt-1.5 space-y-1.5">
         {files.map((file, index) => (
           <li key={file.file_id ?? `working-${index}`} className="flex items-center gap-1.5">
-            {opened && resolveAttachmentMime(file).startsWith("image/") && <WorkingFileThumbnail att={file} />}
+            {/* A deleted picture has no bytes to fetch (#396): its chip alone says so. */}
+            {opened && !file.deleted_at && resolveAttachmentMime(file).startsWith("image/") && <WorkingFileThumbnail att={file} />}
             <WorkingFileChip att={file} />
           </li>
         ))}

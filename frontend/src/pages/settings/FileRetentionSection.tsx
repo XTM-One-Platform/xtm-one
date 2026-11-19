@@ -26,14 +26,18 @@ import { useFormatter } from "@/i18n";
 import { formatFileSize } from "@/pages/chat/fileVisuals";
 
 /** The English name and what each category covers. @i18n-keys */
-const CATEGORY_LABELS: Record<string, { name: string; covers: string }> = {
+const CATEGORY_LABELS = {
   agent_working: { name: "Agent working files", covers: "Scratch files agents write while they work" },
   agent_download: { name: "Agent deliverables", covers: "Files agents hand to people to download" },
   agent: { name: "Other agent files", covers: "Files tools and MCP servers return" },
   chat: { name: "Chat uploads", covers: "Files people attach in a conversation" },
   channel: { name: "Channel files", covers: "Files received from Teams, Outlook and other channels" },
   agent_check: { name: "Check pictures", covers: "Frames and captures a tool makes for the agent to look at" },
-};
+} as const;
+
+function categoryLabel(key: string): { name: string; covers: string } | undefined {
+  return (CATEGORY_LABELS as Record<string, { name: string; covers: string }>)[key];
+}
 
 function parseDays(raw: string, max: number): number | null {
   if (!/^\d+$/.test(raw.trim())) return null;
@@ -128,7 +132,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
 
       <table className="w-full content-base" data-testid="settings.file-retention.table">
         <thead>
-          <tr className="border-b border-default text-left text-default-secondary">
+          <tr className="border-b border-elevation-subtle-soft text-left text-default-secondary">
             <th className="py-2 pr-3 font-medium">{t_i18n("Category")}</th>
             <th className="py-2 pr-3 font-medium">{t_i18n("Kept")}</th>
             <th className="py-2 pr-3 text-right font-medium">{t_i18n("Files")}</th>
@@ -138,13 +142,13 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
         </thead>
         <tbody>
           {categories.map((c) => {
-            const label = CATEGORY_LABELS[c.category];
+            const label = categoryLabel(c.category);
             const inputId = `${fieldId}-${c.category}`;
             const fieldInvalid = editing && !c.locked && parseDays(draft[c.category] ?? "", maxDays) === null;
             const swept = data?.last_sweep?.files[c.category];
             const would = previewRow(c.category);
             return (
-              <tr key={c.category} className="border-b border-default align-top" data-testid={`settings.file-retention.row.${c.category}`}>
+              <tr key={c.category} className="border-b border-elevation-subtle-soft align-top" data-testid={`settings.file-retention.row.${c.category}`}>
                 <td className="py-2 pr-3">
                   <label htmlFor={inputId} className="font-medium">
                     {t_i18n(label?.name ?? c.category)}
@@ -156,6 +160,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
                     <span className="flex items-center gap-2">
                       <Input
                         id={inputId}
+                        aria-label={t_i18n(label?.name ?? c.category)}
                         type="number"
                         min={0}
                         max={maxDays}
@@ -185,7 +190,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
                   )}
                   {editing && would && (would.files > 0 || would.kept_referenced > 0) && (
                     <p className="content-compact text-default-secondary" data-testid={`settings.file-retention.preview.${c.category}`}>
-                      {t_i18n("Next sweep: {files} ({size}) deleted, {kept} kept in use", {
+                      {t_i18n("Next sweep: {files} ({size}) deleted; {kept, plural, one {# file} other {# files}} kept in use", {
                         files: fileCount(would.files),
                         size: formatFileSize(would.bytes) || "0 B",
                         kept: would.kept_referenced,

@@ -717,6 +717,25 @@ used.
 
 `Memory purge` permanently deletes every agent memory on the platform, for example after discovering a flaw in the memory system. The purge cannot be undone and is recorded in the audit log.
 
+## Storage & retention
+
+`Settings > Usage and quotas > Storage & retention` (administrators) lists every category of stored file with how long it is kept, from when the days count, how many files and how much space it holds today, how many were deleted, and what the last hourly sweep deleted.
+
+| Category | Holds | Default |
+|---|---|---|
+| Agent working files | scratch files assistants write while they work | 60 days after the last use |
+| Agent deliverables | files assistants hand to people to download | 60 days after the last use |
+| Other agent files | files tools and MCP servers return | Never |
+| Chat uploads | files people attach in a conversation | Never |
+| Channel files | files received from Teams, Outlook and the other channels | Never |
+| Check pictures | frames and captures a tool makes for the assistant to look at | 7 days after creation |
+
+A use is a download, a preview, a read by an assistant or an attach; it starts the days again. A file an open work item, a workset, an active shared state, a presentation, a report or a video still uses is never deleted. A deleted file keeps its row: the chat, the files panel, run attachments and the Files page show a muted card with when and why, its download answers `410 Gone`, and an assistant reading it is told the file was deleted.
+
+`Edit` turns each value into a field (days; `0` = never). A value shorter than the current one deletes files at the next sweep, so `Save` waits for `Preview`, which counts per category the files and the space the next sweep would delete and how many it keeps because they are in use. Every change is recorded in the audit log with its old and new values. A category whose environment variable is set (`FILE_RETENTION_*_DAYS`, `AGENT_CHECK_FILE_RETENTION_DAYS`, see [configuration](../deployment/configuration.md)) is shown locked with the variable's name.
+
+The same values are read and written through `GET` / `PUT /api/v1/settings/file-retention`, `POST /api/v1/settings/file-retention/preview`, and read by any signed-in caller through `GET /api/v1/settings/file-retention/rules`.
+
 ## Observability
 
 `Observability` covers tracing, model costs and usage reporting. It holds three cards.

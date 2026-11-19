@@ -194,6 +194,8 @@ function toChipAttachment(att: AssignmentRunAttachment): ChatMessageAttachment {
     file_tag: att.file_tag ?? "download_file",
     created_at: att.created_at ?? null,
     sha256: att.sha256 ?? null,
+    deleted_at: att.deleted_at ?? null,
+    deleted_reason: att.deleted_reason ?? null,
   };
 }
 

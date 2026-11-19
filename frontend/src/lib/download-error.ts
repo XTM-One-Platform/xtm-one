@@ -37,6 +37,12 @@ export function downloadErrorDescription(
   console.warn("download failed", error);
   const name = filename?.trim() ?? "";
   const status = downloadErrorStatus(error);
+  // 410 Gone (#396): the file's content was deleted (a retention, its owner, an administrator).
+  if (status === 410) {
+    return name
+      ? t_i18n("\"{filename}\" was deleted by the retention policy.", { filename: name })
+      : t_i18n("This file was deleted by the retention policy.");
+  }
   if (status === 404) {
     return name
       ? t_i18n("\"{filename}\" no longer exists.", { filename: name })
