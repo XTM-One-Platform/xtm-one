@@ -1710,7 +1710,7 @@ report = "lines"
 # checkout (base sizes), then again after a change that touches a tool's
 # description or arguments. Exits 1 when a ceiling is crossed.
 [check.backend-schema-budget]
-description = "the built-in tool schema budget per group: size, ceiling, headroom, delta against the baseline and the functions that grew most (no test run); args: --save-baseline on the base checkout first, --top N"
+description = "the built-in tool schema budget per group: size, ceiling, headroom, delta against the baseline and the functions that grew most (no test run); args: --save-baseline on the base checkout first, --top N, --group NAME (a group's functions and repeated arguments by size)"
 argv = ["python", "-m", "scripts.tool_schema_budget"]
 cwd = "backend"
 timeout = 300
