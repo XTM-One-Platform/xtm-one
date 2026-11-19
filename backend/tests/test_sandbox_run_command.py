@@ -945,6 +945,51 @@ async def test_a_second_check_of_the_same_container_queues_behind_the_running_on
     assert saved is not None and saved.exit_code == 0 and "slow-done" in saved.text
 
 
+async def test_two_checks_called_in_one_round_never_start_together_in_one_container(api, monkeypatch):
+    """Issued in the same round (gathered), the second check reads the first's run and queues behind it.
+
+    Both used to read "nothing runs here" before either recorded its run, so both started in the container at
+    once (two installs racing in one node_modules: ENOENT, EEXIST in the link step).
+    """
+    workspace = _workspace()
+    slow = "import time; time.sleep(1); print('slow-done')"
+    checks = f'[check.slow]\nargv = ["python", "-c", {json.dumps(slow)}]\n[check.quick]\nargv = ["python", "-c", "print(\'quick-done\')"]\n'
+    await workspace.put_tree([("co/.xtm-one/checks.toml", checks.encode())])
+    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 30.0)
+    slow_cmd = await _resolve(workspace, check="slow")
+    quick_cmd = await _resolve(workspace, check="quick")
+    first, second = await asyncio.gather(
+        commands.run_command(slow_cmd, workspace=workspace, sandbox_api=api),
+        commands.run_command(quick_cmd, workspace=workspace, sandbox_api=api),
+    )
+    assert first.exit_code == 0 and "slow-done" in first.text, first.text
+    assert second.exit_code == 0 and "quick-done" in second.text, second.text
+    assert "(Queued behind slow, run " in second.text, second.text
+    assert len(api.containers) == 1
+    assert commands._CLAIMS == {}
+
+
+async def test_a_container_claim_waits_its_turn_and_gives_up_past_its_timeout():
+    workspace = _workspace()
+    await workspace.put_tree([("co/x", b"1")])
+    held = commands._Claim()
+    assert await held.take(workspace, "node", 1.0)
+    late = commands._Claim()
+    assert not await late.take(workspace, "node", 0.1)
+    other_image = commands._Claim()
+    assert await other_image.take(workspace, "python", 0.1)
+    other_image.release()
+    next_claim = commands._Claim()
+    waiting = asyncio.ensure_future(next_claim.take(workspace, "node", 5.0))
+    await asyncio.sleep(0)
+    held.release()
+    held.release()  # idempotent
+    assert await waiting
+    assert len(commands._CLAIMS) == 1
+    next_claim.release()
+    assert commands._CLAIMS == {}
+
+
 async def test_a_kernel_start_keeps_the_jobs_and_the_rerun_records():
     from app.services.sandbox_workspace import kernel
 
