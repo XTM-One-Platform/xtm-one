@@ -247,7 +247,12 @@ class FleetResponse(BaseModel):
     shared_user_ids: list[str] | None = None
     shared_user_permissions: dict[str, str] | None = None
     access_restricted: bool = False
+    #: Whether the REQUESTING user may change it; always false on the built-in
+    #: Platform Health fleet, which takes no write at all (#101 S1b).
     can_manage: bool
+    #: Why NOBODY may change it, administrators included: set on the built-in
+    #: Platform Health fleet (``HEALTH_READ_ONLY_REFUSAL``), ``None`` otherwise.
+    read_only_reason: str | None = None
     member_count: int = 0
     connected_count: int = 0
     exposed_agent_ids: list[str] = Field(default_factory=list)

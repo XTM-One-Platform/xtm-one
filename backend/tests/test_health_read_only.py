@@ -116,6 +116,27 @@ async def test_a_health_agent_is_never_duplicated(monkeypatch):
     assert (refused.value.status_code, refused.value.detail) == (403, HEALTH_READ_ONLY_REFUSAL)
 
 
+def test_the_health_fleet_response_offers_no_control_to_an_admin() -> None:
+    """The fleet response's ``can_manage`` is false on it, so the UI shows no switch the API refuses."""
+    from app.api.v1.fleets import _can_manage_fleet
+
+    admin = _user("admin")
+    health = SimpleNamespace(
+        is_builtin=True, slug="platform-health", is_company_managed=True, user_id=None, shared_group_ids=[]
+    )
+    assert _can_manage_fleet(admin, health, []) is False  # type: ignore[arg-type]
+    other = SimpleNamespace(is_builtin=True, slug="ctem-posture", is_company_managed=True, user_id=None)
+    assert _can_manage_fleet(admin, other, []) is True  # type: ignore[arg-type]
+
+
+def test_responses_carry_the_read_only_reason_field() -> None:
+    from app.api.v1.schemas.agent import AgentResponse
+    from app.api.v1.schemas.fleet import FleetResponse
+
+    assert AgentResponse.model_fields["read_only_reason"].default is None
+    assert FleetResponse.model_fields["read_only_reason"].default is None
+
+
 def test_a_custom_fleet_named_like_it_is_not_the_health_fleet():
     assert is_health_fleet(SimpleNamespace(is_builtin=False, slug="platform-health")) is False
     ensure_builtin_fleet_writable(SimpleNamespace(is_builtin=False, slug="platform-health"), {"name"})

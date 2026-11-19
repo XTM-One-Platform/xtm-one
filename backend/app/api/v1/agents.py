@@ -218,6 +218,7 @@ from app.services.fleets import (
     home_fleets_of,
     refused_cross_fleet_handovers,
 )
+from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_agent
 from app.services.integration_credentials import (
     PIPELINE_TOOL_REF_FIELDS,
     added_integration_bindings,
@@ -3405,7 +3406,6 @@ async def duplicate_agent(
     read and answers their number in ``memory_entries_copied``.
     """
     from app.models.agent_copy import split_reserved_agent_tags
-    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_agent
     from app.services.llm_provider_deletion import lock_provider_configs
     from app.services.persistent_memory import (
         MEMORY_COPY_REFUSED,
@@ -4492,6 +4492,7 @@ def _to_response(
         shared_user_permissions=a.shared_user_permissions,
         access_restricted=a.access_restricted,
         can_manage=can_manage,
+        read_only_reason=HEALTH_READ_ONLY_REFUSAL if is_health_agent(a) else None,
         can_view_chats=can_view_chats,
         tags=a.tags or [],
         integration_bindings=a.integration_bindings,

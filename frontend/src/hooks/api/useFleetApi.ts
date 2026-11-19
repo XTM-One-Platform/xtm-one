@@ -57,7 +57,10 @@ export interface Fleet {
   shared_user_ids: string[] | null;
   shared_user_permissions?: Record<string, string> | null;
   access_restricted: boolean;
+  /** False on the built-in Platform Health fleet for everyone, administrators included. */
   can_manage: boolean;
+  /** Why nobody may change it (the Platform Health fleet, #101 S1b); null otherwise. */
+  read_only_reason?: string | null;
   member_count: number;
   connected_count: number;
   exposed_agent_ids: string[];

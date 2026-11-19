@@ -374,6 +374,12 @@ class AgentResponse(BaseModel):
     #: tiers included, so the UI never offers an edit the API refuses.
     #: A built-in stays read-only in XTM One mode whatever this says.
     can_manage: bool = False
+    #: Why NOBODY may edit it, administrators included, in any mode: set for an
+    #: agent of the built-in Platform Health fleet (``HEALTH_READ_ONLY_REFUSAL``),
+    #: ``None`` otherwise. The UI hides every write control (integrations and
+    #: memory included, which an administrator may otherwise change on a
+    #: built-in) and shows this reason on the Read-only badge (#101 S1b).
+    read_only_reason: str | None = None
     #: Whether the REQUESTING user may read its conversations -
     #: ``helpers.can_view_agent_chats``, the rule the chats routes enforce.
     can_view_chats: bool = False

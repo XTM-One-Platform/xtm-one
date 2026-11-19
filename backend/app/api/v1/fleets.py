@@ -221,6 +221,7 @@ from app.services.fleets import (
     unique_fleet_slug,
     update_member,
 )
+from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_fleet
 from app.services.workspaces import create_workspace, lock_workspace_for_hosting
 
 if TYPE_CHECKING:
@@ -230,6 +231,19 @@ router = APIRouter()
 
 _LABEL = "Fleet"
 _NOT_FOUND = f"{_LABEL} not found"
+
+
+def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None) -> bool:
+    """The ``can_manage`` a fleet response carries for *user*.
+
+    ``helpers.can_manage`` for every fleet but the built-in Platform Health
+    one, which takes no write at all, administrators included
+    (``ensure_builtin_fleet_writable``): the UI offers no switch the API
+    refuses (#101 S1b).
+    """
+    if is_health_fleet(fleet):
+        return False
+    return can_manage(user, fleet, user_group_ids)
 
 
 def _refused(exc: FleetActionRefusedError) -> HTTPException:
@@ -350,7 +364,8 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             shared_user_ids=f.shared_user_ids,
             shared_user_permissions=f.shared_user_permissions,
             access_restricted=bool(f.access_restricted),
-            can_manage=can_manage(user, f, user_group_ids),
+            can_manage=_can_manage_fleet(user, f, user_group_ids),
+            read_only_reason=HEALTH_READ_ONLY_REFUSAL if is_health_fleet(f) else None,
             member_count=counts.get((f.id, FLEET_ROLE_MEMBER), 0),
             connected_count=counts.get((f.id, FLEET_ROLE_CONNECTED), 0),
             exposed_agent_ids=[str(a) for a in exposed_agent_ids(f, by_fleet.get(f.id, []))],
@@ -2129,7 +2144,7 @@ async def get_agent_fleets(
                 has_orchestrator=fleet.orchestrator_agent_id is not None,
                 is_exposed=bool(row.is_exposed) or is_orchestrator,
                 is_archived=bool(fleet.is_archived),
-                can_manage=can_manage(user, fleet, user_group_ids),
+                can_manage=_can_manage_fleet(user, fleet, user_group_ids),
             )
         else:
             connected.append(
@@ -2140,7 +2155,7 @@ async def get_agent_fleets(
                     collaboration_instruction=effective_member_settings(fleet, row).collaboration_instruction,
                     context_inclusion=effective_member_settings(fleet, row).context_inclusion,
                     is_archived=bool(fleet.is_archived),
-                    can_manage=can_manage(user, fleet, user_group_ids),
+                    can_manage=_can_manage_fleet(user, fleet, user_group_ids),
                 )
             )
     home_hidden = False

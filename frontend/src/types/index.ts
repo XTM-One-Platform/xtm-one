@@ -2125,6 +2125,9 @@ export interface Agent {
   /** The requesting user's right to edit it, share tiers included, computed
    *  server-side. Read it through `canManageEntity()`. */
   can_manage?: boolean;
+  /** Why nobody may edit it, administrators included (a Platform Health fleet
+   *  agent, #101 S1b); null otherwise. Every write control is hidden then. */
+  read_only_reason?: string | null;
   /** The requesting user's right to read its conversations - the rule the
    *  chats routes enforce (admin, owner, or a `config_with_chats` grant).
    *  Read it through `canViewAgentChats()`. */
