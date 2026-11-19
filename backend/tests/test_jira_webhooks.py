@@ -307,3 +307,133 @@ def test_a_comment_delivery_maps_to_comment_created():
 def test_the_poll_slows_to_a_safety_net_once_the_webhook_delivers():
     assert jira_webhooks.poll_interval(60, delivered=False) == 60
     assert jira_webhooks.poll_interval(60, delivered=True) == jira_webhooks.SAFETY_POLL_SECONDS
+
+
+# ── Delivery: the filter's free jql ──────────────────────────────────────────
+
+
+class _SearchJira:
+    """Answers the jql check search: *issues* matched, or an error."""
+
+    def __init__(self, issues=None, err=None):
+        self.calls: list[tuple[str, str, object]] = []
+        self.issues = issues or []
+        self.err = err
+
+    async def __call__(self, method, path, body):
+        self.calls.append((method, path, body))
+        if self.err:
+            return None, self.err
+        return {"issues": self.issues}, None
+
+
+async def test_jql_matches_searches_the_issue_key_anded_with_the_free_jql():
+    fake = _SearchJira(issues=[{"id": "10001"}])
+    assert await jira_webhooks.jql_matches(fake, "OPS-7", 'status = "Awaiting approval"') is True
+    assert fake.calls == [
+        (
+            "post",
+            "search/jql",
+            {"jql": 'issuekey = "OPS-7" AND (status = "Awaiting approval")', "fields": ["id"], "maxResults": 1},
+        )
+    ]
+    assert await jira_webhooks.jql_matches(_SearchJira(), "OPS-7", "labels = x") is False
+    assert await jira_webhooks.jql_matches(_SearchJira(err="Jira API error (400)"), "OPS-7", "bad") is None
+    assert await jira_webhooks.jql_matches(_SearchJira(), "", "labels = x") is None
+
+
+class _Wf:
+    def __init__(self, config):
+        self.id = "a-1"
+        self.name = "Legal approvals"
+        self.agent_id = "g-1"
+        self.trigger_config = config
+        self.ignore_self_triggered_events = False
+
+
+class _Redis:
+    async def set(self, *args, **kwargs):
+        return True
+
+
+def _patch_dispatch(monkeypatch, wf, search):
+    """Wires dispatch_delivery to one assignment, a fake search and recorders."""
+    import contextlib
+
+    from app.core import database, redis
+    from app.services import assignment_engine, docusign_connect, integration_event_filters, slack_events
+
+    seen: dict[str, list] = {"runs": [], "filtered": []}
+
+    @contextlib.asynccontextmanager
+    async def _session():
+        yield None
+
+    async def _redis():
+        return _Redis()
+
+    async def _assignments(db, integration_id, provider, events):
+        return [(wf, type("A", (), {"name": "Legal"})())]
+
+    async def _claim(redis_, assignment_id, msg_id):
+        return True
+
+    async def _record(assignment_id, count):
+        seen["filtered"].append((assignment_id, count))
+
+    async def _trigger(wf_, agent, payload, **kwargs):
+        seen["runs"].append(payload["message_id"])
+        return type("R", (), {"status": "started", "run_id": "r-1"})()
+
+    async def _conn(db, assignment, agent):
+        if search is None:
+            return "no Jira token could be resolved for the integration"
+        return search, "i-1", ME
+
+    monkeypatch.setattr(database, "async_session", _session)
+    monkeypatch.setattr(redis, "redis_client", _redis)
+    monkeypatch.setattr(docusign_connect, "provider_assignments", _assignments)
+    monkeypatch.setattr(slack_events, "claim_seen", _claim)
+    monkeypatch.setattr(integration_event_filters, "record_filtered_events", _record)
+    monkeypatch.setattr(assignment_engine, "trigger_or_queue_assignment", _trigger)
+    monkeypatch.setattr(jira_webhooks, "_connection", _conn)
+    return seen
+
+
+def _jql_assignment(jql='status = "Awaiting approval"'):
+    flt = {"project_key": "OPS"}
+    if jql:
+        flt["jql"] = jql
+    return _Wf({"provider": "jira", "event": "issue_updated", "filter": flt, "jira_webhook": {"account_id": ME}})
+
+
+async def test_a_delivery_the_free_jql_excludes_starts_nothing_and_counts_filtered(monkeypatch):
+    search = _SearchJira(issues=[])
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(), search)
+    result = await jira_webhooks.dispatch_delivery("i-1", _delivery())
+    assert result["count"] == 0 and seen["runs"] == []
+    assert seen["filtered"] == [("a-1", 1)]
+    assert search.calls[0][2]["jql"] == 'issuekey = "OPS-7" AND (status = "Awaiting approval")'
+
+
+async def test_a_delivery_the_free_jql_matches_runs(monkeypatch):
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(), _SearchJira(issues=[{"id": "10001"}]))
+    result = await jira_webhooks.dispatch_delivery("i-1", _delivery())
+    assert result["count"] == 1 and seen["runs"] == ["jira:OPS-7:history:555"]
+    assert seen["filtered"] == []
+
+
+async def test_a_failed_jql_check_leaves_the_delivery_to_the_poll(monkeypatch):
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(), _SearchJira(err="Jira API error (400)"))
+    assert (await jira_webhooks.dispatch_delivery("i-1", _delivery()))["count"] == 0
+    assert seen["runs"] == [] and seen["filtered"] == []
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(), None)
+    assert (await jira_webhooks.dispatch_delivery("i-1", _delivery()))["count"] == 0
+    assert seen["runs"] == [] and seen["filtered"] == []
+
+
+async def test_a_filter_without_jql_makes_no_search(monkeypatch):
+    search = _SearchJira()
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(jql=""), search)
+    assert (await jira_webhooks.dispatch_delivery("i-1", _delivery()))["count"] == 1
+    assert search.calls == [] and seen["runs"] == ["jira:OPS-7:history:555"]

@@ -30,7 +30,9 @@ made:
   deleted, retargeted or no longer reads Jira.
 
 A filter Jira cannot narrow on a webhook (no project, assignee, type or status)
-registers nothing: the webhook would deliver every change of the site. A
+registers nothing: the webhook would deliver every change of the site. The
+filter's free ``jql`` is not part of the webhook: a delivery is checked against
+it by one search on the issue key (:func:`jql_matches`) before any run. A
 registration Jira refuses keeps the poll, with the reason in the state.
 
 A delivery carries ``Authorization: Bearer <JWT>`` signed (HS256) with the
@@ -439,6 +441,32 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     return changed
 
 
+async def jql_matches(call: Call, issue_key: str, jql: str) -> bool | None:
+    """Whether the issue matches the filter's free *jql*; ``None`` when Jira could not say.
+
+    A webhook is registered with the structured clauses only (:func:`webhook_jql`),
+    so a delivery is checked against the free JQL by one search on the issue key.
+    """
+    if not issue_key:
+        return None
+    body = {"jql": f"issuekey = {jira_events._jql_quote(issue_key)} AND ({jql})", "fields": ["id"], "maxResults": 1}
+    resp, err = await call("post", "search/jql", body)
+    if err or not isinstance(resp, Mapping):
+        return None
+    return bool(resp.get("issues"))
+
+
+async def _delivery_jql_verdict(db: Any, assignment: Any, agent: Any, issue_key: str, jql: str) -> bool | None:
+    conn = await _connection(db, assignment, agent)
+    if isinstance(conn, str):
+        logger.warning("Jira delivery for assignment %s left to the poll: %s", assignment.id, conn)
+        return None
+    verdict = await jql_matches(conn[0], issue_key, jql)
+    if verdict is None:
+        logger.warning("Jira delivery for assignment %s left to the poll: the jql check failed", assignment.id)
+    return verdict
+
+
 async def dispatch_delivery(integration_id: str, payload: Any) -> dict[str, Any]:
     """Start or queue a run per Jira assignment for each event a verified delivery carries.
 
@@ -446,6 +474,9 @@ async def dispatch_delivery(integration_id: str, payload: Any) -> dict[str, Any]
     assignments are those the poll reads for the integration
     (``docusign_connect.connect_assignments``' rule), narrowed to the ones whose
     webhook Jira matched when the delivery names them (``matchedWebhookIds``).
+    A filter's free ``jql``, which the webhook cannot carry, is checked by one
+    search on the issue (:func:`jql_matches`): no match counts the events as
+    filtered; a check that fails leaves the change to the poll, which applies it.
     """
     from fastapi import HTTPException
 
@@ -480,7 +511,18 @@ async def dispatch_delivery(integration_id: str, payload: Any) -> dict[str, Any]
             filter_config = trigger_filter(config)
             # The connected account, read by the provisioning pass (``GET /myself``).
             me = str((config.get(STATE_KEY) or {}).get("account_id") or "")
-            for event_payload in delivery_events(payload, event_type):
+            events = delivery_events(payload, event_type)
+            extra_jql = str((filter_config or {}).get("jql") or "").strip()
+            if events and extra_jql:
+                issue_key = str(payload["issue"].get("key") or "")
+                verdict = await _delivery_jql_verdict(db, wf, agent, issue_key, extra_jql)
+                if verdict is None:
+                    continue
+                if not verdict:
+                    await redis.set(delivered_key(wf.id), "1", ex=DELIVERED_TTL_SECONDS)
+                    filtered[wf.id] = filtered.get(wf.id, 0) + len(events)
+                    continue
+            for event_payload in events:
                 msg_id = event_payload["message_id"]
                 await redis.set(delivered_key(wf.id), "1", ex=DELIVERED_TTL_SECONDS)
                 if getattr(wf, "ignore_self_triggered_events", False) and jira_events.is_self_change(event_payload, me):
