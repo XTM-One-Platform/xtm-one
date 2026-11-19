@@ -36,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AgenticGateDialog, AgenticEEBadgeForButton } from "@/components/ui/license-gate-dialog";
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
+import { readerOAuthStatus } from "@/lib/mcp-oauth-status";
 import { PlatformMcpUserSection } from "@/components/ui/platform-mcp-user-section";
 import { MCPImportDialog } from "@/components/ui/mcp-import-dialog";
 import type { MCPServer } from "@/types";
@@ -88,8 +89,8 @@ function ServerCard({ srv, userId }: { srv: MCPServer; userId?: string }) {
             {srv.url && <span className="content-caption text-default-secondary font-mono-plex truncate">{srv.url}</span>}
             {srv.has_env && <Badge variant="outline" className="content-caption">env</Badge>}
             {srv.auth_mode === "oauth" && (
-              <Badge variant={srv.oauth_status === "connected" ? "success" : "outline"} className="content-caption">
-                {srv.oauth_status === "connected" ? "oauth" : t_i18n("oauth (pending)")}
+              <Badge variant={readerOAuthStatus(srv) === "connected" ? "success" : "outline"} className="content-caption">
+                {readerOAuthStatus(srv) === "connected" ? "oauth" : t_i18n("oauth (pending)")}
               </Badge>
             )}
             <TagList tags={srv.tags} className="ml-auto" />
@@ -169,10 +170,10 @@ function useServerColumns(userId?: string): EntityTableColumn<MCPServer>[] {
       key: "auth",
       header: "Auth",
       className: "whitespace-nowrap",
-      sortValue: (s) => s.auth_mode === "oauth" ? `oauth:${s.oauth_status}` : "headers",
+      sortValue: (s) => s.auth_mode === "oauth" ? `oauth:${readerOAuthStatus(s)}` : "headers",
       cell: (s) => s.auth_mode === "oauth" ? (
-        <Badge variant={s.oauth_status === "connected" ? "success" : "outline"} className="content-caption">
-          {s.oauth_status === "connected" ? "oauth" : t_i18n("oauth (pending)")}
+        <Badge variant={readerOAuthStatus(s) === "connected" ? "success" : "outline"} className="content-caption">
+          {readerOAuthStatus(s) === "connected" ? "oauth" : t_i18n("oauth (pending)")}
         </Badge>
       ) : s.has_env || s.has_headers ? (
         <Badge variant="outline" className="content-caption">{s.has_env ? "env" : "headers"}</Badge>

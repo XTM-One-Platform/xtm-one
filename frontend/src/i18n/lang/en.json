@@ -19485,5 +19485,20 @@
   "\"{filename}\" was deleted by an administrator.": "\"{filename}\" was deleted by an administrator.",
   "This file was deleted by an administrator.": "This file was deleted by an administrator.",
   "\"{filename}\" was deleted by its owner.": "\"{filename}\" was deleted by its owner.",
-  "This file was deleted by its owner.": "This file was deleted by its owner."
+  "This file was deleted by its owner.": "This file was deleted by its owner.",
+  "Connected account": "Connected account",
+  "One shared account": "One shared account",
+  "Each person's own account": "Each person's own account",
+  "Each person connects their own account once and acts as themselves.": "Each person connects their own account once and acts as themselves.",
+  "One account, authorized once, is used for every person who can use this server.": "One account, authorized once, is used for every person who can use this server.",
+  "Saving discards the shared connection: each person then connects their own account.": "Saving discards the shared connection: each person then connects their own account.",
+  "Saving disconnects every person's own account: the server then has to be authorized once for everyone.": "Saving disconnects every person's own account: the server then has to be authorized once for everyone.",
+  "Your account is connected": "Your account is connected",
+  "Your connection failed to refresh": "Your connection failed to refresh",
+  "Connect your account to use this server": "Connect your account to use this server",
+  "Calls to this server made for you carry your own account. Tokens are refreshed automatically.": "Calls to this server made for you carry your own account. Tokens are refreshed automatically.",
+  "Connect again to restore your connection.": "Connect again to restore your connection.",
+  "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.",
+  "Connect again": "Connect again",
+  "Disconnect your account": "Disconnect your account"
 }

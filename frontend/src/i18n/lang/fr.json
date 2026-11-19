@@ -19485,5 +19485,20 @@
   "\"{filename}\" was deleted by an administrator.": "« {filename} » a été supprimé par un administrateur.",
   "This file was deleted by an administrator.": "Ce fichier a été supprimé par un administrateur.",
   "\"{filename}\" was deleted by its owner.": "« {filename} » a été supprimé par son propriétaire.",
-  "This file was deleted by its owner.": "Ce fichier a été supprimé par son propriétaire."
+  "This file was deleted by its owner.": "Ce fichier a été supprimé par son propriétaire.",
+  "Connected account": "Compte connecté",
+  "One shared account": "Un compte partagé",
+  "Each person's own account": "Le compte de chaque personne",
+  "Each person connects their own account once and acts as themselves.": "Chaque personne connecte son propre compte une fois et agit en son nom.",
+  "One account, authorized once, is used for every person who can use this server.": "Un seul compte, autorisé une fois, est utilisé pour chaque personne qui peut utiliser ce serveur.",
+  "Saving discards the shared connection: each person then connects their own account.": "L'enregistrement supprime la connexion partagée : chaque personne connecte ensuite son propre compte.",
+  "Saving disconnects every person's own account: the server then has to be authorized once for everyone.": "L'enregistrement déconnecte le compte de chaque personne : le serveur doit ensuite être autorisé une fois pour tous.",
+  "Your account is connected": "Votre compte est connecté",
+  "Your connection failed to refresh": "Le renouvellement de votre connexion a échoué",
+  "Connect your account to use this server": "Connectez votre compte pour utiliser ce serveur",
+  "Calls to this server made for you carry your own account. Tokens are refreshed automatically.": "Les appels faits pour vous à ce serveur portent votre propre compte. Les jetons sont renouvelés automatiquement.",
+  "Connect again to restore your connection.": "Connectez-vous à nouveau pour rétablir votre connexion.",
+  "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "Chaque personne utilise son propre compte sur ce serveur. Tant que vous n'êtes pas connecté, ses outils sont appelés pour vous sans compte et échouent.",
+  "Connect again": "Se reconnecter",
+  "Disconnect your account": "Déconnecter votre compte"
 }

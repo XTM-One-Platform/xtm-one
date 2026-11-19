@@ -58,6 +58,15 @@ account. Resource links keep naming the server (`server_key`).
   are dropped.
 - An authorization in flight for the other mode is refused at the callback.
 
-## Not in this slice
+## Frontend
 
-The frontend (mode selector, "Connect your account") is slice 2 of #443.
+- Configuration > Edit of an OAuth server: the "Connected account" picker
+  (`CredentialModePicker` in `pages/mcp-server-detail/ConnectionPickers.tsx`)
+  sends `credential_mode` only when it changed, and warns what saving
+  discards (the shared token, or every person's own connection).
+- Configuration tab of a `per_user` server: "Your account" card for every
+  reader (no manage right needed): Connect your account / Connect again /
+  Disconnect your account (`DELETE .../my-credential`).
+- Every OAuth status badge (list, header, overview) reads
+  `readerOAuthStatus()` (`lib/mcp-oauth-status.ts`): the reader's own
+  `my_oauth_status` on a `per_user` server, never the server row's token.

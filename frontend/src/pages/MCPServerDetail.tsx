@@ -44,6 +44,7 @@ import {
 import { inferMCPLogo, TRANSPORT_DISPLAY_NAMES } from "@/lib/constants";
 import { isEntityShared, canManageEntity } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
+import { readerOAuthStatus } from "@/lib/mcp-oauth-status";
 import { NewServerForm } from "./mcp-server-detail/NewServerForm";
 import { OverviewTab } from "./mcp-server-detail/OverviewTab";
 import { ConfigTab } from "./mcp-server-detail/ConfigTab";
@@ -112,6 +113,8 @@ export default function MCPServerDetail() {
   const srv = mcpServers?.find((s) => s.id === id);
   const isShared = isEntityShared(srv, user?.id);
   const canManage = canManageEntity(srv, user?.id, isAdmin);
+  // On a per_user server the badge reads the reader's own account (#443).
+  const oauthStatus = srv ? readerOAuthStatus(srv) : "disconnected";
 
   const handleDelete = async () => {
     if (!srv) return;
@@ -214,10 +217,10 @@ export default function MCPServerDetail() {
             </Badge>
             {srv.auth_mode === "oauth" && (
               <Badge
-                variant={srv.oauth_status === "connected" ? "success" : srv.oauth_status === "error" ? "destructive" : "outline"}
+                variant={oauthStatus === "connected" ? "success" : oauthStatus === "error" ? "destructive" : "outline"}
                 className="content-caption"
               >
-                OAuth {srv.oauth_status === "connected" ? t_i18n("Connected") : srv.oauth_status === "error" ? t_i18n("Error") : t_i18n("Not connected")}
+                OAuth {oauthStatus === "connected" ? t_i18n("Connected") : oauthStatus === "error" ? t_i18n("Error") : t_i18n("Not connected")}
               </Badge>
             )}
             {srv.is_company_managed && <CompanyManagedBadge size="default" />}

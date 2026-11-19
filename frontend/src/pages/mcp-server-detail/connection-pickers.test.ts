@@ -16,7 +16,7 @@ describe.each(["NewServerForm.tsx", "ConfigTab.tsx"])("%s", (file) => {
   const source = read(file);
 
   it("imports the shared Transport and Authentication pickers", () => {
-    expect(source).toMatch(/import \{ AuthModePicker, TransportPicker \} from "\.\/ConnectionPickers";/);
+    expect(source).toMatch(/import \{ AuthModePicker,(?: CredentialModePicker,)? TransportPicker \} from "\.\/ConnectionPickers";/);
     expect(source).toContain("<TransportPicker");
     expect(source).toContain("<AuthModePicker");
   });

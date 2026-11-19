@@ -3640,6 +3640,8 @@ export interface MCPToolInfo {
   input_schema?: JsonSchema | null;
 }
 
+export type MCPCredentialMode = "shared" | "per_user";
+
 export interface MCPServer {
   id: string;
   user_id: string | null;
@@ -3658,6 +3660,12 @@ export interface MCPServer {
   /** Whether an OAuth client secret (a value or a vault reference) is stored. */
   has_client_secret?: boolean;
   oauth_status: "disconnected" | "connected" | "error";
+  /** Whose OAuth account a call carries: `shared` (one token on the server,
+   *  the default) or `per_user` (each person connects their own account).
+   *  Optional so the type reads payloads from older backend builds. */
+  credential_mode?: MCPCredentialMode;
+  /** On a `per_user` server: the reader's own connection. Absent otherwise. */
+  my_oauth_status?: "disconnected" | "connected" | "error" | null;
   scopes: string | null;
   authorize_url: string | null;
   token_url: string | null;
@@ -3743,6 +3751,8 @@ export interface CreateMCPServerRequest {
   url?: string;
   headers?: Record<string, string>;
   auth_mode?: "headers" | "oauth";
+  /** See `MCPServer.credential_mode`. */
+  credential_mode?: MCPCredentialMode;
   client_id?: string;
   client_secret?: string;
   scopes?: string;
