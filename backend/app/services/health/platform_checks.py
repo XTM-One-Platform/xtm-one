@@ -99,7 +99,7 @@ async def registration_token(db: AsyncSession, now: datetime) -> list[CheckResul
             "critical",
             "security",
             state == "published_default",
-            evidence={"values": {"state": state}, "source": "PLATFORM_REGISTRATION_TOKEN"},
+            evidence={"values": {"state": state}, "source": "registration_token_state"},
             recommendation=(
                 "Set PLATFORM_REGISTRATION_TOKEN to a random secret here and on every connected "
                 "OpenCTI, OpenAEV or OpenCRQ platform, then restart them."
@@ -137,7 +137,7 @@ async def licence(db: AsyncSession, now: datetime) -> list[CheckResult]:
                 "values": {"installed": installed, "validated": bool(info.license_validated)},
                 "reason": info.license_refusal_reason if refused else "",
             },
-            recommendation="Install a valid Filigran licence in Settings > Licensing, or contact Filigran.",
+            recommendation="Install a valid Filigran licence in Settings > Platform, or contact Filigran.",
         )
     ]
 
