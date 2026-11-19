@@ -1210,9 +1210,14 @@ async def regenerate_fleet_documentation_endpoint(
     a second tab or a page opened again reads ``generating``; a click while one
     runs starts no second one and answers the documentation with ``generating``.
     """
-    from app.services.fleet_doc_generation import FleetDocDraftError, regenerate_fleet_documentation
+    from app.services.fleet_doc_generation import FleetDocDraftError, check_section, regenerate_fleet_documentation
 
     fleet = await _manageable_fleet(db, user, fleet_id)
+    try:
+        # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
+        check_section(body.section)
+    except FleetDocDraftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     # Read once: a rollback below expires ``fleet``, and reading its id again in
     # the async ``finally`` would lazy-load outside the greenlet (MissingGreenlet).
     doc_fleet_id = fleet.id

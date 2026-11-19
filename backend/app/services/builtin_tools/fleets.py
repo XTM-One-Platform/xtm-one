@@ -1864,7 +1864,7 @@ def build_fleet_tools(
         return await _run(_action, write=True)
 
     async def _regenerate_fleet_documentation(fleet_id: str, section: str = "") -> str:
-        from app.services.fleet_doc_generation import FleetDocDraftError, regenerate_fleet_documentation
+        from app.services.fleet_doc_generation import FleetDocDraftError, check_section, regenerate_fleet_documentation
 
         async def _action(db: AsyncSession, user: User) -> str:
             fleet_uuid = _one_id(fleet_id, "fleet_id")
@@ -1872,6 +1872,11 @@ def build_fleet_tools(
             # local version the next boot keeps (the About page's button).
             fleet = await _manageable_fleet(db, user, fleet_uuid, builtin_ok=True)
             wanted = str(section or "").strip() or None
+            try:
+                # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
+                check_section(wanted)
+            except FleetDocDraftError as exc:
+                raise _RefusedError(f"No documentation was generated: {exc} Nothing was saved.") from None
             from app.services.fleet_doc_on_create import (
                 GENERATION_FAILED,
                 claim_generation,
