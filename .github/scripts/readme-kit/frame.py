@@ -2,6 +2,10 @@
 
 Usage:
     python .github/scripts/readme-kit/frame.py CAPTURE.png THEME OUT.webp
+    python .github/scripts/readme-kit/frame.py --retitle FRAMED.webp THEME [OUT.webp]
+The --retitle form repaints the title bar of an image this script already framed
+(same canvas, same geometry) with the current dot colours, so a palette change
+reaches every framed capture without its raw PNG or a lab.
 THEME is dark or light. The capture is any lab screenshot (2880x1800 expected,
 1440x900 at scale 2); it is fitted into the same 2880x1800 canvas for every
 product: page margin, rounded window, a title bar with three dots, a 1 px border
@@ -40,11 +44,7 @@ def frame(capture: Image.Image, theme: dict) -> Image.Image:
     page.paste(Image.new("RGB", (W, H), (0, 0, 0)), (0, 0), sh)
     d = ImageDraw.Draw(page)
     d.rounded_rectangle(win, RADIUS, fill=_hex(theme["card"]), outline=_hex(theme["line"]), width=2)
-    # title bar dots
-    cy = win[1] + BAR // 2
-    for i, col in enumerate((theme["accent"], theme["products"]["xtm-one"], theme["accent2"])):
-        cx = win[0] + 40 + i * DOT_GAP
-        d.ellipse((cx - DOT_R, cy - DOT_R, cx + DOT_R, cy + DOT_R), fill=_hex(col))
+    _dots(d, theme)
     d.line((win[0], win[1] + BAR, win[2], win[1] + BAR), fill=_hex(theme["line"]), width=2)
     # content area, capture fitted by width then cropped at the bottom
     cw, ch = win[2] - win[0] - 4, win[3] - win[1] - BAR - 4
@@ -57,6 +57,31 @@ def frame(capture: Image.Image, theme: dict) -> Image.Image:
     return page
 
 
+def _dots(d: ImageDraw.ImageDraw, theme: dict) -> None:
+    """Title bar dots, brand tokens only (Rule G): accent, XTM One purple, product ink."""
+    cy = MARGIN + BAR // 2
+    for i, col in enumerate(dot_colours(theme)):
+        cx = MARGIN + 40 + i * DOT_GAP
+        d.ellipse((cx - DOT_R, cy - DOT_R, cx + DOT_R, cy + DOT_R), fill=_hex(col))
+
+
+def dot_colours(theme: dict) -> tuple[str, str, str]:
+    return theme["accent"], theme["products"]["xtm-one"], theme["products"]["xtm-hub"]
+
+
+def retitle(framed: Image.Image, theme: dict) -> Image.Image:
+    """Repaint the dots of an image framed by frame() with the current palette."""
+    if framed.size != (W, H):
+        raise SystemExit(f"not a framed capture: {framed.size} != {(W, H)}")
+    img = framed.convert("RGB")
+    d = ImageDraw.Draw(img)
+    cy = MARGIN + BAR // 2
+    pad = DOT_R + 4
+    d.rectangle((MARGIN + 40 - pad, cy - pad, MARGIN + 40 + 2 * DOT_GAP + pad, cy + pad), fill=_hex(theme["card"]))
+    _dots(d, theme)
+    return img
+
+
 def to_webp(img: Image.Image) -> bytes:
     for q in (88, 82, 76, 70, 64, 58, 52):
         buf = io.BytesIO()
@@ -67,7 +92,13 @@ def to_webp(img: Image.Image) -> bytes:
 
 
 if __name__ == "__main__":
-    src, name, out = sys.argv[1:4]
-    th = DARK if name == "dark" else LIGHT
+    if sys.argv[1] == "--retitle":
+        src, name = sys.argv[2:4]
+        out = sys.argv[4] if len(sys.argv) > 4 else src
+        img = retitle(Image.open(src), DARK if name == "dark" else LIGHT)
+    else:
+        src, name, out = sys.argv[1:4]
+        img = frame(Image.open(src), DARK if name == "dark" else LIGHT)
+    data = to_webp(img)
     with open(out, "wb") as f:
-        f.write(to_webp(frame(Image.open(src), th)))
+        f.write(data)

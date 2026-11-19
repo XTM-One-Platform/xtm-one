@@ -27,7 +27,6 @@ DARK = {
     "fg": "#FBFBFB",
     "muted": "#A9B1C6",
     "accent": BRAND_CYAN,
-    "accent2": "#00F1BD",  # screenshot frame dot only (frame.py), never an emblem
     "grid": "#1A2A4A",
     "products": {
         "xtm-one": BRAND_PURPLE,
@@ -47,7 +46,6 @@ LIGHT = {
     "fg": "#00020C",
     "muted": "#4A5068",
     "accent": BRAND_DEEP_BLUE,
-    "accent2": "#00B58E",  # screenshot frame dot only (frame.py), never an emblem
     "grid": "#CFE3F5",
     "products": {
         "xtm-one": BRAND_PURPLE,
