@@ -262,12 +262,12 @@ NEXT_ORIGIN = f"http://localhost:{NEXT_PORT}"
 
 def upstream_headers(headers, payload: bytes = b"") -> dict[str, str]:
     """The browser's headers for next dev with next's own Host: a middleware rewrite to another host is proxied
-    by next as an external URL (back through this Front, where /en 308s to / and loops). An Origin is presented as
-    the site's own (Payload's csrf list)."""
+    by next as an external URL (back through this Front, where /en 308s to / and loops). Every request presents the
+    site's own Origin (Payload's csrf list): on the plain-http preview address a browser sends neither Origin nor
+    Sec-Fetch-Site on a page load, and Payload then ignores the payload-token cookie (signed out on /admin)."""
     out = {k: v for k, v in headers.items() if k.lower() not in ("connection", "content-length", "origin", "host")}
     out["Host"] = NEXT_ORIGIN.split("//", 1)[1]
-    if any(k.lower() == "origin" for k in headers.keys()):
-        out["Origin"] = SERVER_URL
+    out["Origin"] = SERVER_URL
     if payload:
         out["Content-Length"] = str(len(payload))
     return out
@@ -279,7 +279,8 @@ def cookie_pairs(cookies: list[str]) -> str:
 
 def _post(path: str, body: dict, cookies: list[str]) -> tuple[int, list[str], bytes]:
     connection = http.client.HTTPConnection("127.0.0.1", NEXT_PORT, timeout=600)
-    headers = {"Content-Type": "application/json"}
+    # Payload accepts the payload-token cookie only from an Origin on its csrf list (the site's own URL).
+    headers = {"Content-Type": "application/json", "Origin": SERVER_URL}
     if cookies:
         headers["Cookie"] = cookie_pairs(cookies)
     connection.request("POST", path, body=json.dumps(body).encode(), headers=headers)
@@ -346,10 +347,34 @@ class Front(proxy.Front):
         lab.relay_response(self, connection.getresponse(), lambda key, value: browser_location(key, value, browser))
         connection.close()
 
+    def _probe(self) -> None:
+        """One hop to next dev per Host and forwarded-header variant, redirects not followed: status and Location."""
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        target = dict(part.split("=", 1) for part in query.split("&") if "=" in part).get("path", "/")
+        lines = []
+        for host in (f"localhost:{NEXT_PORT}", f"127.0.0.1:{NEXT_PORT}", f"localhost:{PORT}"):
+            for forwarded in (False, True):
+                headers = {"Host": host, "Accept": "text/html"}
+                if forwarded:
+                    headers.update({"X-Forwarded-Host": self.headers.get("Host") or "", "X-Forwarded-Proto": "http"})
+                connection = http.client.HTTPConnection("127.0.0.1", NEXT_PORT, timeout=120)
+                connection.request("GET", target, headers=headers)
+                response = connection.getresponse()
+                response.read()
+                lines.append(f"{host} fwd={forwarded} {response.status} location={response.getheader('location')} "
+                             f"rewrite={response.getheader('x-middleware-rewrite')}")
+                connection.close()
+        incoming = ", ".join(f"{k}={v}" for k, v in self.headers.items() if k.lower().startswith(("x-", "forwarded", "host", "sec-fetch", "origin")))
+        incoming += " | cookies: " + ",".join(
+            pair.split("=", 1)[0].strip() for pair in (self.headers.get("Cookie") or "").split(";") if pair.strip())
+        self._send(200, ("\n".join(lines) + f"\nincoming: {incoming}\n").encode(), "text/plain")
+
     def _handle(self) -> None:
         path = self.path.split("?", 1)[0]
         try:
-            if path == "/lab/ready":
+            if path == "/lab/probe":
+                self._probe()
+            elif path == "/lab/ready":
                 body = json.dumps({"ready": bool(READY)}).encode()
                 self._send(200 if READY else 503, body, "application/json")
             elif path == "/lab/sign-in":
@@ -377,8 +402,10 @@ def main() -> None:
         lab.log(f"guides snapshot: {wrapped} plain TL;DR text(s) and FAQ question(s) wrapped as rich text for the lab")
     seed_user(root, run_env)
     lab.log(f"seeded the day-1 content and {LAB_ADMIN_EMAIL} (Site Admin, TOTP enrolled)")
+    # No -H: next dev then names itself localhost, the origin the middleware's /en rewrite carries. Bound to
+    # 127.0.0.1 it took that rewrite for an external URL and proxied it, and next.config's /en -> / 308 looped.
     lab.spawn("website-next", [str(node), str(root / "node_modules/next/dist/bin/next"), "dev",
-                               "-p", str(NEXT_PORT), "-H", "127.0.0.1"], cwd=root, env=run_env)
+                               "-p", str(NEXT_PORT)], cwd=root, env=run_env)
     lab.wait_http(f"http://127.0.0.1:{NEXT_PORT}/api/users/me", 900, "website-next")
     proxy.VITE_PORT = NEXT_PORT  # the websocket tunnel (next dev's HMR)
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Front)

@@ -71,7 +71,14 @@ def test_the_forward_uses_next_host_and_presents_the_site_origin():
          "Content-Length": "9"}, b"ab")
     assert headers["Host"] == f"localhost:{module.NEXT_PORT}" and headers["Origin"] == module.SERVER_URL
     assert "Connection" not in headers and headers["Content-Length"] == "2"
-    assert "Origin" not in module.upstream_headers({"Host": "preview.example"})
+    # A page load on the plain-http preview carries no Origin: the site's own is presented anyway, else Payload
+    # ignores the payload-token cookie and /admin renders signed out.
+    assert module.upstream_headers({"Host": "preview.example"})["Origin"] == module.SERVER_URL
+
+
+def test_next_dev_is_not_bound_to_an_address_that_turns_the_en_rewrite_external():
+    source = SCRIPT.read_text()
+    assert '"-H", "127.0.0.1"' not in source
 
 
 def test_a_redirect_next_builds_goes_to_the_browser_origin():
