@@ -1365,3 +1365,143 @@ class TestTheCancelToolSaysWhichOfTwoThingsHappened:
         outcome, _row = await self._teardown(monkeypatch, reachable=False)
         assert bool(outcome) is True
         assert int(outcome) == 1
+
+
+def _concluded_row(outcome, **fields):
+    """A delegation row as the read back of a concluded collect sees it."""
+    from types import SimpleNamespace
+
+    row = {
+        "outcome": outcome,
+        "partner_reason": None,
+        "terminal_at": datetime(2026, 11, 18, 10, 21, 2, tzinfo=UTC),
+        "mechanism": MECHANISM_ASKED,
+        "abandoned_at": None,
+        "protocol_version": "0.3",
+        "signature_state": "verified",
+        "continuation_count": 0,
+    }
+    row.update(fields)
+    return SimpleNamespace(**row)
+
+
+class TestCollectOfAConcludedDelegation:
+    """A delegating agent reads its own concluded row through a collect.
+
+    No tool returned the outcome, the partner's reason or when the delegation
+    ended: a collect of a task that already failed went back to the partner.
+    """
+
+    @staticmethod
+    def _no_partner(monkeypatch):
+        async def _refuse(*_a, **_k):
+            raise AssertionError("a recorded conclusion sends nothing")
+
+        monkeypatch.setattr(delegation, "preflight", _refuse)
+
+    @pytest.mark.asyncio
+    async def test_a_failed_delegation_is_read_back(self, monkeypatch):
+        self._no_partner(monkeypatch)
+        db = RecordingDb(history=[_concluded_row(OUTCOME_PARTNER_FAILED, partner_reason="quota exceeded")])
+        result = await delegation.delegate(db, integration_row(), None, continue_task_id="t-9")
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason == "quota exceeded"
+        assert result.partner_task_id == "t-9"
+        assert result.detail is not None
+        assert "2026-11-18T10:21:02+00:00" in result.detail
+        assert "nothing was sent" in result.detail
+        assert db.added == [], "read back, never recorded again"
+
+    @pytest.mark.asyncio
+    async def test_the_newest_row_answers_the_read_back(self, monkeypatch):
+        self._no_partner(monkeypatch)
+        db = RecordingDb(
+            history=[
+                _concluded_row(OUTCOME_PARTNER_FAILED, partner_reason="invalid input"),
+                _concluded_row(OUTCOME_PARTNER_FAILED, partner_reason="quota exceeded"),
+            ]
+        )
+        result = await delegation.delegate(db, integration_row(), None, continue_task_id="t-9")
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason == "invalid input", "the newest row answers"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "history",
+        [
+            [_concluded_row(OUTCOME_COMPLETED)],
+            [_concluded_row(OUTCOME_TIMEOUT, abandoned_at=datetime(2026, 11, 18, tzinfo=UTC))],
+            [_concluded_row(None), _concluded_row(OUTCOME_PARTNER_FAILED)],
+            [],
+            [_concluded_row(OUTCOME_UNREACHABLE), _concluded_row(OUTCOME_PARTNER_FAILED)],
+            [_concluded_row(delegation.OUTCOME_CREDENTIAL_REJECTED)],
+            [_concluded_row(OUTCOME_REFUSED_PREFLIGHT, partner_reason="circuit_open")],
+            [_concluded_row(OUTCOME_TIMEOUT)],
+            [_concluded_row(OUTCOME_CANCELLED), _concluded_row(OUTCOME_PARTNER_FAILED)],
+        ],
+        ids=[
+            "completed",
+            "abandoned",
+            "still-outstanding",
+            "no-row",
+            "unreachable",
+            "credential-rejected",
+            "refused-preflight",
+            "cancelling-timeout",
+            "cancelled",
+        ],
+    )
+    async def test_what_the_partner_may_still_answer_goes_to_the_partner(self, monkeypatch, history):
+        """The answer text is not stored, an abandoned task may still answer,
+        an outstanding row is the ordinary collect, a row this side ended on a
+        transient failure of its own call says nothing about the task, and a
+        timeout or a cancel rests on a best-effort cancel whose result is not
+        recorded."""
+        called = []
+
+        async def _refuse(*_a, **_k):
+            called.append(True)
+            raise delegation.PreflightRefusedError("circuit_open", "down")
+
+        monkeypatch.setattr(delegation, "preflight", _refuse)
+        await delegation.delegate(RecordingDb(history=history), integration_row(), None, continue_task_id="t-9")
+        assert called == [True]
+
+    @pytest.mark.asyncio
+    async def test_a_continuation_with_a_message_is_never_answered_from_the_record(self, monkeypatch):
+        called = []
+
+        async def _refuse(*_a, **_k):
+            called.append(True)
+            raise delegation.PreflightRefusedError("circuit_open", "down")
+
+        monkeypatch.setattr(delegation, "preflight", _refuse)
+        await delegation.delegate(
+            RecordingDb(history=[_concluded_row(OUTCOME_PARTNER_FAILED)]),
+            integration_row(),
+            None,
+            message="one more thing",
+            continue_task_id="t-9",
+        )
+        assert called == [True]
+
+    @pytest.mark.asyncio
+    async def test_an_unowned_task_is_not_read_back(self, monkeypatch):
+        self._no_partner(monkeypatch)
+        monkeypatch.setattr(delegation, "preflight", _noop_preflight)
+        result = await delegation.delegate(
+            RecordingDb(owns_continuation=False, history=[_concluded_row(OUTCOME_PARTNER_FAILED)]),
+            integration_row(),
+            None,
+            continue_task_id="t-9",
+        )
+        assert result.partner_reason == "continuation_not_owned"
+
+    def test_the_read_is_scoped_like_the_ownership_check(self):
+        import inspect
+
+        assert "_scoped_to_caller(" in inspect.getsource(delegation._recorded_conclusion)
+
+
+async def _noop_preflight(*_a, **_k):
+    return None
