@@ -40,7 +40,7 @@ def platform(t: dict) -> str:
     b.append(k.text("exposure management", cx, cy + 56, 19, t["muted"], "body", 400, "middle"))
     for i, (x, y, _) in enumerate(pts):
         name, prod = STAGES[i]
-        col = P[prod]
+        col = t["accent"]  # rule G3: one highlight token for every stage
         b.append(f'<rect x="{x - pw / 2:.1f}" y="{y - ph / 2:.1f}" width="{pw}" height="{ph}" rx="{ph / 2}" fill="{t["card"]}" stroke="{col}" stroke-width="2.5"/>')
         b.append(f'<circle cx="{x - pw / 2 + 34:.1f}" cy="{y:.1f}" r="19" fill="{col}"/>')
         b.append(k.text(str(i + 1), x - pw / 2 + 34, y + 8, 22, t["page"], "heading", 700, "middle"))
@@ -52,7 +52,7 @@ def platform(t: dict) -> str:
     one_y, one_h = 196, 132
     b.append(k.card(t, X0, one_y, Wd, one_h, "XTM One", "Core and agentic layer: agents, fleets, MCP, A2A",
                     color=P["xtm-one"], product="xtm-one", title_size=30, sub_size=19, pad=32))
-    b.append(k.accent_bar(X0 + 10, one_y, one_h, P["xtm-one"]))
+    b.append(k.accent_bar(X0 + 10, one_y, one_h, t["accent"]))
     mods = [("opencti", "OpenCTI", "Threat intelligence"),
             ("opencrq", "OpenCRQ", "Risk quantification"),
             ("openaev", "OpenAEV", "Exposure validation")]
@@ -64,7 +64,7 @@ def platform(t: dict) -> str:
         mc = x + mw / 2
         b.append(k.line(mc, one_y + one_h + 4, mc, my - 2, t["accent"]))
         b.append(f'<rect x="{x:.1f}" y="{my}" width="{mw:.1f}" height="{mh}" rx="{k.RADIUS}" fill="{t["card"]}" stroke="{t["line"]}" stroke-width="1.5"/>')
-        b.append(f'<rect x="{x:.1f}" y="{my}" width="{mw:.1f}" height="8" rx="4" fill="{P[p]}"/>')
+        b.append(f'<rect x="{x:.1f}" y="{my}" width="{mw:.1f}" height="8" rx="4" fill="{t["accent"]}"/>')
         b.append(k.mark(p, mc - 26, my + 30, 52, P[p]))
         b.append(k.text(name, mc, my + 120, 26, t["fg"], "heading", 600, "middle", maxw=mw - 24))
         b.append(k.text(role, mc, my + 150, 18, t["muted"], "body", 400, "middle", maxw=mw - 24))
@@ -74,21 +74,22 @@ def platform(t: dict) -> str:
         b.append(k.line(mc, hub_y - 4, mc, my + mh + 6, t["muted"], dashed=True, marker="arrm"))
     b.append(k.card(t, X0, hub_y, Wd, hub_h, "XTM Hub", "Tradecraft library, one-click deploy to every module",
                     color=P["xtm-hub"], product="xtm-hub", title_size=26, sub_size=18, pad=32))
-    b.append(k.accent_bar(X0 + 10, hub_y, hub_h, P["xtm-hub"]))
+    b.append(k.accent_bar(X0 + 10, hub_y, hub_h, t["accent"]))
     return k.canvas(t, "The XTM Platform and the CTEM loop", b)
 
 
 def flow(t: dict, product: str, title: str, subtitle: str, inputs, core, outputs) -> str:
     tp.reset_defs()
     P = t["products"]
-    col = P[product]
+    em = P[product]      # the emblem keeps its official brand colour
+    col = t["accent"]    # rule G3: panel edge, bars, connectors and the header use one token
     b = [k.header(t, title, subtitle)]
     top, bottom = 196, 776
     # column headers
     cols = [(56, 456, "Inputs"), (536, 904, PRODUCTS[product]["name"]), (984, 1384, "Outcomes")]
     for i, (x0, x1, lab) in enumerate(cols):
         if i == 1:
-            b.append(k.mark(product, x0, top - 40, 26, col))
+            b.append(k.mark(product, x0, top - 40, 26, em))
             b.append(k.text(lab.upper(), x0 + 36, top - 18, 16, col, "heading", 700))
         else:
             b.append(k.text(lab.upper(), x0, top - 18, 16, t["muted"], "heading", 600))

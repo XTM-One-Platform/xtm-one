@@ -147,7 +147,8 @@ def render(d: dict) -> str:
               "and OpenAEV as modules, XTM Hub as the library, around the five stages scoping, discovery, "
               "prioritization, validation and mobilization") + "\n")
     a("| | Product | Role in CTEM | Repository | Product page |\n|---|---|---|---|---|")
-    a("\n".join(f'| <img src="{IMG}/mark-{k}.svg" width="24" alt=""> | **{pn}** | {role} | '
+    a("\n".join(f'| <picture><source media="(prefers-color-scheme: dark)" srcset="{IMG}/mark-{k}-dark.svg">'
+                f'<img src="{IMG}/mark-{k}-light.svg" width="24" alt=""></picture> | **{pn}** | {role} | '
                 f"[{rp.split('github.com/')[1]}]({rp}) | [{pg.split('//')[1].rstrip('/')}]({pg}) |"
                 for k, pn, role, rp, pg in PLATFORM) + "\n")
     # 8. use cases by security role
@@ -191,7 +192,14 @@ def check(text: str) -> list[str]:
     prose = re.sub(r"<[^>]+>|\]\([^)]*\)|https?://\S+", " ", text)
     errs = [f"forbidden: {m.group(0)!r}" for m in FORBIDDEN.finditer(prose)]
     pics = text.count("<picture>")
-    errs += [f"unpaired picture count {pics}"] if pics != 12 else []
+    # rule G4: 12 visuals + the 5 platform-table emblems, all dark / light pairs
+    errs += [f"unpaired picture count {pics}"] if pics != 17 else []
+    srcs = text.count('media="(prefers-color-scheme: dark)"')
+    errs += [f"pictures without a dark source: {pics - srcs}"] if srcs != pics else []
+    lone = len(re.findall(r"<img\b", re.sub(r"<picture>.*?</picture>", "", text, flags=re.S)))
+    lone -= text.count("img.shields.io")
+    lone -= text.count('/banner.svg"')  # rule G5: the header banner is Filigran blue on both themes
+    errs += [f"single-theme <img> outside a <picture>: {lone}"] if lone > 0 else []
     heads = re.findall(r"^## (.+)$", text, re.M)
     errs += [f"headings {len(heads)}"] if len(heads) != 15 else []
     return errs
