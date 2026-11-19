@@ -24,6 +24,14 @@ Never wider than the Share dialog:
 2. And the caller is a platform administrator, or owns the fleet's workspace. A `config` grantee of the fleet who does not own the workspace is refused: managing a fleet does not hand out its workspace.
 3. A company-managed fleet or workspace visible to everyone is refused (nothing to share).
 
+## Company-managed in place (#398)
+
+An administrator's agent turns an existing fleet or workspace company-managed (or personal again) without recreating it: `update_workspace(is_company_managed)` (agent builder, `builtin_tools/workspaces.py`) and `update_fleet(is_company_managed)` (`builtin_tools/fleets.py`), both through `handle_company_managed_toggle` as `PUT /workspaces/{id}` and `PUT /fleets/{id}` do (group grants cleared unless the entity is access-restricted). The id is kept, so personas, assignments and registries keep their references.
+
+- Administrators only; a non-administrator is refused and nothing is saved.
+- Workspace: the default workspace is refused (`ensure_can_be_company_managed`); turning it personal is refused while it hosts a company-managed fleet (counted under the hosting lock).
+- Fleet: going company-managed is refused, naming them, while a home member is a personal agent, and while its workspace is personal unless the same call moves it to another one (then `_host_workspace` checks that one). Order: make the workspace company-managed first, then the fleet; back: the fleet first, then the workspace.
+
 ## Audit
 
 Each entity whose grants change gets one `update` entry (`entity_type` `fleet` or `workspace`), as the actor user, with details: `via: agent`, `agent_id` (the agent acting, passed to `build_fleet_tools` by the chat and the assignment run), `action`, `permission`, `added_users` / `removed_users` / `retiered_users` and the group counterparts, `fleet_id`, `workspace_id`, `sharing_changed: true`. The timestamp is the entry's own.

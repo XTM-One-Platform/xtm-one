@@ -467,3 +467,62 @@ async def test_a_member_s_role_label_is_set_read_back_cleared_and_refused_on_a_c
         cleared = await _call(admin, "set_fleet_member_parent", fleet_id=fid, agent_id=str(root.id), role_label="")
         assert f'set from "{label}" to none' in cleared
         assert await _role_of(session, fleet, root) == ""
+
+
+async def _builder_call(user: User, tool: str, **args) -> str:
+    from app.services.builtin_tools import build_agent_builder_tool
+    from app.tools.base import ToolCall
+
+    _defs, executor = build_agent_builder_tool(None, str(user.id), conversation_id=None)
+    result = await executor.execute_tool(ToolCall(id=str(uuid.uuid4()), name=tool, arguments=args))
+    return result.content
+
+
+async def test_an_existing_fleet_and_workspace_become_company_managed_in_place() -> None:
+    """#398: the id is kept; personal members and a personal workspace are refused first, by name."""
+    from app.models.workspace import Workspace
+
+    async with _database() as session:
+        admin = await _user(session, "admin", admin=True)
+        alice = await _user(session, "alice")
+        personal_agent = await _agent(session, admin, "Mine")
+        await session.commit()
+        await _call(admin, "create_fleet", name="CTEM", member_agent_ids=[str(personal_agent.id)])
+        fleet = await _fleet_named(session, "CTEM")
+        assert fleet is not None and not fleet.is_company_managed
+        fid, wid = str(fleet.id), str(fleet.workspace_id)
+
+        refused = await _call(admin, "update_fleet", fleet_id=fid, is_company_managed=True)
+        assert "these home members are personal: Mine" in refused, refused
+        assert "Nothing was saved." in refused
+        personal_agent.is_company_managed = True
+        await session.commit()
+
+        refused = await _call(admin, "update_fleet", fleet_id=fid, is_company_managed=True)
+        assert "needs a company-managed workspace" in refused and wid in refused, refused
+        # Alice manages a workspace of her own, never its audience.
+        own = await _builder_call(alice, "create_workspace", name="Alice room")
+        assert "created" in own, own
+        assert "Only admins" in await _builder_call(
+            alice, "update_workspace", workspace_id="Alice room", is_company_managed=True
+        )
+
+        done = await _builder_call(admin, "update_workspace", workspace_id=wid, is_company_managed=True)
+        assert "updated: company-managed" in done, done
+        answer = await _call(admin, "update_fleet", fleet_id=fid, is_company_managed=True)
+        assert "Company-managed." in answer, answer
+        fleet = await _fleet_named(session, "CTEM")
+        assert fleet is not None and fleet.is_company_managed and str(fleet.id) == fid
+
+        # The workspace stays company-managed while it hosts a company-managed fleet.
+        kept = await _builder_call(admin, "update_workspace", workspace_id=wid, is_company_managed=False)
+        assert "hosts 1 company-managed fleet" in kept, kept
+        workspace = (
+            await session.execute(
+                select(Workspace).where(Workspace.id == fleet.workspace_id).execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        assert workspace.is_company_managed
+
+        # And back: personal fleet first, then the workspace.
+        assert "Personal again." in await _call(admin, "update_fleet", fleet_id=fid, is_company_managed=False)
