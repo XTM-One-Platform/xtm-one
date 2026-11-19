@@ -25,6 +25,7 @@ The provider is split by domain:
                      unattended runs.
 * ``naming``       - how the platform names the objects it holds (the
                      grounded STIX extraction's ``platform_names``).
+* ``ids``          - the guard refusing a short id prefix before any request.
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in
@@ -47,6 +48,7 @@ from .capabilities import install_capability_gate
 from .connectors import register as register_connectors
 from .customization import register as register_customization
 from .data_sharing import register as register_data_sharing
+from .ids import install_short_id_guard
 from .ingestion import register as register_ingestion
 from .knowledge import register_knowledge
 from .markings import register as register_markings
@@ -163,6 +165,10 @@ def build_tools(
     # cannot pass, or OpenCTI records it as their unauthorized access.
     if autonomous:
         install_capability_gate(executor, base_url, headers)
+    # An 8-hex id prefix is answered by OpenCTI as a missing object: refuse it by
+    # name before any request, the capability gate's probe included
+    # (ids.short_id_refusal).
+    install_short_id_guard(executor, [tool.name for tool in tools])
     # How this platform names the objects it holds, read on the tools' own
     # connection (naming.platform_names_lookup): the grounded STIX extraction
     # names its objects so, and its bundle merges into them.
