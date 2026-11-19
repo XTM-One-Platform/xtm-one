@@ -104,6 +104,8 @@ def _github(monkeypatch, runs: list[dict], required: list[str]) -> list[str]:
             return None, "Error: 404 Not Found"
         if url.endswith("/actions/runs"):
             return _Resp({"total_count": 0, "workflow_runs": []}), None
+        if url.endswith("/status"):
+            return _Resp({"state": "success", "statuses": []}), None
         raise AssertionError(url)
 
     monkeypatch.setattr(gh_enrichment._common, "safe_request", _request)

@@ -174,4 +174,5 @@ async def test_a_checks_only_or_pull_request_only_filter_reads_no_rules(monkeypa
     for facets in (frozenset({"checks"}), frozenset(), None):
         facts = await gh_enrichment.fetch("check_run.completed", _check_run_event(), "tok", facets=facets)
         assert "required" not in facts["head"]
-    assert not any("/rules/branches/" in url or url.endswith("/status") for url in calls)
+    # A green head reads its commit statuses (they can hold it), never the branch rules.
+    assert not any("/rules/branches/" in url for url in calls)
