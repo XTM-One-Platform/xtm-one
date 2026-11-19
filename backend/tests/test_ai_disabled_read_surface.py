@@ -412,7 +412,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "update_platform_settings_endpoint",
     # Settings > Agents and automations > Concierge (#8254): enable, scope and budget caps; stored
     # configuration reaching no model, and switching it off must stay possible.
-    "put_concierge_settings",
+    "put_health_settings",
     # The Concierge companion's pet library (#8261): adding or removing a pet
     # is a stored image reaching no model, managed by administrators.
     "upload_pet",

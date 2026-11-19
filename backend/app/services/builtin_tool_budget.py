@@ -45,7 +45,7 @@ from app.services.builtin_tool_groups import schema_chars
 #: which took the total to 477,436. Lowered to 435,000 when the deck catalogue
 #: left the generate_presentation description for get_presentation(reference=)
 #: (#8812: generate_presentation 101,282 -> 56,483, total 478,013 -> 433,214).
-#: Raised to 454,000 for the Concierge's tools (total 452,062 on 5 Nov 2026).
+#: Raised to 454,000 for Platform Health's tools (total 452,062 on 5 Nov 2026).
 #: Lowered to 449,000 when the platform and coordination descriptions were
 #: trimmed (#8812: total 447,765 on 5 Nov 2026). Lowered to 441,000 when the
 #: generate_video_clip description sent its checks' detail to the Video
@@ -119,8 +119,10 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # intent-binding tools (#11865: 144,249 on 14 Nov 2026); 145,600 with the
     # three ROI unit catalog tools (#11881: about 145,370 on 14 Nov 2026); 145,700 with
     # dismiss_fleet_health_findings (#12014: 145,602 on 15 Nov 2026); 146,000 with
-    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033).
-    "platform": 146_000,
+    # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033);
+    # 146,100 with Platform Health built in, its groups advertised by the agent builder
+    # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026).
+    "platform": 146_100,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:
