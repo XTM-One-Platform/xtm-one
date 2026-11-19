@@ -19472,6 +19472,7 @@
   "Group {name} deleted": "グループ {name} を削除しました",
   "SCIM token {name} generated": "SCIM トークン {name} を生成しました",
   "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました",
+  "Platform Health is built in and read-only.": "Platform Health はプラットフォームに組み込まれており、読み取り専用です。",
   "How long each category of stored file is kept.": "保存されたファイルのカテゴリごとの保持期間です。",
   "How the file retention works": "ファイル保持の仕組み",
   "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "クリーンアップは 1 時間ごとに実行されます。作業項目、ワークセット、共有状態、プレゼンテーション、レポート、動画でまだ使われているファイルは保持されます。削除されたファイルは会話にカードとして残り、内容のみが削除されます。",

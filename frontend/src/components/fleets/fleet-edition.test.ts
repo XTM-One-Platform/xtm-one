@@ -6,6 +6,7 @@ import {
   ARCHIVED_REASON,
   BUILTIN_REASON,
   builtinActivityEditable,
+  HEALTH_READ_ONLY_REASON,
   READ_ONLY_REASON,
   canReparent,
   changedSettings,
@@ -64,6 +65,12 @@ test("fleetEditRights: read only with the reason without manage rights, members 
   const builtin = fleetEditRights({ can_manage: true, is_archived: false, is_builtin: true });
   assert.deepEqual(builtin.settings, { canEdit: false, reason: BUILTIN_REASON });
   assert.deepEqual(builtin.members, { canEdit: false, reason: BUILTIN_REASON });
+});
+
+test("fleetEditRights: the Platform Health fleet states its own lock, never the owner/grant note (UX r1 B4 on #464)", () => {
+  const health = fleetEditRights({ can_manage: false, is_archived: false, is_builtin: true, read_only_reason: "Platform Health is built in and read-only." });
+  assert.deepEqual(health.settings, { canEdit: false, reason: HEALTH_READ_ONLY_REASON });
+  assert.deepEqual(health.members, { canEdit: false, reason: HEALTH_READ_ONLY_REASON });
 });
 
 test("builtinActivityEditable: an administrator alone, on a built-in company-managed fleet", () => {

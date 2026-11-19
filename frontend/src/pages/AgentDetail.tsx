@@ -154,7 +154,10 @@ export default function AgentDetail() {
   // them. A2A exposure rides on this, being an integration binding itself.
   // A separate gate rather than a loosening of `canManage`, which must stay
   // false for a built-in everywhere else.
-  const canManageIntegrations = (agent.is_builtin && isXtmOne) ? isAdmin : canManage;
+  // A Platform Health fleet agent (`read_only_reason`, #101 S1b) takes no write
+  // at all, administrators included: neither carve-out below applies to it.
+  const healthLocked = Boolean(agent.read_only_reason);
+  const canManageIntegrations = healthLocked ? false : (agent.is_builtin && isXtmOne) ? isAdmin : canManage;
   const canViewFeedback = isAdmin || canManage;
   // Memory management gate. Company-managed agents (incl. seeded built-ins,
   // which are always company-managed and otherwise config read-only) mirror the
@@ -162,7 +165,7 @@ export default function AgentDetail() {
   // (not `canManage`) avoids showing a non-admin owner controls the backend would
   // 403. Private agents keep the existing `canManage` UI gating, which is
   // intentionally stricter than the backend's owner check.
-  const canManageMemory = agent.is_company_managed ? isAdmin : canManage;
+  const canManageMemory = healthLocked ? false : agent.is_company_managed ? isAdmin : canManage;
   const isShared = isEntityShared(agent, user?.id);
   const isOwnedByMe = Boolean(user?.id) && agent.user_id === user?.id;
 
@@ -227,15 +230,16 @@ export default function AgentDetail() {
   const canDelete = canManage && !isLinkedGA;
   // Below 1280 px Duplicate, Export and Delete are rows of the
   // "More actions" menu, with the gates and disabled states of the buttons.
+  // Platform Health refuses a duplicate with 403: no Duplicate on it.
   const moreActions: OverflowMenuItem[] = [
-    {
+    ...(healthLocked ? [] : [{
       id: "duplicate",
       label: t_i18n("Duplicate"),
       icon: CopyPlus,
       disabled: duplicate.isPending || aiOff,
       disabledReason: aiOff ? aiOffReason ?? undefined : undefined,
       onSelect: () => (agenticEnabled ? duplicateAgent() : setDuplicateGateOpen(true)),
-    },
+    }]),
     {
       id: "export",
       label: t_i18n("Export"),
@@ -288,7 +292,11 @@ export default function AgentDetail() {
                   )}
                   {agent.is_company_managed && <span className="inline-flex shrink-0"><CompanyManagedBadge size="default" /></span>}
                   {isShared && <span className="inline-flex shrink-0"><SharedBadge size="default" ownerName={agent.owner_name} /></span>}
-                  {((agent.is_company_managed && !isAdmin) || (isShared && !canManage)) && <span className="inline-flex shrink-0"><ReadOnlyBadge /></span>}
+                  {(healthLocked || (agent.is_company_managed && !isAdmin) || (isShared && !canManage)) && (
+                    <span className="inline-flex shrink-0">
+                      <ReadOnlyBadge tooltip={healthLocked ? t_i18n("Platform Health is built in and read-only.") : undefined} />
+                    </span>
+                  )}
                   {agent.template_slug && <Badge variant="outline" className="shrink-0">{t_i18n("From: {name}", { name: templates?.find((t) => t.slug === agent.template_slug)?.name ?? agent.template_slug })}</Badge>}
                 </>
         }
@@ -322,6 +330,7 @@ export default function AgentDetail() {
                   (design-system doc, "Page-title actions"). Below xl
                   the secondary ones fold into More actions. */}
               <EntityHeaderWideOnly>
+              {!healthLocked && (
               <AgenticGateDialog feature="Duplicating agents">
                 <Tip content={t_i18n("Create a private copy of this agent")}>
                   <Button
@@ -337,6 +346,7 @@ export default function AgentDetail() {
                   </Button>
                 </Tip>
               </AgenticGateDialog>
+              )}
               <Tip content={t_i18n("Export agent as a bundle or an AgentSchema document")}>
                 <Button
                   variant="ghost"
@@ -370,7 +380,7 @@ export default function AgentDetail() {
                   {agent.disable_chat ? <MessageSquareOff className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />} {t_i18n("Chat with Agent")}
                 </Button>
               </Tip>
-              {(canManage || isAdmin) && !isLinkedGA && (
+              {(canManage || isAdmin) && !isLinkedGA && !healthLocked && (
                 <Tip content={agent.enabled ? t_i18n("Disable") : t_i18n("Enable")}>
                   <IconButton
                     variant="default"

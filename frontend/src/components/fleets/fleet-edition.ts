@@ -32,6 +32,8 @@ interface FleetEditRights {
 
 export const READ_ONLY_REASON =
   "Only the fleet's owner and people granted configuration on it can edit it.";
+/** The lock of the built-in Platform Health fleet: no write for anyone, administrators included (#101 S1b). */
+export const HEALTH_READ_ONLY_REASON = "Platform Health is built in and read-only.";
 export const ARCHIVED_REASON = "This fleet is archived: restore it to edit its members.";
 export const BUILTIN_REASON = "Built-in fleets ship with the platform and are read-only.";
 export const BUILTIN_ADMIN_REASON =
@@ -76,11 +78,16 @@ export const DEFAULT_FLEET_COLOR = "#00bcd4";
  * not its members.
  */
 export function fleetEditRights(
-  fleet: (Pick<Fleet, "can_manage" | "is_archived"> & Partial<Pick<Fleet, "is_builtin">>) | null | undefined,
+  fleet: (Pick<Fleet, "can_manage" | "is_archived"> & Partial<Pick<Fleet, "is_builtin" | "read_only_reason">>) | null | undefined,
 ): {
   settings: FleetEditRights;
   members: FleetEditRights;
 } {
+  // A locked surface states the real reason of its lock (UX r1 B4 on #464).
+  if (fleet?.read_only_reason) {
+    const locked = { canEdit: false, reason: HEALTH_READ_ONLY_REASON };
+    return { settings: locked, members: locked };
+  }
   if (!fleet?.can_manage) {
     const ro = { canEdit: false, reason: READ_ONLY_REASON };
     return { settings: ro, members: ro };

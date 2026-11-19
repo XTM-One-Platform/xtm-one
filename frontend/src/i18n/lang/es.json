@@ -19472,6 +19472,7 @@
   "Group {name} deleted": "Grupo {name} eliminado",
   "SCIM token {name} generated": "Token SCIM {name} generado",
   "SCIM token {name} revoked": "Token SCIM {name} revocado",
+  "Platform Health is built in and read-only.": "Platform Health está integrado en la plataforma y es de solo lectura.",
   "How long each category of stored file is kept.": "Cuánto tiempo se conserva cada categoría de archivos almacenados.",
   "How the file retention works": "Cómo funciona la retención de archivos",
   "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "Una limpieza se ejecuta cada hora. Se conserva un archivo que todavía usa una tarea, un corpus de trabajo, un estado compartido, una presentación, un informe o un vídeo. Un archivo eliminado permanece en la conversación como tarjeta: solo desaparece su contenido.",

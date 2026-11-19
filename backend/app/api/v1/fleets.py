@@ -221,6 +221,7 @@ from app.services.fleets import (
     unique_fleet_slug,
     update_member,
 )
+from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_fleet
 from app.services.workspaces import create_workspace, lock_workspace_for_hosting
 
 if TYPE_CHECKING:
@@ -230,6 +231,30 @@ router = APIRouter()
 
 _LABEL = "Fleet"
 _NOT_FOUND = f"{_LABEL} not found"
+
+
+def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None) -> bool:
+    """The ``can_manage`` a fleet response carries for *user*.
+
+    ``helpers.can_manage`` for every fleet but the built-in Platform Health
+    one, which takes no write at all, administrators included
+    (``ensure_builtin_fleet_writable``): the UI offers no switch the API
+    refuses (#101 S1b).
+    """
+    if is_health_fleet(fleet):
+        return False
+    return can_manage(user, fleet, user_group_ids)
+
+
+def _lock_fixes_on_health_fleet(fleet: Fleet, lines: list[Any]) -> None:
+    """Nobody fixes a prerequisite of Platform Health from its page, administrators included.
+
+    Sets ``can_fix`` false on every live line of the health fleet, so the About
+    page offers no Fix it link and no Fix with AI (#101 S1b, UX r2 B1 on #464).
+    """
+    if is_health_fleet(fleet):
+        for line in lines:
+            line.can_fix = False
 
 
 def _refused(exc: FleetActionRefusedError) -> HTTPException:
@@ -350,7 +375,8 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             shared_user_ids=f.shared_user_ids,
             shared_user_permissions=f.shared_user_permissions,
             access_restricted=bool(f.access_restricted),
-            can_manage=can_manage(user, f, user_group_ids),
+            can_manage=_can_manage_fleet(user, f, user_group_ids),
+            read_only_reason=HEALTH_READ_ONLY_REFUSAL if is_health_fleet(f) else None,
             member_count=counts.get((f.id, FLEET_ROLE_MEMBER), 0),
             connected_count=counts.get((f.id, FLEET_ROLE_CONNECTED), 0),
             exposed_agent_ids=[str(a) for a in exposed_agent_ids(f, by_fleet.get(f.id, []))],
@@ -1138,7 +1164,8 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     from app.services.fleet_docs import DOC_SECTIONS, documentation_view
 
     group_ids = await get_user_group_ids(db, user.id)
-    manager = can_manage(user, fleet, group_ids)
+    # Platform Health takes no Generate nor suggestion write (#101 S1b, UX r1 B3).
+    manager = _can_manage_fleet(user, fleet, group_ids)
     view = await documentation_view(db, fleet, can_edit=manager)
     if not view.version and view.structured is None:
         from app.services.fleet_doc_generation import configuration_facts
@@ -1148,6 +1175,7 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     documented = (view.structured or {}).get("prerequisites") or []
     states = await evaluate_prerequisites(db, user, documented, group_ids=group_ids, fleet=fleet)
     live = await live_prerequisites(db, user, fleet, documented, group_ids=group_ids, can_confirm=manager)
+    _lock_fixes_on_health_fleet(fleet, live)
     from app.services.fleet_gate_proposals import fleet_effective_gates
 
     effective = await fleet_effective_gates(db, fleet.id)
@@ -1501,7 +1529,7 @@ async def get_fleet_documentation_history_endpoint(
 
     fleet = await _visible_fleet(db, user, fleet_id)
     # Generator notes and the Regenerate flag are for the people who manage the fleet (#10246).
-    managed = can_manage(user, fleet, await get_user_group_ids(db, user.id))
+    managed = _can_manage_fleet(user, fleet, await get_user_group_ids(db, user.id))
     return FleetDocumentationHistoryResponse(
         versions=[
             FleetDocumentationVersion(**vars(entry)) for entry in documentation_history(fleet, with_notes=managed)
@@ -2129,7 +2157,7 @@ async def get_agent_fleets(
                 has_orchestrator=fleet.orchestrator_agent_id is not None,
                 is_exposed=bool(row.is_exposed) or is_orchestrator,
                 is_archived=bool(fleet.is_archived),
-                can_manage=can_manage(user, fleet, user_group_ids),
+                can_manage=_can_manage_fleet(user, fleet, user_group_ids),
             )
         else:
             connected.append(
@@ -2140,7 +2168,7 @@ async def get_agent_fleets(
                     collaboration_instruction=effective_member_settings(fleet, row).collaboration_instruction,
                     context_inclusion=effective_member_settings(fleet, row).context_inclusion,
                     is_archived=bool(fleet.is_archived),
-                    can_manage=can_manage(user, fleet, user_group_ids),
+                    can_manage=_can_manage_fleet(user, fleet, user_group_ids),
                 )
             )
     home_hidden = False

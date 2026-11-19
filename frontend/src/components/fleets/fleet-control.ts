@@ -64,7 +64,8 @@ export function fleetControlState(automations: FleetAutomations | null | undefin
 /**
  * Who may switch the fleet's automations, as the backend decides it
  * (`_controllable_fleet`): whoever manages the fleet; on a built-in fleet an
- * administrator only. An archived fleet is read as it was: no control.
+ * administrator only. An archived fleet is read as it was: no control. The
+ * Platform Health fleet answers `can_manage` false to everyone (#101 S1b).
  */
 export function canControlFleet(
   fleet: { can_manage: boolean; is_builtin?: boolean; is_archived: boolean },
