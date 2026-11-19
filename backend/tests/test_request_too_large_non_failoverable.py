@@ -639,3 +639,45 @@ def test_friendly_error_message_uses_shared_predicate_for_wrapped_413():
     msg = _friendly_error_message(AllProvidersFailedError(failures))
     assert "too large" in msg.lower()
     assert "new conversation" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# AI Gateway: a body over 10 MiB is a 413 ``request_too_large``
+# ---------------------------------------------------------------------------
+
+
+def _gateway_error(status: int, code: str) -> Exception:
+    import httpx
+    import openai
+
+    # A message with no size keyword: the status alone must decide.
+    message = "the request body is over the 10 MiB limit"
+    request = httpx.Request("POST", "https://gateway.example/v1/chat/completions")
+    response = httpx.Response(status, request=request)
+    return openai.APIStatusError(message, response=response, body={"message": message, "code": code})
+
+
+def test_gateway_413_is_request_too_large():
+    from app.api.v1.chat import _friendly_error_message
+    from app.llm.router import AllProvidersFailedError, FailoverLLMProvider, is_request_too_large_error
+    from app.services.failure_causes import FailureCause, FailureDetermination, classify_run_failure
+
+    exc = _gateway_error(413, "request_too_large")
+    assert is_request_too_large_error(exc) is True
+    assert FailoverLLMProvider._is_non_failoverable(exc) is True
+    chain = AllProvidersFailedError([("openai", Exception("Error code: 529 - overloaded")), ("gateway", exc)])
+    assert is_request_too_large_error(chain) is True
+    for raised in (exc, chain):
+        msg = _friendly_error_message(raised).lower()
+        assert "too large" in msg
+        assert "new conversation" in msg
+    result = classify_run_failure(exc)
+    assert result.cause is FailureCause.REQUEST_TOO_LARGE
+    assert result.determination is FailureDetermination.STRUCTURAL
+
+
+def test_gateway_400_invalid_request_is_not_request_too_large():
+    """A body cut off by the client stays a 400: not a size error."""
+    from app.llm.router import is_request_too_large_error
+
+    assert is_request_too_large_error(_gateway_error(400, "invalid_request")) is False

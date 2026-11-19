@@ -624,8 +624,14 @@ def is_request_too_large_error(exc: Exception) -> bool:
       shape entirely.
     """
     if isinstance(exc, AllProvidersFailedError):
-        last_failure = str(exc.failures[-1][1]).lower() if exc.failures else ""
-        return any(kw in last_failure for kw in REQUEST_TOO_LARGE_KEYWORDS)
+        return bool(exc.failures) and _is_size_error(exc.failures[-1][1])
+    return _is_size_error(exc)
+
+
+def _is_size_error(exc: BaseException) -> bool:
+    # A 413 is a size error whatever its wording (the AI Gateway's names no keyword).
+    if getattr(exc, "status_code", None) == 413:
+        return True
     msg = str(exc).lower()
     return any(kw in msg for kw in REQUEST_TOO_LARGE_KEYWORDS)
 
