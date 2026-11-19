@@ -16,6 +16,9 @@ a cron that polls every object.
 * The row lives in Postgres, so a rollout between arm and due loses nothing.
   The state is written ``fired`` before the event is raised: a timer fires at
   most once.
+* ``fired_unheard``: fired while no ``platform_event`` assignment took
+  ``timer.due`` for its key, so no run started: the follow-up it stood for is
+  visible as lost instead of reading like any fired timer.
 """
 
 import uuid
@@ -33,7 +36,16 @@ TIMER_FIRED = "fired"
 TIMER_CANCELLED = "cancelled"
 TIMER_REPLACED = "replaced"
 TIMER_SKIPPED = "skipped"
-TIMER_STATES: tuple[str, ...] = (TIMER_ARMED, TIMER_FIRED, TIMER_CANCELLED, TIMER_REPLACED, TIMER_SKIPPED)
+#: Fired, but no ``platform_event`` assignment took its ``timer.due``: nothing ran.
+TIMER_FIRED_UNHEARD = "fired_unheard"
+TIMER_STATES: tuple[str, ...] = (
+    TIMER_ARMED,
+    TIMER_FIRED,
+    TIMER_FIRED_UNHEARD,
+    TIMER_CANCELLED,
+    TIMER_REPLACED,
+    TIMER_SKIPPED,
+)
 
 
 class PlatformTimer(Base):

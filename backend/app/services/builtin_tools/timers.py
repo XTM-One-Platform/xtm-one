@@ -85,11 +85,14 @@ def build_timer_tools(
             if replaced
             else f"Armed timer `{timer['correlation_key']}` for {timer['due_at']} (id `{timer['id']}`)."
         )
-        return (
+        text = (
             f"{head} At that time the platform raises timer.due once to the platform_event "
             "assignments whose filter matches (e.g. correlation_key starts_with the prefix)"
             + (", unless its condition is met first." if (unless_work_item_id or unless_shared_state_key) else ".")
         )
+        # Armed either way: a key no listener takes is warned about, never refused.
+        warning = await pt.unheard_warning(timer, user_id=user_id)
+        return f"{text}\n{warning}" if warning else text
 
     async def _cancel(correlation_key: str = "", timer_id: str = "") -> str:
         try:
