@@ -33,6 +33,8 @@ Check                              Severity    Category       Fails when
 ``xtm_one.quota_near_ceiling``     warning     capacity       a platform-wide agentic ceiling is over 90 % used in its current period
 ``xtm_one.dependency_unreachable`` critical    availability   Redis or the object storage does not answer its probe within 4 s
 ``xtm_one.trace_backlog``          warning     capacity       over 1,000 traces wait in the tracing overflow queue
+``xtm_one.worker_absent``          critical    availability   no worker says it is running, so queued runs, renders and indexing wait
+``xtm_one.provider_error_rate``    warning     availability   over 5 % of a model's traces of the last hour failed (20 traces at least)
 =================================  ==========  =============  ==============================================
 
 The per-subject checks answer one result per subject (an integration, a server, a
@@ -54,9 +56,14 @@ The dependency probe is the readiness probe of ``/health/ready`` (a Redis
 :data:`PROBE_TIMEOUT_SECONDS`; PostgreSQL needs no probe, the pass itself runs
 on it. The trace backlog reads the length of the tracing overflow list.
 
-The remaining 4.2 checks (scheduler lag, sandbox latency, provider error
-rates, version, certificates) follow in a later slice; the security audit
-stays its own page.
+The worker check reads the presence every worker publishes in Redis
+(:mod:`app.services.worker_presence`); an unreadable Redis records nothing, that
+is the dependency finding. The provider check counts the traces of the last
+:data:`PROVIDER_ERROR_WINDOW` per model in PostgreSQL (every trace store writes
+there), one finding per model, closed out when the model no longer fails.
+
+The remaining 4.2 checks (sandbox latency, version, certificates) follow in a
+later slice; the security audit stays its own page.
 """
 
 from __future__ import annotations
@@ -85,6 +92,12 @@ QUOTA_WARNING_RATIO = 0.9
 PROBE_TIMEOUT_SECONDS = 4.0
 #: Traces waiting in the tracing overflow list past this count raise a warning.
 TRACE_BACKLOG_WARNING = 1000
+#: The window the provider error rate is read over.
+PROVIDER_ERROR_WINDOW = timedelta(hours=1)
+#: A model whose failed share of its traces in the window passes this raises a warning.
+PROVIDER_ERROR_RATIO = 0.05
+#: Fewer traces than this in the window are too few to judge a model.
+PROVIDER_MIN_TRACES = 20
 #: The dependencies probed, in the order findings are recorded.
 PROBED_DEPENDENCIES = ("redis", "object_storage")
 #: Where a finding of these checks is explained.
@@ -494,6 +507,69 @@ async def trace_backlog(db: AsyncSession, now: datetime) -> list[CheckResult]:
     ]
 
 
+async def _running_workers() -> int | None:
+    """Workers whose presence says running now; ``None`` when Redis cannot be read."""
+    from app.services import worker_presence
+
+    return await worker_presence.count()
+
+
+async def worker_absent(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """No worker is running: queued runs, renders and indexing wait until one starts."""
+    running = await _running_workers()
+    if running is None:  # Redis down is the dependency check's finding
+        return []
+    return [
+        _result(
+            "xtm_one.worker_absent",
+            "critical",
+            "availability",
+            running == 0,
+            evidence={"values": {"running": running}, "source": "worker presence"},
+            recommendation="Start the worker deployment, or read its logs for why it stopped.",
+        )
+    ]
+
+
+async def _model_trace_counts(db: AsyncSession, since: datetime) -> list[tuple[str, int, int]]:
+    """``(model, traces, failed)`` per model of the traces started since ``since``."""
+    from app.models.llm_trace import LLMTrace
+
+    rows = await db.execute(
+        select(
+            LLMTrace.model,
+            func.count(LLMTrace.id),
+            func.count(LLMTrace.id).filter(LLMTrace.status == "error"),
+        )
+        .where(LLMTrace.started_at >= since, LLMTrace.model.is_not(None))
+        .group_by(LLMTrace.model)
+        .order_by(LLMTrace.model)
+    )
+    return [(str(model), int(total), int(failed)) for model, total, failed in rows.all()]
+
+
+async def provider_error_rate(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A model fails over :data:`PROVIDER_ERROR_RATIO` of its traces of the last hour."""
+    results = [
+        _result(
+            "xtm_one.provider_error_rate",
+            "warning",
+            "availability",
+            failed > PROVIDER_ERROR_RATIO * total,
+            subject={"model": model},
+            evidence={
+                "values": {"traces": total, "failed": failed, "rate": round(failed / total, 3)},
+                "threshold": "5 %",
+                "source": "traces of the last hour",
+            },
+            recommendation="Check the provider's status and the model's credentials, or switch the agents to another model.",
+        )
+        for model, total, failed in await _model_trace_counts(db, now - PROVIDER_ERROR_WINDOW)
+        if total >= PROVIDER_MIN_TRACES
+    ]
+    return results + await close_out(db, "xtm_one.provider_error_rate", results)
+
+
 for _check_id, _run in (
     ("xtm_one.registration_token", registration_token),
     ("xtm_one.licence", licence),
@@ -509,6 +585,8 @@ for _check_id, _run in (
     ("xtm_one.quota_near_ceiling", quota_near_ceiling),
     ("xtm_one.dependency_unreachable", dependency_unreachable),
     ("xtm_one.trace_backlog", trace_backlog),
+    ("xtm_one.worker_absent", worker_absent),
+    ("xtm_one.provider_error_rate", provider_error_rate),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))

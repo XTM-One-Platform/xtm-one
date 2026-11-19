@@ -323,8 +323,16 @@ the same counters the gates read, no counter moved (pinned by
 probe of `/health/ready` on Redis and the object storage, each bounded at 4 s; PostgreSQL
 needs none, the pass runs on it) and `xtm_one.trace_backlog` (warning when the tracing
 overflow list `tracing:overflow` holds over 1,000 traces; nothing recorded when Redis
-cannot be read, that is the dependency finding). The rows still owed (scheduler lag,
-sandbox latency, provider error rates, version, certificates) follow in S4e.
+cannot be read, that is the dependency finding).
+
+**Implementation (S4e).** Two more availability checks: `xtm_one.worker_absent`
+(critical when no worker presence in Redis says `running`, from
+`services/worker_presence.count`; nothing recorded when Redis cannot be read) and
+`xtm_one.provider_error_rate` (warning, one finding per model, when over 5 % of its traces
+of the last hour failed, 20 traces at least; read from PostgreSQL `llm_traces`, which every
+trace store writes; closed out when the model no longer fails). The scheduler tick runs the
+pass itself, so a stopped scheduler records nothing new and its findings age on the page.
+The rows still owed (sandbox latency, version, certificates) follow in S4f.
 
 ### 4.3 OpenCTI (XTM One mode, automatic)
 

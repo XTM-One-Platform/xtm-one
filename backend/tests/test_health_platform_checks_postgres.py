@@ -65,6 +65,7 @@ def _world(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quota, "platform_agentic_usage", no_ceiling)
     monkeypatch.setattr(platform_checks, "_probe", _probe_ok)
     monkeypatch.setattr(platform_checks, "_trace_backlog_length", _no_backlog)
+    monkeypatch.setattr(platform_checks, "_running_workers", _one_worker)
     engine._LAST_RUN.clear()
 
 
@@ -74,6 +75,10 @@ async def _probe_ok(name: str) -> str:
 
 async def _no_backlog() -> int:
     return 0
+
+
+async def _one_worker() -> int:
+    return 1
 
 
 async def _open(db: AsyncSession) -> dict[str, HealthCheckFinding]:
@@ -102,6 +107,8 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.quota_near_ceiling",
         "xtm_one.dependency_unreachable",
         "xtm_one.trace_backlog",
+        "xtm_one.worker_absent",
+        "xtm_one.provider_error_rate",
     }
     assert {c.interval for c in CHECKS} == {platform_checks.PLATFORM_CHECK_INTERVAL}
 
@@ -116,7 +123,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 14
+        assert totals["checks"] == 16
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"
@@ -443,3 +450,63 @@ async def test_a_trace_backlog_over_1000_is_a_warning(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(platform_checks, "_trace_backlog_length", unreadable)
     assert await platform_checks.trace_backlog(None, T0) == []  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_no_running_worker_is_critical_and_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4e: no worker presence opens a critical finding, closed once a worker runs; unreadable Redis records nothing."""
+    running: int | None = 0
+
+    async def workers() -> int | None:
+        return running
+
+    async with _temp_database("hpc_workers") as sessions, sessions() as db:
+        monkeypatch.setattr(platform_checks, "_running_workers", workers)
+        await _pass(db, T0)
+        found = await _open(db)
+        assert found["xtm_one.worker_absent"].severity == "critical"
+        assert found["xtm_one.worker_absent"].evidence["values"] == {"running": 0}
+
+        running = 2
+        await _pass(db, T0 + timedelta(minutes=5))
+        await _pass(db, T0 + timedelta(minutes=10))
+        assert "xtm_one.worker_absent" not in await _open(db)
+
+    running = None
+    assert await platform_checks.worker_absent(None, T0) == []  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_model_is_a_warning_per_model_and_resolves() -> None:
+    """S4e: over 5 % failed traces of a model in the last hour warns for that model; too few traces are not judged."""
+    from app.models.llm_trace import LLMTrace
+
+    def traces(model: str, ok: int, failed: int, at: datetime) -> list[LLMTrace]:
+        return [
+            LLMTrace(id=uuid.uuid4(), source="agent-chat", name="chat", model=model, started_at=at, status=status)
+            for status, n in (("ok", ok), ("error", failed))
+            for _ in range(n)
+        ]
+
+    recent = T0 - timedelta(minutes=10)
+    async with _temp_database("hpc_providers") as sessions, sessions() as db:
+        db.add_all(
+            traces("model-bad", 18, 2, recent)  # 10 % of 20: a finding
+            + traces("model-good", 99, 1, recent)  # 1 %: none
+            + traces("model-rare", 1, 4, recent)  # 5 traces: not judged
+            + traces("model-old", 0, 30, T0 - timedelta(hours=3))  # outside the window
+        )
+        await db.commit()
+        await _pass(db, T0)
+        rows = [
+            r
+            for r in (await db.execute(select(HealthCheckFinding))).scalars().all()
+            if r.status == STATUS_OPEN and r.check_id == "xtm_one.provider_error_rate"
+        ]
+        assert [r.subject for r in rows] == [{"model": "model-bad"}]
+        assert rows[0].evidence["values"] == {"traces": 20, "failed": 2, "rate": 0.1}
+
+        # An hour later the failures left the window: resolved after two passes.
+        await _pass(db, T0 + timedelta(hours=1))
+        await _pass(db, T0 + timedelta(hours=1, minutes=5))
+        assert "xtm_one.provider_error_rate" not in await _open(db)
