@@ -406,6 +406,10 @@ A Zendesk integration lets an agent open and follow tickets in the help desk the
 - **People.** Users and organizations can be searched, read, created, updated and deleted; `list_zendesk_ticket_fields` shows the account's custom fields.
 - A read-only binding keeps the reading tools; every change asks for approval unless whitelisted.
 
+### Jira: mentioning a person in a comment
+
+An agent can mention a person in the Jira text it writes (a comment, an edited comment, a description, a worklog comment), so Jira notifies them. Typing `@Name` notifies nobody; the agent writes `[~accountid:ID]`, the Jira wiki syntax, with the person's account ID, which `search_jira_users` returns. Each token becomes a mention showing the person's name; text without a token is written as before.
+
 ### GitHub: files in an issue or pull request comment
 
 GitHub offers no upload API for comments, so an agent attaches a file of the conversation (a capture, a report, an archive) through the repository itself.
