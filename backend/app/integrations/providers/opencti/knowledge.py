@@ -81,6 +81,7 @@ from ._common import (
     _request_headers,
     format_bulk_outcome,
 )
+from .access import _refuse_unapplied
 from .markings import resolve_markings
 from .workflow import (
     WORKFLOW_FILTER_KEY,
@@ -526,6 +527,11 @@ mutation CreateLabel($input: LabelAddInput!) {
 """
 
 _LABEL_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+# The fields each action of manage_opencti_label reads; any other field is refused.
+_LABEL_APPLIES: dict[str, frozenset[str]] = {
+    "update": frozenset({"label", "value", "color"}),
+    "delete": frozenset({"label"}),
+}
 
 # ``labelEdit`` (SETTINGS_SETLABELS): a label is no STIX core object, so
 # ``stixCoreObjectEdit`` answers "Stix-Core-Object cannot be found" for it.
@@ -4877,11 +4883,20 @@ def register_knowledge(
 
     # Same rule as create_opencti_label: a label is platform configuration
     # written outside any draft, so the tool exists with the setting on only.
-    async def manage_opencti_label(action: str, label: str, value: str = "", color: str = "") -> str:
+    async def manage_opencti_label(
+        action: str, label: str, value: str = "", color: str = "", **extra_args: object
+    ) -> str:
         """Update (value, color) or delete a label OpenCTI holds, named by its
         id or its value. Written to the live graph, never into a draft.
         """
         verb = str(action or "").strip().lower()
+        # A field the action ignores (value or color on delete, or an undeclared one)
+        # is refused by name: nothing is sent, never a silent "deleted".
+        refused = _refuse_unapplied(
+            verb, _LABEL_APPLIES, {"label": label, "value": value, "color": color}, dict(extra_args)
+        )
+        if refused:
+            return refused
         if verb not in ("update", "delete"):
             return "Error: `action` is `update` or `delete`. Nothing was changed."
         ref = str(label or "").strip(_JS_TRIM_CHARS)
