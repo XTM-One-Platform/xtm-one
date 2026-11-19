@@ -16,6 +16,7 @@ The rules and the sweep live in ``app.services.file_retention``.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -41,7 +42,7 @@ def _next_sweep(now: datetime) -> str:
     return (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).isoformat()
 
 
-async def _payload(db: AsyncSession, user: User) -> dict:
+async def _payload(db: AsyncSession, user: User) -> dict[str, Any]:
     rules = await file_retention.load_policy(db)
     held = await file_retention.holdings(db)
     now = datetime.now(UTC)
@@ -57,7 +58,7 @@ async def _payload(db: AsyncSession, user: User) -> dict:
 
 
 @router.get("")
-async def get_file_retention(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict:
+async def get_file_retention(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Every file retention rule, with what each category holds today (administrators)."""
     return await _payload(db, user)
 
@@ -68,7 +69,7 @@ async def save_file_retention(
     request: Request,
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Change the days of the categories given (administrators); an audit entry names each change."""
     try:
         changed = await file_retention.save_policy(db, body.days)
@@ -102,7 +103,7 @@ async def preview_file_retention(
     body: FileRetentionWrite,
     _user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """What the next sweep would delete per category under *body* (the stored days elsewhere); nothing written."""
     for key, days in body.days.items():
         if key not in file_retention.BY_KEY:
@@ -130,7 +131,7 @@ async def preview_file_retention(
 @router.get("/rules")
 async def read_file_retention_rules(
     _user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     """The rules alone (days per category), for any signed-in person or agent: what a file's card says."""
     rules = await file_retention.load_policy(db)
     return {"categories": [rules[c.key].as_dict() for c in file_retention.CATEGORIES]}

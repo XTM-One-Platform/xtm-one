@@ -10941,7 +10941,9 @@ async def download_message_file(
     from app.services.file_retention import raise_if_deleted, touch
 
     raise_if_deleted(file_att)
+    # The last use renews the file's retention; committed before the answer.
     await touch(db, [file_att.id])
+    await db.commit()
 
     not_modified = file_not_modified(file_att, if_none_match)
     if not_modified is not None:
@@ -11019,7 +11021,9 @@ async def download_file(
 
     file_att = await load_readable_file(db, file_id, user)
     raise_if_deleted(file_att)
+    # The last use renews the file's retention; committed before the answer.
     await touch(db, [file_att.id])
+    await db.commit()
 
     not_modified = file_not_modified(file_att, if_none_match)
     if not_modified is not None:

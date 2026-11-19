@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Text, cast, func, or_, select, update
+from sqlalchemy import ColumnElement, Text, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -200,11 +200,11 @@ async def save_policy(db: AsyncSession, values: Mapping[str, object]) -> dict[st
 # ── Which files a category holds ──────────────────────────────────────────
 
 
-def source_clause(category: Category):
+def source_clause(category: Category) -> ColumnElement[bool]:
     """SQL: the files of *category*, by ``FileAttachment.source``."""
     from app.models.file_attachment import FileAttachment
 
-    parts = []
+    parts: list[ColumnElement[bool]] = []
     if category.sources:
         parts.append(FileAttachment.source.in_(category.sources))
     if category.prefix:
@@ -221,7 +221,7 @@ def category_of(source: object) -> Category | None:
     return None
 
 
-def _age_column(category: Category):
+def _age_column(category: Category) -> ColumnElement[Any]:
     from app.models.file_attachment import FileAttachment
 
     if category.basis == "last_use":
@@ -244,7 +244,7 @@ def expires_at(row: Any, days: int, basis: str) -> datetime | None:
     start = getattr(row, "created_at", None)
     if basis == "last_use":
         start = getattr(row, "last_accessed_at", None) or start
-    if start is None:
+    if not isinstance(start, datetime):
         return None
     return start + timedelta(days=days)
 
