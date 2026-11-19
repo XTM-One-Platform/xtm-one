@@ -218,6 +218,82 @@ async def test_listed_file_downloads_by_its_url(monkeypatch):
     assert len(result.files) == 1
 
 
+# ── Who last changed an item, before a write ───────────────────────────────
+
+ALICE = {"user": {"displayName": "Alice Martin", "email": "alice@contoso.com"}}
+BOB = {"user": {"displayName": "Bob Stone"}}
+
+
+async def test_folder_listing_names_who_modified_and_created_each_item(monkeypatch):
+    children = {
+        "value": [
+            {**SUBFOLDER, "lastModifiedDateTime": "2026-10-01T09:00:00Z"},
+            {
+                **REPORT,
+                "lastModifiedDateTime": "2026-10-02T10:00:00Z",
+                "lastModifiedBy": ALICE,
+                "createdBy": BOB,
+            },
+        ]
+    }
+    graph, result = await _run(
+        monkeypatch,
+        "list_microsoft_folder_by_url",
+        [(_share(LINK, "/children"), _Resp(children)), (_share(LINK), _Resp(FOLDER))],
+        url=LINK,
+    )
+
+    assert not result.is_error
+    text = result.content
+    assert "  Modified by: Alice Martin <alice@contoso.com>" in text
+    assert "  Created by: Bob Stone" in text
+    # An item Graph returned no authorship for gets no empty line.
+    assert text.count("Modified by:") == 1
+    selected = graph.calls[1]["params"]["$select"].split(",")
+    assert {"lastModifiedBy", "createdBy"} <= set(selected)
+
+
+async def test_file_read_by_url_names_who_modified_it(monkeypatch):
+    item_url = _item_url("Q3%20report.txt")
+    graph, result = await _run(
+        monkeypatch,
+        "get_microsoft_file_by_url",
+        [
+            (_share(item_url), _fail(404)),
+            (_share(LINK), _Resp(FOLDER)),
+            (
+                _ends("/drives/DRIVE1/items/FOLDER1:/Q3%20report.txt"),
+                _Resp({**REPORT, "lastModifiedBy": ALICE, "createdBy": BOB}),
+            ),
+            (_ends("/drives/DRIVE1/items/FILE1/content"), _Resp(text="hello world")),
+        ],
+        url=item_url,
+    )
+
+    assert not result.is_error
+    assert "Modified by: Alice Martin <alice@contoso.com>" in result.content
+    assert "Created by: Bob Stone" in result.content
+    assert "lastModifiedBy" in graph.calls[0]["params"]["$select"].split(",")
+
+
+@pytest.mark.parametrize(
+    ("identity_set", "expected"),
+    [
+        (ALICE, "Alice Martin <alice@contoso.com>"),
+        (BOB, "Bob Stone"),
+        ({"user": {"email": "carol@contoso.com"}}, "carol@contoso.com"),
+        ({"application": {"displayName": "Power Automate"}}, "Power Automate"),
+        ({"user": {}}, ""),
+        (None, ""),
+        ("not a dict", ""),
+    ],
+)
+def test_identity_label(identity_set, expected):
+    from app.integrations.providers.microsoft._drive import _identity_label
+
+    assert _identity_label(identity_set) == expected
+
+
 @pytest.mark.parametrize(
     "subfolder_url",
     [

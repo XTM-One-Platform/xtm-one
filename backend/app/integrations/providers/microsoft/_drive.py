@@ -98,15 +98,49 @@ def _cut_inline(text: str, limit: int, web_url: str) -> str:
     )
 
 
-def _drive_item_link_lines(meta: dict | None) -> list[str]:
-    """The links Graph returns for a drive item.
+def _identity_label(identity_set: object) -> str:
+    """Who a Graph ``identitySet`` names: ``name <email>``, the name or the
+    email alone, from its user, else its application or device; empty when
+    Graph named nobody."""
+    if not isinstance(identity_set, dict):
+        return ""
+    for kind in ("user", "application", "device"):
+        identity = identity_set.get(kind)
+        if not isinstance(identity, dict):
+            continue
+        name = str(identity.get("displayName") or "").strip()
+        email = str(identity.get("email") or "").strip()
+        if name and email:
+            return f"{name} <{email}>"
+        if name or email:
+            return name or email
+    return ""
 
+
+def _authorship_lines(meta: dict | None, indent: str = "") -> list[str]:
+    """``Modified by`` and ``Created by`` of a drive item, each when Graph
+    returned it, so a caller can tell who last changed a copy before a write."""
+    meta = meta or {}
+    lines = []
+    modified_by = _identity_label(meta.get("lastModifiedBy"))
+    created_by = _identity_label(meta.get("createdBy"))
+    if modified_by:
+        lines.append(f"{indent}Modified by: {modified_by}")
+    if created_by:
+        lines.append(f"{indent}Created by: {created_by}")
+    return lines
+
+
+def _drive_item_link_lines(meta: dict | None) -> list[str]:
+    """The authorship and the links Graph returns for a drive item.
+
+    ``Modified by`` / ``Created by`` come first when Graph returned them;
     ``@microsoft.graph.downloadUrl`` is the pre-authenticated direct download
     (short-lived), ``webUrl`` the page a person opens and the URL the other
     Microsoft file tools take.
     """
     meta = meta or {}
-    lines = []
+    lines = _authorship_lines(meta)
     download_url = meta.get("@microsoft.graph.downloadUrl") or ""
     web_url = meta.get("webUrl") or ""
     if download_url:
@@ -339,9 +373,11 @@ def _encode_drive_filename(name: str) -> str:
 
 # What the URL resolvers read of a driveItem: its identity and links, and its
 # ``file`` or ``folder`` facet (a folder is listed, never downloaded).
-_SHARE_ITEM_SELECT = "id,name,size,file,folder,parentReference,webUrl,@microsoft.graph.downloadUrl"
+_SHARE_ITEM_SELECT = (
+    "id,name,size,file,folder,parentReference,webUrl,lastModifiedBy,createdBy,@microsoft.graph.downloadUrl"
+)
 # What a folder listing reads of each item.
-_FOLDER_ITEM_SELECT = "id,name,size,file,folder,lastModifiedDateTime,webUrl"
+_FOLDER_ITEM_SELECT = "id,name,size,file,folder,lastModifiedDateTime,lastModifiedBy,createdBy,webUrl"
 _FOLDER_PAGE_DEFAULT = 50
 _FOLDER_PAGE_MAX = 200
 # Query parameters a listing sets itself, left out of the page token.
@@ -558,6 +594,7 @@ def _folder_entry(folder_url: str, item: dict) -> str:
     lines = [head]
     if item.get("lastModifiedDateTime"):
         lines.append(f"  Modified: {item['lastModifiedDateTime']}")
+    lines.extend(_authorship_lines(item, indent="  "))
     url = _folder_item_url(folder_url, item)
     lines.append(f"  URL: {url}")
     web_url = item.get("webUrl") or ""

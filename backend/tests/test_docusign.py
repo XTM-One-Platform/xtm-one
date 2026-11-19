@@ -85,6 +85,7 @@ def _api(request: httpx.Request) -> httpx.Response:
                         "emailSubject": "NDA",
                         "status": "completed",
                         "completedDateTime": "2026-01-02T10:00:00Z",
+                        "sender": {"userName": "Lea", "email": "lea@example.com", "userId": "u-1"},
                     }
                 ],
             },
@@ -97,6 +98,7 @@ def _api(request: httpx.Request) -> httpx.Response:
                 "emailSubject": "NDA",
                 "status": "sent",
                 "sentDateTime": "2026-01-01T09:00:00Z",
+                "sender": {"userName": "Lea", "email": "lea@example.com", "userId": "u-1"},
             },
         )
     if url == f"{_BASE}/envelopes/env-1" and request.method == "PUT":
@@ -429,6 +431,7 @@ async def test_the_envelope_status_lists_recipients_and_documents():
     assert "Ana <ana@example.com> | status: delivered | delivered 2026-01-01T09:05:00Z" in text
     assert "Bo <bo@example.com> | status: completed | signed 2026-01-01T10:00:00Z" in text
     assert "NDA.pdf (document id: 1, content)" in text
+    assert "Sender: Lea <lea@example.com> (user id: u-1)" in text
 
 
 @pytest.mark.asyncio
@@ -440,6 +443,7 @@ async def test_listing_filters_by_status_and_date_newest_first():
         )
         bad = await call(executor, "list_docusign_envelopes", status="lost")
     assert "Envelope env-1 - NDA - status: completed" in result.content
+    assert "Sender: Lea <lea@example.com> (user id: u-1)" in result.content
     assert bad.content.startswith("Error: status must be one of")
     listing = next(r for r in sent if r.url.path.endswith("/envelopes"))
     params = listing.url.params
