@@ -1461,3 +1461,159 @@ class TestToolCap:
     async def test_a_pinned_target_is_read_in_any_case(self):
         provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||Anthropic")
         assert await provider.max_tools_for("house-alias") == 1024
+
+
+def _png() -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8), (40, 120, 200)).save(out, format="PNG")
+    return out.getvalue()
+
+
+class TestImageEdits:
+    """Reference pictures and a mask through the gateway's ``/v1/images/edits`` (XTM-One-Platform/ai-gateway#358)."""
+
+    @staticmethod
+    def _gateway(asked: list[httpx.Request], answer: httpx.Response | None = None) -> FiligranGatewayProvider:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [
+                    {"id": "gpt-image-1", "object": "model", "owned_by": "openai", "types": ["image"], "image_edit": True},
+                ]})
+            request.read()
+            asked.append(request)
+            return answer or httpx.Response(200, json={"data": [{"b64_json": "SU1H"}]})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @pytest.mark.asyncio
+    async def test_pictures_and_a_mask_only_for_a_model_the_gateway_declares_editing(self):
+        provider = _listing_provider(
+            {"id": "gpt-image-1", "types": ["image"], "image_edit": True},
+            # An older gateway, or an upstream it does not edit through: no ``image_edit``.
+            {"id": "gpt-image-azure", "types": ["image"]},
+        )
+        # Nothing listed yet: nothing is offered.
+        assert provider.image_reference_limit("gpt-image-1") == 0
+        await provider.load_image_capabilities("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 3 and provider.image_takes_mask("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-azure") == 0 and not provider.image_takes_mask("gpt-image-azure")
+
+    @pytest.mark.asyncio
+    async def test_a_pinned_credential_lists_with_its_target(self):
+        # The gateway flags ``image_edit`` by the provider ``X-Target-Provider`` names.
+        asked: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            asked.append(request)
+            return httpx.Response(200, json={"object": "list", "data": [
+                {"id": "house-image", "object": "model", "owned_by": "litellm", "types": ["image"], "image_edit": True},
+            ]})
+
+        provider = FiligranGatewayProvider(
+            api_key=f"{GATEWAY_URL}||litellm",
+            http_client=_gateway_http_client(XtmJwtAuth(AUD, "litellm"), None, transport=httpx.MockTransport(handler)),
+        )
+        set_llm_caller(USER_ID, EMAIL)
+        await provider.load_image_capabilities("house-image")
+        assert asked[0].url.path == "/v1/models" and asked[0].headers["X-Target-Provider"] == "litellm"
+        assert provider.image_reference_limit("house-image") == 3
+
+    @pytest.mark.asyncio
+    async def test_an_edit_at_capacity_is_asked_again_after_the_wait_named(self, monkeypatch):
+        from app.llm import images
+
+        answers = [
+            httpx.Response(429, headers={"Retry-After": "15"}, json={"error": {
+                "message": "too many image edits at once", "type": "rate_limit_error",
+                "code": "capacity_exceeded", "retry_after_seconds": 15,
+            }}),
+            httpx.Response(200, json={"data": [{"b64_json": "SU1H"}]}),
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            return answers.pop(0)
+
+        waits: list[float] = []
+
+        async def sleep(seconds):
+            waits.append(seconds)
+
+        monkeypatch.setattr(images.asyncio, "sleep", sleep)
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        provider.client = provider.client.with_options(max_retries=0)  # the drawing's own retry, not the SDK's
+        made = await images.draw_retrying(lambda: provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1"))
+        assert made == b"IMG" and len(waits) == 1 and 15 <= waits[0] <= 15 * 1.25
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_offers_no_pictures(self):
+        provider = _mock_provider(lambda r: httpx.Response(500, json={"error": {"message": "down"}}))
+        set_llm_caller(USER_ID, EMAIL)
+        await provider.load_image_capabilities("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 0
+
+    @pytest.mark.asyncio
+    async def test_edit_sends_the_pictures_the_mask_and_the_target(self):
+        asked: list[httpx.Request] = []
+        picture = _png()
+        made = await self._gateway(asked).edit_image(
+            "Put the mark on the wall", [(picture, "image/png"), (picture, "image/png")],
+            mask=(picture, "image/png"), model="gpt-image-1", size="1536x1024",
+        )
+        assert made == b"IMG"
+        (request,) = asked
+        _assert_gateway_auth(request)
+        assert request.url.path == "/v1/images/edits"
+        assert request.headers["X-Target-Provider"] == "openai"
+        assert request.headers["Content-Type"].startswith("multipart/form-data; boundary=")
+        body = request.content
+        assert body.count(b'name="image[]"') == 2 and b'name="mask"; filename="mask.png"' in body
+        for field, value in (("model", b"gpt-image-1"), ("prompt", b"Put the mark on the wall"), ("size", b"1536x1024")):
+            assert f'name="{field}"\r\n\r\n'.encode() + value in body
+        # The gateway refuses a form without exactly one ``model`` text field.
+        assert body.count(b'name="model"') == 1
+
+    @pytest.mark.asyncio
+    async def test_one_picture_is_sent_as_image(self):
+        asked: list[httpx.Request] = []
+        await self._gateway(asked).edit_image("Emboss it", [(_png(), "image/png")], model="gpt-image-1")
+        body = asked[0].content
+        assert b'name="image"; filename="reference-1.png"' in body and b"image[]" not in body
+        assert b'name="mask"' not in body
+
+    @pytest.mark.asyncio
+    async def test_an_oversized_upload_reads_as_too_large(self):
+        from app.llm.images import failure_message
+
+        too_large = httpx.Response(413, json={"error": {
+            "message": "request body exceeds the 50 MiB limit", "type": "invalid_request_error",
+            "code": "request_too_large", "retryable": False,
+        }})
+        provider = self._gateway([], too_large)
+        with pytest.raises(openai.APIStatusError) as raised:
+            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
+        assert "too large" in failure_message(raised.value, "gpt-image-1")
+
+
+@pytest.mark.asyncio
+async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(monkeypatch):
+    """The tool's schema is built before anything else lists the gateway's models."""
+    from app.llm import router
+    from app.services.builtin_tools import media
+
+    provider = _listing_provider({"id": "gpt-image-1", "types": ["image"], "image_edit": True})
+
+    async def image_provider(_db, **_kw):
+        return provider, "gpt-image-1"
+
+    monkeypatch.setattr(router, "get_image_provider", image_provider)
+    (definition,), _executor = await media.build_image_generation_tool(None, str(USER_ID))
+    properties = definition.input_schema["properties"]
+    assert properties["reference_file_ids"]["maxItems"] == 3 and "mask_file_id" in properties

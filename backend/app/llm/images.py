@@ -69,6 +69,9 @@ def failure_message(exc: BaseException, model: str | None) -> str:
     """What a failed drawing tells the caller: the model, the HTTP status its provider answered, the provider's words."""
     status = error_status(exc)
     answered = f" (HTTP {status})" if status is not None else ""
+    if status == 413:
+        # Any provider's 413; the AI Gateway's message names no size. Said, so the pictures are sent smaller.
+        answered = " (HTTP 413, the request is too large)"
     return f"Image generation failed with {model or 'the image model'}{answered}: {api_error_message(exc)}"
 
 

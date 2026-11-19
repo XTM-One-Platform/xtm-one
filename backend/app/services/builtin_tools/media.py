@@ -1225,6 +1225,8 @@ async def build_image_generation_tool(
     executor = CallableToolExecutor()
     executor.register("generate_image", _generate_image)
 
+    if load := getattr(img_provider, "load_image_capabilities", None):
+        await load(img_model)
     references = _reference_limit(img_provider, img_model)
     properties: dict = {
         "prompt": {
