@@ -170,6 +170,55 @@ def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_
     assert "seed_missing" not in module.STATE
 
 
+def test_the_seed_waits_for_the_admin_token_the_start_up_runner_writes(monkeypatch):
+    """/api/health answers before InitAdminCommandLineRunner wrote the admin token: 401 until then (gap
+    lab-openaev-seed-401), so the seed waits for GET /api/me to authenticate."""
+    module = _module()
+    monkeypatch.setattr(module, "ADMIN_TOKEN_POLL_SECONDS", 0)
+    monkeypatch.setattr(module.lab, "log", lambda line: None)
+    answers = [_http_error(module, 401, b""), module.urllib.error.URLError("refused"), _http_error(module, 503, b""),
+               {"user_email": module.ADMIN_EMAIL}]
+    calls = []
+
+    def api(method, path, body=None):
+        calls.append((method, path))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(module, "api", api)
+    assert module.wait_for_admin_token(timeout=60) is True
+    assert not answers and set(calls) == {("GET", "/api/me")}
+
+
+def test_the_admin_token_wait_stops_on_a_final_answer_or_the_deadline(monkeypatch):
+    module = _module()
+    monkeypatch.setattr(module, "ADMIN_TOKEN_POLL_SECONDS", 0)
+    logged = []
+    monkeypatch.setattr(module.lab, "log", logged.append)
+
+    def forbidden(method, path, body=None):
+        raise _http_error(module, 403, b"")
+
+    monkeypatch.setattr(module, "api", forbidden)
+    assert module.wait_for_admin_token(timeout=60) is False
+    assert "HTTP 403" in logged[-1]
+
+    def unauthorized(method, path, body=None):
+        raise _http_error(module, 401, b"")
+
+    monkeypatch.setattr(module, "api", unauthorized)
+    assert module.wait_for_admin_token(timeout=0) is False
+    assert "did not authenticate" in logged[-1]
+
+
+def test_the_start_waits_for_the_admin_token_before_the_seed():
+    text = SCRIPT.read_text(encoding="utf-8")
+    main = text.split("def main() -> None:", 1)[1]
+    assert main.index("wait_for_admin_token()") < main.index("for item in seed():")
+
+
 def test_the_start_refuses_a_checkout_missing_a_sub_path(monkeypatch, tmp_path):
     module = _module()
     where = tmp_path / "openaev"
