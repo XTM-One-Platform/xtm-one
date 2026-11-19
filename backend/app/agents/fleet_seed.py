@@ -51,7 +51,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.builtin_fleets import BUILTIN_FLEETS
@@ -99,8 +99,19 @@ def resolve_parent(agent_slug: str, parents: dict[str, str | None], present: set
 
 
 async def _sweep_stale(db: AsyncSession, current_slugs: set[str]) -> int:
+    # The Platform Health fleet is built in but seeded by its own seed
+    # (``services.health.fleet_seed``): led by an agent holding a fleet role.
+    health_led = select(Agent.id).where(Agent.health_role.is_not(None))
     stale = (
-        (await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug.notin_(current_slugs or {""}))))
+        (
+            await db.execute(
+                select(Fleet).where(
+                    Fleet.is_builtin.is_(True),
+                    Fleet.slug.notin_(current_slugs or {""}),
+                    or_(Fleet.orchestrator_agent_id.is_(None), Fleet.orchestrator_agent_id.notin_(health_led)),
+                )
+            )
+        )
         .scalars()
         .all()
     )

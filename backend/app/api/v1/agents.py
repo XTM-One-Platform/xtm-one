@@ -3389,7 +3389,8 @@ async def duplicate_agent(
 ):
     """Duplicate an agent (including its assignments) as a private copy for the current user.
 
-    Works on any agent the user can see (own or company-managed).
+    Works on any agent the user can see (own or company-managed), except an
+    agent of the built-in Platform Health fleet (403, read-only for everyone).
     The duplicate is always private (never company-managed), owned by the requesting user.
     Assignments are copied but reset (execution_count=0, disabled by default).
 
@@ -3404,6 +3405,7 @@ async def duplicate_agent(
     read and answers their number in ``memory_entries_copied``.
     """
     from app.models.agent_copy import split_reserved_agent_tags
+    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_agent
     from app.services.llm_provider_deletion import lock_provider_configs
     from app.services.persistent_memory import (
         MEMORY_COPY_REFUSED,
@@ -3420,6 +3422,9 @@ async def duplicate_agent(
     source = await get_user_agent(
         db, user.id, agent_id, user_group_ids, is_admin=user.is_admin
     )
+    if is_health_agent(source):
+        # The Platform Health agents ship with the platform and are never copied (#101).
+        raise HTTPException(status_code=403, detail=HEALTH_READ_ONLY_REFUSAL)
     if copy_memory and memory_content_restricted(source, user):
         raise HTTPException(status_code=403, detail=MEMORY_COPY_REFUSED)
     new_agent, wf_count, dropped = await copy_agent_for_user(

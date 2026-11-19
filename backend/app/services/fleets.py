@@ -275,8 +275,13 @@ def ensure_builtin_fleet_writable(fleet: Fleet, fields: Iterable[str] | None = N
     that is not a field update (a member, the exposure, a delete, a spec
     apply), always refused on a built-in fleet. The seed itself never calls it.
     """
+    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_fleet
+
     if not getattr(fleet, "is_builtin", False):
         return
+    # The Platform Health fleet takes no write at all, its switches included.
+    if is_health_fleet(fleet):
+        raise FleetActionRefusedError(403, HEALTH_READ_ONLY_REFUSAL)
     if fields is not None and set(fields) <= BUILTIN_FLEET_WRITABLE_FIELDS:
         return
     raise FleetActionRefusedError(403, BUILTIN_FLEET_REFUSAL)

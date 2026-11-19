@@ -7,17 +7,17 @@ Platform Health (formerly the Concierge) is a company-managed fleet of agents th
 
 ## The fleet
 
-The platform creates a company-managed fleet named after the orchestrator, in a company-managed workspace of the same name, with five agents:
+The platform ships a built-in fleet named **Platform Health**, in a company-managed workspace of the same name, with five agents:
 
 | Agent | Role |
 |---|---|
-| **Platform Health** (or the name set below; renamed with the seeded fleet) | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
+| **Platform Health** | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
 | **Memory Steward** | Consolidates the memory of agents whose managers opted in. |
 | **Quality Analyst** | Diagnoses agents and drafts persona, skill and assignment-prompt variants. |
 | **Flow Lab** | Diagnoses flows and drafts repairs, optimizations and new flows on sandbox copies. |
 | **Experimenter** | Measures variants with evaluations and files the proposals. |
 
-They are ordinary company-managed agents: an administrator may edit their persona, model and skills, and the platform keeps those edits. None of them can edit an agent or a flow directly. The fleet never supervises itself.
+The fleet, its agents, their assignments and its workspace are **built in and read-only for everyone**, administrators included: nobody edits, switches off, deletes, duplicates or forks them, and every attempt answers "Platform Health is built in and read-only." The platform rewrites their definition at every start. What an administrator tunes is set in Settings > Automations > Platform Health (below). None of the agents can edit an agent or a flow directly. The fleet never supervises itself.
 
 Every piece of Platform Health work is a run of one of the fleet's assignments, and every run starts inside a **cycle**: a unit of work with its own share of the Platform Health budget. Each cycle ends with a digest.
 
@@ -25,7 +25,7 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 | Section | What it sets |
 |---|---|
-| Enable, name, scope, budget | Whether Platform Health works, the name its orchestrator agent is shown under, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
+| Enable, name, scope, budget | Whether Platform Health works, the name the entry points and refusals use, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
@@ -33,9 +33,9 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ### Name
 
-The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Platform Health** on every deployment; an orchestrator, fleet or workspace still carrying a former default name (the former Concierge names) is renamed **Platform Health** at the next start, and a name set by hand is kept. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
+The **Name** field sets the name the entry points ("Improve with …") and the refusals use. The page, the navigation entry, the Settings section, the orchestrator agent, its fleet and its workspace always read **Platform Health**: the fleet is built in, so the platform writes that name on them at every start, over a former Concierge name too. Left empty, the name is **Platform Health**. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
 
-Saving a new name renames the orchestrator, the fleet and the workspace that still carry the previous one. A row an administrator renamed by hand keeps its own name. The agents' personas are not changed: the name is what people read, not an instruction to the model.
+Saving a new name renames no agent, fleet or workspace, and the agents' personas are not changed: the name is what people read, not an instruction to the model.
 
 A schedule that is due while the budget is reached, or while agentic AI is off, starts nothing: its last firing and the reason are shown under the schedule, and it tries again at its next occurrence.
 
