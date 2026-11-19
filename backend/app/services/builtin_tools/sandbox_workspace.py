@@ -3395,7 +3395,7 @@ def build_sandbox_workspace_tools(
                     "depth": {"type": "integer", "description": "Levels below path to list (1: its direct files)."},
                     "glob": {
                         "type": "string",
-                        "description": "File name pattern, e.g. *.test.ts (with a /: path from path).",
+                        "description": "File name pattern, e.g. *.test.ts or {a,b}.md (with a /: path from path).",
                     },
                 },
             },
