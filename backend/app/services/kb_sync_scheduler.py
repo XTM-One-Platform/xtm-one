@@ -1411,6 +1411,8 @@ async def _run_sync_in_isolated_session(
                     integration_id=bound_integration_id,
                     recursive=recursive,
                     sync_source_id=source_id,
+                    folder_paths=config.get("folder_paths"),
+                    exclude=config.get("exclude"),
                 )
             elif source_type == "google-drive":
                 doc_ids = await sync_google_drive(

@@ -2591,6 +2591,67 @@ async def _resolve_sharepoint_drive(
     return f"{site_base}/drive", folder_path
 
 
+#: The sync source types whose engine applies the ``folder_paths`` / ``exclude``
+#: scope of their config (:func:`sync_microsoft_drive`): what
+#: ``update_knowledge_base_source`` may set.
+DRIVE_SCOPE_SOURCE_TYPES = frozenset({"microsoft-drive"})
+
+
+def _drive_scope_list(value: object) -> list[str]:
+    """A drive source's list setting (``folder_paths``, ``exclude``) as stored:
+    a list, or one string with one entry per line or comma."""
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else re.split(r"[\n,]", str(value))
+    return [s for s in (str(v).strip() for v in items) if s]
+
+
+def drive_item_excluded(relative_path: str, patterns: list[str]) -> bool:
+    """Whether a drive file or folder at *relative_path* is left out by *patterns*.
+
+    A pattern without ``/`` names a folder or file at any depth (``XX. Archives``
+    excludes every folder of that name and all it holds), with ``*`` and ``?``
+    wildcards; a pattern with ``/`` is a path from the top of the drive, matched
+    as a glob on the path or on any parent of it. Case is ignored.
+    """
+    import fnmatch
+
+    path = relative_path.strip("/").casefold()
+    if not path or not patterns:
+        return False
+    segments = path.split("/")
+    for raw in patterns:
+        pattern = raw.strip().strip("/").casefold()
+        if not pattern:
+            continue
+        if "/" not in pattern:
+            if any(fnmatch.fnmatchcase(segment, pattern) for segment in segments):
+                return True
+            continue
+        for depth in range(1, len(segments) + 1):
+            if fnmatch.fnmatchcase("/".join(segments[:depth]), pattern):
+                return True
+    return False
+
+
+def _drive_relative_dir(item: dict) -> str:
+    """The folder of a Graph drive item as its document name carries it."""
+    parent_path = item.get("parentReference", {}).get("path", "")
+    # parentReference.path looks like "/drive/root:/folder/subfolder"
+    # Strip the drive prefix to get a clean relative path
+    if ":/" in parent_path:
+        return parent_path.split(":/", 1)[1]
+    return parent_path.strip("/")
+
+
+def _drive_scope_path(item: dict) -> str:
+    """The path of a Graph drive item from the top of its drive, which the
+    exclusions match (a file at the top has no folder: ``/drive/root:``)."""
+    parent_path = item.get("parentReference", {}).get("path", "")
+    folder = parent_path.split(":/", 1)[1] if ":/" in parent_path else ""
+    return f"{folder}/{item.get('name', '')}"
+
+
 async def sync_microsoft_drive(
     db: AsyncSession,
     kb: KnowledgeBase,
@@ -2601,6 +2662,8 @@ async def sync_microsoft_drive(
     recursive: bool = False,
     *,
     sync_source_id: str | None = None,
+    folder_paths: list[str] | None = None,
+    exclude: list[str] | None = None,
 ) -> list[str]:
     """Sync files from OneDrive or SharePoint into a knowledge base (full-refresh).
 
@@ -2621,6 +2684,11 @@ async def sync_microsoft_drive(
         recursive: Whether to recurse into subfolders (default: False).
         sync_source_id: The :class:`KBSyncSource` behind this sync, owner
             of the documents it imports; None for a one-shot import.
+        folder_paths: Several folders, each read like *folder_path*; when
+            given it replaces *folder_path*.
+        exclude: Folders and files left out (:func:`drive_item_excluded`): an
+            excluded folder is never walked, an excluded file never imported,
+            and a document imported before is removed as stale.
 
     Returns list of all synced document IDs.
     """
@@ -2631,40 +2699,36 @@ async def sync_microsoft_drive(
 
     all_doc_ids: set[str] = set()
     embed_doc_ids: list[str] = []
+    excluded_patterns = _drive_scope_list(exclude)
 
-    if _is_sharepoint_sharing_url(folder_path):
-        # Sharing URLs (https://tenant.sharepoint.com/:f:/s/...) cannot be
-        # used as path segments in the Graph API.  Resolve them via the
-        # /shares endpoint to get the actual driveId + itemId.
-        async with egress_client(timeout=30) as resolve_client:
-            base, start_url = await _resolve_drive_sharing_url(
-                resolve_client,
-                headers,
-                folder_path,
-            )
-    elif site_id:
-        async with egress_client(timeout=30) as resolve_client:
-            resolved_site_id = await _resolve_sharepoint_site_id(
-                resolve_client,
-                headers,
-                site_id,
-            )
-            base, folder_path = await _resolve_sharepoint_drive(
-                resolve_client,
-                headers,
-                resolved_site_id,
-                folder_path,
-            )
-        if folder_path == "/" or not folder_path:
-            start_url = f"{base}/root/children"
+    async def _start(path: str) -> tuple[str, str]:
+        """The drive base URL and the first listing URL of one folder."""
+        if _is_sharepoint_sharing_url(path):
+            # Sharing URLs (https://tenant.sharepoint.com/:f:/s/...) cannot be
+            # used as path segments in the Graph API.  Resolve them via the
+            # /shares endpoint to get the actual driveId + itemId.
+            async with egress_client(timeout=30) as resolve_client:
+                return await _resolve_drive_sharing_url(resolve_client, headers, path)
+        if site_id:
+            async with egress_client(timeout=30) as resolve_client:
+                resolved_site_id = await _resolve_sharepoint_site_id(
+                    resolve_client,
+                    headers,
+                    site_id,
+                )
+                base, path = await _resolve_sharepoint_drive(
+                    resolve_client,
+                    headers,
+                    resolved_site_id,
+                    path,
+                )
         else:
-            start_url = f"{base}/root:/{folder_path.strip('/')}:/children"
-    else:
-        base = f"{GRAPH_API}/me/drive"
-        if folder_path == "/" or not folder_path:
-            start_url = f"{base}/root/children"
-        else:
-            start_url = f"{base}/root:/{folder_path.strip('/')}:/children"
+            base = f"{GRAPH_API}/me/drive"
+        if path == "/" or not path:
+            return base, f"{base}/root/children"
+        return base, f"{base}/root:/{path.strip('/')}:/children"
+
+    starts = [await _start(path) for path in (_drive_scope_list(folder_paths) or [folder_path])]
 
     supported_exts = {
         ".txt",
@@ -2688,11 +2752,11 @@ async def sync_microsoft_drive(
     from collections import deque
 
     async with egress_client(timeout=60) as client:
-        # BFS queue of folder listing URLs to process (recursive)
-        folder_queue: deque[str] = deque([start_url])
+        # BFS queue of (drive base, folder listing URL) to process (recursive)
+        folder_queue: deque[tuple[str, str]] = deque(starts)
 
         while folder_queue:
-            next_url: str | None = folder_queue.popleft()
+            base, next_url = folder_queue.popleft()
             while next_url:
                 resp = await client.get(next_url, headers=headers)
                 resp.raise_for_status()
@@ -2702,13 +2766,15 @@ async def sync_microsoft_drive(
 
                 for item in items:
                     name = item.get("name", "")
+                    if drive_item_excluded(_drive_scope_path(item), excluded_patterns):
+                        continue
 
                     # Recurse into subfolders (only when recursive is enabled)
                     if "folder" in item:
                         if recursive:
                             item_id = item.get("id")
                             if item_id:
-                                folder_queue.append(f"{base}/items/{item_id}/children")
+                                folder_queue.append((base, f"{base}/items/{item_id}/children"))
                         continue
 
                     ext = f".{name.rsplit('.', 1)[-1].lower()}" if "." in name else ""
@@ -2742,15 +2808,7 @@ async def sync_microsoft_drive(
                         content = await extract_text_from_file_async(raw, name)
 
                         # Use the parent path in the filename to avoid collisions
-                        parent_path = item.get("parentReference", {}).get("path", "")
-                        # parentReference.path looks like "/drive/root:/folder/subfolder"
-                        # Strip the drive prefix to get a clean relative path
-                        if ":/" in parent_path:
-                            relative_dir = parent_path.split(":/", 1)[1]
-                        elif parent_path:
-                            relative_dir = parent_path.strip("/")
-                        else:
-                            relative_dir = ""
+                        relative_dir = _drive_relative_dir(item)
                         display_name = (
                             f"{relative_dir}/{name}" if relative_dir else name
                         )

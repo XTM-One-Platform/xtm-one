@@ -2678,6 +2678,10 @@ def build_agent_builder_tool(
       ``list_agent_intent_bindings``, ``bind_agent_to_intent``,
       ``unbind_agent_from_intent``; every write through
       ``services/intent_binding_writes.py``, the REST routes' writer.
+    * **Knowledge base sync sources** (``builtin_tools/kb_sync_sources.py``) -
+      ``get_knowledge_base_sources``, ``update_knowledge_base_source``,
+      ``resync_knowledge_base``; every call through the REST handlers of
+      ``/knowledge-bases/{id}/sync-sources``.
     * **Discovery** – ``list_available_resources``.
 
     Every write tool enforces the same three-tier permission gates as the
@@ -16314,6 +16318,14 @@ def build_agent_builder_tool(
     for tool_name, handler in intent_handlers.items():
         executor.register(tool_name, handler)
     definitions.extend(intent_defs)
+
+    # ── Knowledge base sync sources: their own module, the same executor ───
+    from .kb_sync_sources import build_kb_sync_source_tools
+
+    sync_source_defs, sync_source_handlers = build_kb_sync_source_tools(user_id)
+    for tool_name, handler in sync_source_handlers.items():
+        executor.register(tool_name, handler)
+    definitions.extend(sync_source_defs)
 
     # A Platform Health run reads the platform here, never changes it (#8255).
     from app.services.health.sandbox.guards import guard_agent_builder
