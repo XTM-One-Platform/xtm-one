@@ -1818,6 +1818,12 @@ async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
     return (await db.execute(stmt.limit(1))).scalar_one_or_none() is not None
 
 
+# Outcomes a collect answers from the caller's own row: the partner decided
+# them, or the task was cancelled at the partner. Anything this side concluded
+# on a transient failure of its own call is asked of the partner again.
+_READ_BACK_OUTCOMES = frozenset({OUTCOME_PARTNER_FAILED, OUTCOME_CANCELLED, OUTCOME_TIMEOUT})
+
+
 async def _recorded_conclusion(
     db: Any, integration: Any, target: Any, calling: CallingRun | None, task_id: str
 ) -> DelegationResult | None:
@@ -1825,12 +1831,16 @@ async def _recorded_conclusion(
 
     Answered only when nothing about the task is left to learn: no row of this
     caller is still outstanding for it, and the newest one ended with an
-    outcome the partner cannot change. A completed row is never answered from
-    here (the answer text is not stored, a collect re-reads it from the
-    partner), nor an abandoned one (this side gave up on a silent partner,
-    whose answer a collect may still get). Everything else, a failure, a
-    refusal, a timeout that cancelled the task, a cancel, is what the calling
-    agent asked about and could not read before (no tool returned the row).
+    outcome the partner decided or that ended the task at the partner
+    (``_READ_BACK_OUTCOMES``: a failure, a cancel, a timeout that cancelled
+    it). That is what the calling agent asked about and could not read before
+    (no tool returned the row). A completed row is never answered from here
+    (the answer text is not stored, a collect re-reads it from the partner),
+    nor an abandoned one (this side gave up on a silent partner, whose answer
+    a collect may still get), nor one this side concluded on a transient
+    failure of its own call (``unreachable``, ``credential_rejected``, a
+    pre-flight refusal such as ``circuit_open``): the partner's task may still
+    be running or finished, so the collect goes to the partner again.
     """
     from sqlalchemy import select
 
@@ -1848,7 +1858,7 @@ async def _recorded_conclusion(
     if not rows or any(row.outcome is None for row in rows):
         return None
     row = rows[0]
-    if row.outcome == OUTCOME_COMPLETED or row.abandoned_at is not None:
+    if row.outcome not in _READ_BACK_OUTCOMES or row.abandoned_at is not None:
         return None
     ended = row.terminal_at.isoformat() if row.terminal_at else "an unrecorded time"
     return DelegationResult(
