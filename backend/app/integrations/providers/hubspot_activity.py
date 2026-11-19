@@ -72,6 +72,8 @@ Request = Callable[..., Awaitable[tuple[httpx.Response | None, str | None]]]
 #: Records per CRM search page (HubSpot's maximum) and per search tool call.
 SEARCH_PAGE = 200
 SEARCH_MAX_RESULTS = 500
+#: HubSpot's CRM search answers at most this many records per query.
+SEARCH_OFFSET_CEILING = 10_000
 #: Inputs per batch request (HubSpot's batch read limit).
 BATCH_SIZE = 100
 _BATCH_MAX_IDS = 500
@@ -302,6 +304,21 @@ def _next_after(data: Mapping[str, Any]) -> str:
     paging = data.get("paging")
     nxt = paging.get("next") if isinstance(paging, Mapping) else None
     return str(nxt.get("after") or "") if isinstance(nxt, Mapping) else ""
+
+
+def search_total(results: Sequence[Any], total: int) -> int:
+    """The match count a search header shows: never below what it lists (a missing ``total``)."""
+    return max(total, len(results))
+
+
+def search_shown_note(results: Sequence[Any], total: int, after: str) -> str:
+    """``\\nShowing N of TOTAL ...`` when a search lists fewer records than match, else ``""``."""
+    shown, total = len(results), search_total(results, total)
+    if not shown or shown >= total:
+        return ""
+    if after:
+        return f"\nShowing {shown} of {total}: pass the after cursor below for the next page."
+    return f"\nShowing {shown} of {total}: HubSpot gave no next page; narrow the filters to read the rest."
 
 
 def _results(data: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -587,11 +604,18 @@ class HubSpotActivity:
         action: str,
         cap: int = SEARCH_MAX_RESULTS,
     ) -> tuple[list[dict[str, Any]], int, str, str | None]:
-        """``(results, total, next cursor, error)``: up to *count* results, paged 200 at a time."""
+        """``(results, total, next cursor, error)``: up to *count* results, paged 200 at a time.
+
+        HubSpot sometimes ends a page without ``paging.next`` while its
+        ``total`` says more records match (a page of 100 out of 200 asked):
+        a search cursor is the record offset, so the next page is read from
+        the offset reached instead of stopping short and silent.
+        """
         want = max(1, min(_int(count, 10), cap))
         results: list[dict[str, Any]] = []
         total = 0
         after = str(body.get("after") or "")
+        offset = _int(after or 0, -1)
         while True:
             page = {k: v for k, v in body.items() if k != "after"}
             page["limit"] = min(SEARCH_PAGE, want - len(results))
@@ -604,8 +628,13 @@ class HubSpotActivity:
             batch = _results(data)
             results.extend(batch)
             after = _next_after(data)
+            if offset >= 0:
+                offset += len(batch)
+            if not after and batch and offset >= 0 and offset < min(total, SEARCH_OFFSET_CEILING):
+                after = str(offset)
             if not after or not batch or len(results) >= want:
                 return results, total, after, None
+            offset = _int(after, -1)
 
     async def associated_ids(
         self, client: httpx.AsyncClient, from_type: str, from_id: str, to_type: str, *, cap: int
