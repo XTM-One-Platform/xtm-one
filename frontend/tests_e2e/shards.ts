@@ -9,14 +9,18 @@ import { fileURLToPath } from 'node:url';
  * the heaviest specs sit next to each other in that order (the presentation
  * files): one job ran twice as long as another. Whole files are dealt out
  * instead, heaviest first, each to the job with the least work so far,
- * weighed by the seconds the file took on CI (`shard-timings.json`, rebuilt by
- * `yarn e2e:shard-timings`); a file with no timing yet weighs the median. Every
+ * weighed by the seconds the file took on CI (the nightly table a run's select
+ * job hands out, else `shard-timings.json`); a file with no timing yet weighs the median. Every
  * job of a run computes the same deal from the same files, so together they
  * run every file exactly once.
  */
 
 export const E2E_DIR = path.dirname(fileURLToPath(import.meta.url));
-const TIMINGS_FILE = path.join(E2E_DIR, 'shard-timings.json');
+/**
+ * The table a CI run deals by: `E2E_SHARD_TIMINGS`, the one its select job
+ * picked (the nightly table, or this committed one) and handed every job.
+ */
+const TIMINGS_FILE = process.env.E2E_SHARD_TIMINGS || path.join(E2E_DIR, 'shard-timings.json');
 
 export interface Shard {
   index: number;
@@ -51,10 +55,13 @@ export function specFiles(dir: string, skip: readonly string[] = []): string[] {
   return found.sort();
 }
 
-export function readTimings(file: string = TIMINGS_FILE): Record<string, number> {
+export function readTimings(file: string = TIMINGS_FILE, handedOut = Boolean(process.env.E2E_SHARD_TIMINGS)): Record<string, number> {
   try {
     return JSON.parse(readFileSync(file, 'utf8')) as Record<string, number>;
-  } catch {
+  } catch (error) {
+    // A job that fell back on another table than its siblings would deal the
+    // files differently: a spec would run twice or never.
+    if (handedOut) throw new Error(`E2E_SHARD_TIMINGS names ${file}, which does not read: ${String(error)}`);
     return {};
   }
 }

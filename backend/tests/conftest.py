@@ -36,16 +36,16 @@ def pytest_configure(config):
     Then register ``tests/repeat.py``, the ``--repeat`` plugin.
     """
     from tests import repeat
-    from tests.marked_files import MARKED_FILES, parse_marker
+    from tests.marked_files import MARKED_FILES, parse_marker, skips_file
     from tests.selection import read_selected_files
-    from tests.sharding import load_durations, parse_shard, parse_split, shard_files
+    from tests.sharding import durations_path, load_durations, parse_shard, parse_split, shard_files
 
     repeat.register(config)
 
     value = os.environ.get("PYTEST_MARKED_FILES")
     shard = os.environ.get("PYTEST_SHARD")
     try:
-        config.stash[MARKED_FILES] = parse_marker(value) if value else None
+        marker = config.stash[MARKED_FILES] = parse_marker(value) if value else None
         selected = config.stash[_SELECTED_FILES] = read_selected_files(os.environ.get("PYTEST_SELECTED_FILES"))
         # Every listed file must exist: a list in the wrong form would otherwise collect nothing, and pass.
         missing = sorted(name for name in selected or () if not (config.rootpath / name).is_file())
@@ -56,10 +56,15 @@ def pytest_configure(config):
         if shard and split == "files":
             root = config.rootpath
             names = (path.relative_to(root).as_posix() for path in (root / "tests").rglob("test_*.py"))
-            # Only the selected files are dealt out, so the shards share the selection evenly.
-            files = shard_files(
-                (name for name in names if selected is None or name in selected), load_durations(), *parse_shard(shard)
+            # Only the files the job runs are dealt out - the selected ones, and under PYTEST_MARKED_FILES
+            # those that spell the marker - so the shards share them evenly, not the files they leave out.
+            dealt = (
+                name
+                for name in names
+                if (selected is None or name in selected) and (marker is None or not skips_file(root / name, marker))
             )
+            durations = load_durations(durations_path(os.environ.get("PYTEST_SHARD_DURATIONS")))
+            files = shard_files(dealt, durations, *parse_shard(shard))
         config.stash[_SHARD_FILES] = files
     except ValueError as exc:
         raise pytest.UsageError(str(exc)) from None
