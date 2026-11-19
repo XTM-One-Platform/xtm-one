@@ -78,8 +78,42 @@ def test_the_narrowed_archive_extracts_to_the_same_checkout_under_the_paths():
 def test_the_cap_applies_to_the_selected_bytes_and_names_the_paths():
     files = {"src/a.ts": b"0" * 600, "src/b.ts": b"0" * 600, "public/v.mp4": b"0" * 10_000}
     assert narrow_archive(_archive(files), ["src"], max_bytes=2000).left_out == ["public/v.mp4"]
-    with pytest.raises(ArchiveTooLargeError, match="files under src are over"):
+    with pytest.raises(ArchiveTooLargeError, match=r"files under src \(0\.0 MB\) and the detection files outside"):
         narrow_archive(_archive(files), ["src"], max_bytes=1000)
+
+
+def test_small_files_outside_the_paths_past_their_budget_are_left_out_never_refused() -> None:
+    """#432: a site whose seed data and pages outside the sub_path pass the archive limit still narrows."""
+    files = {
+        "package.json": b'{"name": "site"}',
+        "pnpm-lock.yaml": b"lockfileVersion: 9\n",
+        ".github/workflows/ci.yml": b"on: push\n",
+        ".xtm-one/checks.toml": b"",
+        "tsconfig.json": b"{}",
+        "src/app.ts": b"export {}\n",
+        **{f"seed/data-{i}.json": b"0" * 300 for i in range(10)},
+        "public/logo.svg": b"<svg/>",
+    }
+    narrowed = narrow_archive(_archive(files), ["src"], max_bytes=2000, outside_max_bytes=512, outside_budget_bytes=600)
+    kept = {name.split("/", 1)[1] for name in _names(narrowed.data)}
+    assert {
+        "package.json",
+        "pnpm-lock.yaml",
+        ".github/workflows/ci.yml",
+        ".xtm-one/checks.toml",
+        "tsconfig.json",
+    } <= kept
+    assert "src/app.ts" in kept
+    assert len([p for p in kept if p.startswith("seed/")]) == 2, "the other small files stop at their budget"
+    assert "public/logo.svg" in narrowed.left_out, "an SVG outside the paths is media"
+    assert len([p for p in narrowed.left_out if p.startswith("seed/")]) == 8
+
+
+def test_the_detection_files_outside_the_paths_are_kept_past_the_budget() -> None:
+    files = {"README.md": b"0" * 400, "package.json": b"{}", "src/a.ts": b"a"}
+    narrowed = narrow_archive(_archive(files), ["src"], max_bytes=1 << 20, outside_budget_bytes=100)
+    assert narrowed.left_out == ["README.md"]
+    assert f"{ROOT}/package.json" in _names(narrowed.data)
 
 
 def test_git_metadata_and_links_are_never_kept():
