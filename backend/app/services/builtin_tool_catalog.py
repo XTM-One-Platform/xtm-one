@@ -269,7 +269,7 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
     catalog["user_admin"] = _extract(ua_defs)
 
-    # Memory Steward (#8258): every call checks the work is the Concierge's.
+    # Memory Steward (#8258): every call checks the work is Platform Health's.
     from app.services.builtin_tools import build_memory_steward_tools
 
     ms_defs, _ = build_memory_steward_tools()
