@@ -73,6 +73,8 @@ logger = logging.getLogger(__name__)
 _OWNER_MISS_TTL_SECONDS = 30.0
 #: The upstreams the gateway edits images through (XTM-One-Platform/ai-gateway#358); any other answers 403 policy_denied.
 _IMAGE_EDIT_UPSTREAMS = frozenset({"openai", "litellm", "custom_openai", "custom", "custom-openai"})
+#: A gateway that answered it has no edits route is not offered reference pictures for this long.
+_NO_EDITS_TTL_SECONDS = 600.0
 
 # An owner lookup on the chat path never waits out the SDK's retries or read timeout.
 _OWNER_LISTING_TIMEOUT = httpx.Timeout(5.0)
@@ -276,6 +278,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._owner_misses: dict[str, float] = {}
         # (model, dimension) pairs the upstream refused: embedded at native size from then on.
         self._refused_dimensions: set[tuple[str, int]] = set()
+        # Until then the gateway is taken to have no image edits (``edit_image``'s bare 404).
+        self._no_edits_until = 0.0
 
     def refusal_endpoint(self) -> Endpoint | None:
         # The client's api_key is a placeholder: the row's token and target route it.
@@ -536,6 +540,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         from app.llm.openai_provider import OpenAIProvider
 
         m = model or self.default_model
+        if self._no_edits_until > time.monotonic():
+            return 0
         # Sync, so only a pinned target or an owner already listed: an unknown one is left to the gateway.
         owner = (self._target or self._owner_cache.get(m) or "gateway").lower()
         if owner != "gateway" and owner not in _IMAGE_EDIT_UPSTREAMS:
@@ -557,12 +563,23 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         """An image from the gateway's /v1/images/edits, which forwards OpenAI's multipart request unchanged."""
         import base64
 
+        from app.llm.images import ImageGenerationError
         from app.llm.openai_provider import OpenAIProvider
 
         m = model or self.default_model
-        response = await self.client.images.edit(
-            **OpenAIProvider.image_edit_params(prompt, images, mask, m, size), extra_headers=await self._target_headers(m)
-        )
+        try:
+            response = await self.client.images.edit(
+                **OpenAIProvider.image_edit_params(prompt, images, mask, m, size),
+                extra_headers=await self._target_headers(m),
+            )
+        except openai.NotFoundError as exc:
+            # A gateway older than XTM-One-Platform/ai-gateway#358 has no such route: a bare 404, no error envelope.
+            if isinstance(exc.body, dict):
+                raise
+            self._no_edits_until = time.monotonic() + _NO_EDITS_TTL_SECONDS
+            raise ImageGenerationError(
+                "This AI Gateway does not edit images yet: describe the image without reference pictures."
+            ) from None
         return base64.b64decode(response.data[0].b64_json)
 
 

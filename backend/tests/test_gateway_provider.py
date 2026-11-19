@@ -1538,6 +1538,34 @@ class TestImageEdits:
         assert b'name="mask"' not in body
 
     @pytest.mark.asyncio
+    async def test_a_gateway_without_edits_says_so_and_stops_offering_pictures(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.llm import gateway_provider
+        from app.llm.images import ImageGenerationError, failure_message
+
+        asked: list[httpx.Request] = []
+        provider = self._gateway(asked, httpx.Response(404))  # an older gateway: no such route, no error body
+        with pytest.raises(ImageGenerationError) as raised:
+            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
+        assert "does not edit images yet" in failure_message(raised.value, "gpt-image-1")
+        assert len(asked) == 1 and provider.image_reference_limit("gpt-image-1") == 0
+        # Offered again once the gateway may have been upgraded.
+        later = gateway_provider.time.monotonic() + gateway_provider._NO_EDITS_TTL_SECONDS + 1
+        monkeypatch.setattr(gateway_provider, "time", SimpleNamespace(monotonic=lambda: later))
+        assert provider.image_reference_limit("gpt-image-1") == 3
+
+    @pytest.mark.asyncio
+    async def test_a_gateway_404_with_its_error_body_is_not_a_missing_route(self):
+        unknown_model = httpx.Response(404, json={"error": {
+            "message": "model not found", "type": "invalid_request_error", "code": "model_not_found",
+        }})
+        provider = self._gateway([], unknown_model)
+        with pytest.raises(openai.NotFoundError):
+            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 3
+
+    @pytest.mark.asyncio
     async def test_an_oversized_upload_reads_as_too_large(self):
         from app.llm.images import failure_message
 
