@@ -491,6 +491,28 @@ def is_graceful_shutdown_cancellation(exc: BaseException) -> bool:
     return False
 
 
+def is_statement_timeout(exc: BaseException) -> bool:
+    """Whether *exc*, or an exception it was raised from, is a cancelled database statement.
+
+    PostgreSQL's ``statement_timeout`` (SQLSTATE 57014, asyncpg's
+    ``QueryCanceledError``, wrapped by SQLAlchemy as ``DBAPIError.orig``).
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if type(current).__name__ == "QueryCanceledError" or getattr(current, "sqlstate", None) == "57014":
+            return True
+        if "canceling statement due to statement timeout" in str(current):
+            return True
+        orig = getattr(current, "orig", None)
+        if isinstance(orig, BaseException) and id(orig) not in seen:
+            current = orig
+            continue
+        current = current.__cause__ or current.__context__
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Null-byte sanitization (tracing + ORM JSON payloads)
 # ---------------------------------------------------------------------------
