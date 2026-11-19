@@ -519,7 +519,7 @@ export function FleetAboutShowcase({
             <Section id="about-prerequisites" title={t_i18n("Prerequisites")}>
               {live.length > 0 ? (
                 // The checklist derived from the configuration (#10258) wins over the documented one.
-                <FleetAboutPrerequisites fleetId={fleetId} lines={live} memberName={memberName} />
+                <FleetAboutPrerequisites fleetId={fleetId} lines={live} memberName={memberName} readOnly={readOnly} />
               ) : (
               <Card>
                 <CardContent className="p-0">

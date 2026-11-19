@@ -129,6 +129,20 @@ def test_the_health_fleet_response_offers_no_control_to_an_admin() -> None:
     assert _can_manage_fleet(admin, other, []) is True  # type: ignore[arg-type]
 
 
+def test_no_prerequisite_of_the_health_fleet_is_fixable_from_its_page() -> None:
+    """The live lines answer ``can_fix`` false on the health fleet, kept on any other (UX r2 B1 on #464)."""
+    from app.api.v1.fleets import _lock_fixes_on_health_fleet
+
+    health = SimpleNamespace(is_builtin=True, slug="platform-health")
+    lines = [SimpleNamespace(can_fix=True), SimpleNamespace(can_fix=False)]
+    _lock_fixes_on_health_fleet(health, lines)  # type: ignore[arg-type]
+    assert [line.can_fix for line in lines] == [False, False]
+    other = SimpleNamespace(is_builtin=True, slug="ctem-posture")
+    kept = [SimpleNamespace(can_fix=True)]
+    _lock_fixes_on_health_fleet(other, kept)  # type: ignore[arg-type]
+    assert kept[0].can_fix is True
+
+
 def test_responses_carry_the_read_only_reason_field() -> None:
     from app.api.v1.schemas.agent import AgentResponse
     from app.api.v1.schemas.fleet import FleetResponse

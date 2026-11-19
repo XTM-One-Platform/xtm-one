@@ -311,11 +311,13 @@ function Line({
   line,
   memberName,
   confirm,
+  readOnly,
 }: {
   fleetId: string;
   line: FleetLivePrerequisite;
   memberName: (id: string) => string;
   confirm: ReturnType<typeof useConfirmLine>;
+  readOnly: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const formatDate = useFormatIsoDate();
@@ -332,7 +334,7 @@ function Line({
     unreadable: t_i18n("Not shared with you"),
     to_confirm: t_i18n("To confirm"),
   }[line.state];
-  const fixable = line.state === "not_met" && line.can_fix && line.fix_route;
+  const fixable = !readOnly && line.state === "not_met" && line.can_fix && line.fix_route;
   return (
     <li className="flex items-center gap-3 p-4 content-compact" data-testid="about-prerequisite" data-state={line.state}>
       <StateIcon state={line.state} />
@@ -347,8 +349,11 @@ function Line({
         )}
         {reason && <span className="block text-default-secondary">{reason}</span>}
         {line.state === "not_met" && !fixable && (
-          <span className="block text-default-secondary" data-testid="about-prerequisite-admin-only">
-            {t_i18n("Only an administrator can fix this")}
+          <span
+            className="block text-default-secondary"
+            data-testid={readOnly ? "about-prerequisite-read-only" : "about-prerequisite-admin-only"}
+          >
+            {readOnly ? t_i18n("Platform Health is built in and read-only.") : t_i18n("Only an administrator can fix this")}
           </span>
         )}
       </span>
@@ -357,7 +362,7 @@ function Line({
           {t_i18n("Fix it")}
         </Link>
       )}
-      {manual && <ManualLineActions fleetId={fleetId} line={line} confirm={confirm} />}
+      {manual && !readOnly && <ManualLineActions fleetId={fleetId} line={line} confirm={confirm} />}
     </li>
   );
 }
@@ -367,11 +372,14 @@ export function FleetAboutPrerequisites({
   fleetId,
   lines,
   memberName,
+  readOnly = false,
 }: {
   fleetId: string;
   lines: readonly FleetLivePrerequisite[];
   /** A member's display name from its agent id (the fleet's health rows). */
   memberName: (agentId: string) => string;
+  /** A fleet nobody may write (Platform Health): no Fix with AI, no Fix it, no confirm action, the lock stated (UX r2 B1 on #464). */
+  readOnly?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const [showMet, setShowMet] = useState(false);
@@ -390,14 +398,14 @@ export function FleetAboutPrerequisites({
       {lines.length > 0 && (
         <Card>
           <CardContent className="p-0">
-            {fixable.length > 0 && (
+            {!readOnly && fixable.length > 0 && (
               <div className="flex items-center justify-end border-b border-[var(--border-elevation-subtle-soft)] p-3">
                 <FixWithAiButton fleetId={fleetId} fixable={fixable} />
               </div>
             )}
             <ul className="divide-y divide-[var(--border-elevation-subtle-soft)]" data-testid="about-checklist">
               {open.map((line) => (
-                <Line key={line.check} fleetId={fleetId} line={line} memberName={memberName} confirm={confirm} />
+                <Line key={line.check} fleetId={fleetId} line={line} memberName={memberName} confirm={confirm} readOnly={readOnly} />
               ))}
               {met.length > 0 && (
                 <li>
@@ -416,7 +424,7 @@ export function FleetAboutPrerequisites({
                   {showMet && (
                     <ul id={metListId} className="divide-y divide-[var(--border-elevation-subtle-soft)] border-t border-[var(--border-elevation-subtle-soft)]">
                       {met.map((line) => (
-                        <Line key={line.check} fleetId={fleetId} line={line} memberName={memberName} confirm={confirm} />
+                        <Line key={line.check} fleetId={fleetId} line={line} memberName={memberName} confirm={confirm} readOnly={readOnly} />
                       ))}
                     </ul>
                   )}

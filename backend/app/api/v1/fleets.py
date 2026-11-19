@@ -246,6 +246,17 @@ def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None
     return can_manage(user, fleet, user_group_ids)
 
 
+def _lock_fixes_on_health_fleet(fleet: Fleet, lines: list[Any]) -> None:
+    """Nobody fixes a prerequisite of Platform Health from its page, administrators included.
+
+    Sets ``can_fix`` false on every live line of the health fleet, so the About
+    page offers no Fix it link and no Fix with AI (#101 S1b, UX r2 B1 on #464).
+    """
+    if is_health_fleet(fleet):
+        for line in lines:
+            line.can_fix = False
+
+
 def _refused(exc: FleetActionRefusedError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -1164,6 +1175,7 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     documented = (view.structured or {}).get("prerequisites") or []
     states = await evaluate_prerequisites(db, user, documented, group_ids=group_ids, fleet=fleet)
     live = await live_prerequisites(db, user, fleet, documented, group_ids=group_ids, can_confirm=manager)
+    _lock_fixes_on_health_fleet(fleet, live)
     from app.services.fleet_gate_proposals import fleet_effective_gates
 
     effective = await fleet_effective_gates(db, fleet.id)

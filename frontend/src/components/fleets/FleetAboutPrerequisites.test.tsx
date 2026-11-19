@@ -67,10 +67,10 @@ const t = (id: string, values?: Record<string, string | number>) =>
   Object.entries(values ?? {}).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), id);
 const iso = (d: string) => d;
 
-function renderList(lines: FleetLivePrerequisite[]) {
+function renderList(lines: FleetLivePrerequisite[], readOnly = false) {
   return renderWithProviders(
     <MemoryRouter>
-      <FleetAboutPrerequisites fleetId="f1" lines={lines} memberName={memberName} />
+      <FleetAboutPrerequisites fleetId="f1" lines={lines} memberName={memberName} readOnly={readOnly} />
     </MemoryRouter>,
   );
 }
@@ -128,6 +128,22 @@ describe("FleetAboutPrerequisites", () => {
     expect(within(row).getByText("Only an administrator can fix this")).toBeTruthy();
     expect(screen.queryByTestId("about-prerequisite-fix")).toBeNull();
     expect(screen.queryByTestId("prerequisites-fix-with-ai")).toBeNull();
+  });
+
+  it("on a read-only fleet offers no Fix it, no Fix with AI and no Confirm, and states the lock (UX r2 B1 on #464)", () => {
+    renderList(
+      [
+        line({ check: "binding:2", label: "Jira", state: "not_met", reason_code: "integration_error", fix_route: "/integrations/2" }),
+        manual({ can_confirm: true }),
+      ],
+      true,
+    );
+    expect(screen.queryByTestId("about-prerequisite-fix")).toBeNull();
+    expect(screen.queryByTestId("prerequisites-fix-with-ai")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fix with AI" })).toBeNull();
+    expect(screen.queryByTestId("about-prerequisite-confirm")).toBeNull();
+    expect(screen.queryByTestId("about-prerequisite-admin-only")).toBeNull();
+    expect(screen.getByTestId("about-prerequisite-read-only").textContent).toBe("Platform Health is built in and read-only.");
   });
 
   it("a line the reader may not see says so, before a manual line to confirm", () => {
