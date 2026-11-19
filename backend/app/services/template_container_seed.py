@@ -1593,6 +1593,16 @@ _REPORT_FONTS: dict[str, str] = {
     "body_font": "'IBM Plex Sans', system-ui, sans-serif",
 }
 
+_REPORT_GUIDANCE = (
+    "The platform's brand for reports: a report that passes no template_id "
+    "wears it, so pass this id only to name it explicitly. Its palette has a "
+    "light scheme (the report theme 'light', the default, made for print and "
+    "PDF) and a dark one (theme 'dark', a screen readout); the masthead stays "
+    "dark in both. The four risk colours (critical, elevated, moderate, "
+    "controlled) are readable as text on the page and the cards: use the "
+    "block kinds that grade risk rather than colouring prose."
+)
+
 BUILTIN_TEMPLATE_CONTAINERS.extend(
     [
         {
@@ -1630,7 +1640,7 @@ BUILTIN_TEMPLATE_CONTAINERS.extend(
             },
             "aspect_ratio": "A4",
             "extra_metadata": {
-                "supported_schemes": ["dark", "light"],
+                "guidance": _REPORT_GUIDANCE,
                 "theme_variants": {
                     "light": {
                         # The masthead in Navy, the brand's Royal Blue on the
@@ -1685,7 +1695,7 @@ BUILTIN_TEMPLATE_CONTAINERS.extend(
             },
             "aspect_ratio": "A4",
             "extra_metadata": {
-                "supported_schemes": ["dark", "light"],
+                "guidance": _REPORT_GUIDANCE,
                 "theme_variants": {
                     "light": {
                         # The product navy masthead, the XTM One purple read

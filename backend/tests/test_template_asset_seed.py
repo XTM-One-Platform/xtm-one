@@ -824,12 +824,17 @@ def test_the_templates_of_every_platform_ship_the_product_material_and_nothing_c
     # (PRIVATE_LIBRARIES): no template of every platform includes them.
     guarded = {a.role for a in merged["filigran-brand"] if a.filename in copilot_only}
     assert {"people_photo", "image", "illustration", "logo"} <= guarded
-    everywhere = [c["slug"] for c in builtin_containers_for("xtm_one")]
+    shipped = builtin_containers_for("xtm_one")
+    everywhere = [c["slug"] for c in shipped]
+    # A report template draws its logos alone: no slide or scene places a figure.
+    reports = {c["slug"] for c in shipped if c["kind"] == "report"}
     assert "xtm-one-brand" in everywhere and "xtm-one-video" in everywhere
+    assert reports == {"xtm-one-report"}
     for slug in everywhere:
         roles = {a.role for a in merged[slug]}
         assert roles <= _PRODUCT_ROLES | {"logo", "logo_light", "logo_mark"}, (slug, roles - _PRODUCT_ROLES)
-        assert {"product_logo", "diagram", "screenshot"} <= roles, f"{slug} lost the product material"
+        if slug not in reports:
+            assert {"product_logo", "diagram", "screenshot"} <= roles, f"{slug} lost the product material"
         leaked = {a.filename for a in merged[slug]} & copilot_only
         assert not leaked, (slug, leaked)
 
