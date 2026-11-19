@@ -79,6 +79,24 @@ class FileNotFoundInStorageError(Exception):
         super().__init__(f"Object not found in storage: {object_name}")
 
 
+class FileDeletedError(FileNotFoundInStorageError):
+    """A file whose bytes a retention, its owner or an administrator deleted; its row is a tombstone.
+
+    ``str(exc)`` is the sentence a person or an agent reads
+    (``file_retention.deleted_notice``). A subclass of
+    :class:`FileNotFoundInStorageError`, so every caller that already answers
+    a missing object answers this one without crashing.
+    """
+
+    def __init__(self, object_name: str, notice: str):
+        super().__init__(object_name)
+        self.notice = notice
+        self.args = (notice,)
+
+    def __str__(self) -> str:
+        return self.notice
+
+
 def _is_missing_object_error(exc: S3Error) -> bool:
     """Return whether an S3 error maps to a missing object/bucket key."""
     return (exc.code or "").lower() in _MISSING_OBJECT_S3_CODES

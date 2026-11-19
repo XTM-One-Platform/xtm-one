@@ -1073,8 +1073,11 @@ def _scoped_to_caller(stmt: Select[Any], calling: object) -> Select[Any]:
     is NULL for a chat delegation, where the user is what separates one caller
     from another) - OR a run of the SAME agent that has ended: a still-running
     task outlives the run that sent it (#12079), and a later run of that agent
-    for that user is the only caller left to collect it. Another agent, another
-    user, or a run still going stays refused.
+    for that user is the only caller left to collect it. The same agent in
+    the SAME conversation may also continue it (#448): a chat turn is its own
+    run, so the turn that receives the partner's question or completion is
+    never the turn that started the task. Another agent, another user, another
+    conversation's run still going stays refused.
     """
     from sqlalchemy import and_, or_, select
 
@@ -1092,15 +1095,22 @@ def _scoped_to_caller(stmt: Select[Any], calling: object) -> Select[Any]:
     if agent_id is None:
         return stmt.where(A2ADelegation.run_ref == run_ref)
     ended_runs = select(AssignmentRun.id).where(AssignmentRun.status.in_(TERMINAL_RUN_STATUSES))
-    return stmt.where(
-        or_(
-            A2ADelegation.run_ref == run_ref,
+    allowed = [
+        A2ADelegation.run_ref == run_ref,
+        and_(
+            A2ADelegation.agent_id == agent_id,
+            A2ADelegation.run_ref.in_(ended_runs),
+        ),
+    ]
+    conversation_ref = getattr(calling, "conversation_ref", None)
+    if conversation_ref is not None:
+        allowed.append(
             and_(
                 A2ADelegation.agent_id == agent_id,
-                A2ADelegation.run_ref.in_(ended_runs),
-            ),
+                A2ADelegation.conversation_ref == conversation_ref,
+            )
         )
-    )
+    return stmt.where(or_(*allowed))
 
 
 def _who(

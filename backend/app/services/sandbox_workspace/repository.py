@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import IO
 
+from app.services.sandbox_workspace.actions_lint import ACTIONLINT_CONFIGS
 from app.services.sandbox_workspace.checks import CHECKS_FILE, ChecksError, CheckSpec, load_checks
 from app.services.sandbox_workspace.detect import (
     MAX_REQUIREMENTS_BYTES,
@@ -41,6 +42,7 @@ from app.services.sandbox_workspace.detect import (
     check_support_files,
     command_named_files,
     install_lifecycle_paths,
+    is_companion_name,
     is_referencing_config,
     is_referencing_file,
     is_relay_source,
@@ -402,6 +404,11 @@ def extract_tree(
 #: detection reads there (manifests, lock files, workflows, configs, the scripts a check names) are smaller.
 NARROW_OUTSIDE_MAX_BYTES = 8 * 1024 * 1024
 
+#: The bytes :func:`narrow_archive` keeps outside its paths beyond the detection files (a test fixture, a script a
+#: check names): past it such a file is left out and named, never a refusal, so a repository whose seed data,
+#: pages or docs outside the paths pass the archive limit still narrows (#432).
+NARROW_OUTSIDE_BUDGET_BYTES = 64 * 1024 * 1024
+
 #: Extensions of the media and binary files :func:`narrow_archive` leaves unread outside its paths: no check
 #: reads them, and they are what makes a repository archive heavy (a site's ``public/``).
 _MEDIA_EXTENSIONS = frozenset(
@@ -409,7 +416,7 @@ _MEDIA_EXTENSIONS = frozenset(
         ".7z", ".avi", ".avif", ".bin", ".bmp", ".dmg", ".eot", ".exe", ".flac", ".gif", ".gz", ".heic",
         ".ico", ".iso", ".jar", ".jpeg", ".jpg", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4", ".mpeg",
         ".ogg", ".otf", ".pdf", ".png", ".psd", ".rar", ".tar", ".tgz", ".tif", ".tiff", ".ttf", ".wav", ".webm",
-        ".webp", ".woff", ".woff2", ".xz", ".zip",
+        ".svg", ".webp", ".woff", ".woff2", ".xz", ".zip",
     }
 )  # fmt: skip
 
@@ -431,24 +438,51 @@ def _under_any(rel: str, paths: list[str]) -> bool:
     return any(rel == sub or rel.startswith(sub + "/") for sub in paths)
 
 
+def _detection_file(rel: str) -> bool:
+    """Whether :func:`extract_tree` reads *rel* outside the sub_paths to detect and widen the checks: a manifest,
+    lock file, requirements file or tool configuration (``detect.is_companion_name``), a workflow, the checks file
+    and the rest of ``.xtm-one/``, the actionlint configuration. Kept within the archive limit, never budgeted."""
+    name = rel.rsplit("/", 1)[-1]
+    return (
+        rel.startswith(".xtm-one/")
+        or is_workflow(rel)
+        or rel in ACTIONLINT_CONFIGS
+        or is_companion_name(name)
+        or is_requirements(rel)
+        or is_referencing_config(rel)
+    )
+
+
+def _mb(size: int) -> str:
+    return f"{round(size / (1024 * 1024), 1)} MB"
+
+
 def narrow_archive(
-    source: IO[bytes], paths: list[str], *, max_bytes: int, outside_max_bytes: int = NARROW_OUTSIDE_MAX_BYTES
+    source: IO[bytes],
+    paths: list[str],
+    *,
+    max_bytes: int,
+    outside_max_bytes: int = NARROW_OUTSIDE_MAX_BYTES,
+    outside_budget_bytes: int = NARROW_OUTSIDE_BUDGET_BYTES,
 ) -> NarrowedArchive:
     """A repository tar archive read as a stream, repacked with only what a checkout under *paths* reads.
 
     Kept: every regular file under *paths* (repository paths, below the archive's single top directory), and
-    outside them every regular file up to *outside_max_bytes* that is not a media or binary file by its
-    extension, so :func:`extract_tree` still finds the companions, the declared checks and the directories it
-    widens to. Left out (named in ``left_out``): the media files and the large files outside *paths*. Member
-    names are kept as they are, the top directory included (it names the commit). Raises
-    :class:`ArchiveTooLargeError` once the kept files pass *max_bytes*, or when *source* is not a tar archive.
+    outside them every detection file up to *outside_max_bytes* (:func:`_detection_file`: manifests, lock files,
+    workflows, ``.xtm-one/``, tool configs) plus the other small text files in archive order up to
+    *outside_budget_bytes* (a fixture a test names, a script a check runs), so :func:`extract_tree` still finds
+    the companions, the declared checks and the directories it widens to. Left out (named in ``left_out``): the
+    media files, the large files and the files past the outside budget, never a refusal for them. Member names
+    are kept as they are, the top directory included (it names the commit). Raises :class:`ArchiveTooLargeError`
+    once the kept files pass *max_bytes* (the message names the bytes under the paths and outside them apart),
+    or when *source* is not a tar archive.
     The archive is read once, member by member, so its size is bounded by the disk it is streamed from, never
     by memory.
     """
     wanted = [normalize(sub) for sub in paths if str(sub).strip().strip("/")]
     out = io.BytesIO()
     narrowed = NarrowedArchive(data=b"")
-    total = 0
+    under_bytes = detection_bytes = other_bytes = 0
     try:
         # Opened apart so a stream that is not a tar is refused with its reason; entered by the ``with`` below.
         reader = tarfile.open(fileobj=source, mode="r|*")  # noqa: SIM115
@@ -463,16 +497,28 @@ def narrow_archive(
             if not rel or ".git" in rel.split("/"):
                 continue
             under = _under_any(rel, wanted)
-            if not under:
+            if under:
+                under_bytes += info.size
+            else:
                 suffix = ("." + rel.rsplit(".", 1)[1].casefold()) if "." in rel.rsplit("/", 1)[-1] else ""
-                if info.size > outside_max_bytes or suffix in _MEDIA_EXTENSIONS:
+                detection = _detection_file(rel)
+                if (
+                    info.size > outside_max_bytes
+                    or (suffix in _MEDIA_EXTENSIONS and not detection)
+                    or (not detection and other_bytes + info.size > outside_budget_bytes)
+                ):
                     narrowed.left_out.append(rel)
                     narrowed.left_out_bytes += info.size
                     continue
-            total += info.size
-            if total > max_bytes:
+                if detection:
+                    detection_bytes += info.size
+                else:
+                    other_bytes += info.size
+            if under_bytes + detection_bytes + other_bytes > max_bytes:
                 raise ArchiveTooLargeError(
-                    f"the files under {', '.join(wanted)} are over {max_bytes // (1024 * 1024)} MB: narrow the sub_paths"
+                    f"the files under {', '.join(wanted)} ({_mb(under_bytes)}) and the detection files outside them "
+                    f"({_mb(detection_bytes)}, plus {_mb(other_bytes)} of other small files) are over "
+                    f"{max_bytes // (1024 * 1024)} MB: narrow the sub_paths"
                 )
             handle = reader.extractfile(info)
             writer.addfile(info, handle)

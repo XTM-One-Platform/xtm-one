@@ -1191,6 +1191,9 @@ class _DownloadStubDB:
             return _DownloadStubResult(None)
         return _DownloadStubResult(self._queue.pop(0))
 
+    async def commit(self) -> None:
+        """The route commits the file's last use (retention, #396) before answering."""
+
 
 @pytest.mark.asyncio
 async def test_download_file_owner_succeeds(monkeypatch):
@@ -2177,6 +2180,9 @@ class _MsgDownloadStubDB:
         if not self._queue:
             return _DownloadStubResult(None)
         return _DownloadStubResult(self._queue.pop(0))
+
+    async def commit(self) -> None:
+        """The route commits the file's last use (retention, #396) before answering."""
 
 
 @pytest.mark.asyncio

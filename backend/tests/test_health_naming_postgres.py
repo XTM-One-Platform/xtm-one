@@ -3,9 +3,9 @@
 * ``GET /concierge/name`` answers every signed-in person, admin or not; a
   hostile name is a 422 from ``PUT /concierge/settings``, never a 500.
 * The fleet is seeded as "Platform Health" in every mode (#101); a row still
-  carrying a former default ("Alfred", "Concierge") is renamed; a saved name
-  renames the orchestrator, its fleet and its workspace; a row an
-  administrator renamed by hand keeps its name.
+  carrying a former default ("Alfred", "Concierge") is renamed; the fleet is
+  built in (#101): a saved name never renames its rows and the seed restores
+  a row renamed by hand.
 
 ``integration``-marked; skips when PostgreSQL is unreachable.
 """
@@ -130,7 +130,8 @@ async def test_the_fleet_is_seeded_as_platform_health_and_a_former_default_is_re
     assert reseeded == ("Platform Health", "Platform Health", "Platform Health")
 
 
-async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeypatch) -> None:
+async def test_a_saved_name_never_renames_the_built_in_fleet_and_the_seed_restores_a_hand_rename(monkeypatch) -> None:
+    """Built in (#101): the rows keep "Platform Health"; the saved name is a display text only."""
     monkeypatch.setattr(settings, "platform_mode", "copilot")
     async with health_database() as sessions:
         world = await World().build(sessions)
@@ -141,17 +142,13 @@ async def test_a_saved_name_renames_the_fleet_but_not_a_hand_renamed_row(monkeyp
             await db.commit()
         async with _client(sessions, world.admin) as client:
             saved = await client.put("/api/v1/health/settings", json={"enabled": True, "name": "  Jeeves "})
-        renamed = await _names(sessions)
+        after_save = await _names(sessions)
         async with sessions() as db:
             await fleet_seed.seed_health_fleet(db)
         reseeded = await _names(sessions)
-        async with _client(sessions, world.admin) as client:
-            await client.put("/api/v1/health/settings", json={"enabled": True, "name": None})
-        back_to_default = await _names(sessions)
     assert saved.status_code == 200 and saved.json()["name"] == "Jeeves"
-    assert renamed == ("Jeeves", "Improvement crew", "Jeeves")
-    assert reseeded == renamed
-    assert back_to_default == ("Platform Health", "Improvement crew", "Platform Health")
+    assert after_save == ("Platform Health", "Improvement crew", "Platform Health")
+    assert reseeded == ("Platform Health", "Platform Health", "Platform Health")
 
 
 async def test_the_budget_line_names_the_concierge_as_its_administrator_named_it(monkeypatch) -> None:

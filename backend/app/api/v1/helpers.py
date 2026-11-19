@@ -1466,7 +1466,13 @@ def can_manage_as(
     rather than a ``User`` row (the tool builders, which run as the acting
     user): a company-managed entity is managed by admins only; a personal one
     by its creator, an admin, or a ``config`` / ``config_with_chats`` grantee.
+    An agent of the Platform Health fleet is managed by nobody, admins included
+    (``services.health.read_only``): the seed rewrites it on every boot.
     """
+    from app.services.health.read_only import is_health_agent
+
+    if is_health_agent(entity):
+        return False
     if entity.is_company_managed:
         return is_admin
     if is_admin or (user_id is not None and entity.user_id == user_id):
@@ -2177,7 +2183,12 @@ def writable_agent_error(
     ``agents._is_integration_binding_change``, which is that confirmation.
     """
     from app.core.config import settings
+    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_agent
 
+    # The Platform Health fleet is read-only in every mode, whatever the
+    # carve-out (``allow_builtin``) and whoever asks.
+    if is_health_agent(agent):
+        return HEALTH_READ_ONLY_REFUSAL
     if agent.is_builtin and settings.is_xtm_one and not allow_builtin:
         return f"Cannot {action} built-in agents."
     if not can_manage(user, agent, user_group_ids):
@@ -2232,7 +2243,10 @@ def writable_assignment_error(
     definition of a built-in alone (purging an assignment's runs).
     """
     from app.core.config import settings
+    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_agent
 
+    if is_health_agent(agent):
+        return HEALTH_READ_ONLY_REFUSAL
     if agent.is_builtin and settings.is_xtm_one and not allow_builtin:
         return f"Cannot {action} assignments on built-in agents."
     if assignment.is_company_managed and not user.is_admin:

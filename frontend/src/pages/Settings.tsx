@@ -23,6 +23,7 @@ import {
   BrainCircuit,
   ClipboardCheck,
   Gauge,
+  HardDrive,
   Info,
   LifeBuoy,
   MousePointerClick,
@@ -119,6 +120,7 @@ import { PlatformModelSetting } from "./settings/PlatformModelSetting";
 import { GeneralAssistantSection } from "./settings/GeneralAssistantSection";
 import { MCPEndpointSection } from "./settings/MCPEndpointSection";
 import { ParametersSection } from "./settings/ParametersSection";
+import { FileRetentionSection } from "./settings/FileRetentionSection";
 import { DefaultModelAnnouncementDialog, ModelAnnouncementPanel, ModelChangesDialog } from "./settings/ModelAnnouncements";
 import { AiReadOnly } from "@/components/ui/ai-disabled";
 import { EnterpriseUpsellNotice } from "@/components/ui/enterprise-upsell";
@@ -161,6 +163,7 @@ const USAGE_SECTIONS: readonly SectionNavItem<UsageSection>[] = [
   { key: "quotas", label: "Quotas", icon: Gauge },
   { key: "observability", label: "Observability", icon: BarChart3 },
   { key: "pricing", label: "Model pricing", icon: Coins },
+  { key: "storage", label: "Storage & retention", icon: HardDrive },
 ];
 type AddProviderMode = "reasoning" | "embedding" | "image" | "all";
 
@@ -204,7 +207,7 @@ function SettingsPage() {
   const automations = automationsSection(rawSection, { isXtmOne });
   const integrationsSection = pickSection<IntegrationsSettingsSection>(rawSection, ["catalog", "oauth", "channels", "mcp"]);
   const aiSection = pickSection<AiSection>(rawSection, aiLicensed ? ["models", "media", "assistant", "knowledge"] : ["models", "media", "assistant"]);
-  const usageSection = pickSection<UsageSection>(rawSection, ["quotas", "observability", "pricing"]);
+  const usageSection = pickSection<UsageSection>(rawSection, ["quotas", "observability", "pricing", "storage"]);
   const firstSection: Record<SettingsTab, string> = {
     organization: "profile",
     automations: isXtmOne ? "fleets" : "agent-runs",
@@ -2508,6 +2511,8 @@ function SettingsPage() {
           disables *every* descendant control, and this table's search and
           pagination are how it is read. Its own writes are admin-gated. */}
       {tab === "usage" && usageSection === "pricing" && <ModelPricingSection />}
+      {/* Storage & retention (#396): how long each category of stored file is kept. No model: not wrapped. */}
+      {tab === "usage" && usageSection === "storage" && <FileRetentionSection isAdmin={isAdmin} />}
     </div>
   );
 }

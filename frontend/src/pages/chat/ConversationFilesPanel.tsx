@@ -77,6 +77,7 @@ import {
   resolveAttachmentMime,
 } from "@/pages/chat/fileVisuals";
 import { cn, formatShortDateTime } from "@/lib/utils";
+import { useDeletedFileNotice } from "@/pages/chat/deleted-file-notice";
 import type { ConversationFile, ConversationFileOrigin } from "@/types";
 import { Spinner } from "@filigran/design-system";
 
@@ -154,6 +155,9 @@ function FileRow({
   const { icon: Icon, color } = mimeVisual(mime);
   const typeLabel = mimeLabel(visualLike, mime);
   const sizeLabel = formatFileSize(file.size);
+  // A deleted file (#396): muted, its date and reason, no download nor workspace add.
+  const deletedNotice = useDeletedFileNotice();
+  const deleted = !!file.deleted_at;
 
   const handleDownload = useCallback(async () => {
     setDownloading(true);
@@ -171,13 +175,22 @@ function FileRow({
   }, [file.download_url, file.filename, t_i18n, toast]);
 
   return (
-    <div className="group flex items-start gap-2.5 rounded-sm border border-elevation-subtle-soft layer-1 bg-elevation-default px-2.5 py-2 transition-colors hover:border-accent/30">
-      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", color)} />
+    <div
+      data-testid={deleted ? "conversation-file-deleted" : undefined}
+      className={cn(
+        "group flex items-start gap-2.5 rounded-sm border border-elevation-subtle-soft px-2.5 py-2 transition-colors",
+        deleted ? "border-dashed" : "layer-1 bg-elevation-default hover:border-accent/30",
+      )}
+    >
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", deleted ? "text-default-secondary" : color)} />
 
       <div className="min-w-0 flex-1">
 <Tip content={file.filename}>
-  <div className="truncate content-compact font-medium">{file.filename}</div>
+  <div className={cn("truncate content-compact font-medium", deleted && "text-default-secondary")}>{file.filename}</div>
 </Tip>
+        {deleted && (
+          <div className="mt-0.5 content-caption text-default-secondary">{deletedNotice(file.deleted_at!, file.deleted_reason)}</div>
+        )}
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <OriginBadge origin={file.origin} />
           <span className="content-caption text-default-secondary">{typeLabel}</span>
@@ -210,7 +223,7 @@ function FileRow({
             </button>
           </Tip>
         )}
-        {onAddToWorkspace && (
+        {onAddToWorkspace && !deleted && (
           <AiDisabledTip>
           <Tip content={t_i18n("Add to the workspace's sources")}>
             <button
@@ -225,6 +238,7 @@ function FileRow({
           </Tip>
           </AiDisabledTip>
         )}
+{!deleted && (
 <Tip content={t_i18n("Download")} wrap>
           <button
             type="button"
@@ -236,6 +250,7 @@ function FileRow({
             {downloading && <Spinner size="sm" tone="inherit" />}{!downloading && <Download className="h-3.5 w-3.5" />}
           </button>
         </Tip>
+)}
       </div>
     </div>
   );

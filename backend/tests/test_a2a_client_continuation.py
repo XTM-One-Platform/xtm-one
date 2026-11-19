@@ -192,6 +192,45 @@ class TestContinuationOwnership:
         assert calling.agent_id in params.values()
         assert calling.user_id in params.values()
 
+    def test_a_later_turn_of_the_same_conversation_may_continue(self) -> None:
+        """#448: a chat turn is its own run, so the turn that receives the
+        partner's question is never the turn that started the task. The same
+        agent and user in the SAME conversation may continue it."""
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.models.a2a import A2ADelegation
+
+        calling = delegation.CallingRun(
+            agent_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_ref=uuid.uuid4(),
+            conversation_ref=uuid.uuid4(),
+        )
+        stmt = delegation._scoped_to_caller(select(A2ADelegation.id), calling)
+        where = str(stmt.compile())
+        # Still scoped to the user, whatever the branch.
+        assert "a2a_delegations.user_id = " in where
+        assert "a2a_delegations.conversation_ref = " in where
+        params = stmt.compile().params
+        assert calling.conversation_ref in params.values()
+        assert calling.agent_id in params.values()
+        assert calling.user_id in params.values()
+
+    def test_no_conversation_means_no_conversation_branch(self) -> None:
+        # A scheduled run has no conversation: the run and ended-run rules
+        # stay the only ways in.
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.models.a2a import A2ADelegation
+
+        calling = delegation.CallingRun(agent_id=uuid.uuid4(), user_id=uuid.uuid4(), run_ref=uuid.uuid4())
+        where = str(delegation._scoped_to_caller(select(A2ADelegation.id), calling).compile())
+        assert "a2a_delegations.conversation_ref" not in where
+
     def test_a_caller_without_an_agent_keeps_the_strict_run_match(self) -> None:
         import uuid
 
@@ -199,9 +238,12 @@ class TestContinuationOwnership:
 
         from app.models.a2a import A2ADelegation
 
-        calling = SimpleNamespace(agent_id=None, user_id=uuid.uuid4(), run_ref=uuid.uuid4())
+        calling = SimpleNamespace(
+            agent_id=None, user_id=uuid.uuid4(), run_ref=uuid.uuid4(), conversation_ref=uuid.uuid4()
+        )
         where = str(delegation._scoped_to_caller(select(A2ADelegation.id), calling).compile())
         assert "assignment_runs" not in where
+        assert "a2a_delegations.conversation_ref" not in where
         assert "a2a_delegations.run_ref = " in where
 
 

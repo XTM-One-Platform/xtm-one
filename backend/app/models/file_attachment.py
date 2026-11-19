@@ -144,3 +144,14 @@ class FileAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
+
+    # Last time a person or an agent used the file (download, preview,
+    # ``read_file_content``, an attach). NULL reads as ``created_at``: the file
+    # retention (``services/file_retention.py``) counts its days from here.
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Tombstone: the bytes are gone, the row stays so every place that shows
+    # the file draws a "deleted" card instead of breaking. ``deleted_reason``
+    # is one of ``DELETED_REASONS`` (``services/file_retention.py``).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)

@@ -36,6 +36,7 @@ export default defineCommands([
     category: "Admin",
     title: "Browse intents",
     icon: Zap,
+    when: ["intents"],
     navigate: "/intents",
   },
 ]);

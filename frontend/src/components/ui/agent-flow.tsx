@@ -54,6 +54,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
 import { memo, useMemo, useRef, useState, useCallback, useEffect, useImperativeHandle, useLayoutEffect } from "react";
+import { flushSync } from "react-dom";
+import { idsKey, useByContent } from "@/hooks/useByContent";
 import { graphTooltipPosition } from "@/components/ui/agent-flow-tooltip";
 import { Bot, Sparkles, ZoomIn, ZoomOut, Maximize2, Scan, Lock, PowerOff, Cable, PinOff } from "lucide-react";
 import { altArrowFocus, freeSpot, keyboardMove, paddedNameBox, pinDrawing, withPin, type NameBox } from "@/lib/agent-graph-pins";
@@ -75,7 +77,7 @@ import { generalAssistantStandIn } from "@/lib/general-assistant-stand-in";
 import { focusNeighbourhood, edgeTouchesFocus, focusOnGraph, isolateFocus, type AgentFlowFocusMode } from "@/lib/agent-flow-focus";
 import { cn, pluralize } from "@/lib/utils";
 import type { AgentSummary } from "@/lib/agent-summary";
-import { LIVE_HANDOVER_WINDOW_MS, type LiveHandover } from "@/lib/live-handovers";
+import { LIVE_HANDOVER_WINDOW_MS, liveEdgesKey, type LiveHandover } from "@/lib/live-handovers";
 import type { Agent, GeneralAssistantConfig } from "@/types";
 import {
   GRAPH_COLORS,
@@ -833,7 +835,7 @@ const NODE_DRAG_THRESHOLD_PX = 4;
 export function AgentFlowGraph({
   agents,
   generalAssistant,
-  activeAgentIds,
+  activeAgentIds: activeAgentIdsProp,
   editableAgentIds,
   onAddEdge,
   onEditEdge,
@@ -847,7 +849,7 @@ export function AgentFlowGraph({
   focusedAgentIds,
   focusMode = "dim",
   agentSummaries,
-  liveEdges,
+  liveEdges: liveEdgesProp,
   onShowDetails,
   selectedNodeId = null,
   orientation = "horizontal",
@@ -869,6 +871,11 @@ export function AgentFlowGraph({
   ref,
 }: AgentFlowGraphProps) {
   const { t_i18n, locale, intl } = useFormatter();
+  // The polled inputs held by content: a poll tick that rebuilds the same
+  // running agents or live edges as new objects hands the drawing the objects
+  // it already drew, so nothing is recomputed or redrawn for it.
+  const activeAgentIds = useByContent(activeAgentIdsProp, idsKey(activeAgentIdsProp));
+  const liveEdges = useByContent(liveEdgesProp, liveEdgesKey(liveEdgesProp));
   // A group node or a ghost: opened on click, never a handover endpoint.
   const isViewOnlyId = useCallback(
     (id: string) => !!viewOnlyNodeIds?.has(id) || !!ghostNodes?.has(id),
@@ -907,12 +914,19 @@ export function AgentFlowGraph({
       setViewportMaxH(Math.max(H, Math.min(MAX_H, Math.floor((room * W) / width / 20) * 20)));
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    // A resize of the box (a sibling panel or the toolbar growing a line, a
+    // window resize) commits the new view before the browser paints: the svg
+    // stretches its drawing to the box (preserveAspectRatio none), so a view
+    // written one frame later painted the whole graph stretched for a frame,
+    // a flash of the full drawing every time a polled caption beside it
+    // changed height.
+    const measureNow = () => flushSync(measure);
+    const observer = new ResizeObserver(measureNow);
     observer.observe(svg);
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", measureNow);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", measureNow);
     };
   }, [fillHeight]);
   // `edgeId`: the hovered edge, whose drawn type label the tooltip keeps clear of.

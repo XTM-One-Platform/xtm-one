@@ -20,6 +20,7 @@ import { Icon } from "@filigran/design-system";
 import { Scan } from "lucide-react";
 import type { ChatMessage as PanelMessage } from "@filigran/chatbot";
 import { MessageAttributionLine } from "@/components/chat/MessageAttributionLine";
+import { FileChip } from "@/components/chat-panel/FileChips";
 import { ActionProposalList } from "@/components/ui/action-proposal";
 import { Button } from "@/components/ui/button";
 import { ChannelIcon } from "@/components/ui/channel-icon";
@@ -43,11 +44,20 @@ import type { ChatMessage, UnavailableIntegration } from "@/types";
  */
 export function MessageExtras({ message, stored }: { message: PanelMessage; stored: ChatMessage | undefined }) {
   const channel = stored?.channel && stored.channel !== "web" ? stored.channel : null;
-  if (message.role !== "assistant") return channel ? <ChannelMark channel={channel} /> : null;
+  const deletedFiles = <DeletedAttachments stored={stored} />;
+  if (message.role !== "assistant") {
+    return (
+      <>
+        {deletedFiles}
+        {channel && <ChannelMark channel={channel} />}
+      </>
+    );
+  }
   const failedAgent = message.mentionFailed ? message.answeredBy?.agentName : undefined;
   const runnerActivity = stored?.runner_activity ?? [];
   return (
     <>
+      {deletedFiles}
       {stored?.wake && <WakeTurnNotice note={stored.wake} variant="marker" />}
       {stored?.resumed_from && <ResumedTurnNotice note={stored.resumed_from} variant="marker" />}
       {failedAgent && (
@@ -63,6 +73,28 @@ export function MessageExtras({ message, stored }: { message: PanelMessage; stor
       {stored?.scheduled_outcome?.run_id && <ScheduledOutcomeAction runId={stored.scheduled_outcome.run_id} />}
       {channel && <ChannelMark channel={channel} />}
     </>
+  );
+}
+
+/**
+ * The files of a message whose content was deleted (#396), as the deleted card:
+ * the panel is never handed them (the restore leaves them out of its
+ * `attachments`, so it draws no live card, no download and no image fetch).
+ * A file the text names with a `[[FILE:<id>]]` marker draws its card where the
+ * marker stands (`useMarkerRenderers`), so it is not repeated here.
+ */
+export function DeletedAttachments({ stored }: { stored: ChatMessage | undefined }) {
+  const content = stored?.content ?? "";
+  const files = (stored?.attachments ?? []).filter(
+    (att) => att.deleted_at && !content.toLowerCase().includes(`[[file:${(att.file_id ?? "").toLowerCase()}]]`),
+  );
+  if (files.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-2" data-testid="message-deleted-files">
+      {files.map((att) => (
+        <FileChip key={att.file_id ?? att.filename} att={att} />
+      ))}
+    </div>
   );
 }
 

@@ -22,6 +22,7 @@ are computed once.
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -151,19 +152,66 @@ def _when(mtime: float, now: float) -> str:
     return stamp.strftime("%Y-%m-%d")
 
 
+#: Patterns a brace glob expands to, at most: past it the glob is matched as written.
+MAX_BRACE_EXPANSIONS = 64
+
+
+def expand_braces(pattern: str) -> list[str]:
+    """The patterns a ``{a,b}`` glob stands for, as a shell expands it (nested groups included).
+
+    A pattern with no complete group, a group with no comma, or one past
+    :data:`MAX_BRACE_EXPANSIONS` patterns is answered as written.
+    """
+    results = [pattern]
+    done: list[str] = []
+    while results:
+        current = results.pop(0)
+        start = current.find("{")
+        expanded = False
+        while start != -1:
+            depth, end = 0, -1
+            commas: list[int] = []
+            for index in range(start, len(current)):
+                char = current[index]
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = index
+                        break
+                elif char == "," and depth == 1:
+                    commas.append(index)
+            if end == -1:
+                break
+            if commas:
+                bounds = [start, *commas, end]
+                head, tail = current[:start], current[end + 1 :]
+                results.extend(head + current[a + 1 : b] + tail for a, b in itertools.pairwise(bounds))
+                expanded = True
+                break
+            start = current.find("{", start + 1)
+        if not expanded:
+            done.append(current)
+        if len(done) + len(results) > MAX_BRACE_EXPANSIONS:
+            return [pattern]
+    return done
+
+
 def matches_listing_filter(path: str, prefix: str, depth: int | None = None, glob: str = "") -> bool:
     """Whether *path*, under *prefix*, passes a listing's ``depth`` and ``glob``.
 
     *depth*: directory levels below *prefix* that count (1 = its direct files
     only); ``None`` or less than 1 is no bound. *glob*: an fnmatch pattern on
-    the file name, or on the path relative to *prefix* when it holds a ``/``.
+    the file name, or on the path relative to *prefix* when it holds a ``/``;
+    ``{a,b}`` alternatives are expanded (:func:`expand_braces`), any one matching.
     """
     relative = path[len(prefix) + 1 :] if prefix else path
     if depth is not None and depth >= 1 and relative.count("/") >= depth:
         return False
     if glob:
         subject = relative if "/" in glob else relative.rsplit("/", 1)[-1]
-        if not fnmatch.fnmatchcase(subject, glob):
+        if not any(fnmatch.fnmatchcase(subject, one) for one in expand_braces(glob)):
             return False
     return True
 

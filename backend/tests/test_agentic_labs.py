@@ -1348,7 +1348,10 @@ async def test_two_labs_of_one_checkout_stopped_in_parallel_both_answer_stopped(
     resolved = await _resolved(workspace)
     light = dataclasses.replace(resolved, name="lab-light")
     first = await labs.start_lab(resolved, workspace=workspace, client=fake, sleep=_no_sleep)
-    second = await labs.start_lab(light, workspace=workspace, client=fake, sleep=_no_sleep)
+    # Its target container (svc-lab-light) is none of the pod's: it never turns ready, so its readiness
+    # window runs on a test clock rather than for 150 real seconds of polling.
+    clock = iter(range(0, 10_000, 10))
+    second = await labs.start_lab(light, workspace=workspace, client=fake, sleep=_no_sleep, clock=lambda: float(next(clock)))
     assert first.service_id != second.service_id
     answers = await asyncio.gather(
         labs.stop_lab(workspace, first.service_id, client=fake),

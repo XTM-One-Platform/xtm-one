@@ -84,6 +84,8 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     runnersEnabled: runnersEnabled === true,
     arcadeEnabled,
     relaysEnabled: relaysEnabled === true,
+    // Intents are XTM One domain content (#445): Browse intents is not offered in Copilot mode.
+    intents: xtmOne,
   }), [pathname, isAdmin, chatEnabled, chatSendEnabled, agenticAI, customVariables,
     xtmOne, platformConfig?.features.ai_adoption, catalogEnabled, flowBuilder, deepInvestigation, evaluation, runnersEnabled,
     arcadeEnabled, relaysEnabled]);

@@ -138,6 +138,9 @@ class _QueueDB:
     async def execute(self, _statement):
         return _Result(self._rows.pop(0) if self._rows else None)
 
+    async def commit(self) -> None:
+        """The route commits the file's last use (retention, #396) before answering."""
+
 
 def _file(content_type, *, filename="deliverable.bin", **overrides) -> SimpleNamespace:
     base = dict(

@@ -635,11 +635,39 @@ def _format_mount_line(mounted: list[str], skipped: list[str]) -> str:
     return line + "]"
 
 
-def _unmounted_paths_hint(file_context: FileContext | None) -> str:
-    """For a run that did not name ``attachments`` and failed to open a file:
-    where the conversation files would have been (metadata only, no download)."""
+#: Said when the code fails on ``attachments/input.json`` in a run that holds
+#: no input document: the path exists only for a detached ``$input``.
+NO_INPUT_DOCUMENT_HINT = (
+    "[No input document is mounted in this run: attachments/input.json exists only when "
+    "the run's message carried a JSON document detached as $input (agent config "
+    'output_mode "patch" or input_reference true, or a document too large for the context). '
+    "Read the document from the message instead.]"
+)
+
+
+def _opens_absent_input_document(error_text: str, file_context: FileContext | None) -> bool:
+    """The code failed on ``attachments/input.json`` and the run mounts no input document."""
+    from app.tools.session_input import INPUT_MOUNT_NAME
+
+    if f"attachments/{INPUT_MOUNT_NAME}" not in error_text:
+        return False
+    if not re.search(r"FileNotFoundError|No such file or directory", error_text):
+        return False
+    return not (getattr(file_context, "sandbox_inputs", None) or {}).get(INPUT_MOUNT_NAME)
+
+
+def _unmounted_paths_hint(file_context: FileContext | None, error_text: str = "") -> str:
+    """For a run that failed to open a file: what was not there.
+
+    The input document's path (``attachments/input.json``) opened in a run that
+    mounts none is answered as such; otherwise, for a run that did not name
+    ``attachments``, where the conversation files would have been (metadata
+    only, no download).
+    """
     from app.services.code_interpreter import mount_path_hint
 
+    if _opens_absent_input_document(error_text, file_context):
+        return NO_INPUT_DOCUMENT_HINT
     if file_context is None or file_context.is_empty:
         return ""
     refs = file_context.list_files()
@@ -786,8 +814,10 @@ def build_code_interpreter_tool(
             mount_line = _format_mount_line(mounted, not_mounted)
             if mount_line:
                 text = f"{mount_line}\n\n{text}"
+            if "input.json" not in planned and _opens_absent_input_document(text, file_context):
+                text = f"{text}\n\n{NO_INPUT_DOCUMENT_HINT}"
         elif re.search(r"FileNotFoundError|No such file or directory", text):
-            hint = _unmounted_paths_hint(file_context)
+            hint = _unmounted_paths_hint(file_context, text)
             if hint:
                 text = f"{text}\n\n{hint}"
 
@@ -1195,6 +1225,8 @@ async def build_image_generation_tool(
     executor = CallableToolExecutor()
     executor.register("generate_image", _generate_image)
 
+    if load := getattr(img_provider, "load_image_capabilities", None):
+        await load(img_model)
     references = _reference_limit(img_provider, img_model)
     properties: dict = {
         "prompt": {
@@ -1315,6 +1347,17 @@ def build_generate_file_tool(
             file_context.add(ref)
         return ref
 
+    def _deleted(ref: FileRef) -> ToolResult:
+        """The answer for a file whose bytes are gone (a tombstone): a clear sentence, never an exception."""
+        return ToolResult(
+            tool_call_id="",
+            content=(
+                f"Error: {ref.deleted_notice} Its content cannot be read any more (file_id={ref.file_id}, "
+                f"{ref.filename}); say so, and make it again if it is still needed."
+            ),
+            is_error=True,
+        )
+
     def _unresolved(file_context: FileContext | None, file_id: object) -> ToolResult:
         refusal = ambiguous.pop(file_id, None) if isinstance(file_id, str) else None
         return ToolResult(
@@ -1330,6 +1373,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, source_file_id)
         if ref is None or file_context is None:
             return _unresolved(file_context, source_file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if not is_renderable_source_file(ref.filename, ref.content_type):
             return ToolResult(
                 tool_call_id="",
@@ -1692,6 +1737,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -1955,6 +2002,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -2004,6 +2053,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         if file_context is None:  # pragma: no cover - _resolve_file_ref guards it
             return ToolResult(
                 tool_call_id="", content="Error: no files in context.", is_error=True
@@ -2145,6 +2196,8 @@ def build_generate_file_tool(
         ref = await _resolve(file_context, file_id)
         if ref is None:
             return _unresolved(file_context, file_id)
+        if ref.is_deleted:
+            return _deleted(ref)
         # One line of plain text: whitespace (line breaks included) collapses
         # to single spaces, and the C0 / C1 control characters ``split`` does
         # not treat as whitespace (NUL, ESC, ...) are dropped - a NUL fails

@@ -3980,6 +3980,10 @@ export interface ChatMessageAttachment {
   size: number;
   file_id?: string | null;
   download_url?: string | null;
+  /** The file's content was deleted (#396): the card shows it muted, never fetches it. */
+  deleted_at?: string | null;
+  /** `retention` | `owner_deleted` | `admin`. */
+  deleted_reason?: string | null;
   content_type?: string | null;
   file_tag?: "working_file" | "download_file" | null;
   /** When the file was stored (ISO 8601); absent on messages saved before it was recorded. */
@@ -4012,6 +4016,9 @@ export interface ConversationFile {
   content_type: string;
   size: number;
   created_at: string;
+  /** The file's content was deleted (#396): the row stays muted, without a download. */
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
   origin: ConversationFileOrigin;
   /** Raw backend ``source`` (e.g. ``chat``, ``channel:slack``, ``agent_generated``). */
   source: string;
@@ -4083,6 +4090,11 @@ export interface RepositoryFile {
   download_url: string;
   /** Owner of the file, of its conversation, or admitted on its run — never a shared viewer. */
   can_delete: boolean;
+  /** The file's content was deleted (#396): `retention` | `owner_deleted` | `admin`. */
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
+  /** When it goes if nobody uses it again; null when kept for good or already deleted. */
+  expires_at?: string | null;
 }
 
 export interface RepositoryFilesPage {
@@ -4105,6 +4117,8 @@ export interface RepositoryFilesQuery {
   vis?: "mine" | "shared" | "company" | "all";
   conversation_id?: string;
   assignment_run_id?: string;
+  /** `live` (content kept), `deleted` (tombstones, #396); omitted = both. */
+  status?: "live" | "deleted";
 }
 
 export type MessageFeedbackRating = "positive" | "negative";
@@ -4587,6 +4601,9 @@ export interface AssignmentRunAttachment {
   content_type: string;
   size: number;
   download_url: string;
+  /** The file's content was deleted (#396). */
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
   file_tag?: "working_file" | "download_file" | null;
   created_at?: string | null;
   sha256?: string | null;

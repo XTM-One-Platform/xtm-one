@@ -75,6 +75,7 @@ import { API_BASE, api, endSession } from "@/lib/api";
 import { ICON_MAP, MAX_CHAT_ATTACHMENTS_PER_MESSAGE, MAX_CHAT_UPLOAD_SIZE_BYTES, toolDisplayLabels } from "@/lib/constants";
 import { stripBasePath } from "@/lib/base-path";
 import { requestDesktopAttention } from "@/lib/desktop";
+import { downloadErrorDescription } from "@/lib/download-error";
 import { APP_LOCKED_EVENT, isAppLockedFrame } from "@/lib/app-lock";
 import { namedSessionEndReason } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -311,7 +312,15 @@ export function XtmChatPanel({
     [hostStreamEvent],
   );
 
-  const onDownloadError = useCallback(() => toast({ title: t_i18n("Download failed"), variant: "error" }), [toast, t_i18n]);
+  const onDownloadError = useCallback(
+    (error: unknown, attachment: { filename?: string }) =>
+      toast({
+        title: t_i18n("Download failed"),
+        description: downloadErrorDescription(error, attachment?.filename, t_i18n),
+        variant: "error",
+      }),
+    [toast, t_i18n],
+  );
 
   // The panel flashes the title and raises the browser notification when a
   // long turn ends while the user is away; inside XTM One Desktop the window

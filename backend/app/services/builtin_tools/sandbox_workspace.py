@@ -1993,7 +1993,10 @@ def build_sandbox_workspace_tools(
             metrics.operation("checkout_status", "refused")
             return _error(str(exc))
         metrics.operation("checkout_status", "ok")
-        return checkouts.format_status(record, changes, shown_as=display(record.path))
+        status = checkouts.format_status(record, changes, shown_as=display(record.path))
+        # The guards the next push would be warned about, said before it: the read that precedes a commit (#434).
+        warned = "" if changes.empty else await WorkspaceIngestor(session).prepush_warning(record, changes)
+        return f"{status}\n{warned}" if warned else status
 
     async def _base_bytes(record: checkouts.CheckoutRecord, repo_path: str, *, at: str = "") -> bytes | str:
         """The file as checked out (or at commit *at*), read through the provider's ``repository_file`` tool; a
@@ -3392,7 +3395,7 @@ def build_sandbox_workspace_tools(
                     "depth": {"type": "integer", "description": "Levels below path to list (1: its direct files)."},
                     "glob": {
                         "type": "string",
-                        "description": "File name pattern, e.g. *.test.ts (with a /: path from path).",
+                        "description": "File name pattern, e.g. *.test.ts or {a,b}.md (with a /: path from path).",
                     },
                 },
             },

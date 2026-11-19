@@ -279,6 +279,8 @@ async def test_list_files_labels_each_row_with_its_context():
             _Result(rows=[uploaded, produced, loose]),
             _Result(tuples=[(conv_id, "Investigation", me.id)]),
             _Result(tuples=[(run, None, "Analyst")]),
+            # The file retention rules (#396): nothing stored, the defaults.
+            _Result(scalar=None),
         ]
     )
 
@@ -318,6 +320,12 @@ async def test_list_files_labels_each_row_with_its_context():
     assert dataset_file.context == "other"
     assert dataset_file.source == "dataset"
     assert dataset_file.origin == "other"
+
+    # Expires (#396): chat uploads are kept for good by default; a dataset
+    # belongs to no retention category; none of them is deleted.
+    assert chat_file.expires_at is None
+    assert dataset_file.expires_at is None
+    assert chat_file.deleted_at is None
 
 
 @pytest.mark.asyncio

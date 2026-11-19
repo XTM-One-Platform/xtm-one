@@ -869,18 +869,25 @@ class OpenAIProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProvider):
         size: str = "1024x1024",
     ) -> bytes:
         """An image from the Images API's edits (``POST /images/edits``): the pictures, the prompt, a mask."""
+        name = self.canonical_image_model(model or self._DEFAULT_IMAGE_MODEL) or model or self._DEFAULT_IMAGE_MODEL
+        response = await self.client.images.edit(**self.image_edit_params(prompt, images, mask, name, size))
+        return base64.b64decode(response.data[0].b64_json)
+
+    @classmethod
+    def image_edit_params(
+        cls, prompt: str, images: list[tuple[bytes, str]], mask: tuple[bytes, str] | None, model: str, size: str
+    ) -> dict:
+        """The ``images.edit`` arguments, also sent by the AI Gateway (it forwards this request as it is)."""
         from app.llm.images import accepted_image
 
-        name = self.canonical_image_model(model or self._DEFAULT_IMAGE_MODEL) or model or self._DEFAULT_IMAGE_MODEL
         files = []
         for index, (data, mime) in enumerate(images):
             accepted, accepted_mime = accepted_image(data, mime, ("image/png", "image/jpeg", "image/webp"))
             files.append((f"reference-{index + 1}.{accepted_mime.rsplit('/', 1)[-1]}", accepted, accepted_mime))
-        params: dict = {"model": name, "prompt": prompt, "image": files if len(files) > 1 else files[0], "n": 1}
-        if size in self._GPT_IMAGE_1_VALID_SIZES and size != "auto":
+        params: dict = {"model": model, "prompt": prompt, "image": files if len(files) > 1 else files[0], "n": 1}
+        if size in cls._GPT_IMAGE_1_VALID_SIZES and size != "auto":
             params["size"] = size
         if mask is not None:
             mask_data, _mime = accepted_image(mask[0], mask[1], ("image/png",))
             params["mask"] = ("mask.png", mask_data, "image/png")
-        response = await self.client.images.edit(**params)
-        return base64.b64decode(response.data[0].b64_json)
+        return params

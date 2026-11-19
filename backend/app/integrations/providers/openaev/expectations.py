@@ -31,6 +31,7 @@ from ._common import (
     _fmt_expectation_results_by_type,
     _fmt_expectation_row,
     expectation_label,
+    simulation_results_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,15 +144,7 @@ def register(
         if action == "simulation_results":
             if not exercise_id:
                 return "exercise_id is required for action 'simulation_results'."
-            resp, err = await _api(
-                base_url, headers, "get", f"/api/exercises/{exercise_id}/results",
-                "get simulation results",
-            )
-            if err:
-                return err
-            return _fmt_expectation_results_by_type(
-                resp.json(), subject=f"simulation {exercise_id}"
-            )
+            return await simulation_results_answer(_api, base_url, headers, exercise_id)
 
         if action == "global_scores":
             ids = [i for i in (exercise_ids or []) if i]

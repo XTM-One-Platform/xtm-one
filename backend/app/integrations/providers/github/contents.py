@@ -1684,7 +1684,7 @@ def register(
             data, left_out, left_out_bytes = narrowed
             note = (
                 f" The whole archive is over {_MAX_ARCHIVE_BYTES // 1024 // 1024} MB: narrowed to {', '.join(wanted)}; "
-                f"{len(left_out)} media or large file(s) outside them left out "
+                f"{len(left_out)} media, large or over-budget file(s) outside them left out "
                 f"({round(left_out_bytes / 1024 / 1024, 1)} MB): {', '.join(left_out[:5])}"
                 + (f" and {len(left_out) - 5} more" if len(left_out) > 5 else "")
                 + "."

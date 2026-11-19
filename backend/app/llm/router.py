@@ -93,6 +93,7 @@ from app.llm.tei_embedding_provider import TEIEmbeddingProvider
 from app.llm.vertex_ai_provider import VertexAIProvider
 from app.llm.xai_provider import XAIProvider
 from app.models.llm_config import LLMProviderConfig
+from app.services.failure_causes import exception_status_code
 from app.services.vault import get_resolver, reveal_field, stored_reference_providers
 from app.tools.base import tool_retention_key
 
@@ -364,15 +365,17 @@ def _should_warn_fallback_model(model_id: str) -> bool:
 # Lowercased substrings identifying a request-size / payload error — an HTTP
 # 413 ``request_too_large`` from Anthropic, Gemini's 400 "Request payload size
 # exceeds the limit: NNN bytes", a generic gateway "payload too large" /
-# "request entity too large", or a provider content-size limit.
-# Single source of truth shared by
+# "request entity too large", or a provider content-size limit. A 413 whose
+# ``error.code`` is ``request_too_large`` counts whatever its wording.
+# Read only through :func:`is_request_too_large_error`, shared by
 # :meth:`FailoverLLMProvider._is_non_failoverable` (an oversized payload
 # reproduces on every provider, so failing over just burns the whole chain)
 # and :func:`is_request_too_large_error` (the graceful-handling
 # predicate used by ``agent_chat`` / ``general_chat`` / ``public_chat`` /
 # ``assignment_engine`` and the chat error mapper
 # ``api/v1/chat._friendly_error_message``) so failover classification and
-# user-facing messages can never drift.
+# user-facing messages can never drift. A provider's own body cap
+# (``body_cap_error_code``) still fails over to other providers.
 REQUEST_TOO_LARGE_KEYWORDS: tuple[str, ...] = (
     "request_too_large",
     "request exceeds the maximum size",
@@ -624,10 +627,29 @@ def is_request_too_large_error(exc: Exception) -> bool:
       shape entirely.
     """
     if isinstance(exc, AllProvidersFailedError):
-        last_failure = str(exc.failures[-1][1]).lower() if exc.failures else ""
-        return any(kw in last_failure for kw in REQUEST_TOO_LARGE_KEYWORDS)
+        return bool(exc.failures) and _is_size_error(exc.failures[-1][1])
+    return _is_size_error(exc)
+
+
+def _code_of_413(exc: BaseException) -> str | None:
+    if exception_status_code(exc) != 413:
+        return None
+    code = getattr(exc, "code", None)
+    return code if isinstance(code, str) else None
+
+
+def _is_size_error(exc: BaseException) -> bool:
+    # The code, so detection does not hang on the SDK's rendering of the body; a
+    # 413 with another code (Groq's tokens-per-minute limit) is not a size error.
+    if _code_of_413(exc) == "request_too_large":
+        return True
     msg = str(exc).lower()
     return any(kw in msg for kw in REQUEST_TOO_LARGE_KEYWORDS)
+
+
+def _is_own_body_cap(exc: BaseException, provider: object) -> bool:
+    code = getattr(provider, "body_cap_error_code", None)
+    return code is not None and _code_of_413(exc) == code
 
 
 # Lowercased substrings identifying a provider that could not serve the call at
@@ -2519,7 +2541,12 @@ class FailoverLLMProvider(BaseLLMProvider):
         return AllProvidersFailedError(failures, skipped=skipped, tried=tried)
 
     @staticmethod
-    def _is_non_failoverable(exc: Exception) -> bool:
+    def _capped_out(provider: BaseLLMProvider, failures: list[tuple[str, Exception]]) -> bool:
+        """Its own body cap already refused the request, as it will on every leg."""
+        return any(name == provider.provider_name and _is_own_body_cap(exc, provider) for name, exc in failures)
+
+    @staticmethod
+    def _is_non_failoverable(exc: Exception, provider: BaseLLMProvider | None = None) -> bool:
         """Return True if the error is caused by the request itself (not the provider).
 
         These errors will reproduce on every provider, so failing over is
@@ -2528,6 +2555,8 @@ class FailoverLLMProvider(BaseLLMProvider):
         handed to another model only in the categories
         ``ModelDeclinedError.failover_allowed`` names.
         """
+        if _is_own_body_cap(exc, provider):
+            return False
         if isinstance(exc, ContextOverflowError):
             return True
         if isinstance(exc, ModelDeclinedError):
@@ -2781,7 +2810,7 @@ class FailoverLLMProvider(BaseLLMProvider):
         except Exception as exc:
             failures.append((self.primary.provider_name, exc))
             tried.append(self._primary_leg(model, routed))
-            if self._is_non_failoverable(exc):
+            if self._is_non_failoverable(exc, self.primary):
                 logger.warning(
                     "Primary LLM provider '%s' %s failed with non-failoverable error (model=%s): %s",
                     self.primary.provider_name, method_name, routed or model, format_exception_message(exc),
@@ -2818,6 +2847,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                 if on_token is not None
                 else None
             )
+            if self._capped_out(fallback, failures):
+                logger.info("Skipping '%s' (%s): its body cap refused this request", fallback.provider_name, target)
+                continue
             if index >= declined and failures and failures[-1][0] == fallback.provider_name:
                 # A decline hand-off is a different answer, not a retry; a
                 # second leg on the provider that just failed is a retry.
@@ -2862,7 +2894,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 failures.append((fallback.provider_name, fb_exc))
                 tried.append((self._config_of(fallback), served_model))
                 self._record_fallback_failure(fallback, fallback_model, fb_exc)
-                if self._is_non_failoverable(fb_exc):
+                if self._is_non_failoverable(fb_exc, fallback):
                     # A request-caused error surfacing mid-chain (e.g. the
                     # primary failed transiently, then a fallback got the 413)
                     # reproduces on every remaining target too — stop here
@@ -2953,7 +2985,7 @@ class FailoverLLMProvider(BaseLLMProvider):
         except Exception as exc:
             failures.append((self.primary.provider_name, exc))
             tried.append(self._primary_leg(model, routed))
-            if self._is_non_failoverable(exc):
+            if self._is_non_failoverable(exc, self.primary):
                 logger.warning(
                     "Primary LLM stream failed with non-failoverable error (model=%s): %s",
                     routed or model,
@@ -2982,6 +3014,9 @@ class FailoverLLMProvider(BaseLLMProvider):
             fallback_yielded = False
             served_model = self._target_model(fallback, fallback_model)
             target = self._describe_target(fallback, served_model)
+            if self._capped_out(fallback, failures):
+                logger.info("Skipping '%s' (%s): its body cap refused this request", fallback.provider_name, target)
+                continue
             if index >= declined and failures and failures[-1][0] == fallback.provider_name:
                 await _same_provider_backoff()
             try:
@@ -3034,7 +3069,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 failures.append((fallback.provider_name, fb_exc))
                 tried.append((self._config_of(fallback), served_model))
                 self._record_fallback_failure(fallback, fallback_model, fb_exc)
-                if self._is_non_failoverable(fb_exc):
+                if self._is_non_failoverable(fb_exc, fallback):
                     # Same rationale as ``_failover_call``: a request-caused
                     # error (413 payload size, context overflow) reproduces on
                     # every remaining target — stop the chain here.

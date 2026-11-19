@@ -331,6 +331,12 @@ def _companion_name(name: str) -> bool:
     )
 
 
+def is_companion_name(name: str) -> bool:
+    """Whether a file named *name* (a manifest, lock file, compose file, requirements file, test script or tool
+    configuration) is one :func:`companions` keeps in a directory above a sub_path."""
+    return _companion_name(name)
+
+
 #: The files whose relative path literals :func:`referenced_files` follows: the tests and the
 #: tool configuration of a JavaScript or TypeScript project (``tsconfig.json`` ``extends``, the
 #: ``relay.config.json`` ``schema`` the Relay compiler and its ESLint plugin read).

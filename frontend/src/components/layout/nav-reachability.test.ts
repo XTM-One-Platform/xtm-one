@@ -68,6 +68,8 @@ interface Reach {
    *  locked `unlicensed` on Community Edition only, open with AI off. */
   lock?: "ai" | "license";
   guard: Guard;
+  /** Listed in XTM One mode only: domain content of the XTM platforms (Intents, #445). */
+  xtmOneOnly?: true;
 }
 
 const EVERYONE: readonly Role[] = ["admin", "groupManager", "member"];
@@ -111,9 +113,10 @@ const REACHABILITY: readonly Reach[] = [
   { to: "/ai-adoption", roles: ADMIN, gate: "aiAdoption", lock: "ai", guard: "AdminRoute" },
   { to: "/evaluations", roles: ADMIN, gate: "evaluation", lock: "ai", guard: "AdminRoute" },
   { to: "/health", roles: ADMIN, gate: "health", lock: "ai", guard: "AdminRoute" },
-  // No route guard: the nav alone keeps Intents and Groups to administrators
-  // (#9301 UX r1 A4, r2 A5). Recorded as it is; no route changes in this program.
-  { to: "/intents", roles: ADMIN, lock: "ai", guard: "none" },
+  // No role guard: the nav alone keeps Intents and Groups to administrators
+  // (#9301 UX r1 A4, r2 A5). Intents are XTM One mode only (#445): the route
+  // sits behind XtmOneRoute, which is a mode guard, not a role guard.
+  { to: "/intents", roles: ADMIN, lock: "ai", guard: "none", xtmOneOnly: true },
   { to: "/users", roles: ADMIN, guard: "AdminRoute" },
   { to: "/groups", roles: ADMIN, guard: "none" },
   { to: "/objects", roles: ADMIN, guard: "AdminRoute" },
@@ -152,7 +155,7 @@ const show = (to: string, lock: string | null | undefined) => (lock ? `${to} [${
 
 const expected = (role: Role, flags: NavFlags): string[] =>
   REACHABILITY
-    .filter((reach) => reach.roles.includes(role) && (!reach.gate || flags[reach.gate]))
+    .filter((reach) => reach.roles.includes(role) && (!reach.gate || flags[reach.gate]) && (!reach.xtmOneOnly || flags.xtmOne))
     .map((reach) => show(reach.to, expectedLock(reach, flags)))
     .sort();
 
@@ -167,7 +170,8 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
     for (const xtmOne of [false, true]) {
       for (const flagSet of FLAG_SETS) {
         for (const ai of AI_STATES) {
-          const flags: NavFlags = { ...flagSet.gates, xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
+          // `intents` follows the mode, as Sidebar.tsx and use-nav-group.ts set it.
+          const flags: NavFlags = { ...flagSet.gates, xtmOne, intents: xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
           const combination = `${role}, ${xtmOne ? "XTM One" : "Copilot"} mode, ${flagSet.name}, ${ai.name}`;
           assert.deepEqual(actual(role, flags), expected(role, flags), combination);
           combinations += 1;
@@ -179,7 +183,7 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
 });
 
 test("the palette lists each page once", () => {
-  const flags: NavFlags = { ...allGates(true), xtmOne: false, aiEnabled: true, aiLicensed: true };
+  const flags: NavFlags = { ...allGates(true), xtmOne: true, intents: true, aiEnabled: true, aiLicensed: true };
   const routes = navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
   assert.deepEqual(routes.filter((to, index) => routes.indexOf(to) !== index), []);
   const table = REACHABILITY.map((reach) => reach.to);

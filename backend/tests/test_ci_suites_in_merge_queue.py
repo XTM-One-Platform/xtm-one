@@ -150,6 +150,27 @@ def test_the_queue_runs_what_the_selection_says(name):
 
 
 @pytest.mark.parametrize("name", SUITES)
+def test_a_job_that_reads_the_selection_downloads_it_first(name):
+    # A job reading a selection file it never downloaded fails every selective
+    # merge group (#440: bootstrap read backend-tests.txt with no artifact).
+    for job_name, job in _workflow(name)["jobs"].items():
+        steps = job.get("steps", [])
+        reader = next(
+            (i for i, step in enumerate(steps) if "/selection/" in str(step.get("env", {})) + str(step.get("run", ""))),
+            None,
+        )
+        if reader is None:
+            continue
+        downloads = [
+            i
+            for i, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and (step.get("with") or {}).get("name") == "test-selection"
+        ]
+        assert downloads and downloads[0] < reader, f"{name}: {job_name}"
+
+
+@pytest.mark.parametrize("name", SUITES)
 def test_a_merge_group_measures_its_own_change_and_any_other_run_runs_everything(name):
     steps = _workflow(name)["jobs"]["select"]["steps"]
     script = next(step["run"] for step in steps if step.get("id") == "select")

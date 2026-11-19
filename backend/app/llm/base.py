@@ -1449,10 +1449,19 @@ class FileRef:
     # the bytes from, ``None`` otherwise: a commit made from a checkout file
     # moves that checkout's record (``create_github_commit`` files[]).
     workspace_path: str | None = field(default=None, compare=False)
+    # The one sentence a deleted file reads as (``file_retention.deleted_notice``):
+    # set when the row is a tombstone, its bytes gone. Every read answers it
+    # instead of an exception (:meth:`is_deleted`).
+    deleted_notice: str | None = field(default=None, compare=False)
 
     @staticmethod
     def from_attachment(fa: object) -> FileRef:
         """Build a FileRef from a :class:`FileAttachment` ORM instance."""
+        notice = None
+        if getattr(fa, "deleted_at", None) is not None:
+            from app.services.file_retention import deleted_notice
+
+            notice = deleted_notice(fa)
         return FileRef(
             file_id=str(fa.id),  # type: ignore[attr-defined]
             filename=fa.filename,  # type: ignore[attr-defined]
@@ -1461,7 +1470,13 @@ class FileRef:
             s3_object_name=fa.s3_object_name,  # type: ignore[attr-defined]
             source=getattr(fa, "source", None),
             notes=(getattr(fa, "description", None) or None),
+            deleted_notice=notice,
         )
+
+    @property
+    def is_deleted(self) -> bool:
+        """True when the file's bytes were deleted (a retention, its owner, an administrator)."""
+        return self.deleted_notice is not None
 
     @staticmethod
     def from_bytes(
@@ -2197,6 +2212,9 @@ class BaseLLMProvider(ABC):
     # for an unpinned flow Classify node only while its listing declares one (a
     # pin or the platform Decision Model still reaches it).
     decisions_only_when_listed: bool = False
+    # The ``error.code`` of a 413 for the provider's own body cap, not the
+    # model's: another provider may still take the request, so it fails over.
+    body_cap_error_code: str | None = None
     # Whether ``decision_listing()``, once whole, declares every decision
     # model the provider serves, so a model it omits is not served there.
     # False for a provider serving typed ids no listing reports (OpenRouter).
@@ -2663,6 +2681,9 @@ class BaseLLMProvider(ABC):
         raise NotImplementedError(
             f"{self.provider_name} does not support image generation."
         )
+
+    async def load_image_capabilities(self, model: str | None) -> None:
+        """Read what *model* draws from before the sync checks below; the default has nothing to read."""
 
     def image_reference_limit(self, model: str | None) -> int:
         """How many reference pictures *model* draws from (:meth:`edit_image`); 0 (the default): none."""

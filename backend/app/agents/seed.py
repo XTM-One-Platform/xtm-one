@@ -577,12 +577,15 @@ async def seed_builtin_agents(
     anthropic_enabled = await _is_anthropic_enabled(db) if agents else False
     owner_id = await _resolve_seed_owner_id(db) if agents else None
 
-    # Phase 1: Delete stale built-in agents (and their assignments via CASCADE)
+    # Phase 1: Delete stale built-in agents (and their assignments via CASCADE).
+    # The Platform Health fleet's agents are built in but seeded by their own
+    # seed (``services.health.fleet_seed``), never stale here.
     result = await db.execute(
         select(Agent).where(
             Agent.is_builtin.is_(True),
             Agent.slug.notin_(current_slugs),
             Agent.template_slug.is_(None),
+            Agent.health_role.is_(None),
         )
     )
     removed = 0

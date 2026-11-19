@@ -167,6 +167,7 @@ from app.api.v1.agent_chats import router as agent_chat_router
 from app.api.v1.agent_memory import router as agent_memory_router
 from app.api.v1.agent_skills import router as agent_skill_router
 from app.api.v1.agent_templates import template_router as agent_template_router
+from app.api.v1.file_retention import router as file_retention_router
 from app.api.v1.memory_consolidations import agent_router as memory_consolidations_agent_router
 from app.api.v1.memory_consolidations import me_router as memory_consolidations_me_router
 from app.channels import discord as discord_channel
@@ -4305,6 +4306,9 @@ application.include_router(
 )
 application.include_router(
     settings_api.router, prefix="/api/v1/settings", tags=["settings"]
+)
+application.include_router(
+    file_retention_router, prefix="/api/v1/settings/file-retention", tags=["settings"]
 )
 application.include_router(
     model_announcements.router, prefix="/api/v1/settings/model-announcements", tags=["settings"]

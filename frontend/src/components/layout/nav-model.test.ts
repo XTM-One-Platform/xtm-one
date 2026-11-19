@@ -27,6 +27,7 @@ const FLAGS: NavFlags = {
   videoStudio: true,
   dashboardStudio: true,
   evaluation: true,
+  intents: true,
 };
 
 const toolsGroup = (): NavGroup => {
@@ -65,6 +66,28 @@ test("the Orchestration group opens its hub, like Agent Studio, and holds Agents
   const all = resolveNav(FLAGS, true).flatMap((section) => section.entries)
     .flatMap((entry) => (entry.kind === "group" ? entry.children.map((child) => child.to) : [entry.to]));
   assert.ok(!all.includes("/agents/new"), "no sidebar row creates an agent");
+});
+
+test("Intents: listed for administrators in XTM One mode only, never in Copilot mode, with no empty slot (#445)", () => {
+  // The callers set `intents` from the mode (Sidebar.tsx, use-nav-group.ts): XTM One mode on, Copilot mode off.
+  const xtmOne: NavFlags = { ...FLAGS, xtmOne: true, intents: true };
+  const copilot: NavFlags = { ...FLAGS, xtmOne: false, intents: false };
+  const rows = (flags: NavFlags, isAdmin: boolean) => group("agents", isAdmin, flags).children.map((child) => child.to);
+  assert.deepEqual(rows(xtmOne, true), ["/agents", "/fleets", "/flows", "/intents"], "XTM One mode, administrator");
+  assert.deepEqual(rows(xtmOne, false), ["/agents", "/fleets", "/flows"], "XTM One mode, not an administrator");
+  assert.deepEqual(rows(copilot, true), ["/agents", "/fleets", "/flows"], "Copilot mode, administrator");
+  assert.deepEqual(rows(copilot, false), ["/agents", "/fleets", "/flows"], "Copilot mode, not an administrator");
+  // Agentic Flow is the last row of the group and Work follows it directly.
+  assert.deepEqual(
+    resolveNav(copilot, true)[0].entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id)),
+    ["/", "/chat", "agents", "work"],
+  );
+  const palette = (flags: NavFlags) => navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
+  assert.ok(palette(xtmOne).includes("/intents"), "the palette lists Intents in XTM One mode");
+  assert.ok(!palette(copilot).includes("/intents"), "the palette never lists Intents in Copilot mode");
+  // AI off keeps XTM One's row, marked: the mode decides the row, AI the lock.
+  const aiOff = group("agents", true, { ...xtmOne, aiEnabled: false }).children.find((child) => child.to === "/intents");
+  assert.equal(aiOff?.lockReason, "ai_disabled");
 });
 
 test("every row of a group carries its own lock: Fleets by the licence, Agentic Flow never, Intents by AI", () => {

@@ -2216,6 +2216,20 @@ async def test_checkout_status_lists_what_changed_since_the_checkout(store):
     assert no_record.is_error and "holds no .xtm-checkout.json" in no_record.content
 
 
+async def test_checkout_status_names_the_pre_push_guards_before_the_commit(store):
+    """The guard a change touches and the sandbox never saw pass is named by the status, not after the push (#434)."""
+    composite, executor, _ = await _checked_out(store)
+    checks = b'[check.src-types]\nargv = ["true"]\ncwd = "src"\npre_push = ["*.py"]\n'
+    await executor.session.put_bytes("repo/.xtm-one/checks.toml", checks)
+    await executor.session.put_bytes("repo/src/app.py", b"import lib.util\nVALUE = 2\n")
+    status = await _call(composite, "sandbox_checkout_status", checkout="repo")
+    assert not status.is_error, status.content
+    assert "M src/app.py" in status.content
+    assert "Pre-push guard" in status.content and "src-types never ran on this checkout (src/app.py)" in status.content
+    narrowed = await _call(composite, "sandbox_checkout_status", checkout="repo", paths=["src/lib"])
+    assert "Pre-push guard" not in narrowed.content, "nothing changed under the paths asked"
+
+
 async def test_advance_checkout_moves_the_record_and_status_is_clean_after_the_commit(store):
     from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord
 

@@ -42,6 +42,8 @@ export function useNavFlags(): NavFlags {
   return useMemo(() => ({
     chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
     deepInvestigation, health, videoStudio, dashboardStudio, evaluation,
+    // Intents are XTM One domain content: no row or hub card in Copilot mode (#445).
+    intents: xtmOne,
   }), [chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
     deepInvestigation, health, videoStudio, dashboardStudio, evaluation]);
 }

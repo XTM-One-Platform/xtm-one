@@ -138,7 +138,7 @@ async def test_the_sweep_keeps_a_check_file_a_video_uses():
     result.scalars.return_value.all.return_value = [old, used]
     db = SimpleNamespace(execute=AsyncMock(return_value=result))
     with (
-        patch("app.core.config.settings.agent_check_file_retention_days", 7),
+        patch("app.services.file_retention.days_for", AsyncMock(return_value=7)),
         patch("app.services.video_studio.retention.files_in_use", AsyncMock(return_value={str(used)})),
     ):
         assert await check_files.expired_ids(db) == [str(old)]
@@ -149,7 +149,8 @@ async def test_a_sweep_with_retention_off_reads_nothing():
     from app.services import check_files
 
     db = SimpleNamespace(execute=AsyncMock())
-    with patch("app.core.config.settings.agent_check_file_retention_days", 0):
+    # Settings > Storage & retention holds 0 ("Never") for check files.
+    with patch("app.services.file_retention.days_for", AsyncMock(return_value=0)):
         assert await check_files.sweep(db) == 0
     db.execute.assert_not_awaited()
 
