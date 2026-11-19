@@ -577,6 +577,7 @@ ee:
   - backend/app/services/agentic_executions.py
   - backend/app/services/integration_tools.py
   - backend/app/services/mcp_oauth_tokens.py
+  - backend/app/services/mcp_user_credentials.py
   - backend/app/services/openapi_import/builder_tools.py
   - backend/app/services/provisioning.py
   - backend/app/services/quota_exhausted_notice.py

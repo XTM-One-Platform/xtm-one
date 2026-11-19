@@ -844,8 +844,7 @@ async def start_mcp_oauth(
     )
     from app.services.mcp_user_credentials import is_per_user
 
-    user_group_ids = await get_user_group_ids(db, user.id)
-    srv = await get_user_mcp_server(db, user.id, server_id, user_group_ids, is_admin=user.is_admin)
+    srv = await get_user_mcp_server(db, user.id, server_id, is_admin=user.is_admin)
 
     per_user = is_per_user(srv)
     if not per_user:

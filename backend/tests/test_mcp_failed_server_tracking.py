@@ -32,7 +32,7 @@ from app.tools.mcp_client import MCPManager, MCPServerRuntime
 def _async_runtime(build):
     """``build_mcp_runtime`` is a coroutine (it reads vault references)."""
 
-    async def _build(server):
+    async def _build(server, _credential=None):
         return build(server)
 
     return _build
