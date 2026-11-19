@@ -13,7 +13,7 @@
 
 """Platform Health agent checks (#101 S3, ``dev-docs/platform-health.md`` section 4.1).
 
-Seven deterministic checks on the **enrolled** agents alone
+Eleven deterministic checks on the **enrolled** agents alone
 (:func:`app.services.health.engine.enrolled_agent_ids`), registered on the
 engine when this module is imported. Each answers one result per subject it
 read, failing or passing, so a finding resolves by itself once its cause is
@@ -32,6 +32,10 @@ Check                          Severity    Category     Rule (shared with the fl
 ``agents.failure_spike``       warning     availability over 5 % of an assignment's last 20 settled runs failed
 ``agents.feedback_drop``       warning     performance  weighted score 10 points under the window before
 ``agents.cost_drift``          info        cost         cost per run up 20 % on the window before
+``agents.model_change``        info        configuration last day's runs used a model the 7 days before did not
+``agents.integration_broken``  warning     availability a bound integration in error, to re-authorize, or failing its test
+``agents.orphaned_claims``     warning     availability an owned work item held by a run that ended
+``agents.blocked_without_blocker`` info    configuration an owned blocked work item names nothing it waits for
 =============================  ==========  ===========  ===============================================
 
 The rules are the pure functions of :mod:`app.services.fleet_health_signals`
@@ -61,6 +65,7 @@ from app.services.fleet_health_signals import (
     SPIKE_FACTOR,
     SPIKE_MIN_TOKENS,
     assignment_is_failing,
+    blocked_without_blocker,
     is_cost_spike,
     schedule_is_silent,
 )
@@ -444,6 +449,197 @@ async def cost_drift(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -
     return results
 
 
+#: The integration states that stop its tools (``token_refresh``: an error
+#: after a failed refresh, ``reauthorize`` after a dead grant).
+BROKEN_INTEGRATION_STATUSES = frozenset({"error", "reauthorize"})
+#: The day a model change is read on, and the days before it is compared with.
+MODEL_CHANGE_DAYS = 7
+
+
+async def model_change(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """An enrolled agent whose assignment runs of the last whole day used a model none of the days before used.
+
+    Read on the daily rollup (``llm_daily_stats``), whole days: the finding
+    stays open the day after the change, then resolves once the new model is
+    part of the window before. An agent with no earlier runs records nothing.
+    """
+    from app.models.llm_trace import LLMDailyStats
+
+    yesterday = now.date() - timedelta(days=1)
+    first = yesterday - timedelta(days=MODEL_CHANGE_DAYS)
+    used: dict[uuid.UUID, dict[bool, set[str]]] = {}
+    for agent_id, day, model in (
+        await db.execute(
+            select(LLMDailyStats.agent_id, LLMDailyStats.date, LLMDailyStats.model)
+            .where(
+                LLMDailyStats.source == "assignment",
+                LLMDailyStats.agent_id.in_(agents),
+                LLMDailyStats.date >= first,
+                LLMDailyStats.date <= yesterday,
+                LLMDailyStats.trace_count > 0,
+            )
+            .distinct()
+        )
+    ).all():
+        used.setdefault(agent_id, {}).setdefault(day == yesterday, set()).add(model)
+    results: list[CheckResult] = []
+    for agent_id in agents:
+        by_day = used.get(agent_id, {})
+        latest, before = by_day.get(True, set()), by_day.get(False, set())
+        new = sorted(latest - before) if before else []
+        results.append(
+            _result(
+                "agents.model_change",
+                "info",
+                "configuration",
+                bool(new),
+                {"agent_id": str(agent_id)},
+                evidence={
+                    "values": {"new_models": new, "previous_models": sorted(before), "day": yesterday.isoformat()},
+                    "threshold": f"a model not used in the {MODEL_CHANGE_DAYS} days before",
+                },
+                recommendation="Compare the agent's runs before and after the change; pin the model if the change was not intended.",
+            )
+        )
+    return results
+
+
+async def integration_broken(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """An integration bound to an enrolled agent in a state that stops its tools, or whose last connectivity test failed."""
+    from app.core.utils import safe_uuid
+    from app.models.agent import Agent
+    from app.models.integration import Integration
+
+    bindings: list[tuple[uuid.UUID, uuid.UUID]] = []
+    for agent_id, bound in (
+        await db.execute(select(Agent.id, Agent.integration_bindings).where(Agent.id.in_(agents)))
+    ).all():
+        for ids in (bound or {}).values():
+            for raw in ids if isinstance(ids, list) else [ids]:
+                integration_id = safe_uuid(str(raw))
+                if integration_id is not None:
+                    bindings.append((agent_id, integration_id))
+    if not bindings:
+        return []
+    states = {
+        iid: (provider, status, tested)
+        for iid, provider, status, tested in (
+            await db.execute(
+                select(
+                    Integration.id, Integration.provider, Integration.status, Integration.connection_test_status
+                ).where(Integration.id.in_({iid for _, iid in bindings}))
+            )
+        ).all()
+    }
+    results: list[CheckResult] = []
+    for agent_id, integration_id in sorted(set(bindings), key=str):
+        if integration_id not in states:
+            # A binding to a deleted integration is pruned by the agent's own
+            # save path; nothing to check.
+            continue
+        provider, status, tested = states[integration_id]
+        results.append(
+            _result(
+                "agents.integration_broken",
+                "warning",
+                "availability",
+                status in BROKEN_INTEGRATION_STATUSES or tested == "error",
+                {"agent_id": str(agent_id), "integration_id": str(integration_id)},
+                evidence={"values": {"provider": provider, "status": status, "connection_test": tested}},
+                recommendation="Open the integration, test it, and reconnect or re-authorize it.",
+            )
+        )
+    return results
+
+
+async def _owned_open_items(db: AsyncSession, agents: list[uuid.UUID]) -> dict[uuid.UUID, list[Any]]:
+    from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
+
+    rows = (
+        await db.execute(
+            select(
+                WorkItem.id,
+                WorkItem.owner_agent_id,
+                WorkItem.status,
+                WorkItem.claimed_by_run_id,
+                WorkItem.blocked_on,
+                WorkItem.blocked_on_refs,
+                WorkItem.blocked_reason,
+                WorkItem.needs_human,
+            ).where(WorkItem.owner_agent_id.in_(agents), WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES))
+        )
+    ).all()
+    owned: dict[uuid.UUID, list[Any]] = {}
+    for row in rows:
+        owned.setdefault(row.owner_agent_id, []).append(row)
+    return owned
+
+
+async def orphaned_claims(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """Work items owned by an enrolled agent, held by a run that ended (the platform's claim sweep releases them)."""
+    from sqlalchemy import not_
+
+    from app.models.work_item import WorkItem
+    from app.services.work_item import CLAIM_HELD_STATUSES, _holder_alive_clause
+
+    orphaned: dict[uuid.UUID, list[str]] = {}
+    for item_id, owner in (
+        await db.execute(
+            select(WorkItem.id, WorkItem.owner_agent_id).where(
+                WorkItem.owner_agent_id.in_(agents),
+                WorkItem.status.in_(CLAIM_HELD_STATUSES),
+                WorkItem.claimed_by_run_id.isnot(None),
+                not_(_holder_alive_clause(WorkItem.claimed_by_run_id)),  # type: ignore[no-untyped-call]
+            )
+        )
+    ).all():
+        orphaned.setdefault(owner, []).append(str(item_id))
+    return [
+        _result(
+            "agents.orphaned_claims",
+            "warning",
+            "availability",
+            bool(orphaned.get(agent_id)),
+            {"agent_id": str(agent_id)},
+            evidence={
+                "values": {"items": sorted(orphaned.get(agent_id, []))[:10], "count": len(orphaned.get(agent_id, []))}
+            },
+            recommendation="Released by the platform's claim sweep; if it persists, read the item's last run.",
+        )
+        for agent_id in agents
+    ]
+
+
+async def blocked_without_blocker_items(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """Blocked work items owned by an enrolled agent that name nothing they wait for."""
+    owned = await _owned_open_items(db, agents)
+    results: list[CheckResult] = []
+    for agent_id in agents:
+        bare = sorted(
+            str(row.id)
+            for row in owned.get(agent_id, [])
+            if row.status == "blocked"
+            and blocked_without_blocker(
+                blocked_on=row.blocked_on,
+                blocked_on_refs=row.blocked_on_refs,
+                blocked_reason=row.blocked_reason,
+                needs_human=row.needs_human,
+            )
+        )
+        results.append(
+            _result(
+                "agents.blocked_without_blocker",
+                "info",
+                "configuration",
+                bool(bare),
+                {"agent_id": str(agent_id)},
+                evidence={"values": {"items": bare[:10], "count": len(bare)}},
+                recommendation="Name what each item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+            )
+        )
+    return results
+
+
 for _check_id, _run in (
     ("agents.assignment_failing", assignment_failing),
     ("agents.schedule_silent", schedule_silent),
@@ -452,6 +648,10 @@ for _check_id, _run in (
     ("agents.failure_spike", failure_spike),
     ("agents.feedback_drop", feedback_drop),
     ("agents.cost_drift", cost_drift),
+    ("agents.model_change", model_change),
+    ("agents.integration_broken", integration_broken),
+    ("agents.orphaned_claims", orphaned_claims),
+    ("agents.blocked_without_blocker", blocked_without_blocker_items),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=AGENT_CHECK_INTERVAL, run=_agent_check(_check_id, _run))
