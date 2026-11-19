@@ -50,6 +50,8 @@ async def _run(executor: CallableToolExecutor, arguments: dict[str, Any]) -> Too
         ({"action": "get", "form_id": "f1", "name": "A"}, "name"),
         ({"action": "delete", "form_id": "f1", "search": "x"}, "search"),
         ({"action": "submit", "form_id": "f1", "values": "{}", "active": True}, "active"),
+        ({"action": "submit", "form_id": "f1", "values": "{}", "active": False}, "active"),
+        ({"action": "list", "active": False}, "active"),
         ({"action": "import", "content": "{}", "form_schema": "{}"}, "form_schema"),
         ({"action": "update", "form_id": "f1", "name": "B", "limit": 10}, "limit"),
         ({"action": "list", "status": "active"}, "status"),
