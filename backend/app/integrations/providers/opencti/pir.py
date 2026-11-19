@@ -40,11 +40,26 @@ from app.core.utils import is_valid_uuid
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
+from .access import _refuse_unapplied
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
 _PIR_TYPES = ("THREAT_LANDSCAPE", "THREAT_ORIGIN", "THREAT_CUSTOM")
+
+# The fields each action of manage_opencti_pir reads; any other field passed (an
+# argument the tool does not declare included) is refused by name and nothing is sent.
+# A field left at its default (pir_type THREAT_LANDSCAPE, pir_rescan_days 0, limit 20)
+# counts as not passed.
+_PIR_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"pir_id"}),
+    "create": frozenset({"name", "description", "pir_type", "pir_rescan_days", "pir_filters", "pir_criteria"}),
+    "update": frozenset({"pir_id", "name", "description", "pir_rescan_days"}),
+    "delete": frozenset({"pir_id"}),
+    "flag": frozenset({"pir_id", "relationship_id", "source_id", "matching_criteria", "relationship_author_id"}),
+    "unflag": frozenset({"pir_id", "relationship_id", "source_id"}),
+}
 
 _FILTER_GROUP_HINT = (
     "a FilterGroup object with 'mode' ('and'/'or'), 'filters' (array of "
@@ -424,8 +439,31 @@ def register(
         relationship_author_id: str = "",
         search: str = "",
         limit: int = 20,
+        **unknown: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _PIR_APPLIES,
+            {
+                "pir_id": pir_id,
+                "name": name,
+                "description": description,
+                "pir_type": None if pir_type == "THREAT_LANDSCAPE" else pir_type,
+                "pir_rescan_days": pir_rescan_days or None,
+                "pir_filters": pir_filters,
+                "pir_criteria": pir_criteria,
+                "relationship_id": relationship_id,
+                "source_id": source_id,
+                "matching_criteria": matching_criteria,
+                "relationship_author_id": relationship_author_id,
+                "search": search,
+                "limit": None if limit == 20 else limit,
+            },
+            dict(unknown),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
