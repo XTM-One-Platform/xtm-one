@@ -46,9 +46,9 @@ DATA = {
                         "collections that put the knowledge into the hands of every team.",
     },
     "gallery": [
-        ("Knowledge graph", "Every entity of a report and its relationships, explorable in one view.",
-         "The knowledge graph of an OpenCTI report: an intrusion set linked to its campaign, malware, tools, "
-         "techniques, vulnerabilities, targeted sectors and indicators"),
+        ("Knowledge graph", "Threats, techniques, targets and vulnerabilities, explorable in one investigation.",
+         "An OpenCTI investigation graph: four ransomware intrusion sets linked to the techniques, malware, "
+         "vulnerabilities, sectors and countries they share"),
         ("Threat actor", "Who the adversary is, what it targets and how it operates, on one page.",
          "An OpenCTI intrusion set overview: aliases, targeted sectors and regions, latest reports and activity"),
         ("ATT&CK matrix", "The techniques of a threat on the MITRE ATT&CK matrix, with their coverage.",
@@ -57,8 +57,9 @@ DATA = {
          "An OpenCTI custom dashboard with time series, distribution and list widgets on threat activity"),
         ("Playbooks", "Qualify, enrich and route what you ingest in a visual editor.",
          "The OpenCTI playbook editor: a flow of steps that filters, enriches and routes incoming knowledge"),
-        ("OpenAEV pivot", "Every object both products know shows its OpenAEV counterpart in one click.",
-         "An OpenCTI attack pattern with its OpenAEV counterpart panel: simulation results and next actions"),
+        ("Vulnerability context", "Which threats exploit a CVE and which malware carries it, before you patch.",
+         "An OpenCTI vulnerability with the intrusion sets and malware that exploit it, their authors, labels "
+         "and markings"),
     ],
     "walkthrough": "From a report to its knowledge graph, the threat behind it and its ATT&CK coverage, in 15 seconds.",
     "walkthrough_alt": ("Animated walkthrough: an OpenCTI report, its knowledge graph, the intrusion set behind it "
