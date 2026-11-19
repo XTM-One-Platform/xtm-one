@@ -296,13 +296,14 @@ function OptionsCard({ options, target }: { options: SecurityOption[]; target: s
     if (option.kind === "certificates") {
       // PEM text, pasted whole: one or more certificates, never a key.
       const problem = certificatesProblem(option, value);
+      // The design-system Textarea owns the error state: `error` sets
+      // aria-invalid, the error border and links the message to the field.
       return (
         <div className="flex w-full flex-col gap-1 sm:w-96">
           <Textarea
             {...labelled}
-            aria-describedby={problem ? `${ids.description} ${ids.problem}` : ids.description}
-            aria-invalid={problem !== null}
-            className="min-h-28 font-mono text-xs"
+            aria-describedby={ids.description}
+            rows={6}
             spellCheck={false}
             placeholder="-----BEGIN CERTIFICATE-----"
             value={texts[option.key] ?? ""}
@@ -310,12 +311,8 @@ function OptionsCard({ options, target }: { options: SecurityOption[]; target: s
               setText(option.key, event.target.value);
               setValue(option.key, event.target.value);
             }}
+            error={problem ? t_i18n(problem) : undefined}
           />
-          {problem && (
-            <span id={ids.problem} className="content-compact text-feedback-error-primary">
-              {t_i18n(problem)}
-            </span>
-          )}
         </div>
       );
     }
