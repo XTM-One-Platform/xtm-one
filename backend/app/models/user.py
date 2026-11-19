@@ -184,6 +184,9 @@ class User(Base):
     # Set by a SCIM DELETE: the identity provider removed the account. A soft
     # state on top of the deactivation; nothing is purged.
     deprovisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    # A break-glass or service account an administrator flagged: the agent
+    # user-admin tools (``builtin_tools/user_admin.py``) refuse to deactivate it.
+    deactivation_protected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     # Role: "admin" or "user"
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
@@ -288,14 +291,14 @@ class User(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
 
-    # Platform Health opt-out (#8254): Platform Health reads none of this
-    # user's memory lanes and conversations (``services/health/consent.py``).
-    health_content_opt_out: Mapped[bool] = mapped_column(
+    # Platform Concierge opt-out (#8254): the Concierge reads none of this
+    # user's memory lanes and conversations (``services/concierge/consent.py``).
+    concierge_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 
-    # The Platform Health companion (#8261): ``{"enabled": bool, "pet": slug}``,
-    # off when unset (``services/health/companion.py``).
+    # The Concierge companion (#8261): ``{"enabled": bool, "pet": slug}``,
+    # off when unset (``services/concierge/companion.py``).
     concierge_companion: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # The bell shows the work items waiting for this person (#9437), on by

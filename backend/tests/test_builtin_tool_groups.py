@@ -56,8 +56,9 @@ def test_one_group_per_catalog_id():
     # improvement proposals, 19 with Concierge evaluation, 20 with its memory
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
-    # the grounded STIX extraction, its own group so Threat Intelligence never carries it.
-    assert len(_IDS) == len(set(_IDS)) == 26
+    # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
+    # 27 with user administration (#250).
+    assert len(_IDS) == len(set(_IDS)) == 27
     assert set(_IDS) == set(catalog)
 
 
@@ -69,28 +70,42 @@ def test_audience_flags_match_the_backend_sets():
     assert not {g.id for g in BUILTIN_TOOL_GROUPS if g.agent_keyed and g.default_on}
 
 
-def test_health_only_groups_are_the_specialists_suites():
-    """A chat's session tools never offer a suite that only a Platform Health specialist's run may use."""
-    from app.services.health.fleet_seed import FLEET_AGENTS
+def test_concierge_only_groups_are_the_specialists_suites():
+    """A chat's session tools never offer a suite that only a Concierge specialist's run may use."""
+    from app.services.concierge.fleet_seed import FLEET_AGENTS
 
-    health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
-    assert health_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
+    concierge_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.concierge_only}
+    assert concierge_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
     for group in BUILTIN_TOOL_GROUPS:
-        if group.health_only:
+        if group.concierge_only:
             assert group.gate == "concierge" and group.agent_keyed, group.id
     # Carried by the fleet's specialists, none of which takes a chat; the
     # chattable orchestrator carries none of them.
-    carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in health_only}
+    carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in concierge_only}
     for gid, agents in carriers.items():
         assert agents, gid
         assert all(a.disable_chat for a in agents), gid
     payload = builtin_tool_groups_payload({})
-    assert {entry["id"] for entry in payload if entry["health_only"]} == health_only
+    assert {entry["id"] for entry in payload if entry["concierge_only"]} == concierge_only
 
 
 def test_every_group_has_its_card():
     for group in BUILTIN_TOOL_GROUPS:
         assert group.name and group.tagline and group.category and group.icon, group.id
+
+
+def test_every_group_icon_is_resolved_by_the_frontend_map():
+    """An ``icon`` the frontend map does not know renders as the ``Sparkles`` fallback."""
+    import re
+
+    source = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "builtin-tool-icons.ts").read_text(
+        encoding="utf-8"
+    )
+    body = re.search(r"BUILTIN_TOOL_ICONS[^=]*=\s*\{(.*?)\};", source, re.S)
+    assert body, "BUILTIN_TOOL_ICONS not found in builtin-tool-icons.ts"
+    mapped = set(re.findall(r"\b([A-Z][A-Za-z0-9]*)\b", body.group(1)))
+    missing = {group.id: group.icon for group in BUILTIN_TOOL_GROUPS if group.icon not in mapped}
+    assert not missing, f"add these icons to frontend/src/lib/builtin-tool-icons.ts: {missing}"
 
 
 def test_no_card_copy_carries_an_em_dash():
@@ -141,8 +156,8 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "concierge_diagnosis": bt.build_health_diagnosis_tools("")[0],
-        "concierge_experiments": bt.build_health_experiment_tools("")[0],
+        "concierge_diagnosis": bt.build_concierge_diagnosis_tools("")[0],
+        "concierge_experiments": bt.build_concierge_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
     }
     for group_id, definitions in built.items():

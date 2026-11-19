@@ -68,7 +68,7 @@ const AgentDetail = lazyWithRetry(() => import("@/pages/AgentDetail"));
 const AgentChatConversation = lazyWithRetry(() => import("@/pages/AgentChatConversation"), { prefetch: false });
 const AgentFlow = lazyWithRetry(() => import("@/pages/AgentFlow"));
 const Evaluations = lazyWithRetry(() => import("@/pages/Evaluations"));
-const Health = lazyWithRetry(() => import("@/pages/Health"));
+const Concierge = lazyWithRetry(() => import("@/pages/Concierge"));
 const EvaluationDetail = lazyWithRetry(() => import("@/pages/EvaluationDetail"));
 const EvaluationRunDetail = lazyWithRetry(() => import("@/pages/EvaluationRunDetail"));
 const EvaluationRunCompare = lazyWithRetry(() => import("@/pages/EvaluationRunCompare"));
@@ -230,13 +230,6 @@ function TermsGate({ children }: { children: React.ReactNode }) {
 function LegacyRedirect({ to }: { to: string }) {
   const { search } = useLocation();
   return <Navigate to={`${to}${search}`} replace />;
-}
-
-/** `/concierge...` (the former Concierge page) to `/health...`, the rest of the
- *  path, the query and the hash kept (#101 S1). */
-function HealthLegacyRedirect() {
-  const { pathname, search, hash } = useLocation();
-  return <Navigate to={`${pathname.replace(/^\/concierge/, "/health")}${search}${hash}`} replace />;
 }
 
 /** `/flows/fleets...` (the former Fleets tab of Agentic Flow) to `/fleets...`,
@@ -694,16 +687,14 @@ export default function App() {
         <Route path="/agents/flow" element={<Page><AgentFlow /></Page>} />
         <Route path="/agents/:id/chats/:conversationId" element={<Page><AgentChatConversation /></Page>} />
         <Route path="/agents/:id/:tab?/:section?" element={<Page><AgentDetail /></Page>} />
-        <Route path="/health/:tab?" element={<AdminRoute><Page><Health /></Page></AdminRoute>} />
-        {/* The former Concierge page (#101 S1): `/concierge[/tab]` opens Platform Health, the tab and query kept. */}
-        <Route path="/concierge/*" element={<HealthLegacyRedirect />} />
+        <Route path="/concierge/:tab?" element={<FeatureFlagGate flag="CONCIERGE"><AdminRoute><Page><Concierge /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Evaluations /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/new" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><NewEvaluation /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets/:id/:tab?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><DatasetDetail /></Page></AdminRoute></FeatureFlagGate>} />
         {/* Static one-segment paths, above `/evaluations/:id/:tab?` which would read them as an id. */}
         <Route path="/evaluations/compare/:tab?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationCompare /></Page></AdminRoute></FeatureFlagGate>} />
-        <Route path="/evaluations/review" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationBundleReview /></Page></AdminRoute></FeatureFlagGate>} />
+        <Route path="/evaluations/review/:view?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationBundleReview /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/runs/:id" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationRunDetail /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/:evaluationId/compare" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationRunCompare /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/:id/:tab?" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><EvaluationDetail /></Page></AdminRoute></FeatureFlagGate>} />

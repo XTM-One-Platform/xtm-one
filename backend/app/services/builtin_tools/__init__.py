@@ -113,6 +113,12 @@ from .agent_builder import (
 from .computer_use import (
     build_computer_use_tools,
 )
+from .concierge_experiments import (
+    build_concierge_experiment_tools,
+)
+from .concierge_quality import (
+    build_concierge_diagnosis_tools,
+)
 from .ctem_cases import (
     CTEM_CASE_TOOL_NAMES,
     build_ctem_case_tools,
@@ -194,12 +200,6 @@ from .handover import (
     resolve_handover_agent,
     resolve_owned_delegation_target,
     self_fanout_enabled,
-)
-from .health_experiments import (
-    build_health_experiment_tools,
-)
-from .health_quality import (
-    build_health_diagnosis_tools,
 )
 from .html_render import (
     build_render_html_tool,
@@ -364,6 +364,11 @@ from .timers import build_timer_tools
 from .traces import (
     build_trace_tools,
 )
+from .user_admin import (
+    USER_ADMIN_GROUP,
+    build_user_admin_tools,
+    offers_user_admin,
+)
 from .video_studio import (
     build_video_studio_tools,
 )
@@ -430,6 +435,7 @@ __all__ = [
     "PLATFORM_IDENTITY_KEYS",
     "PLATFORM_INSIGHTS_SUITE_ID",
     "SCHEDULING_TOOL_NAMES",
+    "USER_ADMIN_GROUP",
     "ResolvedSkill",
     "SkillAccessContext",
     "SkillSubstitute",
@@ -442,6 +448,8 @@ __all__ = [
     "build_browser_tool",
     "build_code_interpreter_tool",
     "build_computer_use_tools",
+    "build_concierge_diagnosis_tools",
+    "build_concierge_experiment_tools",
     "build_ctem_case_tools",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
@@ -456,8 +464,6 @@ __all__ = [
     "build_flow_lab_tools",
     "build_friction_tools",
     "build_generate_file_tool",
-    "build_health_diagnosis_tools",
-    "build_health_experiment_tools",
     "build_identity_context",
     "build_image_generation_tool",
     "build_kb_document_read_tools",
@@ -491,6 +497,7 @@ __all__ = [
     "build_timeline_diff_tool",
     "build_timer_tools",
     "build_trace_tools",
+    "build_user_admin_tools",
     "build_video_studio_tools",
     "build_web_fetch_tool",
     "build_work_item_tools",
@@ -542,6 +549,7 @@ __all__ = [
     "offers_ctem_case_tools",
     "offers_organization_context_write",
     "offers_organization_proposals",
+    "offers_user_admin",
     "orchestrator_may_delete_action",
     "orchestrator_phase_gate_blocked",
     "owned_consult_target",
