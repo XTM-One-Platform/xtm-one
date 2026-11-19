@@ -6,6 +6,11 @@ tabulate==0.10.0
 # YAML: an agent parses the playbook, values file or workflow it is editing to
 # check the edit (yaml.safe_load); same pin as backend/pyproject.toml.
 PyYAML==6.0.3
+# Excel: an agent reads an .xlsx a user attached and writes one as a
+# deliverable (pandas.read_excel / DataFrame.to_excel use them); openpyxl carries
+# the backend/pyproject.toml pin, XlsxWriter the pin of the data image.
+openpyxl==3.1.5
+XlsxWriter==3.2.9
 # Password-protected archives: pyzipper writes and reads WinZip AES (AE-1/AE-2)
 # ZIPs (AESZipFile, setpassword, setencryption(WZ_AES, nbits=256)) and pulls
 # pycryptodomex; cryptography carries the same pin as backend/pyproject.toml.

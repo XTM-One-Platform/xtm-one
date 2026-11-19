@@ -173,6 +173,8 @@ backend's own `pyproject.toml` for consistency:
 | scipy | 1.17.1 |
 | tabulate | 0.10.0 |
 | PyYAML | 6.0.3 |
+| openpyxl | 3.1.5 |
+| XlsxWriter | 3.2.9 |
 | pyzipper | 0.4.0 |
 | pycryptodomex | 3.24.2 |
 | cryptography | 50.0.0 |
@@ -191,6 +193,11 @@ nothing stores or logs it.
 `PyYAML` lets `code_interpreter` parse a YAML file it reads or edits (an
 Ansible playbook, a Helm values file, a workflow) with `yaml.safe_load`, to
 check an edit before it is pushed; it carries the backend's own pin.
+
+`openpyxl` and `XlsxWriter` let `code_interpreter` read an `.xlsx` a user
+attached and write one as a deliverable, directly or through
+`pandas.read_excel` and `DataFrame.to_excel`; `openpyxl` carries the backend's
+own pin.
 
 `av` (PyAV, BSD-3-Clause) gives `code_interpreter` a video decoder in process:
 its manylinux wheel bundles the FFmpeg libraries, so a frame of a recording, an
