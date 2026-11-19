@@ -72,10 +72,11 @@ def monthly(dates: list[dt.date]) -> list[tuple[dt.date, int]]:
 
 
 def _nice(v: int) -> int:
-    for step in (1, 2, 5):
-        for p in range(0, 7):
+    """Smallest 1, 2 or 5 times a power of ten giving at most six grid steps."""
+    for p in range(0, 7):
+        for step in (1, 2, 5):
             s = step * 10 ** p
-            if v / s <= 5:
+            if v / s <= 6:
                 return s
     return 10 ** 6
 
