@@ -244,6 +244,9 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
     # The gateway returns Claude's thinking blocks as ``thinking_blocks``, and
     # Gemini's thought signatures on its tool calls.
     replays_thinking_blocks = True
+    # The gateway's 10 MiB body cap is below some providers' (Anthropic: 32 MB);
+    # a provider's own 413 arrives as a 502. Per-provider caps: ai-gateway#360.
+    body_cap_error_code = "request_too_large"
 
     def __init__(self, api_key: str, **kwargs):
         base, target, token = parse_gateway_credential(api_key)

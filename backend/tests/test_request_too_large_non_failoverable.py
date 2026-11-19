@@ -645,16 +645,47 @@ def test_friendly_error_message_uses_shared_predicate_for_wrapped_413():
 # AI Gateway: a body over 10 MiB is a 413 ``request_too_large``
 # ---------------------------------------------------------------------------
 
+_GROQ_TPM = (
+    "Request too large for model `llama-3.3-70b-versatile` in organization `org_x` on tokens "
+    "per minute (TPM): Limit 12000, Requested 30000, please reduce your message size and try again."
+)
 
-def _gateway_error(status: int, code: str) -> Exception:
+
+def _sdk_error(status: int, code: str, message: str = "the request body is over the 10 MiB limit") -> Exception:
+    """The error the OpenAI SDK raises for an ``{"error": {code, message}}`` envelope."""
     import httpx
     import openai
 
-    # A message with no size keyword: the status alone must decide.
-    message = "the request body is over the 10 MiB limit"
-    request = httpx.Request("POST", "https://gateway.example/v1/chat/completions")
-    response = httpx.Response(status, request=request)
-    return openai.APIStatusError(message, response=response, body={"message": message, "code": code})
+    def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"code": code, "message": message}})
+
+    client = openai.OpenAI(
+        api_key="unused",
+        base_url="https://gateway.example/v1",
+        max_retries=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(answer)),
+    )
+    with pytest.raises(openai.APIStatusError) as excinfo:
+        client.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
+    return excinfo.value
+
+
+class _GatewayFailing(_FailingProvider):
+    body_cap_error_code = "request_too_large"
+
+
+class _GatewayRecording(_RecordingProvider):
+    body_cap_error_code = "request_too_large"
+
+
+def _gateway_413() -> Exception:
+    return _sdk_error(413, "request_too_large")
+
+
+def test_gateway_declares_its_body_cap_code():
+    from app.llm.gateway_provider import FiligranGatewayProvider
+
+    assert FiligranGatewayProvider.body_cap_error_code == "request_too_large"
 
 
 def test_gateway_413_is_request_too_large():
@@ -662,7 +693,7 @@ def test_gateway_413_is_request_too_large():
     from app.llm.router import AllProvidersFailedError, FailoverLLMProvider, is_request_too_large_error
     from app.services.failure_causes import FailureCause, FailureDetermination, classify_run_failure
 
-    exc = _gateway_error(413, "request_too_large")
+    exc = _gateway_413()
     assert is_request_too_large_error(exc) is True
     assert FailoverLLMProvider._is_non_failoverable(exc) is True
     chain = AllProvidersFailedError([("openai", Exception("Error code: 529 - overloaded")), ("gateway", exc)])
@@ -676,20 +707,30 @@ def test_gateway_413_is_request_too_large():
     assert result.determination is FailureDetermination.STRUCTURAL
 
 
+def test_413_with_another_code_is_not_request_too_large():
+    """Groq answers its tokens-per-minute limit with a 413: a rate limit, which fails over."""
+    from app.llm.router import FailoverLLMProvider, is_request_too_large_error
+
+    exc = _sdk_error(413, "rate_limit_exceeded", _GROQ_TPM)
+    assert is_request_too_large_error(exc) is False
+    assert FailoverLLMProvider._is_non_failoverable(exc) is False
+
+
 def test_gateway_400_invalid_request_is_not_request_too_large():
     """A body cut off by the client stays a 400: not a size error."""
     from app.llm.router import is_request_too_large_error
 
-    assert is_request_too_large_error(_gateway_error(400, "invalid_request")) is False
+    assert is_request_too_large_error(_sdk_error(400, "invalid_request")) is False
 
 
 # The gateway's 10 MiB cap is its own, below some providers' (Anthropic: 32 MB):
-# its 413 falls over, and a chain that ends on it still reads as too large.
+# its 413 falls over to other providers, never to another gateway leg, and a
+# chain that ends on it still reads as too large.
 
 
 @pytest.mark.asyncio
 async def test_gateway_413_falls_over_to_the_next_provider():
-    primary = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    primary = _GatewayFailing("filigran_gateway", _gateway_413())
     fallback = _RecordingProvider("anthropic")
     provider = _make_failover(primary, [fallback])
 
@@ -699,7 +740,7 @@ async def test_gateway_413_falls_over_to_the_next_provider():
 
 @pytest.mark.asyncio
 async def test_gateway_413_falls_over_to_the_next_provider_streaming():
-    primary = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    primary = _GatewayFailing("filigran_gateway", _gateway_413())
     fallback = _RecordingProvider("anthropic")
     provider = _make_failover(primary, [fallback])
 
@@ -711,7 +752,7 @@ async def test_gateway_413_falls_over_to_the_next_provider_streaming():
 @pytest.mark.asyncio
 async def test_gateway_413_mid_chain_falls_over():
     primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
-    gateway = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    gateway = _GatewayFailing("filigran_gateway", _gateway_413())
     last = _RecordingProvider("gemini")
     provider = _make_failover(primary, [gateway, last])
 
@@ -720,12 +761,46 @@ async def test_gateway_413_mid_chain_falls_over():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_gateway_413_skips_the_other_gateway_legs(streaming: bool):
+    primary = _GatewayFailing("filigran_gateway", _gateway_413())
+    other_gateway = _GatewayRecording("filigran_gateway")
+    direct = _RecordingProvider("anthropic")
+    provider = _make_failover(primary, [other_gateway, direct])
+
+    if streaming:
+        assert [chunk async for chunk in provider.chat_stream([], model="claude-sonnet-5")] == ["ok"]
+    else:
+        await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert other_gateway.calls == 0
+    assert direct.calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_gateway_only_chain_ending_on_its_413_is_request_too_large(streaming: bool):
+    from app.llm.router import is_request_too_large_error
+
+    other_gateway = _GatewayRecording("filigran_gateway")
+    provider = _make_failover(_GatewayFailing("filigran_gateway", _gateway_413()), [other_gateway])
+
+    with pytest.raises(Exception) as excinfo:
+        if streaming:
+            async for _ in provider.chat_stream([], model="claude-sonnet-5"):
+                pass
+        else:
+            await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert other_gateway.calls == 0
+    assert is_request_too_large_error(excinfo.value) is True
+
+
+@pytest.mark.asyncio
 async def test_chain_ending_on_gateway_413_is_request_too_large():
     from app.api.v1.chat import _friendly_error_message
     from app.llm.router import AllProvidersFailedError, is_request_too_large_error
 
     primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
-    gateway = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    gateway = _GatewayFailing("filigran_gateway", _gateway_413())
     provider = _make_failover(primary, [gateway])
 
     with pytest.raises(AllProvidersFailedError) as excinfo:
@@ -738,7 +813,7 @@ async def test_chain_ending_on_gateway_413_is_request_too_large():
 async def test_lone_gateway_413_is_request_too_large():
     from app.llm.router import is_request_too_large_error
 
-    provider = _make_failover(_FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large")), [])
+    provider = _make_failover(_GatewayFailing("filigran_gateway", _gateway_413()), [])
 
     with pytest.raises(Exception) as excinfo:
         await provider._failover_call("chat", [], model="claude-sonnet-5")
@@ -750,22 +825,10 @@ async def test_provider_413_still_short_circuits_remaining_chain():
     from app.llm.router import AllProvidersFailedError
 
     primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
-    openai_413 = _FailingProvider("openai", _gateway_error(413, "request_too_large"))
+    openai_413 = _FailingProvider("openai", _sdk_error(413, "request_too_large"))
     untouched = _RecordingProvider("gemini")
     provider = _make_failover(primary, [openai_413, untouched])
 
     with pytest.raises(AllProvidersFailedError):
         await provider._failover_call("chat", [], model="claude-sonnet-5")
     assert untouched.calls == 0
-
-
-def test_httpx_413_without_keyword_is_request_too_large():
-    """The status read off ``.response`` counts too (httpx-based providers)."""
-    import httpx
-
-    from app.llm.router import is_request_too_large_error
-
-    request = httpx.Request("POST", "https://provider.example/v1/chat")
-    response = httpx.Response(413, request=request)
-    exc = httpx.HTTPStatusError("the body is over the limit", request=request, response=response)
-    assert is_request_too_large_error(exc) is True
