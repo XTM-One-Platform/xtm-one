@@ -401,6 +401,19 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
             </AuthModePicker>
           )}
 
+          {/* Whose account an OAuth server's calls carry (#443). */}
+          {isOAuth && (
+            <CredentialModePicker value={editCredentialMode} onChange={setEditCredentialMode}>
+              {credentialModeChanged && (
+                <p className="content-compact text-feedback-warning-primary pt-1">
+                  {editCredentialMode === "per_user"
+                    ? t_i18n("Saving discards the shared connection: each person then connects their own account.")
+                    : t_i18n("Saving disconnects every person's own account: the server then has to be authorized once for everyone.")}
+                </p>
+              )}
+            </CredentialModePicker>
+          )}
+
           {/* Secrets section — env vars for stdio, headers for remote. Stored
               values never come back; the save sends the set only when an entry
               is present, replacing what is stored — hence the hint, shown only
@@ -450,15 +463,6 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
           {isOAuth && (
             <div className="space-y-3">
               <div className="content-compact font-medium text-default-secondary">{t_i18n("OAuth 2.0 Configuration")}</div>
-              <CredentialModePicker value={editCredentialMode} onChange={setEditCredentialMode}>
-                {credentialModeChanged && (
-                  <p className="content-compact text-feedback-warning-primary pt-1">
-                    {editCredentialMode === "per_user"
-                      ? t_i18n("Saving discards the shared connection: each person then connects their own account.")
-                      : t_i18n("Saving disconnects every person's own account: the server then has to be authorized once for everyone.")}
-                  </p>
-                )}
-              </CredentialModePicker>
               <div className="grid gap-4 sm:grid-cols-2">
                 <SettingsField
                   id="edit-server-authorize-url"
