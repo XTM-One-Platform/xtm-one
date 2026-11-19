@@ -1259,6 +1259,26 @@ def self_fanout_enabled(agent: object) -> bool:
     return bool(settings.agent_self_fanout_enabled) and getattr(agent, "allow_self_fanout", True) is not False
 
 
+def self_fanout_effective_text(stored: bool) -> str:
+    """The effective self fan-out value of an agent whose own setting is *stored*.
+
+    The agent setting alone does not say whether a copy can be spawned: the
+    platform switch wins, and only a top-level run (a chat or assignment run)
+    may spawn, never a background copy or a consulted run. get_agent shows
+    this next to the stored setting.
+    """
+    from app.core.config import settings
+
+    if not settings.agent_self_fanout_enabled:
+        return "No: turned off for the platform (AGENT_SELF_FANOUT_ENABLED)"
+    if not stored:
+        return "No: turned off for this agent"
+    return (
+        "Yes from a top-level run (chat or assignment run) only; never from a background "
+        "copy or a consulted run, whatever the setting"
+    )
+
+
 def self_fanout_refusal_reason(self_agent: object | None, delegation_depth: int) -> str:
     """Why a copy of *self_agent* is refused on this turn, naming the condition that holds.
 
