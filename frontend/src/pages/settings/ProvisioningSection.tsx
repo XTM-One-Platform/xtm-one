@@ -35,6 +35,7 @@ import {
   REVIEW_ACTION_LABELS,
   REVIEW_DETAIL_LABELS,
   SCIM_ACTIVITY_LABELS,
+  scimActivityKey,
 } from "@/lib/provisioning-labels";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { Icon, Spinner } from "@filigran/design-system";
@@ -201,7 +202,7 @@ function ActivityCard() {
         {(data?.length ?? 0) > 0 && (
           <ul className="divide-y divide-[var(--border-elevation-subtle)]">
             {data!.map((row) => {
-              const key = SCIM_ACTIVITY_LABELS[`${row.entity_type}:${row.action}` as keyof typeof SCIM_ACTIVITY_LABELS];
+              const key = SCIM_ACTIVITY_LABELS[scimActivityKey(row) as keyof typeof SCIM_ACTIVITY_LABELS];
               const text = key && row.entity_name ? t_i18n(key, { name: row.entity_name }) : row.summary;
               return (
                 <li key={row.id} className="flex items-baseline justify-between gap-3 py-2">

@@ -52,6 +52,26 @@ beforeEach(() => {
       summary: "Backend line kept as is",
       created_at: null,
     },
+    {
+      id: "a3",
+      token: "Microsoft Entra",
+      action: "toggle",
+      entity_type: "user",
+      entity_name: "Alan Turing",
+      summary: "SCIM changed active of alan@example.com",
+      active: false,
+      created_at: null,
+    },
+    {
+      id: "a4",
+      token: "Microsoft Entra",
+      action: "toggle",
+      entity_type: "user",
+      entity_name: "Grace Hopper",
+      summary: "SCIM changed active of grace@example.com",
+      active: true,
+      created_at: null,
+    },
   ];
   episodes = [
     {
@@ -85,6 +105,13 @@ describe("ProvisioningSection", () => {
     expect(screen.getByText("Backend line kept as is")).toBeInTheDocument();
     expect(screen.getAllByText(/4 nov\., 08:30/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Nov 4/)).not.toBeInTheDocument();
+  });
+
+  it("names a deactivation and a reactivation by the identity provider in the app language", () => {
+    renderWithProviders(<ProvisioningSection />, { locale: "fr" });
+    expect(screen.getByText("Compte Alan Turing désactivé")).toBeInTheDocument();
+    expect(screen.getByText("Compte Grace Hopper réactivé")).toBeInTheDocument();
+    expect(screen.queryByText(/SCIM changed active/)).not.toBeInTheDocument();
   });
 
   it("renders a review row without a DOM nesting error", () => {
