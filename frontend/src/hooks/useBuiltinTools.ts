@@ -126,7 +126,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       dashboard_studio: dashboardStudioEnabled,
       mobile_companion: mobileCompanionEnabled,
       // Built in since #101 (S1): the suites of the health specialists carry no flag.
-      concierge: true,
+      health: true,
     };
     const toOption = (group: BuiltinToolGroup): BuiltinToolOption => ({
       id: group.id,
