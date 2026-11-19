@@ -83,7 +83,7 @@ async def _open(db: AsyncSession) -> dict[str, HealthCheckFinding]:
     return {r.check_id: r for r in rows if r.status == STATUS_OPEN}
 
 
-def test_the_seven_agent_checks_are_registered_on_the_engine() -> None:
+def test_the_eleven_agent_checks_are_registered_on_the_engine() -> None:
     assert {c.check_id for c in CHECKS} == {
         "agents.assignment_failing",
         "agents.schedule_silent",
@@ -92,6 +92,10 @@ def test_the_seven_agent_checks_are_registered_on_the_engine() -> None:
         "agents.failure_spike",
         "agents.feedback_drop",
         "agents.cost_drift",
+        "agents.model_change",
+        "agents.integration_broken",
+        "agents.orphaned_claims",
+        "agents.blocked_without_blocker",
     }
     assert {c.interval for c in CHECKS} == {agent_checks.AGENT_CHECK_INTERVAL}
 
@@ -101,7 +105,7 @@ async def test_an_enrolled_agent_gets_one_finding_per_failing_check() -> None:
     async with _temp_database("hac_findings") as sessions, sessions() as db:
         _owner, agent, assignment = await _world(db, owner_active=False)
         totals = await engine.run_pass(db, now=T0, checks=CHECKS)
-        assert totals["checks"] == 7
+        assert totals["checks"] == 11
         found = await _open(db)
         assert set(found) == {"agents.assignment_failing", "agents.schedule_silent", "agents.owner_disabled"}
         assert found["agents.assignment_failing"].subject == {
@@ -196,6 +200,106 @@ async def test_a_cost_spike_is_reported_over_three_times_the_daily_average() -> 
         assert spike.evidence["values"] == {"tokens_last_day": 410_000, "tokens_previous_7_days": 0}
 
 
+async def _daily(db: AsyncSession, owner: User, agent: Agent, days_ago: int, model: str) -> None:
+    from app.models.llm_trace import LLMDailyStats
+
+    db.add(
+        LLMDailyStats(
+            date=T0.date() - timedelta(days=days_ago),
+            agent_id=agent.id,
+            user_id=owner.id,
+            model=model,
+            source="assignment",
+            trace_count=4,
+        )
+    )
+    await db.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_model_not_used_in_the_week_before_is_reported_then_resolves() -> None:
+    async with _temp_database("hac_model") as sessions, sessions() as db:
+        owner, agent, _assignment = await _world(db)
+        for days_ago in (5, 3, 2):
+            await _daily(db, owner, agent, days_ago, "openai/gpt-a")
+        await _daily(db, owner, agent, 1, "openai/gpt-b")
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        row = (await _open(db))["agents.model_change"]
+        assert row.evidence["values"]["new_models"] == ["openai/gpt-b"]
+        assert row.evidence["values"]["previous_models"] == ["openai/gpt-a"]
+        # The next days, gpt-b is part of the window before: resolved.
+        for step in (1, 2):
+            engine._LAST_RUN.clear()
+            await _daily(db, owner, agent, 1 - step, "openai/gpt-b")
+            await engine.run_pass(db, now=T0 + timedelta(days=step), checks=CHECKS)
+        await db.refresh(row)
+        assert row.status == STATUS_RESOLVED
+
+
+@pytest.mark.asyncio
+async def test_a_first_model_sighting_records_no_change() -> None:
+    async with _temp_database("hac_model_first") as sessions, sessions() as db:
+        owner, agent, _assignment = await _world(db)
+        await _daily(db, owner, agent, 1, "openai/gpt-b")
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        assert "agents.model_change" not in await _open(db)
+
+
+@pytest.mark.asyncio
+async def test_a_bound_integration_to_reauthorize_is_reported() -> None:
+    from app.models.integration import Integration
+
+    async with _temp_database("hac_integration") as sessions, sessions() as db:
+        owner, agent, _assignment = await _world(db)
+        broken = Integration(id=uuid.uuid4(), user_id=owner.id, provider="github", name="gh", status="reauthorize")
+        fine = Integration(id=uuid.uuid4(), user_id=owner.id, provider="jira", name="jr", status="connected")
+        db.add_all([broken, fine])
+        await db.flush()
+        agent.integration_bindings = {"github": [str(broken.id)], "jira": [str(fine.id)], "x": ["not-a-uuid"]}
+        await db.flush()
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        rows = [
+            r
+            for r in (await db.execute(select(HealthCheckFinding))).scalars()
+            if r.check_id == "agents.integration_broken" and r.status == STATUS_OPEN
+        ]
+        assert [r.subject for r in rows] == [{"agent_id": str(agent.id), "integration_id": str(broken.id)}]
+        assert rows[0].evidence["values"]["status"] == "reauthorize"
+        broken.status = "connected"
+        await db.flush()
+        for step in (1, 2):
+            engine._LAST_RUN.clear()
+            await engine.run_pass(db, now=T0 + timedelta(minutes=15 * step), checks=CHECKS)
+        await db.refresh(rows[0])
+        assert rows[0].status == STATUS_RESOLVED
+
+
+@pytest.mark.asyncio
+async def test_owned_work_items_held_by_an_ended_run_or_blocked_on_nothing_are_reported() -> None:
+    from app.models.work_item import WorkItem
+
+    async with _temp_database("hac_items") as sessions, sessions() as db:
+        owner, agent, assignment = await _world(db)
+        ended = AssignmentRun(
+            assignment_id=assignment.id, agent_id=agent.id, user_id=owner.id, status="completed", created_at=T0
+        )
+        db.add(ended)
+        await db.flush()
+        held = WorkItem(
+            user_id=owner.id, owner_agent_id=agent.id, title="held", status="in_progress", claimed_by_run_id=ended.id
+        )
+        bare = WorkItem(user_id=owner.id, owner_agent_id=agent.id, title="bare", status="blocked")
+        named = WorkItem(
+            user_id=owner.id, owner_agent_id=agent.id, title="named", status="blocked", blocked_reason="waits"
+        )
+        db.add_all([held, bare, named])
+        await db.flush()
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        found = await _open(db)
+        assert found["agents.orphaned_claims"].evidence["values"] == {"items": [str(held.id)], "count": 1}
+        assert found["agents.blocked_without_blocker"].evidence["values"] == {"items": [str(bare.id)], "count": 1}
+
+
 async def _runs(
     db: AsyncSession, owner: User, agent: Agent, assignment: Assignment, *, failed: int, total: int
 ) -> None:
@@ -284,7 +388,7 @@ async def test_with_ai_switched_off_no_agent_is_read(monkeypatch: pytest.MonkeyP
     async with _temp_database("hac_ai_off") as sessions, sessions() as db:
         await _world(db, owner_active=False)
         totals = await engine.run_pass(db, now=T0, checks=CHECKS)
-        assert totals["checks"] == 7 and totals["opened"] == 0
+        assert totals["checks"] == 11 and totals["opened"] == 0
         assert await _open(db) == {}
 
 
