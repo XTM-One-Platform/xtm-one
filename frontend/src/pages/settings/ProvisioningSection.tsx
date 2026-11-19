@@ -34,8 +34,10 @@ import {
   labelOf as label,
   REVIEW_ACTION_LABELS,
   REVIEW_DETAIL_LABELS,
+  SCIM_ACTIVITY_LABELS,
+  scimActivityKey,
 } from "@/lib/provisioning-labels";
-import { formatShortDateTime } from "@/lib/utils";
+import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { Icon, Spinner } from "@filigran/design-system";
 
 function useCopy() {
@@ -49,7 +51,7 @@ function useCopy() {
 }
 
 function ScimCard() {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const [ConfirmEl, confirm] = useConfirm();
   const { data, isLoading } = useScimTokens();
   const create = useCreateScimToken();
@@ -124,7 +126,7 @@ function ScimCard() {
               <div className="flex items-center gap-3">
                 <span className="content-compact text-default-secondary">
                   {token.last_used_at
-                    ? t_i18n("Last used on {date}", { date: formatShortDateTime(token.last_used_at) })
+                    ? t_i18n("Last used on {date}", { date: formatShortDateTimeIntl(intl, token.last_used_at) })
                     : t_i18n("Never used")}
                 </span>
                 <Button
@@ -181,7 +183,7 @@ function ScimCard() {
 }
 
 function ActivityCard() {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const { data, isLoading } = useScimActivity();
   return (
     <Card data-testid="scim-activity">
@@ -199,14 +201,18 @@ function ActivityCard() {
         )}
         {(data?.length ?? 0) > 0 && (
           <ul className="divide-y divide-[var(--border-elevation-subtle)]">
-            {data!.map((row) => (
-              <li key={row.id} className="flex items-baseline justify-between gap-3 py-2">
-                <span className="min-w-0 flex-1 truncate content-compact" title={row.summary}>{row.summary}</span>
-                <span className="shrink-0 content-compact text-default-secondary">
-                  {row.created_at ? formatShortDateTime(row.created_at) : ""}
-                </span>
-              </li>
-            ))}
+            {data!.map((row) => {
+              const key = SCIM_ACTIVITY_LABELS[scimActivityKey(row) as keyof typeof SCIM_ACTIVITY_LABELS];
+              const text = key && row.entity_name ? t_i18n(key, { name: row.entity_name }) : row.summary;
+              return (
+                <li key={row.id} className="flex items-baseline justify-between gap-3 py-2">
+                  <span className="min-w-0 flex-1 truncate content-compact" title={text}>{text}</span>
+                  <span className="shrink-0 content-compact text-default-secondary">
+                    {row.created_at ? formatShortDateTimeIntl(intl, row.created_at) : ""}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>
@@ -215,7 +221,7 @@ function ActivityCard() {
 }
 
 function EpisodeRow({ episode }: { episode: DeactivationEpisode }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const resolve = useResolveReviewItem();
   const open = episode.review_items.filter((item) => !item.reviewed_at);
   const mark = (key: string, resolution: ReviewResolution) =>
@@ -230,7 +236,7 @@ function EpisodeRow({ episode }: { episode: DeactivationEpisode }) {
           {episode.deprovisioned && <Badge variant="outline" className="content-caption">{t_i18n("Removed by the identity provider")}</Badge>}
           <span className="content-compact text-default-secondary">
             {t_i18n(label(DEACTIVATION_SOURCE_LABELS, episode.source, "Platform"))}
-            {episode.deactivated_at ? `, ${formatShortDateTime(episode.deactivated_at)}` : ""}
+            {episode.deactivated_at ? `, ${formatShortDateTimeIntl(intl, episode.deactivated_at)}` : ""}
           </span>
         </div>
       </div>
@@ -241,10 +247,10 @@ function EpisodeRow({ episode }: { episode: DeactivationEpisode }) {
           {open.map((item) => (
             <li key={item.key} className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate content-compact" title={item.name}>
+                <div className="truncate content-compact" title={item.name}>
                   <Badge variant="outline" className="mr-2 content-caption">{t_i18n(label(REVIEW_ACTION_LABELS, item.action, "Moved"))}</Badge>
                   {item.name}
-                </p>
+                </div>
                 {item.params && item.action in REVIEW_DETAIL_LABELS && (
                   <p className="content-compact text-default-secondary">
                     {t_i18n(REVIEW_DETAIL_LABELS[item.action as keyof typeof REVIEW_DETAIL_LABELS], item.params)}

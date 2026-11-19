@@ -61,6 +61,35 @@ export const REVIEW_DETAIL_LABELS = {
   bound_by_other_agent: "{count, plural, one {Bound to # integration of this user, now disconnected.} other {Bound to # integrations of this user, now disconnected.}}",
 } as const;
 
+/**
+ * @i18n-keys One line of the latest SCIM changes, by `<entity_type>:<action>` of
+ * the audit row (`list_scim_activity` in backend/app/api/v1/scim.py); `{name}`
+ * is the row's `entity_name`. A `user:toggle` row (the identity provider changed
+ * `active`) reads as `user:deactivate` or `user:reactivate` from the row's
+ * `active` (see `scimActivityKey`). A row this table does not name, or one
+ * without a name, shows the backend's own summary.
+ */
+export const SCIM_ACTIVITY_LABELS = {
+  "user:create": "Account {name} provisioned",
+  "user:update": "Account {name} changed",
+  "user:delete": "Account {name} deprovisioned",
+  "user:deactivate": "Account {name} deactivated",
+  "user:reactivate": "Account {name} reactivated",
+  "group:create": "Group {name} provisioned",
+  "group:update": "Group {name} changed",
+  "group:delete": "Group {name} deleted",
+  "scim_token:create": "SCIM token {name} generated",
+  "scim_token:delete": "SCIM token {name} revoked",
+} as const;
+
+/** The SCIM_ACTIVITY_LABELS key of an activity row: a toggle names its direction. */
+export function scimActivityKey(row: { entity_type: string; action: string; active?: boolean | null }): string {
+  if (row.entity_type === "user" && row.action === "toggle" && typeof row.active === "boolean") {
+    return row.active ? "user:reactivate" : "user:deactivate";
+  }
+  return `${row.entity_type}:${row.action}`;
+}
+
 /** The catalog key of `key` in a label table, else `fallback` (a value the backend added later). */
 export function labelOf(table: Readonly<Record<string, string>>, key: string, fallback: string): string {
   return table[key] ?? fallback;
