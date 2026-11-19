@@ -412,6 +412,7 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
 
 async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uuid.UUID | None, name: str) -> Fleet:
     """The company-managed fleet the orchestrator leads, created once, missing members added."""
+    from app.models.workspace import Workspace
     from app.services.fleets import add_home_member, create_fleet, home_fleets_of, set_orchestrator
     from app.services.workspaces import create_workspace
 
@@ -442,7 +443,11 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
 
     fleet.is_builtin = True
     fleet.slug = HEALTH_FLEET_SLUG
+    fleet.name = name
     fleet.is_archived = False
+    workspace_row = await db.get(Workspace, fleet.workspace_id)
+    if workspace_row is not None and workspace_row.is_company_managed:
+        workspace_row.name = name
     fleet.description = _FLEET_DESCRIPTION
     fleet.icon = "Compass"
     homes = await home_fleets_of(db, [agent.id for agent in agents.values()])
@@ -469,10 +474,11 @@ async def seed_health_fleet(db: AsyncSession) -> int:
         return 0
     from app.api.v1.helpers import resolve_company_managed_owner_id
     from app.services.health.identity import set_health_role
-    from app.services.health.naming import DEFAULT_NAMES, load_health_agent_name, rename_health_agents
+    from app.services.health.naming import DEFAULT_NAME
 
     owner_id = await resolve_company_managed_owner_id(db)
-    name = await load_health_agent_name(db)
+    # Built in: the rows carry the platform's name, never a saved or hand-made one.
+    name = DEFAULT_NAME
     by_slug = _adopt_former_slugs(
         list(
             (
@@ -528,9 +534,6 @@ async def seed_health_fleet(db: AsyncSession) -> int:
 
     if ORCHESTRATOR_SLUG in by_slug:
         await _ensure_fleet(db, by_slug, owner_id, name)
-        # A deployment that changed mode, or seeded before Platform Health had a
-        # name: rows still carrying a default name take this one's.
-        await rename_health_agents(db, previous=DEFAULT_NAMES, name=name)
     await db.commit()
     return created
 

@@ -77,6 +77,45 @@ def test_the_health_fleet_takes_no_write_not_even_a_switch():
         assert (refused.value.status_code, refused.value.detail) == (403, HEALTH_READ_ONLY_REFUSAL)
 
 
+async def test_the_health_fleet_is_never_forked():
+    from app.services.fleet_fork import fork_fleet
+
+    fleet = SimpleNamespace(id=uuid.uuid4(), is_builtin=True, slug="platform-health")
+    with pytest.raises(FleetActionRefusedError) as refused:
+        # Refused before any read: the session is never touched.
+        await fork_fleet(None, fleet, _user("admin"), [])  # type: ignore[arg-type]
+    assert (refused.value.status_code, refused.value.detail) == (403, HEALTH_READ_ONLY_REFUSAL)
+
+
+async def test_a_health_agent_is_never_duplicated(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.api.v1 import agents as agents_api
+    from app.services import llm_provider_deletion
+
+    agent = _agent()
+
+    async def _no_lock(*_a, **_k):
+        return None
+
+    async def _groups(*_a, **_k):
+        return []
+
+    async def _found(*_a, **_k):
+        return agent
+
+    async def _never(*_a, **_k):
+        raise AssertionError("a health agent must not be copied")
+
+    monkeypatch.setattr(llm_provider_deletion, "lock_provider_configs", _no_lock)
+    monkeypatch.setattr(agents_api, "get_user_group_ids", _groups)
+    monkeypatch.setattr(agents_api, "get_user_agent", _found)
+    monkeypatch.setattr(agents_api, "copy_agent_for_user", _never)
+    with pytest.raises(HTTPException) as refused:
+        await agents_api.duplicate_agent(str(agent.id), None, user=_user("admin"), db=None)  # type: ignore[arg-type]
+    assert (refused.value.status_code, refused.value.detail) == (403, HEALTH_READ_ONLY_REFUSAL)
+
+
 def test_a_custom_fleet_named_like_it_is_not_the_health_fleet():
     assert is_health_fleet(SimpleNamespace(is_builtin=False, slug="platform-health")) is False
     ensure_builtin_fleet_writable(SimpleNamespace(is_builtin=False, slug="platform-health"), {"name"})

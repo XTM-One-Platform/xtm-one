@@ -337,9 +337,6 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     ("services/health/fleet_seed.py", "fleet_agent_ids"): (
         "the digest's 'by the Concierge' counts the fleet's own agents, company-managed by construction"
     ),
-    ("services/health/naming.py", "rename_health_agents"): (
-        "the orchestrator, fleet and workspace the seed made are company-managed; a personal look-alike keeps its name"
-    ),
     # (b) not a read offered to the caller, SQL unchanged
     ("services/health/sandbox/side_effects.py", "company_mcp_server_ids"): (
         "the flag IS the policy: a sandbox trusts a tool name only from a server an "

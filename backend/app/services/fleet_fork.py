@@ -264,7 +264,8 @@ async def fork_fleet(
 ) -> FleetForkResult:
     """Write a personal fork of *source* for *user*; the caller audits and commits.
 
-    Refused (:class:`FleetActionRefusedError`): an unknown *members* mode
+    Refused (:class:`FleetActionRefusedError`): the built-in Platform Health
+    fleet (403, read-only for everyone), an unknown *members* mode
     (422), a fleet without an orchestrator in ``keep`` mode (400), a
     workspace the caller cannot manage or that cannot host a personal fleet.
     """
@@ -272,8 +273,12 @@ async def fork_fleet(
     from app.api.v1.helpers import lower_budget_to_ceiling, user_visible_filter
     from app.models.general_assistant_config import clamp_max_iterations
     from app.services.fleet_docs import copy_documentation
+    from app.services.health.read_only import HEALTH_READ_ONLY_REFUSAL, is_health_fleet
     from app.services.llm_provider_deletion import lock_provider_configs
 
+    if is_health_fleet(source):
+        # The Platform Health fleet ships with the platform and is never forked (#101).
+        raise FleetActionRefusedError(403, HEALTH_READ_ONLY_REFUSAL)
     if members not in FORK_MEMBER_MODES:
         raise FleetActionRefusedError(422, f"members is one of {', '.join(FORK_MEMBER_MODES)}.")
 
