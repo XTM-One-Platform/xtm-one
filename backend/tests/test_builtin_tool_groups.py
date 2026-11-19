@@ -11,10 +11,13 @@ from app.models.general_assistant_config import (
 from app.services.builtin_tool_budget import (
     DEFAULT_BASELINE,
     TOTAL_SCHEMA_CHARS_CEILING,
+    breakdown_definitions,
     compute_budget,
+    format_breakdown,
     format_budget,
     load_baseline,
     measure_schema_sizes,
+    repeated_arguments,
     save_baseline,
 )
 from app.services.builtin_tool_catalog import build_builtin_tool_catalog
@@ -246,3 +249,54 @@ def test_the_readout_script_prints_the_table_and_exits_on_the_ceiling(tmp_path, 
     out = capsys.readouterr().out
     assert "TOTAL" in out and "nothing grew against the baseline" in out
     assert f"{TOTAL_SCHEMA_CHARS_CEILING:,}" in out
+
+
+def _definition(name: str, description: str, **properties) -> dict:
+    return {"name": name, "description": description, "input_schema": {"type": "object", "properties": properties}}
+
+
+_SHARED = {"type": "object", "description": "x" * 120}
+_GROUP = [
+    _definition("read", "Read one.", id={"type": "string"}),
+    _definition("create", "Create one." * 5, impact=_SHARED, title={"type": "string", "description": "t" * 40}),
+    _definition("update", "Update one.", impact=dict(reversed(list(_SHARED.items()))), limit={"type": "integer"}),
+]
+
+
+def test_the_breakdown_lists_functions_by_size_with_their_largest_arguments():
+    rows = breakdown_definitions(_GROUP)
+    assert [row.name for row in rows] == ["create", "update", "read"]
+    create = rows[0]
+    assert create.size == schema_chars(_GROUP[1]) and create.description == len("Create one." * 5)
+    assert [name for name, _ in create.arguments] == ["impact", "title"]
+    assert create.arguments[0][1] > create.arguments[1][1]
+    assert breakdown_definitions([{"name": "bare", "description": "", "input_schema": {}}])[0].arguments == []
+
+
+def test_an_argument_with_the_same_schema_in_several_functions_is_named_repeated():
+    # Key order does not make a different text; small repeats are left out.
+    assert repeated_arguments(_GROUP) == [
+        ("impact", len('{"description":"' + "x" * 120 + '","type":"object"}'), ["create", "update"])
+    ]
+    assert repeated_arguments(_GROUP, min_chars=10_000) == []
+
+
+def test_the_breakdown_text_names_headroom_functions_and_repeats():
+    text = format_breakdown("alpha", _GROUP, ceiling=10_000, top=2)
+    size = sum(schema_chars(definition) for definition in _GROUP)
+    assert text.splitlines()[0] == f"alpha: {size:,} chars in 3 functions, ceiling 10,000, headroom {10_000 - size:,}"
+    assert "arguments: impact" in text.splitlines()[1]
+    assert "... 1 more (--group alpha lists them all)" in text
+    assert "impact" in text.split("repeated arguments")[1] and "x2: create, update" in text
+    assert "ceiling" not in format_breakdown("alpha", _GROUP).splitlines()[0]
+
+
+def test_the_readout_script_breaks_a_named_group_down_and_refuses_an_unknown_one(tmp_path, capsys):
+    from scripts import tool_schema_budget
+
+    baseline = tmp_path / "baseline.json"
+    assert tool_schema_budget.main(["--baseline", str(baseline), "--group", "coordination"]) == 0
+    out = capsys.readouterr().out
+    assert "\ncoordination: " in out and "create_work_item" in out and "arguments: " in out
+    assert tool_schema_budget.main(["--group", "no_such_group"]) == 2
+    assert "Unknown group: no_such_group" in capsys.readouterr().err
