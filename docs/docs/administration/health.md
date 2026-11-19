@@ -11,7 +11,7 @@ The platform creates a company-managed fleet named after the orchestrator, in a 
 
 | Agent | Role |
 |---|---|
-| **Concierge** (or the name set below; renamed with the seeded fleet) | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
+| **Platform Health** (or the name set below; renamed with the seeded fleet) | The orchestrator. Investigates a target after a signal or a request by handing the work to the specialists, writes the weekly digest, and answers administrators in chat. |
 | **Memory Steward** | Consolidates the memory of agents whose managers opted in. |
 | **Quality Analyst** | Diagnoses agents and drafts persona, skill and assignment-prompt variants. |
 | **Flow Lab** | Diagnoses flows and drafts repairs, optimizations and new flows on sandbox copies. |

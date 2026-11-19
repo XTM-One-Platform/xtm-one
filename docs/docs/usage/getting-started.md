@@ -38,7 +38,7 @@ The left navigation reads from top to bottom:
 - `Work`: what your agents produce. It holds `Operations` (their runs, background tasks, work items, shared state, worksets and workspaces), `Value`, `Presentations`, `Videos`, `Dashboards` and `Files`, the last ones where your deployment offers them.
 - `Agent Studio`: what your agents are made of. It holds `Knowledge`, `Prompts`, `Templates`, `Skills` and `Investigation packs`. `Create an agent` is a button of the hub and of the `Agents` page, and a destination of the command palette.
 - `Tools & Integrations`: what your agents act through. It holds `MCP Servers`, `Tools`, `Integrations` and `Connections` (`Browser profiles`, plus `Variables` and `Relays` where your deployment offers them).
-- `Administration` (administrators): `Observability` (`Model usage`, `Outcomes`, `Traces` and `Sessions`), `AI Adoption`, `Evaluations`, `Concierge`, `Users and groups`, `Objects`, `Audit logs` and `Settings`. A group manager sees `Model usage` for the members of their groups.
+- `Administration` (administrators): `Observability` (`Model usage`, `Outcomes`, `Traces` and `Sessions`), `AI Adoption`, `Evaluations`, `Platform Health`, `Users and groups`, `Objects`, `Audit logs` and `Settings`. A group manager sees `Model usage` for the members of their groups.
 
 `Orchestration`, `Work`, `Agent Studio` and `Tools & Integrations` are groups: click a group's name to open its hub page, which presents each of its pages as a card, and the arrow next to it to fold or unfold the group. A row that gathers several pages (`Observability`, `Users and groups`, `Connections`) opens the first of them, with one row of tabs to the others. The navigation can also shrink to a rail of icons, with the toggle at its foot.
 

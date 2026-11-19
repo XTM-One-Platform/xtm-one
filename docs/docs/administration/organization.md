@@ -59,7 +59,7 @@ Reading the profile needs nothing. Changing it is the **Organization Profile Edi
 
 The row and import tools preview by default: they answer what would be added, updated, left unchanged, removed or refused, with the reasons, and save nothing. With `apply` set to true they save a new version, authored by the administrator the agent acts for, with the agent and the counts kept as the basis.
 
-Only an administrator can add the group to an agent. The tools are offered only on a turn that acts for an administrator: the verified caller in chat, the run's acting user in an assignment. A non-administrator talking to the same agent does not get them, and a direct call is refused ("only an administrator can change the organization profile"); an identity the platform cannot resolve is refused too. The built-in CTEM Assistant and Concierge keep their proposal tool without the group.
+Only an administrator can add the group to an agent. The tools are offered only on a turn that acts for an administrator: the verified caller in chat, the run's acting user in an assignment. A non-administrator talking to the same agent does not get them, and a direct call is refused ("only an administrator can change the organization profile"); an identity the platform cannot resolve is refused too. The built-in CTEM Assistant and the Platform Health orchestrator keep their proposal tool without the group.
 
 ## Fill the profile with an agent
 

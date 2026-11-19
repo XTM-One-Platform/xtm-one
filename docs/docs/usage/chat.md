@@ -230,7 +230,7 @@ The wrench button opens the session tools menu. It has one sub-menu per kind of 
 - MCP servers
 - knowledge bases
 
-Each kind shows how many of its tools are on. Switching a tool keeps the menu open, so you can change several in a row. The built-in tools of the Platform Concierge's specialists (Memory Steward, Concierge Diagnosis, Concierge Experiments, Concierge Flow Lab) are the Concierge's own: the menu never lists them, and `Disable all` leaves them as the agent carries them.
+Each kind shows how many of its tools are on. Switching a tool keeps the menu open, so you can change several in a row. The built-in tools of the Platform Health specialists (Memory Steward, Health Diagnosis, Health Experiments, Health Flow Lab) are Platform Health's own: the menu never lists them, and `Disable all` leaves them as the agent carries them.
 
 When you use the `General Assistant`, this menu lets you build a temporary toolset for the conversation. When you use a specific agent, the panel starts from that agent's own toolset and lets you switch built-in tools on or off for the conversation. Work items, shared state and trace inspection act as the agent itself, so they are only offered when the agent already has them or when you can configure the agent. Trace inspection reads the agent's traces, which hold every user's conversations with it, so the one you add, and the one the platform builder (the suite named after the platform) brings along, only work for someone who can read the agent's chats: an admin, its owner, or someone it is shared with as `Full access (incl. chats)`.
 

@@ -17,7 +17,7 @@
 :data:`CELL_WIDTH` x :data:`CELL_HEIGHT` cells, one state a row
 (:data:`STATES`), uploaded as one ``.zip`` or as the two files. Every check an
 upload passes, and the code each refusal answers, is the table of
-``dev-docs/concierge-companion.md``. The platform stores the spritesheet it
+``dev-docs/health-companion.md``. The platform stores the spritesheet it
 decoded and re-encoded itself, never the uploaded bytes. The built-in pets
 (:data:`BUILTIN_SLUGS`) ship as files, drawn by
 ``backend/scripts/generate_alfred_pet.py``; they have no row.
