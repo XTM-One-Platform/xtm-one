@@ -149,6 +149,22 @@ def test_the_manifest_filter_reads_depth_and_glob_relative_to_the_prefix():
     assert matches_listing_filter("d/e/f.md", "", 0, "")  # 0: no bound
 
 
+def test_the_manifest_filter_expands_brace_alternatives_in_the_glob():
+    from app.services.sandbox_workspace.manifest import MAX_BRACE_EXPANSIONS, expand_braces, matches_listing_filter
+
+    glob = "{architecture,overview}.md"
+    assert matches_listing_filter("docs/architecture.md", "docs", None, glob)
+    assert matches_listing_filter("docs/overview.md", "docs", None, glob)
+    assert not matches_listing_filter("docs/readme.md", "docs", None, glob)
+    assert matches_listing_filter("repo/src/x/a.tsx", "repo/src", None, "{x,y}/*.{ts,tsx}")
+    assert sorted(expand_braces("a{b,c{d,e}}f")) == ["abf", "acdf", "acef"]
+    assert expand_braces("{solo}.md") == ["{solo}.md"]  # no comma: literal
+    assert expand_braces("{a,b.md") == ["{a,b.md"]  # unclosed: literal
+    wide = "{a,b}" * 7  # 128 expansions
+    assert expand_braces(wide) == [wide]
+    assert MAX_BRACE_EXPANSIONS < 2**7
+
+
 def test_the_diff_line_names_each_kind_of_change():
     from app.services.sandbox_workspace.manifest import ManifestDiff
 
