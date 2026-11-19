@@ -230,6 +230,8 @@ def _receipt(tool_name: str, split: Any, outcomes: list[Any], coverage: str) -> 
         f"({counts.get('created', 0)} added, {counts.get('unchanged', 0)} already present and unchanged, "
         f"{counts.get('revised', 0)} revised, {counts.get('updated', 0)} with new metadata)."
     ]
+    if split.fallback:
+        lines.append(f"Not split as asked: {split.fallback}")
     if refused:
         lines.append(
             f"{len(refused)} item(s) were NOT stored ({_one_line(refused[0], 300)}): "
