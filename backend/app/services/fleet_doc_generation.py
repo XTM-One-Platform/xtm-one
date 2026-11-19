@@ -1050,6 +1050,8 @@ def with_derived_parts(
 
 
 #: The blocks a regenerate keeps from the version it replaces when neither the model nor the configuration gives one.
+#: ``gates`` is never kept (#393): the fleet's level acts on the documented gates when it stores no catalog
+#: (``fleet_autonomy.fleet_gates``), so a gate the configuration no longer gives must leave with the version.
 KEPT_BLOCKS: tuple[str, ...] = (
     "purpose_line",
     "outcome_line",
@@ -1057,7 +1059,6 @@ KEPT_BLOCKS: tuple[str, ...] = (
     "members",
     "triggers",
     "steps",
-    "gates",
     "objects",
     "prerequisites",
 )
@@ -1484,8 +1485,7 @@ async def draft_fleet_documentation(
     ``pending``. Raises :class:`FleetDocDraftError` on an unknown section, or
     when nothing at all could be produced (its message names the cause).
     """
-    if section is not None and section not in DOC_SECTIONS:
-        raise FleetDocDraftError(f"Unknown documentation section: {section}.")
+    check_section(section)
     wanted = [section] if section is not None else list(DOC_SECTIONS)
     current = dict((_stored(fleet) or {}).get("sections") or {})
     if llm is None:
@@ -1556,6 +1556,18 @@ async def draft_fleet_documentation(
         draft.structured, context, draft.notes, previous=(_stored(fleet) or {}).get("structured")
     )
     return draft
+
+
+def check_section(section: str | None) -> None:
+    """Refuse an unknown *section* (#393), naming the known ones; ``None`` (every section) passes.
+
+    Called before a generation is claimed, so a wrong name is the caller's refusal,
+    never a failure recorded on the About page.
+    """
+    if section is not None and section not in DOC_SECTIONS:
+        raise FleetDocDraftError(
+            f"Unknown documentation section: {section}. Known sections: {', '.join(DOC_SECTIONS)}."
+        )
 
 
 async def _missing_sections(
