@@ -2061,6 +2061,64 @@ async def test_get_ruleset_formats_conditions_bypass_and_rules():
 
 
 @pytest.mark.asyncio
+async def test_get_ruleset_names_an_enterprise_ruleset_on_a_repository():
+    """An enterprise ruleset is served by neither the repo nor the org endpoint:
+    the answer names it and points to get_github_branch_rules, not a permission."""
+    fn = _get_fn(_executor(), "get_github_ruleset")
+    calls: list[str] = []
+
+    async def fake_request(client, method, url, provider, action, **kwargs):
+        calls.append(url)
+        if url.endswith("/repos/octo/repo/rulesets/77"):
+            return (None, "GitHub API error (404): Not Found")
+        assert url.endswith("/repos/octo/repo/rulesets")
+        assert kwargs["params"]["includes_parents"] == "true"
+        return (
+            _mock_response([{"id": 77, "name": "Protect", "source_type": "Enterprise", "source": "filigran"}]),
+            None,
+        )
+
+    with patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request):
+        result = await fn(ruleset_id=77, repo="octo/repo")
+
+    assert len(calls) == 2
+    assert "enterprise ruleset (Enterprise: filigran)" in result
+    assert "get_github_branch_rules" in result
+    assert "Administration" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_ruleset_repo_error_keeps_hint_when_not_enterprise():
+    fn = _get_fn(_executor(), "get_github_ruleset")
+
+    async def fake_request(client, method, url, provider, action, **kwargs):
+        if url.endswith("/rulesets/77"):
+            return (None, "GitHub API error (403): Resource not accessible by integration")
+        return (_mock_response([{"id": 5, "source_type": "Enterprise", "source": "x"}]), None)
+
+    with patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request):
+        result = await fn(ruleset_id=77, repo="octo/repo")
+
+    assert "enterprise ruleset (" not in result
+    assert "Administration: Read" in result
+
+
+@pytest.mark.asyncio
+async def test_get_ruleset_org_error_mentions_enterprise_rulesets():
+    fn = _get_fn(_executor(), "get_github_ruleset")
+
+    async def fake_request(client, method, url, provider, action, **kwargs):
+        return (None, "GitHub API error (403): Resource not accessible by integration")
+
+    with patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request):
+        result = await fn(ruleset_id=77, org="octo")
+
+    assert "Organization -> Administration: Read" in result
+    assert "source Enterprise" in result
+    assert "get_github_branch_rules" in result
+
+
+@pytest.mark.asyncio
 async def test_branch_protection_falls_back_to_ruleset_when_classic_absent():
     """The audit gap: a branch governed only by a Ruleset must NOT be reported
     as 'not protected' - branch protection falls back to the effective rules."""

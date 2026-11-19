@@ -2064,6 +2064,65 @@ def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _simulation_state_lines(e: dict[str, Any]) -> list[str]:
+    """Parent scenario, dates and inject count of a simulation, when returned.
+
+    A simulation a scenario recurrence created carries the scenario id and its
+    start date; without them a reader cannot tell that the recurrence fired.
+    Each line is rendered only when OpenAEV returned the field it reads.
+    """
+    lines: list[str] = []
+    scenario = e.get("exercise_scenario")
+    if isinstance(scenario, dict):
+        scenario = scenario.get("scenario_id")
+    if scenario:
+        lines.append(f"  Scenario: {scenario}")
+    for key, label in (
+        ("exercise_start_date", "Start"),
+        ("exercise_end_date", "End"),
+        ("exercise_created_at", "Created"),
+        ("exercise_updated_at", "Updated"),
+    ):
+        if e.get(key):
+            lines.append(f"  {label}: {e[key]}")
+    injects = e.get("exercise_injects")
+    if isinstance(injects, list):
+        lines.append(f"  Injects: {len(injects)}")
+    return lines
+
+
+#: Injects listed with their execution status on a simulation read.
+SIMULATION_INJECT_ROWS = 25
+
+
+def _simulation_inject_status_lines(rows: Any) -> list[str]:
+    """One line per inject of a simulation with its execution status.
+
+    ``rows`` is the answer of ``GET /api/exercises/{id}/injects/results``.
+    The status says whether the inject ran (SUCCESS, ERROR, PENDING...), not
+    whether the defense worked; an inject not executed yet has no status.
+    """
+    if not isinstance(rows, list):
+        return []
+    rows = [r for r in rows if isinstance(r, dict)]
+    lines = [f"  Inject statuses ({len(rows)}):"]
+    if not rows:
+        lines.append("    none")
+        return lines
+    for row in rows[:SIMULATION_INJECT_ROWS]:
+        status = row.get("inject_status")
+        if isinstance(status, dict):
+            status = status.get("status_name")
+        title = row.get("inject_title") or "?"
+        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {status or 'not executed'}")
+    if len(rows) > SIMULATION_INJECT_ROWS:
+        lines.append(
+            f"    {len(rows) - SIMULATION_INJECT_ROWS} more not shown; "
+            "manage_openaev_inject action 'results' lists them all."
+        )
+    return lines
+
+
 def _fmt_finding(f: dict, base_url: str = "") -> str:
     finding_id = f.get("finding_id", "N/A")
     lines = [f"[Finding] {f.get('finding_value', '?')}"]
