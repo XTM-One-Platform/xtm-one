@@ -1,170 +1,209 @@
 <h1 align="center">
-  <a href="https://filigran.io/platform/xtm-platform/"><img src="./.github/img/logo_xtmone.png" alt="XTM One"></a>
+  <a href="https://filigran.io/xtm-one"><img src="./.github/img/logo_xtmone.png" alt="XTM One"></a>
 </h1>
+
 <p align="center">
-  <a href="https://filigran.io/platform/xtm-platform/"><img src="https://img.shields.io/badge/website-filigran.io-blue.svg" alt="Website" /></a>
-  <a href="https://docs.xtmone.io/"><img src="https://img.shields.io/badge/documentation-latest-orange.svg" alt="Documentation" /></a>
+  <a href="https://github.com/XTM-One-Platform/xtm-one/stargazers"><img src="https://img.shields.io/github/stars/XTM-One-Platform/xtm-one?style=flat&logo=github" alt="GitHub stars" /></a>
   <a href="https://github.com/XTM-One-Platform/xtm-one/releases/latest"><img src="https://img.shields.io/github/v/release/XTM-One-Platform/xtm-one" alt="Latest release" /></a>
-  <a href="https://hub.docker.com/u/xtmone"><img src="https://img.shields.io/docker/pulls/xtmone/platform" alt="Docker pulls" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20EE-green.svg" alt="License" /></a>
-  <a href="https://community.filigran.io"><img src="https://img.shields.io/badge/slack-community-4A154B" alt="Slack community" /></a>
-  <a href="https://github.com/XTM-One-Platform/xtm-one"><img src="https://img.shields.io/github/stars/XTM-One-Platform/xtm-one?style=social" alt="GitHub stars" /></a>
+  <a href="https://docs.xtmone.io/latest/"><img src="https://img.shields.io/badge/docs-docs.xtmone.io-orange.svg" alt="Documentation" /></a>
+  <a href="https://hub.docker.com/r/xtmone/platform"><img src="https://img.shields.io/docker/pulls/xtmone/platform" alt="Docker pulls" /></a>
+  <a href="https://community.filigran.io"><img src="https://img.shields.io/badge/slack-community-4A154B?logo=slack" alt="Slack community" /></a>
 </p>
 
-<p align="center"><b>The open source agentic core of Continuous Threat Exposure Management.</b></p>
+<p align="center"><b>The open source agentic core of the XTM Platform: Agentic CTEM, from threat signal to verified fix.</b></p>
 
-XTM One is the core of Filigran's [XTM Platform](https://filigran.io/platform/xtm-platform/). It connects [OpenCTI](https://github.com/OpenCTI-Platform/opencti) (threat intelligence), [OpenAEV](https://github.com/OpenAEV-Platform/openaev) (adversarial exposure validation) and [OpenCRQ](https://github.com/OpenCRQ-Platform/opencrq) (cyber risk quantification) into one CTEM command center, and puts security agents to work on top of them.
+XTM One gives security teams one command center for Continuous Threat Exposure Management (CTEM). It reads the threats that target you from [OpenCTI](https://github.com/OpenCTI-Platform/opencti), proves which of them get through your defenses with [OpenAEV](https://github.com/OpenAEV-Platform/openaev), prices the risk with [OpenCRQ](https://filigran.io/opencrq), and puts AI agents and fleets to work on the exposures that matter, under your control. Self-hosted, with your own AI provider and your own data.
 
-Proactive security, run continuously: know the adversary, map your exposure, prove your defenses against real attacker techniques, and mobilize the fix. Self-hosted, with your own AI provider and your own data.
+<p align="center">If XTM One helps your security program, <a href="https://github.com/XTM-One-Platform/xtm-one/stargazers">give it a star</a>: it is how the project grows.</p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-command-center-dark.webp">
   <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-command-center-light.webp">
-  <img alt="The XTM One CTEM command center: overall exposure posture, the five CTEM stages with their scores, the exposure briefing and the next actions to take" src="./.github/img/readme-command-center-light.webp">
+  <img alt="The XTM One CTEM command center: the overall exposure posture, a score for each of the five CTEM stages, the connected OpenCTI, OpenAEV and OpenCRQ platforms and the next actions to take" src="./.github/img/readme-command-center-light.webp">
 </picture>
 
 ## Table of contents
 
 - [Why XTM One](#why-xtm-one)
-- [The CTEM lifecycle in XTM One](#the-ctem-lifecycle-in-xtm-one)
 - [Capabilities](#capabilities)
+- [Gallery](#gallery)
 - [How it works](#how-it-works)
-- [Editions](#editions)
+- [Part of the XTM Platform](#part-of-the-xtm-platform)
 - [Quick start](#quick-start)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
+- [Editions](#editions)
+- [Integrations and ecosystem](#integrations-and-ecosystem)
 - [Community](#community)
+- [Contributing](#contributing)
 - [Security](#security)
-- [About](#about)
+- [License](#license)
+- [About Filigran](#about-filigran)
 
 ## Why XTM One
 
-- **One posture, five stages.** The command center scores your exposure across the CTEM lifecycle from the data already in OpenCTI, OpenAEV and OpenCRQ, and shows where the program is weakest.
-- **Threat-informed, not vulnerability-informed.** Exposures are ranked by the adversaries that target you and by what your defenses failed to stop in validation, not by a raw severity score.
-- **Agents that do the work.** Stage analysts, an exposure briefing and seeded CTEM fleets read your platforms, explain what changed and propose the next actions. Every automation is opt-in.
-- **Open by default.** The command center, the stage metrics and the native MCP servers work in the Community Edition, with AI switched off if you want.
+Security teams drown in findings and still cannot answer the question that matters: which exposures will an adversary actually use against us, and are they fixed?
 
-## The CTEM lifecycle in XTM One
-
-XTM One follows the five CTEM stages as the product names them: **Scoping**, **Discovery**, **Prioritization**, **Validation** and **Remediation** (shown as Mobilization in the FIMI and fraud verticals). Each stage has its own page, its own score, its own data sources and its own AI analyst.
-
-| Stage | What XTM One does | Built on |
-|---|---|---|
-| **Scoping** | Frames the attack surface and the threat landscape that matters to your organization: sectors, regions, crown jewels, tech stack, intelligence requirements. | OpenCTI, OpenAEV, organization context |
-| **Discovery** | Finds the vulnerabilities, assets and threat activity relevant to that scope, and flags blind spots and connected sources that return no data. | OpenCTI |
-| **Prioritization** | Ranks exposures by threat relevance: known exploited vulnerabilities, adversaries targeting you, techniques without coverage, and expected loss when OpenCRQ is connected. | OpenCTI, OpenAEV, OpenCRQ |
-| **Validation** | Proves whether defenses hold against the techniques that matter, through simulations, failed expectations and detection coverage. | OpenAEV, OpenCTI |
-| **Remediation** | Turns findings into tracked actions, follows them to closure and re-tests the fix. | OpenCTI, OpenAEV |
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-prioritization-dark.webp">
-  <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-prioritization-light.webp">
-  <img alt="The CTEM Prioritization stage page in XTM One: the stage score, its contributing metrics and the sources it reads" src="./.github/img/readme-prioritization-light.webp">
-</picture>
+- **Threat-informed, not severity-informed.** Exposures are ranked by the adversaries that target your sector and regions, by the techniques your defenses failed to stop in validation and by the expected loss, not by a raw CVSS score.
+- **One posture across the five CTEM stages.** Scoping, Discovery, Prioritization, Validation and Mobilization are scored from the data already in OpenCTI, OpenAEV and OpenCRQ, so the program sees where it is weakest.
+- **Agents that do the work, humans that decide.** Stage analysts, an exposure briefing and ready-made CTEM fleets read your platforms, explain what changed and propose the next actions. Every automation is opt-in and approvals stay with your team.
+- **Open by default.** The command center, the stage metrics and the remediation cases work in the Community Edition, with no AI and no license.
 
 ## Capabilities
 
-### CTEM command center
+### By CTEM stage
 
-- **Exposure posture** across the five stages, with history, a live activity feed and a force sync that needs no AI.
-- **Exposure briefing** (Enterprise Edition): a monthly and on-demand narrative of what changed in your exposure, with next steps.
-- **Stage assessments** (Enterprise Edition): a weekly and on-demand assessment per stage, written by the stage's analyst (CTEM Scoping, Discovery, Prioritization, Validation and Mobilization Analysts).
-- **Organization context**: sector, regions, crown jewels, tech stack, assets and prioritization policy, read by every CTEM agent so its output is about your organization, not a generic one.
-- **Value**: run counts, cost and outcome tracking for the agents and fleets, so the program can show what it delivered.
+| Stage | What your team gets | Built on |
+|---|---|---|
+| **Scoping** | The attack surface and threat landscape that matter to your organization: sectors, regions, crown jewels, tech stack and priority intelligence requirements, read by every CTEM agent. | OpenCTI, OpenAEV, organization context |
+| **Discovery** | The vulnerabilities, assets and threat activity relevant to that scope, the attacker techniques never tested, and the blind spots where a connected source returns no data. | OpenCTI, OpenAEV |
+| **Prioritization** | A funnel from every known vulnerability down to the few that are relevant, exploitable and open, ranked by known exploitation, adversaries targeting you, missing coverage and expected loss. | OpenCTI, OpenAEV, OpenCRQ |
+| **Validation** | Proof of whether prevention and detection hold against the techniques that matter, from simulations, failed expectations and detection coverage. | OpenAEV, OpenCTI |
+| **Mobilization** | Remediation cases that group issues by fix (an upgrade, a configuration), carry their assets, crown jewels and known exploitation, and follow the fix to closure and re-test. | OpenCTI, OpenAEV |
 
-### Seeded CTEM fleets
+### By job to be done
 
-Ready-made teams of agents for recurring CTEM work, shipped disabled until an administrator switches them on:
+| Team | What XTM One does for it |
+|---|---|
+| **CTI analysts** | Search, read and write STIX 2.1 knowledge in OpenCTI in natural language with your own permissions; extract STIX objects and TTPs from reports, each grounded in its source text; summarize any entity's activity and history. |
+| **Detection engineers** | Convert STIX indicator patterns into Splunk SPL, Microsoft Sentinel KQL, Elastic, Sigma, YARA, Snort and Suricata rules; generate detections for the techniques OpenAEV proved undetected. |
+| **Red and purple teams** | Design adversary emulation scenarios mapped to MITRE ATT&CK with payloads grounded in public references, and turn the techniques of the adversaries that target you into OpenAEV simulations. |
+| **Vulnerability and exposure management** | The prioritization funnel, remediation cases by fix, and the "Vulnerability prioritization to verified fix" fleet: triage against your assets, exploitability validated in OpenAEV, risk quantified, fix coordinated and re-tested. |
+| **SOC** | Threat hunting packages built from high-value indicators, results of simulations and failed expectations, and agents that answer in the chat, in MCP clients or through A2A. |
+| **Risk and CISO** | The exposure posture and its trend, the exposure briefing (Enterprise Edition), expected loss from OpenCRQ and the value the agents and fleets delivered. |
 
-- **Threat-informed exposure response**: a published threat becomes a relevance verdict, a proposed OpenAEV scenario, an expected loss and three approved actions, closed by a re-test.
-- **Vulnerability prioritization to verified fix**: triage against your assets, exploitability validated in OpenAEV, risk quantified, remediation coordinated and re-tested.
-- **AI security**, **third-party risk**, and **CTEM posture and reporting** fleets.
+### The agentic engine
 
-Fleets react to OpenCTI and OpenAEV events (new intrusion sets, finished simulations) through triggers XTM One provisions on the platforms, and run as the administrator who enabled them.
+- **Agents, fleets and flows**: agents with tools, skills and knowledge; fleets of agents around an orchestrator; visual flows. Triggered by schedules, webhooks, platform events (a new intrusion set in OpenCTI, a finished simulation in OpenAEV) and work items, with human approval where you want it and a full trace of every run.
+- **Ready-made CTEM fleets**: threat-informed exposure response, vulnerability prioritization to verified fix, and CTEM posture and reporting. Shipped disabled until an administrator switches them on.
+- **Secure sandbox**: agents run code and checks in isolated containers ([OpenSandbox](https://github.com/opensandbox-group/OpenSandbox), part of the Compose stack) with closed egress.
+- **Evaluations**: score agents and models against reference sets before you trust them with your program.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-fleet-dark.webp">
-  <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-fleet-light.webp">
-  <img alt="The Threat-informed exposure response fleet in XTM One: its orchestrator and member agents as a graph" src="./.github/img/readme-fleet-light.webp">
-</picture>
+## Gallery
 
-### Threat intelligence (with OpenCTI)
-
-- **Conversational analysis**: search, read and write STIX 2.1 knowledge in OpenCTI in natural language, with your own permissions on the platform.
-- **Grounded STIX extraction**: extract STIX 2.1 objects and TTPs from reports, each grounded in its source text, with an evaluation that aligns objects the way OpenCTI imports them.
-- **Dashboards, threat hunting packages and entity insights**: design OpenCTI dashboards, build hunting packages from high-value indicators, and summarize any entity's activity and history.
-
-### Exposure validation (with OpenAEV)
-
-- **Scenario design**: plan adversary emulation scenarios mapped to MITRE ATT&CK, with payloads grounded in public references.
-- **Autonomous attack path** (Enterprise Edition, OpenAEV preview): an AI attack-path orchestrator in XTM One plans the path, picks the next technique and runs it through OpenAEV, which executes, enforces scope and renders the live attack graph. The operator steers from OpenAEV.
-- **Results review**: read simulations, failed expectations and findings to measure and improve your defenses.
-
-### Detection engineering
-
-- **Rule conversion**: turn STIX 2.1 indicator patterns into rules for SIEM, EDR and XDR platforms and universal formats (Splunk SPL, Microsoft Sentinel KQL, Elastic, Sigma, YARA, Snort/Suricata and more).
-- **Detection rules from simulations**: generate detection rules for the techniques OpenAEV proved undetected.
-
-### Open interfaces
-
-- **Native MCP servers** for OpenCTI and OpenAEV: any MCP client connects to `POST /mcp/opencti` or `POST /mcp/openaev` with a personal API key or OAuth 2.1, and works with business and knowledge tools under its own identity on the platform. Community Edition. See [dev-docs/platform-mcp-servers.md](dev-docs/platform-mcp-servers.md).
-- **Agent-to-agent (A2A)**: expose an XTM One agent to other agents through a published agent card, and call remote A2A agents from XTM One. See [dev-docs/a2a-server-operations.md](dev-docs/a2a-server-operations.md).
-- **Threat-intelligence and security integrations** such as MITRE ATT&CK, MITRE ATLAS, MISP and Recorded Future, listed in the [documentation](https://docs.xtmone.io/).
-
-### The engine underneath
-
-- **Agents, fleets and flows** with schedules, webhooks, platform events and work items, human approval where you want it, and full traces of every run.
-- **Secure sandbox**: agents run code and checks in isolated containers (OpenSandbox, part of the compose stack) with closed egress.
-- **Evaluations** to score agents and models against reference sets before you trust them with your program. See [dev-docs/evaluations.md](dev-docs/evaluations.md).
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-discovery-dark.webp">
+        <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-discovery-light.webp">
+        <img alt="The CTEM Discovery stage: threat techniques from OpenCTI against the techniques tested in OpenAEV simulations, with the untested ones counted" src="./.github/img/readme-discovery-light.webp">
+      </picture>
+      <p><b>Discovery.</b> See which techniques of the adversaries that target you were never tested.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-prioritization-dark.webp">
+        <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-prioritization-light.webp">
+        <img alt="The CTEM Prioritization stage: a funnel from known vulnerabilities to relevant, exploitable and open remediation cases" src="./.github/img/readme-prioritization-light.webp">
+      </picture>
+      <p><b>Prioritization.</b> Go from thousands of known vulnerabilities to the handful that are relevant, exploitable and open.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-cases-dark.webp">
+        <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-cases-light.webp">
+        <img alt="CTEM remediation cases: one row per fix with its priority, issue count, crown jewels, known exploitation and state" src="./.github/img/readme-cases-light.webp">
+      </picture>
+      <p><b>Remediation cases.</b> One case per fix, ranked, with the crown jewels and known exploitation it touches.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-case-dark.webp">
+        <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-case-light.webp">
+        <img alt="A remediation case: upgrade a firewall operating system, with its open issues from OpenCTI and OpenAEV, known exploited vulnerabilities, maximum CVSS and affected assets" src="./.github/img/readme-case-light.webp">
+      </picture>
+      <p><b>Case detail.</b> Every issue behind a fix, from intelligence and from validation, with the assets at stake.</p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme-fleet-dark.webp">
+        <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme-fleet-light.webp">
+        <img alt="The Vulnerability prioritization to verified fix fleet: its automations, the value it delivered and the graph of its orchestrator and member agents" src="./.github/img/readme-fleet-light.webp">
+      </picture>
+      <p><b>CTEM fleets.</b> A team of agents that takes a vulnerability from triage to a verified fix, with the value it delivered.</p>
+    </td>
+  </tr>
+</table>
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  subgraph clients[Clients]
-    UI[XTM One web UI]
-    MCP[MCP clients]
-    A2A[A2A agents]
+  subgraph clients["Your team and its tools"]
+    UI["XTM One web UI<br/>command center, chat"]
+    MCPC["MCP clients"]
+    A2AC["A2A agents"]
   end
-  subgraph core[XTM One]
-    CC[CTEM command center]
-    AG[Agents, fleets, flows]
-    SB[Secure sandbox]
+  subgraph core["XTM One"]
+    ID["Identity<br/>SSO, groups, permissions"]
+    CTX["Shared context<br/>organization, knowledge, skills"]
+    AG["Agents and fleets"]
+    FL["Flows and triggers"]
+    MCPS["MCP servers<br/>XTM One, OpenCTI, OpenAEV, OpenCRQ"]
+    A2A["A2A server and client"]
+    SB["Secure sandbox"]
   end
-  subgraph xtm[XTM Platform]
-    CTI[OpenCTI]
-    AEV[OpenAEV]
-    CRQ[OpenCRQ]
+  subgraph modules["XTM Platform modules"]
+    CTI["OpenCTI"]
+    AEV["OpenAEV"]
+    CRQ["OpenCRQ"]
   end
-  LLM[Your AI provider<br/>cloud or local]
-  UI --> CC
-  MCP --> core
+  INT["Integrations and<br/>remote MCP servers"]
+  LLM["Your AI provider<br/>cloud or local"]
+  UI --> ID
+  MCPC --> MCPS
+  A2AC <--> A2A
+  ID --> AG
+  CTX --> AG
+  FL --> AG
   A2A <--> AG
-  CC --> AG
+  MCPS --> AG
   AG --> SB
   AG <--> CTI
   AG <--> AEV
   AG <--> CRQ
+  CTI -- events --> FL
+  AEV -- events --> FL
+  AG <--> INT
   AG --> LLM
 ```
 
-- **Self-hosted.** XTM One, its PostgreSQL (with pgvector), Redis and object store run where you deploy them. Your data stays with you.
-- **Bring your own model.** Anthropic, OpenAI, Google Gemini, Mistral AI, OpenRouter, or a local model through LM Studio. AI can be switched off for the whole platform or per group.
-- **Credentials encrypted at rest.** Integration and provider credentials are stored Fernet-encrypted in the database and configured from the settings, never in configuration files.
-- **Your permissions, not a service account.** Platform tools act with the connecting user's identity on OpenCTI and OpenAEV.
+- **Self-hosted.** XTM One, its PostgreSQL with pgvector, Redis and S3-compatible object store run where you deploy them. Your data stays with you.
+- **Bring your own model.** Anthropic, OpenAI, Azure OpenAI, Google Gemini and Vertex AI, Amazon Bedrock, Mistral AI, xAI, OpenRouter, LiteLLM, any OpenAI-compatible endpoint, or a local model through Ollama or LM Studio. AI can be switched off for the whole platform or per group.
+- **Your permissions, not a service account.** Platform tools act with the connecting user's identity on OpenCTI, OpenAEV and OpenCRQ.
+- **Credentials encrypted at rest.** Integration and provider credentials are stored encrypted in the database and configured from the settings, never in configuration files.
+- **Open interfaces.** Any MCP client connects to `POST /mcp/opencti`, `/mcp/openaev` or `/mcp/opencrq` with a personal API key or OAuth 2.1 ([native MCP servers](dev-docs/platform-mcp-servers.md)); XTM One agents are published to other agents and call remote ones over [A2A](dev-docs/a2a-server-operations.md).
 
-## Editions
+## Part of the XTM Platform
 
-| | Community Edition | Enterprise Edition |
+```mermaid
+flowchart TB
+  subgraph xtm["XTM Platform: Agentic CTEM"]
+    ONE["XTM One<br/>agentic core: command center, agents, fleets, flows"]
+    CTI["OpenCTI<br/>threat intelligence"]
+    AEV["OpenAEV<br/>adversarial exposure validation"]
+    CRQ["OpenCRQ<br/>cyber risk quantification"]
+    ONE <--> CTI
+    ONE <--> AEV
+    ONE <--> CRQ
+  end
+  HUB["XTM Hub<br/>integrations, dashboards, scenarios"]
+  HUB --> xtm
+  S1["Scoping"] --> S2["Discovery"] --> S3["Prioritization"] --> S4["Validation"] --> S5["Mobilization"] --> S1
+  xtm -.-> S1
+```
+
+| Product | Role in CTEM | Repository |
 |---|---|---|
-| License | [Apache 2.0](LICENSE) | [XTM One Enterprise Edition License](LICENSE) |
-| CTEM command center, stage pages and metrics, force sync, live activity | Yes | Yes |
-| Native MCP servers for OpenCTI and OpenAEV | Yes | Yes |
-| Exposure briefing and stage assessments | | Yes |
-| Seeded CTEM fleets and fleet automations | | Yes |
-| Autonomous attack path (with OpenAEV) | | Yes |
-
-The Community Edition works with AI switched off: every metric that needs no model is computed and shown, and each AI or Enterprise surface shows a clear call to action instead of an empty state ([dev-docs/ctem-open-source.md](dev-docs/ctem-open-source.md)). Each source file states its license in its header. See the [Filigran offering](https://filigran.io/offering/subscribe) for the Enterprise Edition; you can start a trial from the platform settings.
+| **XTM One** | The agentic core: command center, agents, fleets and flows across the platform | [XTM-One-Platform/xtm-one](https://github.com/XTM-One-Platform/xtm-one) |
+| **OpenCTI** | Know the adversary: threat intelligence in STIX 2.1 | [OpenCTI-Platform/opencti](https://github.com/OpenCTI-Platform/opencti) |
+| **OpenAEV** | Prove your defenses against real attacker techniques | [OpenAEV-Platform/openaev](https://github.com/OpenAEV-Platform/openaev) |
+| **OpenCRQ** | Quantify the risk in money | [filigran.io/opencrq](https://filigran.io/opencrq) |
+| **XTM Hub** | Integrations, dashboards and scenarios for the platform | [XTM-Hub/xtm-hub](https://github.com/XTM-Hub/xtm-hub) and [hub.filigran.io](https://hub.filigran.io) |
 
 ## Quick start
 
@@ -173,7 +212,7 @@ Requirements: Docker with Docker Compose.
 ```bash
 git clone https://github.com/XTM-One-Platform/xtm-one.git && cd xtm-one
 cp .env.sample .env      # set SECRET_KEY, DB_PASSWORD, ADMIN_EMAIL and ADMIN_PASSWORD
-docker compose up -d     # builds the platform image from this checkout on first start
+docker compose up -d
 ```
 
 Then:
@@ -183,38 +222,65 @@ Then:
 3. In **Settings**, register your OpenCTI and OpenAEV instances (URL and API key), and OpenCRQ if you run it.
 4. Open the home page: the CTEM command center syncs from the registered platforms.
 
-`.env.sample` sets `PLATFORM_MODE=xtm_one`, the CTEM experience. Everything else (SSO, integrations, AI providers) is configured from the settings, not from the environment.
+Everything beyond the environment file (SSO, integrations, AI providers) is configured from the settings.
 
-### Compatibility
+- **Container images**: [`xtmone/platform`](https://hub.docker.com/r/xtmone/platform) and [`xtmone/worker`](https://hub.docker.com/r/xtmone/worker) on Docker Hub, one tag per [release](https://github.com/XTM-One-Platform/xtm-one/releases).
+- **Kubernetes**: the official Helm chart runs the same images; see [Kubernetes and Helm](https://docs.xtmone.io/latest/deployment/installation/#kubernetes-and-helm).
+- **Full guide**: [installation](https://docs.xtmone.io/latest/deployment/installation/), [configuration](https://docs.xtmone.io/latest/deployment/configuration/) and [upgrade](https://docs.xtmone.io/latest/deployment/upgrade/).
 
-XTM One follows the release train of the XTM Platform. Run the current releases of OpenCTI, OpenAEV and OpenCRQ alongside the [latest XTM One release](https://github.com/XTM-One-Platform/xtm-one/releases/latest); version notes are in each [release](https://github.com/XTM-One-Platform/xtm-one/releases).
+XTM One follows the release train of the XTM Platform: run it alongside the current releases of OpenCTI, OpenAEV and OpenCRQ.
 
-Images are published on [Docker Hub](https://hub.docker.com/u/xtmone). The full installation guide is in the [documentation](https://docs.xtmone.io/).
+## Editions
 
-## Documentation
+| | Community Edition | Enterprise Edition |
+|---|---|---|
+| License | [Apache 2.0](LICENSE) | [XTM One Enterprise Edition License](LICENSE) |
+| Identity, SSO, settings, platform connections, integrations | Yes | Yes |
+| CTEM command center, stage pages and metrics, remediation cases | Yes | Yes |
+| Agentic chat, agents, fleets, flows, assignments | | Yes |
+| Knowledge bases, skills, MCP servers, custom tools, A2A | | Yes |
+| Exposure briefing and stage assessments | | Yes |
 
-- [User and administrator documentation](https://docs.xtmone.io/)
-- [Architecture](dev-docs/architecture.md) and [developer documentation](dev-docs/)
-- [CTEM in Community Edition and with AI disabled](dev-docs/ctem-open-source.md)
-- [Native MCP servers](dev-docs/platform-mcp-servers.md)
+The Community Edition runs with AI off: every CTEM metric that needs no model is computed and shown, and each Enterprise Edition surface says what it would add. Enterprise Edition is active with a Filigran license, or as soon as a connected OpenCTI, OpenAEV or OpenCRQ platform is itself in Enterprise Edition ([editions and licensing](https://docs.xtmone.io/latest/administration/editions-and-licensing/)). Each source file states its license in its header. [Contact Filigran](https://filigran.io/contact) for a license.
 
-## Contributing
+## Integrations and ecosystem
 
-- Read the [contributing guide](CONTRIBUTING.md) to set up a development environment, propose a fix and build and test your change.
-- XTM One has adopted a [Code of Conduct](CODE_OF_CONDUCT.md).
-- New here: start with a [good first issue](https://github.com/XTM-One-Platform/xtm-one/labels/good%20first%20issue).
+- **XTM Platform**: OpenCTI, OpenAEV and OpenCRQ, natively, through their APIs and events; their native MCP servers are served by XTM One.
+- **Threat intelligence**: MITRE ATT&CK, MITRE ATLAS, MISP, VulnCheck, GreyNoise, Shodan, abuse.ch, ThreatConnect, ThreatQ, Feedly, Flashpoint and more.
+- **Detection and response**: Microsoft Sentinel and Defender, Google SecOps, CrowdStrike, SentinelOne, Elastic Security, QRadar, Sumo Logic, TheHive, Cortex XSOAR.
+- **Exposure and validation**: Tenable, Qualys, Rapid7, Wiz, AttackIQ, Picus, HackerOne, SecurityScorecard.
+- The full catalog is in the [documentation](https://docs.xtmone.io/latest/).
+- **Any MCP server**: connect remote MCP servers as tools for your agents, and expose XTM One to MCP clients.
+- **[XTM Hub](https://hub.filigran.io)**: integrations, dashboards and scenarios for the XTM Platform.
+- **[Filigran Academy](https://academy.filigran.io)**: free courses on OpenCTI and OpenAEV.
 
 ## Community
 
+- **Questions and discussion**: the Filigran [community Slack](https://community.filigran.io).
 - **Bugs and feature requests**: [GitHub issues](https://github.com/XTM-One-Platform/xtm-one/issues).
-- **Discussion and support**: the Filigran [community Slack](https://community.filigran.io), or contact@filigran.io.
+- **Star the project** to follow it and help other security teams find it.
+
+<a href="https://star-history.com/#XTM-One-Platform/xtm-one&Date"><img src="https://api.star-history.com/svg?repos=XTM-One-Platform/xtm-one&type=Date" alt="Star history of XTM One" width="600"></a>
+
+<a href="https://github.com/XTM-One-Platform/xtm-one/graphs/contributors"><img src="https://contrib.rocks/image?repo=XTM-One-Platform/xtm-one" alt="Contributors to XTM One"></a>
+
+## Contributing
+
+- Read the [contributing guide](CONTRIBUTING.md) to set up a development environment, propose a fix and test your change.
+- XTM One has adopted a [Code of Conduct](CODE_OF_CONDUCT.md).
+- Looking for a first contribution: see the [good first issues](https://github.com/XTM-One-Platform/xtm-one/labels/good%20first%20issue).
+- Developer documentation: [architecture](dev-docs/architecture.md) and [dev-docs](dev-docs/).
 
 ## Security
 
-Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
-## About
+## License
 
-XTM One is designed and developed by [Filigran](https://filigran.io).
+XTM One is open source under the [Apache 2.0 license](LICENSE); the Enterprise Edition features are under the XTM One Enterprise Edition License, as stated in [LICENSE](LICENSE) and in each source file header.
+
+## About Filigran
+
+XTM One is designed and developed by [Filigran](https://filigran.io), the company behind the [XTM Platform](https://filigran.io/xtm-platform) for Agentic CTEM.
 
 <a href="https://filigran.io"><img src="./.github/img/logo_filigran.png" width="300" alt="Filigran" /></a>
