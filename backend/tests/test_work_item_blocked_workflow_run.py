@@ -216,8 +216,11 @@ def test_github_registers_its_workflow_run_reader():
 
 
 class _Result:
-    def __init__(self, rows=None, item=None):
-        self._rows, self._item = rows or [], item
+    def __init__(self, rows: Any = None, item: Any = None, one: Any = None) -> None:
+        self._rows, self._item, self._one = rows or [], item, one
+
+    def one_or_none(self) -> Any:
+        return self._one
 
     def all(self):
         return self._rows
@@ -238,7 +241,11 @@ class _Session:
 
     async def execute(self, statement):
         item = self.store["item"]
-        return _Result(rows=[(item.id, item.user_id, list(item.blocked_on_refs or []))], item=item)
+        return _Result(
+            rows=[(item.id, item.user_id, list(item.blocked_on_refs or []))],
+            item=item,
+            one=(item.user_id, item.status, list(item.blocked_on_refs or [])),
+        )
 
     async def commit(self):
         self.store["commits"] += 1
@@ -388,6 +395,54 @@ async def test_a_read_failure_of_the_delivery_is_counted_and_never_raises(poll, 
     counts = await refs_mod.release_from_workflow_run_delivery(_delivery())
     assert counts == {"read": 1, "released": 0, "noted": 0, "read_failed": 1}
     assert poll["item"].status == "blocked"
+
+
+# -- the check once at the write that blocks it (a run that succeeded before) -----
+
+
+async def test_a_run_already_succeeded_releases_the_item_at_the_write(poll: dict[str, Any]) -> None:
+    counts = await refs_mod.check_item_workflow_runs(poll["item"].id)
+    item = poll["item"]
+    assert counts == {"read": 1, "released": 1, "noted": 0}
+    assert poll["reads"] == [(REPO, "release.yml", AFTER, None, None)]
+    assert item.status == "open" and item.blocked_on_refs is None
+    assert len(poll["published"]) == 1
+
+
+async def test_no_run_yet_at_the_write_keeps_it_blocked(poll: dict[str, Any]) -> None:
+    poll["run"] = None
+    counts = await refs_mod.check_item_workflow_runs(poll["item"].id)
+    assert counts == {"read": 1, "released": 0, "noted": 0}
+    assert poll["item"].status == "blocked" and poll["commits"] == 0
+
+
+async def test_the_write_check_reads_nothing_for_an_item_not_blocked_or_without_a_run_ref(
+    poll: dict[str, Any],
+) -> None:
+    poll["item"].status = "open"
+    assert await refs_mod.check_item_workflow_runs(poll["item"].id) == {"read": 0, "released": 0, "noted": 0}
+    poll["item"].status = "blocked"
+    poll["item"].blocked_on_refs = [{"repo": "o/r", "kind": "issue", "number": 3, "release_on": "closed"}]
+    assert await refs_mod.check_item_workflow_runs(poll["item"].id) == {"read": 0, "released": 0, "noted": 0}
+    assert poll["reads"] == []
+
+
+async def test_a_read_failure_at_the_write_never_raises(poll: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    async def broken(*args: Any) -> None:
+        raise RuntimeError("401 bad credentials")
+
+    monkeypatch.setattr(reference_state, "_WORKFLOW_RUN_READERS", {"github": broken})
+    counts = await refs_mod.check_item_workflow_runs(poll["item"].id)
+    assert counts["released"] == 0 and counts.get("read_failed") == 1
+    assert poll["item"].status == "blocked"
+
+
+def test_the_write_schedules_the_check_only_for_a_workflow_run_reference() -> None:
+    from app.services.work_item import _names_workflow_run
+
+    assert _names_workflow_run([_wf()])
+    assert not _names_workflow_run([{"repo": "o/r", "kind": "deployment", "number": 1}])
+    assert not _names_workflow_run(None)
 
 
 async def test_one_satisfied_reference_of_two_leaves_it_waiting(poll):
