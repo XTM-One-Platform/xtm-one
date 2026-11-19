@@ -313,7 +313,10 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
 async def health_pass_tick(*, now: datetime | None = None) -> dict[str, int]:
     """The scheduler's health pass (``autonomous._run_autonomous_tick_inner``), whatever the AI switch."""
     from app.core.database import async_session
-    from app.services.health import agent_checks  # noqa: F401  (registers the agent checks, section 4.1)
+    from app.services.health import (  # noqa: F401  (register the agent and XTM One platform checks, 4.1 and 4.2)
+        agent_checks,
+        platform_checks,
+    )
 
     async with async_session() as db:
         return await run_pass(db, now=now or datetime.now(UTC))
