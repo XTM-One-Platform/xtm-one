@@ -17,15 +17,15 @@ Five company-managed agents - the Platform Health orchestrator, the Memory Stewa
 the Quality Analyst, the Flow Lab and the Experimenter - their assignments, and
 a company-managed fleet coordinating in a company-managed workspace.
 
-The agents are **not** built-in: the PRD makes them "editable like any agent
-(persona, model, skills)", and built-in agents are read-only in XTM One mode
-(``helpers.writable_agent_error``). So the seed creates each one once, keyed by
-its slug, and afterwards only keeps what nothing else may write: its fleet
-role (``identity.set_health_role``, the seed's call alone), its fleet
-membership and the skills the levels below ship. A persona, model or tool an
-administrator changed stays changed, except the tool groups that read as the
-run's user with no consent check (:data:`NON_CONSENT_TOOL_GROUPS`): every seed
-takes them off the fleet.
+The fleet is **built in** and read-only for everyone, administrators included,
+in every mode (Sam, 19 Nov 2026; ``read_only``): every seed rewrites the whole
+definition of each agent (name, description, icon, persona, tools, skills,
+handovers, enabled), of each assignment (description, prompt, enabled, caps)
+and of the fleet, keyed by slug, so a hand edit never survives a boot. The rows
+keep their ids, so enrolments, cycles, findings and history stay with them. A
+personal agent holding a fleet slug is still never adopted. The tool groups
+that read as the run's user with no consent check
+(:data:`NON_CONSENT_TOOL_GROUPS`) are never in the definition.
 
 Every assignment is a ``manual`` one: the cycle runner (``cycles.py``) starts
 it, after opening a budget cycle, so no Platform Health run ever starts outside a
@@ -285,7 +285,7 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
     agent = Agent(
         user_id=owner_id,
         is_company_managed=True,
-        is_builtin=False,
+        is_builtin=True,
         slug=spec.slug,
         # The orchestrator goes by Platform Health's name (``naming``), every member by its own.
         name=name if spec.slug == ORCHESTRATOR_SLUG else spec.name,
@@ -303,6 +303,36 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
     await seed_initial_agent_versions(db, agent=agent, author_id=None)
     logger.info("Seeded Platform Health agent: %s", spec.slug)
     return agent
+
+
+async def _sync_agent(db: AsyncSession, agent: Agent, spec: FleetAgentSpec, name: str) -> None:
+    """Rewrite *agent*'s seeded definition in place (same id), a version per changed field.
+
+    The handovers and skills are written by :func:`seed_health_fleet`, which
+    knows the other rows' ids.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.agents.seed import _resolve_seed_content
+    from app.services.agent_config_versioning import record_agent_version_changes, versioned_agent_values
+
+    before = versioned_agent_values(agent)
+    agent.is_builtin = True
+    agent.enabled = True
+    agent.name = name if spec.slug == ORCHESTRATOR_SLUG else spec.name
+    agent.description = spec.description
+    agent.icon = spec.icon
+    agent.persona = _resolve_seed_content("agent_persona", spec.slug)
+    agent.output_format = "markdown"
+    agent.disable_chat = spec.disable_chat
+    agent.builtin_tool_ids = list(spec.builtin_tool_ids)
+    agent.available_channel_types = ["web"]
+    agent.tags = [FLEET_AGENT_TAG]
+    for attr in ("builtin_tool_ids", "available_channel_types", "tags"):
+        flag_modified(agent, attr)
+    await record_agent_version_changes(
+        db, agent=agent, before=before, author_id=None, commit_message="Platform Health seed"
+    )
 
 
 def _adopt_former_slugs(rows: list[Agent]) -> dict[str, Agent]:
@@ -344,14 +374,21 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
     )
     existing = next((row for row in rows if row.name == spec.name), None)
     if existing is None and rows:
-        # Seeded under a former name: renamed in place, so its schedule,
-        # enabled state and history stay with it.
+        # Seeded under a former name: renamed in place, so its history stays with it.
         existing = rows[0]
         existing.name = spec.name
     if existing is not None:
-        # Seeded before the cap existed: it would inherit the platform default.
-        if existing.max_iterations is None:
-            existing.max_iterations = spec.max_iterations
+        # Built in: the seeded definition is rewritten on every boot (the cycle
+        # runner, never the row, decides when it runs).
+        existing.description = spec.description
+        existing.prompt = spec.prompt
+        existing.trigger_type = "manual"
+        existing.trigger_config = {}
+        existing.enabled = True
+        existing.show_in_digest = spec.show_in_digest
+        existing.timeout_seconds = spec.timeout_seconds
+        existing.max_iterations = spec.max_iterations
+        existing.is_company_managed = True
         return False
     db.add(
         Assignment(
@@ -398,6 +435,16 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
             is_company_managed=True,
         )
         logger.info("Seeded the Platform Health fleet")
+    # Built in: read-only through the API and the tools (``read_only``), its
+    # definition rewritten here; never swept as a stale ``BUILTIN_FLEETS`` entry
+    # (``app.agents.fleet_seed._sweep_stale`` skips a fleet led by a fleet role).
+    from app.services.health.read_only import HEALTH_FLEET_SLUG
+
+    fleet.is_builtin = True
+    fleet.slug = HEALTH_FLEET_SLUG
+    fleet.is_archived = False
+    fleet.description = _FLEET_DESCRIPTION
+    fleet.icon = "Compass"
     homes = await home_fleets_of(db, [agent.id for agent in agents.values()])
     for agent in agents.values():
         if agent.id not in homes:
@@ -448,11 +495,10 @@ async def seed_health_fleet(db: AsyncSession) -> int:
         if agent is None:
             agent = by_slug[spec.slug] = await _create_agent(db, spec, owner_id, name)
             created += 1
+        else:
+            await _sync_agent(db, agent, spec, name)
         if agent.health_role != spec.role:
             await set_health_role(db, agent, spec.role)
-        kept = [tool for tool in agent.builtin_tool_ids or [] if tool not in NON_CONSENT_TOOL_GROUPS]
-        if kept != list(agent.builtin_tool_ids or []):
-            agent.builtin_tool_ids = kept
 
     skills = await _skill_ids_by_slug(db, {slug for spec in FLEET_AGENTS for slug in spec.skill_slugs})
     for spec in FLEET_AGENTS:
@@ -460,14 +506,20 @@ async def seed_health_fleet(db: AsyncSession) -> int:
         if agent is None:
             continue
         wanted = [skills[slug] for slug in spec.skill_slugs if slug in skills]
-        current = [str(s) for s in (agent.skill_ids or [])]
-        missing = [sid for sid in wanted if sid not in current]
-        if missing:
-            agent.skill_ids = current + missing
-        if not agent.handover_agent_ids and spec.handovers:
-            targets = [(by_slug[s], kind) for s, kind in spec.handovers if s in by_slug]
-            agent.handover_agent_ids = [str(target.id) for target, _ in targets]
-            agent.handover_types = {str(target.id): kind for target, kind in targets}
+        if [str(s) for s in (agent.skill_ids or [])] != wanted:
+            agent.skill_ids = wanted
+        if spec.slug == ORCHESTRATOR_SLUG:
+            # Every fleet orchestrator advises on its fleet's health (#11700);
+            # the skill list above was reset, so the grant is part of the definition.
+            from app.services.fleets import grant_fleet_health_advisory
+
+            await grant_fleet_health_advisory(db, agent)
+        targets = [(by_slug[s], kind) for s, kind in spec.handovers if s in by_slug]
+        handover_ids = [str(target.id) for target, _ in targets]
+        handover_types = {str(target.id): kind for target, kind in targets}
+        if list(agent.handover_agent_ids or []) != handover_ids or (agent.handover_types or {}) != handover_types:
+            agent.handover_agent_ids = handover_ids
+            agent.handover_types = handover_types
 
     for spec in FLEET_ASSIGNMENTS:
         agent = by_slug.get(spec.agent_slug)
