@@ -72,8 +72,12 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Licence expiry | Warning | The validated Filigran licence expires within 30 days |
 | Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email |
 | XTM Hub registration | Info | The platform is not registered with XTM Hub, or its registration lost connectivity or must be done again |
+| Integration broken | Warning | A company-managed integration is in error, must be re-authorized, or failed its last connection test (one finding per integration) |
+| MCP server broken | Warning | An enabled company-managed MCP server could not renew its OAuth token (one finding per server) |
+| Knowledge base indexing stalled | Warning | A knowledge base has documents still processing after 1 hour (one finding per knowledge base) |
+| Stale embeddings | Warning | A knowledge base was embedded with another model than the platform's embedding model (one finding per knowledge base) |
 
-A finding resolves by itself after two passes in a row without its cause.
+A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
 ## Digest
 

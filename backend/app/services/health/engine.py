@@ -189,6 +189,36 @@ async def record_results(db: AsyncSession, results: Iterable[CheckResult], *, no
     return counts
 
 
+async def close_out(db: AsyncSession, check_id: str, read: Sequence[CheckResult]) -> list[CheckResult]:
+    """A passing result for each open finding of ``check_id`` whose subject this pass did not read.
+
+    The subject left the check's scope (fixed, paused, deleted, unenrolled): its
+    cause is gone for this check, so the engine resolves it after two such reads.
+    """
+    seen = {finding_key(r.check_id, r.subject) for r in read}
+    rows = (
+        await db.execute(
+            select(HealthCheckFinding).where(
+                HealthCheckFinding.check_id == check_id, HealthCheckFinding.status == STATUS_OPEN
+            )
+        )
+    ).scalars()
+    return [
+        CheckResult(
+            check_id=check_id,
+            module=row.module,
+            category=row.category,
+            severity=row.severity,
+            failing=False,
+            subject=dict(row.subject or {}),
+            evidence={"values": {"in_scope": False}},
+            doc_link=row.doc_link or "",
+        )
+        for row in rows
+        if row.id not in seen
+    ]
+
+
 async def dismiss_finding(
     db: AsyncSession,
     finding_id: str,
