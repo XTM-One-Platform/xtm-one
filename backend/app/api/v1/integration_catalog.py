@@ -8643,6 +8643,31 @@ PROVIDER_CATALOG = {
             "notes": "The key is sent as the X-Subscription-Token header. A tool whose endpoint the plan does not include answers a one-line error naming it; a rate limit answers the wait Brave asks for. Setting BUILTIN_BRAVE_SEARCH_API_KEY on the deployment gives every agent Brave web search without adding this integration.",
         },
     },
+    "giphy": {
+        "name": "GIPHY",
+        "description": "GIFs and stickers for conversational agents: search, the best GIF for a phrase, random and trending GIFs, shown in the web chat and as images in Teams, Slack and the other channels",
+        "logo": "/logos/giphy.svg",
+        "category": "integration",
+        "integration_category": "social_media",
+        "integration_types": ["social", "images"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "setup_guide": {
+            "title": "GIPHY API key",
+            "url": "https://developers.giphy.com/dashboard/",
+            "steps": [
+                "Sign in to the GIPHY Developers dashboard (developers.giphy.com/dashboard).",
+                "Click 'Create an API Key', choose API (not SDK), name the app and accept GIPHY's API terms.",
+                "Copy the API key and paste it in the 'API Key' field below, then run Test connection (one search).",
+                "Bind the integration to the agent, and say in its instructions when a GIF fits (for example: 'celebrate a resolved incident with a GIF').",
+            ],
+            "permissions": [
+                {"scope": "Search", "description": "Search GIFs and stickers, translate a phrase into a GIF"},
+                {"scope": "Random / Trending", "description": "A random GIF for a tag, the trending GIFs"},
+            ],
+            "notes": "A new key is a rate-limited beta key (GIPHY caps its calls per hour); apply for a production key in the dashboard once the agent is in use. Every call sends a content rating, G by default and never above PG-13. The key travels as the api_key query parameter, the only form GIPHY accepts. GIPHY asks apps to credit it ('Powered by GIPHY'): the tool results say so.",
+        },
+    },
     "ashby": {
         "name": "Ashby",
         "description": "Applicant Tracking & Recruiting - Candidates (with resumes and files), Applications and stage history, Interview schedules and scorecards, Jobs, Postings, Openings, Offers, Referrals, Reports",

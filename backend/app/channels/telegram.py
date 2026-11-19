@@ -153,32 +153,33 @@ class TelegramChannel(BaseChannel):
         chat_id: str,
         embedded_images: list[dict],
     ) -> None:
-        """Upload images directly to Telegram via sendPhoto."""
-        from app.channels.base import fetch_image_bytes
+        """Upload images directly to Telegram: sendPhoto, sendAnimation for a GIF.
+
+        sendPhoto turns a GIF into a still picture; sendAnimation keeps it moving.
+        """
+        from app.channels.base import fetch_embedded_image, image_upload_filename
 
         for img_info in embedded_images:
             try:
-                result = await fetch_image_bytes(
-                    img_info["image_id"],
-                    source=img_info.get("source", "images"),
-                )
+                result = await fetch_embedded_image(img_info)
                 if not result:
                     continue
                 image_data, content_type = result
-                filename = f"{img_info.get('alt_text', 'image')[:50]}.png"
+                filename = image_upload_filename(img_info.get("alt_text", "image")[:50] or "image", content_type)
+                method, field = ("sendAnimation", "animation") if content_type == "image/gif" else ("sendPhoto", "photo")
 
                 async with httpx.AsyncClient() as client:
                     resp = await client.post(
-                        f"{self._base_url}/sendPhoto",
+                        f"{self._base_url}/{method}",
                         data={
                             "chat_id": chat_id,
                             "caption": img_info.get("alt_text", ""),
                         },
-                        files={"photo": (filename, image_data, content_type)},
+                        files={field: (filename, image_data, content_type)},
                         timeout=30,
                     )
                     if resp.status_code != 200:
-                        logger.warning("Telegram sendPhoto failed: %s", resp.text[:300])
+                        logger.warning("Telegram %s failed: %s", method, resp.text[:300])
             except Exception as exc:
                 logger.warning("Telegram photo upload error: %s", format_exception_message(exc))
 

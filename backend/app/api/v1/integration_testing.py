@@ -227,6 +227,38 @@ async def test_provider_connectivity(
         except httpx.HTTPError:
             return {"status": "error", "message": f"{name} connection failed"}
 
+    # GIPHY: one search of one GIF. The key is the api_key query parameter,
+    # passed through params (never in the URL string), and no exception
+    # text is echoed, so the credential never reaches the answer.
+    if provider == "giphy":
+        from app.integrations.providers import giphy
+
+        api_key = (token or "").strip()
+        if not api_key:
+            return {"status": "error", "message": "Missing API key"}
+        try:
+            async with egress_client(timeout=CONNECTIVITY_TIMEOUT) as client:
+                resp = await client.get(
+                    f"{giphy.BASE_URL}/gifs/search",
+                    params={"q": "hello", "limit": 1, "rating": giphy.DEFAULT_RATING, giphy.KEY_PARAM: api_key},
+                    headers={"Accept": "application/json"},
+                )
+            if resp.status_code == 200:
+                return {"status": "ok", "message": f"{name} is connected and responding"}
+            if resp.status_code in (401, 403):
+                return {
+                    "status": "error",
+                    "message": "Authentication failed - the API key may be invalid or revoked",
+                }
+            if resp.status_code == 429:
+                return {
+                    "status": "error",
+                    "message": "GIPHY rate limit reached - a beta key allows few calls per hour",
+                }
+            return {"status": "error", "message": f"{name} returned HTTP {resp.status_code}"}
+        except httpx.HTTPError:
+            return {"status": "error", "message": f"{name} connection failed"}
+
     # Brave Search: one cheap web query (count=1) with the subscription token
     # header; a 403 means the key is valid but the plan lacks web search.
     if provider == "brave_search":
