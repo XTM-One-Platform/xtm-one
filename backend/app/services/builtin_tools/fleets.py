@@ -214,6 +214,57 @@ def _scope_text(scope: dict) -> str:
     return str(scope.get("mode") or "primary")
 
 
+_MEMBER_SPEC_KEYS = ("agent_id", "role_label", "parent_agent_id")
+
+
+def _member_specs(raw: object) -> list[dict[str, Any]]:
+    """``members`` of ``create_fleet`` as ``{agent_id, role_label, parent_agent_id}`` (#371).
+
+    A key outside those three is refused by name, never dropped: the fleet would be created
+    without what the model asked for. A setting left out is ``None`` (no label, top level).
+    """
+    if raw is None or raw == "":
+        return []
+    if not isinstance(raw, list):
+        raise _RefusedError("member_agent_ids must be an array of objects with an agent_id.")
+    specs: list[dict[str, Any]] = []
+    seen: set[uuid.UUID] = set()
+    for item in raw:
+        if isinstance(item, str):
+            item = {"agent_id": item}
+        if not isinstance(item, dict):
+            raise _RefusedError("member_agent_ids must be an array of objects with an agent_id.")
+        unknown = sorted(str(key) for key in item if key not in _MEMBER_SPEC_KEYS)
+        if unknown:
+            raise _RefusedError(
+                f"member_agent_ids: unknown field(s) {', '.join(unknown)}; a member takes "
+                f"{', '.join(_MEMBER_SPEC_KEYS)}. Nothing was created."
+            )
+        agent_id = _one_id(item.get("agent_id"), "member_agent_ids agent_id")
+        if agent_id in seen:
+            raise _RefusedError(f"member_agent_ids: agent `{agent_id}` is listed twice. Nothing was created.")
+        seen.add(agent_id)
+        raw_label = item.get("role_label")
+        label = None if raw_label is None else " ".join(str(raw_label).split())
+        raw_parent = item.get("parent_agent_id")
+        parent_text = "" if raw_parent is None else str(raw_parent).strip()
+        parent = None
+        if parent_text and parent_text.lower() not in ("none", "null"):
+            parent = safe_uuid(parent_text)
+            if parent is None:
+                raise _RefusedError(
+                    f"member_agent_ids parent_agent_id: `{parent_text}` is not an id. Nothing was created."
+                )
+            if parent == agent_id:
+                raise _RefusedError(
+                    f"member_agent_ids: agent `{agent_id}` cannot report to itself. Nothing was created."
+                )
+        specs.append({"agent_id": agent_id, "role_label": label, "parent_agent_id": parent})
+    if len(specs) > _MAX_AGENTS_PER_CALL:
+        raise _RefusedError(f"member_agent_ids: at most {_MAX_AGENTS_PER_CALL} agents per call.")
+    return specs
+
+
 def _connected_specs(raw: object) -> list[dict[str, Any]]:
     """``connected`` as objects ``{agent_id, collaboration_instruction, context_inclusion}``.
 
@@ -534,6 +585,42 @@ def build_fleet_tools(
             if agent_id not in present:
                 await add_home_member(db, fleet, await _manageable_agent(db, user, agent_id))
 
+    async def _apply_member_specs(
+        db: AsyncSession,
+        fleet: Fleet,
+        specs: list[dict[str, Any]],
+        orchestrator: uuid.UUID | None,
+    ) -> None:
+        """Role labels and parents of ``create_fleet``'s ``members`` (#371), through the member service.
+
+        ``update_member`` applies the API's rules (self, connected parent, loop); a refusal rolls the
+        whole creation back.
+        """
+        from app.models.fleet import FLEET_ROLE_MEMBER
+        from app.services.fleets import fleet_members, update_member
+
+        homes = {r.agent_id: r for r in await fleet_members(db, fleet.id) if r.role == FLEET_ROLE_MEMBER}
+        for spec in specs:
+            row = homes[spec["agent_id"]]
+            fields: dict[str, Any] = {}
+            if spec["role_label"] is not None:
+                fields["role_label"] = spec["role_label"]
+            parent_id = spec["parent_agent_id"]
+            if parent_id is not None:
+                if spec["agent_id"] == orchestrator:
+                    raise _RefusedError(
+                        "The orchestrator is the root of the fleet and reports to no one. Nothing was created."
+                    )
+                parent = homes.get(parent_id)
+                if parent is None:
+                    raise _RefusedError(
+                        f"member_agent_ids: parent `{parent_id}` is not a home member of this fleet: a member reports to "
+                        "another home member of the same fleet. Nothing was created."
+                    )
+                fields["parent_member_id"] = parent.id
+            if fields:
+                await update_member(db, fleet, row.id, fields=fields)
+
     async def _replace_connected(db: AsyncSession, user: User, fleet: Fleet, specs: list[dict[str, Any]]) -> None:
         from app.models.fleet import FLEET_ROLE_CONNECTED
         from app.services.fleets import add_connected, fleet_members, remove_member
@@ -661,7 +748,7 @@ def build_fleet_tools(
         exposed_agent_ids: object = None,
         is_company_managed: object = False,
     ) -> str:
-        from app.models.fleet import FLEET_DEFAULT_ICON
+        from app.models.fleet import FLEET_DEFAULT_ICON, FleetMember
         from app.services.fleets import create_fleet, set_exposed_agents, set_orchestrator
         from app.services.workspaces import create_workspace
 
@@ -674,7 +761,20 @@ def build_fleet_tools(
             company = _bool(is_company_managed, "is_company_managed", False)
             if company and not user.is_admin:
                 raise _RefusedError("Only admins can create company-managed fleets.")
-            members = _id_list(member_agent_ids, "member_agent_ids")
+            # #371: an object member carries its role label and parent; plain ids keep their path.
+            if isinstance(member_agent_ids, list) and any(isinstance(i, dict) for i in member_agent_ids):
+                member_specs = _member_specs(member_agent_ids)
+                members_ids = [s["agent_id"] for s in member_specs]
+            else:
+                member_specs = []
+                members_ids = _id_list(member_agent_ids, "member_agent_ids")
+            label_limit = getattr(FleetMember.__table__.c.role_label.type, "length", None) or 100
+            for spec in member_specs:
+                if spec["role_label"] is not None and len(spec["role_label"]) > label_limit:
+                    raise _RefusedError(
+                        f"member_agent_ids role_label is {len(spec['role_label'])} characters, at most {label_limit}. "
+                        "Nothing was created."
+                    )
             orchestrator = safe_uuid(str(orchestrator_agent_id or "").strip()) if orchestrator_agent_id else None
             if orchestrator_agent_id and orchestrator is None:
                 raise _RefusedError(f"orchestrator_agent_id: `{orchestrator_agent_id}` is not an id.")
@@ -704,9 +804,11 @@ def build_fleet_tools(
                 icon=FLEET_DEFAULT_ICON,
                 is_company_managed=company,
             )
-            await _replace_members(db, user, fleet, members, keep_orchestrator=orchestrator)
+            await _replace_members(db, user, fleet, members_ids, keep_orchestrator=orchestrator)
             if orchestrator is not None:
                 await set_orchestrator(db, fleet, orchestrator)
+            if member_specs:
+                await _apply_member_specs(db, fleet, member_specs, orchestrator)
             if specs:
                 await _replace_connected(db, user, fleet, specs)
             if exposed:
@@ -2074,7 +2176,7 @@ def build_fleet_tools(
             description=(
                 f"Create a fleet owned by the user, with its members, in one call. {about} Home members: agents "
                 "you manage with no home fleet; the orchestrator is one, always exposed. "
-                "Without workspace_id, a workspace named after the fleet is created. Give the user its page."
+                "Without workspace_id, one named after the fleet is created. Give the user its page."
             ),
             input_schema={
                 "type": "object",
@@ -2083,15 +2185,19 @@ def build_fleet_tools(
                     "description": {"type": "string", "default": ""},
                     "workspace_id": {
                         "type": "string",
-                        "description": "An existing workspace the user may manage; empty to create one.",
+                        "description": "A workspace the user manages; empty: a new one.",
                         "default": "",
                     },
                     "orchestrator_agent_id": {"type": "string", "description": "The entry agent.", "default": ""},
-                    "member_agent_ids": {**ids_array, "description": "Home members (agent ids)."},
+                    "member_agent_ids": {
+                        "type": "array",
+                        "items": {"type": ["string", "object"]},
+                        "description": "Ids or {agent_id, role_label, parent_agent_id}.",
+                    },
                     "connected": connected_schema,
                     "exposed_agent_ids": {
                         **ids_array,
-                        "description": "Home members other fleets may reach; the orchestrator always is.",
+                        "description": "Members other fleets reach (the orchestrator always).",
                     },
                     "is_company_managed": {
                         "type": "boolean",
