@@ -60,6 +60,7 @@ from ._drive import (
     _drive_item_link_lines,
     _encode_drive_filename,
     _encode_drive_path,
+    _identity_label,
     _is_folder,
     _list_folder,
     _read_drive_item,
@@ -355,7 +356,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             resp, err = await _throttled_request(
                 client,
                 "get",
-                f"{_BASE_URL}/me/drive/{path}?$top={count}&$select=name,size,lastModifiedDateTime,webUrl",
+                f"{_BASE_URL}/me/drive/{path}?$top={count}&$select=name,size,lastModifiedDateTime,lastModifiedBy,webUrl",
                 _PROVIDER,
                 "list drive files",
             )
@@ -364,7 +365,9 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             items = resp.json().get("value", [])
 
             def _fmt_file(i: dict) -> str:
-                return f"{i['name']} ({i.get('size', 0)} bytes) — {i.get('webUrl', '')}"
+                line = f"{i['name']} ({i.get('size', 0)} bytes) — {i.get('webUrl', '')}"
+                modified_by = _identity_label(i.get("lastModifiedBy"))
+                return f"{line} — modified by {modified_by}" if modified_by else line
 
             return format_entity_list(items, _fmt_file, noun="file")
 
@@ -412,7 +415,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 _PROVIDER,
                 "access file",
                 params={
-                    "$select": "id,name,size,file,folder,webUrl,@microsoft.graph.downloadUrl"
+                    "$select": "id,name,size,file,folder,webUrl,lastModifiedBy,createdBy,@microsoft.graph.downloadUrl"
                 },
             )
             if err:
