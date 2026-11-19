@@ -11,7 +11,8 @@ and findings for a screenshot, an OpenCRQ tenant, an XTM Hub token) without hand
     --sql TEXT          one or more statements, run as one simple query; every result set is answered
     --file PATH         the statements from a file of the lab's copy of the checkout, instead of --sql
     --var NAME=VALUE    bound where the SQL says :'NAME' (a quoted literal) or :"NAME" (a quoted identifier),
-                        psql's syntax; the value is quoted, never spliced in raw; repeatable
+                        psql's syntax, outside string literals, quoted identifiers, comments and dollar-quoted
+                        bodies only, as psql; the value is quoted, never spliced in raw; repeatable
     --list              the databases of the cluster, instead of a query
 
 Answers JSON: a list of ``{"command", "columns", "rows"}`` (rows as lists of text, null for NULL). Exit 0, 1 on a
@@ -37,8 +38,10 @@ USER = "copilot"
 PASSWORD = "lab"
 PROTOCOL_V3 = 196608
 LIST_SQL = "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname"
-#: psql's variable syntax: :'name' is a literal, :"name" an identifier.
+#: psql's variable syntax: :'name' is a literal, :"name" an identifier; matched at a ':' outside quotes only.
 VARIABLE = re.compile(r""":(['"])([A-Za-z_][A-Za-z0-9_]*)\1""")
+#: A dollar-quote opening tag: $$ or $tag$ (a tag never starts with a digit, so $1 is a parameter, not a quote).
+DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 
 
 class SqlError(Exception):
@@ -61,17 +64,81 @@ def quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _skip_quoted(sql: str, start: int) -> int:
+    """The index just past the quoted span opening at ``start``, or ``start`` when none opens there.
+
+    The spans psql never interpolates in: '...' (and E'...' with backslash escapes), "..." identifiers, -- line
+    comments, /* */ comments (nested), and $tag$ ... $tag$ dollar-quoted bodies. An unterminated span runs to the end.
+    """
+    char = sql[start]
+    if char in "'\"":
+        # E'...' takes backslash escapes; the E is a prefix only when no identifier character precedes it.
+        prefix = sql[start - 2] if start >= 2 else " "
+        escapes = char == "'" and start > 0 and sql[start - 1] in "eE" and not (prefix.isalnum() or prefix == "_")
+        index = start + 1
+        while index < len(sql):
+            if escapes and sql[index] == "\\":
+                index += 2
+                continue
+            if sql[index] == char:
+                if index + 1 < len(sql) and sql[index + 1] == char:
+                    index += 2
+                    continue
+                return index + 1
+            index += 1
+        return len(sql)
+    if sql.startswith("--", start):
+        end = sql.find("\n", start)
+        return len(sql) if end < 0 else end + 1
+    if sql.startswith("/*", start):
+        depth, index = 1, start + 2
+        while index < len(sql) and depth:
+            if sql.startswith("/*", index):
+                depth, index = depth + 1, index + 2
+            elif sql.startswith("*/", index):
+                depth, index = depth - 1, index + 2
+            else:
+                index += 1
+        return index
+    if char == "$" and not (start > 0 and (sql[start - 1].isalnum() or sql[start - 1] == "_")):
+        tag = DOLLAR_TAG.match(sql, start)
+        if tag:
+            end = sql.find(tag.group(0), tag.end())
+            return len(sql) if end < 0 else end + len(tag.group(0))
+    return start
+
+
 def bind(sql: str, variables: dict[str, str]) -> str:
-    """Replace :'name' and :"name" by the quoted value; an unbound name is a usage error, never left in the SQL."""
+    """Replace :'name' and :"name" by the quoted value, outside quoted spans only, as psql does.
 
-    def substitute(match: re.Match[str]) -> str:
-        name = match.group(2)
-        if name not in variables:
-            raise SystemExit(f"lab-sql: the SQL uses :{match.group(1)}{name}{match.group(1)} and no --var {name}=... binds it")
-        value = variables[name]
-        return quote_literal(value) if match.group(1) == "'" else quote_identifier(value)
-
-    return VARIABLE.sub(substitute, sql)
+    A ':' inside a string literal, a quoted identifier, a comment or a dollar-quoted body is left as written (a JSON
+    literal such as '{"role":"admin"}' stays intact); '::' is a cast, never a variable. An unbound name is a usage
+    error, never left in the SQL.
+    """
+    out: list[str] = []
+    index = 0
+    while index < len(sql):
+        end = _skip_quoted(sql, index)
+        if end > index:
+            out.append(sql[index:end])
+            index = end
+            continue
+        if sql.startswith("::", index):
+            out.append("::")
+            index += 2
+            continue
+        match = VARIABLE.match(sql, index) if sql[index] == ":" else None
+        if match:
+            quote, name = match.group(1), match.group(2)
+            if name not in variables:
+                raise SystemExit(f"lab-sql: the SQL uses :{quote}{name}{quote} and no --var {name}=... binds it")
+            value = variables[name]
+            out.append(quote_literal(value) if quote == "'" else quote_identifier(value))
+            index = match.end()
+            continue
+        out.append(sql[index])
+        index += 1
+    return "".join(out)
 
 
 def _message(kind: bytes, payload: bytes) -> bytes:

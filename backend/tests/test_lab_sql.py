@@ -131,6 +131,32 @@ def test_variables_are_quoted_never_spliced():
         module.bind("SELECT :'missing'", {})
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        """INSERT INTO t (doc) VALUES ('{"role":"admin"}')""",
+        """SELECT E'it\\'s :"x"', 'a'':''b'""",
+        """SELECT "col:'x'" FROM t""",
+        """SELECT 1 -- :'x'\n""",
+        """SELECT /* :'x' /* :"y" */ */ 1""",
+        """SELECT $$ :'x' $$, $body$ {"k":"v"} $body$""",
+        """SELECT 'a'::"char", 1::int""",
+    ],
+)
+def test_quoted_spans_comments_and_casts_are_never_bound(sql):
+    # psql interpolates outside quotes only: a JSON literal or a comment is left as written, no --var asked for.
+    assert _module().bind(sql, {"x": "X", "y": "Y", "admin": "Z", "k": "K"}) == sql
+    assert _module().bind(sql, {}) == sql
+
+
+def test_variables_next_to_quoted_spans_are_bound():
+    module = _module()
+    sql = """INSERT INTO :"t" (doc, name) VALUES ('{"role":"admin"}', :'name') -- :'name'"""
+    bound = module.bind(sql, {"t": "assets", "name": "ann"})
+    assert bound == """INSERT INTO "assets" (doc, name) VALUES ('{"role":"admin"}', 'ann') -- :'name'"""
+    assert module.bind("SELECT $1, :'v'", {"v": "w"}) == "SELECT $1, 'w'"
+
+
 def test_a_query_answers_every_result_set_as_json(capsys):
     def respond(sql):
         return (
