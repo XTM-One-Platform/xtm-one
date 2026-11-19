@@ -120,6 +120,22 @@ def invalidate_cache() -> None:
     _cache = None
 
 
+# Whether the last read of the switch by :func:`is_ai_enabled` failed. Cleared by
+# the next read that succeeds. For a caller that reports rather than gates (the
+# A2A pre-flight): a ``False`` answered right after a failed read is "could not
+# be read", not "switched off".
+_last_read_failed = False
+
+
+def last_read_failed() -> bool:
+    """Whether :func:`is_ai_enabled`'s last read of the switch failed.
+
+    Process-local and best effort: another caller's successful read clears it,
+    and the caller then reports the generic refusal, as before.
+    """
+    return _last_read_failed
+
+
 def cached_state() -> bool | None:
     """The answer :func:`is_ai_enabled` holds from a read, still within its TTL,
     or ``None`` when it would have to read again.
@@ -177,7 +193,7 @@ async def is_ai_enabled(db: AsyncSession) -> bool:
     recoverable, whereas assuming "enabled" runs a model on a deployment that
     may forbid it by policy.
     """
-    global _cache
+    global _cache, _last_read_failed
     if _cache is not None and _cache[1] > time.monotonic():
         return _cache[0]
 
@@ -201,9 +217,11 @@ async def is_ai_enabled(db: AsyncSession) -> bool:
         )
         # Deliberately not cached: a blip must not keep AI off for a whole TTL
         # after the database recovers.
+        _last_read_failed = True
         return False
 
     global _last_known
+    _last_read_failed = False
     resolved = _resolve(stored)
     _last_known = resolved
     _cache = (resolved, time.monotonic() + CACHE_TTL_SECONDS)
