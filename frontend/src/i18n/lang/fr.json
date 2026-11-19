@@ -19454,7 +19454,6 @@
   "Last sweep {last}.": "Dernier nettoyage : {last}.",
   "Whether the file's content is kept": "Si le contenu du fichier est conservé",
   "{count, plural, one {# deleted} other {# deleted}}": "{count, plural, one {# supprimé} other {# supprimés}}",
-  "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "Durée de conservation de chaque catégorie de fichiers stockés. Un nettoyage a lieu toutes les heures ; un fichier encore utilisé par une tâche, un corpus de travail, un état partagé, une présentation, un rapport ou une vidéo est conservé. Un fichier supprimé reste dans la conversation sous forme de carte : seul son contenu disparaît.",
   "Next sweep: {files} ({size}) deleted; {kept, plural, one {# file} other {# files}} kept in use": "Prochain nettoyage : {files} ({size}) supprimés ; {kept, plural, one {# fichier conservé} other {# fichiers conservés}} car utilisés",
   "A shorter retention deletes files at the next sweep. Preview what goes before saving.": "Une rétention plus courte supprime des fichiers au prochain nettoyage. Prévisualisez ce qui partira avant d'enregistrer.",
   "The next sweep would delete {files} ({size}).": "Le prochain nettoyage supprimerait {files} ({size}).",
@@ -19470,5 +19469,18 @@
   "Group {name} changed": "Groupe {name} modifié",
   "Group {name} deleted": "Groupe {name} supprimé",
   "SCIM token {name} generated": "Jeton SCIM {name} généré",
-  "SCIM token {name} revoked": "Jeton SCIM {name} révoqué"
+  "SCIM token {name} revoked": "Jeton SCIM {name} révoqué",
+  "How long each category of stored file is kept.": "Durée de conservation de chaque catégorie de fichiers stockés.",
+  "How the file retention works": "Fonctionnement de la rétention des fichiers",
+  "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "Un nettoyage a lieu toutes les heures. Un fichier encore utilisé par une tâche, un corpus de travail, un état partagé, une présentation, un rapport ou une vidéo est conservé. Un fichier supprimé reste dans la conversation sous forme de carte : seul son contenu disparaît.",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a scratch CSV no one opened for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Jours après la dernière utilisation du fichier (un téléchargement, un aperçu, une lecture par un agent). Exemple : 60 supprime un CSV de travail que personne n’a ouvert depuis 60 jours. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé » dans la conversation.",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a report PDF no one downloaded for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Jours après la dernière utilisation du fichier (un téléchargement, un aperçu, une lecture par un agent). Exemple : 60 supprime un rapport PDF que personne n’a téléchargé depuis 60 jours. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé » dans la conversation.",
+  "Days after the file was created. Example: 90 deletes an MCP export 90 days after it arrived. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Jours après la création du fichier. Exemple : 90 supprime un export MCP 90 jours après son arrivée. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé ».",
+  "Days after the upload. Example: 365 deletes a spreadsheet a year after someone attached it. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Jours après l’envoi. Exemple : 365 supprime un tableur un an après qu’il a été joint. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé » dans la conversation.",
+  "Days after the file arrived. Example: 180 deletes a Teams attachment six months after it was received. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Jours après la réception du fichier. Exemple : 180 supprime une pièce jointe Teams six mois après sa réception. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé ».",
+  "Days after the capture. Example: 7 deletes a screenshot an agent checked a week ago. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Jours après la capture. Exemple : 7 supprime une capture d’écran vérifiée par un agent il y a une semaine. 0 = Jamais. Le nettoyage horaire supprime le contenu et garde une carte « supprimé ».",
+  "\"{filename}\" was deleted by an administrator.": "« {filename} » a été supprimé par un administrateur.",
+  "This file was deleted by an administrator.": "Ce fichier a été supprimé par un administrateur.",
+  "\"{filename}\" was deleted by its owner.": "« {filename} » a été supprimé par son propriétaire.",
+  "This file was deleted by its owner.": "Ce fichier a été supprimé par son propriétaire."
 }

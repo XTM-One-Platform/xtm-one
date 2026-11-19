@@ -19454,7 +19454,6 @@
   "Last sweep {last}.": "前回のクリーンアップ: {last}。",
   "Whether the file's content is kept": "ファイルの内容が保持されているか",
   "{count, plural, one {# deleted} other {# deleted}}": "{count, plural, other {# 件削除済み}}",
-  "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "保存されたファイルのカテゴリごとの保持期間です。クリーンアップは 1 時間ごとに実行されます。作業項目、ワークセット、共有状態、プレゼンテーション、レポート、動画でまだ使われているファイルは保持されます。削除されたファイルは会話にカードとして残り、内容のみが削除されます。",
   "Next sweep: {files} ({size}) deleted; {kept, plural, one {# file} other {# files}} kept in use": "次回のクリーンアップ: {files} ({size}) を削除、使用中の {kept, plural, other {# 件のファイル}} は保持",
   "A shorter retention deletes files at the next sweep. Preview what goes before saving.": "保持期間を短くすると、次回のクリーンアップでファイルが削除されます。保存する前に削除対象をプレビューしてください。",
   "The next sweep would delete {files} ({size}).": "次回のクリーンアップで {files} ({size}) が削除されます。",
@@ -19470,5 +19469,18 @@
   "Group {name} changed": "グループ {name} を変更しました",
   "Group {name} deleted": "グループ {name} を削除しました",
   "SCIM token {name} generated": "SCIM トークン {name} を生成しました",
-  "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました"
+  "SCIM token {name} revoked": "SCIM トークン {name} を取り消しました",
+  "How long each category of stored file is kept.": "保存されたファイルのカテゴリごとの保持期間です。",
+  "How the file retention works": "ファイル保持の仕組み",
+  "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "クリーンアップは 1 時間ごとに実行されます。作業項目、ワークセット、共有状態、プレゼンテーション、レポート、動画でまだ使われているファイルは保持されます。削除されたファイルは会話にカードとして残り、内容のみが削除されます。",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a scratch CSV no one opened for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "ファイルの最終使用 (ダウンロード、プレビュー、エージェントによる読み取り) からの日数です。例: 60 にすると、60 日間誰も開かなかった作業用 CSV が削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、会話に削除済みカードを残します。",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a report PDF no one downloaded for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "ファイルの最終使用 (ダウンロード、プレビュー、エージェントによる読み取り) からの日数です。例: 60 にすると、60 日間誰もダウンロードしなかったレポート PDF が削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、会話に削除済みカードを残します。",
+  "Days after the file was created. Example: 90 deletes an MCP export 90 days after it arrived. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "ファイル作成からの日数です。例: 90 にすると、MCP のエクスポートが届いてから 90 日後に削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、削除済みカードを残します。",
+  "Days after the upload. Example: 365 deletes a spreadsheet a year after someone attached it. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "アップロードからの日数です。例: 365 にすると、添付されてから 1 年後にスプレッドシートが削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、会話に削除済みカードを残します。",
+  "Days after the file arrived. Example: 180 deletes a Teams attachment six months after it was received. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "ファイル受信からの日数です。例: 180 にすると、Teams の添付ファイルが受信から 6 か月後に削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、削除済みカードを残します。",
+  "Days after the capture. Example: 7 deletes a screenshot an agent checked a week ago. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "キャプチャからの日数です。例: 7 にすると、エージェントが 1 週間前に確認したスクリーンショットが削除されます。0 = 無期限。毎時のクリーンアップは内容を削除し、削除済みカードを残します。",
+  "\"{filename}\" was deleted by an administrator.": "「{filename}」は管理者により削除されました。",
+  "This file was deleted by an administrator.": "このファイルは管理者により削除されました。",
+  "\"{filename}\" was deleted by its owner.": "「{filename}」は所有者により削除されました。",
+  "This file was deleted by its owner.": "このファイルは所有者により削除されました。"
 }
