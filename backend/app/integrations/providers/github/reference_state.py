@@ -166,7 +166,12 @@ async def read_successful_workflow_run(
             headers=_headers(token),
             params=params,
             max_total_seconds=MAX_TOTAL_SECONDS,
+            expected_statuses={404},
         )
+    if resp is not None and resp.status_code == 404:
+        # A workflow that does not exist (a typo, a renamed or removed file, a repository
+        # the credential cannot read) never runs: a read failure, never "no run yet" (#386).
+        raise LookupError(f"workflow {workflow} not found in {repo} (404)")
     if err or resp is None:
         return None
     try:

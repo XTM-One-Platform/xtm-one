@@ -452,3 +452,51 @@ async def test_one_satisfied_reference_of_two_leaves_it_waiting(poll):
     assert counts["noted"] == 1 and item.status == "blocked"
     assert item.blocked_on_refs[0]["state"] == "succeeded" and item.blocked_on_refs[0]["run_id"] == 9
     assert item.claim_notes[-1]["text"].endswith("; still waiting")
+
+
+# -- a workflow the code host does not know (#386) ---------------------------------
+
+
+async def test_a_workflow_github_does_not_know_is_a_read_failure_not_no_run_yet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.integrations.providers.github import _common
+    from app.integrations.providers.github import reference_state as gh
+
+    async def not_found(*args: Any, **kwargs: Any) -> tuple[Any, str]:
+        assert kwargs.get("expected_statuses") == {404}
+        return SimpleNamespace(status_code=404), "GitHub: Not Found (404)"
+
+    monkeypatch.setattr(_common, "safe_request", not_found)
+    with pytest.raises(LookupError, match=r"workflow relase\.yml not found in o/r"):
+        await gh.read_successful_workflow_run("o/r", "relase.yml", AFTER, None, None, "tok")
+
+
+async def test_another_error_still_answers_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.github import _common
+    from app.integrations.providers.github import reference_state as gh
+
+    async def server_error(*args: Any, **kwargs: Any) -> tuple[Any, str]:
+        return SimpleNamespace(status_code=502), "GitHub: Bad Gateway (502)"
+
+    monkeypatch.setattr(_common, "safe_request", server_error)
+    assert await gh.read_successful_workflow_run("o/r", "release.yml", AFTER, None, None, "tok") is None
+
+
+async def test_an_unknown_workflow_is_told_on_the_item_at_the_write(
+    poll: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def missing(*args: Any) -> None:
+        raise LookupError(f"workflow relase.yml not found in {REPO} (404)")
+
+    monkeypatch.setattr(reference_state, "_WORKFLOW_RUN_READERS", {"github": missing})
+    item = poll["item"]
+    item.last_activity_at = datetime.now(UTC)  # just blocked: the poller's quiet time would hold the note
+    counts = await refs_mod.check_item_workflow_runs(item.id)
+    assert counts["released"] == 0 and counts.get("read_failed") == 1
+    assert item.status == "blocked"
+    assert item.claim_notes[-1]["text"].startswith(refs_mod.READ_FAILURE_NOTE_PREFIX)
+    assert "workflow relase.yml not found" in item.claim_notes[-1]["text"]
+    # One note per 6 hours still holds: a second write says nothing new.
+    await refs_mod.check_item_workflow_runs(item.id)
+    assert len(item.claim_notes) == 1

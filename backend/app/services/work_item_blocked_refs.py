@@ -1854,7 +1854,9 @@ async def check_item_workflow_runs(item_id: uuid.UUID | str) -> dict[str, Any]:
 
     A run that already succeeded after ``after`` sends no delivery any more: without this
     read the item waits for the next run of the workflow or the polling pass. Same reader,
-    credential and apply as the polling fallback. ``{"read": r, "released": n, "noted": m}``.
+    credential and apply as the polling fallback. A reference the reader cannot read (a
+    workflow the code host does not know, #386) is told on the item at once, without the
+    quiet time the poller waits for. ``{"read": r, "released": n, "noted": m}``.
     Never raises.
     """
     from app.core.database import async_session
@@ -1883,7 +1885,10 @@ async def check_item_workflow_runs(item_id: uuid.UUID | str) -> dict[str, Any]:
             await _poll_workflow_run(item_uuid, row[0], ref, readers, tokens, seen, counts, HINT_MAX_READS)
     except Exception as exc:
         logger.warning("Workflow run check of work item %s failed: %s", item_id, format_exception_message(exc))
-    counts.pop("_unread", None)
+    unread: dict[uuid.UUID, list[str]] = counts.pop("_unread", {})
+    if unread:
+        # The write that blocked it is the moment its owner reads it: no quiet time (#386).
+        await note_unread_references(unread, datetime.now(UTC), quiet=False)
     return counts
 
 
@@ -2179,11 +2184,12 @@ def read_failure_note_due(claim_notes: Any, last_activity_at: datetime | None, n
     return True
 
 
-async def note_unread_references(unread: dict[uuid.UUID, list[str]], now: datetime) -> int:
+async def note_unread_references(unread: dict[uuid.UUID, list[str]], now: datetime, *, quiet: bool = True) -> int:
     """Write :func:`read_failure_note` on the blocked items of *unread* it is due on. Never raises.
 
     The note goes in the claim notes, the item's activity time untouched, so the
-    polling order is unchanged.
+    polling order is unchanged. *quiet* False (the check at the write that blocks the
+    item) skips the quiet time, never the one-note-per-6-hours rule.
     """
     from app.core.database import async_session
 
@@ -2196,7 +2202,7 @@ async def note_unread_references(unread: dict[uuid.UUID, list[str]], now: dateti
                 ).scalar_one_or_none()
                 if item is None or item.status != "blocked":
                     continue
-                if not read_failure_note_due(item.claim_notes, item.last_activity_at, now):
+                if not read_failure_note_due(item.claim_notes, item.last_activity_at if quiet else None, now):
                     continue
                 item.claim_notes = [
                     *(item.claim_notes or []),
