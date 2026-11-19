@@ -1521,6 +1521,19 @@ default_args = ["--count", "Report"]
 timeout = 90
 image = "python-dev"
 
+# SQL on the lab's PostgreSQL from inside the lab (#327): the stores' psql lives in the container of the service
+# that started them, not in the workspace container a service_id check runs in, and no lab image carries a driver;
+# .xtm-one/lab/lab_sql.py speaks the simple query protocol itself. Run with sandbox_run_command(check="lab-sql",
+# service_id=<a lab on .xtm-one/stores.py: lab-openaev, lab-opencrq, lab-xtm-hub, lab-filigran-licenses, lab>); args
+# replace the default listing: --database NAME --sql TEXT (or --file PATH), --var NAME=VALUE for :'NAME' / :"NAME".
+# JSON answer; exit 1 on a SQL error, 2 when the database does not answer, 3 on an unbound variable.
+[check.lab-sql]
+description = "SQL on the lab PostgreSQL from inside the lab, JSON rows: run with service_id = a lab on the stores; args: --database NAME --sql TEXT | --file PATH [--var NAME=VALUE] | --list"
+argv = ["python", ".xtm-one/lab/lab_sql.py"]
+default_args = ["--list"]
+timeout = 90
+image = "python-dev"
+
 # The type checker on the change: affected = "lines" hands scripts/types_changed.py
 # the Python files the checkout changed (a modified one as PATH:A-B,C-D, never a
 # test file the change left alone); mypy runs once over them with [tool.mypy] and
