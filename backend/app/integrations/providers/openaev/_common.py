@@ -2402,7 +2402,105 @@ def _fmt_payload(p: dict, base_url: str = "") -> str:
     return "\n".join(lines)
 
 
-def _fmt_expectation_results_by_type(results: Any, *, subject: str = "") -> str:
+def _inject_row_executed(row: dict) -> bool:
+    """Whether an inject result row has run: OpenAEV sets ``inject_status`` on
+    the first execution and leaves it null before."""
+    status = row.get("inject_status")
+    if isinstance(status, dict):
+        return bool(status.get("status_name"))
+    return bool(status)
+
+
+def _no_expectation_results_message(executed: bool | None) -> str:
+    """Name which case an empty expectation result is, when the caller knows.
+
+    An inject that has executed and still carries no result row declares no
+    expectations (it can only produce findings): waiting does not help. One
+    that has not executed may still produce results.
+    """
+    if executed is True:
+        return (
+            "No expectation results: the inject has executed and declares no "
+            "expectations, so none will come (findings only). Its execution "
+            "measures nothing about the security posture."
+        )
+    if executed is False:
+        return "No expectation results yet: the inject has not executed. Read again after it runs."
+    return (
+        "No expectation results. Either the inject has not executed yet, or it "
+        "declares no expectations - in which case its execution measures "
+        "nothing about the security posture."
+    )
+
+
+def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None) -> str:
+    """Explain an empty simulation result from its inject result rows.
+
+    ``rows`` is the ``/api/exercises/{id}/injects/results`` answer. Each inject
+    is either executed with no expectation (findings only) or not executed
+    yet, so the caller knows whether to wait or to stop looking.
+    """
+    head = f"No expectation results for {subject}." if subject else "No expectation results."
+    if rows_err or not isinstance(rows, list):
+        detail = f" (inject statuses not read: {rows_err})" if rows_err else ""
+        return (
+            f"{head} Either its injects have not executed yet, or they declare no expectations (findings only).{detail}"
+        )
+    injects = [r for r in rows if isinstance(r, dict)]
+    if not injects:
+        return f"{head} The simulation has no inject."
+    executed = [r for r in injects if _inject_row_executed(r)]
+    pending = [r for r in injects if not _inject_row_executed(r)]
+    lines = [head]
+    if executed:
+        lines.append(
+            f"  {len(executed)} inject(s) executed and declare no expectations, so "
+            "no result will come for them (findings only); they measure nothing "
+            "about the security posture."
+        )
+    if pending:
+        lines.append(f"  {len(pending)} inject(s) not executed yet: results may still come.")
+    for row in injects[:SIMULATION_INJECT_ROWS]:
+        title = row.get("inject_title") or row.get("inject_id") or "?"
+        state = "executed, no expectations" if _inject_row_executed(row) else "not executed"
+        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {state}")
+    if len(injects) > SIMULATION_INJECT_ROWS:
+        lines.append(f"    {len(injects) - SIMULATION_INJECT_ROWS} more not shown")
+    return "\n".join(lines)
+
+
+async def simulation_results_answer(api: Any, base_url: str, headers: dict[str, str], exercise_id: str) -> str:
+    """Answer a simulation's expectation results, naming why one is empty.
+
+    ``api`` is the calling module's ``_api`` (tests patch it per module). An
+    empty result reads the inject result rows once, so the answer says which
+    injects executed with no expectation and which have not run yet.
+    """
+    resp, err = await api(
+        base_url,
+        headers,
+        "get",
+        f"/api/exercises/{exercise_id}/results",
+        "get simulation results",
+    )
+    if err:
+        return err
+    subject = f"simulation {exercise_id}"
+    results = resp.json()
+    if isinstance(results, list) and results:
+        return _fmt_expectation_results_by_type(results, subject=subject)
+    rows_resp, rows_err = await api(
+        base_url,
+        headers,
+        "get",
+        f"/api/exercises/{exercise_id}/injects/results",
+        "inject results",
+    )
+    rows = rows_resp.json() if rows_resp is not None and not rows_err else None
+    return _simulation_no_results_message(subject, rows, rows_err)
+
+
+def _fmt_expectation_results_by_type(results: Any, *, subject: str = "", executed: bool | None = None) -> str:
     """Render ``List<ExpectationResultsByType>`` with its semantics attached.
 
     This is the shape returned by the simulation-results endpoints and carried
@@ -2419,11 +2517,7 @@ def _fmt_expectation_results_by_type(results: Any, *, subject: str = "") -> str:
       lower than ``avgResult`` suggests.
     """
     if not isinstance(results, list) or not results:
-        return (
-            "No expectation results. Either the inject has not executed yet, or it "
-            "declares no expectations - in which case its execution measures "
-            "nothing about the security posture."
-        )
+        return _no_expectation_results_message(executed)
 
     lines: list[str] = []
     if subject:

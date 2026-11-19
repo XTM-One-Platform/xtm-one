@@ -45,7 +45,6 @@ from ._common import (
     _aev_link,
     _api,
     _ensure_fresh_token,
-    _fmt_expectation_results_by_type,
     _require_response,
     _scope_path,
     _search_body,
@@ -53,6 +52,7 @@ from ._common import (
     _simulation_state_lines,
     _with_scope_hint,
     json_answer,
+    simulation_results_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -272,15 +272,7 @@ def register(
         if action == "results":
             if not exercise_id:
                 return "exercise_id is required for action 'results'."
-            resp, err = await _api(
-                base_url, headers, "get", f"/api/exercises/{exercise_id}/results",
-                "get simulation results",
-            )
-            if err:
-                return err
-            return _fmt_expectation_results_by_type(
-                resp.json(), subject=f"simulation {exercise_id}"
-            )
+            return await simulation_results_answer(_api, base_url, headers, exercise_id)
 
         if action in ("add_teams", "remove_teams"):
             # `team_ids=[]` is meaningful for add_teams (maps to /teams/replace,
