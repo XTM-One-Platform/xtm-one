@@ -2017,6 +2017,7 @@ async def create_work_item(
         item_id = str(item.id)
         dispatchable = item.status == "open" and item.owner_agent_id is not None
         deployment = item.status == "blocked" and _names_deployment(refs)
+        workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
@@ -2037,12 +2038,23 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_deployment_check
 
         schedule_deployment_check(item_id)
+    if workflow_runs:
+        # Once at creation: the run it waits for may have succeeded already.
+        from app.services.work_item_blocked_refs import schedule_workflow_run_check
+
+        schedule_workflow_run_check(item_id)
     return await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
 
 
 def _names_deployment(refs: object) -> bool:
     """Whether *refs* (normalised ``blocked_on_refs``) waits for a deployment."""
     return any(isinstance(r, dict) and r.get("kind") == "deployment" for r in refs or [])
+
+
+def _names_workflow_run(refs: object) -> bool:
+    """Whether *refs* (normalised ``blocked_on_refs``) waits for a workflow run."""
+    items = refs if isinstance(refs, list) else []
+    return any(isinstance(r, dict) and r.get("kind") == "workflow_run" for r in items)
 
 
 async def update_work_item(
@@ -2452,6 +2464,7 @@ async def update_work_item(
             )
         )
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
+        workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -2489,6 +2502,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_deployment_check
 
         schedule_deployment_check(item_id)
+    if workflow_runs:
+        # Once at the write: the run it waits for may have succeeded already.
+        from app.services.work_item_blocked_refs import schedule_workflow_run_check
+
+        schedule_workflow_run_check(item_id)
     return await _read_back(item_id, user_id=user_id, writer=writer)
 
 
