@@ -19484,5 +19484,20 @@
   "\"{filename}\" was deleted by an administrator.": "「{filename}」は管理者により削除されました。",
   "This file was deleted by an administrator.": "このファイルは管理者により削除されました。",
   "\"{filename}\" was deleted by its owner.": "「{filename}」は所有者により削除されました。",
-  "This file was deleted by its owner.": "このファイルは所有者により削除されました。"
+  "This file was deleted by its owner.": "このファイルは所有者により削除されました。",
+  "Connected account": "接続アカウント",
+  "One shared account": "共有アカウント 1 つ",
+  "Each person's own account": "各ユーザー自身のアカウント",
+  "Each person connects their own account once and acts as themselves.": "各ユーザーが自分のアカウントを一度接続し、本人として操作します。",
+  "One account, authorized once, is used for every person who can use this server.": "一度認可した 1 つのアカウントを、このサーバーを使えるすべてのユーザーが使用します。",
+  "Saving discards the shared connection: each person then connects their own account.": "保存すると共有接続は破棄されます。その後、各ユーザーが自分のアカウントを接続します。",
+  "Saving disconnects every person's own account: the server then has to be authorized once for everyone.": "保存すると各ユーザーのアカウント接続が解除されます。その後、全員のためにサーバーを一度認可する必要があります。",
+  "Your account is connected": "あなたのアカウントは接続済みです",
+  "Your connection failed to refresh": "接続の更新に失敗しました",
+  "Connect your account to use this server": "このサーバーを使うにはアカウントを接続してください",
+  "Calls to this server made for you carry your own account. Tokens are refreshed automatically.": "あなたのためにこのサーバーへ行われる呼び出しには、あなた自身のアカウントが使われます。トークンは自動的に更新されます。",
+  "Connect again to restore your connection.": "接続を回復するには再接続してください。",
+  "Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.": "このサーバーでは各ユーザーが自分のアカウントを使います。接続するまで、あなたのためのツール呼び出しはアカウントなしで行われ、失敗します。",
+  "Connect again": "再接続",
+  "Disconnect your account": "アカウントの接続を解除"
 }
