@@ -12,7 +12,8 @@ against its own migrations and its day-1 seed, with no access to the staging or 
 2. Node 24 (``engines.node``) is the lab's pinned download (``lab.NODE``); pnpm is the pinned standalone binary of the
    release ``packageManager`` names (``PNPM_EXE``).
 3. PostgreSQL is the lab's own (``.xtm-one/stores.py``) with a database ``filigran_website``; ``pnpm migrate`` then
-   ``pnpm seed`` run on that EMPTY database (no ``SEED_CONFIRM``: the seed refuses a database with pages). Media stay
+   the day-1 seed (what ``pnpm seed`` runs, revalidation off outside next) on that EMPTY database, never on one
+   with pages (no ``SEED_CONFIRM``). Media stay
    local (no ``BLOB_READ_WRITE_TOKEN``), mail is logged (no ``RESEND_API_KEY``), AI is off (no ``ANTHROPIC_API_KEY``).
 4. Sign-in: the admin enforces payload-totp. The lab seeds ``lab@filigran.io`` (Site Admin) with a known TOTP secret
    through the Local API, the repository's own e2e pattern (``tests/helpers/seedUser.ts``); no production code path
@@ -81,16 +82,29 @@ SUB_PATHS = (
 )
 READY: dict[str, bool] = {}
 
-#: The lab reviewer, created once through the Local API (overrideAccess), the way tests/helpers/seedUser.ts does.
+#: The day-1 seed (src/endpoints/seed, what scripts/seed.ts runs) on the empty lab database, then the lab reviewer
+#: created through the Local API (overrideAccess), the way tests/helpers/seedUser.ts does; revalidation off.
 SEED_USER_TS = """
-import { getPayload } from 'payload'
-import config from '../src/payload.config'
+process.env.DATABASE_POOL_MAX = process.env.DATABASE_POOL_MAX || '25'
+const { createLocalReq, getPayload } = await import('payload')
+const { default: config } = await import('../src/payload.config')
+const { seed } = await import('../src/endpoints/seed')
 
 const payload = await getPayload({ config })
+// Outside next there is no cache to revalidate: the Users afterChange hook calls revalidatePath, which throws
+// there, so scripts/seed.ts stops at its own admin create on a fresh database. Every write here skips it.
+const context = { disableRevalidate: true }
+const existing = await payload.count({ collection: 'pages' })
+if (existing.totalDocs > 0) {
+  console.error(`lab seed: the lab database already holds ${existing.totalDocs} pages, not seeded again`)
+} else {
+  await seed({ payload, req: await createLocalReq({ context }, payload) })
+}
 const found = await payload.find({ collection: 'users', where: { email: { equals: process.env.LAB_EMAIL } }, limit: 1 })
 if (found.totalDocs === 0) {
   await payload.create({
     collection: 'users',
+    context,
     data: {
       name: 'Lab reviewer',
       email: process.env.LAB_EMAIL,
@@ -235,10 +249,10 @@ def lexicalize_guides(root: Path) -> int:
 
 
 def seed_user(root: Path, run_env: dict[str, str]) -> None:
-    script = root / ".lab" / "seed-user.ts"
+    script = root / ".lab" / "seed.ts"
     script.parent.mkdir(exist_ok=True)
     script.write_text(SEED_USER_TS, encoding="utf-8")
-    lab.run("seed-user", [str(root / "node_modules" / ".bin" / "tsx"), str(script)], cwd=root, env={
+    lab.run("seed", [str(root / "node_modules" / ".bin" / "tsx"), str(script)], cwd=root, env={
         **run_env, "LAB_EMAIL": LAB_ADMIN_EMAIL, "LAB_PASSWORD": LAB_ADMIN_PASSWORD, "LAB_TOTP": LAB_TOTP_SECRET})
 
 
@@ -344,7 +358,6 @@ def main() -> None:
     wrapped = lexicalize_guides(root)
     if wrapped:
         lab.log(f"guides snapshot: {wrapped} plain TL;DR text(s) and FAQ question(s) wrapped as rich text for the lab")
-    lab.run("seed", [str(pnpm), "run", "seed"], cwd=root, env=run_env)
     seed_user(root, run_env)
     lab.log(f"seeded the day-1 content and {LAB_ADMIN_EMAIL} (Site Admin, TOTP enrolled)")
     lab.spawn("website-next", [str(node), str(root / "node_modules/next/dist/bin/next"), "dev",
