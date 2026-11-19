@@ -222,6 +222,8 @@ async def integration_broken(db: AsyncSession, now: datetime) -> list[CheckResul
     rows = (
         await db.execute(
             select(Integration.id, Integration.provider, Integration.status, Integration.connection_test_status).where(
+                # access_restricted: bypass - an administrator health signal on every company-managed
+                # integration, read for no acting user; lists nothing to a caller.
                 Integration.is_company_managed.is_(True)
             )
         )

@@ -338,6 +338,14 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "the digest's 'by the Concierge' counts the fleet's own agents, company-managed by construction"
     ),
     # (b) not a read offered to the caller, SQL unchanged
+    ("services/health/platform_checks.py", "integration_broken"): (
+        "the administrator health check of company-managed integrations (#101): the flag IS "
+        "the scope, read for no acting user; personal ones go to their owner; lists nothing to a caller"
+    ),
+    ("services/health/platform_checks.py", "mcp_server_broken"): (
+        "the administrator health check of company-managed MCP servers (#101): the flag IS "
+        "the scope, read for no acting user; personal ones go to their owner; lists nothing to a caller"
+    ),
     ("services/health/sandbox/side_effects.py", "company_mcp_server_ids"): (
         "the flag IS the policy: a sandbox trusts a tool name only from a server an "
         "administrator vouched for, the set the HITL derivation trusts (#8255)"
