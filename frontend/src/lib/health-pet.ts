@@ -85,12 +85,12 @@ export function framePosition(state: PetState, frame: number, scale: number): st
  * What the bubble says for each state, with `{name}` the Platform Health's name.
  * `idle` has no line of its own: the findings line ({@link companionFindingsLabel}) says it. @i18n-keys
  */
-export const COMPANION_STATE_LABELS: Record<Exclude<CompanionState, "idle">, string> = {
+export const COMPANION_STATE_LABELS = {
   running: "{name} is checking the platform.",
   waiting: "A run is waiting for your approval.",
   failed: "Something did not go through. {name} has the details.",
   review: "A proposal is ready for your review.",
-};
+} as const;
 
 /** The findings line of the bubble, most severe first. @i18n-keys */
 export const COMPANION_FINDINGS_LABELS = {

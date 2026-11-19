@@ -183,7 +183,12 @@ async def test_the_activity_carries_the_open_findings_by_severity() -> None:
 
     def _result(check: str, severity: str, failing: bool = True) -> CheckResult:
         return CheckResult(
-            check_id=check, module="xtm_one", category="c", severity=severity, failing=failing, subject={"x": check}
+            check_id=check,
+            module="xtm_one",
+            category="availability",
+            severity=severity,
+            failing=failing,
+            subject={"x": check},
         )
 
     async with health_database() as sessions:
@@ -191,7 +196,12 @@ async def test_the_activity_carries_the_open_findings_by_severity() -> None:
         async with sessions() as db:
             await record_results(
                 db,
-                [_result("a", "critical"), _result("b", "warning"), _result("c", "warning"), _result("d", "info", False)],
+                [
+                    _result("a", "critical"),
+                    _result("b", "warning"),
+                    _result("c", "warning"),
+                    _result("d", "info", False),
+                ],
                 now=now,
             )
             await db.commit()

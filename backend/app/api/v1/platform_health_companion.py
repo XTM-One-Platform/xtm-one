@@ -214,14 +214,14 @@ async def _companion(db: AsyncSession, preference: CompanionPreference) -> Compa
 
 
 @router.get("/me/companion", response_model=CompanionResponse)
-async def get_companion(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def get_companion(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> CompanionResponse:
     return await _companion(db, read_preference(user))
 
 
 @router.put("/me/companion", response_model=CompanionResponse)
 async def put_companion(
     body: CompanionUpdate, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
-):
+) -> CompanionResponse:
     if body.pet is not None and not await pets.pet_exists(db, body.pet):
         raise HTTPException(status_code=422, detail="This pet is not in the library.")
     row = await db.get(User, user.id)
@@ -235,7 +235,7 @@ async def put_companion(
 
 
 @router.get("/me/activity", response_model=ActivityResponse)
-async def get_activity(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def get_activity(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ActivityResponse:
     """What the companion shows: Platform Health's work, its open findings and the user's own runs."""
     activity = await companion_activity(db, user)
     return ActivityResponse(
