@@ -24,6 +24,7 @@ from ._common import (
     _api,
     _fmt_expectation_results_by_type,
     _search_body,
+    inject_read_answer,
     inject_targets_line,
     json_answer,
     mirror_content_targets,
@@ -87,7 +88,7 @@ def register(
                 )
                 if err:
                     return err
-                return json_answer(resp.json())
+                return inject_read_answer(resp.json())
             if action == "status":
                 if not inject_id:
                     return "inject_id is required."
@@ -201,7 +202,7 @@ def register(
             )
             if err:
                 return err
-            return json_answer(resp.json())
+            return inject_read_answer(resp.json())
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):

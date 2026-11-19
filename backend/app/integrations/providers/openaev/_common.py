@@ -172,6 +172,37 @@ def inject_targets_line(inject: Any) -> str:
     return line
 
 
+#: Inject keys moved to the end of an inject read's JSON: the bulky ones
+#: (content, documents, expectation and status trees) so the relations and
+#: scalar fields are read before any cut marker.
+_INJECT_BULKY_KEYS: tuple[str, ...] = (
+    "inject_content",
+    "inject_documents",
+    "inject_expectations",
+    "inject_status",
+    "inject_kill_chain_phases",
+    "inject_attack_patterns",
+)
+
+
+def inject_read_answer(inject: Any, limit: int = JSON_READ_CHARS) -> str:
+    """An inject read: its targets line first, then its JSON, bulky keys last.
+
+    The stored targets (``inject_asset_groups``, ``inject_assets``) are always
+    named in full ahead of the JSON, so a large ``inject_content`` (a long
+    command line, many arguments) that pushes the answer past *limit* never
+    hides the relations the executor targets. Not an object: plain
+    ``json_answer``.
+    """
+    if not isinstance(inject, dict):
+        return json_answer(inject, limit)
+    ordered = {k: v for k, v in inject.items() if k not in _INJECT_BULKY_KEYS}
+    ordered.update({k: inject[k] for k in _INJECT_BULKY_KEYS if k in inject})
+    head = inject_targets_line(inject)
+    body = json_answer(ordered, limit)
+    return f"{head}\n{body}" if head else body
+
+
 # Transient upstream statuses that IDEMPOTENT OpenAEV calls opt into retrying at
 # the HTTP layer (via ``_api(..., retry_transient=True)``). The shared gateway
 # set is 502/503/504; OpenAEV also surfaces its own transient faults (a brief EE
