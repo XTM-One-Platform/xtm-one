@@ -60,6 +60,7 @@ def register(
     ) -> str:
         params, extra = build_search_params(
             search=search,
+            search_fields=("displayName", "mail", "userPrincipalName"),
             odata_filter=odata_filter,
             select=_USER_SELECT,
             skiptoken=skiptoken,
@@ -472,7 +473,7 @@ def register(
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Free-text search across displayName, mail, and userPrincipalName.",
+                        "description": "Free-text search across displayName, mail, and userPrincipalName (or one 'property:value' clause, e.g. 'displayName:jane').",
                     },
                     "odata_filter": {
                         "type": "string",

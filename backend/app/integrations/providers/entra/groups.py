@@ -66,6 +66,7 @@ def register(
     ) -> str:
         params, extra = build_search_params(
             search=search,
+            search_fields=("displayName", "mail", "description"),
             odata_filter=odata_filter,
             select=_GROUP_SELECT,
             skiptoken=skiptoken,

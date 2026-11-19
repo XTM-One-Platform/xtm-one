@@ -51,6 +51,7 @@ def register(
     ) -> str:
         params, extra = build_search_params(
             search=search,
+            search_fields=("displayName",),
             odata_filter=odata_filter,
             select=_DEVICE_SELECT,
             skiptoken=skiptoken,

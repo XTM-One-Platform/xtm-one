@@ -291,7 +291,8 @@ async def test_list_users_passes_search_and_returns_formatted_list(monkeypatch):
 
     # Advanced-query header + $search param are forwarded to the request.
     assert calls[0]["extra_headers"]["ConsistencyLevel"] == "eventual"
-    assert calls[0]["params"]["$search"] == '"jane"'
+    # Graph needs "property:value" clauses: free text is expanded per field.
+    assert calls[0]["params"]["$search"] == '"displayName:jane" OR "mail:jane" OR "userPrincipalName:jane"'
     assert "Jane Doe" in result
     assert "jane@contoso.com" in result
     # The nextLink skiptoken surfaces as a pagination hint.
@@ -629,6 +630,22 @@ def test_build_search_params_escapes_quotes_and_backslashes():
     # $search value stays syntactically valid (no HTTP 400).
     assert params["$search"] == '"a\\"b\\\\c"'
     assert headers["ConsistencyLevel"] == "eventual"
+
+
+def test_build_search_params_expands_free_text_into_property_clauses():
+    params, headers = build_search_params(search=" boitelle ", search_fields=("displayName", "mail"))
+    assert params["$search"] == '"displayName:boitelle" OR "mail:boitelle"'
+    assert headers["ConsistencyLevel"] == "eventual"
+
+
+def test_build_search_params_keeps_a_qualified_clause():
+    params, _ = build_search_params(search="displayName:jane doe", search_fields=("displayName", "mail"))
+    assert params["$search"] == '"displayName:jane doe"'
+
+
+def test_build_search_params_escapes_inside_each_clause():
+    params, _ = build_search_params(search='a"b', search_fields=("displayName",))
+    assert params["$search"] == '"displayName:a\\"b"'
 
 
 @pytest.mark.asyncio
