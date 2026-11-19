@@ -17,11 +17,49 @@ import logging
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
+from .access import _refuse_unapplied
 from .workflow import resolve_filters_json, with_status_notes
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
+_NOTIFIER_DEFAULT_LIMIT = 50
+_NOTIFIER_DEFAULT_TEST_ID = "default_notification"
+_TRIGGER_DEFAULT_LIMIT = 50
+_TRIGGER_DEFAULT_PERIOD = "day"
+_NOTIFICATION_DEFAULT_LIMIT = 20
+# The fields each action of the three tools reads; any other field is refused.
+_NOTIFIER_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"notifier_id"}),
+    "create": frozenset({"name", "description", "notifier_connector_id", "notifier_configuration"}),
+    "update": frozenset({"notifier_id", "name", "description", "notifier_configuration"}),
+    "delete": frozenset({"notifier_id"}),
+    "test": frozenset({"notifier_connector_id", "notifier_configuration", "notifier_test_id"}),
+}
+_TRIGGER_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"kind", "search", "limit"}),
+    "get": frozenset({"kind", "trigger_id"}),
+    "create_live": frozenset(
+        {"kind", "name", "description", "event_types", "instance_trigger", "filters", "notifier_ids", "recipients"}
+    ),
+    "create_digest": frozenset(
+        {"kind", "name", "description", "trigger_ids", "period", "trigger_time", "notifier_ids", "recipients"}
+    ),
+    "update": frozenset({"kind", "trigger_id", "name", "description", "filters", "notifier_ids"}),
+    "delete": frozenset({"kind", "trigger_id"}),
+}
+# An activity live trigger has no event types and no instance mode.
+_ACTIVITY_TRIGGER_APPLIES: dict[str, frozenset[str]] = {
+    **_TRIGGER_APPLIES,
+    "create_live": _TRIGGER_APPLIES["create_live"] - {"event_types", "instance_trigger"},
+}
+_NOTIFICATION_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "mark_read": frozenset({"notification_id"}),
+    "mark_unread": frozenset({"notification_id"}),
+    "delete": frozenset({"notification_id"}),
+}
 
 # Built-in notifier connector IDs, copied verbatim from OpenCTI's
 # ``notifier-statics.ts`` (NOTIFIER_CONNECTOR_*). These are the exact values the
@@ -52,11 +90,31 @@ def register(
         description: str = "",
         notifier_connector_id: str = "",
         notifier_configuration: str = "",
-        notifier_test_id: str = "default_notification",
+        notifier_test_id: str = _NOTIFIER_DEFAULT_TEST_ID,
         search: str = "",
-        limit: int = 50,
+        limit: int = _NOTIFIER_DEFAULT_LIMIT,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        # A field the action ignores (or an undeclared one) is refused by name:
+        # nothing is sent, never a silent "Deleted". Defaults count as not passed.
+        refused = _refuse_unapplied(
+            action,
+            _NOTIFIER_APPLIES,
+            {
+                "notifier_id": notifier_id,
+                "name": name,
+                "description": description,
+                "notifier_connector_id": notifier_connector_id,
+                "notifier_configuration": notifier_configuration,
+                "notifier_test_id": None if notifier_test_id == _NOTIFIER_DEFAULT_TEST_ID else notifier_test_id,
+                "search": search,
+                "limit": None if limit == _NOTIFIER_DEFAULT_LIMIT else limit,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -225,14 +283,39 @@ def register(
         notifier_ids: list[str] | None = None,
         recipients: list[str] | None = None,
         trigger_ids: list[str] | None = None,
-        period: str = "day",
+        period: str = _TRIGGER_DEFAULT_PERIOD,
         trigger_time: str = "",
         search: str = "",
-        limit: int = 50,
+        limit: int = _TRIGGER_DEFAULT_LIMIT,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
         kind = (kind or "knowledge").strip().lower()
         is_activity = kind == "activity"
+        # Refused before the filters are resolved, so nothing reaches OpenCTI.
+        refused = _refuse_unapplied(
+            action,
+            _ACTIVITY_TRIGGER_APPLIES if is_activity else _TRIGGER_APPLIES,
+            {
+                "kind": kind,
+                "trigger_id": trigger_id,
+                "name": name,
+                "description": description,
+                "event_types": event_types,
+                "instance_trigger": instance_trigger,
+                "filters": filters,
+                "notifier_ids": notifier_ids,
+                "recipients": recipients,
+                "trigger_ids": trigger_ids,
+                "period": None if period == _TRIGGER_DEFAULT_PERIOD else period,
+                "trigger_time": trigger_time,
+                "search": search,
+                "limit": None if limit == _TRIGGER_DEFAULT_LIMIT else limit,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if filters:
             try:
@@ -419,9 +502,22 @@ def register(
         action: str,
         notification_id: str = "",
         search: str = "",
-        limit: int = 20,
+        limit: int = _NOTIFICATION_DEFAULT_LIMIT,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _NOTIFICATION_APPLIES,
+            {
+                "notification_id": notification_id,
+                "search": search,
+                "limit": None if limit == _NOTIFICATION_DEFAULT_LIMIT else limit,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
