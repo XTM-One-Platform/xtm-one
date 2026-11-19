@@ -38,10 +38,6 @@ from tests.health_support import World, health_database
 pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(autouse=True)
-def _flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
-
 @pytest.fixture
 def handlers(monkeypatch) -> list[Revocation]:
     """Record every revocation, in place of the later levels' handlers."""

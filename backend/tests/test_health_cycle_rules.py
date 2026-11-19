@@ -288,11 +288,9 @@ def test_an_untriggered_fleet_run_is_gated_as_no_person():
     ],
 )
 def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only(monkeypatch, who, wired):
-    from app.core.config import settings
     from app.services import agent_chat
     from app.services.health import identity
 
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     added: list[str] = []
     composite = SimpleNamespace(add_tools=lambda definitions, _executor: added.extend(d.name for d in definitions))
     experimenter = SimpleNamespace(id=uuid.uuid4(), health_role="experimenter", is_company_managed=True)

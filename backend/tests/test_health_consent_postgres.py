@@ -18,7 +18,6 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog
 from app.models.flow import Flow
@@ -29,11 +28,6 @@ from app.services.health.identity import acting_as_health_principal, health_prin
 from tests.health_support import World, configure, health_database, make_agent
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(autouse=True)
-def _flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
 
 
 # ── The consent rule: predicate, SQL filter and snapshot agree ────────────

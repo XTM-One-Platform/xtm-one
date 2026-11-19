@@ -17,7 +17,6 @@ import sqlalchemy as sa
 from sqlalchemy import select
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
-from app.core.config import settings
 from app.models.health import HealthBudgetMonth, HealthCycle
 from app.services import agentic_gate
 from app.services.health import budget
@@ -25,11 +24,6 @@ from app.services.health.settings import load_health_settings
 from tests.health_support import World, configure, health_database
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(autouse=True)
-def _flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
 
 
 @pytest.fixture

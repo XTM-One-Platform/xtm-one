@@ -15,7 +15,6 @@ import pytest
 from sqlalchemy import select
 
 from app.agents.seed import SEED_DATA_DIR
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.assignment import Assignment
 from app.services.health import fleet_seed
@@ -80,7 +79,6 @@ def test_a_personal_agent_on_a_former_slug_is_never_renamed() -> None:
 async def test_a_fleet_seeded_under_the_former_slugs_is_adopted_in_place(monkeypatch: pytest.MonkeyPatch) -> None:
     from tests.health_support import World, health_database
 
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     async with health_database() as sessions:
         await World().build(sessions)
         async with sessions() as db:

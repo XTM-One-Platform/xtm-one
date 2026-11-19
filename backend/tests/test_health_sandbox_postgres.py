@@ -621,14 +621,12 @@ async def test_a_copys_runs_stop_once_its_source_or_basis_is_out_of_reach(sessio
     or a prototype's basis agent not opted in, refuses the run before anything
     is recorded; a prototype standing for nothing never runs as the
     administrator the Concierge acts for."""
-    from app.core.config import settings
     from app.models.platform_settings import PlatformSettings
     from app.services.health.flow_lab_access import BASIS_AGENT_PREFIX
     from app.services.health.identity import HealthPrincipal, acting_as_health_principal
     from app.services.health.settings import HealthSettings
 
     monkeypatch.setattr(sandbox_tools, "subject_refusal", _REAL_SUBJECT_REFUSAL)
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     graph = {"nodes": [_node("start", "trigger.manual")], "edges": []}
     async with sessions() as session:
         session.add(PlatformSettings(health_settings=HealthSettings(enabled=True).model_dump(mode="json")))

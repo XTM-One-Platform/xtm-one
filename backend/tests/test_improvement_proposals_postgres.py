@@ -359,7 +359,6 @@ async def test_an_agent_states_its_measurement():
 
 @pytest.mark.asyncio
 async def test_one_open_change_per_target(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     async with _temp_database("proposal_open") as sessionmaker:
         seeded = await _seed(sessionmaker)
         await _file(sessionmaker, seeded)

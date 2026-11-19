@@ -34,11 +34,6 @@ from tests.health_support import World, health_database
 pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(autouse=True)
-def _flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
-
-
 @asynccontextmanager
 async def _client(sessions, user: User) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()

@@ -150,7 +150,6 @@ def concierge_on(monkeypatch):
     async def _licensed(_db):
         return None
 
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     monkeypatch.setattr(settings, "platform_mode", "xtm_one")
     monkeypatch.setattr(budget, "_gate", _licensed)
 

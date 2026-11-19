@@ -1916,11 +1916,9 @@ def as_concierge(monkeypatch, request):
     """The work acts as the Concierge (flag on), through a fleet agent an admin
     owns; or it is a sandbox copy's turn with no principal (an evaluation case
     of an admin-owned agent's copy, which keeps that agent's supervision list)."""
-    from app.core.config import settings
     from app.services.health.identity import HealthPrincipal, acting_as_health_principal
     from app.services.health.sandbox.session import SandboxSession, sandbox_session
 
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     if request.param == "sandbox_turn":
         with sandbox_session(SandboxSession(mode="sandbox")):
             yield

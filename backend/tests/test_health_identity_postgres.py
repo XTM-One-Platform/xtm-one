@@ -13,7 +13,6 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.core.config import settings
 from app.models.audit_log import AuditLog
 from app.services.health.availability import health_active
 from app.services.health.identity import current_health_principal, health_run_scope, mark_health_run
@@ -21,11 +20,6 @@ from app.services.health.settings import HealthSettings, load_health_settings
 from tests.health_support import World, configure, health_database
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(autouse=True)
-def _flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
 
 
 async def test_settings_are_saved_audited_and_switch_the_concierge_on(monkeypatch) -> None:
