@@ -174,6 +174,79 @@ async def test_group_tool_refuses_missing_or_path_like_ids(http: AsyncMock) -> N
 
 
 @pytest.mark.asyncio
+async def test_list_documents_name_filter_walks_pages_and_stays_local(http: AsyncMock) -> None:
+    _, handlers = _tools()
+    http.side_effect = [
+        (
+            _resp(
+                200,
+                {
+                    "items": [{"id": "d1", "file_name": "NDA Acme.pdf"}, {"id": "d2", "file_name": "Lease.pdf"}],
+                    "cursor": "c2",
+                },
+            ),
+            None,
+        ),
+        (_resp(200, {"items": [{"id": "d3", "file_name": "nda beta.docx"}], "cursor": None}), None),
+    ]
+    answer = await handlers["get_wordsmith_repositories"](
+        operation="list_documents", repository_id="r1", query={"folder_id": "f1", "name_contains": "NDA"}
+    )
+    assert http.call_count == 2
+    first, second = (call.kwargs["params"] for call in http.call_args_list)
+    assert first == {"folder_id": "f1", "limit": 100}
+    assert second == {"folder_id": "f1", "limit": 100, "cursor": "c2"}
+    assert "2 of 3 item(s) kept" in answer
+    assert "d1" in answer and "d3" in answer and "d2" not in answer
+
+
+@pytest.mark.asyncio
+async def test_list_documents_name_filter_hands_back_the_cursor_at_the_bound(http: AsyncMock) -> None:
+    _, handlers = _tools()
+    page = {"items": [{"id": "x", "file_name": "Other.pdf"}], "cursor": "next"}
+    http.side_effect = lambda *a, **k: (_resp(200, page), None)
+    answer = await handlers["get_wordsmith_repositories"](
+        operation="list_documents", repository_id="r1", query={"name_contains": "nda"}
+    )
+    assert http.call_count == wordsmith._NAME_FILTER_MAX_PAGES
+    assert "pass query.cursor" in answer and '"next"' in answer
+
+
+@pytest.mark.asyncio
+async def test_search_metadata_only_drops_snippets_and_keeps_the_body_clean(http: AsyncMock) -> None:
+    _, handlers = _tools()
+    hits = [
+        {"document_id": "d1", "file_name": "NDA Acme.pdf", "snippet": "secret passage", "score": 0.9},
+        {"document_id": "d2", "file_name": "Lease.pdf", "snippet": "other", "score": 0.5},
+    ]
+    http.return_value = (_resp(200, {"items": hits}), None)
+    answer = await handlers["get_wordsmith_repositories"](
+        operation="search_repository",
+        repository_id="r1",
+        body={"query": "envelope 123", "metadata_only": True},
+        query={"name_contains": "nda"},
+    )
+    assert http.call_count == 1
+    kwargs = http.call_args.kwargs
+    assert kwargs["json"] == {"query": "envelope 123"}
+    assert "params" not in kwargs
+    assert "secret passage" not in answer and '"snippet"' not in answer
+    assert "d1" in answer and "d2" not in answer
+    assert "1 of 2 item(s) kept" in answer
+
+
+@pytest.mark.asyncio
+async def test_repository_options_are_offered_and_without_them_the_call_is_unchanged(http: AsyncMock) -> None:
+    defs, handlers = _tools()
+    assert "name_contains" in defs["get_wordsmith_repositories"].description
+    http.return_value = (_resp(200, {"items": [{"snippet": "kept"}]}), None)
+    answer = await handlers["get_wordsmith_repositories"](
+        operation="search_repository", repository_id="r1", body={"query": "x"}
+    )
+    assert "kept" in answer
+
+
+@pytest.mark.asyncio
 async def test_start_carries_idempotency_key_and_is_retried(http: AsyncMock) -> None:
     _, handlers = _tools()
     http.return_value = (_resp(202, {"operation_id": "op1"}), None)
