@@ -24,7 +24,7 @@ from app.core.database import Base
 
 class HealthPet(Base):
     __tablename__ = "health_pets"
-    __table_args__ = (UniqueConstraint("slug", name="uq_concierge_pets_slug"),)
+    __table_args__ = (UniqueConstraint("slug", name="uq_health_pets_slug"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     #: ``pet.json``'s ``id``: lowercase letters, digits and dashes, unique across the library.

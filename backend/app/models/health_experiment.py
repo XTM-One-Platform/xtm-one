@@ -74,10 +74,10 @@ def _now() -> datetime:
 class HealthExperiment(Base):
     __tablename__ = "health_experiments"
     __table_args__ = (
-        CheckConstraint(_in("status", EXPERIMENT_STATUSES), name="ck_concierge_experiments_status_valid"),
-        CheckConstraint(_in("change_type", CHANGE_TYPES), name="ck_concierge_experiments_change_type_valid"),
-        Index("ix_concierge_experiments_finding", "finding_id", "created_at"),
-        Index("ix_concierge_experiments_status", "status"),
+        CheckConstraint(_in("status", EXPERIMENT_STATUSES), name="ck_health_experiments_status_valid"),
+        CheckConstraint(_in("change_type", CHANGE_TYPES), name="ck_health_experiments_change_type_valid"),
+        Index("ix_health_experiments_finding", "finding_id", "created_at"),
+        Index("ix_health_experiments_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

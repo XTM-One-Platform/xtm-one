@@ -28,18 +28,18 @@ SOURCE_FLOW_RUN = "flow_run"
 class HealthDatasetEntrySource(Base):
     __tablename__ = "health_dataset_entry_sources"
     __table_args__ = (
-        CheckConstraint("case_kind IN ('to_fix', 'non_regression')", name="ck_concierge_entry_sources_case_kind"),
+        CheckConstraint("case_kind IN ('to_fix', 'non_regression')", name="ck_health_entry_sources_case_kind"),
         CheckConstraint(
-            "source_kind IN ('message', 'assignment_run', 'flow_run')", name="ck_concierge_entry_sources_source_kind"
+            "source_kind IN ('message', 'assignment_run', 'flow_run')", name="ck_health_entry_sources_source_kind"
         ),
         # One entry per source per dataset: a rebuild appends only what is new.
-        UniqueConstraint("dataset_id", "source_kind", "source_id", name="uq_concierge_entry_sources_source"),
-        Index("ix_concierge_entry_sources_user", "source_user_id"),
-        Index("ix_concierge_entry_sources_rater", "source_rater_id"),
-        Index("ix_concierge_entry_sources_agent", "source_agent_id"),
-        Index("ix_concierge_entry_sources_flow", "source_flow_id"),
-        Index("ix_concierge_entry_sources_node_agents", "source_node_agent_ids", postgresql_using="gin"),
-        Index("ix_concierge_entry_sources_node_flows", "source_node_flow_ids", postgresql_using="gin"),
+        UniqueConstraint("dataset_id", "source_kind", "source_id", name="uq_health_entry_sources_source"),
+        Index("ix_health_entry_sources_user", "source_user_id"),
+        Index("ix_health_entry_sources_rater", "source_rater_id"),
+        Index("ix_health_entry_sources_agent", "source_agent_id"),
+        Index("ix_health_entry_sources_flow", "source_flow_id"),
+        Index("ix_health_entry_sources_node_agents", "source_node_agent_ids", postgresql_using="gin"),
+        Index("ix_health_entry_sources_node_flows", "source_node_flow_ids", postgresql_using="gin"),
     )
 
     entry_id: Mapped[uuid.UUID] = mapped_column(

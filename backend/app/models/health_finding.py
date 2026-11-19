@@ -64,12 +64,12 @@ def _now() -> datetime:
 class HealthFinding(Base):
     __tablename__ = "health_findings"
     __table_args__ = (
-        CheckConstraint(_in("status", FINDING_STATUSES), name="ck_concierge_findings_status_valid"),
-        CheckConstraint(_in("target_type", TARGET_TYPES), name="ck_concierge_findings_target_type_valid"),
-        CheckConstraint(_in("pattern_kind", PATTERN_KINDS), name="ck_concierge_findings_pattern_kind_valid"),
-        Index("uq_concierge_findings_fingerprint", "fingerprint", unique=True),
-        Index("ix_concierge_findings_target", "target_type", "target_id", "status"),
-        Index("ix_concierge_findings_last_seen", "last_seen_at"),
+        CheckConstraint(_in("status", FINDING_STATUSES), name="ck_health_findings_status_valid"),
+        CheckConstraint(_in("target_type", TARGET_TYPES), name="ck_health_findings_target_type_valid"),
+        CheckConstraint(_in("pattern_kind", PATTERN_KINDS), name="ck_health_findings_pattern_kind_valid"),
+        Index("uq_health_findings_fingerprint", "fingerprint", unique=True),
+        Index("ix_health_findings_target", "target_type", "target_id", "status"),
+        Index("ix_health_findings_last_seen", "last_seen_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

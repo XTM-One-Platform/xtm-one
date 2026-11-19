@@ -161,6 +161,12 @@ alias for one minor release (section 2.3).
   (`test_health_group_renames.py`). The flow-run source marker `concierge_sandbox`
   (`SANDBOX_RUN_SOURCE`, stored on `flow_runs.trigger_context`) is not a group id and
   keeps its value.
+- Index and constraint names: the ten `health_*` tables declare `ix_health_*`, `uq_health_*`
+  and `ck_health_*` (formerly `*_concierge_*`). Migration `h120healthidx` renames, from the
+  catalog, every constraint (primary, foreign, unique, check) and index of those tables whose
+  name holds the token `concierge_`, so a migrated database matches a fresh install; it is
+  catalog-only (no index rebuilt), idempotent, and its downgrade writes the former names back
+  (`test_health_index_names.py`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no

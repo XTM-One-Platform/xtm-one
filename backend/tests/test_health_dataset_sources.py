@@ -41,8 +41,8 @@ def _source(entry, source_id, **overrides):
 @pytest.mark.parametrize(
     ("overrides", "constraint"),
     [
-        ({"case_kind": "maybe"}, "ck_concierge_entry_sources_case_kind"),
-        ({"source_kind": "email"}, "ck_concierge_entry_sources_source_kind"),
+        ({"case_kind": "maybe"}, "ck_health_entry_sources_case_kind"),
+        ({"source_kind": "email"}, "ck_health_entry_sources_source_kind"),
     ],
     ids=["case-kind", "source-kind"],
 )
@@ -84,7 +84,7 @@ async def test_a_source_is_added_once_per_dataset_and_goes_with_its_entry():
         await s.commit()
         async with s.begin_nested():
             s.add(_source(second, source_id))
-            with pytest.raises(sa.exc.IntegrityError, match="uq_concierge_entry_sources_source"):
+            with pytest.raises(sa.exc.IntegrityError, match="uq_health_entry_sources_source"):
                 await s.flush()
         await s.execute(sa.delete(DatasetEntry).where(DatasetEntry.id == first_id))
         await s.commit()

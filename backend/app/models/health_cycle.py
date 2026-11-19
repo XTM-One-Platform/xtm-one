@@ -26,7 +26,7 @@ class HealthCycleRun(Base):
     """The assignment run a cycle started, who asked for it, and its digest."""
 
     __tablename__ = "health_cycle_runs"
-    __table_args__ = (Index("ix_concierge_cycle_runs_target", "target_type", "target_id"),)
+    __table_args__ = (Index("ix_health_cycle_runs_target", "target_type", "target_id"),)
 
     cycle_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("health_cycles.id", ondelete="CASCADE"), primary_key=True
@@ -61,8 +61,8 @@ class HealthSignalState(Base):
 
     __tablename__ = "health_signal_states"
     __table_args__ = (
-        UniqueConstraint("target_type", "target_id", "kind", name="uq_concierge_signal_states_target_kind"),
-        Index("ix_concierge_signal_states_active", "active"),
+        UniqueConstraint("target_type", "target_id", "kind", name="uq_health_signal_states_target_kind"),
+        Index("ix_health_signal_states_active", "active"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

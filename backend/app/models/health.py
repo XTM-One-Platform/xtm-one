@@ -33,11 +33,11 @@ class HealthCycle(Base):
 
     __tablename__ = "health_cycles"
     __table_args__ = (
-        Index("ix_concierge_cycles_status_opened", "status", "opened_at"),
+        Index("ix_health_cycles_status_opened", "status", "opened_at"),
         # One open cycle per target (#8261, migration c8cnc8254081): the
         # database decides, not a read-then-write.
         Index(
-            "uq_concierge_cycles_open_target",
+            "uq_health_cycles_open_target",
             "target_type",
             "target_id",
             unique=True,
