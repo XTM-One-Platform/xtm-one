@@ -79,6 +79,8 @@ const CONTENT = [
   "pages/EvaluationRunDetail.tsx",
   // The fixed field mapping of ONE source and section in the import stepper (#11780): source field to profile field, read from a constant, not a list of records.
   "pages/settings/OrganizationImportDialog.tsx",
+  // The fixed retention categories (#396, six rows read from the policy) with their figures: a settings grid, not a list of records (UX r2 on #405, s.3 n/a).
+  "pages/settings/FileRetentionSection.tsx",
   "pages/xtm-one/ctem/CoverageMatrixCard.tsx",
   // The two readings of ONE CTEM score in a hover card (#11689): Measured x In your context, not a list of records.
   "pages/xtm-one/ctem/CtemScoreTip.tsx",

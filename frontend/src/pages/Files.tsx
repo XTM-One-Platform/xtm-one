@@ -20,7 +20,7 @@
  * its most recent file — the conversation an agent just wrote into is at the
  * top, not the one whose title sorts first.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ClipboardList,
@@ -38,6 +38,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FiltersPill } from "@/components/ui/filter-pill";
+import { Label } from "@/components/ui/label";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { Pagination } from "@/components/ui/pagination";
 import { TotalChip } from "@/components/ui/total-chip";
@@ -419,6 +421,9 @@ export default function Files() {
   const total = data?.total ?? 0;
   const groups = useMemo(() => groupFiles(files, t_i18n), [files, t_i18n]);
   // The filters besides the segment: with none, an empty page is an empty repository.
+  // Context, Origin and State: the count badge of the Filters pill.
+  const secondaryFilterCount = [context, origin, status].filter((v) => v !== "all").length;
+  const filtersHeadingId = useId();
   const otherFiltersActive =
     Boolean(debouncedSearch) || context !== "all" || origin !== "all" || status !== "all"
     || Boolean(conversationId) || Boolean(runId);
@@ -505,27 +510,37 @@ export default function Files() {
         <>
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput toolbar placeholder={t_i18n("Search files...")} value={searchDraft} onChange={setSearchDraft} />
-            <SegmentedFilter
-              value={context}
-              onChange={(v) => setParam(PARAM_CONTEXT, v)}
-              options={contextOptions}
-              ariaLabel={t_i18n("Where the file lives")}
-            />
-            <SegmentedFilter
-              value={origin}
-              onChange={(v) => setParam(PARAM_ORIGIN, v)}
-              options={originOptions}
-              ariaLabel={t_i18n("How the file got there")}
-            />
-            <SegmentedFilter
-              value={status}
-              onChange={(v) => setParam(PARAM_STATUS, v)}
-              options={statusOptions}
-              ariaLabel={t_i18n("Whether the file's content is kept")}
-              // A secondary filter: one compact select, so the toolbar stays one row at 1080 (UX r1 B4 on #405).
-              collapsed
-              collapsedClassName="w-36"
-            />
+            {/* Context, Origin and State sit in one Filters pill so the toolbar keeps one row at 1080
+                (UX r2 B1 on #405, Standards s.7). */}
+            <FiltersPill label={t_i18n("Filters")} count={secondaryFilterCount} testId="files-filters">
+              <div role="group" aria-labelledby={`${filtersHeadingId}-context`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-context`}>{t_i18n("Context")}</Label>
+                <SegmentedFilter
+                  value={context}
+                  onChange={(v) => setParam(PARAM_CONTEXT, v)}
+                  options={contextOptions}
+                  ariaLabel={t_i18n("Where the file lives")}
+                />
+              </div>
+              <div role="group" aria-labelledby={`${filtersHeadingId}-origin`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-origin`}>{t_i18n("Origin")}</Label>
+                <SegmentedFilter
+                  value={origin}
+                  onChange={(v) => setParam(PARAM_ORIGIN, v)}
+                  options={originOptions}
+                  ariaLabel={t_i18n("How the file got there")}
+                />
+              </div>
+              <div role="group" aria-labelledby={`${filtersHeadingId}-state`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-state`}>{t_i18n("State")}</Label>
+                <SegmentedFilter
+                  value={status}
+                  onChange={(v) => setParam(PARAM_STATUS, v)}
+                  options={statusOptions}
+                  ariaLabel={t_i18n("Whether the file's content is kept")}
+                />
+              </div>
+            </FiltersPill>
             <VisibilityFilter value={visibility} onChange={setVisibility} counts={segmentCounts} />
             <div className="ml-auto flex items-center gap-3">
               <label className="flex items-center gap-2 content-compact text-default-secondary">
