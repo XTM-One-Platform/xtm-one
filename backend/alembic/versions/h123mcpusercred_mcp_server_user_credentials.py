@@ -15,7 +15,7 @@ runs under the same belt; its indexes are plain builds on an empty table.
 Fresh installs run ``create_all`` + ``stamp head``: the body never executes there.
 
 Revision ID: h123mcpusercred
-Revises: h122healthengine
+Revises: c244fret00001
 Create Date: 2026-11-19 14:00:00.000000
 """
 
@@ -30,7 +30,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "h123mcpusercred"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "h122healthengine"
+down_revision: str | Sequence[str] | None = "c244fret00001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
