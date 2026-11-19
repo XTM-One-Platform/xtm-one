@@ -934,6 +934,21 @@ class TestARetryableRefusalLeavesTheCollectedRowOutstanding:
         assert recorded == []
 
     @pytest.mark.asyncio
+    async def test_a_contended_continuation_with_a_message_asks_to_send_it_again(self, monkeypatch):
+        """#320. Nothing was sent: the collect hint would make the caller drop
+        its follow-up, so the hint asks for the message again."""
+        recorded = self._refuse_with(monkeypatch, delegation.OUTCOME_VERIFICATION_CONTENDED)
+        result = await delegation.delegate(
+            RecordingDb(), integration_row(), None, message="follow-up", continue_task_id="t-77"
+        )
+        assert result.partner_task_id == "t-77"
+        assert result.detail is not None
+        assert "NOT sent" in result.detail
+        assert "same message" in result.detail
+        assert "no message" not in result.detail
+        assert recorded == []
+
+    @pytest.mark.asyncio
     async def test_a_contended_first_send_is_still_recorded(self, monkeypatch):
         """No row to keep open: the refusal is the delegation's record."""
         recorded = self._refuse_with(monkeypatch, delegation.OUTCOME_VERIFICATION_CONTENDED)
