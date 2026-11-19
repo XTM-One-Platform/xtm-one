@@ -12,7 +12,7 @@ Lock-safe recipe both ways (idempotency probe, ``terminate_lock_holders``,
 ``set_lock_timeout``, guarded DDL).
 
 Revision ID: c244fret00001
-Revises: h121healthpet
+Revises: h122healthengine
 Create Date: 2026-11-19 10:30:00.000000
 """
 
@@ -27,7 +27,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c244fret00001"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "h121healthpet"
+down_revision: str | Sequence[str] | None = "h122healthengine"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
