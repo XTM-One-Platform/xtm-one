@@ -48,6 +48,8 @@ from app.integrations.providers.hubspot_activity import (
     HubSpotActivity,
     activity_definitions,
     scopes_sentence,
+    search_shown_note,
+    search_total,
 )
 from app.integrations.providers.hubspot_line_items import HubSpotLineItems, line_item_definitions
 from app.integrations.providers.hubspot_records import (
@@ -796,9 +798,9 @@ def build_tools(
                 return err
             await _labelled(client, "contacts", results, extra, raw_values)
         text = format_entity_list(
-            results, lambda c: _contact_line(c, extra, raw_values), noun="contact", total=total
+            results, lambda c: _contact_line(c, extra, raw_values), noun="contact", total=search_total(results, total)
         )
-        text += format_pagination_hint(paging)
+        text += search_shown_note(results, total, paging) + format_pagination_hint(paging)
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         note = "" if raw_values else activity.labels_note("contacts")
@@ -959,7 +961,11 @@ def build_tools(
             parts.append(f"ID: {c['id']}")
             return " | ".join(parts)
 
-        text = format_entity_list(results, _fmt, noun="company", total=total) + format_pagination_hint(paging)
+        text = (
+            format_entity_list(results, _fmt, noun="company", total=search_total(results, total))
+            + search_shown_note(results, total, paging)
+            + format_pagination_hint(paging)
+        )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         return text
@@ -1174,7 +1180,11 @@ def build_tools(
                 line += " | " + " | ".join(f"{k}: {_shown('deals', p, k, raw_values)}" for k in extras)
             return line
 
-        text = format_entity_list(results, _fmt, noun="deal", total=total) + format_pagination_hint(paging)
+        text = (
+            format_entity_list(results, _fmt, noun="deal", total=search_total(results, total))
+            + search_shown_note(results, total, paging)
+            + format_pagination_hint(paging)
+        )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         return text
@@ -1770,7 +1780,11 @@ def build_tools(
                 line += f" | Owner: {_shown('tickets', p, 'hubspot_owner_id', raw_values)}"
             return line
 
-        text = format_entity_list(results, _fmt, noun="ticket", total=total) + format_pagination_hint(paging)
+        text = (
+            format_entity_list(results, _fmt, noun="ticket", total=search_total(results, total))
+            + search_shown_note(results, total, paging)
+            + format_pagination_hint(paging)
+        )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         return text
