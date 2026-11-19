@@ -2507,6 +2507,71 @@ async def _load_manageable_entity_for_builder(
     return entity, None
 
 
+# The sections get_agent can be narrowed to, keyed by the heading that opens
+# each block of its answer (#277). The identity block (name, id, slug, the
+# created/updated stamps) is always kept so a projected read still names its
+# agent; every other block is dropped unless asked for.
+GET_AGENT_SECTIONS: dict[str, tuple[str, ...]] = {
+    "behavior": ("Behavior:",),
+    "model": ("Model:",),
+    "tools": ("Tools & resources:",),
+    "handover": ("Handover:",),
+    "memory": ("Memory:",),
+    "human_in_the_loop": ("Human-in-the-loop:", "Human-in-the-loop prompt (full):"),
+    "channels": ("Channels & web:",),
+    "sharing": ("Visibility & sharing:",),
+    "guardrails": ("Guardrails (full):",),
+    "intents": ("Intent bindings:",),
+    "persona": ("Persona (full):",),
+}
+
+
+def parse_get_agent_sections(sections: object) -> tuple[set[str] | None, str | None]:
+    """Read get_agent's ``sections`` argument: ``(None, None)`` for the whole
+    answer, the set of names asked for, or a refusal naming the valid ones."""
+    if sections is None or sections == "" or sections == []:
+        return None, None
+    if isinstance(sections, str):
+        names = [s.strip() for s in sections.split(",")]
+    elif isinstance(sections, list) and all(isinstance(s, str) for s in sections):
+        names = [s.strip() for s in sections]
+    else:
+        return None, "sections must be a list of section names."
+    wanted = {n.lower() for n in names if n}
+    unknown = sorted(wanted - set(GET_AGENT_SECTIONS))
+    if unknown:
+        return None, (
+            f"Unknown get_agent section(s): {', '.join(unknown)}. "
+            f"Valid sections: {', '.join(GET_AGENT_SECTIONS)} (the identity block is always shown)."
+        )
+    return wanted or None, None
+
+
+def project_get_agent_sections(parts: list[str], wanted: set[str] | None) -> list[str]:
+    """Keep the identity block and the blocks of ``wanted`` from get_agent's
+    answer lines; blocks are separated by an empty line and opened by their
+    heading (a multi-line value such as the persona is one element)."""
+    if wanted is None:
+        return parts
+    heading_to_section = {h: name for name, heads in GET_AGENT_SECTIONS.items() for h in heads}
+    blocks: list[list[str]] = [[]]
+    for line in parts:
+        if line == "":
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+    kept: list[str] = []
+    for block in blocks:
+        if not block:
+            continue
+        section = heading_to_section.get(block[0])
+        if section is None or section in wanted:
+            if kept:
+                kept.append("")
+            kept.extend(block)
+    return kept
+
+
 def build_agent_builder_tool(
     db: AsyncSession,
     user_id: str,
@@ -4464,7 +4529,7 @@ def build_agent_builder_tool(
 
     # ── get_agent ─────────────────────────────────────────────────────
 
-    async def _get_agent(agent_id: str) -> str:
+    async def _get_agent(agent_id: str, sections: list[str] | str | None = None) -> str:
         from sqlalchemy import func, select
 
         from app.api.v1.helpers import caller_visible_filter, get_user_group_ids
@@ -4482,6 +4547,9 @@ def build_agent_builder_tool(
         agent_uuid, id_err = await _id_arg(agent_id, "agent_id")
         if id_err:
             return id_err
+        wanted_sections, sections_err = parse_get_agent_sections(sections)
+        if sections_err:
+            return sections_err
 
         try:
             uid = uuid.UUID(user_id)
@@ -4935,7 +5003,7 @@ def build_agent_builder_tool(
             parts.append("")
             parts.append("Persona (full):")
             parts.append(agent.persona or "None")
-            return "\n".join(parts)
+            return "\n".join(project_get_agent_sections(parts, wanted_sections))
 
     # ── list_groups ───────────────────────────────────────────────────
 
@@ -13482,14 +13550,10 @@ def build_agent_builder_tool(
         ToolDefinition(
             name="get_agent",
             description=(
-                f"Get the COMPLETE configuration of an agent in the "
-                f"{_platform_label()} platform, every editable option: identity, "
-                "persona and guardrails, behavior, model settings, tools and "
-                "resources (integration bindings as 'provider:id' pairs with "
-                "names, built-in tools, deny list, scoping, prompts, skills), "
-                "handover, memory, human-in-the-loop, channels and web, and "
-                "sharing (groups and people with their access level). Read it "
-                "BEFORE editing one option, and to answer who can use the agent."
+                f"Get an agent's configuration in the {_platform_label()} platform, "
+                "every editable option (bindings as 'provider:id' with names, "
+                "scoping, prompts, skills, handover, memory, channels, sharing, "
+                "persona). Read it BEFORE editing one option."
             ),
             input_schema={
                 "type": "object",
@@ -13497,6 +13561,14 @@ def build_agent_builder_tool(
                     "agent_id": {
                         "type": "string",
                         "description": "The UUID of the agent to retrieve",
+                    },
+                    "sections": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only these, identity always shown (default all): behavior, model, tools, "
+                            "handover, memory, human_in_the_loop, channels, sharing, guardrails, intents, persona"
+                        ),
                     },
                 },
                 "required": ["agent_id"],
