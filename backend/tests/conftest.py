@@ -414,12 +414,21 @@ def _reset_ai_state_cache():
     seconds so the request path does no database work. In a test run that makes
     results order-dependent: whichever test resolves first decides the answer the
     next one sees. Cleared both sides so neither direction can leak.
+
+    ``_last_read_failed`` is process-wide state of the same module and is reset
+    with it: ``invalidate_cache`` deliberately leaves it alone, so a test whose
+    ``is_ai_enabled`` read failed (a session double, a closed engine) left it
+    ``True`` for the next test on the same xdist worker, and the A2A pre-flight
+    then reported "could not be read" where the test expected
+    "chat unavailable" (merge_group run 44561564902, gw3).
     """
     from app.services import ai_state
 
     ai_state.invalidate_cache()
+    ai_state._last_read_failed = False
     yield
     ai_state.invalidate_cache()
+    ai_state._last_read_failed = False
 
 
 @pytest.fixture(autouse=True)
