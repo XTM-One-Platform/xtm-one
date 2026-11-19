@@ -303,6 +303,14 @@ _SERVICES = _APP_ROOT / "services"
 # that is not a read offered to a caller with no account. Anything else is
 # routed through ``caller_visible_filter`` / ``assignment_visible_filter``.
 _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
+    ("services/builtin_tools/fleets.py", "_set_fleet_company_managed"): (
+        "the creation rule of a company-managed fleet (#398): names the personal home members of a "
+        "fleet the administrator already manages; lists nothing to a caller"
+    ),
+    ("services/builtin_tools/workspaces.py", "_set_workspace_company_managed"): (
+        "counts the company-managed fleets a workspace the administrator manages hosts before it turns "
+        "personal (#398); lists nothing to a caller"
+    ),
     ("services/stix_extraction/knowledge.py", "_configured_source"): (
         "the deployment's ATT&CK source (mirror URL, pinned release) an administrator "
         "configured on a company-managed MITRE ATT&CK integration, read for no acting user; "

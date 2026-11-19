@@ -466,6 +466,10 @@ _ROLE_GATES = {
     ("services/builtin_tools/work_items.py", "_run_delegate_to_assignment"): 1,
     # Company-managed creation is admin-only, like the builder's other creates.
     ("services/builtin_tools/workspaces.py", "_create_workspace"): 1,
+    # Changing an existing fleet's or workspace's company-managed flag is admin-only,
+    # as PUT /fleets/{id} and PUT /workspaces/{id} decide (#398).
+    ("services/builtin_tools/fleets.py", "_set_fleet_company_managed"): 1,
+    ("services/builtin_tools/workspaces.py", "_set_workspace_company_managed"): 1,
 }
 # The lookups that pass ``is_admin=True``: each is reached only once
 # ``agent_tool_admin_bypass`` allowed it (the assignment write loader, the
