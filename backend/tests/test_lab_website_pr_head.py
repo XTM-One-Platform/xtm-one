@@ -7,6 +7,7 @@ environment the site boots with (no staging or production store), the TOTP code 
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 
 import pytest
@@ -57,9 +58,9 @@ def test_the_site_uses_the_lab_postgres_and_no_remote_store():
 def test_the_totp_code_is_rfc_6238():
     """RFC 6238 appendix B, SHA1, truncated to 6 digits (payload-totp's defaults)."""
     module = _module()
-    secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # base32 of "12345678901234567890"
-    assert module.totp(secret, at=59) == "287082"
-    assert module.totp(secret, at=1111111109) == "081804"
+    rfc_key = base64.b32encode(b"12345678901234567890").decode()  # the RFC's published test key
+    assert module.totp(rfc_key, at=59) == "287082"
+    assert module.totp(rfc_key, at=1111111109) == "081804"
     assert len(module.totp(module.LAB_TOTP_SECRET)) == 6
 
 
