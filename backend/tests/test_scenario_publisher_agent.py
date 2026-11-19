@@ -62,8 +62,10 @@ class TestScenarioPublisher:
             "opens the catalogue PR (github)"
         )
 
-    def test_is_a_chat_agent(self, publisher):
-        assert publisher["disable_chat"] is False
+    def test_is_a_transfer_target_kept_out_of_the_picker(self, publisher):
+        # Reached by transfer from the Scenario Creator; handovers never read
+        # disable_chat, so the transferred conversation still answers.
+        assert publisher["disable_chat"] is True
         assert publisher["output_format"] == "markdown"
 
     def test_reachable_from_the_scenario_creator(self):

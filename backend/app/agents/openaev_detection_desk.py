@@ -217,7 +217,8 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "icon": "ShieldCheck",
         "output_format": "json",
         "output_schema": _RUN_SCHEMA,
-        "disable_chat": False,
+        # A run orchestrator (JSON run schema): driven by its assignments, never a chat.
+        "disable_chat": True,
         "max_iterations": 150,
         "temperature": 0.2,
         "tags": ["builtin", "openaev", "detection", "fleet", "detection-desk"],

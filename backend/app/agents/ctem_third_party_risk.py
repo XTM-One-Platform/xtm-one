@@ -124,6 +124,9 @@ THIRD_PARTY_RISK_AGENTS: list[dict] = [
         "icon": "Handshake",
         "output_format": "json",
         "output_schema": _CASE_SCHEMA,
+        # A case orchestrator (JSON case schema), reached by delegation and its
+        # assignments; nobody talks to it directly.
+        "disable_chat": True,
         "max_iterations": 120,
         "temperature": 0.2,
         "tags": ["builtin", "ctem", "fleet", "third-party-risk"],
