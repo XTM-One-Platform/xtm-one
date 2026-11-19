@@ -520,7 +520,11 @@ async def dispatch_delivery(integration_id: str, payload: Any) -> dict[str, Any]
                     continue
                 if not verdict:
                     await redis.set(delivered_key(wf.id), "1", ex=DELIVERED_TTL_SECONDS)
-                    filtered[wf.id] = filtered.get(wf.id, 0) + len(events)
+                    # Claimed like every other filtered event, so the poll never re-emits
+                    # a change the free jql rejected once the issue matches later.
+                    for event_payload in events:
+                        if await claim_seen(redis, wf.id, event_payload["message_id"]):
+                            filtered[wf.id] = filtered.get(wf.id, 0) + 1
                     continue
             for event_payload in events:
                 msg_id = event_payload["message_id"]
