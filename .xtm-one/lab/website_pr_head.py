@@ -256,7 +256,8 @@ def seed_user(root: Path, run_env: dict[str, str]) -> None:
         **run_env, "LAB_EMAIL": LAB_ADMIN_EMAIL, "LAB_PASSWORD": LAB_ADMIN_PASSWORD, "LAB_TOTP": LAB_TOTP_SECRET})
 
 
-NEXT_ORIGIN = f"http://127.0.0.1:{NEXT_PORT}"
+#: The origin next dev names itself (its own URL logs ``localhost``): a rewrite to any other host is external.
+NEXT_ORIGIN = f"http://localhost:{NEXT_PORT}"
 
 
 def upstream_headers(headers, payload: bytes = b"") -> dict[str, str]:
@@ -264,7 +265,7 @@ def upstream_headers(headers, payload: bytes = b"") -> dict[str, str]:
     by next as an external URL (back through this Front, where /en 308s to / and loops). An Origin is presented as
     the site's own (Payload's csrf list)."""
     out = {k: v for k, v in headers.items() if k.lower() not in ("connection", "content-length", "origin", "host")}
-    out["Host"] = f"127.0.0.1:{NEXT_PORT}"
+    out["Host"] = NEXT_ORIGIN.split("//", 1)[1]
     if any(k.lower() == "origin" for k in headers.keys()):
         out["Origin"] = SERVER_URL
     if payload:
@@ -302,8 +303,10 @@ def sign_in() -> list[str]:
 
 def browser_location(key: str, value: str, browser: str) -> str:
     """A redirect next built on its own origin, sent to the browser's."""
-    if key.lower() == "location" and value.startswith(NEXT_ORIGIN):
-        return browser + value[len(NEXT_ORIGIN):]
+    if key.lower() == "location":
+        for origin in (NEXT_ORIGIN, f"http://127.0.0.1:{NEXT_PORT}"):
+            if value.startswith(origin):
+                return browser + value[len(origin):]
     return value
 
 

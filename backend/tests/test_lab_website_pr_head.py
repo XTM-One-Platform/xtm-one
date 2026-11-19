@@ -69,7 +69,7 @@ def test_the_forward_uses_next_host_and_presents_the_site_origin():
     headers = module.upstream_headers(
         {"Host": "preview.example", "Origin": "http://preview.example", "Connection": "keep-alive",
          "Content-Length": "9"}, b"ab")
-    assert headers["Host"] == f"127.0.0.1:{module.NEXT_PORT}" and headers["Origin"] == module.SERVER_URL
+    assert headers["Host"] == f"localhost:{module.NEXT_PORT}" and headers["Origin"] == module.SERVER_URL
     assert "Connection" not in headers and headers["Content-Length"] == "2"
     assert "Origin" not in module.upstream_headers({"Host": "preview.example"})
 
