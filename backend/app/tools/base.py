@@ -2099,6 +2099,10 @@ class FileContext:
             notes = quoted_file_notes(getattr(f, "notes", None))
             if notes:
                 line += f'  notes="{notes.replace(chr(34), chr(39))}"'
+            # A tombstone: listed so the agent can say what it was, marked so
+            # it never tries to read it (every read answers the same notice).
+            if getattr(f, "is_deleted", False):
+                line += "  DELETED (content gone)"
             return line
 
         def _group(files: list[FileRef]) -> str:
@@ -2206,8 +2210,13 @@ class FileContext:
             # Public accessor avoids reaching into ``FileRef._data`` from
             # outside the dataclass.
             return ref.inline_data
-        from app.services.file_storage import file_storage
+        from app.services.file_storage import FileDeletedError, file_storage
 
+        if ref.is_deleted:
+            raise FileDeletedError(ref.s3_object_name, ref.deleted_notice or "This file was deleted.")
+        from app.services.file_retention import touch_now
+
+        await touch_now([ref.file_id])
         return await file_storage.download(ref.s3_object_name)
 
     async def resolve_upload(
@@ -2264,9 +2273,7 @@ class FileContext:
         if ref.has_inline_data:
             data = ref.inline_data
         else:
-            from app.services.file_storage import file_storage
-
-            data = await file_storage.download(ref.s3_object_name)
+            data = await self.read_bytes(file_id)
         if data is None:
             return None
         # Off-loop: document parsing is CPU-bound and must never block the

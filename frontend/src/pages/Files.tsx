@@ -20,7 +20,7 @@
  * its most recent file — the conversation an agent just wrote into is at the
  * top, not the one whose title sorts first.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ClipboardList,
@@ -38,6 +38,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FiltersPill } from "@/components/ui/filter-pill";
+import { Label } from "@/components/ui/label";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { Pagination } from "@/components/ui/pagination";
 import { TotalChip } from "@/components/ui/total-chip";
@@ -68,11 +70,17 @@ import {
   resolveAttachmentMime,
 } from "./chat/fileVisuals";
 import { formatTimeAgo } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
+import { useDeletedFileNotice } from "@/pages/chat/deleted-file-notice";
 
 const PAGE_SIZE = 50;
 
 type ContextFilter = FileContext | "all";
 type OriginFilter = ConversationFileOrigin | "all";
+/** Whether the file's content is kept (#396): every file, kept ones, deleted ones. */
+type StatusFilter = "all" | "live" | "deleted";
+const STATUS_VALUES: readonly StatusFilter[] = ["all", "live", "deleted"];
+const PARAM_STATUS = "status";
 
 /* URL parameter names. Short on purpose — these are shared as links. */
 const PARAM_SEARCH = "q";
@@ -174,9 +182,12 @@ function FileRow({
         : sourceLabel(file.source, t_i18n);
 
   const download = () => void authenticatedDownload(file.download_url, file.filename);
+  // A deleted file (#396): its row stays, muted, without a download.
+  const deleted = !!file.deleted_at;
+  const deletedNotice = useDeletedFileNotice();
 
   const items: OverflowMenuItem[] = [
-    { id: "download", label: t_i18n("Download"), icon: Download, onSelect: download },
+    ...(deleted ? [] : [{ id: "download", label: t_i18n("Download"), icon: Download, onSelect: download }]),
     ...(contextHref
       ? [
           {
@@ -207,17 +218,36 @@ function FileRow({
       </div>
       <button
         type="button"
-        onClick={download}
-        className="min-w-0 flex-1 text-left"
-        aria-label={t_i18n("Download {name}", { name: file.filename })}
+        onClick={deleted ? undefined : download}
+        disabled={deleted}
+        className="min-w-0 flex-1 text-left disabled:cursor-default"
+        aria-label={
+          deleted
+            ? t_i18n("{filename}: {why}", { filename: file.filename, why: deletedNotice(file.deleted_at!, file.deleted_reason) })
+            : t_i18n("Download {name}", { name: file.filename })
+        }
+        data-testid={deleted ? "files.row.deleted" : undefined}
       >
-        <p className="truncate content-base font-medium">{file.filename}</p>
+        <p className={cn("truncate content-base font-medium", deleted && "text-default-secondary")}>{file.filename}</p>
         <p className="flex flex-wrap items-center gap-x-1.5 truncate text-[11px] text-default-secondary">
           <span>{formatFileSize(file.size)}</span>
           <span aria-hidden>·</span>
           <span>{extension ? extension.toUpperCase() : typeLabel}</span>
           <span aria-hidden>·</span>
           <span>{formatTimeAgo(intl, file.created_at)}</span>
+          {deleted ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>{deletedNotice(file.deleted_at!, file.deleted_reason)}</span>
+            </>
+          ) : file.expires_at ? (
+            <>
+              <span aria-hidden>·</span>
+              <span title={intl.formatDate(new Date(file.expires_at), { dateStyle: "medium", timeStyle: "short" })}>
+                {t_i18n("Expires {date} if unused", { date: intl.formatDate(new Date(file.expires_at), { dateStyle: "medium" }) })}
+              </span>
+            </>
+          ) : null}
           {showContext && (
             <>
               <span aria-hidden>·</span>
@@ -240,17 +270,20 @@ function FileRow({
           </Badge>
         ) : null}
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <Tip content={t_i18n("Download")}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={download}
-              aria-label={t_i18n("Download")}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          </Tip>
+          {/* A deleted file offers no download (UX r3 B2 on #405, Standards s.5). */}
+          {!deleted && (
+            <Tip content={t_i18n("Download")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={download}
+                aria-label={t_i18n("Download")}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </Tip>
+          )}
           {contextHref && (
             <Tip content={file.context === "run" ? t_i18n("Open run") : t_i18n("Open conversation")}>
               <Button
@@ -325,6 +358,7 @@ export default function Files() {
 
   const context = pick(searchParams.get(PARAM_CONTEXT), CONTEXT_VALUES, "all");
   const origin = pick(searchParams.get(PARAM_ORIGIN), ORIGIN_VALUES, "all");
+  const status = pick(searchParams.get(PARAM_STATUS), STATUS_VALUES, "all");
   const conversationId = searchParams.get(PARAM_CONVERSATION) ?? undefined;
   const runId = searchParams.get(PARAM_RUN) ?? undefined;
   // Each segment's count under the other filters, the numbers on the filter.
@@ -374,8 +408,9 @@ export default function Files() {
       vis: visibilityQuery(visibility),
       conversation_id: conversationId,
       assignment_run_id: runId,
+      status: status === "all" ? undefined : status,
     }),
-    [page, debouncedSearch, context, origin, visibility, conversationId, runId],
+    [page, debouncedSearch, context, origin, visibility, conversationId, runId, status],
   );
   const { data, isLoading, isFetching } = useFiles(query, { enabled: !landing });
   // The same filters over every segment, asked on an empty Mine only: the hint reads it.
@@ -389,8 +424,11 @@ export default function Files() {
   const total = data?.total ?? 0;
   const groups = useMemo(() => groupFiles(files, t_i18n), [files, t_i18n]);
   // The filters besides the segment: with none, an empty page is an empty repository.
+  // Context, Origin and State: the count badge of the Filters pill.
+  const secondaryFilterCount = [context, origin, status].filter((v) => v !== "all").length;
+  const filtersHeadingId = useId();
   const otherFiltersActive =
-    Boolean(debouncedSearch) || context !== "all" || origin !== "all"
+    Boolean(debouncedSearch) || context !== "all" || origin !== "all" || status !== "all"
     || Boolean(conversationId) || Boolean(runId);
   const repositoryEmpty = total === 0 && !otherFiltersActive
     && (visibility === "all" || (visibility === "mine" && allSegments?.total === 0));
@@ -452,6 +490,11 @@ export default function Files() {
     { key: "uploaded", label: "Uploaded" },
     { key: "generated", label: "Generated" },
   ];
+  const statusOptions: SegmentedFilterOption<StatusFilter>[] = [
+    { key: "all", label: "Any state" },
+    { key: "live", label: "Available" },
+    { key: "deleted", label: "Deleted" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -464,24 +507,45 @@ export default function Files() {
         </div>
       </div>
 
-      {landing || isLoading ? (
+      {/* The toolbar stays mounted while a new filter combination loads, so the Filters pill keeps
+          its panel open and the focus (UX r3 B1 on #405): only the list area shows the skeleton. */}
+      {landing ? (
         <ListSkeleton label={t_i18n("Loading...")} rows={3} variant="card" data-testid="list-skeleton" />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput toolbar placeholder={t_i18n("Search files...")} value={searchDraft} onChange={setSearchDraft} />
-            <SegmentedFilter
-              value={context}
-              onChange={(v) => setParam(PARAM_CONTEXT, v)}
-              options={contextOptions}
-              ariaLabel={t_i18n("Where the file lives")}
-            />
-            <SegmentedFilter
-              value={origin}
-              onChange={(v) => setParam(PARAM_ORIGIN, v)}
-              options={originOptions}
-              ariaLabel={t_i18n("How the file got there")}
-            />
+            {/* Context, Origin and State sit in one Filters pill so the toolbar keeps one row at 1080
+                (UX r2 B1 on #405, Standards s.7). */}
+            <FiltersPill label={t_i18n("Filters")} count={secondaryFilterCount} testId="files-filters">
+              <div role="group" aria-labelledby={`${filtersHeadingId}-context`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-context`}>{t_i18n("Context")}</Label>
+                <SegmentedFilter
+                  value={context}
+                  onChange={(v) => setParam(PARAM_CONTEXT, v)}
+                  options={contextOptions}
+                  ariaLabel={t_i18n("Where the file lives")}
+                />
+              </div>
+              <div role="group" aria-labelledby={`${filtersHeadingId}-origin`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-origin`}>{t_i18n("Origin")}</Label>
+                <SegmentedFilter
+                  value={origin}
+                  onChange={(v) => setParam(PARAM_ORIGIN, v)}
+                  options={originOptions}
+                  ariaLabel={t_i18n("How the file got there")}
+                />
+              </div>
+              <div role="group" aria-labelledby={`${filtersHeadingId}-state`} className="space-y-1">
+                <Label id={`${filtersHeadingId}-state`}>{t_i18n("State")}</Label>
+                <SegmentedFilter
+                  value={status}
+                  onChange={(v) => setParam(PARAM_STATUS, v)}
+                  options={statusOptions}
+                  ariaLabel={t_i18n("Whether the file's content is kept")}
+                />
+              </div>
+            </FiltersPill>
             <VisibilityFilter value={visibility} onChange={setVisibility} counts={segmentCounts} />
             <div className="ml-auto flex items-center gap-3">
               <label className="flex items-center gap-2 content-compact text-default-secondary">
@@ -514,7 +578,9 @@ export default function Files() {
             </div>
           )}
 
-          {repositoryEmpty ? (
+          {isLoading ? (
+            <ListSkeleton label={t_i18n("Loading...")} rows={3} variant="card" data-testid="list-skeleton" />
+          ) : repositoryEmpty ? (
             <EmptyState
               icon={FolderOpen}
               title="No files yet"

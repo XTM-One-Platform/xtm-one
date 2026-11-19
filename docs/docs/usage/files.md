@@ -29,12 +29,13 @@ Generated files include what an agent brought in from the web: every page or doc
 
 ## Find a file
 
-Three filters sit next to the search box. Each is a segmented control; pick one segment of each.
+Four filters sit next to the search box. Each is a segmented control; pick one segment of each.
 
 | Filter | Segments | Question it answers |
 |---|---|---|
 | Where the file lives | `Everywhere` · `Conversations` · `Runs` · `Other` | in a chat, from an assignment run, or unbound (dataset uploads, tool tests, flow uploads) |
 | How it got there | `Any origin` · `Uploaded` · `Generated` | did a person upload it, or did an agent produce it |
+| State | `Any state` · `Available` · `Deleted` | is the file's content still kept, or was it deleted (see [Retention](#retention)) |
 | Visibility | `Mine` · `Company` · `Shared` · `All` | your own files and contexts; files of company-managed runs; files shared with you; or every file you can read. With no segment in the address, the page opens on the first one holding a file: `Mine`, else `Company`, else `Shared`, else `All` |
 
 Search matches the file name. The counter on the right of the filter row is the total for the current filters, and the list is paginated when it is long. When `Mine` holds nothing but other segments do, the page says so and offers `Show all`.
@@ -54,6 +55,14 @@ Each row shows the file name, type and size, when it was added and by whom, and 
 - `Delete` removes the file and its storage object. It is available to the file's owner, the owner of the conversation it lives in, or whoever can manage the run that produced it — someone a conversation was merely shared with can read the file but not delete it.
 
 Deleting a file does not break the message or the deck that referenced it: they show the file as no longer available.
+
+## Retention
+
+Files are kept for as long as your administrator set in **Settings > Usage and quotas > Storage & retention**. By default an agent's working files and the files it delivered go **60 days after their last use**: each download, preview or read by an assistant starts the 60 days again. Chat uploads, channel files and the other agent files are kept for good unless your administrator sets a limit. A file an open work item, a workset, an active shared state, a presentation, a report or a video still uses is never deleted.
+
+The row of a file that will go shows `Expires <date> if unused`.
+
+When a file is deleted, only its content goes. It stays where it was shown, as a muted card with its name, size and `Deleted on <date> by the retention policy`: in the chat message, the conversation's files panel, a run's attachments and this page (the `Deleted` state lists them). It can no longer be downloaded (the download answers `410 Gone`) and an assistant that tries to read it is told the same, so it can make the file again if it is still needed.
 
 ## Jump from a chat or a run
 

@@ -39,7 +39,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -104,6 +105,13 @@ class FileItem(BaseModel):
     agent_name: str | None = None
     download_url: str
     can_delete: bool
+    #: The tombstone (#396): the bytes were deleted (``deleted_reason``:
+    #: retention | owner_deleted | admin); the row stays so the page shows it.
+    deleted_at: str | None = None
+    deleted_reason: str | None = None
+    #: When the file goes if nobody uses it again (its category's retention);
+    #: ``None`` when it is kept for good or already deleted.
+    expires_at: str | None = None
 
 
 class FilesResponse(BaseModel):
@@ -364,8 +372,14 @@ def _serialize(
     user: User,
     conversations: dict[uuid.UUID, tuple[str, uuid.UUID | None]],
     runs: dict[uuid.UUID, tuple[AssignmentRun, str | None, str | None]],
+    rules: Mapping[str, Any] | None = None,
 ) -> FileItem:
+    from app.services.file_retention import category_of, expires_at
+
     conv = conversations.get(row.conversation_id) if row.conversation_id else None
+    category = category_of(row.source)
+    rule = rules.get(category.key) if (rules is not None and category is not None) else None
+    expiry = expires_at(row, rule.days, category.basis) if (rule is not None and category is not None) else None
     run_entry = runs.get(row.assignment_run_id) if row.assignment_run_id else None
     run = run_entry[0] if run_entry else None
     assignment_name = run_entry[1] if run_entry else None
@@ -391,6 +405,9 @@ def _serialize(
             conversation_owner_id=conv[1] if conv else None,
             run=run,
         ),
+        deleted_at=row.deleted_at.isoformat() if getattr(row, "deleted_at", None) else None,
+        deleted_reason=getattr(row, "deleted_reason", None),
+        expires_at=expiry.isoformat() if expiry else None,
     )
 
 
@@ -417,6 +434,10 @@ async def list_files(
     ),
     conversation_id: str | None = Query(default=None),
     assignment_run_id: str | None = Query(default=None),
+    status: Literal["live", "deleted", "all"] = Query(
+        default="all",
+        description="`live`: files whose content is kept; `deleted`: tombstones (#396); `all`: both.",
+    ),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -439,6 +460,11 @@ async def list_files(
         conversation_id=conversation_id,
         assignment_run_id=assignment_run_id,
     )
+    # Called directly (a test, another route), the Query default is not resolved: all.
+    if status == "live":
+        where = [*where, FileAttachment.deleted_at.is_(None)]
+    elif status == "deleted":
+        where = [*where, FileAttachment.deleted_at.is_not(None)]
 
     total = (await db.execute(select(func.count()).select_from(FileAttachment).where(*where))).scalar_one()
 
@@ -453,8 +479,12 @@ async def list_files(
     )
     page = list(result.scalars().all())
     conversations, runs = await _load_context_labels(db, page)
+    from app.services.file_retention import category_of, load_policy
+
+    # The retention rules give the "Expires" column; read only when a row of the page has a category.
+    rules = await load_policy(db) if any(category_of(row.source) for row in page) else None
     return FilesResponse(
-        files=[_serialize(row, user, conversations, runs) for row in page],
+        files=[_serialize(row, user, conversations, runs, rules) for row in page],
         total=total,
     )
 

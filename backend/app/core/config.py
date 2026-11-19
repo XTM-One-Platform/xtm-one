@@ -1657,6 +1657,22 @@ class Settings(BaseSettings):
     # after they were made, except one a video uses. 0 = kept forever.
     agent_check_file_retention_days: int = 7
 
+    # --- File retention (Settings > Storage & retention) ---
+    # Days each category of stored file is kept; the value an administrator
+    # stores in Settings wins, unless the variable is SET in the environment,
+    # which locks it (``services/file_retention.py``). 0 = kept forever.
+    # The agent's scratch files (``agent_working``) and delivered files
+    # (``agent_download``) count from their LAST USE (download, preview, read,
+    # attach); the others from their creation. A file an open work item, a
+    # workset, an active shared state, a presentation, a report or a video
+    # still names is kept. The bytes go, the row stays as a tombstone so the
+    # chat shows a "deleted" card.
+    file_retention_agent_working_days: int = 60
+    file_retention_agent_download_days: int = 60
+    file_retention_agent_days: int = 0
+    file_retention_chat_days: int = 0
+    file_retention_channel_days: int = 0
+
     # --- Waiting arcade ---
     # The Space Invaders game a user can take control of while an agent works:
     # the full-screen arcade, the per-user scores and the cross-user
