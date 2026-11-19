@@ -203,6 +203,45 @@ class TestFailureClasses:
         assert result.partner_reason == "quota_exceeded"
 
     @pytest.mark.asyncio
+    async def test_a_failed_task_carries_the_partners_status_message(self, monkeypatch):
+        """A2A puts the cause in status.message: it reaches partner_reason, and
+        our own detail is never empty."""
+
+        def handler(_request):
+            return rpc(
+                {
+                    "id": "t",
+                    "status": {
+                        "state": "failed",
+                        "message": {
+                            "role": "agent",
+                            "messageId": "m",
+                            "parts": [{"kind": "text", "text": "External task interrupted"}],
+                        },
+                    },
+                }
+            )
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        result = await delegation.delegate(RecordingDb(), integration_row(), settings_row(), message="x")
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason == "External task interrupted"
+        assert result.detail is not None
+        assert "failed" in result.detail
+        assert "partner_reason" in result.detail
+
+    @pytest.mark.asyncio
+    async def test_a_silent_failure_says_the_partner_gave_no_reason(self, monkeypatch):
+        def handler(_request):
+            return rpc({"id": "t", "status": {"state": "failed"}})
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        result = await delegation.delegate(RecordingDb(), integration_row(), settings_row(), message="x")
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason is None
+        assert result.detail == "The partner ended the task in state 'failed' and gave no reason."
+
+    @pytest.mark.asyncio
     async def test_every_failure_class_is_distinguishable(self):
         # SC-009 stated directly: no two of these may collapse.
         from app.models.a2a import DELEGATION_OUTCOMES
