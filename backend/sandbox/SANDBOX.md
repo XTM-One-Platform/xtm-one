@@ -172,6 +172,7 @@ backend's own `pyproject.toml` for consistency:
 | matplotlib | 3.10.9 |
 | scipy | 1.17.1 |
 | tabulate | 0.10.0 |
+| PyYAML | 6.0.3 |
 | pyzipper | 0.4.0 |
 | pycryptodomex | 3.24.2 |
 | cryptography | 50.0.0 |
@@ -186,6 +187,10 @@ macOS Archive Utility open with the password and refuse without it. CI checks
 the round trip on every build of `sandbox-python` (`sandbox-images.yml`,
 "AES ZIP round trip"). The password is an argument of the agent's own code:
 nothing stores or logs it.
+
+`PyYAML` lets `code_interpreter` parse a YAML file it reads or edits (an
+Ansible playbook, a Helm values file, a workflow) with `yaml.safe_load`, to
+check an edit before it is pushed; it carries the backend's own pin.
 
 `av` (PyAV, BSD-3-Clause) gives `code_interpreter` a video decoder in process:
 its manylinux wheel bundles the FFmpeg libraries, so a frame of a recording, an
