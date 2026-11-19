@@ -432,7 +432,8 @@ def build_web_fetch_tool(
             else:
                 result = await fetch_and_extract(url, max_chars=max_chars)
         except Exception as exc:
-            return f"Failed to fetch URL: {exc}{_refusal_hint(exc, offered_tools())}"
+            # The URL is named in the answer so the recorded tool-error friction keeps the host.
+            return f"Failed to fetch URL: {url}: {exc}{_tls_hint(exc)}{_refusal_hint(exc, offered_tools())}"
 
         page = is_html_page(result.content_type)
         storage_type = _base_mime(result.content_type) or "application/octet-stream"
@@ -590,6 +591,28 @@ def build_web_fetch_tool(
 #: The statuses a site answers a script it will not serve (bot protection, a
 #: sign-in wall, a rate limit), as opposed to a page that does not exist.
 _REFUSAL_STATUSES = frozenset({401, 403, 429, 451})
+
+
+def _tls_hint(exc: BaseException) -> str:
+    """What a certificate verification failure means for the next call.
+
+    The platform always verifies TLS certificates: a host serving a self-signed
+    or privately issued certificate fails every retry the same way, so the hint
+    says so instead of letting the model retry.
+    """
+    import ssl
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(current):
+            return (
+                " The host's TLS certificate is not trusted (self-signed or privately issued): "
+                "web_fetch verifies certificates and a retry fails the same way."
+            )
+        current = current.__cause__ or current.__context__
+    return ""
 
 
 def _refusal_hint(exc: BaseException, tools: Any) -> str:
