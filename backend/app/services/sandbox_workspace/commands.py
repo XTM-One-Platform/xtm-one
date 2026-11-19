@@ -1302,6 +1302,57 @@ CREATE_ABANDONED_SECONDS = 3600
 #: fails: long enough for a cold node to pull a multi-GB image, well inside the abandon window.
 CREATE_RETRY_WINDOW_SECONDS = 900.0
 
+#: The claims on a command container, per (event loop, workspace, image key): a lock and the calls holding or
+#: waiting for it. A :func:`run_command` call holds it from its read of the run the container holds to the record
+#: of its own run (the upload, the install probe and the start between them), so two calls of one round on one
+#: checkout (frontend-unit and frontend-types, node-types and node-lint-file) can no longer both read "nothing
+#: runs here", both find no ``node_modules`` and both run the install in the same container, the slower one
+#: failing in the link step (ENOENT, EEXIST): the second reads the first's run and queues behind it. Process-local:
+#: the calls of one turn run in one worker.
+_CLAIMS: dict[tuple[int, str, str], list[Any]] = {}
+
+
+class _Claim:
+    """The claim of one :func:`run_command` call on its container (:data:`_CLAIMS`); released once, idempotently."""
+
+    def __init__(self) -> None:
+        self._key: tuple[int, str, str] | None = None
+        self._held = False
+
+    async def take(self, workspace: WorkspaceSession, image: str, timeout: float) -> bool:
+        """Wait up to *timeout* seconds for the container of *image*; ``False`` when another call kept it longer."""
+        owner = getattr(workspace, "workspace_id", None)
+        key = (id(asyncio.get_running_loop()), str(owner) if owner is not None else f"session-{id(workspace)}", image)
+        entry = _CLAIMS.setdefault(key, [asyncio.Lock(), 0])
+        entry[1] += 1
+        self._key = key
+        try:
+            await asyncio.wait_for(entry[0].acquire(), max(0.1, timeout))
+        except TimeoutError:
+            self._drop()
+            return False
+        except BaseException:
+            self._drop()
+            raise
+        self._held = True
+        return True
+
+    def release(self) -> None:
+        """Free the container for the next call (a no-op when not held or already released)."""
+        if self._held and self._key is not None and self._key in _CLAIMS:
+            self._held = False
+            _CLAIMS[self._key][0].release()
+        self._drop()
+
+    def _drop(self) -> None:
+        key, self._key = self._key, None
+        entry = _CLAIMS.get(key) if key is not None else None
+        if entry is None:
+            return
+        entry[1] -= 1
+        if entry[1] <= 0:
+            _CLAIMS.pop(key, None)
+
 
 def selection_deadline(clock: Clock = time.monotonic) -> float:
     """The *clock* instant an ``affected=true`` selection stops reading test files.
@@ -1483,8 +1534,6 @@ async def run_command(
         QuotaExceededError,
         enforce_combined_sandbox_quota,
     )
-    from app.services.sandbox_workspace.remote import first_leaf, install_tool, reconcile
-
     effective_quota_user = quota_user_id if quota_user_id is not None else user_id
     try:
         await enforce_combined_sandbox_quota(effective_quota_user)
@@ -1492,6 +1541,59 @@ async def run_command(
         return CommandOutcome(text=QUOTA_EXCEEDED_MESSAGE, refused=True)
     except QuotaCheckUnavailableError:
         return CommandOutcome(text=QUOTA_UNAVAILABLE_MESSAGE, refused=True)
+
+    # One call at a time sets a container up (held run read, upload, install probe, start): a sibling call of
+    # the same round then reads this one's run and queues behind it instead of racing its install (_CLAIMS).
+    claim = _Claim()
+    if not await claim.take(workspace, command.image, max(1.0, wait_budget() - UPLOAD_RESERVE_SECONDS)):
+        return CommandOutcome(
+            text=(
+                f"Another call of this workspace is still setting up its {command.image!r} container (upload, "
+                f"install probe or start); {command.label} did not start. Call sandbox_run_command again with "
+                "the same check: it then queues behind that call's run."
+            ),
+            busy=True,
+        )
+    try:
+        return await _run_claimed(
+            command,
+            claim,
+            workspace=workspace,
+            user_id=user_id,
+            quota_user_id=quota_user_id,
+            effective_quota_user=effective_quota_user,
+            db=db,
+            sandbox_api=sandbox_api,
+            sleep=sleep,
+            background=background,
+            _reaped=_reaped,
+            _rerun_install=_rerun_install,
+        )
+    finally:
+        claim.release()
+
+
+async def _run_claimed(
+    command: ResolvedCommand,
+    claim: _Claim,
+    *,
+    workspace: WorkspaceSession,
+    user_id: uuid.UUID | None,
+    quota_user_id: uuid.UUID | None,
+    effective_quota_user: uuid.UUID | None,
+    db: Any,
+    sandbox_api: Any,
+    sleep: Sleep,
+    background: bool,
+    _reaped: bool,
+    _rerun_install: ResolvedCommand | None,
+) -> CommandOutcome:
+    """The body of :func:`run_command` once its *claim* on the container is held.
+
+    The claim is released before any wait on another run or any nested call (which takes it again), and right
+    after this call's own run is recorded, so the run itself never holds it.
+    """
+    from app.services.sandbox_workspace.remote import first_leaf, install_tool, reconcile
 
     api = sandbox_api if sandbox_api is not None else _default_api(user_id)
     from app.core.config import settings
@@ -1535,6 +1637,8 @@ async def run_command(
     if held_run is not None:
         with contextlib.suppress(Exception):
             await sandbox.close()
+        # Every way out of here waits on the held run or calls again (which claims again): free the container.
+        claim.release()
         if not _same_command(held_run, command) and (held_ended or not background):
             # Its process exited: collect its result (saved under .xtm/runs, the container released), then start.
             # Still running (another check of this checkout, an install-first of a sibling call): this call queues
@@ -1634,6 +1738,7 @@ async def run_command(
             if await _needs_install(sandbox, command.install, ws_state.entries):
                 with contextlib.suppress(Exception):
                     await sandbox.close()
+                claim.release()
                 return await _install_then(
                     command,
                     workspace=workspace,
@@ -1701,6 +1806,8 @@ async def run_command(
         "cache_note": stale,
     }
     await _remember_run(workspace, command.image, run)
+    # Recorded: a sibling call now reads this run and queues behind it; the run itself holds no claim.
+    claim.release()
     # The job of the call that asked for this check: a resumed turn's repeat of that call reads its result.
     await jobs.record(workspace, run_id, command.label)
     return await _wait_and_finish(
