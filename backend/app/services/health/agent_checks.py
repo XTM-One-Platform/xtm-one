@@ -13,7 +13,7 @@
 
 """Platform Health agent checks (#101 S3, ``dev-docs/platform-health.md`` section 4.1).
 
-Four deterministic checks on the **enrolled** agents alone
+Seven deterministic checks on the **enrolled** agents alone
 (:func:`app.services.health.engine.enrolled_agent_ids`), registered on the
 engine when this module is imported. Each answers one result per subject it
 read, failing or passing, so a finding resolves by itself once its cause is
@@ -29,10 +29,16 @@ Check                          Severity    Category     Rule (shared with the fl
 ``agents.schedule_silent``     info        configuration enabled schedule silent for 14 days
 ``agents.cost_spike``          warning     cost         a day's tokens over 3x the agent's daily average
 ``agents.owner_disabled``      warning     configuration the agent's owner account is deactivated
+``agents.failure_spike``       warning     availability over 5 % of an assignment's last 20 settled runs failed
+``agents.feedback_drop``       warning     performance  weighted score 10 points under the window before
+``agents.cost_drift``          info        cost         cost per run up 20 % on the window before
 =============================  ==========  ===========  ===============================================
 
 The rules are the pure functions of :mod:`app.services.fleet_health_signals`
-(one rule, two readers). A check reads counts, statuses and ids, never content,
+and :mod:`app.services.health.signals` (one rule, two readers); the last three
+read their thresholds from the Platform Health signal settings
+(``HealthSignalSettings``), so a threshold edited there applies to the check on
+its next pass. A check reads counts, statuses and ids, never content,
 calls no model and is never metered. With AI switched off (``ai_disabled``)
 agents do not run, so these checks record nothing: an open finding is kept as
 it was, neither refreshed nor resolved.
@@ -59,6 +65,8 @@ from app.services.fleet_health_signals import (
     schedule_is_silent,
 )
 from app.services.health.engine import Check, CheckResult, enrolled_agent_ids, finding_key, register_check
+from app.services.health.settings import HealthSignalSettings
+from app.services.health.signals import FAILURE_LOOKBACK, cost_crossed, failure_crossed, feedback_crossed
 
 MODULE = "agents"
 #: How often the agent checks run (section 3, "Scheduling").
@@ -279,11 +287,171 @@ async def owner_disabled(db: AsyncSession, now: datetime, agents: list[uuid.UUID
     ]
 
 
+async def _signal_settings(db: AsyncSession) -> HealthSignalSettings:
+    from app.services.health.settings import load_health_settings
+
+    return (await load_health_settings(db)).signals
+
+
+async def failure_spike(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """An enabled assignment of an enrolled agent whose failure rate over its last settled runs crosses the threshold."""
+    from app.models.assignment import Assignment, AssignmentRun
+    from app.services.health.signals import last_settled_statuses
+
+    s = await _signal_settings(db)
+    if not s.failure_enabled:
+        return []
+    assignments = (
+        await db.execute(
+            select(Assignment.id, Assignment.agent_id).where(
+                Assignment.agent_id.in_(agents), Assignment.enabled.is_(True)
+            )
+        )
+    ).all()
+    if not assignments:
+        return []
+    statuses = await last_settled_statuses(
+        db,
+        AssignmentRun,
+        AssignmentRun.assignment_id,
+        [aid for aid, _ in assignments],
+        s.failure_last_runs,
+        created_after=now - FAILURE_LOOKBACK,
+    )
+    results: list[CheckResult] = []
+    for aid, agent_id in assignments:
+        last = statuses.get(aid, [])
+        crossed, rate = failure_crossed(last, s)
+        results.append(
+            _result(
+                "agents.failure_spike",
+                "warning",
+                "availability",
+                crossed,
+                {"agent_id": str(agent_id), "assignment_id": str(aid)},
+                evidence={
+                    "values": {
+                        "failure_rate_pct": None if rate is None else round(rate, 1),
+                        "runs": len(last),
+                        "failed": sum(1 for status in last if status == "failed"),
+                    },
+                    "threshold": f"over {s.failure_rate_pct:g} % of the last {s.failure_last_runs} settled runs",
+                },
+                recommendation="Read the failed runs of the assignment for a common cause; fix it or pause the assignment.",
+            )
+        )
+    return results
+
+
+async def feedback_drop(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """An enrolled agent whose weighted feedback score dropped on the window before."""
+    from app.services.annotations import agents_weighted_score_window
+
+    s = await _signal_settings(db)
+    if not s.feedback_enabled:
+        return []
+    window = timedelta(days=s.feedback_window_days)
+    since = now - window
+    current = await agents_weighted_score_window(db, agents, since=since, until=now)
+    previous = await agents_weighted_score_window(db, agents, since=since - window, until=since)
+    results: list[CheckResult] = []
+    for agent_id in agents:
+        cur, prev = current.get(agent_id), previous.get(agent_id)
+        cur_score = cur.score if cur else None
+        prev_score = prev.score if prev else None
+        ratings = cur.ratings if cur else 0
+        results.append(
+            _result(
+                "agents.feedback_drop",
+                "warning",
+                "performance",
+                feedback_crossed(cur_score, prev_score, ratings, s),
+                {"agent_id": str(agent_id)},
+                evidence={
+                    "values": {
+                        "score": None if cur_score is None else round(cur_score * 100, 1),
+                        "previous_score": None if prev_score is None else round(prev_score * 100, 1),
+                        "ratings": ratings,
+                    },
+                    "threshold": (
+                        f"{s.feedback_drop_points:g} points over {s.feedback_window_days} days, "
+                        f"{s.feedback_min_ratings} ratings minimum"
+                    ),
+                },
+                recommendation="Read the low-rated answers of the window; adjust the persona, skill or tools they share.",
+            )
+        )
+    return results
+
+
+async def cost_drift(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
+    """An enrolled agent whose cost per assignment run rose on the window before (daily rollup, whole days)."""
+    from app.models.llm_trace import LLMDailyStats
+
+    s = await _signal_settings(db)
+    if not s.cost_enabled:
+        return []
+    today = now.date()
+    window = timedelta(days=s.cost_window_days)
+    current_from, previous_from = today - window, today - 2 * window
+    period = LLMDailyStats.date >= current_from
+    sums: dict[uuid.UUID, dict[bool, tuple[float, int]]] = {}
+    for agent_id, is_current, cost, runs in (
+        await db.execute(
+            select(
+                LLMDailyStats.agent_id,
+                period.label("current"),
+                func.coalesce(func.sum(LLMDailyStats.total_cost), 0),
+                func.coalesce(func.sum(LLMDailyStats.trace_count), 0),
+            )
+            .where(
+                LLMDailyStats.source == "assignment",
+                LLMDailyStats.agent_id.in_(agents),
+                LLMDailyStats.date >= previous_from,
+                LLMDailyStats.date < today,
+            )
+            .group_by(LLMDailyStats.agent_id, period)
+        )
+    ).all():
+        sums.setdefault(agent_id, {})[bool(is_current)] = (float(cost), int(runs))
+    results: list[CheckResult] = []
+    for agent_id in agents:
+        by_period = sums.get(agent_id, {})
+        cur_cost, cur_runs = by_period.get(True, (0.0, 0))
+        prev_cost, prev_runs = by_period.get(False, (0.0, 0))
+        crossed, cur, prev = cost_crossed(cur_cost, cur_runs, prev_cost, prev_runs, s)
+        results.append(
+            _result(
+                "agents.cost_drift",
+                "info",
+                "cost",
+                crossed,
+                {"agent_id": str(agent_id)},
+                evidence={
+                    "values": {
+                        "cost_per_run": None if cur is None else round(cur, 6),
+                        "previous_cost_per_run": None if prev is None else round(prev, 6),
+                        "runs": cur_runs,
+                        "previous_runs": prev_runs,
+                    },
+                    "threshold": (
+                        f"+{s.cost_increase_pct:g} % over {s.cost_window_days} days, {s.cost_min_runs} runs minimum"
+                    ),
+                },
+                recommendation="Compare a recent run with an older one for a larger read, a longer loop or a model change.",
+            )
+        )
+    return results
+
+
 for _check_id, _run in (
     ("agents.assignment_failing", assignment_failing),
     ("agents.schedule_silent", schedule_silent),
     ("agents.cost_spike", cost_spike),
     ("agents.owner_disabled", owner_disabled),
+    ("agents.failure_spike", failure_spike),
+    ("agents.feedback_drop", feedback_drop),
+    ("agents.cost_drift", cost_drift),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=AGENT_CHECK_INTERVAL, run=_agent_check(_check_id, _run))

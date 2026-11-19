@@ -219,9 +219,13 @@ async def read_feedback(db: AsyncSession, scope, s: HealthSignalSettings, now: d
     return readings
 
 
-async def _last_statuses(
-    db: AsyncSession, model, key_col, ids: list[uuid.UUID], limit: int, *, created_after: datetime
+async def last_settled_statuses(
+    db: AsyncSession, model: Any, key_col: Any, ids: list[uuid.UUID], limit: int, *, created_after: datetime
 ) -> dict[uuid.UUID, list[str]]:
+    """The last *limit* settled statuses (``completed`` / ``failed``) per key, newest first.
+
+    Shared with the Platform Health agent check ``agents.failure_spike`` (one rule, two readers).
+    """
     ranked = (
         select(
             key_col.label("key"),
@@ -292,7 +296,7 @@ async def read_failures(
     ):
         if not ids:
             continue
-        statuses = await _last_statuses(
+        statuses = await last_settled_statuses(
             db, model, key_col, ids, s.failure_last_runs, created_after=now - FAILURE_LOOKBACK
         )
         for target_id, last in statuses.items():
