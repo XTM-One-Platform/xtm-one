@@ -161,6 +161,37 @@ async def test_replace_in_files_names_a_file_over_the_budget(store, monkeypatch)
     assert "Not searched: workspace/r/big.txt" in none.content and "over the" in none.content
 
 
+async def test_replace_in_files_stops_at_the_time_budget(store, monkeypatch):  # noqa: F811
+    """#460: past the call's time budget a write refuses, nothing written; a dry run answers partial."""
+    from app.services.sandbox_workspace import commands
+
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "r/a.py", b"old\n")
+    await _put(composite, "r/b.py", b"old\n")
+    monkeypatch.setattr(commands, "wait_budget", lambda *a, **k: 0.0)
+    refused = await _call(composite, "sandbox_replace_in_files", pattern="old", replacement="new", path_prefix="r")
+    assert refused.is_error and "time budget ran out after reading 0 of 2" in refused.content
+    assert "workspace/r/a.py" in refused.content and "Nothing was written" in refused.content
+    assert await _workspace_bytes(store, conversation, "r/a.py") == b"old\n"
+    preview = await _call(
+        composite, "sandbox_replace_in_files", pattern="old", replacement="new", path_prefix="r", dry_run=True
+    )
+    assert not preview.is_error, preview.content
+    assert "2 file(s) the time budget did not reach" in preview.content
+
+
+def test_report_caps_the_diffstat_lines():
+    changes = [
+        replacing.FileChange(path=f"f{i}.py", before="a\n", after="b\n", replacements=1)
+        for i in range(replacing.MAX_STAT_LINES + 5)
+    ]
+    stats, _diffs = replacing.report(changes, lambda p: p)
+    lines = stats.splitlines()
+    assert len(lines) == replacing.MAX_STAT_LINES + 1
+    assert lines[-1].startswith("- ... and 5 more file(s) changed")
+
+
 def test_replace_in_files_is_offered_with_the_workspace():
     from app.services.builtin_tools.media import build_code_interpreter_tool
 

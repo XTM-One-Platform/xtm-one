@@ -1020,6 +1020,7 @@ def build_sandbox_workspace_tools(
         skipped: list[str] = []
         binary = 0
         total = 0
+        wanted: list[str] = []
         for rel in chosen:
             size = entries[rel].size
             if size > reading.MAX_GREP_FILE_BYTES:
@@ -1030,21 +1031,53 @@ def build_sandbox_workspace_tools(
             if total + size > reading.MAX_GREP_BYTES:
                 skipped.append(f"{display(rel)} (past the {format_size(reading.MAX_GREP_BYTES)} one call reads)")
                 continue
+            total += size
+            wanted.append(rel)
+
+        async def read(rel: str) -> bytes | None:
             try:
                 _entry, data = await session.read_entry(entries[rel])
             except (FileNotFoundError, WorkspaceFileUnreadableError):
                 skipped.append(f"{display(rel)} (unreadable)")
-                continue
-            total += size
-            if reading.is_text(data):
-                texts.append((rel, reading.decode(data)))
-            else:
-                binary += 1
+                return None
+            return data
+
+        # The reads run in bounded batches (as sandbox_grep reads) and stop at the call's time
+        # budget (#460): a whole checkout timed out at the tool deadline with no answer at all.
+        deadline = time.monotonic() + commands.wait_budget()
+        not_reached: list[str] = []
+        for start in range(0, len(wanted), reading.GREP_READ_FILES):
+            batch = wanted[start : start + reading.GREP_READ_FILES]
+            if time.monotonic() >= deadline:
+                not_reached = wanted[start:]
+                break
+            blobs = await asyncio.gather(*(read(rel) for rel in batch))
+            for rel, data in zip(batch, blobs, strict=True):
+                if data is None:
+                    continue
+                if reading.is_text(data):
+                    texts.append((rel, reading.decode(data)))
+                else:
+                    binary += 1
+        if not_reached and not dry_run:
+            metrics.operation("replace", "refused")
+            shown = ", ".join(display(rel) for rel in not_reached[:10])
+            more = f" and {len(not_reached) - 10} more" if len(not_reached) > 10 else ""
+            return _error(
+                f"the call's time budget ran out after reading {len(wanted) - len(not_reached)} of {len(wanted)} "
+                f"file(s); not reached: {shown}{more}. Nothing was written (a replace is all or nothing): narrow "
+                "path_prefix or include_globs and run it in parts."
+            )
         try:
             planned = replacing.plan(texts, regex, template, cap=replacing.clamp_max(max_replacements))
         except replacing.ReplaceError as exc:
             metrics.operation("replace", "refused")
             return _error(str(exc))
+        if not_reached:
+            more = f" and {len(not_reached) - 10} more" if len(not_reached) > 10 else ""
+            skipped.append(
+                f"{len(not_reached)} file(s) the time budget did not reach ({', '.join(display(r) for r in not_reached[:10])}{more})"
+            )
         scope = display(prefix) if prefix else "the workspace"
         notes = _replace_notes(planned, skipped, binary, display)
         if not planned.changes:
@@ -1053,7 +1086,8 @@ def build_sandbox_workspace_tools(
                     f"Nothing to change for {pattern[:80]!r} under {scope}: it matches, but the replacement leaves "
                     f"every file as it was (nothing was written).{notes}"
                 )
-            return f"No match for {pattern[:80]!r} in {planned.files_scanned} text file(s) under {scope}: nothing was written.{notes}"
+            read = " read before the time budget ran out" if not_reached else ""
+            return f"No match for {pattern[:80]!r} in {planned.files_scanned} text file(s){read} under {scope}: nothing was written.{notes}"
         stats, diffs = replacing.report(planned.changes, display)
         head = (
             f"{planned.replacements} replacement(s) in {len(planned.changes)} file(s) "
@@ -3750,7 +3784,8 @@ def build_sandbox_workspace_tools(
                 "include_globs in ONE all-or-nothing write: a rename, a moved import, an option renamed in many "
                 "files. replacement is a re template (\\1, named groups) in which \\uXXXX, \\UXXXXXXXX and \\xXX "
                 "are written as their character (\\u00a0 for a no-break space). Refused, nothing written, past "
-                "max_replacements. Searches every text file up to 32 MB, as sandbox_grep; a file left out is named "
+                "max_replacements or when the time budget runs out (a dry_run answers what it read). Searches "
+                "every text file up to 32 MB, as sandbox_grep; a file left out is named "
                 "with its reason, and matches the replacement leaves unchanged are reported as such. Answers a "
                 "diffstat per file and the bounded diffs; dry_run=true previews."
             ),

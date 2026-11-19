@@ -44,6 +44,8 @@ MAX_REPLACEMENTS = 5_000
 MAX_FILES = 200
 #: Characters of the diffs shown together; the rest counted by file.
 MAX_DIFFS_CHARS = 12_000
+#: Diffstat lines shown; the rest counted in one line (#460: 141 files answered 26k characters).
+MAX_STAT_LINES = 40
 
 
 #: A character escape of a replacement, after an even run of backslashes (``\\\\u0041`` is a literal backslash then ``u0041``).
@@ -154,13 +156,18 @@ def report(changes: list[FileChange], display) -> tuple[str, str]:
     for change in changes:
         added, removed = editing.summarize(change.before, change.after)
         shown = display(change.path)
-        stats.append(f"- {shown}: {change.replacements} replacement(s), +{added} -{removed}")
+        if len(stats) < MAX_STAT_LINES:
+            stats.append(f"- {shown}: {change.replacements} replacement(s), +{added} -{removed}")
         diff = editing.unified_diff(shown, change.before, change.after)
         if used + len(diff) <= MAX_DIFFS_CHARS:
             diffs.append(diff)
             used += len(diff)
         else:
             hidden.append(shown)
+    if len(changes) > MAX_STAT_LINES:
+        stats.append(
+            f"- ... and {len(changes) - MAX_STAT_LINES} more file(s) changed (sandbox_checkout_status lists them)"
+        )
     tail = ""
     if hidden:
         tail = f"\n... [diff of {len(hidden)} more file(s) not shown: {', '.join(hidden[:10])}; sandbox_checkout_diff or sandbox_read_file reads them]"
