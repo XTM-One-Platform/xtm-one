@@ -142,6 +142,38 @@ def json_argument_error(name: str, raw: str, exc: json.JSONDecodeError) -> str:
     )
 
 
+def _is_note_only(
+    parsed: dict[str, dict | None],
+    *,
+    unset_keys: list[str] | None,
+    hold: str | None,
+    label: str | None,
+    owner_agent_id: str | None,
+    lease: bool | None,
+    work_item_id: str | None,
+    expires_at: str | None,
+    terminal_condition: str | None,
+    retention: dict | None,
+    archive_key: str | None,
+) -> bool:
+    """True when a set_shared_state call writes a note (or releases a hold) and nothing live.
+
+    Such a call keeps the entry's status: a closing note on a resolved lease
+    (``dev:branch-lock:<branch>``) must not reactivate it, which left leases
+    to be resolved twice. A value, a list change, an unset, a take or any
+    lifecycle field is a live write and still marks the entry active.
+    """
+    if any(value is not None for value in parsed.values()):
+        return False
+    if unset_keys or (hold or "").strip() not in ("", "release"):
+        return False
+    if (label or "").strip() or (owner_agent_id or "").strip() or (archive_key or "").strip():
+        return False
+    if lease is not None or retention is not None:
+        return False
+    return all(field is None for field in (work_item_id, expires_at, terminal_condition))
+
+
 def build_shared_state_tools(
     db: AsyncSession,
     user_id: str,
@@ -1261,6 +1293,19 @@ def build_shared_state_tools(
                 if normalize_correlation_key(retention["overflow_key"]) == normalize_correlation_key(key):
                     return "Error: retention_json overflow_key must name another key than key. Nothing was written."
                 retention = {**retention, "overflow_key": _ns(retention["overflow_key"])}
+        note_only = _is_note_only(
+            parsed,
+            unset_keys=unset_keys,
+            hold=hold,
+            label=label,
+            owner_agent_id=owner_agent_id,
+            lease=lease,
+            work_item_id=work_item_id,
+            expires_at=expires_at,
+            terminal_condition=terminal_condition,
+            retention=retention,
+            archive_key=archive_key,
+        )
         archive_line = ""
         expect_dropped: dict[str, list] | None = None
         if archive_key is not None and not isinstance(archive_key, str):
@@ -1286,7 +1331,9 @@ def build_shared_state_tools(
                 # had been resolved): a resolved entry should never keep receiving
                 # writes while hidden from active reads. To conclude it, call
                 # resolve_shared_state; to remove it, call delete_shared_state.
-                status="active",
+                # A note alone (or a hold release) is no live write: it keeps the
+                # status, so a closing note on a released lease never reopens it.
+                status=None if note_only else "active",
                 acting_agent_id=agent_id,
                 is_company_managed=is_company_managed,
                 workspace_id=workspace_id,
