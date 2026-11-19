@@ -1677,6 +1677,24 @@ def test_a_narrow_checkout_keeps_the_root_requirements_and_python_tool_configs_i
     assert "external-import/other/src/main.py" not in written
 
 
+def test_a_narrow_checkout_keeps_the_root_secret_scanner_config() -> None:
+    # xtm-one: the secrets check runs `betterleaks dir .` from the root, which loads
+    # .betterleaks.toml (useDefault plus the allow-list of fake-secret fixtures); a
+    # checkout of backend/ alone lacked it and reported the allow-listed fixtures.
+    tree, written = _narrow_tree(
+        {
+            ".betterleaks.toml": b"[extend]\nuseDefault = true\n",
+            ".gitleaksignore": b"",
+            "backend/app/main.py": b"",
+            "other/.betterleaks.toml": b"",
+        },
+        ["backend"],
+    )
+    for kept in (".betterleaks.toml", ".gitleaksignore"):
+        assert kept in written and kept in tree.companions
+    assert "other/.betterleaks.toml" not in written
+
+
 def test_a_narrow_checkout_keeps_the_directory_a_ci_step_cds_into() -> None:
     # connectors: the STIX ID lint job runs `cd ./shared/pylint_plugins/check_stix_plugin &&
     # PYTHONPATH=. pylint ../../../ --load-plugins linter_stix_id_generator`; a checkout of one
