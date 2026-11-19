@@ -181,6 +181,26 @@ async def test_replace_in_files_stops_at_the_time_budget(store, monkeypatch):  #
     assert "2 file(s) the time budget did not reach" in preview.content
 
 
+async def test_replace_in_files_refuses_files_past_the_byte_cap(store, monkeypatch):  # noqa: F811
+    """#485: a file of the scope past MAX_GREP_BYTES is never read, so a write refuses whole."""
+    from app.services.sandbox_workspace import reading
+
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "r/a.py", b"old\n")
+    await _put(composite, "r/b.py", b"old\n" * 4)
+    monkeypatch.setattr(reading, "MAX_GREP_BYTES", 10)
+    refused = await _call(composite, "sandbox_replace_in_files", pattern="old", replacement="new", path_prefix="r")
+    assert refused.is_error and "1 file(s) past the" in refused.content
+    assert "workspace/r/b.py" in refused.content and "Nothing was written" in refused.content
+    assert await _workspace_bytes(store, conversation, "r/a.py") == b"old\n"
+    preview = await _call(
+        composite, "sandbox_replace_in_files", pattern="old", replacement="new", path_prefix="r", dry_run=True
+    )
+    assert not preview.is_error, preview.content
+    assert "1 replacement(s) in 1 file(s)" in preview.content and "workspace/r/b.py" in preview.content
+
+
 def test_report_caps_the_diffstat_lines():
     changes = [
         replacing.FileChange(path=f"f{i}.py", before="a\n", after="b\n", replacements=1)

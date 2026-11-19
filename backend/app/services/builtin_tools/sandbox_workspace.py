@@ -1021,6 +1021,7 @@ def build_sandbox_workspace_tools(
         binary = 0
         total = 0
         wanted: list[str] = []
+        past_cap: list[str] = []
         for rel in chosen:
             size = entries[rel].size
             if size > reading.MAX_GREP_FILE_BYTES:
@@ -1029,10 +1030,27 @@ def build_sandbox_workspace_tools(
                 )
                 continue
             if total + size > reading.MAX_GREP_BYTES:
-                skipped.append(f"{display(rel)} (past the {format_size(reading.MAX_GREP_BYTES)} one call reads)")
+                past_cap.append(rel)
                 continue
             total += size
             wanted.append(rel)
+        if past_cap and not dry_run:
+            # A file of the scope the call never reads may hold a match: writing the others would
+            # leave the change half applied (#485). Refused, nothing written, every file named.
+            metrics.operation("replace", "refused")
+            shown = ", ".join(display(rel) for rel in past_cap[:10])
+            more = f" and {len(past_cap) - 10} more" if len(past_cap) > 10 else ""
+            return _error(
+                f"the scope holds {len(past_cap)} file(s) past the {format_size(reading.MAX_GREP_BYTES)} one call "
+                f"reads: {shown}{more}. Nothing was written (a replace is all or nothing): narrow path_prefix or "
+                "include_globs and run it in parts."
+            )
+        if past_cap:
+            more = f" and {len(past_cap) - 10} more" if len(past_cap) > 10 else ""
+            skipped.append(
+                f"{len(past_cap)} file(s) past the {format_size(reading.MAX_GREP_BYTES)} one call reads "
+                f"({', '.join(display(r) for r in past_cap[:10])}{more})"
+            )
 
         async def read(rel: str) -> bytes | None:
             try:
