@@ -62,7 +62,12 @@ _NUMERIC = re.compile(r"^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})")
 
 
 class SplitError(ValueError):
-    """The result cannot be split as asked; nothing is ingested."""
+    """The split asked for is invalid (or over a bound); nothing is ingested.
+
+    A split that is valid but finds nothing to cut (a JSON split of a text
+    result, an item_start matching no line) is not an error: the result is
+    stored whole as one item and :attr:`SplitResult.fallback` says why.
+    """
 
 
 @dataclass
@@ -89,6 +94,11 @@ class SplitResult:
     skipped: list[str] = field(default_factory=list)
     #: Dates that could not be read, by item title.
     undated: list[str] = field(default_factory=list)
+    #: Why the split asked for could not apply, the whole result being stored as
+    #: one item instead (a JSON split of a text result, an item_start matching
+    #: nothing): the call is not wasted and the receipt says so. Empty when the
+    #: split applied as asked.
+    fallback: str = ""
 
 
 @dataclass
@@ -268,20 +278,31 @@ def split_result(content: str, spec: SplitSpec) -> SplitResult:
         try:
             as_json = json.loads(stripped)
         except ValueError:
-            raise SplitError("A JSON split was asked for but the result is not JSON.") from None
-        pieces = _split_json(as_json, spec)
-        context = _json_context(as_json, spec.json_path or "")
-        result.preamble_chars = len(context)
-        result.preamble = context[:MAX_PREAMBLE_CHARS]
+            as_json = None
+            result.fallback = (
+                "a JSON split was asked for but the result is not JSON (it is text): "
+                "it is stored whole as one item; split such a result with item_start."
+            )
+            pieces = [(stripped, None)]
+        if not result.fallback:
+            pieces = _split_json(as_json, spec)
+            context = _json_context(as_json, spec.json_path or "")
+            result.preamble_chars = len(context)
+            result.preamble = context[:MAX_PREAMBLE_CHARS]
     elif spec.item_start:
         starts = budget.starts(budget.compile(spec.item_start, multiline=True), content)
-        if not starts:
-            raise SplitError("item_start matched nothing in the result; nothing was ingested.")
-        preamble = content[: starts[0]].strip()
-        result.preamble_chars = len(preamble)
-        result.preamble = preamble[:MAX_PREAMBLE_CHARS]
-        bounds = [*starts, len(content)]
-        pieces = [(content[bounds[i] : bounds[i + 1]].strip(), None) for i in range(len(starts))]
+        if starts:
+            preamble = content[: starts[0]].strip()
+            result.preamble_chars = len(preamble)
+            result.preamble = preamble[:MAX_PREAMBLE_CHARS]
+            bounds = [*starts, len(content)]
+            pieces = [(content[bounds[i] : bounds[i + 1]].strip(), None) for i in range(len(starts))]
+        else:
+            result.fallback = (
+                "item_start matched no line of the result: it is stored whole as one item; "
+                "read one small result first and write item_start for its first line exactly as it renders."
+            )
+            pieces = [(stripped, None)]
     else:
         pieces = [(stripped, None)]
 
