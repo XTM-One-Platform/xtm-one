@@ -250,6 +250,54 @@ async def test_the_timeline_range_and_types_narrow_it():
 
 
 @pytest.mark.asyncio
+async def test_the_timeline_reads_the_history_of_the_extra_properties_passed() -> None:
+    api = FakeHubSpot()
+    api.routes[("GET", "/crm/v3/objects/companies/601")] = {
+        "id": "601",
+        "properties": {},
+        "propertiesWithHistory": {
+            "partner_tier": [
+                {"value": "gold", "timestamp": iso_utc(T0), "sourceType": "INTEGRATION", "sourceId": "app-42"},
+            ],
+        },
+    }
+    _defs, executor = _tools()
+    with fake_api(api) as sent:
+        result = await call(
+            executor,
+            "get_hubspot_record_timeline",
+            object_type="companies",
+            record_id="601",
+            types="notes",
+            properties="Partner_Tier, partner_tier",
+        )
+    assert not result.is_error, result.content
+    history = [r for r in sent if r.url.path == "/crm/v3/objects/companies/601"]
+    assert len(history) == 1
+    assert history[0].url.params["propertiesWithHistory"].split(",") == [
+        "lifecyclestage",
+        "hubspot_owner_id",
+        "partner_tier",
+    ]
+    assert "PROPERTY CHANGE" in result.content and "gold" in result.content
+    assert "source INTEGRATION" in result.content
+
+
+@pytest.mark.asyncio
+async def test_the_timeline_refuses_malformed_or_too_many_extra_properties() -> None:
+    _defs, executor = _tools()
+    bad = await call(
+        executor, "get_hubspot_record_timeline", object_type="companies", record_id="601", properties="a b"
+    )
+    assert bad.is_error and "invalid property name(s): a b" in bad.content
+    many = ",".join(f"p{i}" for i in range(51))
+    over = await call(
+        executor, "get_hubspot_record_timeline", object_type="companies", record_id="601", properties=many
+    )
+    assert over.is_error and "at most 50 per call" in over.content
+
+
+@pytest.mark.asyncio
 async def test_a_type_the_app_cannot_read_names_the_missing_scope_and_the_rest_is_returned():
     api = _f5_account()
     api.routes[("GET", "/crm/v4/objects/contacts/501/associations/emails")] = lambda r: httpx.Response(403, json=SCOPE_403)
