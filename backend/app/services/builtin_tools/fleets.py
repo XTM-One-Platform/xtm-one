@@ -747,9 +747,11 @@ def build_fleet_tools(
         connected: object = None,
         exposed_agent_ids: object = None,
         is_company_managed: object = False,
+        autonomy_level: str | None = None,
     ) -> str:
         from app.models.fleet import FLEET_DEFAULT_ICON, FleetMember
-        from app.services.fleets import create_fleet, set_exposed_agents, set_orchestrator
+        from app.services.fleet_autonomy import normalize_level
+        from app.services.fleets import FleetActionRefusedError, create_fleet, set_exposed_agents, set_orchestrator
         from app.services.workspaces import create_workspace
 
         async def _action(db: AsyncSession, user: User) -> str:
@@ -761,6 +763,13 @@ def build_fleet_tools(
             company = _bool(is_company_managed, "is_company_managed", False)
             if company and not user.is_admin:
                 raise _RefusedError("Only admins can create company-managed fleets.")
+            # #379: the level is set in the creation's transaction, never autonomous first then lowered.
+            level_fields: dict[str, str] = {}
+            if autonomy_level is not None and str(autonomy_level).strip():
+                try:
+                    level_fields["autonomy_level"] = normalize_level(str(autonomy_level).strip())
+                except FleetActionRefusedError as exc:
+                    raise _RefusedError(f"{exc.detail} Nothing was created.") from None
             # #371: an object member carries its role label and parent; plain ids keep their path.
             if isinstance(member_agent_ids, list) and any(isinstance(i, dict) for i in member_agent_ids):
                 member_specs = _member_specs(member_agent_ids)
@@ -803,6 +812,7 @@ def build_fleet_tools(
                 description=(description or "").strip(),
                 icon=FLEET_DEFAULT_ICON,
                 is_company_managed=company,
+                **level_fields,
             )
             await _replace_members(db, user, fleet, members_ids, keep_orchestrator=orchestrator)
             if orchestrator is not None:
@@ -823,6 +833,7 @@ def build_fleet_tools(
                 workspace_id=str(workspace.id),
                 workspace_created=workspace_created,
                 is_company_managed=company,
+                autonomy_level=fleet.autonomy_level,
             )
             created.append(fleet.id)
             return await _describe(db, user, fleet, headline=f"Fleet **{fleet.name}** created.")
@@ -2174,9 +2185,9 @@ def build_fleet_tools(
         ToolDefinition(
             name="create_fleet",
             description=(
-                f"Create a fleet owned by the user, with its members, in one call. {about} Home members: agents "
-                "you manage with no home fleet; the orchestrator is one, always exposed. "
-                "Without workspace_id, one named after the fleet is created. Give the user its page."
+                f"Create a fleet with its members in one call. {about} Home members: managed "
+                "agents with no home fleet; the orchestrator is one, always exposed. "
+                "No workspace_id: a new one. Give the user its page."
             ),
             input_schema={
                 "type": "object",
@@ -2201,9 +2212,10 @@ def build_fleet_tools(
                     },
                     "is_company_managed": {
                         "type": "boolean",
-                        "description": "Visible to every user (admin only; company-managed agents and workspace only).",
+                        "description": "Visible to all (admin; company-managed agents, workspace).",
                         "default": False,
                     },
+                    "autonomy_level": {"type": "string", "enum": ["full_gates", "medium", "low", "autonomous"]},
                 },
                 "required": ["name"],
             },

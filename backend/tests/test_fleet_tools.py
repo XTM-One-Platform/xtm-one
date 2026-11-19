@@ -196,6 +196,8 @@ async def test_ids_are_checked_before_anything_is_read(monkeypatch, session):
     assert await _call(str(user.id), "get_fleet", fleet_id="nope") == (
         "fleet_id is required: pass the id `list_fleets` shows."
     )
+    answer = await _call(str(user.id), "create_fleet", name="F", autonomy_level="wild")
+    assert answer == ("Unknown autonomy level 'wild': one of full_gates, medium, low, autonomous. Nothing was created.")
     answer = await _call(str(user.id), "create_fleet", name="F", member_agent_ids=["not-an-id"])
     assert answer == "member_agent_ids: `not-an-id` is not an id."
     answer = await _call(str(user.id), "create_fleet", name="F", connected=[{"agent_id": str(uuid.uuid4()), "context_inclusion": "all"}])
