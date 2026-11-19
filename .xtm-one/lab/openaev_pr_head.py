@@ -98,6 +98,11 @@ SEEDED = lab.CACHE / "openaev-seeded.json"
 #: A seed call that meets a backend still warming up (refused, 5xx) is tried again; a 4xx answer is final.
 SEED_ATTEMPTS = 5
 SEED_RETRY_SECONDS = 6.0
+#: Spring Boot serves /api/health once Tomcat is up, before its CommandLineRunners ran: InitAdminCommandLineRunner
+#: writes the admin token after that, so a seed sent on the health answer alone was refused 401 (gap
+#: lab-openaev-seed-401). The seed waits until the token authenticates GET /api/me.
+ADMIN_TOKEN_WAIT_SECONDS = 600.0
+ADMIN_TOKEN_POLL_SECONDS = 3.0
 
 
 class SeedError(Exception):
@@ -212,6 +217,26 @@ def api(method: str, path: str, body: object | None = None) -> object:
     with urllib.request.urlopen(request, timeout=60) as response:
         raw = response.read()
     return json.loads(raw) if raw else None
+
+
+def wait_for_admin_token(timeout: float = ADMIN_TOKEN_WAIT_SECONDS) -> bool:
+    """Whether the admin token authenticates (``GET /api/me`` answers 200) within *timeout* seconds; a 401 or a
+    refused connection is the backend still running its start-up runners, anything else is final."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            api("GET", "/api/me")
+            return True
+        except urllib.error.HTTPError as exc:
+            if exc.code != 401 and exc.code < 500:
+                lab.log(f"openaev seed: GET /api/me answered HTTP {exc.code}, not waiting for the admin token")
+                return False
+        except urllib.error.URLError:
+            pass
+        if time.monotonic() >= deadline:
+            lab.log(f"openaev seed: the admin token did not authenticate within {timeout:.0f} s")
+            return False
+        time.sleep(ADMIN_TOKEN_POLL_SECONDS)
 
 
 def tenant_path(resource: str) -> str:
@@ -392,6 +417,7 @@ def main() -> None:
             # failed is completed by the next start on the kept database.
             SEEDED.parent.mkdir(parents=True, exist_ok=True)
             SEEDED.write_text("{}")
+        wait_for_admin_token()
         for item in seed():
             lab.log(f"seeded openaev {item}")
     STATE["seeded"] = "1"
