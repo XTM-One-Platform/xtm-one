@@ -1890,6 +1890,10 @@ async def create_work_item(
     structured_ask = normalize_ask(ask)
     if blockers or refs:
         status = "blocked"
+    elif needs_human and status == "open":
+        # A decision parked for a person waits for the answer: an open item
+        # would be claimed by its owner's inbox before anyone answered (#497).
+        status = "blocked"
     refuse_blocked_without_why(
         status, blocked_on=blockers, blocked_on_refs=refs, blocked_reason=reason, needs_human=needs_human
     )
@@ -2245,6 +2249,9 @@ async def update_work_item(
         landing = status if status is not None and status in WORK_ITEM_STATUSES else item.status
         if (blockers or refs) and landing not in WORK_ITEM_TERMINAL_STATUSES:
             landing = "blocked"
+        elif needs_human and landing == "open":
+            # Parked for a person: never back in the owner's queue before the answer (#497).
+            landing = "blocked"
         if blockers is not None and writer_run_ids is not None and not drop_open_blockers:
             await _refuse_dropping_open_blockers(db, item, blockers, landing=landing, writer_run_ids=writer_run_ids)
         why_written = any(v is not None for v in (status, blockers, refs, blocked_reason, needs_human))
@@ -2422,6 +2429,12 @@ async def update_work_item(
             item.blocked_reason = reason
         if needs_human is not None:
             item.needs_human = human
+            if human and item.status == "open":
+                # Parked for a person: out of the owner's queue until the answer (#497).
+                item.status = "blocked"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
         if ask is not None:
             item.ask = new_ask
         if item.status != "blocked" and previous_status == "blocked":
