@@ -3658,6 +3658,10 @@ def build_sandbox_workspace_tools(
                                     "type": "boolean",
                                     "description": "Replace every occurrence (default false: the snippet must be unique).",
                                 },
+                                "occurrence": {
+                                    "type": "integer",
+                                    "description": "Replace only this occurrence of find (1-based) when it is not unique.",
+                                },
                                 "start_line": {
                                     "type": "integer",
                                     "description": (

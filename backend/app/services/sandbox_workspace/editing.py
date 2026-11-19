@@ -37,6 +37,13 @@ An edit may also insert: ``{insert_after_line, expect_first?, replace}`` puts
 replaces nothing; ``expect_first`` (or ``expect_first_blank``) checks that line
 as for a range, and is not asked for line 0.
 
+A ``find`` that occurs several times may name the one to replace with
+``occurrence`` (1-based, counted in the text as the previous edits left it;
+``sandbox_edit_file`` only): the second of three identical blocks is changed
+without widening the snippet into its neighbours or numbering lines that the
+earlier edits of the call shift. ``occurrence`` past the count is refused with
+the count.
+
 The diff is a read-back, not a patch: a line longer than :data:`LONG_LINE_CHARS`
 shows only what changed, with :data:`CHANGE_CONTEXT_CHARS` unchanged characters
 around it and the rest counted, so a one-word edit of a 17 KB table row
@@ -99,6 +106,8 @@ class Edit:
     last_blank: bool = False
     insert_after: int = -1
     """Line an insert edit goes after (0: the top of the file); -1 for any other edit."""
+    occurrence: int = 0
+    """The occurrence of ``find`` to replace (1-based); 0: the find must be unique, or ``replace_all``."""
 
     @property
     def is_range(self) -> bool:
@@ -140,8 +149,21 @@ def parse_edits(raw: object, *, allow_ranges: bool = False) -> list[Edit]:
             raise EditError(f"edit {i}: 'replace' must be a string (empty to delete the found text)")
         if len(find) > MAX_SNIPPET_CHARS or len(replace) > MAX_SNIPPET_CHARS:
             raise EditError(f"edit {i}: a snippet is at most {MAX_SNIPPET_CHARS:,} characters")
-        edits.append(Edit(find=find, replace=replace, replace_all=bool(item.get("replace_all", False))))
+        replace_all = bool(item.get("replace_all", False))
+        occurrence = _parse_occurrence(i, item, replace_all) if allow_ranges else 0
+        edits.append(Edit(find=find, replace=replace, replace_all=replace_all, occurrence=occurrence))
     return edits
+
+
+def _parse_occurrence(i: int, item: dict[str, object], replace_all: bool) -> int:
+    if "occurrence" not in item or item["occurrence"] is None:
+        return 0
+    value = item["occurrence"]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise EditError(f"edit {i}: 'occurrence' must be an integer >= 1 (1: the first occurrence of 'find')")
+    if replace_all:
+        raise EditError(f"edit {i}: give either 'occurrence' or 'replace_all', not both")
+    return value
 
 
 def _parse_range(i: int, item: dict) -> Edit:
@@ -315,6 +337,10 @@ def _apply(text: str, edits: list[Edit], read_with: str) -> Applied:
                 f"edit {i}: 'find' text not found ({_preview(edit.find)!r}). Copy the snippet exactly from "
                 f"{read_with} (whitespace included); nothing was written."
             )
+        if edit.occurrence:
+            text = _replace_occurrence(i, text, edit, n)
+            counts.append(1)
+            continue
         if n > 1 and not edit.replace_all:
             first = _line_of(text, text.find(edit.find))
             raise EditError(
@@ -324,6 +350,18 @@ def _apply(text: str, edits: list[Edit], read_with: str) -> Applied:
         text = text.replace(edit.find, edit.replace) if edit.replace_all else text.replace(edit.find, edit.replace, 1)
         counts.append(n if edit.replace_all else 1)
     return Applied(text=text, replacements=counts)
+
+
+def _replace_occurrence(i: int, text: str, edit: Edit, count: int) -> str:
+    """*text* with occurrence ``edit.occurrence`` of ``edit.find`` replaced (*count* occurrences, non-overlapping)."""
+    if edit.occurrence > count:
+        raise EditError(
+            f"edit {i}: occurrence {edit.occurrence} asked but 'find' text occurs {count} time(s). Nothing was written."
+        )
+    at = -len(edit.find)
+    for _ in range(edit.occurrence):
+        at = text.find(edit.find, at + len(edit.find))
+    return text[:at] + edit.replace + text[at + len(edit.find) :]
 
 
 def unified_diff(path: str, before: str, after: str, *, max_chars: int = MAX_DIFF_CHARS, rest_hint: str = "") -> str:
