@@ -40,7 +40,7 @@ SECTIONS = ("Why {name}", "Capabilities", "Gallery", "How it works", "Part of th
             "Use cases by security role", "Quick start", "Editions", "Integrations and ecosystem",
             "Community", "Contributing", "Security", "License", "About Filigran")
 
-FORBIDDEN = re.compile(r"coming|next release|upcoming|\bsoon\b|preview|in review|new feature|now available|"
+FORBIDDEN = re.compile(r"coming|next release|upcoming|\bsoon\b|preview|in review|new feature|now available|roadmap|"
                        r"pull/|\u2014|\u2013|!(?!\[)|OpenGRC|OpenBAS|XTM Suite|C-TEM|Agentic XTM|"
                        r"star-history|contrib\.rocks|```mermaid", re.I)
 
@@ -76,23 +76,40 @@ def _esc(s: str) -> str:
     return s.replace("-", "--").replace("_", "__").replace(" ", "%20").replace("+", "%2B")
 
 
+# Rule K1 (doc 33, "Alignment over repo state"): ONE badge row, the same 7 badges in this order in
+# all five READMEs, no product-specific omission.
+BADGE_ORDER = ("stars", "release", "docker pulls", "license", "CI", "docs", "community")
+
+
 def badges(d: dict) -> str:
     repo, b = d["repo"], []
+    ci_wf, ci_branch = d["ci"]
+    ci_link = f"https://github.com/{repo}/actions/workflows/{ci_wf}"
     if d.get("private"):
         # shields.io cannot read a private repository ("repo not found"): static badges, same order
-        b.append(badge("stars", "star the repo", BADGE_VALUE, f"https://github.com/{repo}/stargazers", "github"))
+        b.append(badge("stars", "on GitHub", BADGE_VALUE, f"https://github.com/{repo}/stargazers", "github"))
         b.append(badge("release", "latest", BADGE_VALUE, f"https://github.com/{repo}/releases/latest"))
     else:
         b.append(badge("stars", "", BADGE_VALUE, f"https://github.com/{repo}/stargazers", "github",
                        f"https://img.shields.io/github/stars/{repo}"))
         b.append(badge("release", "", BADGE_VALUE, f"https://github.com/{repo}/releases/latest", "",
                        f"https://img.shields.io/github/v/release/{repo}"))
-    b.append(badge("license", d["license_badge"], BADGE_VALUE, "LICENSE"))
-    b.append(badge("docs", d["docs_host"], BADGE_VALUE, d["docs"]))
     if d.get("docker"):
         b.append(badge("docker pulls", "", BADGE_VALUE, f"https://hub.docker.com/r/{d['docker']}", "docker",
                        f"https://img.shields.io/docker/pulls/{d['docker']}"))
-    b.append(badge("slack", "community", BADGE_VALUE, "https://community.filigran.io", "slack"))
+    else:
+        # no public image (a hosted service): a static badge in the same slot, never an omission
+        msg, link = d["docker_static"]
+        b.append(badge("docker pulls", msg, BADGE_VALUE, link, "docker"))
+    b.append(badge("license", d["license_badge"], BADGE_VALUE, "LICENSE"))
+    if d.get("private"):
+        b.append(badge("CI", "GitHub Actions", BADGE_VALUE, ci_link, "githubactions"))
+    else:
+        b.append(badge("CI", "", BADGE_VALUE, ci_link, "githubactions",
+                       f"https://img.shields.io/github/actions/workflow/status/{repo}/{ci_wf}"
+                       f"?branch={ci_branch}&label=CI"))
+    b.append(badge("docs", d["docs_host"], BADGE_VALUE, d["docs"]))
+    b.append(badge("community", "slack", BADGE_VALUE, "https://community.filigran.io", "slack"))
     return '<p align="center">\n  ' + "\n  ".join(b) + "\n</p>"
 
 
@@ -217,6 +234,10 @@ def check(text: str) -> list[str]:
         cols = re.findall(r"(?:[?&](?:color|labelColor)=|/badge/[^\"?]*-)([0-9A-Fa-f]{6})\b", url)
         bad = [c for c in cols if c.upper() not in (BADGE_VALUE, BADGE_LABEL)]
         errs += [f"badge colour off-brand {bad}: {url[:60]}"] if bad else []
+    # rule K1: the 7 badges, in the kit's order
+    row = re.search(r'<p align="center">(.*?)</p>', text, re.S)
+    alts = re.findall(r'alt="([^"]+)"', row.group(1)) if row else []
+    errs += [f"badge row {alts}"] if tuple(alts) != BADGE_ORDER else []
     heads = re.findall(r"^## (.+)$", text, re.M)
     errs += [f"headings {len(heads)}"] if len(heads) != 15 else []
     return errs

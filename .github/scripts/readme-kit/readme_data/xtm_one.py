@@ -10,6 +10,7 @@ DATA = {
     "docs": "https://docs.xtmone.io/latest/",
     "docs_host": "docs.xtmone.io",
     "docker": "xtmone/platform",
+    "ci": ("ci.yml", "main"),
     "license_badge": "Apache 2.0 + EE",
     "tagline": "The open source agentic core of the XTM Platform: Agentic CTEM, from threat signal to verified fix.",
     "pitch": (

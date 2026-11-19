@@ -9,8 +9,9 @@ DATA = {
     "repo": "OpenCRQ-Platform/opencrq",
     "page": "https://filigran.io/products/opencrq",
     "docs": "https://github.com/OpenCRQ-Platform/opencrq/tree/main/docs",
-    "docs_host": "docs",
-    "docker": "",
+    "docs_host": "in the repository",
+    "docker": "filigran/opencrq",
+    "ci": ("ci.yml", "main"),
     "private": True,  # private repository: static stars and release badges
     "license_badge": "Apache 2.0 + EE",
     "tagline": "Threat-informed cyber risk quantification: know what each exposure would cost you, and fix what removes the most loss.",
@@ -22,9 +23,8 @@ DATA = {
         "goes where it removes the most loss, and [XTM One](https://github.com/XTM-One-Platform/xtm-one) gets the "
         "fix done."
     ),
-    "hero_alt": ("The OpenCRQ home dashboard: aggregate risk with likelihood, loss magnitude and annual loss "
-                 "exposure, the controls and findings that reduce it most and the gap to the risk tolerance "
-                 "(synthetic data)"),
+    "hero_alt": ("The OpenCRQ home dashboard: the risk scope with its tenant, scopes and scenarios, and the "
+                 "controls that would reduce the annual loss exposure most, each priced (synthetic data)"),
     "why_intro": ("A CTEM program finds more exposures than any team can fix. Severity scores rank them by how bad a "
                   "flaw is in general, not by what it would cost your organization."),
     "why": [
@@ -54,16 +54,17 @@ DATA = {
         ("Quantification", "How attacks end against your defenses and what a loss event costs.",
          "Quantification of a data breach scenario: attack run outcomes, loss event frequency and annualized loss "
          "expectancy with p10, mean and p90"),
-        ("Loss and tolerance", "The chance of losing more than an amount, against what the business accepts.",
-         "Risk treatment dashboard: likelihood and annual loss exposure trends and the loss exceedance curve of a "
-         "scenario against its tolerance"),
+        ("Budget reviews", "What the security budget spent and the loss it avoided, scope by scope.",
+         "Budget reviews of a fictitious bank: scenarios outside tolerance, loss avoided per year, build return "
+         "and spend, with one review per period"),
         ("Exposure flow", "Where the annual loss comes from, down to the technique that would stop it.",
          "Risk exposure flow: a Sankey diagram of annual loss expectancy from threat actors to attack outcomes, "
          "technique chokepoints and loss drivers"),
         ("Controls", "Each control's strength, coverage and measured effectiveness, and what it protects.",
          "Controls grouped by domain with their strength, ATT&CK coverage and measured effectiveness"),
-        ("XTM pivots", "Threats, techniques and CVEs open their OpenCTI and OpenAEV counterparts in one click.",
-         "An OpenCRQ threat with its In OpenCTI and In OpenAEV counterparts and the Simulate in OpenAEV action"),
+        ("Threats", "The actors and campaigns that match your attack outcomes, with their CVEs and techniques.",
+         "Threats read from OpenCTI: active threats, their match with the tenant's attack outcomes, observed "
+         "activity, CVEs and techniques"),
     ],
     "walkthrough": "From the home dashboard to a risk scenario, its quantification and the control that cuts it, in 15 seconds.",
     "walkthrough_alt": ("Animated walkthrough: the OpenCRQ home dashboard, a risk scenario, its Monte Carlo "
@@ -98,6 +99,9 @@ DATA = {
         "```\n\n"
         "Open http://localhost:3020, then connect OpenCTI and OpenAEV from the connectors guides.\n\n"
         "- **Guides**: [quick start](docs/quick-start.md) and [Docker deployment](docs/deployment/docker.md).\n"
+        "- **Docker**: [`filigran/opencrq`](https://hub.docker.com/r/filigran/opencrq).\n"
+        "- **Helm**: not available as a public chart; run the Docker image on Kubernetes with your own "
+        "manifests and the [configuration](docs/deployment/configuration.md) reference.\n"
         "- **Configuration**: [configuration](docs/deployment/configuration.md) and "
         "[architecture](docs/deployment/architecture.md).\n"
         "- **Releases**: the [GitHub releases page](https://github.com/OpenCRQ-Platform/opencrq/releases)."

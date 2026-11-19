@@ -10,6 +10,8 @@ DATA = {
     "docs": "https://docs.hub.filigran.io",
     "docs_host": "docs.hub.filigran.io",
     "docker": "",
+    "docker_static": ("hosted service", "https://hub.filigran.io"),
+    "ci": ("dockerbuild-ci.yml", "main"),
     "license_badge": "source available",
     "tagline": "The tradecraft library and gateway of the XTM Platform: CTEM content you deploy in one click into your own OpenCTI and OpenAEV.",
     "pitch": (
@@ -19,7 +21,7 @@ DATA = {
         "[OpenAEV](https://github.com/OpenAEV-Platform/openaev) scenarios to prove your defenses against real "
         "attacker techniques. Connect your instance once, then deploy any resource into it in one click."
     ),
-    "hero_alt": ("XTM Hub home: the XTM Platform overview, the public roadmap and the newest and most deployed "
+    "hero_alt": ("XTM Hub home: the XTM Platform overview and the newest and most deployed "
                  "OpenCTI dashboards, OpenAEV scenarios and OpenCTI integrations"),
     "why_intro": ("A CTEM program runs on tradecraft: dashboards, integrations, playbooks and attack scenarios. "
                   "Each one takes days to build, and most teams rebuild what another team already got right."),
@@ -28,8 +30,8 @@ DATA = {
          "searchable by use case, type and compatibility."),
         ("One click to your instance.", "A deployment sends the resource straight to the OpenCTI or OpenAEV you "
          "pick, with no export, no file to move and no manual import."),
-        ("One gateway for the platform.", "Instance registration for OpenCTI, OpenAEV and XTM One, the public "
-         "roadmap with feature voting and personal API tokens."),
+        ("One gateway for the platform.", "Instance registration for OpenCTI, OpenAEV and XTM One, "
+         "subscribed services and personal API tokens."),
     ],
     "capabilities": {
         "Scoping": "OpenCTI custom dashboards for sectors and threat topics: the actors, malware, techniques and "
@@ -80,7 +82,8 @@ DATA = {
                                "team exercises.",
         "Vulnerability and exposure management": "Scenarios that test the techniques that reach your assets and "
                                                  "dashboards on the vulnerabilities exploited in the wild.",
-        "Risk and CISO": "One library shared across every instance you run, and the public XTM Platform roadmap.",
+        "Risk and CISO": "One library shared across every OpenCTI and OpenAEV instance you run, "
+                         "deployed from one account.",
     },
     "quickstart": (
         "**Use it**: XTM Hub runs as a service at [hub.filigran.io](https://hub.filigran.io). Sign in, open a "
@@ -99,7 +102,7 @@ DATA = {
     "editions": (
         "| | Free service | Source code |\n|---|---|---|\n"
         "| License | [hub.filigran.io](https://hub.filigran.io) terms | [Source available](LICENSE) |\n"
-        "| Libraries, one-click deploy, registration, roadmap | Yes | Read, fork for personal use |\n"
+        "| Libraries, one-click deploy, registration | Yes | Read, fork for personal use |\n"
         "| Production and commercial use of the code | | Not permitted |\n\n"
         "Some content depends on the edition of the product it deploys to: one-click deployment of playbooks "
         "needs OpenCTI Enterprise Edition."

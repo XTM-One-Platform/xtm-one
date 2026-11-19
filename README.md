@@ -3,10 +3,11 @@
 <p align="center">
   <a href="https://github.com/XTM-One-Platform/xtm-one/stargazers"><img src="https://img.shields.io/github/stars/XTM-One-Platform/xtm-one?style=flat-square&labelColor=0A0C1C&logo=github&logoColor=white&color=001BDA" alt="stars"></a>
   <a href="https://github.com/XTM-One-Platform/xtm-one/releases/latest"><img src="https://img.shields.io/github/v/release/XTM-One-Platform/xtm-one?style=flat-square&labelColor=0A0C1C&color=001BDA" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20EE-001BDA?style=flat-square&labelColor=0A0C1C" alt="license"></a>
-  <a href="https://docs.xtmone.io/latest/"><img src="https://img.shields.io/badge/docs-docs.xtmone.io-001BDA?style=flat-square&labelColor=0A0C1C" alt="docs"></a>
   <a href="https://hub.docker.com/r/xtmone/platform"><img src="https://img.shields.io/docker/pulls/xtmone/platform?style=flat-square&labelColor=0A0C1C&logo=docker&logoColor=white&color=001BDA" alt="docker pulls"></a>
-  <a href="https://community.filigran.io"><img src="https://img.shields.io/badge/slack-community-001BDA?style=flat-square&labelColor=0A0C1C&logo=slack&logoColor=white" alt="slack"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20EE-001BDA?style=flat-square&labelColor=0A0C1C" alt="license"></a>
+  <a href="https://github.com/XTM-One-Platform/xtm-one/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/XTM-One-Platform/xtm-one/ci.yml?branch=main&label=CI&style=flat-square&labelColor=0A0C1C&logo=githubactions&logoColor=white&color=001BDA" alt="CI"></a>
+  <a href="https://docs.xtmone.io/latest/"><img src="https://img.shields.io/badge/docs-docs.xtmone.io-001BDA?style=flat-square&labelColor=0A0C1C" alt="docs"></a>
+  <a href="https://community.filigran.io"><img src="https://img.shields.io/badge/community-slack-001BDA?style=flat-square&labelColor=0A0C1C&logo=slack&logoColor=white" alt="community"></a>
 </p>
 
 <p align="center"><b>The open source agentic core of the XTM Platform: Agentic CTEM, from threat signal to verified fix.</b></p>

@@ -10,6 +10,7 @@ DATA = {
     "docs": "https://docs.opencti.io",
     "docs_host": "docs.opencti.io",
     "docker": "opencti/platform",
+    "ci": ("ci-main.yml", "master"),
     "license_badge": "Apache 2.0 + EE",
     "tagline": "The open source threat intelligence platform at the heart of Continuous Threat Exposure Management.",
     "pitch": (

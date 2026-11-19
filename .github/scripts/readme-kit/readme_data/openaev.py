@@ -10,6 +10,7 @@ DATA = {
     "docs": "https://docs.openaev.io",
     "docs_host": "docs.openaev.io",
     "docker": "openaev/platform",
+    "ci": ("core-ci.yml", "main"),
     "license_badge": "Apache 2.0 + EE",
     "tagline": "The open source adversarial exposure validation platform: prove which threats get through your defenses.",
     "pitch": (
