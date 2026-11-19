@@ -100,6 +100,29 @@ async def test_the_pass_writes_one_score_row_per_module_and_day():
 
 
 @pytest.mark.asyncio
+async def test_a_failing_check_keeps_the_results_of_the_checks_before_it():
+    async def passing(db, now):
+        return [_fail(severity="critical")]
+
+    async def failing(db, now):
+        await record_results(db, [_fail(agent="a2")], now=now)
+        raise RuntimeError("check broke")
+
+    first = engine.Check(check_id="agents.tool_errors", module="agents", interval=timedelta(minutes=15), run=passing)
+    second = engine.Check(check_id="agents.broken", module="agents", interval=timedelta(minutes=15), run=failing)
+    engine._LAST_RUN.clear()
+    async with _temp_database("he_isolate") as sessions:
+        async with sessions() as db:
+            totals = await run_pass(db, now=T0, checks=[first, second])
+        assert (totals["checks"], totals["opened"]) == (1, 1)
+        async with sessions() as db:
+            rows = (await db.execute(select(HealthCheckFinding))).scalars().all()
+            assert [r.subject for r in rows] == [{"agent_id": "a1"}]
+            day = await db.get(HealthScoreDay, (T0.date(), "agents"))
+            assert (day.critical, day.score) == (1, 75)
+
+
+@pytest.mark.asyncio
 async def test_a_900_agent_upgrade_enrols_nothing_and_a_fleet_enrols_its_home_members():
     """Test (a): no agent is checked until it, or its fleet, is enrolled."""
     async with _temp_database("he_enrol") as sessions, sessions() as db:

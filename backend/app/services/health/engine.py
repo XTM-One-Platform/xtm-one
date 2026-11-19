@@ -283,7 +283,12 @@ async def enrolled_agent_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
 
 
 async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] | None = None) -> dict[str, int]:
-    """Run every due check once and record its results; a failing check is logged, never fatal."""
+    """Run every due check once and record its results; a failing check is logged, never fatal.
+
+    Each check runs in its own savepoint, so a check that raises undoes only
+    its own writes: the results recorded by the checks before it in the same
+    pass are kept and committed with the pass.
+    """
     totals = {"checks": 0, "opened": 0, "updated": 0, "resolved": 0}
     for check in checks if checks is not None else registered_checks():
         last = _LAST_RUN.get(check.check_id)
@@ -291,11 +296,11 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
             continue
         _LAST_RUN[check.check_id] = now
         try:
-            results = await check.run(db, now)
-            counts = await record_results(db, results, now=now)
+            async with db.begin_nested():
+                results = await check.run(db, now)
+                counts = await record_results(db, results, now=now)
         except Exception:
             logger.exception("Platform Health check %s failed", check.check_id)
-            await db.rollback()
             continue
         totals["checks"] += 1
         for key, value in counts.items():
