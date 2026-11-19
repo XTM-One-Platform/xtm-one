@@ -47,6 +47,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -219,7 +220,9 @@ async def dismiss_finding(
 
 def score_from_counts(critical: int, warning: int, info: int) -> int:
     penalty = (
-        SEVERITY_WEIGHTS["critical"] * critical + SEVERITY_WEIGHTS["warning"] * warning + SEVERITY_WEIGHTS["info"] * info
+        SEVERITY_WEIGHTS["critical"] * critical
+        + SEVERITY_WEIGHTS["warning"] * warning
+        + SEVERITY_WEIGHTS["info"] * info
     )
     return max(0, 100 - penalty)
 
@@ -240,7 +243,8 @@ async def open_counts(db: AsyncSession) -> dict[str, dict[str, int]]:
 async def module_scores(db: AsyncSession) -> tuple[dict[str, int], int]:
     """``(score per module, overall score)``: the overall score is the lowest module score."""
     scores = {
-        module: score_from_counts(c["critical"], c["warning"], c["info"]) for module, c in (await open_counts(db)).items()
+        module: score_from_counts(c["critical"], c["warning"], c["info"])
+        for module, c in (await open_counts(db)).items()
     }
     return scores, min(scores.values())
 
@@ -258,7 +262,7 @@ async def rollup_day(db: AsyncSession, day: date) -> None:
     await db.flush()
 
 
-async def enrolled_agent_ids(db: AsyncSession) -> frozenset:
+async def enrolled_agent_ids(db: AsyncSession) -> frozenset[uuid.UUID]:
     """The agents agent checks read: enrolled one by one, or home members of an enrolled fleet.
 
     Platform Health's own agents (``health_role``) are never checked. Nothing

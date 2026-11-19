@@ -88,9 +88,7 @@ def upgrade() -> None:
             ),
             if_not_exists=True,
         )
-        op.create_index(
-            "ix_health_check_findings_module_status", _FINDINGS, ["module", "status"], if_not_exists=True
-        )
+        op.create_index("ix_health_check_findings_module_status", _FINDINGS, ["module", "status"], if_not_exists=True)
         op.create_index("ix_health_check_findings_check", _FINDINGS, ["check_id"], if_not_exists=True)
     if not inspector.has_table(_DAYS):
         set_lock_timeout(conn)

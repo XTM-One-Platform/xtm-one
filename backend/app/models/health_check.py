@@ -20,6 +20,7 @@ those are hypotheses a model wrote about an agent; these are measured facts.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import CheckConstraint, Date, DateTime, Index, Integer, String, Text
@@ -72,12 +73,16 @@ class HealthCheckFinding(Base):
     check_id: Mapped[str] = mapped_column(String(96), nullable=False)
     module: Mapped[str] = mapped_column(String(16), nullable=False)
     #: What the check is about, as ids (``{"agent_id": ...}``); ``{}`` for the module itself.
-    subject: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb"))
+    subject: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
+    )
     category: Mapped[str] = mapped_column(String(16), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=STATUS_OPEN)
     #: ``{"values": ..., "threshold": ..., "read_at": ..., "source": ...}``.
-    evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb"))
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
+    )
     recommendation: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default=sa.text("''"))
     doc_link: Mapped[str] = mapped_column(String(512), nullable=False, default="", server_default=sa.text("''"))
     #: Consecutive passing reads of an open finding; two resolve it.
@@ -90,7 +95,7 @@ class HealthCheckFinding(Base):
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: ``{"reason", "by", "by_name", "at", "until"}`` while dismissed, else ``None``.
-    dismissal: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    dismissal: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class HealthScoreDay(Base):
