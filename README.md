@@ -1,5 +1,5 @@
 <h1 align="center">
-  <a href="https://filigran.io/xtm-one"><img src="./.github/img/logo_xtmone.png" alt="XTM One"></a>
+  <a href="https://filigran.io/products/xtm-one"><img src="./.github/img/logo_xtmone.png" alt="XTM One"></a>
 </h1>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 <p align="center"><b>The open source agentic core of the XTM Platform: Agentic CTEM, from threat signal to verified fix.</b></p>
 
-XTM One gives security teams one command center for Continuous Threat Exposure Management (CTEM). It reads the threats that target you from [OpenCTI](https://github.com/OpenCTI-Platform/opencti), proves which of them get through your defenses with [OpenAEV](https://github.com/OpenAEV-Platform/openaev), prices the risk with [OpenCRQ](https://filigran.io/opencrq), and puts AI agents and fleets to work on the exposures that matter, under your control. Self-hosted, with your own AI provider and your own data.
+XTM One gives security teams one command center for Continuous Threat Exposure Management (CTEM). It reads the threats that target you from [OpenCTI](https://github.com/OpenCTI-Platform/opencti), proves which of them get through your defenses with [OpenAEV](https://github.com/OpenAEV-Platform/openaev), prices the risk with [OpenCRQ](https://filigran.io/products/opencrq), and puts AI agents and fleets to work on the exposures that matter, under your control. Self-hosted, with your own AI provider and your own data.
 
 <p align="center">If XTM One helps your security program, <a href="https://github.com/XTM-One-Platform/xtm-one/stargazers">give it a star</a>: it is how the project grows.</p>
 
@@ -180,30 +180,39 @@ flowchart LR
 
 ## Part of the XTM Platform
 
+XTM One is one of the five products of the [XTM Platform](https://filigran.io), the open platform for Agentic CTEM.
+
 ```mermaid
-flowchart TB
-  subgraph xtm["XTM Platform: Agentic CTEM"]
-    ONE["XTM One<br/>agentic core: command center, agents, fleets, flows"]
-    CTI["OpenCTI<br/>threat intelligence"]
-    AEV["OpenAEV<br/>adversarial exposure validation"]
-    CRQ["OpenCRQ<br/>cyber risk quantification"]
-    ONE <--> CTI
-    ONE <--> AEV
-    ONE <--> CRQ
-  end
-  HUB["XTM Hub<br/>integrations, dashboards, scenarios"]
-  HUB --> xtm
-  S1["Scoping"] --> S2["Discovery"] --> S3["Prioritization"] --> S4["Validation"] --> S5["Mobilization"] --> S1
-  xtm -.-> S1
+flowchart LR
+    subgraph platform["XTM Platform"]
+        direction TB
+        one["XTM One<br/>core and agentic layer"]
+        cti["OpenCTI<br/>threat intelligence"]
+        aev["OpenAEV<br/>adversarial exposure validation"]
+        crq["OpenCRQ<br/>cyber risk quantification"]
+        hub["XTM Hub<br/>tradecraft library and gateway"]
+        one --- cti
+        one --- aev
+        one --- crq
+        hub -. one-click deploy .-> cti
+        hub -. one-click deploy .-> aev
+    end
+    scoping(["1. Scoping"]) --> discovery(["2. Discovery"]) --> prioritization(["3. Prioritization"]) --> validation(["4. Validation"]) --> mobilization(["5. Mobilization"])
+    mobilization -. continuous loop .-> scoping
+    cti -. know the adversary .-> scoping
+    cti -. map the exposure .-> discovery
+    crq -. quantify the risk .-> prioritization
+    aev -. prove the defenses .-> validation
+    one -. get the fix done .-> mobilization
 ```
 
-| Product | Role in CTEM | Repository |
-|---|---|---|
-| **XTM One** | The agentic core: command center, agents, fleets and flows across the platform | [XTM-One-Platform/xtm-one](https://github.com/XTM-One-Platform/xtm-one) |
-| **OpenCTI** | Know the adversary: threat intelligence in STIX 2.1 | [OpenCTI-Platform/opencti](https://github.com/OpenCTI-Platform/opencti) |
-| **OpenAEV** | Prove your defenses against real attacker techniques | [OpenAEV-Platform/openaev](https://github.com/OpenAEV-Platform/openaev) |
-| **OpenCRQ** | Quantify the risk in money | [filigran.io/opencrq](https://filigran.io/opencrq) |
-| **XTM Hub** | Integrations, dashboards and scenarios for the platform | [XTM-Hub/xtm-hub](https://github.com/XTM-Hub/xtm-hub) and [hub.filigran.io](https://hub.filigran.io) |
+| Product | What it does for a CTEM program |
+| --- | --- |
+| [XTM One](https://github.com/XTM-One-Platform/xtm-one) | The core and agentic layer that runs CTEM across the modules ([product page](https://filigran.io/products/xtm-one)) |
+| [OpenCTI](https://github.com/OpenCTI-Platform/opencti) | Threat intelligence: know the adversary and the threats that target you ([product page](https://filigran.io/products/opencti)) |
+| [OpenAEV](https://github.com/OpenAEV-Platform/openaev) | Adversarial exposure validation: prove your defenses against real attacker techniques ([product page](https://filigran.io/products/openaev)) |
+| [OpenCRQ](https://filigran.io/products/opencrq) | Cyber risk quantification: turn exposure into financial risk |
+| [XTM Hub](https://github.com/XTM-Hub/xtm-hub) | The tradecraft library and gateway for all of them ([hub.filigran.io](https://hub.filigran.io), [product page](https://filigran.io/platforms/xtm-hub/)) |
 
 ## Quick start
 
@@ -281,6 +290,6 @@ XTM One is open source under the [Apache 2.0 license](LICENSE); the Enterprise E
 
 ## About Filigran
 
-XTM One is designed and developed by [Filigran](https://filigran.io), the company behind the [XTM Platform](https://filigran.io/xtm-platform) for Agentic CTEM.
+XTM One is designed and developed by [Filigran](https://filigran.io), the company behind the [XTM Platform](https://filigran.io) for Agentic CTEM.
 
 <a href="https://filigran.io"><img src="./.github/img/logo_filigran.png" width="300" alt="Filigran" /></a>
