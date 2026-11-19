@@ -11,6 +11,7 @@ DATA = {
     "docs": "https://github.com/OpenCRQ-Platform/opencrq/tree/main/docs",
     "docs_host": "docs",
     "docker": "",
+    "private": True,  # private repository: static stars and release badges
     "license_badge": "Apache 2.0 + EE",
     "tagline": "Threat-informed cyber risk quantification: know what each exposure would cost you, and fix what removes the most loss.",
     "pitch": (

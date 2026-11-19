@@ -1,24 +1,26 @@
 """Header banner: one 1280x300 SVG per product, identical geometry in all five.
-Brand blue #001BDA field, white emblem, white Geologica wordmark, "By Filigran"
-right-aligned under the wordmark. Text is outlined (no font needed to render)."""
+Brand blue #001BDA field and the product's OWN brand logo (mark + wordmark, light-on-dark,
+the brand deck asset <product>-logo.svg, kept byte for byte: cyan mark for OpenCTI, OpenAEV,
+OpenCRQ, white mark for XTM One and XTM Hub, white brand wordmark), scaled to one cap height
+so the five wordmarks line up; "By Filigran" right-aligned under the logo. Text is outlined
+(no font needed to render)."""
 import os
 import re
 import textpath as tp
 
-BRAND = os.path.join(os.path.dirname(__file__), "..", "brand")
+BRAND = os.path.join(os.path.dirname(__file__), "..", "brand", "logo")
 W, H = 1280, 300
-EMBLEM = 156          # emblem box, px
-GAP = 44              # emblem to wordmark
-NAME_SIZE = 124       # wordmark font size
-BASELINE = 178        # wordmark baseline, same in all five
-BY_SIZE = 40
-BY_BASELINE = 246
+LOGO_H = 26 * 5.2     # every product logo drawn from a 26-unit-high artboard, scaled x5.2
+LOGO_TOP = 62
+BY_SIZE = 38
+BY_BASELINE = 250
 BLUE = "#001BDA"
 WHITE = "#FFFFFF"
 
 
 def _mark(product: str) -> str:
-    s = open(os.path.join(BRAND, f"{product}-mark.svg")).read()
+    """White emblem alone (used by lockup.py for the platform table tiles)."""
+    s = open(os.path.join(BRAND, "..", f"{product}-mark.svg")).read()
     inner = re.sub(r"^.*?<svg[^>]*>", "", s, flags=re.S)
     inner = re.sub(r"</svg>\s*$", "", inner, flags=re.S)
     inner = re.sub(r'fill="(?!none)[^"]+"', f'fill="{WHITE}"', inner)
@@ -27,20 +29,27 @@ def _mark(product: str) -> str:
     return inner
 
 
+def _logo(product: str) -> tuple[str, float, float]:
+    """Inner markup, viewBox width and height of the brand logo, ids made unique."""
+    s = open(os.path.join(BRAND, f"{product}-logo.svg")).read()
+    vb = [float(x) for x in re.search(r'viewBox="([^"]+)"', s).group(1).split()]
+    inner = re.sub(r"^.*?<svg[^>]*>", "", s, flags=re.S)
+    inner = re.sub(r"</svg>\s*$", "", inner, flags=re.S)
+    inner = inner.replace('id="', f'id="{product}-').replace('url(#', f'url(#{product}-')
+    return inner, vb[2], vb[3]
+
+
 def banner(product: str, name: str) -> str:
-    nw = tp.measure(name, NAME_SIZE, "heading", 500)
-    total = EMBLEM + GAP + nw
-    x0 = (W - total) / 2
-    ey = BASELINE - 0.72 * NAME_SIZE / 2 - EMBLEM / 2 + 0  # emblem centred on cap height
-    tx = x0 + EMBLEM + GAP
-    by = "By "
+    inner, vw, vh = _logo(product)
+    scale = LOGO_H / vh
+    lw = vw * scale
+    x0 = (W - lw) / 2
     fw = tp.measure("Filigran", BY_SIZE, "heading", 600)
-    bw = tp.measure(by, BY_SIZE, "heading", 400)
-    end = tx + nw
+    bw = tp.measure("By ", BY_SIZE, "heading", 400)
+    end = x0 + lw
     tp.reset_defs()
     texts = [
-        tp.path(name, tx, BASELINE, NAME_SIZE, "heading", 500, fill=WHITE),
-        tp.path(by, end - fw - bw, BY_BASELINE, BY_SIZE, "heading", 400, fill=WHITE),
+        tp.path("By ", end - fw - bw, BY_BASELINE, BY_SIZE, "heading", 400, fill=WHITE),
         tp.path("Filigran", end - fw, BY_BASELINE, BY_SIZE, "heading", 600, fill=WHITE),
     ]
     glyphs = tp.defs()
@@ -50,7 +59,7 @@ def banner(product: str, name: str) -> str:
         f'<title>{name} by Filigran</title>',
         f"<defs>{glyphs}</defs>",
         f'<rect width="{W}" height="{H}" fill="{BLUE}"/>',
-        f'<svg x="{x0:.2f}" y="{ey:.2f}" width="{EMBLEM}" height="{EMBLEM}" viewBox="0 0 24 24" fill="none">{_mark(product)}</svg>',
+        f'<svg x="{x0:.2f}" y="{LOGO_TOP}" width="{lw:.2f}" height="{LOGO_H:.2f}" viewBox="0 0 {vw} {vh}" fill="none">{inner}</svg>',
         *texts,
         "</svg>",
     ]

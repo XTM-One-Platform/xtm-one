@@ -72,10 +72,15 @@ def _esc(s: str) -> str:
 
 def badges(d: dict) -> str:
     repo, b = d["repo"], []
-    b.append(badge("stars", "", "001BDA", f"https://github.com/{repo}/stargazers", "github",
-                   f"https://img.shields.io/github/stars/{repo}"))
-    b.append(badge("release", "", "001BDA", f"https://github.com/{repo}/releases/latest", "",
-                   f"https://img.shields.io/github/v/release/{repo}"))
+    if d.get("private"):
+        # shields.io cannot read a private repository ("repo not found"): static badges, same order
+        b.append(badge("stars", "star the repo", "001BDA", f"https://github.com/{repo}/stargazers", "github"))
+        b.append(badge("release", "latest", "001BDA", f"https://github.com/{repo}/releases/latest"))
+    else:
+        b.append(badge("stars", "", "001BDA", f"https://github.com/{repo}/stargazers", "github",
+                       f"https://img.shields.io/github/stars/{repo}"))
+        b.append(badge("release", "", "001BDA", f"https://github.com/{repo}/releases/latest", "",
+                       f"https://img.shields.io/github/v/release/{repo}"))
     b.append(badge("license", d["license_badge"], "0FBCFF", "LICENSE"))
     b.append(badge("docs", d["docs_host"], "0FBCFF", d["docs"]))
     if d.get("docker"):
