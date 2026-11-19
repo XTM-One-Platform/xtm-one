@@ -45,7 +45,22 @@ from app.services.content_safety import wrap_untrusted
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
+from .access import _refuse_unapplied
 from .workflow import resolve_configuration_filters
+
+# The fields each action of manage_opencti_playbook reads; any other field passed (an
+# argument the tool does not declare included) is refused by name and nothing is sent.
+# A field left at its default (running false, limit 20) counts as not passed.
+_PLAYBOOK_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"playbook_id"}),
+    "create": frozenset({"name", "description"}),
+    "delete": frozenset({"playbook_id"}),
+    "toggle": frozenset({"playbook_id", "running"}),
+    "execute": frozenset({"playbook_id", "entity_id"}),
+    "duplicate": frozenset({"playbook_id"}),
+    "components": frozenset({"component_id"}),
+}
 
 logger = logging.getLogger(__name__)
 
@@ -798,8 +813,26 @@ def register(
         search: str = "",
         limit: int = 20,
         component_id: str = "",
+        **unknown: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _PLAYBOOK_APPLIES,
+            {
+                "playbook_id": playbook_id,
+                "name": name,
+                "description": description,
+                "running": running,
+                "entity_id": entity_id,
+                "search": search,
+                "limit": None if limit == 20 else limit,
+                "component_id": component_id,
+            },
+            dict(unknown),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
