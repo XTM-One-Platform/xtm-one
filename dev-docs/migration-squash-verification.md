@@ -56,10 +56,10 @@ Level 3 is the one that actually protects the schema; level 4 proves the
 fully-upgraded upgrade path itself. Levels 1–2 are necessary but not sufficient.
 
 Level 1 is also locked into CI permanently: the `Sequential upgrade` step in
-`.github/workflows/ci.yml` walks the chain with `alembic upgrade +1` from an
-empty database until `current` == `head`, so every individual `upgrade()` body
-— the baseline today, plus every post-squash migration added on top — is
-executed in order on every migration-touching PR. This was impossible before
+`.github/workflows/ci.yml` upgrades an empty database to each revision in
+turn, in one process, until `current` == `head`, so every individual
+`upgrade()` body — the baseline today, plus every post-squash migration added
+on top — is executed in order whenever a merge group changes the chain. This was impossible before
 the squash (the old chain's base revision was an `ALTER TABLE`, so any
 upgrade-from-empty died immediately).
 

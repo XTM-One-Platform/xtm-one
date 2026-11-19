@@ -2080,10 +2080,30 @@ report = "lines"
 # notice) and licensing/ to a narrow checkout; there the run sets XTM_CHECKOUT_SUB_PATHS and the
 # script checks the files the checkout holds only, leaving the whole-tree findings (a glob that
 # matches nothing, a stale `ce` entry) to CI. Fix what it lists with `python scripts/license_headers.py --fix`
-# (backend-generate does not run it: the script is not a generator).
+# (backend-generate does not run it: the script is not a generator). A pre-push guard on a source file
+# ADDED or REMOVED anywhere in the checkout (git_repo: the whole tree is its scope): a new file in a
+# new EE directory is named before the push, not one CI cycle later; an edit of an existing file is
+# not (pre_push_on).
 [check.editions]
-description = "the Editions gate: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
+description = "the License edition check: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
 argv = ["python", "scripts/license_headers.py", "--check"]
+cwd = "backend"
+timeout = 300
+image = "python-dev"
+report = "lines"
+install_first = false
+git_repo = true
+needs = ["LICENSE", "licensing"]
+pre_push = ["*.py", "*.ts", "*.tsx", "*.js", "*.mjs", "*.rs", "*.css", "*.sh", "*.ps1"]
+pre_push_on = ["added", "removed"]
+
+# The Editions gate's fix: `license_headers.py --fix` adds, updates or removes the EE headers
+# and the copyright.md files, reading the notice from LICENSE, so a red Editions check is fixed
+# by the script and never by a header copied by hand. What it writes comes back to the checkout
+# like any check's; read sandbox_checkout_diff after it.
+[check.editions-fix]
+description = "the Editions fix, as `make license`: license_headers.py --fix writes the EE headers and copyright.md files in the checkout (whole tree checkout); read the diff after it"
+argv = ["python", "scripts/license_headers.py", "--fix"]
 cwd = "backend"
 timeout = 300
 image = "python-dev"

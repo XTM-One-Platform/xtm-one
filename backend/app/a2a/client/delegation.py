@@ -173,10 +173,22 @@ class PartnerStillRunningError(Exception):
 #: same call succeeds a few seconds later.
 OUTCOME_VERIFICATION_CONTENDED = "verification_contended"
 
+#: A pre-flight refusal that is transient: whether chat is available could not
+#: be read (the AI switch or the licence read failed). Not "AI disabled" or
+#: "Community Edition": nothing is misconfigured, and the same call succeeds
+#: once the read does (#411).
+OUTCOME_CHAT_STATE_UNREADABLE = "chat_state_unreadable"
+
+CHAT_STATE_UNREADABLE_DETAIL = (
+    "Whether agentic chat is available on this deployment could not be read "
+    "(a transient database error), so nothing was sent to the partner. This "
+    "is not a configuration problem: send the same call again in a few seconds."
+)
+
 #: The pre-flight refusals that say nothing about the partner task: the same
 #: collect succeeds a few seconds later. Refusing one of them must not end the
 #: delegation a collect was asking about (#317).
-RETRYABLE_PREFLIGHT_REASONS = frozenset({OUTCOME_VERIFICATION_CONTENDED})
+RETRYABLE_PREFLIGHT_REASONS = frozenset({OUTCOME_VERIFICATION_CONTENDED, OUTCOME_CHAT_STATE_UNREADABLE})
 
 _RETRY_COLLECT_HINT = (
     "The delegation is still outstanding: collect again in a few seconds with "
@@ -317,16 +329,46 @@ def _check_content_types(target) -> None:
         )
 
 
+async def _chat_available(db: Any) -> bool:
+    """``is_chat_enabled``, read in a session of its own (#411).
+
+    Not on the caller's session: the calls of one model round run together and
+    share the run's session, and a read that fails there (a concurrent use, an
+    aborted transaction) answers ``False``, reported as "AI is disabled, or
+    Community Edition" although nothing is. A read that could not be made is
+    refused as :data:`OUTCOME_CHAT_STATE_UNREADABLE`, a retryable reason, never
+    as ``chat_unavailable``; a switch or licence read as off still is.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.api.v1.platform import is_chat_enabled
+    from app.core.database import async_session
+    from app.services import ai_state
+
+    try:
+        async with async_session() as own:
+            available = await is_chat_enabled(own)
+    except (SQLAlchemyError, OSError) as exc:
+        # The licence read (``_load_ps``) raises where the switch's read is
+        # caught: both are "could not be read".
+        raise PreflightRefusedError(OUTCOME_CHAT_STATE_UNREADABLE, CHAT_STATE_UNREADABLE_DETAIL) from exc
+    if not available and ai_state.cached_state() is None and ai_state.last_read_failed():
+        # ``is_ai_enabled`` answers ``False`` to a failed read and caches only
+        # what it read: no cached answer and a failed last read is "unknown".
+        raise PreflightRefusedError(OUTCOME_CHAT_STATE_UNREADABLE, CHAT_STATE_UNREADABLE_DETAIL)
+    return bool(available)
+
+
 async def preflight(db, integration, target) -> None:
     """Every check that must pass before a request leaves the process."""
-    from app.api.v1.platform import CHAT_UNAVAILABLE_DETAIL, is_chat_enabled
+    from app.api.v1.platform import CHAT_UNAVAILABLE_DETAIL
 
     # Chat availability first (A2A is offered exactly while agentic chat is):
     # the one check that says nothing about this registration, so a deployment
     # without chat pays for nothing else. Also asked when the tool is built;
     # this is the second line, for a licence or AI toggle that moved between
     # the two.
-    if not await is_chat_enabled(db):
+    if not await _chat_available(db):
         raise PreflightRefusedError("chat_unavailable", CHAT_UNAVAILABLE_DETAIL)
     # A target EXISTS only for an outbound registration — ``sync_targets`` is
     # called for no other direction, and ``change_direction`` deletes them —

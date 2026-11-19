@@ -19,6 +19,9 @@ import pytest
 #: The test files this job collects under ``PYTEST_SHARD_SPLIT=files``, as paths from the backend root (``tests/sharding.py``).
 _SHARD_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
 
+#: The test files the merge queue's change reaches (``PYTEST_SELECTED_FILES``, ``tests/selection.py``); None: all.
+_SELECTED_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
+
 
 def pytest_addoption(parser):
     """``--repeat N`` runs each selected test N times (``tests/repeat.py``)."""
@@ -28,12 +31,13 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Read ``PYTEST_MARKED_FILES`` and ``PYTEST_SHARD_SPLIT`` once: a wrong value stops the run before xdist starts its workers.
+    """Read ``PYTEST_MARKED_FILES``, ``PYTEST_SELECTED_FILES`` and ``PYTEST_SHARD_SPLIT`` once: a wrong value stops the run before xdist starts its workers.
 
     Then register ``tests/repeat.py``, the ``--repeat`` plugin.
     """
     from tests import repeat
     from tests.marked_files import MARKED_FILES, parse_marker
+    from tests.selection import read_selected_files
     from tests.sharding import load_durations, parse_shard, parse_split, shard_files
 
     repeat.register(config)
@@ -42,12 +46,20 @@ def pytest_configure(config):
     shard = os.environ.get("PYTEST_SHARD")
     try:
         config.stash[MARKED_FILES] = parse_marker(value) if value else None
+        selected = config.stash[_SELECTED_FILES] = read_selected_files(os.environ.get("PYTEST_SELECTED_FILES"))
+        # Every listed file must exist: a list in the wrong form would otherwise collect nothing, and pass.
+        missing = sorted(name for name in selected or () if not (config.rootpath / name).is_file())
+        if missing:
+            raise ValueError(f"PYTEST_SELECTED_FILES lists files that do not exist: {', '.join(missing[:5])}")
         split = parse_split(os.environ.get("PYTEST_SHARD_SPLIT"))
         files = None
         if shard and split == "files":
             root = config.rootpath
             names = (path.relative_to(root).as_posix() for path in (root / "tests").rglob("test_*.py"))
-            files = shard_files(names, load_durations(), *parse_shard(shard))
+            # Only the selected files are dealt out, so the shards share the selection evenly.
+            files = shard_files(
+                (name for name in names if selected is None or name in selected), load_durations(), *parse_shard(shard)
+            )
         config.stash[_SHARD_FILES] = files
     except ValueError as exc:
         raise pytest.UsageError(str(exc)) from None
@@ -69,14 +81,20 @@ def pytest_make_parametrize_id(config, val, argname):
 
 
 def pytest_ignore_collect(collection_path, config):
-    """Leave out the files of other jobs under ``PYTEST_SHARD_SPLIT=files`` (``tests/sharding.py``) and the files that never use the job's marker when ``PYTEST_MARKED_FILES`` is set (``tests/marked_files.py``)."""
+    """Leave out the files of other jobs under ``PYTEST_SHARD_SPLIT=files`` (``tests/sharding.py``), the files the change does not reach under ``PYTEST_SELECTED_FILES`` (``tests/selection.py``) and the files that never use the job's marker when ``PYTEST_MARKED_FILES`` is set (``tests/marked_files.py``)."""
     from tests.marked_files import MARKED_FILES, skips_file
 
     kept = config.stash.get(_SHARD_FILES, None)
-    if kept is not None and collection_path.suffix == ".py" and collection_path.name.startswith("test_"):
+    selected = config.stash.get(_SELECTED_FILES, None)
+    if (
+        (kept is not None or selected is not None)
+        and collection_path.suffix == ".py"
+        and collection_path.name.startswith("test_")
+    ):
         if not collection_path.is_relative_to(config.rootpath):
             return None
-        if collection_path.relative_to(config.rootpath).as_posix() not in kept:
+        name = collection_path.relative_to(config.rootpath).as_posix()
+        if (kept is not None and name not in kept) or (selected is not None and name not in selected):
             return True
     marker = config.stash.get(MARKED_FILES, None)
     if marker is None:
@@ -191,7 +209,14 @@ def pytest_runtest_protocol_memory(item, nextitem):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Drop the template databases ``tests/scratch_database.py`` built, and write this worker's memory report."""
+    """Drop the template databases ``tests/scratch_database.py`` built, and write this worker's memory report.
+
+    Under ``PYTEST_SELECTED_FILES`` a job may collect nothing: its selected
+    files hold only tests another job's marker takes (an integration file in a
+    unit shard). Its files exist (``pytest_configure``), so that is a pass.
+    """
+    if exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED and session.config.stash.get(_SELECTED_FILES, None):
+        session.exitstatus = pytest.ExitCode.OK
     scratch = sys.modules.get("tests.scratch_database")
     if scratch is not None:
         scratch.drop_templates()
@@ -832,7 +857,9 @@ def _video_ultra_frees_its_disk(request):
             with contextlib.suppress(OSError):
                 size += os.path.getsize(os.path.join(root, name))
     shutil.rmtree(held, ignore_errors=True)
-    logging.getLogger(__name__).warning("%s held %.2f GiB in its working directory, freed", request.node.nodeid, size / 2**30)
+    logging.getLogger(__name__).warning(
+        "%s held %.2f GiB in its working directory, freed", request.node.nodeid, size / 2**30
+    )
 
 
 @pytest.fixture(autouse=True)

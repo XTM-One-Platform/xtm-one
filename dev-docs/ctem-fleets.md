@@ -1889,7 +1889,11 @@ by instruction") or "No gated actions". The Fleets list card says the same
 effective catalog, computed for the whole list in two reads by
 `fleet_gate_proposals.fleets_gated_action_counts`) and `instructions_position`,
 and the card reads them through `autonomyStatusLabel`, the helper behind the
-About chip.
+About chip. The agent reads it from `get_fleet` (and every fleet write answer,
+`_describe`): an "Instructions position" line under the autonomy level, with
+its label, stored value, whether it was announced to the members and "not
+enforced by the platform" (`_instructions_text`; "not set" when unset), so
+no audit log read is needed to learn it.
 
 ### Where the gates are enforced (#10140)
 

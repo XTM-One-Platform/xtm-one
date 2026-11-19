@@ -432,7 +432,7 @@ def build_web_fetch_tool(
             else:
                 result = await fetch_and_extract(url, max_chars=max_chars)
         except Exception as exc:
-            return f"Failed to fetch URL: {exc}"
+            return f"Failed to fetch URL: {exc}{_refusal_hint(exc, offered_tools())}"
 
         page = is_html_page(result.content_type)
         storage_type = _base_mime(result.content_type) or "application/octet-stream"
@@ -585,6 +585,33 @@ def build_web_fetch_tool(
     )
 
     return [definition, *asset_defs], executor
+
+
+#: The statuses a site answers a script it will not serve (bot protection, a
+#: sign-in wall, a rate limit), as opposed to a page that does not exist.
+_REFUSAL_STATUSES = frozenset({401, 403, 429, 451})
+
+
+def _refusal_hint(exc: BaseException, tools: Any) -> str:
+    """What to do next when the site refused the fetch rather than failed it.
+
+    A publisher that blocks scripted clients answers 401, 403 or 429 to the
+    platform's User-Agent; retrying ``web_fetch`` gets the same answer. The
+    browser tool renders the page as a person's browser does, so it is named
+    when the loop offers it (``offered_tools``), and never otherwise.
+    """
+    import httpx
+
+    if not isinstance(exc, httpx.HTTPStatusError) or exc.response.status_code not in _REFUSAL_STATUSES:
+        return ""
+    status = exc.response.status_code
+    hint = f" The site refused this client (HTTP {status}): retrying web_fetch gets the same answer."
+    if any(
+        getattr(tool, "name", None) == "browser" and getattr(tool, "source", None) == "builtin:web"
+        for tool in tools or ()
+    ):
+        return hint + " Open the page with the browser tool (navigate, then get_content)."
+    return hint + " Use another source for the same content."
 
 
 # ── Browser Automation ───────────────────────────────────────────────────────

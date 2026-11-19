@@ -1,4 +1,4 @@
-name: Editions
+name: License edition
 
 # Which files are Enterprise Edition (dev-docs/reference/editions.md), checked in
 # seconds: every file is classified (licensing/editions.yml, or the CE marker in
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   editions:
-    name: Editions
+    name: License edition check
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:

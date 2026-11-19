@@ -448,6 +448,50 @@ class TestWebFetchQuarantine:
         output = await handler(url="https://example.com")
         assert output.startswith("Failed to fetch URL:")
         assert UNTRUSTED_HEADER not in output
+        assert "refused this client" not in output
+
+    @staticmethod
+    def _status_error(status: int):
+        import httpx
+
+        request = httpx.Request("GET", "https://news.example.com/a")
+        response = httpx.Response(status, request=request)
+        return httpx.HTTPStatusError(f"Client error '{status}'", request=request, response=response)
+
+    @pytest.mark.parametrize("status", [401, 403, 429])
+    async def test_a_refusal_names_the_browser_when_offered(self, monkeypatch, status):
+        import app.services.web_fetch as web_fetch_mod
+        from app.tools.base import offering_tools
+
+        monkeypatch.setattr(web_fetch_mod, "fetch_and_extract", AsyncMock(side_effect=self._status_error(status)))
+        _, executor = build_web_fetch_tool()
+        handler = executor._handlers["web_fetch"]
+        browser = SimpleNamespace(name="browser", source="builtin:web")
+        with offering_tools([browser]):
+            output = await handler(url="https://news.example.com/a")
+        assert output.startswith("Failed to fetch URL:")
+        assert f"refused this client (HTTP {status})" in output
+        assert "browser tool" in output
+
+    async def test_a_refusal_never_names_a_browser_not_offered(self, monkeypatch):
+        import app.services.web_fetch as web_fetch_mod
+
+        monkeypatch.setattr(web_fetch_mod, "fetch_and_extract", AsyncMock(side_effect=self._status_error(403)))
+        _, executor = build_web_fetch_tool()
+        handler = executor._handlers["web_fetch"]
+        output = await handler(url="https://news.example.com/a")
+        assert "refused this client (HTTP 403)" in output
+        assert "browser" not in output
+
+    async def test_a_missing_page_gets_no_refusal_hint(self, monkeypatch):
+        import app.services.web_fetch as web_fetch_mod
+
+        monkeypatch.setattr(web_fetch_mod, "fetch_and_extract", AsyncMock(side_effect=self._status_error(404)))
+        _, executor = build_web_fetch_tool()
+        handler = executor._handlers["web_fetch"]
+        output = await handler(url="https://news.example.com/a")
+        assert output.startswith("Failed to fetch URL:")
+        assert "refused this client" not in output
 
 
 # ---------------------------------------------------------------------------

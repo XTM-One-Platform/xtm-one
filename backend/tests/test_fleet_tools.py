@@ -699,6 +699,26 @@ def test_the_fleet_read_states_the_autonomy_level(stored: str | None, shown: str
     assert fleet_tools._level_text(stored) == shown
 
 
+@pytest.mark.parametrize(
+    ("position", "announced", "shown"),
+    [
+        (None, None, "not set"),
+        ("bogus", True, "not set"),
+        ("medium", False, "Medium (medium), not announced to the members, not enforced by the platform"),
+        (
+            "full_gates_medium",
+            True,
+            "between Full human gates and Medium (full_gates_medium), announced to the members, "
+            "not enforced by the platform",
+        ),
+    ],
+)
+def test_the_fleet_read_states_the_instructions_position(position, announced, shown: str) -> None:
+    # get_fleet (``_describe``) states it as "Instructions position: <shown>", so no audit log
+    # read is needed to learn where a person set it.
+    assert fleet_tools._instructions_text(position, announced) == shown
+
+
 @pytest.mark.asyncio
 async def test_an_agent_still_lowers_the_level_without_confirmation(monkeypatch, session):
     # A non-administrator in an unattended run: lowering stays free, no confirmation asked.

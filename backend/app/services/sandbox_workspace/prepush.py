@@ -70,7 +70,10 @@ def state_path(checkout_path: str) -> str:
 
 
 def _scopes(spec: CheckSpec) -> tuple[str, ...]:
-    """The repository directories a guard reads: its own and its ``needs``."""
+    """The repository directories a guard reads: its own and its ``needs``; the whole checkout for a ``git_repo``
+    guard, whose command reads every file git lists (the Editions gate classifies a file under any directory)."""
+    if spec.git_repo:
+        return ("",)
     return (spec.cwd, *spec.needs)
 
 
@@ -118,8 +121,10 @@ def updated_state(state: Mapping[str, dict[str, Any]], check: str, *, fingerprin
 
 
 def touched(changes: CheckoutChanges, spec: CheckSpec) -> list[str]:
-    """The changed files of the change set guard *spec* reads."""
-    return [p for p in (*changes.modified, *changes.added, *changes.removed) if _guarded(p, spec)]
+    """The changed files of the change set guard *spec* reads, among the kinds of change it is declared on."""
+    kinds = {"added": changes.added, "modified": changes.modified, "removed": changes.removed}
+    paths = [p for kind in ("modified", "added", "removed") if kind in spec.pre_push_on for p in kinds[kind]]
+    return [p for p in paths if _guarded(p, spec)]
 
 
 def warning(
