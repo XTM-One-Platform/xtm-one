@@ -185,6 +185,10 @@ def test_the_ai_gate_is_read_at_entry_only_never_mid_execution():
         # one answer for the work nobody waits on. Its own readers are
         # allow-listed below, by the same rule.
         "services/agentic_gate.py",
+        # Platform Health agent checks (#101 S3): asked once when a check starts
+        # its read, before any row is read; agents do not run with AI off, so
+        # the checks read nothing then. No model call, no run in flight.
+        "services/health/agent_checks.py",
     }
     # Who asks the background gate, and where: always before the work starts.
     # A run already executing never asks, which is what lets it finish (FR-013)
