@@ -77,7 +77,7 @@ EVALUATION_NOT_SETTINGS: tuple[str, ...] = (
     "created_at",
     "updated_at",
     "quality_weight",
-    # The Concierge's mark (#8257): only its own tools set it.
+    # Platform Health's mark (#8257): only its own tools set it.
     "concierge_built",
 )
 

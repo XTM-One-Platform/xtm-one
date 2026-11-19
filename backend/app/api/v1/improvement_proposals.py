@@ -18,8 +18,8 @@ evaluations, behind ``EVALUATION``); ``approve`` and ``reject`` are for someone
 who may manage the target - without the admin bypass for a private one
 (``improvement_proposals.approval_error``); the list and the detail are for
 the target's managers (``can_read``). What a person asked for is reachable
-while ``EVALUATION`` is on, what an agent filed while ``CONCIERGE`` is
-(``surface_enabled``); the verdict is reached by the scheduler. Every rule
+while ``EVALUATION`` is on, what an agent filed while Platform Health is
+available (``surface_enabled``); the verdict is reached by the scheduler. Every rule
 lives in ``services/improvement_proposals``.
 """
 
@@ -62,7 +62,7 @@ from app.services.prompt_versioning import build_version_diff
 
 
 def require_surface() -> None:
-    """403 while neither ``EVALUATION`` nor ``CONCIERGE`` is on: no proposal is reachable then.
+    """403 while neither ``EVALUATION`` nor Platform Health is available: no proposal is reachable then.
     Named as the persona routes always answered (``EVALUATION``)."""
     if not proposals.any_surface_enabled():
         raise HTTPException(status_code=403, detail=EVALUATION_DISABLED_DETAIL)

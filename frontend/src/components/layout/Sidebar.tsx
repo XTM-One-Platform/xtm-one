@@ -71,7 +71,6 @@ import openaevWordmark from "@/assets/products/openaev.svg";
 import openaevWordmarkLight from "@/assets/products/openaev-light.svg";
 import xtmHubWordmark from "@/assets/products/xtm-hub.svg";
 import xtmHubWordmarkLight from "@/assets/products/xtm-hub-light.svg";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
 import { MadeByFiligran } from "./MadeByFiligran";
 import { NavRowBody } from "./NavRowBody";
 import {
@@ -359,8 +358,6 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
   // install teaches users to ignore it.
   const aiLicensed = useAgenticAIEnabled() || !platformConfig;
   const deepInvestigationEnabled = useFeatureFlag("DEEP_INVESTIGATION");
-  const conciergeEnabled = useFeatureFlag("CONCIERGE");
-  const conciergeName = useConciergeName(conciergeEnabled);
   const videoStudioEnabled = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudioEnabled = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluationOn = useFeatureFlag("EVALUATION");
@@ -394,12 +391,11 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     aiEnabled,
     aiLicensed,
     deepInvestigation: deepInvestigationEnabled,
-    concierge: conciergeEnabled,
-    conciergeName,
+    health: true,
     videoStudio: videoStudioEnabled,
     dashboardStudio: dashboardStudioEnabled,
     evaluation: evaluationOn,
-  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn, conciergeEnabled, conciergeName]);
+  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn]);
 
   const sections = useMemo(() => resolveNav(flags, isAdmin, isGroupManager), [flags, isAdmin, isGroupManager]);
   const activePath = useMemo(() => activeNavPath(sections, pathname), [sections, pathname]);

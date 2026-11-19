@@ -82,9 +82,9 @@ def _world(*, baseline_on: str = "copy", concierge_built: bool = True, source_ke
 def stubs(monkeypatch):
     """The sandbox, the launch checks and the staging, recorded."""
     from app.services import agent_version_snapshots, evaluation_engine
-    from app.services.concierge import evaluations
-    from app.services.concierge.sandbox import copies
     from app.services.evaluation import launch
+    from app.services.health import evaluations
+    from app.services.health.sandbox import copies
 
     seen = SimpleNamespace(copies=[], checked=[], refusal=None, copy_row=None, fresh_agent_id=uuid.uuid4())
 
@@ -294,6 +294,6 @@ async def test_the_end_of_an_unmeasured_watch_states_why(monkeypatch):
 
 
 def test_the_copy_a_candidate_runs_is_kept_until_its_verdict_is_read():
-    from app.services.concierge.sandbox import copies
+    from app.services.health.sandbox import copies
 
     assert candidate_module.copies_awaiting_a_verdict in copies._reference_checks

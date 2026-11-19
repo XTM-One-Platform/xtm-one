@@ -76,7 +76,7 @@ from typing import Literal
 #   (``services/evaluation/availability.py``, dev-docs/mode-split.md S3): its
 #   API, pages, scheduled and automatic runs, persona rewrites, agent tools and
 #   seeded benchmark. Stored data is kept. The engine has a gate of its own
-#   (``engine_accepts``): a Concierge launch runs whatever the mode (#8257). See
+#   (``engine_accepts``): a Platform Health launch runs whatever the mode (#8257). See
 #   dev-docs/evaluation-feature-flag.md.
 #   Remove once evaluation ships on every deployment where AI runs.
 # owner: platform-core - AGENTIC_CODING gates the agentic coding labs: one
@@ -93,16 +93,9 @@ from typing import Literal
 #   documented, nothing is pushed to a phone, the PIN lock never refuses a
 #   request, and a phone gets the web app. Stored phones and PINs are kept.
 #   See dev-docs/mobile-companion-feature-flag.md. Remove once it is announced.
-# owner: platform-core - CONCIERGE gates the Platform Concierge (#1783, #8254):
-#   the /api/v1/concierge API, the Concierge identity (no run acts as it while
-#   off), the improvement opt-in and opt-out switches, Settings > Agents and automations > Concierge and
-#   every later Concierge surface. Both editions, every mode. Stored settings,
-#   opt-ins and opt-outs are kept. See dev-docs/concierge-feature-flag.md.
-#   Remove once the Concierge ships.
 FeatureFlag = Literal[
     "AGENTIC_CODING",
     "AGENT_WIZARD_ASSIST",
-    "CONCIERGE",
     "DASHBOARD_STUDIO",
     "DEEP_INVESTIGATION",
     "EVALUATION",
@@ -119,7 +112,6 @@ KNOWN_FEATURE_FLAGS: frozenset[str] = frozenset(
     {
         "AGENTIC_CODING",
         "AGENT_WIZARD_ASSIST",
-        "CONCIERGE",
         "DASHBOARD_STUDIO",
         "DEEP_INVESTIGATION",
         "EVALUATION",

@@ -96,14 +96,17 @@ class Flow(Base):
     # this flag.
     is_company_managed: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # A sandbox copy the Concierge experiments on (#8255): hidden from every
+    # A sandbox copy the Platform Health experiments on (#8255): hidden from every
     # library, picker, analytics view and map, and every run of it has its
-    # writes intercepted (``services/concierge/sandbox``).
+    # writes intercepted (``services/health/sandbox``).
     is_sandbox: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
-    # Platform Concierge improvement opt-in (#8254): the agent's opt-in, for a
-    # flow's run journals (``services/concierge/consent.py``). Off by default.
-    concierge_improvement_opt_in: Mapped[bool] = mapped_column(
+    # Platform Health improvement opt-in (#8254): the agent's opt-in, for a
+    # flow's run journals (``services/health/consent.py``). Off by default.
+    health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Platform Health content opt-in (dev-docs/platform-health.md 1.2),
+    # carried from the former improvement opt-in by migration h118health01.
+    health_content_opt_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
 

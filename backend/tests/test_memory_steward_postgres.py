@@ -18,10 +18,10 @@ from app.models.agent_memory_entry import AgentMemoryEntry
 from app.models.memory_consolidation import MemoryConsolidation, MemoryLaneCheckpoint
 from app.models.user import User
 from app.services import persistent_memory as pm
-from app.services.concierge import memory_history as history
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
-from app.services.concierge.memory_steward_plan import Verdict
+from app.services.health import memory_history as history
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
+from app.services.health.memory_steward_plan import Verdict
 from tests.memory_steward_pass_world import pass_world, run_pass, seed_owner_lane
 from tests.memory_steward_world import count, entry, state
 

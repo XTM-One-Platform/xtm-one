@@ -92,18 +92,18 @@ TRACE_PAYLOAD_TOOL_NAME = "get_trace_payload"
 #: and the former ids of the same name are its [DEPRECATED] aliases.
 TRACE_SUITE_IDS: frozenset[str] = frozenset({"inspect_my_traces", "inspect_agent_traces"})
 
-#: What the Concierge is told for another agent's traces: these tools apply no
-#: consent rule, ``concierge_diagnosis`` does.
-CONCIERGE_TRACES_REFUSED = "Error: the Concierge reads other agents' traces through its diagnosis tools only."
+#: What Platform Health is told for another agent's traces: these tools apply no
+#: consent rule, ``health_diagnosis`` does.
+HEALTH_TRACES_REFUSED = "Error: Platform Health reads other agents' traces through its diagnosis tools only."
 
 
-def _concierge_refuses_other_agents() -> bool:
-    """Whether the work acts as the Concierge, or a sandbox copy's turn, which never
+def _health_refuses_other_agents() -> bool:
+    """Whether the work acts as Platform Health, or a sandbox copy's turn, which never
     reads another agent's traces here: neither the admin bypass nor a supervision
     allow-list (a copy keeps its source's) checks consent."""
-    from app.services.concierge.identity import in_concierge_reach
+    from app.services.health.identity import in_health_reach
 
-    return in_concierge_reach()
+    return in_health_reach()
 
 
 async def may_read_agent_traces(
@@ -2165,7 +2165,7 @@ def build_trace_tools(
         refusal naming each trace of a resumed run; ``(None, None)`` without a
         grant, so no other agent's run is even searched."""
         scope = _supervised_agent_ids(user)
-        if scope == [] or _concierge_refuses_other_agents():
+        if scope == [] or _health_refuses_other_agents():
             return None, None
         candidates = await _supervised_run_root_traces(
             _db, value, viewer=_trace_viewer(user), group_ids=group_ids, agent_ids=scope
@@ -2312,8 +2312,8 @@ def build_trace_tools(
                     if target_uuid is None or target_uuid not in await _agents_gone(_db, {target_uuid}):
                         return denied.message
                     agent_ids = [target_uuid]
-                if agent_ids != [own_agent_id] and _concierge_refuses_other_agents():
-                    return CONCIERGE_TRACES_REFUSED
+                if agent_ids != [own_agent_id] and _health_refuses_other_agents():
+                    return HEALTH_TRACES_REFUSED
                 reader = (
                     _own_trace_reader(user)
                     if own_agent_id is not None and agent_ids == [own_agent_id]
@@ -2544,8 +2544,8 @@ def build_trace_tools(
                     # A deleted agent's trace: the caller's run of it, or
                     # an agent they owned - never through an admin bypass.
                     may_read_other_agent = await _deleted_agent_trace_is_callers(_db, user.id, trace)
-                if not is_own_trace and _concierge_refuses_other_agents():
-                    return CONCIERGE_TRACES_REFUSED
+                if not is_own_trace and _health_refuses_other_agents():
+                    return HEALTH_TRACES_REFUSED
                 if not is_own_trace and not may_read_other_agent:
                     return (
                         "Error: you are not allowed to read payloads for this trace. "

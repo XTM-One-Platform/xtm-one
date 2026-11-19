@@ -384,7 +384,7 @@ class EvaluationAgentSummary(BaseModel):
 
 
 class EvaluationFlowSummary(BaseModel):
-    """A flow subject of the evaluation (#8257), linked by the Concierge."""
+    """A flow subject of the evaluation (#8257), linked by Platform Health."""
 
     id: str
     name: str

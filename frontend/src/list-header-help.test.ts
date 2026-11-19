@@ -35,8 +35,8 @@ const PAGES = [
   // The other Orchestration pages (#9301 N4, UX A1 of #10494): one header.
   "src/pages/Agents.tsx",
   "src/pages/Flows.tsx",
-  // Concierge: its header also links to its settings (#9301 N4).
-  "src/pages/Concierge.tsx",
+  // Platform Health: its header also links to its settings (#9301 N4).
+  "src/pages/Health.tsx",
   // The Work and Agent Studio pages that still drew their own title row (#9301 N5, UX A2 of #10508).
   "src/pages/Presentations.tsx",
   "src/pages/Templates.tsx",

@@ -183,16 +183,16 @@ def test_the_xtm_read_list_names_tools_the_server_offers_and_reads_only():
     offered |= {"search_knowledge", "update_knowledge_document", "load_skill", "read_skill_resource"}
     # The improvement proposal tools (#8256), offered while CONCIERGE is on.
     offered |= {d.name for d in build_improvement_tools(None, "")[0]}
-    from app.services.builtin_tools import build_concierge_diagnosis_tools, build_concierge_experiment_tools
+    from app.services.builtin_tools import build_health_diagnosis_tools, build_health_experiment_tools
 
-    offered |= {d.name for d in build_concierge_diagnosis_tools("", read_only=True)[0]}
-    offered |= {d.name for d in build_concierge_experiment_tools("", read_only=True)[0]}
+    offered |= {d.name for d in build_health_diagnosis_tools("", read_only=True)[0]}
+    offered |= {d.name for d in build_health_experiment_tools("", read_only=True)[0]}
     from app.services.builtin_tools import build_flow_lab_tools
 
     offered |= {d.name for d in build_flow_lab_tools("", read_only=True)[0]}
-    from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-    offered |= {d.name for d in build_concierge_orchestrator_tools("")[0]}
+    offered |= {d.name for d in build_health_orchestrator_tools("")[0]}
     assert mcp_xtm.XTM_MCP_READ_TOOLS.issubset(offered)
     not_read = {
         name

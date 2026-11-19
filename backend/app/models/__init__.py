@@ -37,12 +37,6 @@ import app.models.browser_profile
 import app.models.channel_bot
 import app.models.chat
 import app.models.chat_image
-import app.models.concierge
-import app.models.concierge_cycle
-import app.models.concierge_dataset
-import app.models.concierge_experiment
-import app.models.concierge_finding
-import app.models.concierge_pet
 import app.models.conversation_channel_binding
 import app.models.conversation_share
 import app.models.ctem_case
@@ -69,6 +63,12 @@ import app.models.flow_run
 import app.models.flow_shadow
 import app.models.general_assistant_config
 import app.models.group
+import app.models.health
+import app.models.health_cycle
+import app.models.health_dataset
+import app.models.health_experiment
+import app.models.health_finding
+import app.models.health_pet
 import app.models.improvement_proposal
 import app.models.integration
 import app.models.integration_openapi_spec

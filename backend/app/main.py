@@ -69,9 +69,6 @@ from app.api.v1 import (
     chat_continuation,
     chat_export,
     chat_web_stream,
-    concierge,
-    concierge_companion,
-    concierge_cycles,
     csp_reports,
     ctem_cases,
     ctem_metrics,
@@ -129,6 +126,9 @@ from app.api.v1 import (
     platform,
     platform_access_notices,
     platform_chat_workspaces,
+    platform_health,
+    platform_health_companion,
+    platform_health_cycles,
     presentation_public,
     presentations,
     prompts,
@@ -2505,8 +2505,8 @@ async def lifespan(app: FastAPI):
     _recycle_watch = start_recycle_watch()
     register_worker_and_report_lost()
 
-    # Every Concierge consent revocation runs all its handlers in this process.
-    from app.services.concierge.consent import register_revocation_handlers
+    # Every Platform Health consent revocation runs all its handlers in this process.
+    from app.services.health.consent import register_revocation_handlers
 
     register_revocation_handlers()
 
@@ -3362,6 +3362,48 @@ class NoIndexMiddleware:
         await self.app(scope, receive, send_with_robots_header)
 
 
+#: Platform Health's API prefix (#101 S1) and the former prefix it replaces,
+#: still served for one minor release with a ``Deprecation`` header.
+HEALTH_API_PREFIX = "/api/v1/health"
+CONCIERGE_ALIAS_PREFIX = "/api/v1/concierge"
+
+
+class DeprecatedAliasMiddleware:
+    """Mark the answers of a deprecated API prefix (RFC 9745 ``Deprecation``).
+
+    ``aliases`` maps a former prefix to the one that replaced it; a request
+    under the former prefix is answered by the same handlers, with
+    ``Deprecation: true`` and a ``Link`` to the successor path.
+    """
+
+    def __init__(self, app: ASGIApp, aliases: dict[str, str]) -> None:
+        self.app = app
+        self.aliases = aliases
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = route_path(scope)
+        successor = next(
+            (new + path[len(old) :] for old, new in self.aliases.items() if path == old or path.startswith(old + "/")),
+            None,
+        )
+        if successor is None:
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_deprecation(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"deprecation", b"true"))
+                headers.append((b"link", f'<{with_base_path(successor)}>; rel="successor-version"'.encode()))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_deprecation)
+
+
 # ---------------------------------------------------------------------------
 # Concurrency-limit middleware (health-exempt load shedding)
 #
@@ -4213,6 +4255,7 @@ application.add_middleware(
 application.add_middleware(PublicCORSMiddleware)
 application.add_middleware(LicenseGateMiddleware)
 application.add_middleware(NoIndexMiddleware)
+application.add_middleware(DeprecatedAliasMiddleware, aliases={CONCIERGE_ALIAS_PREFIX: HEALTH_API_PREFIX})
 # Content-Security-Policy + Referrer-Policy on every HTML document.
 # Keys on ``route_path``, so it stays inside ``BasePathMiddleware`` below.
 application.add_middleware(
@@ -4347,7 +4390,12 @@ application.include_router(memory_consolidations_me_router, prefix="/api/v1/sett
 application.include_router(agent_chat_router, prefix="/api/v1/agents", tags=["agents"])
 application.include_router(agent_skill_router, prefix="/api/v1/skills", tags=["skills"])
 application.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
-application.include_router(concierge.router, prefix="/api/v1/concierge", tags=["concierge"])
+# Platform Health (#101 S1): served under /api/v1/health; the former
+# /api/v1/concierge prefix answers the same handlers as a deprecated alias
+# (DeprecatedAliasMiddleware, dev-docs/reference/api-routes.md).
+for _health_prefix, _in_schema in ((HEALTH_API_PREFIX, True), (CONCIERGE_ALIAS_PREFIX, False)):
+    for _health_router in (platform_health.router, platform_health_cycles.router, platform_health_companion.router):
+        application.include_router(_health_router, prefix=_health_prefix, tags=["health"], include_in_schema=_in_schema)
 
 application.include_router(
     assignments.router, prefix="/api/v1/assignments", tags=["assignments"]
@@ -4363,8 +4411,8 @@ application.include_router(
     feedback_criteria.router, prefix="/api/v1/feedback-criteria", tags=["annotations"]
 )
 # Improvement proposals (#8256): a person's persona rewrite stays behind
-# "EVALUATION" (its POST /persona route and its rows), what the Concierge filed
-# behind "CONCIERGE"; with both off the router is neither served nor published.
+# "EVALUATION" (its POST /persona route and its rows), what Platform Health filed
+# behind its availability; with both off the router is neither served nor published.
 application.include_router(
     improvement_proposals.router,
     prefix="/api/v1/improvement-proposals",
@@ -4397,12 +4445,6 @@ application.include_router(
     fleet_member_presets.router,
     prefix="/api/v1/fleet-member-presets",
     tags=["fleets"],
-)
-application.include_router(
-    concierge_cycles.router, prefix="/api/v1/concierge", tags=["concierge"]
-)
-application.include_router(
-    concierge_companion.router, prefix="/api/v1/concierge", tags=["concierge"]
 )
 application.include_router(
     workspace_knowledge.router, prefix="/api/v1/workspaces", tags=["workspaces"]

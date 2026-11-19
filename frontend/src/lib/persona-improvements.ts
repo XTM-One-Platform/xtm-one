@@ -22,7 +22,7 @@ import type { ImprovementProposal, ImprovementProposalList, ImprovementProposalS
 const IN_FLIGHT: ReadonlySet<ImprovementProposalStatus> = new Set(["applying", "shadow", "watching"]);
 
 /** A persona rewrite a person asked for: the agent's list also holds the
- *  Concierge's proposals (any type), which the inbox shows, not this card. */
+ *  Platform Health's proposals (any type), which the inbox shows, not this card. */
 export function isPersonaRewrite(item: Pick<ImprovementProposal, "proposal_type" | "author_agent_id">): boolean {
   return item.proposal_type === "persona" && item.author_agent_id === null;
 }

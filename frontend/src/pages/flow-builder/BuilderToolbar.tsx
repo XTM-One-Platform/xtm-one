@@ -75,8 +75,8 @@ interface BuilderToolbarProps {
   onRun?: () => void;
   onToggleActive?: () => void;
   onToggleRuns?: () => void;
-  /** The Concierge panel (#8261); omitted when the flag is off or the viewer may not manage the flow. */
-  onToggleConcierge?: () => void;
+  /** The Platform Health panel (#8261); omitted when the flag is off or the viewer may not manage the flow. */
+  onToggleHealth?: () => void;
   onNameChange: (name: string) => void;
   onSave: () => void;
   onUndo: () => void;
@@ -110,7 +110,7 @@ export function BuilderToolbar({
   onRun,
   onToggleActive,
   onToggleRuns,
-  onToggleConcierge,
+  onToggleHealth,
   onNameChange,
   onSave,
   onUndo,
@@ -289,9 +289,9 @@ export function BuilderToolbar({
         </Tip>
 
         <span className="mx-1 h-5 w-px shrink-0 bg-[var(--border-elevation-subtle)]" aria-hidden="true" />
-        {onToggleConcierge && (
+        {onToggleHealth && (
           <Tip content={t_i18n("Improvements")}>
-            <Button variant="ghost" size="icon" onClick={onToggleConcierge} aria-label={t_i18n("Improvements")}>
+            <Button variant="ghost" size="icon" onClick={onToggleHealth} aria-label={t_i18n("Improvements")}>
               <Compass className="h-4 w-4" />
             </Button>
           </Tip>

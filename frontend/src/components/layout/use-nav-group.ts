@@ -20,7 +20,6 @@ import {
   usePlatformConfig,
 } from "@/hooks/usePlatformConfig";
 import { useRelaysEnabled } from "@/hooks/api/useRelayApi";
-import { useConciergeName } from "@/hooks/api/useConciergeApi";
 import { resolveNav, type NavFlags, type NavGroup, type NavLeaf } from "./nav-model";
 import { findNavFamily, findNavGroup } from "./nav-hub";
 
@@ -35,17 +34,16 @@ export function useNavFlags(): NavFlags {
   // As the Sidebar: lock only on a RESOLVED "not licensed".
   const aiLicensed = useAgenticAIEnabled() || !platformConfig;
   const deepInvestigation = useFeatureFlag("DEEP_INVESTIGATION");
-  const concierge = useFeatureFlag("CONCIERGE");
-  const conciergeName = useConciergeName(concierge);
+  const health = true;
   const videoStudio = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudio = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluation = useFeatureFlag("EVALUATION");
   const aiAdoption = platformConfig?.features.ai_adoption !== false;
   return useMemo(() => ({
     chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
-    deepInvestigation, concierge, conciergeName, videoStudio, dashboardStudio, evaluation,
+    deepInvestigation, health, videoStudio, dashboardStudio, evaluation,
   }), [chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
-    deepInvestigation, concierge, conciergeName, videoStudio, dashboardStudio, evaluation]);
+    deepInvestigation, health, videoStudio, dashboardStudio, evaluation]);
 }
 
 /** The group `id` as the current reader resolves it. */

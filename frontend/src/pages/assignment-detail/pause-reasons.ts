@@ -35,7 +35,7 @@ export const PAUSE_REASON_SUBTITLES: Partial<Record<AssignmentPauseReason, strin
   created_disabled: "created off, awaiting review",
   system_seed: "switched off by the deployment config",
   panic_stop: "stopped by an emergency stop",
-  concierge_switch_over: "replaced by a flow (Concierge)",
+  concierge_switch_over: "replaced by a flow (Platform Health)",
 };
 
 /** Pauses the platform decided on its own because something upstream broke. */

@@ -1,4 +1,4 @@
-"""The Memory Steward's model call on the Concierge budget (#8258).
+"""The Memory Steward's model call on Platform Health budget (#8258).
 
 Level 8's cycle runner sets ``trigger_context["concierge_cycle_id"]`` on a
 Concierge run (#8261); a delegated child run takes its root run's. The pass's
@@ -15,12 +15,12 @@ from types import SimpleNamespace
 import pytest
 
 from app.models.assignment import AssignmentRun
-from app.models.concierge import ConciergeCycle
-from app.services.concierge import budget
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
-from app.services.concierge.budget import current_month
-from app.services.concierge.memory_history import Lane
+from app.models.health import HealthCycle
+from app.services.health import budget
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
+from app.services.health.budget import current_month
+from app.services.health.memory_history import Lane
 from tests.memory_steward_world import entry, make_world, world_database
 
 pytestmark = pytest.mark.integration
@@ -88,7 +88,7 @@ async def test_a_run_and_its_delegated_child_name_their_cycle() -> None:
 async def test_the_model_call_is_charged_on_the_runs_cycle_only(monkeypatch, key: str) -> None:
     async with world_database() as (db, session):
         world = await make_world(session, db.sessions)
-        cycle = ConciergeCycle(specialist="memory_steward", trigger="schedule", month=current_month())
+        cycle = HealthCycle(specialist="memory_steward", trigger="schedule", month=current_month())
         session.add(cycle)
         await session.commit()
         context = {
@@ -107,7 +107,7 @@ async def test_the_model_call_is_charged_on_the_runs_cycle_only(monkeypatch, key
             return True
 
         monkeypatch.setattr("app.llm.router.get_llm_for_user", resolved)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
 
         async with db.sessions() as work:
             lane = Lane(world.agent, world.owner)
@@ -117,19 +117,19 @@ async def test_the_model_call_is_charged_on_the_runs_cycle_only(monkeypatch, key
             await work.rollback()
 
         async with db.sessions() as check:
-            row = await check.get(ConciergeCycle, cycle.id)
+            row = await check.get(HealthCycle, cycle.id)
         assert llm.calls == 1
         assert (row.spent_tokens, row.reserved_tokens, row.reserved_cost_usd) == (
             (1500, 0, Decimal(0)) if key == "present" else (0, 0, Decimal(0))
         )
 
 
-async def _call_on_a_cycle(monkeypatch, llm: _Llm) -> tuple[ConciergeCycle, int, BaseException | None]:
+async def _call_on_a_cycle(monkeypatch, llm: _Llm) -> tuple[HealthCycle, int, BaseException | None]:
     """One model call charged on a fresh open cycle; the cycle row after it,
     the tokens the call reserved and what it raised."""
     async with world_database() as (db, session):
         world = await make_world(session, db.sessions)
-        cycle = ConciergeCycle(specialist="memory_steward", trigger="schedule", month=current_month())
+        cycle = HealthCycle(specialist="memory_steward", trigger="schedule", month=current_month())
         session.add(cycle)
         await session.commit()
         await entry(world, "Prefers answers in French", user=world.owner, days_old=2)
@@ -147,7 +147,7 @@ async def _call_on_a_cycle(monkeypatch, llm: _Llm) -> tuple[ConciergeCycle, int,
             return True
 
         monkeypatch.setattr("app.llm.router.get_llm_for_user", resolved)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
         monkeypatch.setattr(deps, "reserve_model_call", recorded)
         async with db.sessions() as work:
             lane = Lane(world.agent, world.owner)
@@ -159,7 +159,7 @@ async def _call_on_a_cycle(monkeypatch, llm: _Llm) -> tuple[ConciergeCycle, int,
                 raised = e
             await work.rollback()
         async with db.sessions() as check:
-            return await check.get(ConciergeCycle, cycle.id), reserved[0], raised
+            return await check.get(HealthCycle, cycle.id), reserved[0], raised
 
 
 async def test_a_call_reporting_no_usage_is_charged_its_reservation(monkeypatch) -> None:
@@ -195,5 +195,5 @@ async def test_the_pass_in_flight_never_reads_the_ai_gate(monkeypatch) -> None:
             return True
 
         monkeypatch.setattr(budget, "_gate", gate_closed)
-        monkeypatch.setattr(budget, "concierge_active", switched_on)
+        monkeypatch.setattr(budget, "health_active", switched_on)
         await deps.ensure_budget(session, None)

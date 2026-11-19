@@ -99,7 +99,7 @@ class Dataset(Base):
     # Blocks entry mutations for non-admins
     is_read_only: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Built by the Platform Concierge from production (#8257): owned by no user,
+    # Built by the Platform Health from production (#8257): owned by no user,
     # visible to administrators; its entries' sources are in
     # ``concierge_dataset_entry_sources``. Set only by server code.
     concierge_built: Mapped[bool] = mapped_column(

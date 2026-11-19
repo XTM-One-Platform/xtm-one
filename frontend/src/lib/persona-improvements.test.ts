@@ -33,7 +33,7 @@ test("the first read and a change still being judged settle nothing", () => {
   assert.equal(cycleSettled(list(["a", "pending_approval"]), list(["a", "watching"])), false);
 });
 
-test("the persona card keeps the rewrites a person asked for, never the Concierge's proposals", () => {
+test("the persona card keeps the rewrites a person asked for, never the Platform Health's proposals", () => {
   assert.equal(isPersonaRewrite({ proposal_type: "persona", author_agent_id: null }), true);
   assert.equal(isPersonaRewrite({ proposal_type: "persona", author_agent_id: "concierge" }), false);
   assert.equal(isPersonaRewrite({ proposal_type: "new_flow", author_agent_id: null }), false);

@@ -209,23 +209,23 @@ XTM_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "search_knowledge",
         "load_skill",
         "read_skill_resource",
-        # Platform Concierge (#8259): findings, signals and experiments of the
-        # agents the caller manages; the writes are the Concierge's only.
+        # Platform Health (#8259): findings, signals and experiments of the
+        # agents the caller manages; the writes are Platform Health's only.
         "get_quality_signals",
         "list_findings",
         "list_experiments",
         "get_experiment",
         # Flow Lab (#8260): diagnostics, shadows and comparisons of the flows
-        # and assignments the caller manages; the shadow start is the Concierge's.
+        # and assignments the caller manages; the shadow start is Platform Health's.
         "get_flow_diagnosis",
         "get_assignment_path",
         "find_flow_candidates",
         "get_flow_shadow",
         "get_flow_run_comparison",
-        # Concierge (#8261): signals, cycles and digests of the targets the caller manages.
-        "list_concierge_signals",
-        "list_concierge_cycles",
-        "get_concierge_cycle",
+        # Platform Health (#8261): signals, cycles and digests of the targets the caller manages.
+        "list_health_signals",
+        "list_health_cycles",
+        "get_health_cycle",
     }
 )
 
@@ -345,26 +345,24 @@ async def _build_xtm_tools(
     if is_feature_enabled("FLOW_BUILDER"):
         composite.add_tools(*build_flow_builder_tool(db, user_id))
 
-    # The Concierge sandbox (#8255): the agent tools' own rule, administrators only here.
-    if is_feature_enabled("CONCIERGE"):
-        from app.services.concierge.sandbox.tools import build_sandbox_tools
+    # The Platform Health sandbox (#8255): the agent tools' own rule, administrators only here.
+    from app.services.health.sandbox.tools import build_sandbox_tools
 
-        composite.add_tools(*build_sandbox_tools(db, user_id))
-        # Concierge evaluation (#8257): administrators, while evaluation is on.
-        from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+    composite.add_tools(*build_sandbox_tools(db, user_id))
+    # Platform Health evaluation (#8257): administrators, while evaluation is on.
+    from app.services.health.evaluation_tools import build_health_evaluation_tools
 
-        composite.add_tools(*build_concierge_evaluation_tools(db, user_id))
-        # Improvement proposals (#8256): the caller's managed targets; filing
-        # stays the Concierge Experimenter's, so an MCP caller is refused it.
-        from app.services.builtin_tools.improvements import build_improvement_tools
+    composite.add_tools(*build_health_evaluation_tools(db, user_id))
+    # Improvement proposals (#8256): the caller's managed targets; filing
+    # stays the Platform Health Experimenter's, so an MCP caller is refused it.
+    from app.services.builtin_tools.improvements import build_improvement_tools
 
-        composite.add_tools(*build_improvement_tools(db, user_id))
+    composite.add_tools(*build_improvement_tools(db, user_id))
 
-    # Concierge (#8261): a person's reach - the targets they manage - on every call.
-    if is_feature_enabled("CONCIERGE"):
-        from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+    # Platform Health (#8261): a person's reach - the targets they manage - on every call.
+    from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-        composite.add_tools(*build_concierge_orchestrator_tools(user_id))
+    composite.add_tools(*build_health_orchestrator_tools(user_id))
 
     # Observability. ``allow_cross_agent`` grants the supervision surface; the
     # tools then gate it on the caller's own admin privilege, so a non-admin
@@ -399,14 +397,14 @@ async def _build_xtm_tools(
         if skill_tools:
             composite.add_tools(*skill_tools)
 
-    # Platform Concierge (#8259): the read half only - a person is never the
-    # Concierge, whose agents alone write findings and run experiments.
-    from app.services.builtin_tools.concierge_experiments import build_concierge_experiment_tools
-    from app.services.builtin_tools.concierge_quality import build_concierge_diagnosis_tools, concierge_tools_offered
+    # Platform Health (#8259): the read half only - a person is never the
+    # Platform Health, whose agents alone write findings and run experiments.
+    from app.services.builtin_tools.health_experiments import build_health_experiment_tools
+    from app.services.builtin_tools.health_quality import build_health_diagnosis_tools, health_tools_offered
 
-    if concierge_tools_offered():
-        composite.add_tools(*build_concierge_diagnosis_tools(user_id, read_only=True))
-        composite.add_tools(*build_concierge_experiment_tools(user_id, read_only=True))
+    if health_tools_offered():
+        composite.add_tools(*build_health_diagnosis_tools(user_id, read_only=True))
+        composite.add_tools(*build_health_experiment_tools(user_id, read_only=True))
         from app.services.builtin_tools.flow_lab import build_flow_lab_tools
 
         composite.add_tools(*build_flow_lab_tools(user_id, read_only=True))

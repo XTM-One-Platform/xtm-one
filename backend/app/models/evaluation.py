@@ -231,9 +231,9 @@ class Evaluation(Base):
     # optional custom text. NULL = the evaluation runs without placebo arms.
     placebo_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
-    # Built by the Platform Concierge (#8257), which has no user row: the mark
+    # Built by Platform Health (#8257), which has no user row: the mark
     # the evaluation engine gate reads to run it whatever the mode, while
-    # ``CONCIERGE`` is on. Set only by server code; never copied, exported or
+    # Platform Health is available. Set only by server code; never copied, exported or
     # imported.
     concierge_built: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()

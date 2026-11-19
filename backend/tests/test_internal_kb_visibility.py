@@ -62,18 +62,15 @@ def test_entities_without_the_column_are_untouched():
 
 def test_an_agent_is_hidden_by_its_sandbox_flag_only(monkeypatch):
     """Agents carry ``is_sandbox`` (#8255), not ``is_internal``: an admin's
-    bypass keeps that one exclusion and nothing else - and, while ``CONCIERGE``
-    is off, the Concierge fleet's."""
+    bypass keeps that one exclusion and nothing else, with no feature flag
+    (the Concierge is built in since #101 S1)."""
     from app.core.config import settings
 
     user_id = uuid.uuid4()
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
+    monkeypatch.setattr(settings, "enabled_features", "")
     assert "is_internal" not in _sql(user_visible_filter(Agent, user_id))
     admin_sql = _sql(user_visible_filter(Agent, user_id, is_admin=True))
     assert admin_sql.strip().lower() == "agents.is_sandbox is false"
-    monkeypatch.setattr(settings, "enabled_features", "")
-    admin_sql = _sql(user_visible_filter(Agent, user_id, is_admin=True))
-    assert admin_sql.strip().lower() == "agents.is_sandbox is false and agents.concierge_role is null"
 
 
 def test_a_workset_kb_is_created_internal_and_a_normal_one_is_not():

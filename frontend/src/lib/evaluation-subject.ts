@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * An evaluation run's subject, an agent or a flow (#8257): where its link opens.
- * A flow subject is linked by the Concierge; its run carries `flow_id` and no
+ * A flow subject is linked by the Platform Health; its run carries `flow_id` and no
  * `agent_id`.
  */
 export interface EvaluationSubjectRef {

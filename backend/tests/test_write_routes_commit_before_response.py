@@ -140,7 +140,7 @@ REVIEWED_ESCAPES: dict[str, str] = {
         "through it; its only route caller, GET /roi/declarations/backfill-preview, runs "
         "the pass with dry_run=True and rolls back before answering"
     ),
-    r"passes the session to handler\(\) in app\.services\.concierge\.consent\.apply_revocation": (
+    r"passes the session to handler\(\) in app\.services\.health\.consent\.apply_revocation": (
         "the Concierge revocation handlers (#8254) write in the caller's transaction; "
         "the only caller, the /api/v1/concierge routes, commits right after them "
         "(_commit_with_revocation) before answering"
@@ -187,7 +187,7 @@ REVIEWED_ESCAPES: dict[str, str] = {
     ),
     r"passes the session to handler\.\w+\(\) in app\.(services\.improvement_proposals\.lifecycle"
     r"|api\.v1\.improvement_proposals|services\.builtin_tools\.improvements"
-    r"|services\.concierge\.cycle_access)\.\w+": (
+    r"|services\.health\.cycle_access)\.\w+": (
         "an improvement proposal's type handler (registry): load_target, describe, "
         "validate and stale_error read; apply and rollback write the target's new "
         "version in the caller's transaction, which every route commits before it "

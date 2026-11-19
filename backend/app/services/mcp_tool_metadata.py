@@ -55,6 +55,10 @@ _SHORTENED_MARKER = "X"
 #: agent loop's dedup cache.
 _READ_ONLY_NAMES = frozenset(
     {
+        # Compares two evaluation runs of the health suite, reading both.
+        "compare_health_runs",
+        # Its [DEPRECATED] name (dev-docs/platform-health.md section 2.3).
+        "compare_concierge_runs",
         "inspect_agent_traces",
         "inspect_my_traces",
         "load_skill",
@@ -123,6 +127,8 @@ _ADDITIVE_VERBS = frozenset(
         "add",
         "append",
         "attach",
+        # Builds a new dataset (``build_dataset_from_traces``) from runs it reads.
+        "build",
         "clone",
         "copy",
         "create",
@@ -134,7 +140,11 @@ _ADDITIVE_VERBS = frozenset(
         "link",
         "post",
         "promote",
+        # Files a new proposal (``propose_improvement``): changes nothing that exists.
+        "propose",
         "publish",
+        # Queues a new health cycle (``request_health_cycle``).
+        "request",
         "run",
         "schedule",
         "send",

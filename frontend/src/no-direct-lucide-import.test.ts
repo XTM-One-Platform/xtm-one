@@ -46,7 +46,7 @@ const PENDING: Record<string, number> = {
   // glyph in 1.5.0 (audit table of #10911).
   "src/components/chat-panel": 1,
   "src/components/companion": 8,
-  "src/components/concierge": 6,
+  "src/components/health": 6,
   "src/components/custom-dashboard": 33,
   "src/components/desktop": 1,
   "src/components/evaluation": 15,

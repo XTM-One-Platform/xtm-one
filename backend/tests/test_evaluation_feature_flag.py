@@ -79,7 +79,7 @@ PERSONA_REWRITE_PATH = "/api/v1/improvement-proposals/persona"
 _GATED_REQUESTS = [
     ("GET", "/api/v1/evaluations"),
     ("GET", "/api/v1/datasets"),
-    # A person's persona rewrite (#1044); an agent's proposals are the Concierge's.
+    # A person's persona rewrite (#1044); an agent's proposals are Platform Health's.
     ("POST", "/api/v1/improvement-proposals/persona"),
     # The signed callback answers no user, and is refused all the same.
     ("POST", "/api/v1/evaluations/resume"),

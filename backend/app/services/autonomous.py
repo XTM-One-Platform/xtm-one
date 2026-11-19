@@ -2304,7 +2304,7 @@ async def _run_autonomous_tick_inner() -> int:
             # Not AI work: the retention of consolidated-away memory (#8258)
             # holds whether AI is on or not.
             try:
-                from app.services.concierge.memory_history import purge_expired_consolidations
+                from app.services.health.memory_history import purge_expired_consolidations
 
                 purged = await purge_expired_consolidations(db)
                 await db.commit()
@@ -2540,7 +2540,7 @@ async def _run_autonomous_tick_inner() -> int:
 
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---
         # No model call: a verdict and, on a regression, a rollback. Runs with
-        # AI, evaluation or the Concierge off too (#5503), so a change applied
+        # AI, evaluation or Platform Health off too (#5503), so a change applied
         # before never stays unjudged.
         try:
             from app.services.improvement_proposals import settle_open_proposals
@@ -2551,31 +2551,31 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Improvement proposal settling error: %s", format_exception_message(e), exc_info=True)
 
-        # --- 9c. Purge expired Concierge sandbox copies (#8255) ---
+        # --- 9c. Purge expired Platform Health sandbox copies (#8255) ---
         # No model call; one indexed read when nothing has expired.
         try:
-            from app.services.concierge.sandbox.copies import purge_expired_sandbox_copies_tick
+            from app.services.health.sandbox.copies import purge_expired_sandbox_copies_tick
 
             await purge_expired_sandbox_copies_tick()
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
-        # --- 9c. Concierge cycles, schedules and signals (#8261) ---
+        # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
-        # work needs agentic AI and the CONCIERGE flag (``cycles.concierge_tick``).
+        # work needs agentic AI and Platform Health switched on (``cycles.health_tick``).
         # Signals make no model call.
         try:
-            from app.services.concierge.cycles import concierge_tick
+            from app.services.health.cycles import health_tick
 
-            await concierge_tick(ai_on=_ai_on)
+            await health_tick(ai_on=_ai_on)
         except Exception as e:
-            logger.error("Concierge tick error: %s", format_exception_message(e), exc_info=True)
+            logger.error("Platform Health tick error: %s", format_exception_message(e), exc_info=True)
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new
-        # shadow runs waits on the Concierge's own gates (flow_shadow.pair_new_runs).
+        # shadow runs waits on Platform Health's own gates (flow_shadow.pair_new_runs).
         try:
-            from app.services.concierge.flow_shadow import flow_shadow_tick
+            from app.services.health.flow_shadow import flow_shadow_tick
 
             shadows = await flow_shadow_tick()
             if shadows.failed:

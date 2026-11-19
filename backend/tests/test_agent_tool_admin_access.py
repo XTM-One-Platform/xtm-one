@@ -223,8 +223,8 @@ _BYPASS_MODULE_SUITES = {
     # The wait primitive is offered by the loop to every run, carried by no
     # suite: it reads the status and summary of a run whose id the run already holds.
     "services/builtin_tools/wait.py": None,
-    # The Concierge orchestrator's tools (#8261): a person's cycles and requests, as on REST.
-    "services/builtin_tools/concierge_orchestrator.py": "concierge_orchestrator",
+    # Platform Health orchestrator's tools (#8261): a person's cycles and requests, as on REST.
+    "services/builtin_tools/health_orchestrator.py": "health_orchestrator",
     # The ROI tools (#10006): reports and records, as on REST.
     "services/builtin_tools/roi.py": "roi",
     "api/v1/mcp_xtm.py": None,

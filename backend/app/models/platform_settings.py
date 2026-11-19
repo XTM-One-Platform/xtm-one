@@ -362,10 +362,10 @@ class PlatformSettings(Base):
     # Read and written only by ``services/video_studio/render_retention.py``.
     video_render_retention: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
-    # --- Platform Concierge ───────────────────────────────────────
+    # --- Platform Health ───────────────────────────────────────
     # Enable, supervision scope and budget caps; NULL or a missing key = its
-    # default. Read and written only by ``services/concierge/settings.py``.
-    concierge_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    # default. Read and written only by ``services/health/settings.py``.
+    health_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # --- Terms of Use acceptance (platform-wide) ────────────────────
     # A SINGLE platform-level acceptance of the Terms of Use, replacing the

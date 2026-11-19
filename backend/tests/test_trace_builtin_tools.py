@@ -1908,24 +1908,22 @@ def test_both_listing_tools_declare_the_span_window():
             assert props["max_spans"]["default"] == traces_module._DEFAULT_MAX_SPANS
             assert props["span_offset"]["default"] == 0
             assert props["rollup_only"]["default"] is False
-# --- the Concierge ---------------------------------------------------------
+# --- Platform Health ---------------------------------------------------------
 
 
 @pytest.fixture(params=["principal", "sandbox_turn"])
 def as_concierge(monkeypatch, request):
-    """The work acts as the Concierge (flag on), through a fleet agent an admin
+    """The work acts as Platform Health (flag on), through a fleet agent an admin
     owns; or it is a sandbox copy's turn with no principal (an evaluation case
     of an admin-owned agent's copy, which keeps that agent's supervision list)."""
-    from app.core.config import settings
-    from app.services.concierge.identity import ConciergePrincipal, acting_as_concierge
-    from app.services.concierge.sandbox.session import SandboxSession, sandbox_session
+    from app.services.health.identity import HealthPrincipal, acting_as_health_principal
+    from app.services.health.sandbox.session import SandboxSession, sandbox_session
 
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     if request.param == "sandbox_turn":
         with sandbox_session(SandboxSession(mode="sandbox")):
             yield
         return
-    with acting_as_concierge(ConciergePrincipal(agent_id=uuid.uuid4(), role="quality_analyst")):
+    with acting_as_health_principal(HealthPrincipal(agent_id=uuid.uuid4(), role="quality_analyst")):
         yield
 
 
@@ -1955,7 +1953,7 @@ async def test_the_concierge_never_lists_another_agents_traces_here(monkeypatch)
 
     for arguments in ({"target_agent_id": target_agent_id}, {}):
         result = await executor.execute_tool(ToolCall(id="c1", name="inspect_agent_traces", arguments=arguments))
-        assert result.content == traces_module.CONCIERGE_TRACES_REFUSED
+        assert result.content == traces_module.HEALTH_TRACES_REFUSED
 
 
 @pytest.mark.asyncio
@@ -1974,7 +1972,7 @@ async def test_the_concierge_reads_no_other_agents_payload_but_its_own(monkeypat
         )
         result = await _call_payload_tool(executor, trace_id=str(trace.id), field="output")
         if expected is None:
-            assert result.content == traces_module.CONCIERGE_TRACES_REFUSED
+            assert result.content == traces_module.HEALTH_TRACES_REFUSED
         else:
             assert expected in json.loads(result.content)["content"]
 

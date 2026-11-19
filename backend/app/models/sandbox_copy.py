@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Sandbox copies the Concierge experiments on, and their runs (#8255, PRD 6.6).
+"""Sandbox copies the Platform Health experiments on, and their runs (#8255, PRD 6.6).
 
 A copy is a hidden clone of an agent or a flow (its ``is_sandbox`` column is
-set) owned by the Concierge: ``user_id`` NULL, not company-managed, shared with
+set) owned by Platform Health: ``user_id`` NULL, not company-managed, shared with
 no one. Every run of it replays the calls recorded in its source and intercepts
-its writes (``services/concierge/sandbox``). ``expires_at`` is when it may be
+its writes (``services/health/sandbox``). ``expires_at`` is when it may be
 purged, once no open proposal references it.
 
 ``sandbox_runs`` keeps each run's report with its exact counts, so an
@@ -59,7 +59,7 @@ class SandboxCopy(Base):
     )
     #: What the copy was made for: a finding or proposal reference.
     created_for: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    #: The Concierge agent that asked for it, when one did (no key: a copy
+    #: The Platform Health agent that asked for it, when one did (no key: a copy
     #: outlives a re-seeded agent until it is purged).
     created_by_agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     #: The traces (agent) or flow runs (flow) whose recorded calls a run of the

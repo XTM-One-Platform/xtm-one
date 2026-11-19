@@ -33,7 +33,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 | `dataset_versions` | Unique `(dataset_id, version_number)`. `content_hash`, `entry_count`, frozen `output_schema` and `label_vocabulary`. |
 | `dataset_version_entries` | Frozen copy of one entry. `entry_id` FK SET NULL: the snapshot outlives the entry. |
 | `evaluations` | Visibility column set. `family` NULL: saved, never run. `timeout_seconds` CHECK ≥ 60. `reuse_default` CHECK `off`/`on` (ORM default `on`, server default `off`). `scorer_selection`: NULL or a list holding `"judge"` = judge on, `[]` = off. `overall_quality_metrics` / `overall_performance_metrics`: NULL inherits all, `[]` selects none. `enabled` pauses the schedule and on-agent-change launches only. `placebo_config`: [placebo](../agent-placebo-evaluation.md). |
-| `evaluation_agents` | The evaluation's subjects: an agent or a flow (`flow_id`, #8257), exactly one (`ck_evaluation_agents_one_subject`). Unique `(evaluation_id, agent_id)`, partial unique `(evaluation_id, flow_id)`. `is_baseline`, at most one per evaluation (partial unique `uq_eval_agent_baseline`). `output_extractor`, `tags`. A flow subject: `dev-docs/concierge-evaluation.md`. |
+| `evaluation_agents` | The evaluation's subjects: an agent or a flow (`flow_id`, #8257), exactly one (`ck_evaluation_agents_one_subject`). Unique `(evaluation_id, agent_id)`, partial unique `(evaluation_id, flow_id)`. `is_baseline`, at most one per evaluation (partial unique `uq_eval_agent_baseline`). `output_extractor`, `tags`. A flow subject: `dev-docs/health-evaluation.md`. |
 | `evaluation_datasets` | Unique `(evaluation_id, dataset_id)`. `position` unique per evaluation, appended under a lock on the evaluation row. |
 | `evaluation_result_traces` | `trace_id` without FK. `trace_role` CHECK `agent`/`judge`/`auxiliary`. Unique `(result_id, trace_id)` and `(result_id, trace_order)`. |
 | `evaluation_episodes` | One per run and entry, unique `(run_id, entry_id)`. `correlation_id` unique, `eval:{run_id}:{entry_id}`. `entry_id` FK CASCADE on `dataset_entries`. `first_turn_details` (JSONB): `version_entry_id` and the first turn's `execution_details` without judge and quality, from which a resume builds the result (§12). |
@@ -48,7 +48,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 | `agent_id`, `flow_id`, `flow_version_number` | The subject: an agent, or a flow (#8257), exactly one (`ck_evaluation_runs_one_subject`); a flow's version is stamped when the run starts. |
 | `model_id` | The model, or `model-independent` for a `skip_llm` agent or a flow: one run, `is_default_model` false. |
 | `owner_execution_id` | The execution that last made the run `pending` or `running`, written in that transaction. No FK. Read only through `services/evaluation/run_ownership.py`. |
-| `trigger_reason` | `manual` (Run, API, agent tool, replay, bulk "Re-run full"), `schedule`, `persona_improvement`, `concierge` (`run_concierge_evaluation`, #8257), `import` (or the exported run's reason). `on_agent_change` is staged by an agent update but creates no run (open: #3566). |
+| `trigger_reason` | `manual` (Run, API, agent tool, replay, bulk "Re-run full"), `schedule`, `persona_improvement`, `concierge` (`run_health_evaluation`, formerly `run_concierge_evaluation`, #8257), `import` (or the exported run's reason). `on_agent_change` is staged by an agent update but creates no run (open: #3566). |
 | `metric_suite_version`, `scorer_selection` | What produced the stored scores; a rescore restamps both. |
 | `execution_mode`, `apply_prompt_guards`, `require_tool_approval` | Stamped at start; NULL on older runs. |
 | `persona_version_number`, `prompt_versions`, `agent_config_versions`, `skill_versions`, `pinned_dataset_versions` | Snapshot at creation. `pinned_dataset_versions` is `{dataset_id: version_number}`; NULL on an older run, rendered from live entries. |
@@ -62,7 +62,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 |---|---|---|
 | none | `pending` | A launch creates the run and its execution in one transaction. |
 | `pending` | `running` | Its execution starts it. |
-| `pending`, `running` | `failed` | From `pending`: the engine gate off (`EVALUATION` off and not a Concierge launch); agentic AI unavailable past the hold (`services/ai_hold.py`). From either: agent or evaluation gone; model no longer served; a pinned snapshot missing; its placebo could not be built; no entry counted in any headline; a callback entry failed or timed out; the execution dead-lettered; an abandoned attempt reclaimed; the stranded sweep. |
+| `pending`, `running` | `failed` | From `pending`: the engine gate off (`EVALUATION` off and not a health launch); agentic AI unavailable past the hold (`services/ai_hold.py`). From either: agent or evaluation gone; model no longer served; a pinned snapshot missing; its placebo could not be built; no entry counted in any headline; a callback entry failed or timed out; the execution dead-lettered; an abandoned attempt reclaimed; the stranded sweep. |
 | `pending`, `running` | `cancelled` | Cancel or emergency stop; never ever rewritten afterwards. |
 | `running` | `completed` | Every entry processed and one counted; a callback run once every episode is terminal. |
 | `completed`, `failed`, `cancelled` | `running`, then the previous status | Rescore: the payload's `previous_statuses` holds each run's status, given back on success and on failure (failure text in `rescore_error`). |
@@ -125,7 +125,7 @@ A version holds the entries (position, description, prompts, expected answer, ev
 - A dataset or evaluation family change re-checks every link and returns `family_conflicts`, removing none.
 - `GET /datasets/for-evaluation/{evaluation_id}` serves each link's `family`, `needs_family` and `family_conflict` (the `check_family_compatibility` message, or null), shown on the evaluation's Dataset tab.
 - Creating an evaluation with `dataset_ids` applies the same check: a dataset of another family is a 409 naming it, and nothing is saved. Unknown ids are skipped.
-- A dataset made private keeps its links: evaluations, their links and the evaluation agent tools are reachable only by admins, who see every dataset, and by the Concierge on the datasets it built (its evaluation tools refuse any other caller), so no link is left to a user who can no longer see the dataset. The company-managed toggle of a dataset or an evaluation (`handle_company_managed_toggle`, `agent_field=None`) sweeps no reference. Should evaluations open to non-admins, a dataset going private would need to drop the links of the evaluations whose owner loses it.
+- A dataset made private keeps its links: evaluations, their links and the evaluation agent tools are reachable only by admins, who see every dataset, and by Platform Health on the datasets it built (its evaluation tools refuse any other caller), so no link is left to a user who can no longer see the dataset. The company-managed toggle of a dataset or an evaluation (`handle_company_managed_toggle`, `agent_field=None`) sweeps no reference. Should evaluations open to non-admins, a dataset going private would need to drop the links of the evaluations whose owner loses it.
 
 ### Read-only
 
@@ -166,7 +166,7 @@ Handlers: `api/v1/evaluations.py`, `api/v1/datasets.py`; schemas: `api/v1/schema
 
 ### Feature flag
 
-Both routers (and `POST /api/v1/improvement-proposals/persona`, with the persona rewrites a person asked for) carry the dependency `require_evaluation` (`services/evaluation/availability.py`). While `EVALUATION` is off, every route answers 403 naming the flag, before authentication, `POST /evaluations/resume` included, and none appears in `/api/openapi.json`. Everything else the flag switches off, and the engine gate that lets a Concierge launch run whatever the mode: `dev-docs/evaluation-feature-flag.md`.
+Both routers (and `POST /api/v1/improvement-proposals/persona`, with the persona rewrites a person asked for) carry the dependency `require_evaluation` (`services/evaluation/availability.py`). While `EVALUATION` is off, every route answers 403 naming the flag, before authentication, `POST /evaluations/resume` included, and none appears in `/api/openapi.json`. Everything else the flag switches off, and the engine gate that lets a health launch run whatever the mode: `dev-docs/evaluation-feature-flag.md`.
 
 ### Gates
 

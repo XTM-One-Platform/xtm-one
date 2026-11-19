@@ -56,9 +56,9 @@ export interface BuiltinToolOption {
    *  an agent's grid shows it locked, and keeps it removable where the agent
    *  already carries it (`toggledInAgentConfig`). */
   bindLocked?: boolean;
-  /** A Concierge specialist's suite, carried by the Concierge fleet's own
+  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own
    *  agents: a chat's session picker never offers it. */
-  conciergeOnly: boolean;
+  healthOnly: boolean;
   /** False for an id this build's registry does not list. */
   known: boolean;
   /** Function names the suite grants on this deployment. */
@@ -72,7 +72,7 @@ export interface BuiltinToolCatalog {
   offered: (surface: BuiltinToolSurface) => BuiltinToolOption[];
   /** The suites a chat's session picker offers: the General Assistant's own,
    *  or in an agent chat `offeredInAgentChat` (`lib/builtin-tool-offers.ts`);
-   *  never a Concierge specialist's suite (`conciergeOnly`). */
+   *  never a Platform Health specialist's suite (`healthOnly`). */
   offeredInChat: (agentChat: boolean, agent?: ChatAgentTools) => BuiltinToolOption[];
   /** The suites an agent's configuration grid lists: the ones it offers, plus
    *  a switched-off one the agent carries, saved or in the draft, so it can be
@@ -110,7 +110,6 @@ export function useBuiltinTools(): BuiltinToolCatalog {
   const videoStudioEnabled = useFeatureFlag("VIDEO_STUDIO");
   const dashboardStudioEnabled = useFeatureFlag("DASHBOARD_STUDIO");
   const mobileCompanionEnabled = useFeatureFlag("MOBILE_COMPANION");
-  const conciergeEnabled = useFeatureFlag("CONCIERGE");
   const { data: groups, isPending, isError: readFailed } = useBuiltinToolGroups();
   const isReady = groups !== undefined;
   const isError = !isReady && readFailed;
@@ -126,7 +125,8 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       video_studio: videoStudioEnabled,
       dashboard_studio: dashboardStudioEnabled,
       mobile_companion: mobileCompanionEnabled,
-      concierge: conciergeEnabled,
+      // Built in since #101 (S1): the suites of the health specialists carry no flag.
+      health: true,
     };
     const toOption = (group: BuiltinToolGroup): BuiltinToolOption => ({
       id: group.id,
@@ -139,7 +139,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       agentOnly: group.agent_keyed,
       assistantAdminOnly: group.admin_only,
       bindLocked: !!group.bind_admin_only && !isAdmin,
-      conciergeOnly: group.concierge_only,
+      healthOnly: group.health_only,
       known: true,
       functions: group.functions,
     });
@@ -158,7 +158,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
         (agentChat
           ? offeredInAgentChat(offered("agent"), agent, { userId, isAdmin })
           : offered("general_assistant")
-        ).filter((option) => !option.conciergeOnly),
+        ).filter((option) => !option.healthOnly),
       listedInAgentConfig: (saved, draft) => listedInAgentConfig(options, saved, draft),
       carries: (ids, suiteId) => carriesSuite(ids, suiteId, aliases),
       canonicalIds: (ids) => canonicalSuiteIds(ids ?? [], aliases),
@@ -175,7 +175,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
           available: true,
           agentOnly: false,
           assistantAdminOnly: false,
-          conciergeOnly: false,
+          healthOnly: false,
           known: false,
           functions: [],
         },
@@ -197,7 +197,6 @@ export function useBuiltinTools(): BuiltinToolCatalog {
     videoStudioEnabled,
     dashboardStudioEnabled,
     mobileCompanionEnabled,
-    conciergeEnabled,
     isAdmin,
     userId,
   ]);

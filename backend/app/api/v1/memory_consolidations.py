@@ -42,7 +42,7 @@ from app.models.agent import Agent
 from app.models.agent_memory_entry import AgentMemoryEntry
 from app.models.memory_consolidation import MemoryConsolidation
 from app.models.user import User
-from app.services.concierge.memory_history import (
+from app.services.health.memory_history import (
     ConsolidationNotFoundError,
     UndoRefusedError,
     list_consolidations,

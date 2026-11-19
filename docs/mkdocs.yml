@@ -150,19 +150,10 @@ markdown_extensions:
 # (add `Evaluations: administration/evaluations.md` back to `Administration`,
 # after `Prompt safety (Nova)`) when the flag is removed. See
 # `dev-docs/evaluation-feature-flag.md`.
-#
-# *Concierge* sits behind the `CONCIERGE` feature flag (#8261), off by default,
-# so its two pages are unpublished the same way; republish them (add
-# `Concierge: administration/concierge.md` to `Administration`, after `AI
-# governance`, and `Improvements: usage/improvements.md` to `Work with agents`,
-# after `Run budgets`) when the flag is removed. See
-# `dev-docs/concierge-feature-flag.md`.
 exclude_docs: |
   usage/flows.md
   usage/flows-api.md
   administration/evaluations.md
-  administration/concierge.md
-  usage/improvements.md
 
 # Page tree
 nav:
@@ -238,6 +229,7 @@ nav:
       - Home dashboard: usage/home-dashboard.md
       - Operations: usage/work-history.md
       - Platform insights: usage/platform-insights.md
+      - Platform Health: usage/health.md
     - XTM Suite:
       - Overview: usage/xtm-suite/index.md
       - Common experience: usage/xtm-suite/common-experience.md
@@ -264,6 +256,7 @@ nav:
       - Agent accounts: administration/channels/agent-accounts.md
     - AI governance: administration/ai-governance.md
     - Prompt safety (Nova): administration/prompt-safety.md
+    - Platform Health: administration/health.md
     - Editions and licensing: administration/editions-and-licensing.md
     - Running without AI: administration/running-without-ai.md
     - Emergency stop: administration/emergency-stop.md

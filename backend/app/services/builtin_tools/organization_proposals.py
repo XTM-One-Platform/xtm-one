@@ -13,7 +13,7 @@
 
 """``propose_organization_context_change``: a chat request becomes a reviewable proposal (#9484, S-a2).
 
-Wired by ``agent_chat`` for the built-in CTEM Assistant and the Concierge,
+Wired by ``agent_chat`` for the built-in CTEM Assistant and Platform Health,
 and only when the person the turn acts for is an administrator
 (``dev-docs/ctem-fleets.md`` section 6.1, "Chat"); anyone else is never
 offered it, and the executor refuses a non-administrator again. The tool
@@ -32,7 +32,7 @@ from ._shared import logger
 ORGANIZATION_PROPOSAL_TOOL = "propose_organization_context_change"
 _SOURCE = "builtin:organization_proposals"
 #: The built-in agents that carry the tool (section 6.1).
-ORGANIZATION_PROPOSAL_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-assistant", "concierge"})
+ORGANIZATION_PROPOSAL_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-assistant", "platform-health"})
 
 
 def offers_organization_proposals(agent_slug: str | None, *, is_builtin: bool, caller_is_admin: bool) -> bool:

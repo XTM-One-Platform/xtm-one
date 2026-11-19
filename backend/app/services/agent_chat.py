@@ -95,14 +95,14 @@ from app.services.budget_policy import (
 )
 from app.services.chat_turn_guard import ApprovalAbandonedError
 from app.services.chat_turn_stream import AGENTIC_ACTION_STATUS
-from app.services.concierge.identity import concierge_delegation_owner_id
-from app.services.concierge.sandbox.turns import intercepted_agent_turn
-from app.services.concierge.turns import concierge_turn_scoped
 from app.services.element_scope import agent_run_scope
 from app.services.event_bus import AGENT_CHAT_RESPONSE, event_bus
 from app.services.failure_causes import PipelineToolFailedError
 from app.services.frictions import binding_friction_scope, current_friction_scope
 from app.services.frictions import make_scope as make_friction_scope
+from app.services.health.identity import health_delegation_owner_id
+from app.services.health.sandbox.turns import intercepted_agent_turn
+from app.services.health.turns import health_turn_scoped
 from app.services.integration_user_credentials import connected_for_clause
 from app.services.interrupted_turn import TurnProgress, interrupted_memory_note, interrupted_memory_prefix
 from app.services.run_ledger import (
@@ -1416,18 +1416,18 @@ def _add_platform_builder_tools(
     (``builtin_tool_aliases.PLATFORM_ADMIN_FUNCTIONS``) is wired for them
     alone (Sam's decision 2): anyone else is never offered it.
     *agent_id*: the agent the turn runs, which the improvement tools compare
-    with the Concierge principal's own. *run_id*: the delegated run the turn
-    works in, whose Concierge cycle books what the Concierge tools spend.
+    with the Platform Health principal's own. *run_id*: the delegated run the turn
+    works in, whose Platform Health cycle books what the Platform Health tools spend.
     """
     from app.services.builtin_tool_aliases import caller_may_run
-    from app.services.concierge.identity import concierge_acts_alone
+    from app.services.health.identity import health_acts_alone
 
     actor_id, read_only = _platform_builder_actor(user_id)
-    # A turn of the Concierge acting alone (a task a fleet run delegated) has
+    # A turn of Platform Health acting alone (a task a fleet run delegated) has
     # no user: its own groups, which act as its principal, are wired as the
     # assignment engine wires them for a run with no user; nothing else.
-    concierge_alone = read_only and not user_id and concierge_acts_alone()
-    concierge_actor: str | None = "" if concierge_alone else (None if read_only else actor_id)
+    health_alone = read_only and not user_id and health_acts_alone()
+    health_actor: str | None = "" if health_alone else (None if read_only else actor_id)
     if "platform_insights" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools import build_platform_insights_tools
 
@@ -1435,28 +1435,20 @@ def _add_platform_builder_tools(
             actor_id, chart_sink=chart_sink, conversation_id=conversation_id
         )
         composite.add_tools(pi_defs, pi_exec)
-    if concierge_actor is not None:
-        from app.services.builtin_tools.concierge_quality import add_concierge_quality_tools
+    if health_actor is not None:
+        from app.services.builtin_tools.health_quality import add_health_quality_tools
 
-        add_concierge_quality_tools(
-            composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id, run_id=run_id
-        )
+        add_health_quality_tools(composite, health_actor, agent_builtin_tool_ids, agent_id=agent_id, run_id=run_id)
         from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
-        add_flow_lab_tools(composite, concierge_actor, agent_builtin_tool_ids, agent_id=agent_id)
-    if (
-        "concierge_orchestrator" in agent_builtin_tool_ids
-        and concierge_actor is not None
-        and is_feature_enabled("CONCIERGE")
-    ):
-        from app.services.builtin_tools.concierge_orchestrator import build_concierge_orchestrator_tools
+        add_flow_lab_tools(composite, health_actor, agent_builtin_tool_ids, agent_id=agent_id)
+    if "health_orchestrator" in agent_builtin_tool_ids and health_actor is not None:
+        from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
-        # Acts as the Concierge in an administrator's chat with a fleet agent,
+        # Acts as Platform Health in an administrator's chat with a fleet agent,
         # as the person otherwise (``concierge.cycle_access``, #8261). Work a
         # cycle delegated never starts another cycle.
-        co_defs, co_exec = build_concierge_orchestrator_tools(
-            concierge_actor or None, allow_requests=not concierge_alone
-        )
+        co_defs, co_exec = build_health_orchestrator_tools(health_actor or None, allow_requests=not health_alone)
         composite.add_tools(co_defs, co_exec)
     if "fleets" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools import build_fleet_tools
@@ -1469,26 +1461,22 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "concierge_sandbox" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
-        from app.services.concierge.sandbox.tools import build_sandbox_tools
+    if "health_sandbox" in agent_builtin_tool_ids and health_actor is not None:
+        from app.services.health.sandbox.tools import build_sandbox_tools
 
-        # Its own access rule (the Concierge or an administrator) on every call.
-        composite.add_tools(*build_sandbox_tools(db, concierge_actor or None))
-    if "concierge_evaluation" in agent_builtin_tool_ids and concierge_actor is not None and is_feature_enabled("CONCIERGE"):
-        from app.services.concierge.evaluation_tools import build_concierge_evaluation_tools
+        # Its own access rule (Platform Health or an administrator) on every call.
+        composite.add_tools(*build_sandbox_tools(db, health_actor or None))
+    if "health_evaluation" in agent_builtin_tool_ids and health_actor is not None:
+        from app.services.health.evaluation_tools import build_health_evaluation_tools
 
-        # Its own access rule (the Concierge, or an administrator where evaluation is on).
-        composite.add_tools(*build_concierge_evaluation_tools(db, concierge_actor or None, run_id=run_id))
-    if (
-        "improvement_proposals" in agent_builtin_tool_ids
-        and concierge_actor is not None
-        and is_feature_enabled("CONCIERGE")
-    ):
+        # Its own access rule (Platform Health, or an administrator where evaluation is on).
+        composite.add_tools(*build_health_evaluation_tools(db, health_actor or None, run_id=run_id))
+    if "improvement_proposals" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 
-        # Its own access rule (scope in a Concierge run, the target's managers
+        # Its own access rule (scope in a Platform Health run, the target's managers
         # otherwise; filing by the Experimenter only) on every call.
-        composite.add_tools(*build_improvement_tools(db, concierge_actor or None, agent_id))
+        composite.add_tools(*build_improvement_tools(db, health_actor or None, agent_id))
     if "flow_builder" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools import build_flow_builder_tool
 
@@ -1664,7 +1652,7 @@ def _coalesced_trace_metadata(context: dict[str, Any] | None) -> dict[str, Any]:
 
 
 @known_secrets_scoped("conversation_id")
-@concierge_turn_scoped
+@health_turn_scoped
 @intercepted_agent_turn
 async def run_agent_chat(
     db: AsyncSession,
@@ -4094,12 +4082,12 @@ async def run_agent_chat(
         )
 
         # The background-task block below skips anonymous users, except the
-        # Concierge acting alone, whose tasks are recorded under its agent's
-        # owner and act with no user (``identity.concierge_delegation_owner_id``).
+        # Platform Health acting alone, whose tasks are recorded under its agent's
+        # owner and act with no user (``identity.health_delegation_owner_id``).
         _delegation_user_id: str | None = None if is_anonymous_user else user_id
         if not user_id:
-            _concierge_owner = await concierge_delegation_owner_id(db, agent)
-            _delegation_user_id = str(_concierge_owner) if _concierge_owner else None
+            _health_owner = await health_delegation_owner_id(db, agent)
+            _delegation_user_id = str(_health_owner) if _health_owner else None
         _offered_types = offered_handover_types(
             allowed_types=allowed_handover_types,
             delegate_available=_delegation_user_id is not None,
@@ -4284,7 +4272,7 @@ async def run_agent_chat(
             agent_builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None)
         )
         if getattr(agent, "is_sandbox", False):
-            from app.services.concierge.sandbox.copies import sandbox_tool_ids
+            from app.services.health.sandbox.copies import sandbox_tool_ids
 
             agent_builtin_tool_ids = sandbox_tool_ids(agent_builtin_tool_ids)
 
@@ -4528,7 +4516,7 @@ async def run_agent_chat(
                     )
                 )
             # The write-proposal tool of the profile (#9484, S-a2): the CTEM
-            # Assistant and the Concierge, for an administrator only; it
+            # Assistant and Platform Health, for an administrator only; it
             # stores a pending proposal and never writes the profile.
             from app.services.builtin_tools import build_organization_proposal_tool, offers_organization_proposals
 

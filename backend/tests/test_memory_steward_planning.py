@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services.concierge.memory_history import operation_fingerprint, text_digest
-from app.services.concierge.memory_steward_plan import (
+from app.services.health.memory_history import operation_fingerprint, text_digest
+from app.services.health.memory_steward_plan import (
     MAX_MODEL_GROUP,
     Candidate,
     PlannedOp,

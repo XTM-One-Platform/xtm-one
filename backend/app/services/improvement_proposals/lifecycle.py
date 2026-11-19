@@ -64,8 +64,8 @@ from app.models.improvement_proposal import (
     ImprovementProposal,
 )
 from app.services.audit import log_audit, log_system_audit
-from app.services.concierge.availability import concierge_enabled
 from app.services.evaluation_comparison import NOISE_MARGIN_POINTS, compare_metric
+from app.services.health.availability import health_enabled
 from app.services.improvement_proposals.dedup import dedup_key, evidence_fingerprint
 from app.services.improvement_proposals.registry import (
     ProposalHandler,
@@ -149,22 +149,22 @@ def surface_enabled(proposal: ImprovementProposal) -> bool:
     """Whether a proposal is reachable by people and agents right now.
 
     A person's persona rewrite (#1044) stays behind ``EVALUATION``, where it
-    always was; what an agent filed is the Concierge's, behind ``CONCIERGE``.
-    The scheduler settles both whatever the flags: a change applied before a
-    flag went off is still watched and rolled back.
+    always was; what an agent filed is Platform Health's, behind its
+    availability. The scheduler settles both whatever the switches: a change
+    applied before one went off is still watched and rolled back.
     """
     if proposal.author_agent_id is None:
         from app.services.evaluation.availability import evaluation_enabled
 
         return evaluation_enabled()
-    return concierge_enabled()
+    return health_enabled()
 
 
 def any_surface_enabled() -> bool:
     """Whether any proposal is reachable at all: the routes are served and published only then."""
     from app.services.evaluation.availability import evaluation_enabled
 
-    return evaluation_enabled() or concierge_enabled()
+    return evaluation_enabled() or health_enabled()
 
 
 def surface_filter() -> Any:
@@ -175,16 +175,16 @@ def surface_filter() -> Any:
 
     return or_(
         and_(ImprovementProposal.author_agent_id.is_(None), true() if evaluation_enabled() else false()),
-        and_(ImprovementProposal.author_agent_id.is_not(None), true() if concierge_enabled() else false()),
+        and_(ImprovementProposal.author_agent_id.is_not(None), true() if health_enabled() else false()),
     )
 
 
 async def watch_days(db: AsyncSession) -> int:
     """The watch window of an agent-filed change, in days (decision B18): Settings >
-    Agents and automations > Concierge (``ConciergeSettings.proposal_watch_days``), read on *db*."""
-    from app.services.concierge.settings import load_concierge_settings
+    Agents and automations > Platform Health (``HealthSettings.proposal_watch_days``), read on *db*."""
+    from app.services.health.settings import load_health_settings
 
-    return (await load_concierge_settings(db)).proposal_watch_days
+    return (await load_health_settings(db)).proposal_watch_days
 
 
 def _handler(proposal_type: str) -> ProposalHandler:
@@ -256,7 +256,7 @@ async def open_proposal_on(db: AsyncSession, target_type: str, target_id: uuid.U
 
 
 def _unseen(proposal: ImprovementProposal) -> bool:
-    """An agent's change waiting for a decision while ``CONCIERGE`` is off: nobody can see or reject it."""
+    """An agent's change waiting for a decision while Platform Health is not available: nobody can see or reject it."""
     return (
         proposal.author_agent_id is not None
         and proposal.status == STATUS_PENDING_APPROVAL

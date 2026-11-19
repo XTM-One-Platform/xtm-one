@@ -1,4 +1,4 @@
-"""An evaluation entry run on a Concierge sandbox agent copy (#8257).
+"""An evaluation entry run on a Platform Health sandbox agent copy (#8257).
 
 A copy's turn runs as one case of level 2's interception, on the entry's own
 recordings and under a case ref naming the run and the entry; any other agent
@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.concierge import datasets
-from app.services.concierge.sandbox import copies, runs
 from app.services.evaluation.sandbox_cases import SandboxCaseUnavailableError, agent_sandbox_case, case_ref
+from app.services.health import datasets
+from app.services.health.sandbox import copies, runs
 
 
 def _agent(*, sandbox: bool) -> SimpleNamespace:

@@ -59,8 +59,11 @@ from app.models.general_assistant_config import MAX_ITERATIONS_CEILING
 from app.services.assignment_activation_check import describe_check as _describe_gate_check
 from app.services.builtin_tool_aliases import (
     BUILTIN_GROUP_ALIASES,
+    RENAMED_BUILTIN_GROUPS,
     alias_group,
+    current_group_id,
     describe_builtin_tool_id,
+    is_former_builtin_id,
 )
 from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.services.element_scope import ScopeEnforcementError, parse_scope_enforcement
@@ -2348,14 +2351,14 @@ def _registry_builtin_tool_ids() -> tuple[str, ...]:
 
     Each group of ``BUILTIN_TOOL_GROUPS`` (the ids the agent settings picker
     sets and ``get_agent`` reports), then each [DEPRECATED] former id of
-    ``BUILTIN_GROUP_ALIASES`` (still accepted, stored as its group, never
-    advertised). Derived, never hand-kept: a hand-kept tuple written before
-    the built-in tools consolidation refused ``files``, ``web``, ``cti``,
+    ``BUILTIN_GROUP_ALIASES`` and each renamed id of ``RENAMED_BUILTIN_GROUPS``
+    (still accepted, stored as its group, never advertised). Derived, never
+    hand-kept: a hand-kept tuple written before the built-in tools consolidation refused ``files``, ``web``, ``cti``,
     ``design`` and ``coordination``, so an API caller could not set them and
     a ``builtin_tool_ids`` write silently dropped them (#8827).
     """
     return tuple(
-        dict.fromkeys([*(group.id for group in BUILTIN_TOOL_GROUPS), *BUILTIN_GROUP_ALIASES])
+        dict.fromkeys([*(group.id for group in BUILTIN_TOOL_GROUPS), *BUILTIN_GROUP_ALIASES, *RENAMED_BUILTIN_GROUPS])
     )
 
 
@@ -2374,14 +2377,12 @@ _FEATURE_GATED_BUILTIN_TOOL_IDS: dict[str, FeatureFlag] = {
     "custom_dashboards": "DASHBOARD_STUDIO",
     "phone": "MOBILE_COMPANION",
     "deep_investigation": "DEEP_INVESTIGATION",
-    # Every Concierge group (the memory steward, the fleet's tools): dark with its flag.
-    **{group.id: "CONCIERGE" for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"},
 }
 
 
 def _builtin_group(tool_id: str) -> str:
     """*tool_id* as the group it stands for: a [DEPRECATED] former id names its group."""
-    return alias_group(tool_id) or tool_id
+    return alias_group(tool_id) or current_group_id(tool_id)
 
 
 def _apply_builtin_binding_mode(current: list[str], given: list[str], mode: str) -> list[str]:
@@ -2427,7 +2428,7 @@ def _advertised_builtin_tool_ids() -> tuple[str, ...]:
     return tuple(
         tool_id
         for tool_id in _VALID_BUILTIN_TOOL_IDS
-        if alias_group(tool_id) is None
+        if not is_former_builtin_id(tool_id)
         and (
             tool_id not in _FEATURE_GATED_BUILTIN_TOOL_IDS
             or is_feature_enabled(_FEATURE_GATED_BUILTIN_TOOL_IDS[tool_id])
@@ -16306,7 +16307,7 @@ def build_agent_builder_tool(
         executor.register(tool_name, handler)
     definitions.extend(intent_defs)
 
-    # A Concierge run reads the platform here, never changes it (#8255).
-    from app.services.concierge.sandbox.guards import guard_agent_builder
+    # A Platform Health run reads the platform here, never changes it (#8255).
+    from app.services.health.sandbox.guards import guard_agent_builder
 
     return guard_agent_builder(definitions, executor), executor

@@ -287,7 +287,7 @@ describe("form action buttons at 36 px, Cancel then primary", () => {
     ["Agent ratings", ["pages", "agent-detail", "FeedbackTab.tsx"], /totalAll=\{summary\?\.total\}/, /useAgentAnnotationSummary\(agent\.id/],
     ["Agent memory", ["pages", "agent-detail", "MemoryTab.tsx"], /totalAll=\{totalCount\}/, /useAgentMemories\(agent\.id, \{ limit: 1 \}/],
     ["ROI records", ["components", "roi", "RoiRecordsList.tsx"], /totalAll=\{countAll\.data\?\.total\}/, /useRoiRecordCount\(\{ \.\.\.query, review: "all" \}\)/],
-    ["Improvements inbox", ["components", "concierge", "ImprovementsInbox.tsx"], /totalAll=\{everything\}/, /useImprovements\(\{ \.\.\.fixed, limit: 1, offset: 0 \}\)/],
+    ["Improvements inbox", ["components", "health", "ImprovementsInbox.tsx"], /totalAll=\{everything\}/, /useImprovements\(\{ \.\.\.fixed, limit: 1, offset: 0 \}\)/],
   ])("%s: a filtered server total reads 'n of N' from the unfiltered count (#12039)", (_name, parts, prop, unfiltered) => {
     const src = read(...parts);
     expect(src).toMatch(prop);

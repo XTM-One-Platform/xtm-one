@@ -7,7 +7,7 @@
  * `#` or `/`; API calls (`api.get("/settings/quotas")`) and the API hooks are
  * left out, they name backend endpoints, not pages.
  * UX condition C3: bare `/settings/automations` opens Fleets in XTM One mode
- * and Agent runs in Copilot mode; Concierge with its flag off falls back to it.
+ * and Agent runs in Copilot mode; Platform Health with its flag off falls back to it.
  * Fleets (and its member presets) is reachable in both modes (#9162 scope).
  */
 import { describe, expect, it } from "vitest";
@@ -25,7 +25,7 @@ describe("legacySettingsTarget", () => {
     expect(legacySettingsTarget("quotas", "", "")).toBe("/settings/usage/quotas");
     expect(legacySettingsTarget("observability", "", "")).toBe("/settings/usage/observability");
     expect(legacySettingsTarget("quality", "", "")).toBe("/settings/automations/quality");
-    expect(legacySettingsTarget("concierge", "", "")).toBe("/settings/automations/concierge");
+    expect(legacySettingsTarget("concierge", "", "")).toBe("/settings/automations/health");
   });
 
   it("keeps the query and the hash", () => {
@@ -42,18 +42,19 @@ describe("legacySettingsTarget", () => {
 });
 
 describe("automationsSection (C3)", () => {
-  const xtm = { isXtmOne: true, conciergeEnabled: false };
-  const copilot = { isXtmOne: false, conciergeEnabled: false };
+  const xtm = { isXtmOne: true };
+  const copilot = { isXtmOne: false };
 
   it("opens Fleets in XTM One mode and Agent runs in Copilot mode", () => {
     expect(automationsSection(undefined, xtm)).toBe("fleets");
     expect(automationsSection(undefined, copilot)).toBe("agent-runs");
   });
 
-  it("falls back to that default for Concierge with its flag off", () => {
-    expect(automationsSection("concierge", xtm)).toBe("fleets");
-    expect(automationsSection("concierge", copilot)).toBe("agent-runs");
-    expect(automationsSection("concierge", { isXtmOne: true, conciergeEnabled: true })).toBe("concierge");
+  it("opens Platform Health in every mode, built in with no flag, the former segment included (#101 S1)", () => {
+    expect(automationsSection("health", xtm)).toBe("health");
+    expect(automationsSection("health", copilot)).toBe("health");
+    expect(automationsSection("concierge", xtm)).toBe("health");
+    expect(automationsSection("concierge", copilot)).toBe("health");
   });
 
   it("never shows an XTM One section in Copilot mode", () => {

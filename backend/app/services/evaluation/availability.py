@@ -21,9 +21,9 @@ is the flag's condition in ``core/feature_flags.py`` (``FLAG_CONDITIONS``), so
 gates what people see and start: pages, REST, user agent tools, the schedule.
 
 The **engine gate**, :func:`engine_accepts`: the surface gate, or an evaluation
-the Concierge built (``Evaluation.concierge_built``, read on the row) while the
-Concierge is on (the ``CONCIERGE`` flag and Settings > Agents and automations > Concierge), whatever the mode (decision B9 of
-``dev-docs/platform-concierge.md``). The Concierge has no user row: its
+Platform Health built (``Evaluation.concierge_built``, read on the row) while the
+Platform Health is switched on (Settings > Agents and automations > Platform Health), whatever the mode (decision B9 of
+``dev-docs/platform-concierge.md``). Platform Health has no user row: its
 evaluations have no owner and carry that marker, which only server code sets
 (never REST, copy, export or import). It gates the work the engine does: the
 queued evaluation and rescore executions. See ``dev-docs/evaluation-feature-flag.md``.
@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.feature_flags import feature_disabled_detail, is_feature_enabled, require_feature
 from app.models.evaluation import Evaluation, EvaluationRun
-from app.services.concierge.availability import concierge_active
+from app.services.health.availability import health_active
 
 DISABLED_DETAIL = feature_disabled_detail("EVALUATION")
 
@@ -53,10 +53,10 @@ def evaluation_enabled() -> bool:
 
 
 async def engine_accepts(db: AsyncSession, evaluation_id: uuid.UUID | str) -> bool:
-    """The engine gate for one evaluation: the surface gate, or a Concierge launch."""
+    """The engine gate for one evaluation: the surface gate, or a Platform Health launch."""
     if evaluation_enabled():
         return True
-    if not await concierge_active(db):
+    if not await health_active(db):
         return False
     try:
         evaluation_uuid = uuid.UUID(str(evaluation_id))
@@ -70,7 +70,7 @@ async def engine_accepts_runs(db: AsyncSession, run_ids: Iterable[uuid.UUID | st
     """The engine gate for a rescore batch: every run's evaluation must pass it."""
     if evaluation_enabled():
         return True
-    if not await concierge_active(db):
+    if not await health_active(db):
         return False
     try:
         ids = {uuid.UUID(str(run_id)) for run_id in run_ids}

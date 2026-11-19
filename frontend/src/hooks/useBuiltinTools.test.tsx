@@ -94,24 +94,24 @@ describe("useBuiltinTools administrator-bound suite", () => {
 });
 
 describe("useBuiltinTools session picker", () => {
-  it("never offers a Concierge specialist's suite in a chat, while an agent's configuration still lists it", async () => {
+  it("never offers a Platform Health specialist's suite in a chat, while an agent's configuration still lists it", async () => {
     const steward = {
       ...GROUP,
       id: "memory_steward",
       name: "Memory Steward",
-      gate: "concierge",
+      gate: "health",
       default_on: false,
       agent_keyed: true,
-      concierge_only: true,
+      health_only: true,
     };
-    const orchestrator = { ...steward, id: "concierge_orchestrator", name: "Concierge", concierge_only: false };
-    get.mockResolvedValueOnce([{ ...GROUP, concierge_only: false }, steward, orchestrator] as never);
+    const orchestrator = { ...steward, id: "health_orchestrator", name: "Platform Health", health_only: false };
+    get.mockResolvedValueOnce([{ ...GROUP, health_only: false }, steward, orchestrator] as never);
     const { result } = renderHook(() => useBuiltinTools(), { wrapper: withProviders(appClient()) });
     await waitFor(() => expect(result.current.isReady).toBe(true));
     const agent = { builtin_tool_ids: ["memory_steward"], user_id: "u1", is_company_managed: false };
-    expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "concierge_orchestrator"]);
+    expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "health_orchestrator"]);
     expect(result.current.offeredInChat(false).map((tool) => tool.id)).toEqual(["web_fetch"]);
-    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "concierge_orchestrator"]);
-    expect(result.current.describe("memory_steward").conciergeOnly).toBe(true);
+    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "health_orchestrator"]);
+    expect(result.current.describe("memory_steward").healthOnly).toBe(true);
   });
 });

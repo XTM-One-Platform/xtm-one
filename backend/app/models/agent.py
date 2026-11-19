@@ -97,9 +97,9 @@ class Agent(Base):
     # ``user_id`` (the owner is always preserved).
     is_company_managed: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # A sandbox copy the Concierge experiments on (#8255): hidden from every
+    # A sandbox copy the Platform Health experiments on (#8255): hidden from every
     # library, picker, analytics view and map, and every run of it has its
-    # writes intercepted (``services/concierge/sandbox``).
+    # writes intercepted (``services/health/sandbox``).
     is_sandbox: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     # Hide this company-managed agent's runs, traces, work items and shared
@@ -622,16 +622,21 @@ class Agent(Base):
         JSON, nullable=True, default=list
     )
 
-    # Platform Concierge (#8254, ``services/concierge/``). The improvement
-    # opt-in: whoever may manage the agent lets the Concierge read its
+    # Platform Health (#8254, ``services/health/``). The improvement
+    # opt-in: whoever may manage the agent lets Platform Health read its
     # memories and conversation content (``consent.py``). Off by default.
-    concierge_improvement_opt_in: Mapped[bool] = mapped_column(
+    health_enrolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Platform Health content opt-in (dev-docs/platform-health.md 1.2): the
+    # second, separate opt-in inside an enrolled agent that lets the analysis
+    # layer read its content. Carried from the former improvement opt-in by
+    # migration h118health01; off by default.
+    health_content_opt_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    # The agent's role in the Concierge fleet, which makes its runs act as the
-    # Concierge identity (``identity.py``). Written by the seed alone, never by
+    # The agent's role in the Platform Health fleet, which makes its runs act as the
+    # Platform Health identity (``identity.py``). Written by the seed alone, never by
     # a REST route or an agent tool. NULL for every other agent.
-    concierge_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    health_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Coordination access: which AGENTS may read and write the company-managed
     # work items this agent creates and the company-managed shared state it

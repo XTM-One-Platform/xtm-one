@@ -150,6 +150,7 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "flows",
         "forgot-password",
         "groups",
+        "health",
         "inbox",
         "integrations",
         "intents",

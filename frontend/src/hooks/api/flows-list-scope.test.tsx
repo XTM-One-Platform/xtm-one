@@ -1,5 +1,5 @@
 // The flow list takes the entity list scope like the agent list: an admin's
-// picker over every flow (Settings > Agents and automations > Concierge) reads `scope=all`.
+// picker over every flow (Settings > Agents and automations > Platform Health) reads `scope=all`.
 
 import { describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";

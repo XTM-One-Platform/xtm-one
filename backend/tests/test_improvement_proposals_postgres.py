@@ -45,7 +45,7 @@ from app.models.platform_settings import PlatformSettings
 from app.models.user import User
 from app.services import improvement_proposals as proposals
 from app.services import persona_improvement as loop
-from app.services.concierge.settings import ConciergeSettings
+from app.services.health.settings import HealthSettings
 from app.services.improvement_proposals import lifecycle, registry
 from tests.scratch_database import scratch_database
 from tests.test_persona_improvement_postgres import BASE_PERSONA, REWRITE, _propose, _seed
@@ -359,7 +359,6 @@ async def test_an_agent_states_its_measurement():
 
 @pytest.mark.asyncio
 async def test_one_open_change_per_target(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
     async with _temp_database("proposal_open") as sessionmaker:
         seeded = await _seed(sessionmaker)
         await _file(sessionmaker, seeded)
@@ -373,9 +372,11 @@ async def test_one_open_change_per_target(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_person_s_request_withdraws_an_agent_change_nobody_can_see(monkeypatch):
-    """With ``CONCIERGE`` off, an agent's pending change is hidden and cannot be
+    """With the agents' surface off, an agent's pending change is hidden and cannot be
     rejected: it must not block the #1044 request for good."""
     monkeypatch.setattr(settings, "enabled_features", "")
+    # The capability is built in since the flag went: switch the surface off here.
+    monkeypatch.setattr(lifecycle, "health_enabled", lambda: False)
     async with _temp_database("proposal_unseen") as sessionmaker:
         seeded = await _seed(sessionmaker)
         hidden = await _file(sessionmaker, seeded)
@@ -419,7 +420,7 @@ async def test_an_agent_change_is_watched_for_the_set_window(monkeypatch, live_w
     async with _temp_database(f"proposal_watch_{int(live_watcher)}") as sessionmaker:
         seeded = await _seed(sessionmaker)
         async with sessionmaker() as db:
-            db.add(PlatformSettings(concierge_settings=ConciergeSettings(proposal_watch_days=3).model_dump(mode="json")))
+            db.add(PlatformSettings(health_settings=HealthSettings(proposal_watch_days=3).model_dump(mode="json")))
             await db.commit()
         if live_watcher:
 

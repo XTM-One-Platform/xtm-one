@@ -75,7 +75,7 @@ Plus, deliberately:
   example flow.
 - **The `flow_builder` built-in tool still works** for an agent that already
   carries the id; only the picker card is hidden.
-- **The Concierge's Flow Lab does not read this flag** (#8260). Its `flow_lab`
+- **Platform Health's Flow Lab does not read this flag** (#8260). Its `flow_lab`
   tools, its shadow runs and an approved flow replacing an assignment ride the
   engine, which the flag never switches off; they follow `CONCIERGE`. A flow a
   switch-over activates while the builder is hidden runs like any existing

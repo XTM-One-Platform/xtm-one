@@ -50,7 +50,7 @@ def _agent(*, company: bool, tools=("coordination",)):
         builtin_tool_ids=list(tools),
         builtin_allowed_tools=None,
         hide_runs=False,
-        concierge_role=None,
+        health_role=None,
     )
 
 

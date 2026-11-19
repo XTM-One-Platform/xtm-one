@@ -2971,7 +2971,7 @@ async def test_update_agent_accepts_workset_and_refuses_unknown_builtin(monkeypa
 def test_every_registered_group_and_former_id_is_a_valid_builtin_tool_id():
     """The accepted ids are the registry, not a hand-kept tuple (#8827): every
     group the settings picker sets and every [DEPRECATED] former id."""
-    from app.services.builtin_tool_aliases import BUILTIN_GROUP_ALIASES
+    from app.services.builtin_tool_aliases import BUILTIN_GROUP_ALIASES, RENAMED_BUILTIN_GROUPS
     from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
     from app.services.builtin_tools.agent_builder import (
         _VALID_BUILTIN_TOOL_IDS,
@@ -2979,7 +2979,7 @@ def test_every_registered_group_and_former_id_is_a_valid_builtin_tool_id():
     )
 
     groups = {group.id for group in BUILTIN_TOOL_GROUPS}
-    assert set(_VALID_BUILTIN_TOOL_IDS) == groups | set(BUILTIN_GROUP_ALIASES)
+    assert set(_VALID_BUILTIN_TOOL_IDS) == groups | set(BUILTIN_GROUP_ALIASES) | set(RENAMED_BUILTIN_GROUPS)
     assert {"files", "web", "cti", "design", "coordination"} <= set(_VALID_BUILTIN_TOOL_IDS)
     # Advertised: groups only, never a former id.
     assert set(_advertised_builtin_tool_ids()) <= groups

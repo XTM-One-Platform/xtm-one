@@ -34,7 +34,7 @@ const MICRO_TEXT_PENDING: Record<string, number> = {
 /** Files still carrying `content-caption` outside a badge or a table cell, with the count; only ever shrinks. */
 const CAPTION_TEXT_PENDING: Record<string, number> = {
   "ChannelManagement.tsx": 18,
-  "ConciergePetLibrary.tsx": 1,
+  "HealthPetLibrary.tsx": 1,
   "GAHandoverPicker.tsx": 7,
   "GeneralAssistantSection.tsx": 10,
   "MCPEndpointSection.tsx": 14,

@@ -3331,20 +3331,20 @@ def _company_managed_visible(model_cls: type[VisibilityQueryable]):
 def hidden_rows_excluded(model_cls: Any):
     """The clause excluding the rows no listing shows anyone, admins included,
     or ``None`` when *model_cls* has none: another primitive's internal storage
-    (``is_internal``, #3074) and the Concierge's sandbox copies (``is_sandbox``,
+    (``is_internal``, #3074) and Platform Health's sandbox copies (``is_sandbox``,
     #8255). The owning primitive reads such a row by id; its own row is the
-    authorization. While "CONCIERGE" is off, the Concierge fleet
-    (``concierge_role``) too: it must not stay chattable once the flag is off."""
+    authorization. The Platform Health fleet (``health_role``) is never
+    chattable while Platform Health is not available."""
     clauses = [
         getattr(model_cls, column).is_(False)
         for column in ("is_internal", "is_sandbox")
         if hasattr(model_cls, column)
     ]
-    if hasattr(model_cls, "concierge_role"):
-        from app.services.concierge.availability import concierge_enabled
+    if hasattr(model_cls, "health_role"):
+        from app.services.health.availability import health_enabled
 
-        if not concierge_enabled():
-            clauses.append(model_cls.concierge_role.is_(None))
+        if not health_enabled():
+            clauses.append(model_cls.health_role.is_(None))
     return and_(*clauses) if clauses else None
 
 
@@ -3540,14 +3540,14 @@ def agent_tool_admin_bypass(user: HasIsAdmin | None) -> bool:
     gates either way (a company-managed write, the manual-trigger admin-only
     rule).
 
-    Never inside a Concierge run or turn, nor a sandbox copy's turn: its reach
+    Never inside a Platform Health run or turn, nor a sandbox copy's turn: its reach
     is its scope and consent alone, whoever owns its agent or asked for the
-    work (PRD 9; ``identity.in_concierge_reach``).
+    work (PRD 9; ``identity.in_health_reach``).
     """
     from app.core.security_options import security_option
-    from app.services.concierge.identity import in_concierge_reach
+    from app.services.health.identity import in_health_reach
 
-    if in_concierge_reach():
+    if in_health_reach():
         return False
     return bool(getattr(user, "is_admin", False)) and not security_option("agent_tools_strict_admin_access")
 
@@ -3604,12 +3604,12 @@ def company_managed_run_scoped[**P, R](
 
     @functools.wraps(fn)
     async def scoped(*args: P.args, **kwargs: P.kwargs) -> R:
-        # The same scope bounds the Concierge mark (``mark_concierge_run``).
-        from app.services.concierge.identity import concierge_run_scope
+        # The same scope bounds the Platform Health mark (``mark_health_run``).
+        from app.services.health.identity import health_run_scope
 
         token = _NO_ACCOUNT_PROVENANCE.set("")
         try:
-            with concierge_run_scope():
+            with health_run_scope():
                 return await fn(*args, **kwargs)
         finally:
             _NO_ACCOUNT_PROVENANCE.reset(token)

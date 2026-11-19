@@ -44,7 +44,7 @@ BuiltinToolGate = Literal[
     "video_studio",
     "mobile_companion",
     "dashboard_studio",
-    "concierge",
+    "health",
 ]
 
 
@@ -73,10 +73,10 @@ class BuiltinToolGroup:
     bind_admin_only: bool = False
     #: Acts as the agent, never on the General Assistant (``AGENT_KEYED_BUILTIN_TOOL_IDS``).
     agent_keyed: bool = False
-    #: A Concierge specialist's suite, carried by the fleet's own agents
-    #: (``concierge.fleet_seed``), whose writes refuse anyone but the
-    #: Concierge: a chat's session tools never offer it.
-    concierge_only: bool = False
+    #: A Platform Health specialist's suite, carried by the fleet's own agents
+    #: (``health.fleet_seed``), whose writes refuse anyone but the
+    #: Platform Health: a chat's session tools never offer it.
+    health_only: bool = False
     #: Titled with the platform's own name.
     named_after_platform: bool = False
     #: Former ids this group answers to, [DEPRECATED] (``builtin_tool_aliases``).
@@ -118,33 +118,33 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         ),
     ),
     BuiltinToolGroup(
-        id="concierge_sandbox",
-        name="Concierge Sandbox",
+        id="health_sandbox",
+        name="Health Sandbox",
         tagline="Copy agents and flows into the sandbox and run them with writes intercepted",
-        detail="Make hidden copies of agents and flows and run them in the sandbox: calls recorded in the source traces are replayed, reads run live, and every write is intercepted and answered by a simulated result, counted per case. For the Concierge and administrators, within the supervision scope.",
+        detail="Make hidden copies of agents and flows and run them in the sandbox: calls recorded in the source traces are replayed, reads run live, and every write is intercepted and answered by a simulated result, counted per case. For Platform Health and administrators, within the supervision scope.",
         category="platform",
         icon="FlaskConical",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
-        id="concierge_evaluation",
-        name="Concierge Evaluation",
+        id="health_evaluation",
+        name="Health Evaluation",
         tagline="Build datasets from production and measure agents and flows against them",
-        detail="Turn rated answers and failed runs of consented agents and flows into evaluation datasets, evaluate agents, flows and their sandbox copies on them, and compare runs on quality, cost and latency with the simulated writes stated. For the Concierge, and for administrators where evaluation is on.",
+        detail="Turn rated answers and failed runs of consented agents and flows into evaluation datasets, evaluate agents, flows and their sandbox copies on them, and compare runs on quality, cost and latency with the simulated writes stated. For Platform Health, and for administrators where evaluation is on.",
         category="platform",
         icon="Scale",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
         id="improvement_proposals",
         name="Improvement Proposals",
         tagline="List improvement proposals and file one for the target's managers to approve",
-        detail="List the improvement proposals on the agents, skills, assignments and flows the caller may read, with the verdict of their experiment or that they are unmeasured. The Concierge's Experimenter files new ones, with their evidence and measurement; the target's managers approve or reject them, and a regression is rolled back.",
+        detail="List the improvement proposals on the agents, skills, assignments and flows the caller may read, with the verdict of their experiment or that they are unmeasured. Platform Health's Experimenter files new ones, with their evidence and measurement; the target's managers approve or reject them, and a regression is rolled back.",
         category="platform",
         icon="Sparkles",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -322,13 +322,13 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
     BuiltinToolGroup(
         id="memory_steward",
         name="Memory Steward",
-        tagline="Consolidate agent memory lanes, reversibly, for the Platform Concierge",
-        detail="The Platform Concierge's memory consolidation: list the memory lanes it may read, run a pass over one (merge duplicates, settle contradictions, demote time-bound entries, promote recurring observations) and count what was applied. Every change is reversible by the lane's owner from their profile. Only the Concierge identity may call these tools.",
+        tagline="Consolidate agent memory lanes, reversibly, for Platform Health",
+        detail="Platform Health's memory consolidation: list the memory lanes it may read, run a pass over one (merge duplicates, settle contradictions, demote time-bound entries, promote recurring observations) and count what was applied. Every change is reversible by the lane's owner from their profile. Only the Platform Health identity may call these tools.",
         category="platform",
         icon="Brain",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
     ),
     BuiltinToolGroup(
         id="coordination",
@@ -354,13 +354,13 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         aliases=("inspect_my_traces", "inspect_agent_traces"),
     ),
     BuiltinToolGroup(
-        id="concierge_orchestrator",
-        name="Concierge",
-        tagline="Read the Concierge's signals, cycles and digests, and ask it to improve an agent or flow",
-        detail="The Concierge orchestrator's tools: the signals crossed, the cycles and their digests, and a request to investigate one agent or flow. In a person's chat they read only the targets that person manages; in a Concierge run, its supervision scope.",
+        id="health_orchestrator",
+        name="Platform Health",
+        tagline="Read Platform Health's signals, cycles and digests, and ask it to improve an agent or flow",
+        detail="The Platform Health orchestrator's tools: the signals crossed, the cycles and their digests, and a request to investigate one agent or flow. In a person's chat they read only the targets that person manages; in a Platform Health run, its supervision scope.",
         category="platform",
         icon="Compass",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
     ),
     BuiltinToolGroup(
@@ -374,39 +374,39 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
-        id="concierge_diagnosis",
-        name="Concierge Diagnosis",
+        id="health_diagnosis",
+        name="Health Diagnosis",
         tagline="Diagnose supervised agents from their traces, ratings and costs",
-        detail="The Platform Concierge's Quality Analyst: reads the quality signals of the agents in the Concierge's supervision scope, records each finding once with its evidence, and drafts the variant an experiment will measure. Works only inside a Concierge run.",
+        detail="Platform Health's Quality Analyst: reads the quality signals of the agents in its supervision scope, records each finding once with its evidence, and drafts the variant an experiment will measure. Works only inside a Platform Health run.",
         category="observability",
         icon="Stethoscope",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("get_quality_signals", "list_findings"),
     ),
     BuiltinToolGroup(
-        id="concierge_experiments",
-        name="Concierge Experiments",
+        id="health_experiments",
+        name="Health Experiments",
         tagline="Measure variants on sandbox copies and file what they earn",
-        detail="The Platform Concierge's Experimenter: sizes each experiment to the Concierge budget, evaluates the current configuration and a variant as sandbox copies on the same production cases, and files the improvement proposal the measurement earned, or unmeasured with its reason. Works only inside a Concierge run.",
+        detail="Platform Health's Experimenter: sizes each experiment to the Platform Health budget, evaluates the current configuration and a variant as sandbox copies on the same production cases, and files the improvement proposal the measurement earned, or unmeasured with its reason. Works only inside a Platform Health run.",
         category="observability",
         icon="FlaskConical",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("list_experiments", "get_experiment"),
     ),
     BuiltinToolGroup(
         id="flow_lab",
-        name="Concierge Flow Lab",
+        name="Health Flow Lab",
         tagline="Diagnose flows and measure flow replacements in shadow",
-        detail="The Platform Concierge's Flow Lab: diagnoses a supervised flow's failed runs and costs, finds the tool-call sequences users repeat, checks whether an assignment follows a path a flow could reproduce, and measures a sandbox flow on an assignment's live triggers with every write intercepted. Works only inside a Concierge run; the reads are also served to the managers of the flow or assignment.",
+        detail="Platform Health's Flow Lab: diagnoses a supervised flow's failed runs and costs, finds the tool-call sequences users repeat, checks whether an assignment follows a path a flow could reproduce, and measures a sandbox flow on an assignment's live triggers with every write intercepted. Works only inside a Platform Health run; the reads are also served to the managers of the flow or assignment.",
         category="flows",
         icon="Workflow",
-        gate="concierge",
+        gate="health",
         agent_keyed=True,
-        concierge_only=True,
+        health_only=True,
         core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),
     ),
 )

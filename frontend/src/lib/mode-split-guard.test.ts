@@ -1,7 +1,7 @@
 /**
  * Generic AI in both modes - `yarn test` (slice S5 of #9533, `dev-docs/mode-split.md`).
  *
- * A generic AI capability (AI adoption, evaluations, ROI, fleets, Concierge,
+ * A generic AI capability (AI adoption, evaluations, ROI, fleets, Platform Health,
  * intents) runs the same code path in XTM One mode and in Copilot mode; only
  * domain content, licence and edition semantics, the product-managed built-in
  * agents and the branding differ per mode. These source scans fail the build
@@ -38,7 +38,7 @@ const FILES: { path: string; text: string }[] = [...sources(SRC)]
 const text = (path: string): string => FILES.find((file) => file.path === path)?.text ?? "";
 
 /** Destinations of generic AI capabilities: never gated on the mode. */
-const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/concierge", "/intents"];
+const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/health", "/intents"];
 
 type ModeClass = "domain content" | "licence and edition" | "built-in agents" | "branding" | "plumbing";
 

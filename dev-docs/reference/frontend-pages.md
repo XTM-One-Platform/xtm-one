@@ -105,7 +105,7 @@ Rules the model enforces (don't work around them):
   that reason: every extra top-level entry turns the block into a flat most-used list.
   The admin-only Administration section is collapsible.
 - **A page that holds the settings of another page links to it, both ways** (#9301 N4):
-  the Concierge page carries a "Concierge settings" button and the Concierge settings
+  the Platform Health page carries a "Platform Health settings" button and the Platform Health settings
   section an "Open" button back; the Presentations and Videos headers link to Templates,
   where the designs they are dressed with live.
 - **A list page draws its header through `ListPageHeader`** (title, its help in the "i",

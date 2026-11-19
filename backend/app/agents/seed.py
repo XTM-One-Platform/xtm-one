@@ -45,6 +45,7 @@ from app.agents.builtin_agents import (
     BUILTIN_SKILLS,
     FEATURE_GATED_BUILTIN_AGENTS,
     FEATURE_GATED_BUILTIN_SKILLS,
+    RENAMED_BUILTIN_SKILL_SLUGS,
     get_builtin_integration_credentials,
     log_builtin_integration_status,
 )
@@ -1535,6 +1536,24 @@ def _sync_skill_fields(skill: AgentSkill, data: dict) -> None:
     skill.tags = data.get("tags", ["builtin"])
 
 
+def _adopt_renamed_skills(
+    rows: list[AgentSkill], slug_to_skill: dict[str, AgentSkill], current_slugs: set[str]
+) -> set[int]:
+    """Key each row still tagged with a former slug (``RENAMED_BUILTIN_SKILL_SLUGS``) under its
+    current slug in *slug_to_skill*, so the upsert retags that row in place and every agent's
+    ``skill_ids`` keeps pointing at it. A row already carrying the current slug wins: the former
+    row is then left to Phase 1 as stale. Answers the ``id()`` of each adopted row.
+    """
+    adopted: set[int] = set()
+    for row in rows:
+        current = RENAMED_BUILTIN_SKILL_SLUGS.get(_seed_slug_tag(row.tags) or "")
+        if current and current in current_slugs and current not in slug_to_skill:
+            slug_to_skill[current] = row
+            adopted.add(id(row))
+            logger.info("Adopting built-in skill %s under its renamed slug %s", row.name, current)
+    return adopted
+
+
 async def seed_builtin_skills(
     db: AsyncSession, *, platform_mode: str = "copilot"
 ) -> int:
@@ -1559,14 +1578,15 @@ async def seed_builtin_skills(
     slug_to_skill: dict[str, AgentSkill] = {}
     for existing_skill in all_managed:
         s = _seed_slug_tag(existing_skill.tags)
-        if s:
+        if s and s not in RENAMED_BUILTIN_SKILL_SLUGS:
             slug_to_skill[s] = existing_skill
+    adopted = _adopt_renamed_skills(all_managed, slug_to_skill, current_slugs)
 
     # Phase 1: Delete stale built-in skills
     removed = 0
     for existing_skill in all_managed:
         s = _seed_slug_tag(existing_skill.tags)
-        if s and s in current_slugs:
+        if (s and s in current_slugs) or id(existing_skill) in adopted:
             continue
         if s and s not in current_slugs and "builtin" in (existing_skill.tags or []):
             logger.info("Removing stale built-in skill: %s", existing_skill.name)

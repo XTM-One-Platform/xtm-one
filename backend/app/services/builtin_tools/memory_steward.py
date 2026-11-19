@@ -11,17 +11,17 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""Memory Steward tools (Platform Concierge, #8258).
+"""Memory Steward tools (Platform Health, #8258).
 
-The Concierge's Memory Steward works through the memory lanes it may read
-and consolidates each one (``services/concierge/memory_steward.py``). The
+Platform Health's Memory Steward works through the memory lanes it may read
+and consolidates each one (``services/health/memory_steward.py``). The
 tools return statuses and counts, never memory content: the pass reads the
 lane itself, and only counts go to the digest.
 
-One access rule: the caller is the Concierge, a run of one of its fleet
-agents while ``CONCIERGE`` is on (``identity.current_concierge``). Nobody
+One access rule: the caller is Platform Health, a run of one of its fleet
+agents while Platform Health is available (``identity.current_health_principal``). Nobody
 else, an administrator included, may run or read a pass. The platform MCP
-server serves logins, which the Concierge never is, so it does not offer them.
+server serves logins, which Platform Health never is, so it does not offer them.
 """
 
 from __future__ import annotations
@@ -34,9 +34,9 @@ from app.core.database import async_session
 from app.core.utils import format_exception_message
 from app.models.agent import Agent
 from app.models.user import User
-from app.services.concierge import identity, memory_history
-from app.services.concierge import memory_steward as steward
-from app.services.concierge import memory_steward_deps as deps
+from app.services.health import identity, memory_history
+from app.services.health import memory_steward as steward
+from app.services.health import memory_steward_deps as deps
 from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 
 from ._shared import logger
@@ -48,14 +48,14 @@ _MAX_LANES = 100
 _DEFAULT_SINCE_HOURS = 24
 _MAX_SINCE_HOURS = 24 * 31
 
-_REFUSAL = "Error: the memory tools are reserved to the Platform Concierge."
+_REFUSAL = "Error: the memory tools are reserved to Platform Health."
 
 
-def _caller_is_concierge() -> bool:
-    """Whether the running work acts as the Concierge: a run of a fleet agent,
-    flag on (``identity.current_concierge`` re-checks it). A login, an
+def _caller_is_health_principal() -> bool:
+    """Whether the running work acts as Platform Health: a run of a fleet agent,
+    flag on (``identity.current_health_principal`` re-checks it). A login, an
     administrator included, never is."""
-    return identity.current_concierge() is not None
+    return identity.current_health_principal() is not None
 
 
 def _refused(message: str = _REFUSAL) -> ToolResult:
@@ -79,9 +79,9 @@ def _bounded(value: object, *, default: int, maximum: int) -> int:
 
 
 def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefinition], CallableToolExecutor]:
-    """The group. Each call checks the running work is the Concierge's: the
-    run's user plays no part, the Concierge being no user. *run_id* is the
-    assignment run the tools serve: its Concierge cycle is charged."""
+    """The group. Each call checks the running work is Platform Health's: the
+    run's user plays no part, Platform Health being no user. *run_id* is the
+    assignment run the tools serve: its Platform Health cycle is charged."""
     async def _list_memory_lanes(agent_id: str | None = None, limit: int = _DEFAULT_LANES) -> str | ToolResult:
         agent = None
         if agent_id:
@@ -90,7 +90,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
                 return "Error: agent_id must be a UUID."
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 lanes = await steward.list_eligible_lanes(
                     db, agent_id=agent, limit=_bounded(limit, default=_DEFAULT_LANES, maximum=_MAX_LANES)
@@ -124,7 +124,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
                 return "Error: user_id must be a UUID."
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 if await db.get(Agent, agent) is None or (
                     lane_user is not None and await db.get(User, lane_user) is None
@@ -141,8 +141,8 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
         if result.status == "refused":
             # Consent and budget are stated; their details stay in the logs.
             message = {
-                "consent": "Error: this memory lane may not be read by the Concierge.",
-                "budget": "Error: the Concierge budget is spent; no pass was run.",
+                "consent": "Error: this memory lane may not be read by Platform Health.",
+                "budget": "Error: the Platform Health budget is spent; no pass was run.",
             }.get(result.reason or "", _REFUSAL)
             return _refused(message)
         if result.status == "unchanged":
@@ -166,7 +166,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
         since = datetime.now(UTC) - timedelta(hours=hours)
         try:
             async with async_session() as db:
-                if not _caller_is_concierge():
+                if not _caller_is_health_principal():
                     return _refused()
                 counts = await memory_history.consolidation_counts(db, since=since, agent_id=agent)
         except Exception as e:
@@ -179,7 +179,7 @@ def build_memory_steward_tools(run_id: str | None = None) -> tuple[list[ToolDefi
             name="list_memory_lanes",
             source=_SOURCE,
             description=(
-                "List the memory lanes the Concierge may consolidate: one per agent (its own memory) and "
+                "List the memory lanes Platform Health may consolidate: one per agent (its own memory) and "
                 "one per user of an agent (that user's memory with it), only for agents opted in and users "
                 "who did not opt out. Lanes never passed come first. Counts only, never memory content."
             ),

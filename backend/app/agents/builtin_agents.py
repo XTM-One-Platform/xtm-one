@@ -2462,10 +2462,6 @@ FEATURE_GATED_BUILTIN_AGENTS: dict[str, FeatureFlag] = {
 # the flag was on (``seed.seed_builtin_skills``).
 FEATURE_GATED_BUILTIN_SKILLS: dict[str, FeatureFlag] = {
     "video-production": "VIDEO_STUDIO",
-    "memory-steward": "CONCIERGE",
-    "concierge-quality-analyst": "CONCIERGE",
-    "concierge-experimenter": "CONCIERGE",
-    "concierge-flow-lab": "CONCIERGE",
 }
 
 
@@ -3470,12 +3466,12 @@ BUILTIN_SKILLS: list[dict] = [
         "bind_to_agent_slugs": ["deck-importer"],
     },
     {
-        # Platform Concierge (#8258): the Memory Steward's working method. The
-        # Concierge fleet's seed (level 8, #8261) binds it to the Memory Steward.
+        # Platform Health (#8258): the Memory Steward's working method. The
+        # Platform Health fleet's seed (level 8, #8261) binds it to the Memory Steward.
         "slug": "memory-steward",
         "name": "Memory Steward",
         "description": (
-            "How the Platform Concierge's Memory Steward runs a consolidation "
+            "How Platform Health's Memory Steward runs a consolidation "
             "cycle: list the memory lanes it may read, run one pass per lane "
             "with consolidate_memory_lane, read each status (applied, planned "
             "in dry-run, unchanged, refused for consent or budget), and report "
@@ -3483,7 +3479,7 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "compatibility": "memory_steward",
         "content": "memory-steward",
-        "tags": ["builtin", "concierge", "memory"],
+        "tags": ["builtin", "health", "memory"],
         "platform_targets": ["global"],
         "bind_to_agent_slugs": [],
     },
@@ -3679,51 +3675,61 @@ BUILTIN_SKILLS: list[dict] = [
         ],
     },
     {
-        # Platform Concierge (#8259): the Quality Analyst's working method. Seeded
+        # Platform Health (#8259): the Quality Analyst's working method. Seeded
         # unbound; level 8 binds it to the Quality Analyst it seeds.
-        "slug": "concierge-quality-analyst",
-        "name": "Concierge Quality Analyst",
+        "slug": "health-quality-analyst",
+        "name": "Platform Health Quality Analyst",
         "description": (
-            "How the Concierge's Quality Analyst diagnoses a supervised agent: read its quality signals, "
+            "How Platform Health's Quality Analyst diagnoses a supervised agent: read its quality signals, "
             "tell a pattern from noise, record each finding once with checked evidence, and draft one "
             "targeted variant for the Experimenter to measure."
         ),
-        "compatibility": "concierge_diagnosis",
-        "content": "concierge-quality-analyst",
-        "tags": ["builtin", "concierge", "quality"],
+        "compatibility": "health_diagnosis",
+        "content": "health-quality-analyst",
+        "tags": ["builtin", "health", "quality"],
         "platform_targets": ["global"],
     },
     {
-        # Platform Concierge (#8259): the Experimenter's working method. Seeded
+        # Platform Health (#8259): the Experimenter's working method. Seeded
         # unbound; level 8 binds it to the Experimenter it seeds.
-        "slug": "concierge-experimenter",
-        "name": "Concierge Experimenter",
+        "slug": "health-experimenter",
+        "name": "Platform Health Experimenter",
         "description": (
-            "How the Concierge's Experimenter measures a drafted variant: budget first, size the "
+            "How Platform Health's Experimenter measures a drafted variant: budget first, size the "
             "experiment to it, read the comparison and the simulated writes, and file only what the "
             "measurement earned, or unmeasured with its reason."
         ),
-        "compatibility": "concierge_experiments",
-        "content": "concierge-experimenter",
-        "tags": ["builtin", "concierge", "evaluation"],
+        "compatibility": "health_experiments",
+        "content": "health-experimenter",
+        "tags": ["builtin", "health", "evaluation"],
         "platform_targets": ["global"],
     },
     {
-        # Platform Concierge (#8260): the Flow Lab's working method. Seeded
+        # Platform Health (#8260): the Flow Lab's working method. Seeded
         # unbound; level 8 binds it to the Flow Lab agent it seeds.
-        "slug": "concierge-flow-lab",
-        "name": "Concierge Flow Lab",
+        "slug": "health-flow-lab",
+        "name": "Platform Health Flow Lab",
         "description": (
-            "How the Concierge's Flow Lab picks a mode (repair, optimize, new flow, agent to flow) from a "
+            "How Platform Health's Flow Lab picks a mode (repair, optimize, new flow, agent to flow) from a "
             "flow's or an assignment's evidence, designs one variant on a sandbox flow that keeps its source's "
             "reach, and hands it to the Experimenter to measure."
         ),
         "compatibility": "flow_lab",
-        "content": "concierge-flow-lab",
-        "tags": ["builtin", "concierge", "flows"],
+        "content": "health-flow-lab",
+        "tags": ["builtin", "health", "flows"],
         "platform_targets": ["global"],
     },
 ]
+
+#: Built-in skill slugs renamed in place: former slug -> current slug. The seed
+#: adopts a row still tagged ``slug:<former>`` under the current slug (same row,
+#: same id, so every agent's ``skill_ids`` keeps pointing at it) instead of
+#: deleting it as stale and inserting a new one. Platform Health S1 (#101).
+RENAMED_BUILTIN_SKILL_SLUGS: dict[str, str] = {
+    "concierge-quality-analyst": "health-quality-analyst",
+    "concierge-experimenter": "health-experimenter",
+    "concierge-flow-lab": "health-flow-lab",
+}
 
 # The CTI skills (cti-skills pack, Liberty91, MIT), shipped in XTM One mode.
 BUILTIN_SKILLS.extend(CTI_SKILLS)

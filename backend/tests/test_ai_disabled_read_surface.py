@@ -410,10 +410,10 @@ def test_require_ai_enabled_asks_only_the_ai_question():
 # would make the mode unexitable.
 _EXEMPT_PLATFORM_ADMINISTRATION = {
     "update_platform_settings_endpoint",
-    # Settings > Agents and automations > Concierge (#8254): enable, scope and budget caps; stored
+    # Settings > Agents and automations > Platform Health (#8254): enable, scope and budget caps; stored
     # configuration reaching no model, and switching it off must stay possible.
-    "put_concierge_settings",
-    # The Concierge companion's pet library (#8261): adding or removing a pet
+    "put_health_settings",
+    # Platform Health companion's pet library (#8261): adding or removing a pet
     # is a stored image reaching no model, managed by administrators.
     "upload_pet",
     "delete_pet",
@@ -1049,13 +1049,13 @@ _EXEMPT_OWN_DATA_HOUSEKEEPING = {
     "lock_app",
     "set_app_pin",
     "update_app_lock",
-    # Platform Concierge consent (#8254): a user's opt-out and the managers'
+    # Platform Health consent (#8254): a user's opt-out and the managers'
     # improvement opt-in of an agent or a flow. Taking consent back never waits
     # for AI to be on, and neither switch reaches a model.
     "set_my_opt_out",
     "set_agent_opt_in",
     "set_flow_opt_in",
-    # The Concierge companion (#8261): a user's own switch and pet; it reads
+    # Platform Health companion (#8261): a user's own switch and pet; it reads
     # what they already see and never reaches a model.
     "put_companion",
     "archive_conversation",

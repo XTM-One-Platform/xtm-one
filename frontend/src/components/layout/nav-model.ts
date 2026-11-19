@@ -59,10 +59,8 @@ export interface NavFlags {
   dashboardStudio: boolean;
   /** `EVALUATION`: served only where evaluation may run (every mode where AI runs). */
   evaluation: boolean;
-  /** `CONCIERGE` (#8261): the Concierge page (improvements, cycles, signals). */
-  concierge: boolean;
-  /** The name the Concierge goes by (Settings > Agents and automations > Concierge): its entry's label, shown as written. */
-  conciergeName?: string;
+  /** The Platform Health page (#8261: improvements, cycles, signals); built in since #101 (S1), no flag, so callers pass true. */
+  health: boolean;
 }
 
 /** Why a `locked` entry is locked — picks the tooltip that explains it. */
@@ -101,9 +99,7 @@ export interface NavLeaf {
   /** In an `adminOnly` section: listed for a group manager too, whose
    *  team the page reads. The only entries of that section they see. */
   groupManagers?: boolean;
-  /** The label is the Concierge's name when `NavFlags.conciergeName` gives one. */
-  named?: "concierge";
-  /** Resolved from `named`: a name, shown as written, never a message id. */
+  /** A name shown as written, never a message id (none since #101 S1: Platform Health is a translated label). */
   text?: string;
   /** Listed for administrators only, inside a section every user sees (Intents
    *  in the Orchestration group, #9301). A group manager does not get it either. */
@@ -364,7 +360,8 @@ export const NAV_SECTIONS: NavSection[] = [
       /* Sprout, not TrendingUp: that one is Value's, and no two rows share an icon. */
       aiLeaf("/ai-adoption", Sprout, "AI Adoption", (f) => f.aiAdoption),
       aiLeaf("/evaluations", FlaskConical, "Evaluations", (f) => f.evaluation),
-      { ...aiLeaf("/concierge", Compass, "Concierge", (f) => f.concierge), named: "concierge" },
+      /* Platform Health (#101 S1): a translated label, never the administrator's name; `/concierge` redirects here. */
+      aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
          guards unchanged (/users behind AdminRoute, /groups not; r2 A5). */
       {
@@ -400,10 +397,6 @@ const lockReasonFor = (entry: NavLeaf | NavGroup, flags: NavFlags): NavLockReaso
   if (!flags.aiLicensed) return "unlicensed";
   return null;
 };
-
-function withName(leaf: NavLeaf, flags: NavFlags): NavLeaf {
-  return leaf.named === "concierge" && flags.conciergeName ? { ...leaf, text: flags.conciergeName } : leaf;
-}
 
 /** What an entry reads: its name as written, else its translated label. */
 export function navLabel(entry: { label: string; text?: string }, t_i18n: (id: string) => string): string {
@@ -448,7 +441,7 @@ function resolveSection(section: NavSection, flags: NavFlags, isAdmin: boolean):
       if (entry.kind === "leaf") {
         if (!listed(entry)) return null;
         const resolved = withFamily(entry, flags, readsAll);
-        return resolved ? withLock(withName(resolved, flags), flags) : null;
+        return resolved ? withLock(resolved, flags) : null;
       }
       /* A family row inside a group (Connections) resolves as a top-level one. */
       const children = entry.children

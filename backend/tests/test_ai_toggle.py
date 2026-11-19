@@ -230,11 +230,11 @@ def test_the_ai_gate_is_read_at_entry_only_never_mid_execution():
         # The work-item inbox pass a dispatch wake runs, the twin of the
         # scheduler tick's: asked once before the pass dispatches any item.
         "services/work_item_dispatch_wake.py",
-        # The Platform Concierge's budget (#8254): ``open_cycle`` and
+        # Platform Health's budget (#8254): ``open_cycle`` and
         # ``budget_refusal`` ask before a cycle starts any work. ``reserve`` and
-        # ``remaining``, read by a run in flight, check the Concierge's own caps
+        # ``remaining``, read by a run in flight, check Platform Health's own caps
         # only.
-        "services/concierge/budget.py",
+        "services/health/budget.py",
         # A new fleet's first documentation (#10316): asked once at creation,
         # before the background generation is scheduled; never mid-generation.
         "services/fleet_doc_on_create.py",

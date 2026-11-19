@@ -6,7 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { EmergencyStopBanner } from "./EmergencyStopBanner";
 import { OrganizationSetupPrompt } from "./OrganizationSetupPrompt";
-import { ConciergeCompanion } from "@/components/concierge/ConciergeCompanion";
+import { HealthCompanion } from "@/components/health/HealthCompanion";
 import { GlobalSearchProvider } from "./GlobalSearch";
 import { useArcade } from "@/components/arcade/arcade-context";
 import { CompanionShell } from "@/components/companion/CompanionShell";
@@ -83,8 +83,8 @@ function AppShell() {
     >
       <ImpersonationBanner />
       <Sidebar impersonating={isImpersonating} />
-      {/* The Concierge companion (#8261), for who turned it on. */}
-      <ConciergeCompanion />
+      {/* The Health companion (#8261), for who turned it on. */}
+      <HealthCompanion />
       {/* The first-login organization setup (#9173, S3): administrators, XTM One, once per instance. */}
       <OrganizationSetupPrompt />
       {/* pl-0 on mobile (sidebar is overlay), the sidebar's width on desktop

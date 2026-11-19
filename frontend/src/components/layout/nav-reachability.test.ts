@@ -40,7 +40,7 @@ type Gate =
   | "videoStudio"
   | "dashboardStudio"
   | "evaluation"
-  | "concierge";
+  | "health";
 
 const GATES: readonly Gate[] = [
   "chat",
@@ -51,7 +51,7 @@ const GATES: readonly Gate[] = [
   "videoStudio",
   "dashboardStudio",
   "evaluation",
-  "concierge",
+  "health",
 ];
 
 /** The role check of the route itself, read from `App.tsx` (the nav alone is not access control). */
@@ -110,7 +110,7 @@ const REACHABILITY: readonly Reach[] = [
   { to: "/trace-sessions", roles: ADMIN, guard: "AdminRoute" },
   { to: "/ai-adoption", roles: ADMIN, gate: "aiAdoption", lock: "ai", guard: "AdminRoute" },
   { to: "/evaluations", roles: ADMIN, gate: "evaluation", lock: "ai", guard: "AdminRoute" },
-  { to: "/concierge", roles: ADMIN, gate: "concierge", lock: "ai", guard: "AdminRoute" },
+  { to: "/health", roles: ADMIN, gate: "health", lock: "ai", guard: "AdminRoute" },
   // No route guard: the nav alone keeps Intents and Groups to administrators
   // (#9301 UX r1 A4, r2 A5). Recorded as it is; no route changes in this program.
   { to: "/intents", roles: ADMIN, lock: "ai", guard: "none" },

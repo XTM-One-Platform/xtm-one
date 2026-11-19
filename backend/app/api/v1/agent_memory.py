@@ -603,7 +603,7 @@ async def delete_memory_entry(
     await db.execute(delete(AgentMemoryEntry).where(AgentMemoryEntry.id == entry.id))
     await db.flush()
     # A deleted entry is not restorable by a consolidation undo (#8258).
-    from app.services.concierge.memory_history import purge_entry_consolidations
+    from app.services.health.memory_history import purge_entry_consolidations
 
     await purge_entry_consolidations(db, entry.id)
 

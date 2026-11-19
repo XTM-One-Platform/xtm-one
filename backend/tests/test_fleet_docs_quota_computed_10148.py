@@ -19,8 +19,8 @@ from app.agents.builtin_agents import BUILTIN_ASSIGNMENTS
 from app.agents.builtin_fleet_docs import builtin_fleet_structured
 from app.agents.builtin_fleets import BUILTIN_FLEETS
 from app.services import fleet_doc_generation as gen
-from app.services.concierge.fleet_seed import FLEET_AGENTS, FLEET_ASSIGNMENTS, ORCHESTRATOR_SLUG
 from app.services.fleet_docs import clean_structured
+from app.services.health.fleet_seed import FLEET_AGENTS, FLEET_ASSIGNMENTS, ORCHESTRATOR_SLUG
 
 
 def _agent(slug: str) -> SimpleNamespace:

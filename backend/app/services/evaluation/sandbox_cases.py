@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""An evaluation entry run on a Concierge sandbox copy (#8257, level 2's interception).
+"""An evaluation entry run on a Platform Health sandbox copy (#8257, level 2's interception).
 
 A sandbox agent copy runs each entry inside ``sandbox_case``: its writes are
 intercepted, its calls replayed from the entry's own recordings when the entry
@@ -56,9 +56,9 @@ async def agent_sandbox_case(
     if not getattr(agent, "is_sandbox", False):
         yield None
         return
-    from app.services.concierge.datasets import entry_recordings
-    from app.services.concierge.sandbox.copies import sandbox_copy_of
-    from app.services.concierge.sandbox.runs import sandbox_case
+    from app.services.health.datasets import entry_recordings
+    from app.services.health.sandbox.copies import sandbox_copy_of
+    from app.services.health.sandbox.runs import sandbox_case
 
     copy = await sandbox_copy_of(db, agent_id=agent.id)
     if copy is None:

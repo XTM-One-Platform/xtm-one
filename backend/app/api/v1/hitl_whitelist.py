@@ -420,9 +420,9 @@ async def tool_gate_catalog(
     """
     from app.services.builtin_tool_catalog import (
         build_builtin_tool_catalog,
-        withhold_concierge_tools,
         withhold_evaluation_tools,
         withhold_flow_builder_tools,
+        withhold_health_tools,
     )
 
     # Same withholding the settings catalogue applies, for the same reason and
@@ -434,7 +434,7 @@ async def tool_gate_catalog(
     _builtin_catalog = build_builtin_tool_catalog()
     # The flow functions of the platform group.
     withhold_flow_builder_tools(_builtin_catalog)
-    withhold_concierge_tools(_builtin_catalog)
+    withhold_health_tools(_builtin_catalog)
     # The evaluation tools, while evaluation is off (#5503).
     withhold_evaluation_tools(_builtin_catalog)
 

@@ -48,7 +48,7 @@ def _render(query) -> str:
 
 
 def test_admin_rollup_reads_are_unrestricted_but_for_sandbox_copies():
-    """An admin reads every rollup row except a Concierge sandbox copy's (#8255)."""
+    """An admin reads every rollup row except a Platform Health sandbox copy's (#8255)."""
     rendered = _render(daily_stats_visible_filter(_user(is_admin=True), []))
     assert rendered == (
         "llm_daily_stats.agent_id is null or (llm_daily_stats.agent_id not in "

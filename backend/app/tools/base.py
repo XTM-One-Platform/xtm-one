@@ -1645,7 +1645,7 @@ def consent_approved() -> bool:
 
 class DispatchInterceptor(Protocol):
     """Decides how a call runs instead of the executor (#8255): the sandbox and
-    the Concierge's dry-run replay, run or intercept it."""
+    Platform Health's dry-run replay, run or intercept it."""
 
     async def intercept(
         self,

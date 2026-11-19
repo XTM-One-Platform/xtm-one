@@ -46,7 +46,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { MusicGenerationSection } from "@/pages/settings/MusicGenerationSection";
 import { emptyChatProviders } from "@/pages/settings/emptyChatProviders";
 import { PronunciationLexiconSection } from "@/pages/settings/PronunciationLexiconSection";
-import { ConciergeSection } from "@/pages/settings/ConciergeSection";
+import { HealthSection } from "@/pages/settings/HealthSection";
 import { RenderRetentionSection } from "@/pages/settings/RenderRetentionSection";
 import { SpeechGenerationSection } from "@/pages/settings/SpeechGenerationSection";
 import { VideoGenerationSection } from "@/pages/settings/VideoGenerationSection";
@@ -143,7 +143,7 @@ const AUTOMATIONS_SECTIONS: readonly SectionNavItem<AutomationsSection>[] = [
   { key: "ctem-agents", label: "CTEM stage agents", icon: Sparkles },
   { key: "agent-runs", label: "Agent runs", icon: Timer },
   { key: "quality", label: "Quality", icon: ClipboardCheck },
-  { key: "concierge", label: "Concierge", icon: Sparkles },
+  { key: "health", label: "Platform Health", icon: Sparkles },
 ];
 const INTEGRATIONS_SECTIONS: readonly SectionNavItem<IntegrationsSettingsSection>[] = [
   { key: "catalog", label: "Catalog", icon: LayoutGrid },
@@ -198,11 +198,10 @@ function SettingsPage() {
   // The video and music models serve the Video Studio alone. Speech
   // stays: the chat reads answers aloud with it.
   const videoStudioEnabled = isFeatureEnabled(authConfig?.enabled_features, "VIDEO_STUDIO");
-  const conciergeEnabled = isFeatureEnabled(authConfig?.enabled_features, "CONCIERGE");
-  // The sub-section of each section, from the URL. A Concierge link while the
-  // flag is off lands on the section's default, never on a blank page (UX C3).
+  // The sub-section of each section, from the URL. An unknown sub-section
+  // lands on the section's default, never on a blank page (UX C3).
   const organizationSection = pickSection<OrganizationSubsection>(rawSection, ["profile", "departments", "units", "rates"]);
-  const automations = automationsSection(rawSection, { isXtmOne, conciergeEnabled: Boolean(authConfig) && conciergeEnabled });
+  const automations = automationsSection(rawSection, { isXtmOne });
   const integrationsSection = pickSection<IntegrationsSettingsSection>(rawSection, ["catalog", "oauth", "channels", "mcp"]);
   const aiSection = pickSection<AiSection>(rawSection, aiLicensed ? ["models", "media", "assistant", "knowledge"] : ["models", "media", "assistant"]);
   const usageSection = pickSection<UsageSection>(rawSection, ["quotas", "observability", "pricing"]);
@@ -422,7 +421,7 @@ function SettingsPage() {
     { key: "platform", label: "Platform", icon: SlidersHorizontal },
   ];
   const automationsSections = AUTOMATIONS_SECTIONS.filter(({ key }) =>
-    key === "ctem-agents" ? isXtmOne : key === "concierge" ? conciergeEnabled : true,
+    key === "ctem-agents" ? isXtmOne : true,
   );
 
   // For custom_openai, litellm, tei and the media providers, compose the compound key from separate fields
@@ -2477,7 +2476,7 @@ function SettingsPage() {
       {/* Not wrapped: rating agent work and defining what it is scored on
           involve no model, so they stay available with AI off. */}
       {tab === "automations" && automations === "quality" && <FeedbackCriteriaSection />}
-      {tab === "automations" && automations === "concierge" && <ConciergeSection />}
+      {tab === "automations" && automations === "health" && <HealthSection />}
 
       {/* ================================================================ */}
       {/* Integrations: catalog, OAuth defaults, channels, MCP endpoint    */}

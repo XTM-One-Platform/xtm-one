@@ -153,7 +153,8 @@ def test_the_answer_names_the_review_page_and_the_conflict():
     ("slug", "builtin", "admin", "offered"),
     [
         ("ctem-assistant", True, True, True),
-        ("concierge", True, True, True),
+        ("platform-health", True, True, True),
+        ("concierge", True, True, False),
         ("ctem-assistant", True, False, False),
         ("ctem-assistant", False, True, False),
         ("opencti-assistant", True, True, False),

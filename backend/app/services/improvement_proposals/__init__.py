@@ -15,7 +15,7 @@
 
 A typed, evidenced change to a production target - persona, skill, assignment
 prompt, flow - filed by a person (the #1044 persona rewrite) or by the
-Concierge's Experimenter, approved by the people who manage the target,
+Platform Health's Experimenter, approved by the people who manage the target,
 watched, and rolled back on regression. ``lifecycle`` holds the rules every
 type shares, ``registry`` what each type does to its target.
 """

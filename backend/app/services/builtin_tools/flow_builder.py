@@ -38,7 +38,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.concierge.sandbox.guards import guard_flow_builder, in_concierge_run
+from app.services.health.sandbox.guards import guard_flow_builder, in_health_run
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -198,8 +198,8 @@ def build_flow_builder_tool(
                 ).where(Flow.id == fid)
             )
         ).scalar_one_or_none()
-        if flow is None and in_concierge_run():
-            # A Concierge run works on its sandbox copies, which no listing shows (#8255).
+        if flow is None and in_health_run():
+            # A Platform Health run works on its sandbox copies, which no listing shows (#8255).
             flow = (
                 await db.execute(select(Flow).where(Flow.id == fid, Flow.is_sandbox.is_(True)))
             ).scalar_one_or_none()
@@ -210,7 +210,7 @@ def build_flow_builder_tool(
         (``get_manageable_entity`` -> ``can_manage``); None when they may."""
         from app.api.v1.helpers import can_manage, get_user_group_ids
 
-        if flow.is_sandbox and in_concierge_run():
+        if flow.is_sandbox and in_health_run():
             return None
         if can_manage(user, flow, await get_user_group_ids(db, user.id)):
             return None
@@ -462,10 +462,10 @@ def build_flow_builder_tool(
         refused = await _integration_refusals(normalized, None)
         if refused:
             return refused
-        if in_concierge_run():
-            # A Concierge prototype lands in the sandbox (#8255): a production
+        if in_health_run():
+            # A Platform Health prototype lands in the sandbox (#8255): a production
             # flow comes only from an approved proposal.
-            from app.services.concierge.sandbox.copies import SandboxOverrides, create_sandbox_copy
+            from app.services.health.sandbox.copies import SandboxOverrides, create_sandbox_copy
 
             copy = await create_sandbox_copy(
                 db,

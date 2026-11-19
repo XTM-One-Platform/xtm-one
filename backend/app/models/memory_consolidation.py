@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Memory Steward consolidations (Platform Concierge, #8258).
+"""Memory Steward consolidations (Platform Health, #8258).
 
 A consolidation pass works on ONE memory lane: an agent's own pool
 (``user_id`` NULL) or one user's pool with that agent. Each change it applies

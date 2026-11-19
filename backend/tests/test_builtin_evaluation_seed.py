@@ -367,6 +367,10 @@ async def test_a_failing_benchmark_seed_never_fails_the_boot(monkeypatch, caplog
     from app.services import fleets as fleet_service
 
     monkeypatch.setattr(fleet_service, "backfill_fleet_health_advisory", nothing)
+    # Platform Health is built in (#101): its fleet is seeded on every boot.
+    from app.services.health import fleet_seed as health_fleet_seed
+
+    monkeypatch.setattr(health_fleet_seed, "seed_health_fleet", nothing)
     monkeypatch.setattr(template_container_seed, "seed_builtin_template_containers", nothing)
     monkeypatch.setattr(template_asset_seed, "seed_builtin_template_assets", nothing)
     monkeypatch.setattr(evaluation_seed, "seed_builtin_datasets", fails)

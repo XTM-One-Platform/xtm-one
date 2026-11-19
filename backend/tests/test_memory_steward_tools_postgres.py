@@ -1,4 +1,4 @@
-"""Memory Steward tools on PostgreSQL (#8258): the Concierge only, counts only.
+"""Memory Steward tools on PostgreSQL (#8258): Platform Health only, counts only.
 
 Outside a Concierge run (any login, an administrator's included), and inside
 one while ``CONCIERGE`` is off, every tool refuses and nothing is read. Inside
@@ -14,7 +14,7 @@ import json
 import pytest
 
 from app.services.builtin_tools.memory_steward import build_memory_steward_tools
-from app.services.concierge import identity
+from app.services.health import identity
 from app.tools.base import ToolCall
 from tests.memory_steward_pass_world import pass_world, seed_owner_lane
 
@@ -29,11 +29,11 @@ async def test_the_tools_refuse_anything_but_a_concierge_run(monkeypatch) -> Non
     async with pass_world(monkeypatch) as world:
         await seed_owner_lane(world)
         _defs, executor = build_memory_steward_tools()
-        principal = identity.ConciergePrincipal(agent_id=world.agent, role="memory_steward")
+        principal = identity.HealthPrincipal(agent_id=world.agent, role="memory_steward")
 
         for inside, flag in ((False, True), (True, False)):
-            monkeypatch.setattr(identity, "concierge_enabled", lambda flag=flag: flag)
-            with identity.acting_as_concierge(principal) if inside else contextlib.nullcontext():
+            monkeypatch.setattr(identity, "health_enabled", lambda flag=flag: flag)
+            with identity.acting_as_health_principal(principal) if inside else contextlib.nullcontext():
                 for name, arguments in (
                     ("list_memory_lanes", {}),
                     ("consolidate_memory_lane", {"agent_id": str(world.agent), "user_id": str(world.owner)}),
@@ -43,7 +43,7 @@ async def test_the_tools_refuse_anything_but_a_concierge_run(monkeypatch) -> Non
                     assert (result.is_error, result.refused, result.content) == (
                         True,
                         True,
-                        "Error: the memory tools are reserved to the Platform Concierge.",
+                        "Error: the memory tools are reserved to Platform Health.",
                     ), (name, inside, flag)
 
         assert world.model_calls == []
@@ -55,10 +55,10 @@ async def test_a_concierge_run_lists_passes_and_counts_without_content(monkeypat
         await seed_owner_lane(world)
         world.readable.discard((world.agent, world.other))
         _defs, executor = build_memory_steward_tools()
-        principal = identity.ConciergePrincipal(agent_id=world.agent, role="memory_steward")
+        principal = identity.HealthPrincipal(agent_id=world.agent, role="memory_steward")
         lane = {"agent_id": str(world.agent), "user_id": str(world.owner)}
 
-        with identity.acting_as_concierge(principal):
+        with identity.acting_as_health_principal(principal):
             lanes = await _call(executor, "list_memory_lanes")
             applied = await _call(executor, "consolidate_memory_lane", **lane)
             unchanged = await _call(executor, "consolidate_memory_lane", **lane)
@@ -76,7 +76,10 @@ async def test_a_concierge_run_lists_passes_and_counts_without_content(monkeypat
             False,
             {"status": "unchanged", "counts": {}},
         )
-        assert (refused.refused, refused.content) == (True, "Error: this memory lane may not be read by the Concierge.")
+        assert (refused.refused, refused.content) == (
+            True,
+            "Error: this memory lane may not be read by Platform Health.",
+        )
         assert malformed.content == "Error: agent_id must be a UUID."
         assert json.loads(counts.content)["counts"] == {"merge": 1, "remove": 1, "demote": 1}
         for result in (lanes, applied, unchanged, refused, counts):

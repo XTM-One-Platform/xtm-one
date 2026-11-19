@@ -1,0 +1,6 @@
+{
+  "id": "butler",
+  "displayName": "Butler",
+  "description": "A gentleman butler with a silver tray: he shows what Platform Health is doing.",
+  "spritesheetPath": "spritesheet.webp"
+}
