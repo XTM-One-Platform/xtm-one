@@ -2493,6 +2493,8 @@ async def test_checkout_rebase_repeat_while_its_job_runs_answers_that_job(store,
     assert f"Rebase {run_id}" in sync_repeat.content
     assert await jobs.rebase_landed(executor.session, {"checkout": "repo", "ref": "main"}) is False
     gate.set()
+    # The repeats above only needed a short wait; this poll waits for the rebase to end.
+    monkeypatch.setattr(jobs, "POLL_WAIT", 30.0)
     done = await _call(composite, "sandbox_checkout_rebase", checkout="repo", run_id=run_id)
     assert done.content.startswith("workspace/repo/: rebased from acme/repo@v1")
 

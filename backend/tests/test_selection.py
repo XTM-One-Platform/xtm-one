@@ -225,6 +225,8 @@ def test_a_change_to_the_selection_runs_every_suite_it_decides(graph, frontend, 
     assert selection.migrations_reason(change, graph, tmp_path / "backend" / "alembic")
     assert select_frontend_unit(change, frontend).mode == "full"
     assert selection.frontend_build_reason(change)
+    # And the select job's own answer carries it: the graph is the small tree's, not the repository's.
+    assert selection.run_ci(change, None, tmp_path / "out", graph=graph)["frontend-build"] == "true"
 
 
 def test_a_file_of_tests_itself_selects_by_its_name_not_by_the_folder_every_test_imports(graph):
