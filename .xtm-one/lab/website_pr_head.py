@@ -256,9 +256,15 @@ def seed_user(root: Path, run_env: dict[str, str]) -> None:
         **run_env, "LAB_EMAIL": LAB_ADMIN_EMAIL, "LAB_PASSWORD": LAB_ADMIN_PASSWORD, "LAB_TOTP": LAB_TOTP_SECRET})
 
 
+NEXT_ORIGIN = f"http://127.0.0.1:{NEXT_PORT}"
+
+
 def upstream_headers(headers, payload: bytes = b"") -> dict[str, str]:
-    """The browser's headers for next dev, its Host kept; an Origin is presented as the site's own (csrf list)."""
-    out = {k: v for k, v in headers.items() if k.lower() not in ("connection", "content-length", "origin")}
+    """The browser's headers for next dev with next's own Host: a middleware rewrite to another host is proxied
+    by next as an external URL (back through this Front, where /en 308s to / and loops). An Origin is presented as
+    the site's own (Payload's csrf list)."""
+    out = {k: v for k, v in headers.items() if k.lower() not in ("connection", "content-length", "origin", "host")}
+    out["Host"] = f"127.0.0.1:{NEXT_PORT}"
     if any(k.lower() == "origin" for k in headers.keys()):
         out["Origin"] = SERVER_URL
     if payload:
@@ -294,6 +300,13 @@ def sign_in() -> list[str]:
     return cookies + more
 
 
+def browser_location(key: str, value: str, browser: str) -> str:
+    """A redirect next built on its own origin, sent to the browser's."""
+    if key.lower() == "location" and value.startswith(NEXT_ORIGIN):
+        return browser + value[len(NEXT_ORIGIN):]
+    return value
+
+
 class Front(proxy.Front):
     """The preview port: ``/lab/*`` here, the rest to next dev."""
 
@@ -326,7 +339,8 @@ class Front(proxy.Front):
         connection = http.client.HTTPConnection("127.0.0.1", NEXT_PORT, timeout=600)
         connection.request(self.command, self.path, body=payload or None,
                            headers=upstream_headers(self.headers, payload))
-        lab.relay_response(self, connection.getresponse())
+        browser = f"http://{self.headers.get('Host') or f'localhost:{PORT}'}"
+        lab.relay_response(self, connection.getresponse(), lambda key, value: browser_location(key, value, browser))
         connection.close()
 
     def _handle(self) -> None:

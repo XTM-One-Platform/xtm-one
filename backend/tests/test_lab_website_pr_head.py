@@ -64,14 +64,22 @@ def test_the_totp_code_is_rfc_6238():
     assert len(module.totp(module.LAB_TOTP_SECRET)) == 6
 
 
-def test_the_forward_keeps_the_host_and_presents_the_site_origin():
+def test_the_forward_uses_next_host_and_presents_the_site_origin():
     module = _module()
     headers = module.upstream_headers(
         {"Host": "preview.example", "Origin": "http://preview.example", "Connection": "keep-alive",
          "Content-Length": "9"}, b"ab")
-    assert headers["Host"] == "preview.example" and headers["Origin"] == module.SERVER_URL
+    assert headers["Host"] == f"127.0.0.1:{module.NEXT_PORT}" and headers["Origin"] == module.SERVER_URL
     assert "Connection" not in headers and headers["Content-Length"] == "2"
     assert "Origin" not in module.upstream_headers({"Host": "preview.example"})
+
+
+def test_a_redirect_next_builds_goes_to_the_browser_origin():
+    module = _module()
+    browser = "http://preview.example:4200"
+    assert module.browser_location("Location", f"{module.NEXT_ORIGIN}/fr?x=1", browser) == f"{browser}/fr?x=1"
+    assert module.browser_location("Location", "https://filigran.io/", browser) == "https://filigran.io/"
+    assert module.browser_location("Content-Type", module.NEXT_ORIGIN, browser) == module.NEXT_ORIGIN
 
 
 def test_a_seed_svg_loses_only_what_payload_refuses(tmp_path):
