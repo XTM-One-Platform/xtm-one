@@ -2057,6 +2057,24 @@ def _fmt_scenario(s: dict, base_url: str = "") -> str:
 # those two apart).
 _SCENARIO_BUILTIN_DEPENDENCY = "STARTERPACK"
 
+# Key get_openaev_scenario adds to the scenario payload: the inject count read
+# from GET /api/scenarios/{id}/injects (an int), or None when that read failed.
+SCENARIO_INJECT_COUNT_KEY = "_inject_count"
+
+
+def count_scenario_injects(payload: Any) -> int | None:
+    """Inject count of a GET /api/scenarios/{id}/injects answer (list or page)."""
+    if isinstance(payload, list):
+        return len(payload)
+    if isinstance(payload, dict):
+        total = payload.get("totalElements")
+        if isinstance(total, int):
+            return total
+        content = payload.get("content")
+        if isinstance(content, list):
+            return len(content)
+    return None
+
 
 def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
     """Recurrence, origin, inject count and dates of a scenario, when returned.
@@ -2085,9 +2103,14 @@ def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
     injects = s.get("scenario_injects")
     if isinstance(injects, list):
         lines.append(f"  Injects: {len(injects)}")
-    tags = s.get("scenario_tags")
-    if isinstance(tags, list) and tags:
-        lines.append(f"  Tags: {len(tags)}")
+    elif SCENARIO_INJECT_COUNT_KEY in s:
+        # Set by get_openaev_scenario from GET /api/scenarios/{id}/injects:
+        # the scenario read itself does not return its injects.
+        count = s.get(SCENARIO_INJECT_COUNT_KEY)
+        lines.append(f"  Injects: {count if isinstance(count, int) else 'not returned'}")
+    if "scenario_tags" in s:
+        tags = s.get("scenario_tags") or []
+        lines.append(f"  Tags: {len(tags) if isinstance(tags, list) and tags else 'none'}")
     if s.get("scenario_created_at"):
         lines.append(f"  Created: {s['scenario_created_at']}")
     if s.get("scenario_updated_at"):
