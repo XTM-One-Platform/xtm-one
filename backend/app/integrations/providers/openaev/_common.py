@@ -1840,10 +1840,112 @@ def _fmt_asset_group(g: dict) -> str:
         lines.append(f"  Description: {g['asset_group_description'][:300]}")
     if g.get("asset_group_assets_number") is not None:
         lines.append(f"  Assets count: {g['asset_group_assets_number']}")
+    if "asset_group_dynamic_filter" in g:
+        described = describe_filter_group(g.get("asset_group_dynamic_filter"))
+        lines.append(
+            f"  Dynamic filter: {clip_text(described, 600)}"
+            if described
+            else "  Dynamic filter: none (static members only)"
+        )
+    static_ids = g.get("asset_group_assets")
+    dynamic_ids = g.get("asset_group_dynamic_assets")
+    if isinstance(static_ids, list) or isinstance(dynamic_ids, list):
+        counts = []
+        if isinstance(static_ids, list):
+            counts.append(f"{len(static_ids)} static")
+        if isinstance(dynamic_ids, list):
+            counts.append(f"{len(dynamic_ids)} dynamic")
+        lines.append(f"  Member ids on the group: {', '.join(counts)}")
     tags = g.get("asset_group_tags") or []
     if tags:
         lines.append(f"  Tags: {', '.join(tags)}")
     return "\n".join(lines)
+
+
+#: Members listed per call by get_openaev_asset_group (OpenAEV pages them).
+ASSET_GROUP_MEMBERS_MAX = 100
+
+
+def describe_filter_group(group: Any) -> str:
+    """An OpenAEV ``FilterGroup`` as one readable line (``""`` when empty).
+
+    ``asset_name contains [web, db] AND (asset_tags eq [t1] OR ...)``: the
+    values of one filter are alternatives, the group's mode joins the filters.
+    """
+    if not isinstance(group, dict):
+        return ""
+    mode = str(group.get("mode") or "and").upper()
+    parts: list[str] = []
+    for f in group.get("filters") or []:
+        if not isinstance(f, dict):
+            continue
+        nested = f.get("filterGroup")
+        if isinstance(nested, dict):
+            inner = describe_filter_group(nested)
+            if inner:
+                parts.append(f"({inner})")
+            continue
+        key = f.get("key")
+        if not key:
+            continue
+        operator = f.get("operator") or "eq"
+        values = [str(v) for v in (f.get("values") or [])]
+        if operator in ("empty", "not_empty") or not values:
+            parts.append(f"{key} {operator}")
+        else:
+            parts.append(f"{key} {operator} [{', '.join(values)}]")
+    return f" {mode} ".join(parts)
+
+
+def _fmt_asset_group_member(m: dict[str, Any]) -> str:
+    name = m.get("asset_name") or m.get("endpoint_name") or "?"
+    details = [f"id: {m.get('asset_id') or m.get('endpoint_id') or 'N/A'}"]
+    for label, key in (
+        ("type", "asset_type"),
+        ("hostname", "asset_hostname"),
+        ("platform", "endpoint_platform"),
+        ("criticality", "asset_criticality"),
+    ):
+        if m.get(key):
+            details.append(f"{label}: {m[key]}")
+    line = f"    - {name} ({', '.join(details)})"
+    if m.get("is_static") is not None:
+        line += " [static]" if m["is_static"] else " [dynamic]"
+    return line
+
+
+def fmt_asset_group_members(page: Any, page_index: int, size: int, search: str = "") -> list[str]:
+    """Lines for one page of ``POST /api/asset_groups/{id}/assets/search``."""
+    if not isinstance(page, dict):
+        return ["  Members: not listed (OpenAEV answered no page)."]
+    content = [m for m in page.get("content") or [] if isinstance(m, dict)]
+    total = page.get("totalElements")
+    if not isinstance(total, int):
+        total = len(content)
+    scope = f" matching '{search}'" if search else ""
+    if total == 0:
+        return [f"  Members{scope}: none (static and dynamic)."]
+    start = page_index * size
+    if not content:
+        return [f"  Members{scope}: {total} in all; page {page_index} is past the last one."]
+    end = start + len(content)
+    lines = [f"  Members{scope}: {total} in all (static and dynamic), showing {start + 1}-{end}:"]
+    lines.extend(_fmt_asset_group_member(m) for m in content)
+    if end < total:
+        lines.append(f"    ... {total - end} more: call again with members_page={page_index + 1}.")
+    return lines
+
+
+def asset_group_member_ids_lines(g: dict[str, Any], reason: str, limit: int = 20) -> list[str]:
+    """Fallback when the member search is refused: the ids the group carries."""
+    lines = [f"  Members: not listed by name ({clip_text(reason, 200)})."]
+    for label, key in (("Static", "asset_group_assets"), ("Dynamic", "asset_group_dynamic_assets")):
+        ids = g.get(key)
+        if isinstance(ids, list) and ids:
+            shown = ", ".join(str(i) for i in ids[:limit])
+            more = f" (+{len(ids) - limit} more)" if len(ids) > limit else ""
+            lines.append(f"    {label} member ids: {shown}{more}")
+    return lines
 
 
 def _fmt_team(t: dict, base_url: str = "") -> str:
@@ -2495,6 +2597,7 @@ def _fmt_reporting_generation(g: dict) -> str:
 
 
 __all__ = [
+    "ASSET_GROUP_MEMBERS_MAX",
     "COMMAND_EXECUTORS",
     "EXPECTATION_EXPIRED_RESULT",
     "EXPECTATION_RESULT_TYPES",
@@ -2552,8 +2655,11 @@ __all__ = [
     "_tenant_path",
     "_validate_filter_group",
     "_with_scope_hint",
+    "asset_group_member_ids_lines",
+    "describe_filter_group",
     "expectation_label",
     "expectation_result_type",
+    "fmt_asset_group_members",
     "inject_targets_line",
     "json_answer",
     "logger",
