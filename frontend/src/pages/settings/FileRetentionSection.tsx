@@ -9,7 +9,7 @@
  * ("Never"). A deleted file keeps a card in the chat; only its bytes go.
  */
 import { useId, useState } from "react";
-import { Eye, HardDrive, Lock, Pencil } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
   usePreviewFileRetention,
   useSaveFileRetention,
 } from "@/hooks/api/useFileRetentionApi";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { formatFileSize } from "@/pages/chat/fileVisuals";
 
@@ -45,8 +46,11 @@ function parseDays(raw: string, max: number): number | null {
   return value >= 0 && value <= max ? value : null;
 }
 
+const StorageGlyph = ({ className }: { className?: string }) => <Icon name="database" size={16} className={className} />;
+
 export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
   const { t_i18n, intl } = useFormatter();
+  const numbers = useNumberFormat();
   const fieldId = useId();
   const { toast } = useToast();
   const { data, isLoading, isError } = useFileRetention(isAdmin);
@@ -114,7 +118,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
     <div data-testid="settings.file-retention" className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <SettingsGroupTitle icon={HardDrive}>{t_i18n("Storage & retention")}</SettingsGroupTitle>
+          <SettingsGroupTitle icon={StorageGlyph}>{t_i18n("Storage & retention")}</SettingsGroupTitle>
           <SettingsGroupDescription>
             {t_i18n(
               "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.",
@@ -123,7 +127,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
         </div>
         {!editing && (
           <Button variant="secondary" size="sm" className="ml-4 shrink-0 gap-1.5" onClick={startEditing} disabled={isLoading || !data}>
-            <Pencil className="h-3 w-3" /> {t_i18n("Edit")}
+            <Icon name="pencil" size={16} aria-hidden /> {t_i18n("Edit")}
           </Button>
         )}
       </div>
@@ -178,7 +182,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
                       {!c.never && <span className="text-default-secondary">{basis(c)}</span>}
                       {c.locked && (
                         <span className="flex items-center gap-1 text-default-secondary" title={t_i18n("Set by {name}", { name: c.env_var })}>
-                          <Lock className="h-3 w-3" aria-hidden /> {t_i18n("Set by {name}", { name: c.env_var })}
+                          <Icon name="lock" size={16} aria-hidden /> {t_i18n("Set by {name}", { name: c.env_var })}
                         </span>
                       )}
                     </span>
@@ -199,7 +203,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
                   )}
                 </td>
                 <td className="py-2 pr-3 text-right tabular-nums">
-                  {c.files.toLocaleString(intl.locale)}
+                  {numbers.exactCount(c.files)}
                   {c.deleted > 0 && (
                     <div className="content-compact text-default-secondary">
                       {t_i18n("{count, plural, one {# deleted} other {# deleted}}", { count: c.deleted })}
@@ -227,7 +231,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
             <div className="flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-3">
               <p className="content-base">{t_i18n("A shorter retention deletes files at the next sweep. Preview what goes before saving.")}</p>
               <Button variant="secondary" size="sm" className="shrink-0 gap-1.5" onClick={runPreview} disabled={invalid || preview.isPending}>
-                <Eye className="h-3 w-3" /> {t_i18n("Preview")}
+                <Icon name="eye" size={16} aria-hidden /> {t_i18n("Preview")}
               </Button>
             </div>
           )}
