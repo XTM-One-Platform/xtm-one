@@ -8,6 +8,7 @@ the declaration, the ports, the environment the backend boots with, the build an
 from __future__ import annotations
 
 import importlib.util
+import io
 
 import pytest
 
@@ -88,7 +89,7 @@ def test_the_sign_in_sets_a_readable_xsrf_cookie():
     assert cookie.startswith("XSRF-TOKEN=") and "HttpOnly" not in cookie
 
 
-def test_the_seed_writes_on_the_default_tenant(monkeypatch):
+def test_the_seed_writes_on_the_default_tenant(monkeypatch, tmp_path):
     module = _module()
     calls = []
 
@@ -103,10 +104,70 @@ def test_the_seed_writes_on_the_default_tenant(monkeypatch):
         return {}
 
     monkeypatch.setattr(module, "api", api)
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
     done = module.seed()
     assert all(path.startswith(f"/api/tenants/{module.TENANT_ID}/") for _, path in calls)
     assert len(done) == len(module.SEED_ASSETS) + 3
     assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
+    assert "seed_missing" not in module.STATE
+
+
+def _http_error(module, code: int, body: bytes):
+    return module.urllib.error.HTTPError("http://lab", code, "Error", {}, io.BytesIO(body))
+
+
+def test_a_seed_step_is_retried_while_the_backend_warms_up(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    monkeypatch.setattr(module, "SEED_RETRY_SECONDS", 0)
+    answers = [module.urllib.error.URLError("refused"), _http_error(module, 503, b"starting"), {"exercise_id": "e9"}]
+
+    def api(method, path, body=None):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(module, "api", api)
+    assert module.seed_call("POST", module.tenant_path("exercises"), module.SEED_SIMULATION) == {"exercise_id": "e9"}
+    assert not answers
+
+
+def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_next_start(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    monkeypatch.setattr(module, "STATE", {})
+    calls = []
+    refuse = {"exercises": True}
+
+    def api(method, path, body=None):
+        calls.append(path)
+        if path.endswith("exercises") and refuse["exercises"]:
+            raise _http_error(module, 400, b'{"message":"exercise_name: must not be blank"}')
+        if path.endswith("endpoints/agentless"):
+            return {"asset_id": f"a{len(calls)}"}
+        if path.endswith("scenarios"):
+            return {"scenario_id": "s1"}
+        if path.endswith("exercises"):
+            return {"exercise_id": "e1"}
+        return {}
+
+    monkeypatch.setattr(module, "api", api)
+    first = module.seed()
+    assert len(first) == len(module.SEED_ASSETS) + 2
+    assert calls.count(module.tenant_path("exercises")) == 1, "a 4xx is final, never retried"
+    assert "HTTP 400" in module.STATE["seed_missing"] and "must not be blank" in module.STATE["seed_missing"]
+    assert "simulation" not in module.STATE
+
+    # The next start on the kept database seeds only the step the record lacks.
+    calls.clear()
+    refuse["exercises"] = False
+    module.STATE.clear()
+    second = module.seed()
+    assert calls == [module.tenant_path("exercises")]
+    assert second == [f"simulation {module.SEED_SIMULATION['exercise_name']}"]
+    assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
+    assert "seed_missing" not in module.STATE
 
 
 def test_the_start_refuses_a_checkout_missing_a_sub_path(monkeypatch, tmp_path):
