@@ -328,13 +328,15 @@ async def rebase_running(
     return task
 
 
-async def rebase_answer(workspace: Any, run_id: str, *, wait: float = POLL_WAIT) -> tuple[str, str, bool]:
+async def rebase_answer(workspace: Any, run_id: str, *, wait: float | None = None) -> tuple[str, str, bool]:
     """The state of the rebase job *run_id*: ``(status, text, is_error)``.
 
     *status* is ``ended`` (text = its answer), ``running`` (still running after *wait*
-    seconds when this worker holds it, or beating in another worker), ``lost`` (no
-    heartbeat for :data:`STALE_AFTER` seconds: its worker stopped) or ``unknown``.
+    seconds, :data:`POLL_WAIT` by default, when this worker holds it, or beating in another
+    worker), ``lost`` (no heartbeat for :data:`STALE_AFTER` seconds: its worker stopped) or ``unknown``.
     """
+    # Read at the call, not bound at the definition: a test that sets POLL_WAIT waits that long.
+    wait = POLL_WAIT if wait is None else wait
     task = _LOCAL.get(run_id)
     if task is not None and not task.done():
         with contextlib.suppress(TimeoutError, asyncio.TimeoutError):

@@ -288,6 +288,13 @@ def mock_http(monkeypatch):
     def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
         captured.update(kwargs)
         kwargs["transport"] = httpx.MockTransport(handler)
+        # A mount wins over the transport: a proxy's would open a real connection (to the address
+        # fake_getaddrinfo answers) and wait out its connect timeout.
+        if kwargs.get("mounts"):
+            kwargs["mounts"] = {
+                pattern: None if mounted is None else httpx.MockTransport(handler)
+                for pattern, mounted in kwargs["mounts"].items()
+            }
         return _REAL_ASYNC_CLIENT(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", factory)

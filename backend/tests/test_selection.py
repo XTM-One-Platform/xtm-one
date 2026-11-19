@@ -224,7 +224,7 @@ def test_a_change_to_the_selection_runs_every_suite_it_decides(graph, frontend, 
     change = ["backend/tests/selection.py"]
     assert selection.migrations_reason(change, graph, tmp_path / "backend" / "alembic")
     assert select_frontend_unit(change, frontend).mode == "full"
-    assert selection.run_ci(change, None, tmp_path / "out")["frontend-build"] == "true"
+    assert selection.frontend_build_reason(change)
 
 
 def test_a_file_of_tests_itself_selects_by_its_name_not_by_the_folder_every_test_imports(graph):

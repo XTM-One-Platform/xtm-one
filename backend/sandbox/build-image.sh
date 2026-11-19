@@ -11,11 +11,10 @@
 # The image name picks the entry in sandbox-images.json; the tag is yours (the
 # version the app's OPENSANDBOX_IMAGES points at, or a throwaway name in CI).
 #
-# If BUILDX_CACHE_DIR is set (CI only — see sandbox-images.yml), builds via
-# `docker buildx build --load` with a local layer cache at that path instead
-# of a plain `docker build`, so a cold CI runner doesn't reinstall every
-# apt/pip dependency (tensorflow, opencv, GDAL, ...) on every matrix tag on
-# every PR. Local dev leaves this unset and gets a plain build, which already
+# If BUILDX_CACHE_DIR is set, builds via `docker buildx build --load` with a
+# local layer cache at that path instead of a plain `docker build`. Nothing
+# sets it any more: sandbox-images.yml builds cold (its layer caches filled the
+# repository's cache quota), and local dev gets a plain build, which already
 # reuses Docker's own local image-layer cache across runs.
 set -uo pipefail
 

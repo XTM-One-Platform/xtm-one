@@ -244,7 +244,7 @@ jobs:
   # 11 to 20 minutes on main and one was cancelled at 25 (2 Nov 2026):
   # six keep a shard near 13 minutes, collection included. The select job
   # sizes the matrix: a share of the suite takes its share of the shards
-  # (about 23 minutes of one worker's tests each, on four workers), the whole
+  # (about 17 minutes of one worker's tests each, on four workers), the whole
   # of it eight.
   # The 25-minute cap sits on the test step, not the job: a job killed by its
   # own timeout ends `cancelled` and GitHub then concludes the whole run
@@ -272,7 +272,7 @@ jobs:
           name: test-selection
           path: ${{ runner.temp }}/selection
 
-      # The install-script tests (tests/test_runner_install_scripts.py) start
+      # The install-script tests (tests/test_runner_install_ps1.py) start
       # PowerShell 7, whose first start on a fresh runner reads the .NET runtime
       # and the C# compiler from a cold disk and JIT-compiles them. Paid inside
       # pytest, next to a worker running the CPU-heavy video tests on the same
@@ -346,11 +346,11 @@ jobs:
           python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25 \
             --junitxml "$RUNNER_TEMP/junit/unit-${PYTEST_SHARD%/*}.xml" -o junit_family=xunit1
 
-      # Each test file's seconds, for tests/shard_durations.json: the nightly
-      # run is the full pass whose reports refresh it
+      # Each test file's seconds, for tests/shard_durations.json: a full run
+      # (nightly or manual) keeps the reports that refresh it
       # (backend/scripts/refresh_shard_durations.py).
       - name: Keep the test timings
-        if: always() && github.event_name == 'schedule'
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: unit-junit-${{ strategy.job-index }}

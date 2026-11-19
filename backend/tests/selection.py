@@ -161,9 +161,10 @@ GRAPH_ROOTS = ("app", "scripts", "tests")
 #: A package whose ``__init__`` imports its own submodules by computed name.
 _IMPORTS_ITS_SUBMODULES = re.compile(r"import_module\(\s*f[\"']\{__name__\}\.|pkgutil\.\w+\(\s*__path__")
 
-#: Worker-seconds of unit tests one shard takes on: four xdist workers, about six minutes of tests
-#: (a sixth of the table, 1750 s, ran in five to seven on 18 Nov 2026), next to about 2.5 of setup.
-UNIT_SECONDS_PER_SHARD = 1400.0
+#: Worker-seconds of unit tests one shard takes on, by ``shard_durations.json``: an eighth of the table
+#: (about 1080 s) ran in 4.7 to 5.8 minutes, setup included, on 19 Nov 2026 (run 44534423144); the whole
+#: suite keeps its eight shards.
+UNIT_SECONDS_PER_SHARD = 1050.0
 #: At most this many shards a suite takes, whole or selected. The Browser tool runs its tests one at a
 #: time, about half an hour of them, and a shard's setup takes about a minute: five keep it under ten.
 MAX_SHARDS = {"unit": 8, "integration": 4, "chromium": 5, "frontend-unit": 3}
@@ -184,8 +185,16 @@ def is_test_file(path: str) -> bool:
     return path.startswith("tests/") and path.endswith(".py") and Path(path).name.startswith("test_")
 
 
+#: The fields of a node that hold statements: an import is a statement, so no expression can hold one.
+_STATEMENT_LISTS = ("body", "orelse", "finalbody", "handlers", "cases")
+
+
 def _imports(tree: ast.AST) -> Iterable[tuple[ast.Import | ast.ImportFrom, bool]]:
-    """Every import of ``tree`` but those under ``if TYPE_CHECKING:``, and whether it sits in a function."""
+    """Every import of ``tree`` but those under ``if TYPE_CHECKING:``, and whether it sits in a function.
+
+    Only the statement lists are walked (an expression holds no statement): walking
+    every node took two thirds of ``Graph.read``.
+    """
     stack: list[tuple[ast.AST, bool]] = [(tree, False)]
     while stack:
         node, deferred = stack.pop()
@@ -195,8 +204,9 @@ def _imports(tree: ast.AST) -> Iterable[tuple[ast.Import | ast.ImportFrom, bool]
         if isinstance(node, ast.If) and _is_type_checking(node.test):
             stack.extend((child, deferred) for child in node.orelse)
             continue
-        inner = deferred or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-        stack.extend((child, inner) for child in ast.iter_child_nodes(node))
+        inner = deferred or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        for statements in _STATEMENT_LISTS:
+            stack.extend((child, inner) for child in getattr(node, statements, ()))
 
 
 def _is_type_checking(test: ast.expr) -> bool:
@@ -832,6 +842,18 @@ def _summary(path: Path | None, title: str, rows: Sequence[tuple[str, str]]) -> 
         out.write("\n".join(lines) + "\n")
 
 
+def frontend_build_reason(changed: Iterable[str]) -> str | None:
+    """Why the frontend build runs for ``changed``; ``None``: it skips."""
+    return next(
+        (
+            f"{p} changes the frontend"
+            for p in changed
+            if p.startswith("frontend/") or p in {".github/workflows/ci.yml", "backend/tests/selection.py"}
+        ),
+        None,
+    )
+
+
 def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) -> dict[str, object]:
     """The answer of ``ci.yml``'s ``select`` job: ``changed`` is ``None`` when every suite runs."""
     graph = Graph.read()
@@ -844,14 +866,7 @@ def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) ->
         selection = select_backend(changed, graph)
         frontend = select_frontend_unit(changed)
         migrations = migrations_reason(changed, graph)
-        build = next(
-            (
-                f"{p} changes the frontend"
-                for p in changed
-                if p.startswith("frontend/") or p in {".github/workflows/ci.yml", "backend/tests/selection.py"}
-            ),
-            None,
-        )
+        build = frontend_build_reason(changed)
     plan = plan_backend(selection, graph)
     frontend_shards = {"skip": 0, "related": 1, "full": MAX_SHARDS["frontend-unit"]}[frontend.mode]
     outdir.mkdir(parents=True, exist_ok=True)
