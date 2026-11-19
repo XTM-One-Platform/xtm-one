@@ -54,7 +54,7 @@ import re
 import shlex
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -255,6 +255,8 @@ class CommandOutcome:
     stopped: bool = False
     #: Workspace paths the command added or changed, as read back (empty when nothing was saved).
     written: list[str] = field(default_factory=list)
+    #: The part of :attr:`written` that existed before the command (changed, not added).
+    rewritten: list[str] = field(default_factory=list)
     #: Workspace paths its output says were missing (a ``No such file or directory`` line), see :func:`missing_paths`.
     missing: list[str] = field(default_factory=list)
     #: Test files pytest could not collect (relative to the check's directory), see :func:`uncollected_files`.
@@ -398,6 +400,17 @@ def is_install(command: ResolvedCommand) -> bool:
 def is_install_name(name: str) -> bool:
     """Whether a check named *name* is a dependency install (``install``, ``frontend-install``, ``x:node-install``)."""
     return bool(name) and name.rsplit(":", 1)[-1].rsplit("-", 1)[-1] == "install"
+
+
+def rewritten_manifests(command: ResolvedCommand | None, repo_paths: Iterable[str]) -> list[str]:
+    """The manifests and lockfiles among *repo_paths* (files a run changed) when *command* is an install, sorted.
+
+    ``[]`` for any other check: only an install is expected to leave the tree as it found it, so a
+    ``package.json`` it rewrote would otherwise reach ``from_checkout`` as a change of the branch.
+    """
+    if command is None or not is_install(command):
+        return []
+    return sorted({path for path in repo_paths if posixpath.basename(path) in LOCKFILES})
 
 
 def install_cache_key(command: ResolvedCommand, entries: dict) -> str | None:
@@ -2659,6 +2672,7 @@ async def _wait_and_finish(
 
         notes.append("Workspace: " + format_diff(call.diff))
         outcome.written = [*call.diff.added, *call.diff.changed]
+        outcome.rewritten = list(call.diff.changed)
     outcome.missing = missing_paths(f"{stdout}\n{stderr}", REMOTE_WORKSPACE)
     outcome.uncollected = uncollected_files(f"{stdout}\n{stderr}")
     outcome.interrupted = bool(_INTERRUPTED.search(f"{stdout}\n{stderr}"))
