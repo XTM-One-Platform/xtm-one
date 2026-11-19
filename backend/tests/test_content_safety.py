@@ -493,6 +493,34 @@ class TestWebFetchQuarantine:
         assert output.startswith("Failed to fetch URL:")
         assert "refused this client" not in output
 
+    async def test_a_failure_names_the_url(self, monkeypatch):
+        import app.services.web_fetch as web_fetch_mod
+
+        monkeypatch.setattr(web_fetch_mod, "fetch_and_extract", AsyncMock(side_effect=RuntimeError("boom")))
+        _, executor = build_web_fetch_tool()
+        handler = executor._handlers["web_fetch"]
+        output = await handler(url="https://lab.example.internal/page")
+        assert output.startswith("Failed to fetch URL: https://lab.example.internal/page: boom")
+        assert "TLS certificate" not in output
+
+    async def test_a_self_signed_certificate_says_a_retry_fails_the_same_way(self, monkeypatch):
+        import ssl
+
+        import httpx
+
+        import app.services.web_fetch as web_fetch_mod
+
+        cause = ssl.SSLCertVerificationError("[SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate")
+        error = httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+        error.__cause__ = cause
+        monkeypatch.setattr(web_fetch_mod, "fetch_and_extract", AsyncMock(side_effect=error))
+        _, executor = build_web_fetch_tool()
+        handler = executor._handlers["web_fetch"]
+        output = await handler(url="https://lab.example.internal/")
+        assert "https://lab.example.internal/" in output
+        assert "TLS certificate is not trusted" in output
+        assert "refused this client" not in output
+
 
 # ---------------------------------------------------------------------------
 # External channel injection scanning
