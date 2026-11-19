@@ -51,6 +51,7 @@ def test_a_valid_spec_is_accepted() -> None:
         (lambda s: s["spec"]["members"][0].update(handovers=[{"to": "dev", "type": "shout"}]), "handover type"),
         (lambda s: s["spec"].update(connected=[{"agent": {"slug": "x"}, "context_inclusion": "all"}]), "context"),
         (lambda s: s["spec"].update(connected=[{"nothing": 1}]), "connected"),
+        (lambda s: s["spec"].update(autonomy_level="wild"), "autonomy_level"),
     ],
 )
 def test_a_malformed_spec_is_refused_with_its_reason(mutate, message: str) -> None:
@@ -58,6 +59,12 @@ def test_a_malformed_spec_is_refused_with_its_reason(mutate, message: str) -> No
     mutate(spec)
     with pytest.raises(FleetSpecError, match=message):
         validate_fleet_spec(spec)
+
+
+@pytest.mark.parametrize("level", ["full_gates", "medium", "low", "autonomous"])
+def test_a_spec_may_name_the_fleet_autonomy_level(level: str) -> None:
+    """#379: a spec carries the level a new fleet is created at."""
+    assert validate_fleet_spec(_spec(autonomy_level=level))["spec"]["autonomy_level"] == level
 
 
 def test_yaml_and_json_text_parse_and_anything_else_is_refused() -> None:

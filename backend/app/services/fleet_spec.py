@@ -23,6 +23,7 @@ second portability layer (``dev-docs/rfc/fleets.md`` section 9)::
       orchestrator: <member key>
       skills: [...]                      # the Fleet Card skills
       accepted_handover_types: [...]     # null: all of them
+      autonomy_level: full_gates | medium | low | autonomous   # optional (#379)
       member_defaults: {context_inclusion, collaboration_instruction, organization_scope}
       members:
         - key: <agent slug>
@@ -93,6 +94,7 @@ from app.models.fleet import (
 )
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_level, is_raise
 from app.services.fleets import (
     FLEET_HEALTH_CHECK_NAME,
     MEMBER_SETTING_FIELDS,
@@ -231,6 +233,7 @@ async def export_fleet_spec(
             "orchestrator": orchestrator,
             "skills": fleet.skills,
             "accepted_handover_types": fleet.accepted_handover_types,
+            "autonomy_level": effective_level(fleet.autonomy_level),
             "member_defaults": {
                 "context_inclusion": fleet.default_context_inclusion or "none",
                 "collaboration_instruction": fleet.default_collaboration_instruction or "",
@@ -368,6 +371,9 @@ def validate_fleet_spec(spec: dict[str, Any]) -> dict[str, Any]:
     orchestrator = body.get("orchestrator")
     if orchestrator is not None and str(orchestrator) not in keys:
         raise FleetSpecError(f"spec.orchestrator '{orchestrator}' is not a member key.")
+    level = body.get("autonomy_level")
+    if level is not None and level not in AUTONOMY_LEVELS:
+        raise FleetSpecError(f"spec.autonomy_level is one of {', '.join(AUTONOMY_LEVELS)}.")
     for link in body.get("connected") or []:
         if not isinstance(link, dict) or not (isinstance(link.get("agent"), dict) or isinstance(link.get("fleet"), dict)):
             raise FleetSpecError("Every connected entry names an agent or a fleet.")
@@ -622,8 +628,12 @@ async def _upsert_fleet(
         "skills": body.get("skills"),
         "accepted_handover_types": normalize_accepted_handover_types(body.get("accepted_handover_types")),
     }
+    level = body.get("autonomy_level")
     if fleet is None:
         workspace = await _workspace_for(db, user, user_group_ids, workspace_id, metadata.get("workspace"), name, plan)
+        if level is not None:
+            # #379: created at the spec's level, never autonomous first then lowered.
+            wanted["autonomy_level"] = level
         fleet = await create_fleet(db, user_id=user.id, name=name, workspace_id=workspace.id, **{
             k: v for k, v in wanted.items() if k != "name"
         })
@@ -634,6 +644,15 @@ async def _upsert_fleet(
         return fleet
     if fleet.is_archived:
         raise FleetActionRefusedError(409, f"The fleet '{fleet.name}' is archived: restore it before applying a spec.")
+    if level is not None and level != effective_level(fleet.autonomy_level):
+        if is_raise(fleet.autonomy_level, level):
+            # Raising stays a person's choice on the fleet page (#10439): never from a spec.
+            plan.warnings.append(
+                f"autonomy_level '{level}' is a raise from '{effective_level(fleet.autonomy_level)}': "
+                "not applied, an administrator raises it on the fleet page"
+            )
+        else:
+            wanted["autonomy_level"] = level
     changed = [k for k, v in wanted.items() if getattr(fleet, k) != v]
     for k in changed:
         setattr(fleet, k, wanted[k])
