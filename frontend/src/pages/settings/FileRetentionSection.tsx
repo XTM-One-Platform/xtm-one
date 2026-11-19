@@ -13,7 +13,8 @@ import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SettingsGroupDescription, SettingsGroupTitle, SettingsSaveBar } from "@/components/ui/settings-form";
+import { InfoTip } from "@/components/ui/info-tip";
+import { SettingsCard, SettingsSaveBar } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
 import {
   type FileRetentionCategory,
@@ -26,18 +27,47 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { formatFileSize } from "@/pages/chat/fileVisuals";
 
-/** The English name and what each category covers. @i18n-keys */
+/**
+ * The English name, what each category covers and its info bubble: the unit,
+ * a real example, 0 = Never, the basis, what the sweep does. @i18n-keys
+ */
 const CATEGORY_LABELS = {
-  agent_working: { name: "Agent working files", covers: "Scratch files agents write while they work" },
-  agent_download: { name: "Agent deliverables", covers: "Files agents hand to people to download" },
-  agent: { name: "Other agent files", covers: "Files tools and MCP servers return" },
-  chat: { name: "Chat uploads", covers: "Files people attach in a conversation" },
-  channel: { name: "Channel files", covers: "Files received from Teams, Outlook and other channels" },
-  agent_check: { name: "Check pictures", covers: "Frames and captures a tool makes for the agent to look at" },
+  agent_working: {
+    name: "Agent working files",
+    covers: "Scratch files agents write while they work",
+    help: "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a scratch CSV no one opened for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  },
+  agent_download: {
+    name: "Agent deliverables",
+    covers: "Files agents hand to people to download",
+    help: "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a report PDF no one downloaded for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  },
+  agent: {
+    name: "Other agent files",
+    covers: "Files tools and MCP servers return",
+    help: "Days after the file was created. Example: 90 deletes an MCP export 90 days after it arrived. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  },
+  chat: {
+    name: "Chat uploads",
+    covers: "Files people attach in a conversation",
+    help: "Days after the upload. Example: 365 deletes a spreadsheet a year after someone attached it. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  },
+  channel: {
+    name: "Channel files",
+    covers: "Files received from Teams, Outlook and other channels",
+    help: "Days after the file arrived. Example: 180 deletes a Teams attachment six months after it was received. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  },
+  agent_check: {
+    name: "Check pictures",
+    covers: "Frames and captures a tool makes for the agent to look at",
+    help: "Days after the capture. Example: 7 deletes a screenshot an agent checked a week ago. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  },
 } as const;
 
-function categoryLabel(key: string): { name: string; covers: string } | undefined {
-  return (CATEGORY_LABELS as Record<string, { name: string; covers: string }>)[key];
+type CategoryLabel = { name: string; covers: string; help: string };
+
+function categoryLabel(key: string): CategoryLabel | undefined {
+  return (CATEGORY_LABELS as Record<string, CategoryLabel>)[key];
 }
 
 function parseDays(raw: string, max: number): number | null {
@@ -115,23 +145,30 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
   const previewRow = (key: string) => previewed?.result.categories.find((p) => p.category === key);
 
   return (
-    <div data-testid="settings.file-retention" className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <SettingsGroupTitle icon={StorageGlyph}>{t_i18n("Storage & retention")}</SettingsGroupTitle>
-          <SettingsGroupDescription>
-            {t_i18n(
-              "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.",
+    <SettingsCard
+      data-testid="settings.file-retention"
+      icon={StorageGlyph}
+      title={
+        <span className="flex items-center gap-1.5">
+          {t_i18n("Storage & retention")}
+          <InfoTip
+            label={t_i18n("How the file retention works")}
+            content={t_i18n(
+              "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.",
             )}
-          </SettingsGroupDescription>
-        </div>
-        {!editing && (
-          <Button variant="secondary" size="sm" className="ml-4 shrink-0 gap-1.5" onClick={startEditing} disabled={isLoading || !data}>
+          />
+        </span>
+      }
+      description={t_i18n("How long each category of stored file is kept.")}
+      action={
+        !editing && (
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={startEditing} disabled={isLoading || !data}>
             <Icon name="pencil" size={16} aria-hidden /> {t_i18n("Edit")}
           </Button>
-        )}
-      </div>
-
+        )
+      }
+    >
+      <div className="space-y-4">
       {isError && <p className="content-base text-feedback-error-primary">{t_i18n("The file retention could not be read.")}</p>}
 
       <table className="w-full content-base" data-testid="settings.file-retention.table">
@@ -154,9 +191,17 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
             return (
               <tr key={c.category} className="border-b border-elevation-subtle-soft align-top" data-testid={`settings.file-retention.row.${c.category}`}>
                 <td className="py-2 pr-3">
-                  <label htmlFor={inputId} className="font-medium">
-                    {t_i18n(label?.name ?? c.category)}
-                  </label>
+                  <span className="flex items-center gap-1.5">
+                    <label htmlFor={inputId} className="font-medium">
+                      {t_i18n(label?.name ?? c.category)}
+                    </label>
+                    {label && (
+                      <InfoTip
+                        label={t_i18n("About {name}", { name: t_i18n(label.name) })}
+                        content={t_i18n(label.help)}
+                      />
+                    )}
+                  </span>
                   <div className="content-compact text-default-secondary">{t_i18n(label?.covers ?? "")}</div>
                 </td>
                 <td className="py-2 pr-3">
@@ -255,6 +300,7 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
           />
         </>
       )}
-    </div>
+      </div>
+    </SettingsCard>
   );
 }

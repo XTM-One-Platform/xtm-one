@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -340,3 +341,32 @@ async def test_a_file_a_video_or_a_workset_names_is_kept():
     with patch("app.services.video_studio.retention.files_in_use", AsyncMock(return_value={video})):
         kept = await file_retention.referenced(db, [video, workset, free])
     assert kept == {video, workset}
+
+
+@pytest.mark.asyncio
+async def test_the_chat_panel_restore_leaves_deleted_files_out_of_its_attachments() -> None:
+    """The chatbot draws every attachment as a live card: a tombstone is left out (UX r1 B1 on #405)."""
+    from app.api.v1.platform import _drop_deleted_attachments
+
+    gone, live = str(uuid.uuid4()), str(uuid.uuid4())
+    messages: list[dict[str, Any]] = [
+        {"id": "1", "attachments": [{"file_id": gone, "filename": "a.md"}, {"file_id": live, "filename": "b.md"}]},
+        {"id": "2", "attachments": [{"file_id": gone.upper(), "filename": "a.png"}]},
+        {"id": "3", "content": "no files"},
+    ]
+    rows = MagicMock()
+    rows.all.return_value = [(uuid.UUID(gone),)]
+    db: Any = SimpleNamespace(execute=AsyncMock(return_value=rows))
+    await _drop_deleted_attachments(db, messages)
+    assert messages[0]["attachments"] == [{"file_id": live, "filename": "b.md"}]
+    assert "attachments" not in messages[1]
+    assert db.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_the_chat_panel_restore_reads_nothing_without_attachments() -> None:
+    from app.api.v1.platform import _drop_deleted_attachments
+
+    db: Any = SimpleNamespace(execute=AsyncMock())
+    await _drop_deleted_attachments(db, [{"id": "1"}])
+    db.execute.assert_not_awaited()

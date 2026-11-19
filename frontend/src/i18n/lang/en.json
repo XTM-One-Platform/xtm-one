@@ -19454,7 +19454,6 @@
   "Last sweep {last}.": "Last sweep {last}.",
   "Whether the file's content is kept": "Whether the file's content is kept",
   "{count, plural, one {# deleted} other {# deleted}}": "{count, plural, one {# deleted} other {# deleted}}",
-  "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "How long each category of stored file is kept. A sweep runs every hour; a file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.",
   "Next sweep: {files} ({size}) deleted; {kept, plural, one {# file} other {# files}} kept in use": "Next sweep: {files} ({size}) deleted; {kept, plural, one {# file} other {# files}} kept in use",
   "A shorter retention deletes files at the next sweep. Preview what goes before saving.": "A shorter retention deletes files at the next sweep. Preview what goes before saving.",
   "The next sweep would delete {files} ({size}).": "The next sweep would delete {files} ({size}).",
@@ -19470,5 +19469,18 @@
   "Group {name} changed": "Group {name} changed",
   "Group {name} deleted": "Group {name} deleted",
   "SCIM token {name} generated": "SCIM token {name} generated",
-  "SCIM token {name} revoked": "SCIM token {name} revoked"
+  "SCIM token {name} revoked": "SCIM token {name} revoked",
+  "How long each category of stored file is kept.": "How long each category of stored file is kept.",
+  "How the file retention works": "How the file retention works",
+  "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.": "A sweep runs every hour. A file a work item, workset, shared state, presentation, report or video still uses is kept. A deleted file stays in the conversation as a card: only its content goes.",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a scratch CSV no one opened for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a scratch CSV no one opened for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a report PDF no one downloaded for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Days after the file's last use (a download, a preview, an agent reading it). Example: 60 deletes a report PDF no one downloaded for 60 days. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  "Days after the file was created. Example: 90 deletes an MCP export 90 days after it arrived. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Days after the file was created. Example: 90 deletes an MCP export 90 days after it arrived. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  "Days after the upload. Example: 365 deletes a spreadsheet a year after someone attached it. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.": "Days after the upload. Example: 365 deletes a spreadsheet a year after someone attached it. 0 = Never. The hourly sweep deletes the content and keeps a deleted card in the conversation.",
+  "Days after the file arrived. Example: 180 deletes a Teams attachment six months after it was received. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Days after the file arrived. Example: 180 deletes a Teams attachment six months after it was received. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  "Days after the capture. Example: 7 deletes a screenshot an agent checked a week ago. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.": "Days after the capture. Example: 7 deletes a screenshot an agent checked a week ago. 0 = Never. The hourly sweep deletes the content and keeps a deleted card.",
+  "\"{filename}\" was deleted by an administrator.": "\"{filename}\" was deleted by an administrator.",
+  "This file was deleted by an administrator.": "This file was deleted by an administrator.",
+  "\"{filename}\" was deleted by its owner.": "\"{filename}\" was deleted by its owner.",
+  "This file was deleted by its owner.": "This file was deleted by its owner."
 }

@@ -4372,10 +4372,49 @@ async def restored_message_entries(
 
         messages.append(entry)
 
+    await _drop_deleted_attachments(db, messages)
     await _present_restored_artifacts(
         db, messages, supported=supports_artifacts, conversation_id=conversation_id, user=user
     )
     return messages
+
+
+async def _drop_deleted_attachments(db: AsyncSession, messages: list[dict[str, Any]]) -> None:
+    """Leave the files whose bytes are gone (#396) out of the panel's ``attachments``.
+
+    ``@filigran/chatbot`` draws every attachment it is given as a live card (a
+    download button, an image preview): a tombstone would show as downloadable,
+    fetch a ``410`` and log it. The host draws the deleted card itself from its
+    own copy of the conversation (``deleted_at`` / ``deleted_reason`` on the
+    REST messages), so the panel never asks for those bytes. One query per page.
+    """
+    from app.models.file_attachment import FileAttachment
+
+    ids: set[uuid.UUID] = set()
+    for entry in messages:
+        for att in entry.get("attachments") or []:
+            try:
+                ids.add(uuid.UUID(str(att.get("file_id"))))
+            except (TypeError, ValueError):
+                continue
+    if not ids:
+        return
+    gone = {
+        str(row[0])
+        for row in (
+            await db.execute(
+                select(FileAttachment.id).where(FileAttachment.id.in_(ids), FileAttachment.deleted_at.is_not(None))
+            )
+        ).all()
+    }
+    if not gone:
+        return
+    for entry in messages:
+        kept = [a for a in entry.get("attachments") or [] if str(a.get("file_id")).lower() not in gone]
+        if kept:
+            entry["attachments"] = kept
+        else:
+            entry.pop("attachments", None)
 
 
 async def restore_chat_session_window(

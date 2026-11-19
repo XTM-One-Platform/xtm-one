@@ -522,6 +522,9 @@ export default function Files() {
               onChange={(v) => setParam(PARAM_STATUS, v)}
               options={statusOptions}
               ariaLabel={t_i18n("Whether the file's content is kept")}
+              // A secondary filter: one compact select, so the toolbar stays one row at 1080 (UX r1 B4 on #405).
+              collapsed
+              collapsedClassName="w-36"
             />
             <VisibilityFilter value={visibility} onChange={setVisibility} counts={segmentCounts} />
             <div className="ml-auto flex items-center gap-3">

@@ -25,6 +25,20 @@ export function downloadErrorStatus(error: unknown): number | undefined {
 }
 
 /**
+ * Why a `410 Gone` download's file went (`deleted_reason` of the backend's
+ * body, read from the error's `detail` or `body`), `undefined` when unsaid.
+ */
+export function downloadErrorReason(error: unknown): string | undefined {
+  const holder = error as { detail?: unknown; body?: unknown; data?: unknown } | null;
+  for (const candidate of [holder?.detail, holder?.body, holder?.data]) {
+    const inner = (candidate as { detail?: unknown } | null)?.detail ?? candidate;
+    const reason = (inner as { deleted_reason?: unknown } | null)?.deleted_reason;
+    if (typeof reason === "string" && reason) return reason;
+  }
+  return undefined;
+}
+
+/**
  * The translated toast description for a failed download of `filename`
  * (the file's name or the link's text; empty when there is none).
  */
@@ -37,8 +51,20 @@ export function downloadErrorDescription(
   console.warn("download failed", error);
   const name = filename?.trim() ?? "";
   const status = downloadErrorStatus(error);
-  // 410 Gone (#396): the file's content was deleted (a retention, its owner, an administrator).
+  // 410 Gone (#396): the file's content was deleted (a retention, its owner, an
+  // administrator); the body's `deleted_reason` says which.
   if (status === 410) {
+    const reason = downloadErrorReason(error);
+    if (reason === "admin") {
+      return name
+        ? t_i18n("\"{filename}\" was deleted by an administrator.", { filename: name })
+        : t_i18n("This file was deleted by an administrator.");
+    }
+    if (reason === "owner_deleted") {
+      return name
+        ? t_i18n("\"{filename}\" was deleted by its owner.", { filename: name })
+        : t_i18n("This file was deleted by its owner.");
+    }
     return name
       ? t_i18n("\"{filename}\" was deleted by the retention policy.", { filename: name })
       : t_i18n("This file was deleted by the retention policy.");
