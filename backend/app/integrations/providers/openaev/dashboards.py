@@ -645,6 +645,15 @@ def register(
             return {}, f"widget {widget_id} could not be read"
         return stored, ""
 
+    async def _stored_layout_text(dashboard_id: str, widget_id: str, sent: dict[str, Any]) -> tuple[str, str]:
+        """The widget's layout as stored after a write, read back, and a note when it differs from what was sent."""
+        stored, rerr = await _read_widget(dashboard_id, widget_id)
+        layout = stored.get("widget_layout") if not rerr else None
+        if not isinstance(layout, dict):
+            return _layout_text(sent), " The stored layout could not be read back: this is the layout sent."
+        differs = any(layout.get(field) != sent.get(field) for field in _LAYOUT_FIELDS)
+        return _layout_text(layout), (" OpenAEV stored a layout other than the one sent." if differs else "")
+
     async def _next_free_row(dashboard_id: str) -> tuple[int, str]:
         """The first grid row under every stored widget of the dashboard."""
         resp, err = await _api(
@@ -699,7 +708,7 @@ def register(
             missing = [short for long, short in _LAYOUT_FIELDS.items() if long not in moved]
             if missing:
                 return f"Nothing was written: the stored layout has no {', '.join(missing)}; pass every one of x, y, w and h."
-            resp, err = await _api(
+            _, err = await _api(
                 base_url,
                 headers,
                 "put",
@@ -709,9 +718,8 @@ def register(
             )
             if err:
                 return err
-            saved = resp.json() if resp is not None else {}
-            saved = saved if isinstance(saved, dict) else {}
-            return f"Moved widget {widget_id}: {_layout_text(saved.get('widget_layout') or moved)}."
+            layout_text, note = await _stored_layout_text(dashboard_id, widget_id, moved)
+            return f"Moved widget {widget_id}: {layout_text}.{note}"
 
         ignored = sorted(set(extra) - set(_WIDGET_FIELDS))
         if ignored:
@@ -790,10 +798,15 @@ def register(
         saved = resp.json() if resp is not None else {}
         saved = saved if isinstance(saved, dict) else {}
         verb = "Created" if action == "create_widget" else "Updated"
+        if action == "create_widget":
+            layout_text, note = _layout_text(saved.get("widget_layout") or body["widget_layout"]), ""
+        else:
+            # The write's answer may echo the request rather than the row: report the layout read back.
+            layout_text, note = await _stored_layout_text(dashboard_id, widget_id, body["widget_layout"])
         answer = (
             f"{verb} {saved.get('widget_type') or body['widget_type']} widget "
             f"{saved.get('widget_id') or widget_id} on dashboard {dashboard_id}: "
-            f"{_layout_text(saved.get('widget_layout') or body['widget_layout'])}.{placed}"
+            f"{layout_text}.{placed}{note}"
         )
         if kept:
             answer += " Kept as they were: " + ", ".join(kept) + "."

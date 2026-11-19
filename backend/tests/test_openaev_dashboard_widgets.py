@@ -54,8 +54,14 @@ class _Resp:
 
 
 class _Transport:
+    """OpenAEV double: a write updates the stored widget; ``echo`` overrides what a PUT answers."""
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, Any]] = []
+        self.stored: dict[str, Any] = dict(_STORED)
+        self.echo: dict[str, Any] | None = None
+        self.read_fails = False
+        self.ignores_writes = False
 
     async def __call__(
         self, client: Any, method: str, url: str, provider: str, action: str, **kwargs: Any
@@ -68,11 +74,21 @@ class _Transport:
         if method == "get" and url == WIDGETS_URL:
             return _Resp([_STORED]), None
         if method == "get":
-            return _Resp(dict(_STORED)), None
+            if self.read_fails and self.writes():
+                return _Resp(None), "OpenAEV read widget failed: 500"  # type: ignore[return-value]
+            return _Resp(dict(self.stored)), None
         if method == "delete":
             return _Resp(None), None
-        if url.endswith("/layout"):
-            return _Resp({**_STORED, "widget_layout": body}), None
+        if method == "put":
+            echoed = {**self.stored, **(self.echo or {})}
+            if self.ignores_writes:
+                return _Resp(echoed), None
+            written: dict[str, Any] = body or {}
+            if url.endswith("/layout"):
+                self.stored = {**self.stored, "widget_layout": written}
+            else:
+                self.stored = {**self.stored, **written}
+            return _Resp(echoed if self.echo is not None else dict(self.stored)), None
         return _Resp({"widget_id": WIDGET, **(body or {})}), None
 
     def writes(self) -> list[tuple[str, str, Any]]:
@@ -208,6 +224,47 @@ async def test_update_layout_merges_over_the_stored_layout(setup) -> None:
     assert (method, url) == ("put", f"{WIDGETS_URL}/{WIDGET}/layout")
     assert body == {**_LAYOUT, "widget_layout_y": 0}
     assert answer == f"Moved widget {WIDGET}: x 0, y 0, 6 wide, 4 high."
+
+
+@pytest.mark.parametrize("action", ["update_widget", "update_layout"])
+@pytest.mark.asyncio
+async def test_widget_write_answer_reports_the_layout_read_back_not_the_write_echo(
+    setup: tuple[_Transport, CallableToolExecutor], action: str
+) -> None:
+    transport, executor = setup
+    # The PUT answers the layout as it was before the write: the answer must not echo it.
+    transport.echo = {"widget_layout": dict(_LAYOUT)}
+    config: dict[str, Any] = {"widget_layout": {"y": 9}} if action == "update_widget" else {"y": 9}
+    answer = await _run(executor, action=action, dashboard_id=DASHBOARD, widget_id=WIDGET, config=json.dumps(config))
+    assert "x 0, y 9, 6 wide, 4 high" in answer
+    assert "y 2" not in answer
+    assert "stored a layout other" not in answer
+    assert [c for c in transport.calls if c[0] == "get"][-1][1] == f"{WIDGETS_URL}/{WIDGET}"
+
+
+@pytest.mark.asyncio
+async def test_widget_write_answer_says_when_the_stored_layout_differs(
+    setup: tuple[_Transport, CallableToolExecutor],
+) -> None:
+    transport, executor = setup
+    # OpenAEV answers the write but the row keeps its old layout (y 2).
+    transport.ignores_writes = True
+    answer = await _run(
+        executor, action="update_layout", dashboard_id=DASHBOARD, widget_id=WIDGET, config=json.dumps({"y": 7})
+    )
+    assert "x 0, y 2, 6 wide, 4 high" in answer
+    assert "OpenAEV stored a layout other than the one sent." in answer
+
+
+@pytest.mark.asyncio
+async def test_widget_write_answer_names_a_failed_read_back(setup: tuple[_Transport, CallableToolExecutor]) -> None:
+    transport, executor = setup
+    transport.read_fails = True
+    answer = await _run(
+        executor, action="update_layout", dashboard_id=DASHBOARD, widget_id=WIDGET, config=json.dumps({"y": 5})
+    )
+    assert "x 0, y 5, 6 wide, 4 high" in answer
+    assert "could not be read back: this is the layout sent" in answer
 
 
 @pytest.mark.asyncio
