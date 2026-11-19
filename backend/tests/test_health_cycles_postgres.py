@@ -170,6 +170,28 @@ async def test_an_upgrade_rewrites_a_hand_edit_and_keeps_the_rows(concierge_on):
     assert (fleet.is_builtin, fleet.slug) == (True, "platform-health")
 
 
+async def test_a_reseed_keeps_an_emergency_stop_in_force(concierge_on):
+    """An emergency stop outlives a restart: the seed rewrites the definition of a
+    paused health assignment but never re-enables it, and keeps its stamp so the
+    stop's resume still finds it."""
+    from app.services.assignment_pause import PANIC_STOP_REASON
+
+    async with _scratch("cc_seed_panic") as sessions, sessions() as db:
+        db.add(_user("admin"))
+        await db.commit()
+        await fleet_seed.seed_health_fleet(db)
+        digest, _ = await fleet_seed.fleet_assignment(db, "digest")
+        digest.enabled = False
+        digest.paused_reason = PANIC_STOP_REASON
+        digest.prompt = "Edited."
+        await db.commit()
+        await fleet_seed.seed_health_fleet(db)
+        await db.refresh(digest)
+
+    assert (digest.enabled, digest.paused_reason) == (False, PANIC_STOP_REASON)
+    assert digest.prompt == fleet_seed.ASSIGNMENT_BY_KEY["digest"].prompt
+
+
 async def test_the_built_in_seeds_never_sweep_the_health_rows(concierge_on):
     """The built-in agent and fleet seeds delete a built-in row their lists do not
     name; the health fleet is seeded apart and must survive both."""

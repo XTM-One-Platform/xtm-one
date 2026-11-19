@@ -52,6 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.assignment import Assignment
 from app.models.fleet import Fleet, FleetMember
+from app.services.assignment_pause import clear_pause_provenance, is_emergency_stopped
 from app.services.health.availability import health_enabled
 
 logger = logging.getLogger(__name__)
@@ -384,7 +385,15 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
         existing.prompt = spec.prompt
         existing.trigger_type = "manual"
         existing.trigger_config = {}
-        existing.enabled = True
+        if is_emergency_stopped(existing):
+            # An emergency stop outlives a restart, as for every built-in
+            # assignment (agents/seed.py): only the stop's resume re-enables
+            # it, a boot never does. The stamp stays so the resume finds it.
+            logger.info("Platform Health seed: assignment %s stays paused by an emergency stop", existing.id)
+        else:
+            if not existing.enabled:
+                clear_pause_provenance(existing)
+            existing.enabled = True
         existing.show_in_digest = spec.show_in_digest
         existing.timeout_seconds = spec.timeout_seconds
         existing.max_iterations = spec.max_iterations
