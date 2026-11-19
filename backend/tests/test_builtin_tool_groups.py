@@ -94,6 +94,20 @@ def test_every_group_has_its_card():
         assert group.name and group.tagline and group.category and group.icon, group.id
 
 
+def test_every_group_icon_is_resolved_by_the_frontend_map():
+    """An ``icon`` the frontend map does not know renders as the ``Sparkles`` fallback."""
+    import re
+
+    source = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "builtin-tool-icons.ts").read_text(
+        encoding="utf-8"
+    )
+    body = re.search(r"BUILTIN_TOOL_ICONS[^=]*=\s*\{(.*?)\};", source, re.S)
+    assert body, "BUILTIN_TOOL_ICONS not found in builtin-tool-icons.ts"
+    mapped = set(re.findall(r"\b([A-Z][A-Za-z0-9]*)\b", body.group(1)))
+    missing = {group.id: group.icon for group in BUILTIN_TOOL_GROUPS if group.icon not in mapped}
+    assert not missing, f"add these icons to frontend/src/lib/builtin-tool-icons.ts: {missing}"
+
+
 def test_no_card_copy_carries_an_em_dash():
     """The card copy is product UI text, with no em dash (U+2014) in it."""
     for group in BUILTIN_TOOL_GROUPS:
