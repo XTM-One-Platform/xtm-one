@@ -44,6 +44,30 @@ _SOURCE = "integration:github"
 #: (branches.py) and these tools never drift.
 _RULESET_HINT = RULESET_PERMISSION_HINT
 
+#: Said when a ruleset id cannot be read and may be an ENTERPRISE ruleset: an
+#: enterprise ruleset is neither on the repository nor on the organization
+#: surface, so both answer 'Not Found' or a misleading org-permission error.
+_ENTERPRISE_RULESET_NOTE = (
+    "Ruleset #{rid} is an enterprise ruleset ({source}): its own configuration is readable by an "
+    "enterprise owner only, never through the repository or organization endpoints. The rules it "
+    "enforces on a branch are listed by get_github_branch_rules(repo, branch)."
+)
+_MAYBE_ENTERPRISE_NOTE = (
+    "If the id came from get_github_branch_rules or list_github_rulesets with source Enterprise, it "
+    "is an enterprise ruleset: neither the repository nor the organization endpoint serves it; "
+    "get_github_branch_rules(repo, branch) lists the rules it enforces."
+)
+
+
+def _enterprise_source(listing: Any, rid: int) -> str | None:
+    """The enterprise name of ruleset *rid* in a repository listing, None when it is not one."""
+    if not isinstance(listing, list):
+        return None
+    for r in listing:
+        if isinstance(r, dict) and r.get("id") == rid and str(r.get("source_type") or "").lower() == "enterprise":
+            return str(r.get("source") or "enterprise")
+    return None
+
 
 def register(
     headers: dict[str, str],
@@ -167,7 +191,23 @@ def register(
                 client, "get", url, _PROVIDER, f"get ruleset #{rid} for {scope}", headers=headers, params=params
             )
             if err:
-                return _common.with_permission_hint(err, _RULESET_HINT)
+                if _coerce_str(repo).strip():
+                    # A repository listing with its parents names an enterprise
+                    # ruleset's source, so say exactly why it is unreadable.
+                    listing, lerr = await _common.safe_request(
+                        client,
+                        "get",
+                        f"{_BASE_URL}/repos/{owner}/{name}/rulesets",
+                        _PROVIDER,
+                        f"list rulesets for {repo}",
+                        headers=headers,
+                        params={"per_page": 100, "includes_parents": "true"},
+                    )
+                    source = None if lerr or listing is None else _enterprise_source(listing.json(), rid)
+                    if source:
+                        return _ENTERPRISE_RULESET_NOTE.format(rid=rid, source=f"Enterprise: {source}")
+                    return _common.with_permission_hint(err, _RULESET_HINT)
+                return f"{_common.with_permission_hint(err, _RULESET_HINT)}\n{_MAYBE_ENTERPRISE_NOTE}"
             rs = resp.json()
             header = (
                 f"Target: {rs.get('target', 'branch')} | Enforcement: {rs.get('enforcement', '?')} | "
@@ -254,7 +294,8 @@ def register(
             description=(
                 "Get a ruleset's full configuration: enforcement, target refs (include/exclude patterns), "
                 "bypass actors, and the complete rule set. Identify it by ruleset_id (from list_github_rulesets) "
-                "plus repo='owner/name' for a repository ruleset or org=login for an organization ruleset."
+                "plus repo='owner/name' for a repository ruleset or org=login for an organization ruleset. "
+                "An enterprise ruleset (source Enterprise) is named as such: get_github_branch_rules lists its rules."
             ),
             input_schema={
                 "type": "object",
