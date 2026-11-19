@@ -77,6 +77,54 @@ async def test_list_notion_comments_formats_author_timestamp_and_text_with_pagin
 
 
 @pytest.mark.asyncio
+async def test_list_notion_comments_lists_attachments_with_their_signed_url():
+    executor = _SafeIntegrationExecutor()
+    build_tools("dummy-token", executor)
+    signed = "https://prod-files-secure.s3.us-west-2.amazonaws.com/ws/abc/Rollout%20plan.png?X-Amz-Signature=x"
+
+    async def _mock_get(*args, **kwargs):
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "comment-1",
+                        "created_time": "2026-05-14T08:00:00.000Z",
+                        "created_by": {"name": "Alice Reviewer"},
+                        "rich_text": [{"plain_text": "See the screenshot."}],
+                        "attachments": [
+                            {
+                                "category": "image",
+                                "file": {"url": signed, "expiry_time": "2026-05-14T09:00:00.000Z"},
+                            },
+                            {"category": "file", "file": {}},
+                        ],
+                    },
+                    {
+                        "id": "comment-2",
+                        "created_time": "2026-05-14T09:00:00.000Z",
+                        "created_by": {"name": "Bob"},
+                        "rich_text": [{"plain_text": "No file here."}],
+                    },
+                ],
+                "has_more": False,
+            },
+        )
+
+    with patch("app.integrations.providers.notion._common.AutoRefreshClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = _mock_get
+        result = await executor.execute_tool(
+            ToolCall(id="call-att", name="list_notion_comments", arguments={"page_id": "page-123"})
+        )
+
+    assert not result.is_error
+    assert "Attachment (image): Rollout plan.png, URL expires 2026-05-14T09:00:00.000Z" in result.content
+    assert f"file_url: {signed}" in result.content
+    assert result.content.count("Attachment (") == 1
+    assert result.content.count("download_notion_file(file_url=...)") == 1
+
+
+@pytest.mark.asyncio
 async def test_list_notion_comments_returns_actionable_missing_scope_error():
     executor = _SafeIntegrationExecutor()
     build_tools("dummy-token", executor)
