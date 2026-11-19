@@ -13,11 +13,12 @@
 
 """The ``platform_insights`` built-in suite: the platform's own figures, read by an agent.
 
-Eleven read-only tools over the read paths the admin pages use
+Twelve read-only tools over the read paths the admin pages use
 (``services/platform_insights``): LLM analytics, the trace and session lists,
 the objects of the platform, the deployed builds, AI adoption, the
 audit log, an overview of what the platform holds, the backend's own
-``xtmone_*`` Prometheus series, the friction ledger's counts, and ``render_chart``, which
+``xtmone_*`` Prometheus series, the friction ledger's counts, each person's own default chat
+agent (``get_user_default_agents``), and ``render_chart``, which
 turns their rows into a chart the answer shows inline. Plus the two
 admin-only platform AI settings tools of ``platform_admin``. Each call opens its own
 short session: the turn's session may sit in a long transaction while the loop
@@ -32,6 +33,7 @@ and are placed in the answer by ``chat_charts.inject_charts``.
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -118,8 +120,12 @@ def build_platform_insights_tools(
     chart_sink: list | None = None,
     conversation_id: str | None = None,
     assignment_run_id: str | None = None,
+    agent_id: str | None = None,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The suite's tools acting for *user_id*; charts go to *chart_sink* (``chat_charts.ChatChart``).
+
+    *agent_id* is the agent the tools run in: ``get_user_default_agents`` reads
+    the people it is shared with or whose fleet workspace it orchestrates.
 
     Without a sink (a surface with no answer to place a chart in) ``render_chart``
     returns the chart block itself, to be copied into the reply verbatim. An
@@ -133,6 +139,7 @@ def build_platform_insights_tools(
     from app.services.platform_insights.analytics import METRICS as ANALYTICS_METRICS
     from app.services.platform_insights.analytics import query_platform_analytics
     from app.services.platform_insights.audit import query_audit_log
+    from app.services.platform_insights.default_agents import get_user_default_agents
     from app.services.platform_insights.frictions import BUCKETS as FRICTION_BUCKETS
     from app.services.platform_insights.frictions import GROUP_BYS as FRICTION_GROUP_BYS
     from app.services.platform_insights.frictions import MEASURES as FRICTION_MEASURES
@@ -572,6 +579,23 @@ def build_platform_insights_tools(
         ),
         ToolDefinition(
             source="builtin:platform_insights",
+            name="get_user_default_agents",
+            description=(
+                "Each person's OWN default chat agent (none named: yours): status chosen (agent, fleet, "
+                "set_at), general_assistant, platform_wired (not a choice) or none. Admin: anyone; else the "
+                "people this agent is shared with or whose fleet it orchestrates; else yourself."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "users": _list_of("Ids or emails."),
+                    "group_ids": _list_of("Groups (current members)."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        ToolDefinition(
+            source="builtin:platform_insights",
             name="render_chart",
             description=(
                 "Turn the 'rows' a platform insights query returned into a chart shown inline in the answer (no "
@@ -632,5 +656,9 @@ def build_platform_insights_tools(
     executor.register("get_platform_overview", _handler(get_platform_overview))
     executor.register("query_platform_metrics", _handler(query_platform_metrics))
     executor.register("query_platform_frictions", _handler(query_platform_frictions))
+    executor.register(
+        "get_user_default_agents",
+        _handler(functools.partial(get_user_default_agents, agent_id=agent_id)),
+    )
     executor.register("render_chart", _render_chart)
     return definitions, executor

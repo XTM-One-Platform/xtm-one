@@ -2573,7 +2573,7 @@ async def purge_agent_references(db: AsyncSession, agent_id: uuid.UUID) -> None:
     await db.execute(
         User.__table__.update()
         .where(User.default_agent_id == agent_id)
-        .values(default_agent_id=None)
+        .values(default_agent_id=None, default_agent_source=None, default_agent_set_at=None)
     )
     user_rows = (
         (

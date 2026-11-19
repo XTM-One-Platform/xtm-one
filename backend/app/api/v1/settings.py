@@ -4471,9 +4471,14 @@ async def update_preferences(
     if body.default_mcp_server_ids is not None:
         user.default_mcp_server_ids = body.default_mcp_server_ids
     if body.default_agent_id is not None:
-        user.default_agent_id = (
-            uuid.UUID(body.default_agent_id) if body.default_agent_id else None
-        )
+        chosen_agent = uuid.UUID(body.default_agent_id) if body.default_agent_id else None
+        if chosen_agent != user.default_agent_id or user.default_agent_source != "user":
+            # The person's own choice, recorded as theirs (an empty value is
+            # the General Assistant), so the reader never takes the platform's
+            # wiring for a choice (``platform_insights.default_agents``).
+            user.default_agent_id = chosen_agent
+            user.default_agent_source = "user"
+            user.default_agent_set_at = datetime.now(UTC)
     # The dashboard shown on /dashboard: a custom dashboard the caller may read
     # as themselves - their own, one shared with them, a company one - checked
     # on the row (an admin's reading of everyone's does not count: never

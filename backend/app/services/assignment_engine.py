@@ -6427,7 +6427,10 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import build_platform_insights_tools
 
                 pi_defs, pi_exec = build_platform_insights_tools(
-                    str(effective_user_id), chart_sink=run_charts, assignment_run_id=str(run.id)
+                    str(effective_user_id),
+                    chart_sink=run_charts,
+                    assignment_run_id=str(run.id),
+                    agent_id=str(agent.id),
                 )
                 composite.add_tools(pi_defs, pi_exec)
 

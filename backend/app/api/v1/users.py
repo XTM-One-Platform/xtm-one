@@ -291,6 +291,8 @@ async def create_user(
         ctem_id = ctem_r.scalar_one_or_none()
         if ctem_id:
             user.default_agent_id = ctem_id
+            user.default_agent_source = "platform"
+            user.default_agent_set_at = datetime.now(UTC)
 
     db.add(user)
     await db.flush()

@@ -236,6 +236,7 @@ async def wire_default_agents() -> None:
     A no-op when the CTEM Assistant is absent — the ``ai_disabled`` state — so
     it is safe to call unconditionally after seeding.
     """
+    from sqlalchemy import func as _func
     from sqlalchemy import select as _sel
     from sqlalchemy import update as _upd
 
@@ -254,10 +255,16 @@ async def wire_default_agents() -> None:
         # Bulk-set the default agent for every user that doesn't have one yet.
         # ``synchronize_session=False`` is safe: this owns its own short-lived
         # session and there's no other in-flight ORM state to keep in sync.
+        # Recorded as the platform's wiring, never the person's choice
+        # (``platform_insights.default_agents``).
         update_result = await db.execute(
             _upd(_User)
             .where(_User.default_agent_id.is_(None))
-            .values(default_agent_id=ctem_id)
+            .values(
+                default_agent_id=ctem_id,
+                default_agent_source="platform",
+                default_agent_set_at=_func.now(),
+            )
             .execution_options(synchronize_session=False)
         )
         updated = update_result.rowcount or 0
