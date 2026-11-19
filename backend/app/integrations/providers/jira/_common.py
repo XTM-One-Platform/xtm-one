@@ -12,6 +12,7 @@ split by ``||``). The Atlassian ``cloud_id`` is prepended by ``_get_token`` in
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -186,17 +187,35 @@ def clamp(count: Any, default: int, ceiling: int = _MAX_PAGE) -> int:
 # ---------------------------------------------------------------------------
 
 
+# A user mention in agent-written text, the Jira wiki syntax: [~accountid:ID].
+_MENTION_TOKEN = re.compile(r"\[~accountid:([A-Za-z0-9:_-]+)\]")
+
+
+def _line_to_inline(line: str) -> list[dict[str, Any]]:
+    """Split one line into text nodes and ADF ``mention`` nodes."""
+    nodes: list[dict[str, Any]] = []
+    cursor = 0
+    for match in _MENTION_TOKEN.finditer(line):
+        if match.start() > cursor:
+            nodes.append({"type": "text", "text": line[cursor : match.start()]})
+        nodes.append({"type": "mention", "attrs": {"id": match.group(1)}})
+        cursor = match.end()
+    if cursor < len(line):
+        nodes.append({"type": "text", "text": line[cursor:]})
+    return nodes
+
+
 def text_to_adf(text: str) -> dict[str, Any]:
     """Wrap a plain-text string in a minimal Atlassian Document Format doc.
 
-    Each line becomes a paragraph so line breaks survive. Used by every tool
-    that writes a rich-text field (description, comment body, worklog comment).
+    Each line becomes a paragraph so line breaks survive, and each
+    ``[~accountid:ID]`` token becomes a ``mention`` node, so the person is
+    notified. Used by every tool that writes a rich-text field (description,
+    comment body, worklog comment).
     """
     content: list[dict[str, Any]] = []
     for line in (text or "").split("\n"):
-        node: dict[str, Any] = {"type": "paragraph", "content": []}
-        if line:
-            node["content"].append({"type": "text", "text": line})
+        node: dict[str, Any] = {"type": "paragraph", "content": _line_to_inline(line)}
         content.append(node)
     if not content:
         content = [{"type": "paragraph", "content": []}]

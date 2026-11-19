@@ -261,7 +261,10 @@ def register(
                 "type": "object",
                 "properties": {
                     "issue_key": {"type": "string", "description": "Issue key (e.g. 'PROJ-123')"},
-                    "body": {"type": "string", "description": "Comment text"},
+                    "body": {
+                        "type": "string",
+                        "description": "Comment text; [~accountid:ID] mentions a user (ids: search_jira_users)",
+                    },
                     "is_internal": {"type": "boolean", "description": "Internal note (JSM only)", "default": False},
                 },
                 "required": ["issue_key", "body"],
@@ -277,7 +280,7 @@ def register(
                 "properties": {
                     "issue_key": {"type": "string", "description": "Issue key (e.g. 'PROJ-123')"},
                     "comment_id": {"type": "string", "description": "Comment id"},
-                    "body": {"type": "string", "description": "New comment text"},
+                    "body": {"type": "string", "description": "New comment text; [~accountid:ID] mentions a user"},
                 },
                 "required": ["issue_key", "comment_id", "body"],
             },
