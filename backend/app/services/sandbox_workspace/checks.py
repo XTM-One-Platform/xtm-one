@@ -50,6 +50,8 @@ AFFECTED_MODES = ("tests", "files", "lines")
 WHOLE_ARG = "--whole"
 #: Globs an ``affected_globs`` declares, at most.
 MAX_AFFECTED_GLOBS = 16
+#: The kinds of change a pre-push guard can be limited to (``pre_push_on``).
+PRE_PUSH_KINDS: tuple[str, ...] = ("added", "modified", "removed")
 #: Characters of an install check's ``fallback.when`` and ``fallback.reason``.
 MAX_FALLBACK_CHARS = 256
 DEFAULT_TIMEOUT = 600
@@ -148,6 +150,9 @@ class CheckSpec:
     #: A pre-push guard (``prepush.py``): globs of the files under ``cwd`` and ``needs`` whose change CI checks
     #: with this check; ``create_github_commit(from_checkout=...)`` names it when it did not pass on the tree.
     pre_push: tuple[str, ...] = ()
+    #: The kinds of change (``added``, ``modified``, ``removed``) that make a guard's globs count: the Editions
+    #: gate judges a file added or removed, not every edit of a classified one. All three by default.
+    pre_push_on: tuple[str, ...] = PRE_PUSH_KINDS
     #: Pre-push guards this check stands in for (``frontend-bump-knip`` for ``frontend-knip``): the same gate run
     #: on another image, where the guard's own image cannot install the tree (a dependency bump). Its whole run
     #: is kept as each named guard's run, so ``create_github_commit`` does not name the guard as never run.
@@ -382,6 +387,13 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             raise ChecksError(
                 f"[check.{name}] pre_push must be a list of at most {MAX_AFFECTED_GLOBS} non-empty globs."
             )
+        pre_push_on = raw.get("pre_push_on", list(PRE_PUSH_KINDS))
+        if (
+            not isinstance(pre_push_on, list)
+            or not pre_push_on
+            or not all(isinstance(k, str) and k in PRE_PUSH_KINDS for k in pre_push_on)
+        ):
+            raise ChecksError(f"[check.{name}] pre_push_on must be a non-empty list of {', '.join(PRE_PUSH_KINDS)}.")
         stands_for = raw.get("stands_for", [])
         if (
             not isinstance(stands_for, list)
@@ -414,6 +426,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             fallback_reason=fallback_reason,
             needs=_needs(raw, f"check.{name}"),
             pre_push=tuple(pre_push),
+            pre_push_on=tuple(k for k in PRE_PUSH_KINDS if k in pre_push_on),
             stands_for=tuple(stands_for),
             git_repo=git_repo,
         )
