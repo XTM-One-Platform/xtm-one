@@ -547,8 +547,10 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
 
     listed = checks.get("check_runs") if isinstance(checks, dict) else None
     full_ci = None
+    merge_queue = False
     if conclusion == "success" and draft is False and base_ref and _BRANCH_RE.match(base_ref):
         full_ci = await _full_ci_state(owner, name, base_ref, sha, token)
+        merge_queue = await _in_merge_queue(owner, name, number, token)
     return {
         "head_sha": sha,
         "head_branch": _text(head.get("ref")),
@@ -563,7 +565,32 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
         ),
         **(decider or {}),
         **({"full_ci": full_ci} if full_ci else {}),
+        # In the base's merge queue: its merge (or its removal) is a wake still to come (#404).
+        **({"merge_queue": True} if merge_queue else {}),
     }
+
+
+_IN_MERGE_QUEUE_QUERY = (
+    "query($owner: String!, $name: String!, $number: Int!) {"
+    " repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue } } }"
+)
+
+
+async def _in_merge_queue(owner: str, name: str, number: int, token: str) -> bool:
+    """Whether pull request *number* waits in its base's merge queue (#404); ``False`` when unreadable."""
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        data, err = await _common.gh_graphql(
+            client,
+            _headers(token),
+            _IN_MERGE_QUEUE_QUERY,
+            {"owner": owner, "name": name, "number": number},
+            action=f"read whether {owner}/{name}#{number} is in the merge queue",
+        )
+    if err or not isinstance(data, dict):
+        return False
+    repo = data.get("repository") if isinstance(data.get("repository"), dict) else {}
+    pull = repo.get("pullRequest") if isinstance(repo.get("pullRequest"), dict) else {}
+    return pull.get("isInMergeQueue") is True
 
 
 async def _full_ci_state(owner: str, name: str, base_ref: str, sha: str, token: str) -> str | None:
