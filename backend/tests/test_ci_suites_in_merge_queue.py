@@ -1,9 +1,9 @@
 """The test suites run in the merge queue, and skip on a pull request.
 
 A pull request runs the static checks of ``ci.yml`` (the lint jobs, the secret
-scan, the ROI ledger's invariants and the frontend ratchet gates); the suites,
-the database checks and the builds of ``ci.yml`` and the shards of
-``e2e.yml`` skip there and run on a merge group and by hand. In the queue each
+scan, the ROI ledger's invariants, the frontend ratchet gates and catalog
+tests) and the frontend build; the suites, the database checks and the shards
+of ``e2e.yml`` skip there and run on a merge group and by hand. In the queue each
 workflow's ``select`` job sizes them to what the merge group's own change
 reaches (``tests/selection.py``), and every other event runs them whole. The queue tests the exact commit main moves
 to, so main runs both workflows again only nightly and when a file their
@@ -33,6 +33,12 @@ REQUIRED = {"ci.yml": "verdict", "e2e.yml": "e2e"}
 # suites (#12077 L7d) and the frontend ratchet gates.
 ON_PULL_REQUESTS = {"backend-lint", "roi-invariants", "frontend-lint", "frontend-gates", "office-addin-lint", "secrets"}
 IN_THE_QUEUE = "github.event_name != 'pull_request'"
+# Under a minute, so it runs on every pull request as well, and in the queue
+# as the selection says: the frontend build and its design-system guards.
+ON_PULL_REQUESTS_AND_SELECTED = {
+    "frontend": "${{ !cancelled() && (github.event_name == 'pull_request' "
+    "|| needs.select.outputs.frontend-build == 'true') }}"
+}
 # Opens an issue when the nightly run fails: it reads the required check, not the reverse.
 NOTIFY = "notify-on-failure"
 # The jobs a selection sizes, and the output that says whether each runs.
@@ -122,6 +128,8 @@ def test_a_pull_request_runs_the_static_checks_and_the_queue_the_suites(name):
             continue
         if job_name in ON_PULL_REQUESTS:
             assert "if" not in job, f"{name}: {job_name}"
+        elif job_name in ON_PULL_REQUESTS_AND_SELECTED:
+            assert job["if"] == ON_PULL_REQUESTS_AND_SELECTED[job_name], f"{name}: {job_name}"
         elif job_name == "select":
             assert job["if"] == IN_THE_QUEUE, f"{name}: {job_name}"
         else:
@@ -202,6 +210,17 @@ def test_a_pull_request_runs_every_whole_tree_frontend_gate():
     filters = _gates_command().split("--project unit", 1)[1].split()
     missing = [gate for gate in gates if not _covered_by(gate, filters)]
     assert not missing, f"frontend gates a pull request never runs: {missing}"
+
+
+def test_a_pull_request_runs_the_catalog_tests():
+    # They read en.json and fr.json whole: count-plural alone failed eight
+    # merge groups on 17-18 Nov 2026, each caught only in the queue.
+    frontend = REPO_ROOT / "frontend"
+    catalog = sorted(path.relative_to(frontend).as_posix() for path in (frontend / "src" / "i18n").glob("*.test.ts"))
+    assert catalog
+    filters = _gates_command().split("--project unit", 1)[1].split()
+    missing = [test for test in catalog if not _covered_by(test, filters)]
+    assert not missing, f"catalog tests a pull request never runs: {missing}"
 
 
 def test_the_gate_filter_reads_a_shallow_glob_only():

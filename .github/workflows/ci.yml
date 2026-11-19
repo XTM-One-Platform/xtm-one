@@ -1,9 +1,10 @@
 name: CI
 
 # A pull request runs the static checks (lint, types, dead code, catalog
-# validators, migration history, secret scan, the frontend ratchet gates) and
-# the ROI ledger's invariants. The suites, the database checks and the builds
-# skip there (`if: github.event_name != 'pull_request'`): the merge queue runs
+# validators, migration history, secret scan, the frontend ratchet gates and
+# catalog tests), the frontend build and the ROI ledger's invariants. The
+# suites and the database checks skip there
+# (`if: github.event_name != 'pull_request'`): the merge queue runs
 # them with the static checks again, since two pull requests each green on
 # their own can still land a failure together. In the queue each suite runs
 # only what the merge group's change reaches (the select job,
@@ -559,10 +560,14 @@ jobs:
   # here they were 714 s of a 1100 s job on main and pushed it past its
   # 20-minute cap five times on 5 Nov 2026 (run 42085515447: 793 s of tests,
   # cancelled at 1199 s).
+  # About 40 seconds, so it runs on every pull request too, beside the lint
+  # jobs: a build or design-system guard failure shows there rather than in
+  # the queue. A pull request has no select job (`!cancelled()` lets this one
+  # run past it); the queue builds when the merge group changes frontend/.
   frontend:
     name: Frontend (TypeScript)
     needs: select
-    if: github.event_name != 'pull_request' && needs.select.outputs.frontend-build == 'true'
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.select.outputs.frontend-build == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     # The build runs with an explicit heap: at Node's default ~2 GB it died
@@ -648,9 +653,11 @@ jobs:
   # The frontend ratchet gates, on every pull request. They scan the whole
   # tree (tests_unit/ and the top-level src/*.test.ts guards, the settings
   # form kit's), so the change that breaks one names no file of theirs; with
-  # frontend-unit skipped on a pull request and no merge queue on main, main
-  # stayed green over a gate it failed (16 Nov 2026). About a minute of tests;
-  # frontend-unit runs them again with the rest of the suite.
+  # frontend-unit skipped on a pull request, main stayed green over a gate it
+  # failed (16 Nov 2026). The catalog tests of src/i18n/ read en.json and
+  # fr.json whole the same way: count-plural alone failed eight merge groups
+  # on 17-18 Nov 2026, a pull request each, found only in the queue. About a
+  # minute of tests; frontend-unit runs them again with the rest of the suite.
   frontend-gates:
     name: Frontend gates
     runs-on: ubuntu-26.04
@@ -669,7 +676,7 @@ jobs:
       - name: Whole-tree gates
         working-directory: frontend
         timeout-minutes: 10
-        run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/pages/settings/settings-form-kit.test.ts
+        run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts
 
   # The integration suite (2365 tests) ran 630 to 1127 s a shard on two shards
   # (green main runs 43242449940, 43236991020, 43236147709, 12 Nov 2026):
