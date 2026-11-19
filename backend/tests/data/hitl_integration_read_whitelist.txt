@@ -319,6 +319,7 @@ doppel:list_doppel_hrm_events
 doppel:list_doppel_protected_assets
 drata:get_drata_asset
 drata:get_drata_audit
+drata:get_drata_audit_request
 drata:get_drata_company
 drata:get_drata_control
 drata:get_drata_evidence
@@ -343,6 +344,7 @@ drata:get_drata_vendor_security_review
 drata:get_drata_vendor_stats
 drata:list_drata_assets
 drata:list_drata_audit_events
+drata:list_drata_audit_requests
 drata:list_drata_audits
 drata:list_drata_background_checks
 drata:list_drata_control_external_evidence
