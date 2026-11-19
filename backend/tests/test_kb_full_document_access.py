@@ -188,6 +188,7 @@ def _doc_row(
     status="ready",
     chunk_count=3,
     content_length=28,
+    extra_metadata=None,
 ):
     """One row of the ``list_knowledge_documents`` column select."""
     return (
@@ -198,6 +199,7 @@ def _doc_row(
         status,
         chunk_count,
         content_length,
+        extra_metadata,
     )
 
 

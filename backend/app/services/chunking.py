@@ -546,6 +546,69 @@ def _extract_docx_paragraphs(content: bytes) -> str:
     return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
+#: A Word document whose extracted text holds less than this share of the
+#: characters its body's text runs hold lost text to the extractor.
+_DOCX_KEPT_SHARE_MIN = 0.5
+#: Body text (non-blank characters) under which no loss is reported: a short
+#: document has too little to compare.
+_DOCX_BODY_CHARS_MIN = 200
+#: A Word file at least this large that extracts under
+#: :data:`_DOCX_SPARSE_TEXT_CHARS` non-blank characters most likely keeps its
+#: content in pictures (a scan, a screenshot pasted in).
+_DOCX_SPARSE_FILE_BYTES = 100_000
+_DOCX_SPARSE_TEXT_CHARS = 100
+
+
+def _non_blank(text: str) -> int:
+    return sum(1 for ch in text if not ch.isspace())
+
+
+def _docx_body_run_text(content: bytes) -> str:
+    """Every ``w:t`` of ``word/document.xml``, drawing fallbacks excluded.
+
+    Read from the raw part, never through the extractor, so it is the
+    yardstick the extractor's output is measured against.
+    """
+    import html
+    import io
+    import re
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8", errors="replace")
+    # A text box is written twice: the drawing and its VML fallback.
+    xml = re.sub(r"<mc:Fallback\b.*?</mc:Fallback>", "", xml, flags=re.S)
+    runs = re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", xml)
+    return html.unescape("".join(runs))
+
+
+def extraction_warning(content: bytes, filename: str, text: str) -> str | None:
+    """Why the text extracted from a file may be incomplete, or ``None``.
+
+    Only a Word document is measured: its body's text runs are counted in the
+    raw XML and compared with *text*, what :func:`extract_text_from_file`
+    returned. A document whose text sits in an element the extractor skips
+    otherwise reaches an index as a near-empty source marked ready, and a
+    reader cannot tell it from an empty template. CPU-bound: run it off the
+    event loop like the extraction.
+    """
+    if extraction_extension(filename) != "docx":
+        return None
+    extracted = _non_blank(text)
+    try:
+        body = _non_blank(_docx_body_run_text(content))
+    except Exception as e:
+        logger.debug("DOCX text measure failed: %s", format_exception_message(e))
+        body = 0
+    if body >= _DOCX_BODY_CHARS_MIN and extracted < body * _DOCX_KEPT_SHARE_MIN:
+        return f"partial text: {extracted} of the {body} characters of the document body were extracted"
+    if len(content) >= _DOCX_SPARSE_FILE_BYTES and extracted < _DOCX_SPARSE_TEXT_CHARS:
+        return (
+            f"little text: {extracted} characters from a {len(content) // 1000} KB file, its content may be in pictures"
+        )
+    return None
+
+
 _ole2_text_warning_logged = False
 
 
@@ -713,3 +776,12 @@ async def extract_text_from_file_async(content: bytes, filename: str) -> str:
     from app.core.parse_offload import run_parse
 
     return await run_parse(extract_text_from_file, content, filename)
+
+
+async def extraction_warning_async(content: bytes, filename: str, text: str) -> str | None:
+    """Async wrapper for :func:`extraction_warning`, off the event loop."""
+    if extraction_extension(filename) != "docx":
+        return None
+    from app.core.parse_offload import run_parse
+
+    return await run_parse(extraction_warning, content, filename, text)

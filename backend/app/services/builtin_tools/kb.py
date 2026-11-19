@@ -1129,6 +1129,15 @@ async def _fetch_kb_document(
     return doc, kb, None
 
 
+def _extraction_warning(meta: object) -> str | None:
+    """The extraction warning a sync recorded on a document's metadata."""
+    if isinstance(meta, dict):
+        warning = meta.get("extraction_warning")
+        if isinstance(warning, str) and warning:
+            return warning
+    return None
+
+
 def _format_document_metadata(
     doc: KnowledgeDocument, kb: KnowledgeBase
 ) -> list[str]:
@@ -1150,6 +1159,12 @@ def _format_document_metadata(
         lines.append(f"  - Last updated: {doc.updated_at.isoformat()}")
     if doc.status == "error" and doc.error_message:
         lines.append(f"  - Embedding error: {public_error_message(doc.error_message)}")
+    warning = _extraction_warning(getattr(doc, "extra_metadata", None))
+    if warning:
+        lines.append(
+            f"  - Extraction warning: {warning}. The source text may be "
+            "incomplete: open the original file before relying on it."
+        )
     if doc.status != "ready":
         lines.append(
             "  - NOTE: this document is not fully indexed yet, so it is NOT (or "
@@ -1402,6 +1417,7 @@ def build_kb_document_read_tools(
                     KnowledgeDocument.status,
                     KnowledgeDocument.chunk_count,
                     func.coalesce(func.length(KnowledgeDocument.content), 0),
+                    KnowledgeDocument.extra_metadata,
                 ).where(KnowledgeDocument.knowledge_base_id.in_(kb_uuids))
                 count_query = (
                     sa_select(func.count())
@@ -1453,13 +1469,16 @@ def build_kb_document_read_tools(
                     doc_status,
                     chunk_count,
                     content_length,
+                    doc_meta,
                 ) in rows:
                     kb_label = kb_names.get(str(doc_kb_id), "?")
+                    warning = _extraction_warning(doc_meta)
+                    flag = f", extraction warning: {warning}" if warning else ""
                     lines.append(
                         f"- **{filename}** (id: {doc_id}, knowledge base: "
                         f"{kb_label}, type: {source_type}, status: {doc_status}, "
                         f"chunks: {chunk_count or 0}, "
-                        f"{content_length or 0} characters)"
+                        f"{content_length or 0} characters{flag})"
                     )
                 if len(rows) < total:
                     lines.append(
