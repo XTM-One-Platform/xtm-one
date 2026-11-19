@@ -58,6 +58,19 @@ _INGESTION_APPLIES: dict[str, frozenset[str]] = {
 }
 _DEFAULT_FEED_LIMIT = 50
 
+#: The fields each action of manage_opencti_form reads; any other field is refused
+#: by name with nothing sent, as for the feeds above.
+_FORM_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"form_id"}),
+    "create": frozenset({"name", "description", "form_schema", "active"}),
+    "update": frozenset({"form_id", "name", "description", "form_schema", "active"}),
+    "delete": frozenset({"form_id"}),
+    "submit": frozenset({"form_id", "values"}),
+    "import": frozenset({"content", "name"}),
+}
+_DEFAULT_FORM_LIMIT = 50
+
 #: config keys an agent may try for an RSS label import switch OpenCTI does not have.
 _LABEL_IMPORT_KEYS = ("label_import", "import_labels", "ingest_labels", "labels_import")
 
@@ -529,9 +542,29 @@ def register(
         values: str = "",
         content: str = "",
         search: str = "",
-        limit: int = 50,
+        limit: int = _DEFAULT_FORM_LIMIT,
+        **extra_args: object,
     ) -> str:
         action = (action or "").strip().lower()
+        # Defaults count as not passed: a field is refused only when the caller set it.
+        refused = _refuse_unapplied(
+            action,
+            _FORM_APPLIES,
+            {
+                "form_id": form_id,
+                "name": name,
+                "description": description,
+                "form_schema": form_schema,
+                "active": active,
+                "values": values,
+                "content": content,
+                "search": search,
+                "limit": None if limit == _DEFAULT_FORM_LIMIT else limit,
+            },
+            dict(extra_args),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
