@@ -23,6 +23,8 @@ SharePoint and To Do for the signed-in user. Split by domain (mirrors the
                        occurrences, invitation responses, Teams meeting options.
 * ``files``          - OneDrive reading, download / upload, Word comments,
                        Teams file sends.
+* ``drive_ops``      - drive file upkeep: rename, move, delete (recycle bin),
+                       export to PDF.
 * ``sharepoint``     - sites and their files.
 * ``tasks``          - Microsoft To Do.
 * ``teams_channels`` - teams, channels, channel messages and members.
@@ -45,6 +47,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from . import (
     calendar,
+    drive_ops,
     files,
     mail,
     meetings,
@@ -73,6 +76,7 @@ _DOMAINS = (
     mail,
     calendar,
     files,
+    drive_ops,
     sharepoint,
     tasks,
     teams_channels,
