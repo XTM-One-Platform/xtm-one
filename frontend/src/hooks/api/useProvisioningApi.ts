@@ -37,6 +37,8 @@ export interface ScimActivity {
   entity_type: string;
   entity_name: string | null;
   summary: string;
+  /** The account state after a `toggle` row (deactivated or reactivated); null on other rows. */
+  active?: boolean | null;
   created_at: string | null;
 }
 

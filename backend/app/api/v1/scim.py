@@ -748,12 +748,24 @@ async def list_scim_tokens(
     return {"endpoint": _base(request), "tokens": [_token_dict(t) for t in rows]}
 
 
+def _toggled_state(action: str, details: dict[str, Any] | None) -> bool | None:
+    """The account state a ``toggle`` row recorded, else ``None``."""
+    if action != "toggle" or not isinstance(details, dict):
+        return None
+    active = details.get("active")
+    return active if isinstance(active, bool) else None
+
+
 @tokens_router.get("/activity")
 async def list_scim_activity(
     limit: int = 50, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> list[dict[str, Any]]:
     """The latest SCIM writes, newest first: every SCIM write is audited under
-    ``system:scim:<token name>`` (reads and refused calls are not audited)."""
+    ``system:scim:<token name>`` (reads and refused calls are not audited).
+
+    ``active`` is the account's state after a ``toggle`` (the identity provider
+    deactivated or reactivated it), read from the audit details; ``None`` on
+    every other row, so the screen names the direction in the app language."""
     from app.models.audit_log import AuditLog
     from app.services.audit import SYSTEM_ACTOR_PREFIX
 
@@ -777,6 +789,7 @@ async def list_scim_activity(
             "entity_type": row.entity_type,
             "entity_name": row.entity_name,
             "summary": row.summary,
+            "active": _toggled_state(row.action, row.details),
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
         for row in rows
