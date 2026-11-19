@@ -63,7 +63,7 @@ describe("HealthCompanion", () => {
     serve({ enabled: true, pet: "butler" }, "running", { critical: 2, warning: 3, info: 1 });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 critical findings are open Jeeves is checking the platform.",
+      "2 critical findings are open. Jeeves is checking the platform.",
     );
   });
 

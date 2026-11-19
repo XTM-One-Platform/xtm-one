@@ -112,7 +112,7 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
               findings.severity === "critical"
                 ? "font-medium text-feedback-error-primary"
                 : findings.severity === "warning"
-                  ? "font-medium text-feedback-alert-primary"
+                  ? "font-medium text-feedback-warning-primary light:text-feedback-warning-tertiary"
                   : "text-default-primary"
             }
           >

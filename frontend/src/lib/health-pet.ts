@@ -94,8 +94,8 @@ export const COMPANION_STATE_LABELS = {
 
 /** The findings line of the bubble, most severe first. @i18n-keys */
 export const COMPANION_FINDINGS_LABELS = {
-  critical: "{count, plural, one {# critical finding is open} other {# critical findings are open}}",
-  warning: "{count, plural, one {# warning is open} other {# warnings are open}}",
+  critical: "{count, plural, one {# critical finding is open.} other {# critical findings are open.}}",
+  warning: "{count, plural, one {# warning is open.} other {# warnings are open.}}",
   clear: "No open finding.",
 } as const;
 
