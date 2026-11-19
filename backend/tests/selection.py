@@ -866,10 +866,15 @@ def frontend_build_reason(changed: Iterable[str]) -> str | None:
 
 
 def run_ci(
-    changed: list[str] | None, full_because: str | None, outdir: Path, weights: Path | None = None
+    changed: list[str] | None,
+    full_because: str | None,
+    outdir: Path,
+    weights: Path | None = None,
+    graph: Graph | None = None,
 ) -> dict[str, object]:
     """The answer of ``ci.yml``'s ``select`` job: ``changed`` is ``None`` when every suite runs."""
-    graph = Graph.read()
+    if graph is None:
+        graph = Graph.read()
     if changed is None:
         selection = Selection(full=full_because or "every suite runs")
         frontend = FrontendUnit("full", selection.full)
@@ -945,7 +950,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--full", metavar="WHY", help="run every suite, for this reason (no merge group to measure)")
     parser.add_argument("--outdir", type=Path, default=Path("selection"), help="where the ci file lists go")
     parser.add_argument("--matrix", help="e2e: the shard matrix entries, as a JSON list")
-    parser.add_argument("--weights", type=Path, help="ci: the shard weights this run deals by (scripts/shard_weights.py)")
+    parser.add_argument(
+        "--weights", type=Path, help="ci: the shard weights this run deals by (scripts/shard_weights.py)"
+    )
     parser.add_argument("--github-output", type=Path, help="append the job outputs here ($GITHUB_OUTPUT)")
     parser.add_argument("--summary", type=Path, help="append a table here ($GITHUB_STEP_SUMMARY)")
     args = parser.parse_args(argv)

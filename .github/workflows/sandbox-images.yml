@@ -112,7 +112,16 @@ jobs:
       # longest cached one) and runs only when backend/sandbox/ changes.
       - name: Build image
         working-directory: backend/sandbox
-        run: ./build-image.sh "${{ matrix.image }}:ci"
+        # Built cold, every apt and pip download included: a mirror error the
+        # Dockerfile's own apt calls do not retry gets two more attempts here
+        # (the layers already built stay in Docker's local cache).
+        run: |
+          for attempt in 1 2 3; do
+            ./build-image.sh "${{ matrix.image }}:ci" && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       # Every check below runs through the image's own python3, not shell
       # utilities: final-minimal (distroless) has no shell/coreutils at all,
@@ -334,7 +343,16 @@ jobs:
 
       - name: Build image
         working-directory: backend/sandbox
-        run: ./build-image.sh sandbox-nodejs:ci
+        # Built cold, every apt and pip download included: a mirror error the
+        # Dockerfile's own apt calls do not retry gets two more attempts here
+        # (the layers already built stay in Docker's local cache).
+        run: |
+          for attempt in 1 2 3; do
+            ./build-image.sh sandbox-nodejs:ci && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       - name: Assert non-root and functional
         run: |
