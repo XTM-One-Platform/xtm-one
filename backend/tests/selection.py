@@ -832,6 +832,18 @@ def _summary(path: Path | None, title: str, rows: Sequence[tuple[str, str]]) -> 
         out.write("\n".join(lines) + "\n")
 
 
+def frontend_build_reason(changed: Iterable[str]) -> str | None:
+    """Why the frontend build runs for ``changed``; ``None``: it skips."""
+    return next(
+        (
+            f"{p} changes the frontend"
+            for p in changed
+            if p.startswith("frontend/") or p in {".github/workflows/ci.yml", "backend/tests/selection.py"}
+        ),
+        None,
+    )
+
+
 def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) -> dict[str, object]:
     """The answer of ``ci.yml``'s ``select`` job: ``changed`` is ``None`` when every suite runs."""
     graph = Graph.read()
@@ -844,14 +856,7 @@ def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) ->
         selection = select_backend(changed, graph)
         frontend = select_frontend_unit(changed)
         migrations = migrations_reason(changed, graph)
-        build = next(
-            (
-                f"{p} changes the frontend"
-                for p in changed
-                if p.startswith("frontend/") or p in {".github/workflows/ci.yml", "backend/tests/selection.py"}
-            ),
-            None,
-        )
+        build = frontend_build_reason(changed)
     plan = plan_backend(selection, graph)
     frontend_shards = {"skip": 0, "related": 1, "full": MAX_SHARDS["frontend-unit"]}[frontend.mode]
     outdir.mkdir(parents=True, exist_ok=True)

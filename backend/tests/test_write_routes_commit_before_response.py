@@ -225,6 +225,11 @@ def _where(route: APIRoute) -> str:
     return f"{fn.__module__}.{fn.__qualname__}:{line}"
 
 
+#: The analysis of every route takes 20 to 30 s on CI; a module fixture is built once per worker, and
+#: ``--dist loadgroup`` spread its four tests over as many workers. One group builds it once.
+_ONE_WORKER = pytest.mark.xdist_group("write_routes_analysis")
+
+
 @pytest.fixture(scope="module")
 def route_reports():
     from app.main import application
@@ -237,6 +242,7 @@ def route_reports():
     ]
 
 
+@_ONE_WORKER
 def test_the_analysis_sees_the_whole_route_table(route_reports):
     # An import-order change hiding the routers would make every other test
     # here pass on an empty table.
@@ -246,6 +252,7 @@ def test_the_analysis_sees_the_whole_route_table(route_reports):
     assert len(reads) > 250, f"only {len(reads)} read routes found"
 
 
+@_ONE_WORKER
 def test_every_route_commits_its_writes_before_answering(route_reports):
     failures = []
     for route, report in route_reports:
@@ -268,6 +275,7 @@ def test_every_route_commits_its_writes_before_answering(route_reports):
     )
 
 
+@_ONE_WORKER
 def test_every_exemption_is_still_needed(route_reports):
     by_label = {_label(route): report for route, report in route_reports}
     stale = [
@@ -278,6 +286,7 @@ def test_every_exemption_is_still_needed(route_reports):
     assert not stale, "Remove these entries from EXEMPTIONS:\n  " + "\n  ".join(stale)
 
 
+@_ONE_WORKER
 def test_the_session_only_escapes_where_it_was_reviewed(route_reports):
     escapes = sorted({e for _, report in route_reports for e in report.escapes})
     unreviewed = [e for e in escapes if not any(re.fullmatch(p, e) for p in REVIEWED_ESCAPES)]

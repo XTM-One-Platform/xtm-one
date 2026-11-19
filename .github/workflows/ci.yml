@@ -346,11 +346,11 @@ jobs:
           python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25 \
             --junitxml "$RUNNER_TEMP/junit/unit-${PYTEST_SHARD%/*}.xml" -o junit_family=xunit1
 
-      # Each test file's seconds, for tests/shard_durations.json: the nightly
-      # run is the full pass whose reports refresh it
+      # Each test file's seconds, for tests/shard_durations.json: a full run
+      # (nightly or manual) keeps the reports that refresh it
       # (backend/scripts/refresh_shard_durations.py).
       - name: Keep the test timings
-        if: always() && github.event_name == 'schedule'
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: unit-junit-${{ strategy.job-index }}

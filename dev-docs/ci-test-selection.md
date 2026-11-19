@@ -42,9 +42,9 @@ Replayed over `main`'s last 60 merges (18 Nov 2026, timed on the queue's own run
 
 ## Shard weights
 
-The nightly unit shards keep their JUnit reports (`unit-junit-*` artifacts). When one shard ends long after the others, refresh the weights:
+A full run - the nightly one, or `gh workflow run ci.yml --ref <branch>` - keeps the unit shards' JUnit reports (`unit-junit-*` artifacts). When one shard ends long after the others, refresh the weights:
 
 ```bash
-gh run download <nightly run id> --pattern 'unit-junit-*' --dir /tmp/junit
+gh run download <full run id> --pattern 'unit-junit-*' --dir /tmp/junit
 cd backend && uv run python scripts/refresh_shard_durations.py /tmp/junit/*/*.xml
 ```
