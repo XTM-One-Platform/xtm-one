@@ -1960,12 +1960,13 @@ def build_work_item_tools(
             msg += "\n" + _fleet_impact_line(item["fleet_impact"], completed=True)
         return msg
 
-    async def _delegate_to_assignment(assignment_id: str, task: str) -> str:
+    async def _delegate_to_assignment(assignment_id: str, task: str, file_ids: list[str] | None = None) -> str:
         return await _run_delegate_to_assignment(
             assignment_id=assignment_id,
             task=task,
             acting_user_id=acting_user_id,
             delegating_agent_id=agent_id,
+            file_ids=file_ids,
         )
 
     async def _program_scope(scope: str) -> Any:
@@ -2408,15 +2409,19 @@ def build_work_item_tools(
         ToolDefinition(
             name="delegate_to_assignment",
             description=(
-                "Enqueue a tracked run of one assignment (by id) with your task as "
-                "its trigger input: a durable run with its own status, retries and "
-                "completion, and a run id to follow."
+                "Start a tracked run of one assignment with your task and files "
+                "as input: own status, retries, completion, a run id to follow."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "assignment_id": {"type": "string", "description": "UUID of the assignment to run"},
-                    "task": {"type": "string", "description": "The task / input passed to the assignment as trigger payload"},
+                    "assignment_id": {"type": "string", "description": "Assignment UUID"},
+                    "task": {"type": "string", "description": "Task for the run"},
+                    "file_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Files the run reads",
+                    },
                 },
                 "required": ["assignment_id", "task"],
             },
@@ -2510,14 +2515,46 @@ def _delegate_refusal_message(refusal, assignment) -> str:
     }.get(refusal.reason, f"{refusal.detail}.")
 
 
+#: Files one delegation hands its run, as many as a work item attaches.
+_MAX_DELEGATED_FILES = 20
+
+
+def _delegated_file_ids(file_ids: object) -> tuple[list[str], str | None]:
+    """The delegation's file ids, canonical and de-duplicated in order, and the
+    first one that is not a UUID (None when all are)."""
+    import uuid as _uuid
+
+    if not file_ids:
+        return [], None
+    if isinstance(file_ids, str):
+        file_ids = [file_ids]
+    out: list[str] = []
+    for raw in file_ids if isinstance(file_ids, list | tuple) else [file_ids]:
+        try:
+            canonical = str(_uuid.UUID(str(raw).strip()))
+        except (TypeError, ValueError, AttributeError):
+            return [], str(raw)
+        if canonical not in out:
+            out.append(canonical)
+    return out, None
+
+
 async def _run_delegate_to_assignment(
     *,
     assignment_id: str,
     task: str,
     acting_user_id: str | None,
     delegating_agent_id: str | None,
+    file_ids: list[str] | None = None,
 ) -> str:
-    """Trigger a tracked run of a specific (visible) assignment. B3 fix."""
+    """Trigger a tracked run of a specific (visible) assignment. B3 fix.
+
+    ``file_ids`` reach the run's ``trigger_payload["file_ids"]``, which the
+    engine admits through the file access contract as the run's own identity
+    (``load_authorized_trigger_files``): a foreign id is dropped there, never
+    trusted here. Without them a file named in the task text alone was not
+    readable by the delegated run.
+    """
     from fastapi import HTTPException
     from sqlalchemy import select
 
@@ -2530,6 +2567,11 @@ async def _run_delegate_to_assignment(
     if aid is None:
         return f"Error: '{assignment_id}' is not a valid assignment id."
     uid = safe_uuid(acting_user_id) if acting_user_id else None
+    delegated_file_ids, bad_file_id = _delegated_file_ids(file_ids)
+    if bad_file_id is not None:
+        return f"Error: '{bad_file_id}' is not a valid file id."
+    if len(delegated_file_ids) > _MAX_DELEGATED_FILES:
+        return f"Error: {len(delegated_file_ids)} files named; a delegation hands at most {_MAX_DELEGATED_FILES}."
 
     try:
         async with async_session() as db:
@@ -2614,6 +2656,7 @@ async def _run_delegate_to_assignment(
                         "trigger_type": "delegation",
                         "task": task,
                         "delegated_by_agent_id": delegating_agent_id,
+                        **({"file_ids": delegated_file_ids} if delegated_file_ids else {}),
                     },
                     db=db,
                     triggered_by_user_id=uid,
