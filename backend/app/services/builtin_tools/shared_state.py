@@ -606,6 +606,20 @@ def build_shared_state_tools(
             part, _page = _shape_items(part, shape)
         return json.dumps(part, default=str, ensure_ascii=False)
 
+    def _selected_items(state: dict[str, object], path: str, where: list[dict[str, object]]) -> list[object] | None:
+        """The list items a where_json read selects, flat; ``None`` when it selects no list."""
+        exported = _export_selection(state, path, where, None)
+        if exported.startswith("Error:"):
+            return None
+        selected = json.loads(exported)
+        if not isinstance(selected, list):
+            return None
+        part, missing = _resolve_path(state.get("value") or {}, path)
+        if path and missing is None and isinstance(part, list):
+            return selected
+        # A layout-free read answers the matches grouped by list path.
+        return [item for group in selected for item in group["matches"]]
+
     def _resolve_path(value: object, path: str) -> tuple[object, str | None]:
         """The part of a value a read `path` names, or why there is none.
 
@@ -1050,6 +1064,14 @@ def build_shared_state_tools(
                 return json.dumps(rows, default=str, ensure_ascii=False)
             return ToolResult(tool_call_id="", content=_format_groups(shown, header, rows), structured=rows)
         structured = json.loads(json.dumps(shown, default=str))
+        if where is not None:
+            # A gate check reads ``structured``: a where_json read carries its
+            # selection and count, so ``$.match_count`` tells a gate whether the
+            # list holds an item matching the event (#489).
+            matches = _selected_items(shown, path, where)
+            if matches is not None:
+                structured["matches"] = matches
+                structured["match_count"] = len(matches)
         if shape and not windowed:
             return "Error: fields, item_offset and item_limit need `path` (a list) or `where_json`."
         if workspace_ingest_requested():
