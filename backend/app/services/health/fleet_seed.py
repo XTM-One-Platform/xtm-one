@@ -146,7 +146,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         description="Diagnoses agents from traces, ratings and analytics, and drafts the variants worth measuring.",
         icon="Stethoscope",
         builtin_tool_ids=("health_diagnosis", IMPROVEMENTS_GROUP),
-        skill_slugs=("concierge-quality-analyst",),
+        skill_slugs=("health-quality-analyst",),
         handovers=(("concierge-experimenter", "delegate"),),
     ),
     FleetAgentSpec(
@@ -156,7 +156,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         description="Diagnoses flows and authors repairs, optimizations and new flows on sandbox copies.",
         icon="FlaskConical",
         builtin_tool_ids=("flow_lab", IMPROVEMENTS_GROUP),
-        skill_slugs=("concierge-flow-lab",),
+        skill_slugs=("health-flow-lab",),
         handovers=(("concierge-experimenter", "delegate"),),
     ),
     FleetAgentSpec(
@@ -166,7 +166,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         description="Measures variants on sandbox copies with evaluations and files the improvement proposals.",
         icon="Scale",
         builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
-        skill_slugs=("concierge-experimenter",),
+        skill_slugs=("health-experimenter",),
     ),
 )
 

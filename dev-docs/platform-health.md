@@ -167,6 +167,14 @@ alias for one minor release (section 2.3).
   name holds the token `concierge_`, so a migrated database matches a fresh install; it is
   catalog-only (no index rebuilt), idempotent, and its downgrade writes the former names back
   (`test_health_index_names.py`).
+- Seeded skill slugs: `concierge-quality-analyst`, `concierge-experimenter` and
+  `concierge-flow-lab` are `health-quality-analyst`, `health-experimenter` and
+  `health-flow-lab` (content files and the `health` tag follow). The former slugs stay in
+  `RENAMED_BUILTIN_SKILL_SLUGS` (`builtin_agents.py`): the skill seed adopts a row still
+  tagged `slug:<former>` under its current slug and retags it in place, so the row keeps its
+  id and every agent's `skill_ids` keeps pointing at it; no Alembic migration is needed. A
+  row already on the current slug wins and the former one is removed as stale
+  (`test_health_skill_renames.py`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no
