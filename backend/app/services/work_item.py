@@ -5528,12 +5528,12 @@ def _inbox_run_identity(assignment: Any, agent: Any) -> tuple[str | None, bool]:
     The mirror of what ``trigger_assignment`` stamps on an inbox run (no
     person starts it): ``is_company_managed`` from the assignment unless its
     runs are hidden, ``user_id`` from the run-as user else the owner (none for
-    a Concierge fleet agent); then ``_resolve_run_file_owner_id``: no person
+    a Platform Health fleet agent); then ``_resolve_run_file_owner_id``: no person
     for a company-managed run.
     """
     from app.services.assignment_helpers import resolve_hide_runs
     from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
-    from app.services.concierge.identity import is_concierge_agent
+    from app.services.health.identity import is_health_agent
 
     tool_ids = runtime_builtin_tool_ids(
         list(getattr(agent, "builtin_tool_ids", None) or []), getattr(agent, "builtin_allowed_tools", None)
@@ -5541,7 +5541,7 @@ def _inbox_run_identity(assignment: Any, agent: Any) -> tuple[str | None, bool]:
     reads_items = "work_items" in tool_ids
     if bool(getattr(assignment, "is_company_managed", False)) and not resolve_hide_runs(agent, assignment):
         return None, reads_items
-    if is_concierge_agent(agent):
+    if is_health_agent(agent):
         return None, reads_items
     user = getattr(assignment, "run_as_user_id", None) or getattr(assignment, "user_id", None)
     return (str(user) if user else None), reads_items

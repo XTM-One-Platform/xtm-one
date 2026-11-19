@@ -113,12 +113,6 @@ from .agent_builder import (
 from .computer_use import (
     build_computer_use_tools,
 )
-from .concierge_experiments import (
-    build_concierge_experiment_tools,
-)
-from .concierge_quality import (
-    build_concierge_diagnosis_tools,
-)
 from .ctem_cases import (
     CTEM_CASE_TOOL_NAMES,
     build_ctem_case_tools,
@@ -200,6 +194,12 @@ from .handover import (
     resolve_handover_agent,
     resolve_owned_delegation_target,
     self_fanout_enabled,
+)
+from .health_experiments import (
+    build_health_experiment_tools,
+)
+from .health_quality import (
+    build_health_diagnosis_tools,
 )
 from .html_render import (
     build_render_html_tool,
@@ -448,8 +448,6 @@ __all__ = [
     "build_browser_tool",
     "build_code_interpreter_tool",
     "build_computer_use_tools",
-    "build_concierge_diagnosis_tools",
-    "build_concierge_experiment_tools",
     "build_ctem_case_tools",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
@@ -464,6 +462,8 @@ __all__ = [
     "build_flow_lab_tools",
     "build_friction_tools",
     "build_generate_file_tool",
+    "build_health_diagnosis_tools",
+    "build_health_experiment_tools",
     "build_identity_context",
     "build_image_generation_tool",
     "build_kb_document_read_tools",

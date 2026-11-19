@@ -70,23 +70,23 @@ def test_audience_flags_match_the_backend_sets():
     assert not {g.id for g in BUILTIN_TOOL_GROUPS if g.agent_keyed and g.default_on}
 
 
-def test_concierge_only_groups_are_the_specialists_suites():
-    """A chat's session tools never offer a suite that only a Concierge specialist's run may use."""
-    from app.services.concierge.fleet_seed import FLEET_AGENTS
+def test_health_only_groups_are_the_specialists_suites():
+    """A chat's session tools never offer a suite that only a Platform Health specialist's run may use."""
+    from app.services.health.fleet_seed import FLEET_AGENTS
 
-    concierge_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.concierge_only}
-    assert concierge_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
+    health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
+    assert health_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
     for group in BUILTIN_TOOL_GROUPS:
-        if group.concierge_only:
+        if group.health_only:
             assert group.gate == "concierge" and group.agent_keyed, group.id
     # Carried by the fleet's specialists, none of which takes a chat; the
     # chattable orchestrator carries none of them.
-    carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in concierge_only}
+    carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in health_only}
     for gid, agents in carriers.items():
         assert agents, gid
         assert all(a.disable_chat for a in agents), gid
     payload = builtin_tool_groups_payload({})
-    assert {entry["id"] for entry in payload if entry["concierge_only"]} == concierge_only
+    assert {entry["id"] for entry in payload if entry["health_only"]} == health_only
 
 
 def test_every_group_has_its_card():
@@ -156,8 +156,8 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "concierge_diagnosis": bt.build_concierge_diagnosis_tools("")[0],
-        "concierge_experiments": bt.build_concierge_experiment_tools("")[0],
+        "concierge_diagnosis": bt.build_health_diagnosis_tools("")[0],
+        "concierge_experiments": bt.build_health_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
     }
     for group_id, definitions in built.items():
