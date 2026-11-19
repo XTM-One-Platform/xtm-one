@@ -1,0 +1,18 @@
+{
+  "container": "filigran-report",
+  "source": "The Filigran brand pack (brand_assets/filigran): the two Filigran wordmarks a report masthead draws, borrowed file by file, never copied.",
+  "assets": [
+    {
+      "file": "filigran-logo.svg",
+      "pack": "filigran",
+      "role": "logo",
+      "description": "Filigran wordmark (cyan mark + white wordmark), light-on-dark - for the dark report masthead."
+    },
+    {
+      "file": "filigran-logo-light.svg",
+      "pack": "filigran",
+      "role": "logo_light",
+      "description": "Filigran wordmark in dark ink - for a report printed on a light page."
+    }
+  ]
+}

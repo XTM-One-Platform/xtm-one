@@ -413,7 +413,7 @@ def test_render_spec_refuses_a_token_for_another_report_before_any_lookup():
 def test_render_spec_serves_the_report_to_its_token_under_the_read_rule(monkeypatch):
     from app.api.v1 import reports as routes
 
-    async def _theme(db, container_id, *, user_id):
+    async def _theme(db, container_id, *, user_id, report_theme=None):
         return {}
 
     monkeypatch.setattr(routes, "resolve_report_theme", _theme)
@@ -534,7 +534,7 @@ def test_exporting_a_report_already_exported_hands_back_its_file(monkeypatch):
     async def _load(db, report_id, *, user_id):
         return report if report_id == report.id else None
 
-    async def _resolve_stamp(db, container_id, *, user_id):
+    async def _resolve_stamp(db, container_id, *, user_id, report_theme=None):
         return json.dumps({"palette": dict(template), "updated_at": container_updated_at[0]}, sort_keys=True)
 
     async def _fake_export(**kwargs):

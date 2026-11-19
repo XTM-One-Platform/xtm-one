@@ -5285,12 +5285,32 @@ _VIDEO_SLUGS_BY_MODE = {
     "dev": _GLOBAL_VIDEO_SLUGS,
 }
 
+#: The built-in REPORT templates, the brand a report with no template wears:
+#: the Filigran one in Copilot mode like its deck, the XTM One one everywhere.
+_REPORT_NAMES = {
+    "filigran-report": "Filigran Brand Report",
+    "xtm-one-report": "XTM One Brand Report",
+}
+_REPORT_SLUGS_BY_MODE = {
+    "copilot": set(_REPORT_NAMES),
+    "xtm_one": {"xtm-one-report"},
+    "dev": {"xtm-one-report"},
+}
+
 
 def _video_rows(mode: str) -> list:
     """The video templates a previous boot of *mode* left, as seeded rows."""
     rows = [_seeded_row(slug) for slug in sorted(_VIDEO_SLUGS_BY_MODE[mode])]
     for row in rows:
         row.kind = "video"
+    return rows
+
+
+def _report_rows(mode: str) -> list:
+    """The report templates a previous boot of *mode* left, as seeded rows."""
+    rows = [_seeded_row(slug) for slug in sorted(_REPORT_SLUGS_BY_MODE[mode])]
+    for row in rows:
+        row.kind = "report"
     return rows
 
 
@@ -5370,9 +5390,13 @@ def test_each_mode_seeds_its_brand_decks_company_managed(_owner, mode, slugs):
     brand deck, not containers of their own."""
     session = _SeedSession()
     videos = _VIDEO_SLUGS_BY_MODE[mode]
-    assert _seed(session, mode) == len(slugs) + len(videos)
+    reports = _REPORT_SLUGS_BY_MODE[mode]
+    assert _seed(session, mode) == len(slugs) + len(videos) + len(reports)
     rows = _by_slug(session.added)
-    assert set(rows) == slugs | videos
+    assert set(rows) == slugs | videos | reports
+    for slug in reports:
+        assert rows[slug].name == _REPORT_NAMES[slug]
+        assert rows[slug].kind == "report"
     for slug in slugs:
         assert rows[slug].name == _DECK_NAMES[slug]
     for slug in videos:
@@ -5401,7 +5425,9 @@ def test_seeded_decks_declare_the_schemes_they_support(_owner):
         template_supported_schemes,
     )
 
-    rows = _by_slug(_seed_every_deck())
+    # Colour schemes are a deck declaration: a report picks its scheme by its
+    # own theme, so a report template declares none.
+    rows = _by_slug(_decks(_seed_every_deck()))
     assert declared_supported_schemes(rows["filigran-brand"].extra_metadata) == ["dark", "light"]
     assert declared_supported_schemes(rows["thread-brand"].extra_metadata) == ["dark", "light"]
     assert declared_supported_schemes(rows["xtm-one-brand"].extra_metadata) == ["dark"]
@@ -5622,7 +5648,7 @@ def test_reseeding_syncs_in_place_without_inserting(_owner):
     # An older deployment carries the retired search labels.
     existing[0].theme = "filigran"
     existing[1].theme = "xtm-one"
-    session = _SeedSession(existing=[*existing, *_video_rows("copilot")])
+    session = _SeedSession(existing=[*existing, *_video_rows("copilot"), *_report_rows("copilot")])
     assert _seed(session, "copilot") == 0
     assert session.added == []
     assert session.deleted == []
@@ -5675,7 +5701,7 @@ def test_retired_logo_libraries_are_re_homed_into_the_brand_deck(_owner, monkeyp
     monkeypatch.setattr(seed_mod, "_delete_container_assets", _purge)
     decks = [_seeded_row(slug) for slug in _DECK_NAMES]
     libraries = _library_rows()
-    session = _SeedSession(existing=[*decks, *_video_rows("copilot"), *libraries])
+    session = _SeedSession(existing=[*decks, *_video_rows("copilot"), *_report_rows("copilot"), *libraries])
     assert _seed(session, "copilot") == 0
     assert session.added == []
     assert session.deleted == libraries
@@ -5700,8 +5726,8 @@ def test_a_retired_library_is_re_homed_when_the_heir_is_created_in_the_same_boot
     monkeypatch.setattr(seed_mod, "_delete_container_assets", _purge)
     libraries = _library_rows()
     session = _SeedSession(existing=libraries)
-    assert _seed(session, "copilot") == len(_DECK_NAMES) + len(_VIDEO_NAMES)
-    assert set(_by_slug(session.added)) == set(_DECK_NAMES) | set(_VIDEO_NAMES)
+    assert _seed(session, "copilot") == len(_DECK_NAMES) + len(_VIDEO_NAMES) + len(_REPORT_NAMES)
+    assert set(_by_slug(session.added)) == set(_DECK_NAMES) | set(_VIDEO_NAMES) | set(_REPORT_NAMES)
     assert session.deleted == libraries
     assert purged == []
     assert len(_rehome_updates(session)) >= len(libraries)
@@ -5754,7 +5780,9 @@ def test_copilot_mode_keeps_the_xtm_one_brand_deck(monkeypatch, _owner):
     filigran = _seeded_row("filigran-brand")
     thread = _seeded_row("thread-brand")
     libraries = _library_rows()
-    session = _SeedSession(existing=[xtm_one, filigran, thread, *_video_rows("copilot"), *libraries])
+    session = _SeedSession(
+        existing=[xtm_one, filigran, thread, *_video_rows("copilot"), *_report_rows("copilot"), *libraries]
+    )
     assert _seed(session, "copilot") == 0
     assert session.added == []
     assert session.deleted == libraries
@@ -5783,7 +5811,7 @@ def test_the_xtm_one_modes_remove_the_filigran_brand_deck(monkeypatch, _owner, m
     xtm_one = _seeded_row("xtm-one-brand")
     filigran = _seeded_row("filigran-brand")
     libraries = _library_rows()
-    session = _SeedSession(existing=[xtm_one, filigran, *_video_rows(mode), *libraries])
+    session = _SeedSession(existing=[xtm_one, filigran, *_video_rows(mode), *_report_rows(mode), *libraries])
     assert _seed(session, mode) == 0
     assert session.added == []
     assert session.deleted == [filigran, *libraries]

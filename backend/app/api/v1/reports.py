@@ -127,9 +127,11 @@ async def _load_readable(db: AsyncSession, user: User, report_id: str | uuid.UUI
 async def _report_response(db: AsyncSession, report: Report, user: User) -> ReportResponse:
     # Palette overrides are resolved against the *reader's* visibility: a template
     # that has since been un-shared contributes nothing rather than leaking its
-    # brand config (the report still renders with its built-in theme).
+    # brand config (the report still renders with its built-in theme). A report
+    # that links no template wears the platform's brand, resolved here at read
+    # time so the viewer, the static render and the PDF export agree.
     theme_config = await resolve_report_theme(
-        db, report.template_container_id, user_id=user.id
+        db, report.template_container_id, user_id=user.id, report_theme=report.theme
     )
     return ReportResponse(**serialize_report(report, theme_config=theme_config))
 

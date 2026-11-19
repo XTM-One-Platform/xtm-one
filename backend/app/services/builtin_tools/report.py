@@ -327,7 +327,10 @@ def build_report_tools(
                 # an edited template restyles it without a new revision, so
                 # the template's stamp is part of the key.
                 template = await resolve_report_export_stamp(
-                    own_db, report.template_container_id, user_id=user_uuid
+                    own_db,
+                    report.template_container_id,
+                    user_id=user_uuid,
+                    report_theme=report.theme,
                 )
                 key = (doc_id, report.revision, template)
             earlier = exported_files.get(key)
@@ -692,8 +695,8 @@ def build_report_tools(
                     "template_id": {
                         "type": "string",
                         "description": (
-                            "Optional template container id (from search_templates) "
-                            "whose brand palette this report should use."
+                            "Template id (search_templates); omit it to get the "
+                            "platform's brand."
                         ),
                     },
                     "report_id": {

@@ -1,0 +1,18 @@
+{
+  "container": "xtm-one-report",
+  "source": "The XTM One pack (brand_assets/xtm-one) and the XTM One logo of the Filigran pack: the two XTM One logos a report masthead draws, borrowed file by file, never copied.",
+  "assets": [
+    {
+      "file": "xtm-one-logo.svg",
+      "pack": "xtm-one",
+      "role": "logo",
+      "description": "XTM One logo (mark + wordmark), light-on-dark - for the dark report masthead."
+    },
+    {
+      "file": "xtm-one-logo-light.svg",
+      "pack": "filigran",
+      "role": "logo_light",
+      "description": "XTM One logo (mark in the brand purple + dark wordmark), dark-on-light - for a report printed on a light page."
+    }
+  ]
+}
