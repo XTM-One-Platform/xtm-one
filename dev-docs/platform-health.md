@@ -293,6 +293,12 @@ Default thresholds are starting points, editable where marked (E).
 | XTM Hub registration | hub registration state | unset info |
 | Certificates | TLS of the public URL | expiry < 21 days warning |
 
+**Implementation (S4a).** `backend/app/services/health/platform_checks.py` registers the
+configuration checks `xtm_one.registration_token`, `xtm_one.licence`,
+`xtm_one.licence_expiry`, `xtm_one.smtp` and `xtm_one.hub_registration` (5 minutes),
+gated on the mode (nothing recorded when `settings.is_copilot_like`, AI switch not read).
+Tests: `tests/test_health_platform_checks_postgres.py`. The other rows of 4.2 follow in S4b.
+
 ### 4.3 OpenCTI (XTM One mode, automatic)
 
 | Check | Source | Default |

@@ -61,6 +61,20 @@ Signals are read by the scheduler **without any model call**, only for the agent
 
 A signal starts **one investigation** on its target when it crosses its threshold. It does not start another while it stays crossed; it is ready again once the figure is back under the threshold. While an investigation, or any other cycle, is open on a target, nothing starts a second one there: the request or the signal is recorded and refused.
 
+## Platform checks
+
+In XTM One mode, AI switched off included, the health pass also checks the XTM One platform itself every 5 minutes. These checks read a setting or one record, call no model and need no enrolment; in Copilot mode they record nothing.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Registration token | Critical | `PLATFORM_REGISTRATION_TOKEN` is the published default value, which authenticates nobody |
+| Licence | Critical | A Filigran licence is installed and refused (no licence installed is Community Edition, not a finding) |
+| Licence expiry | Warning | The validated Filigran licence expires within 30 days |
+| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email |
+| XTM Hub registration | Info | The platform is not registered with XTM Hub, or its registration lost connectivity or must be done again |
+
+A finding resolves by itself after two passes in a row without its cause.
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:
