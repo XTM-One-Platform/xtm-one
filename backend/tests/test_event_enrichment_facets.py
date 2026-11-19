@@ -62,6 +62,8 @@ def _github(monkeypatch, *, check_runs_total: int = 1) -> list[str]:
             return _Resp([_pr(7)]), None
         if url.endswith("/actions/runs"):
             return _Resp({"total_count": 0, "workflow_runs": []}), None
+        if url.endswith("/status"):
+            return _Resp({"state": "success", "statuses": []}), None
         # Distinct checks: the latest run of each check stands (#11807).
         page = [
             {"id": i + 1, "name": f"x{i}", "status": "completed", "conclusion": "success"}

@@ -618,6 +618,8 @@ def _green_head(monkeypatch, sha: str, runs: list[dict]) -> None:
     async def _request(_client, _method, url, *_a, params=None, **_k):
         if url.endswith("/pulls"):
             return _Resp([_pr(3, ME, sha)]), None
+        if url.endswith("/status"):
+            return _Resp({"state": "success", "statuses": []}), None
         if url.endswith("/actions/runs"):
             return _Resp({"total_count": 1, "workflow_runs": [{"id": 5, "name": "CI", "status": "completed"}]}), None
         return _Resp({"total_count": len(runs), "check_runs": runs}), None
@@ -717,6 +719,8 @@ def _github_head(
         urls.append(url)
         if url.endswith("/pulls"):
             return _Resp([pull]), None
+        if url.endswith("/status"):
+            return _Resp({"state": "success", "statuses": []}), None
         if url.endswith("/actions/runs"):
             assert params["head_sha"] == "b" * 40
             return _Resp({"total_count": len(workflow_runs), "workflow_runs": workflow_runs}), None
