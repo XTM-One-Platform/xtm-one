@@ -2373,8 +2373,6 @@ _FEATURE_GATED_BUILTIN_TOOL_IDS: dict[str, FeatureFlag] = {
     "custom_dashboards": "DASHBOARD_STUDIO",
     "phone": "MOBILE_COMPANION",
     "deep_investigation": "DEEP_INVESTIGATION",
-    # Every Concierge group (the memory steward, the fleet's tools): dark with its flag.
-    **{group.id: "CONCIERGE" for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"},
 }
 
 
@@ -16253,7 +16251,7 @@ def build_agent_builder_tool(
         executor.register(tool_name, handler)
     definitions.extend(intent_defs)
 
-    # A Concierge run reads the platform here, never changes it (#8255).
-    from app.services.concierge.sandbox.guards import guard_agent_builder
+    # A Platform Health run reads the platform here, never changes it (#8255).
+    from app.services.health.sandbox.guards import guard_agent_builder
 
     return guard_agent_builder(definitions, executor), executor
