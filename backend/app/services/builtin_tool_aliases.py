@@ -350,6 +350,12 @@ RENAMED_BUILTIN_FUNCTIONS: dict[str, str] = {
     "read_file": "runner_read_file",
     "write_file": "runner_write_file",
     "list_dir": "runner_list_dir",
+    # Platform Health (dev-docs/platform-health.md section 2.3): the Concierge
+    # orchestrator reads are named after the suite.
+    "list_concierge_signals": "list_health_signals",
+    "list_concierge_cycles": "list_health_cycles",
+    "get_concierge_cycle": "get_health_cycle",
+    "request_concierge_cycle": "request_health_cycle",
 }
 
 

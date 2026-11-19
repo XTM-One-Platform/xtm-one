@@ -13,8 +13,9 @@ from app.tools.base import ToolDefinition, declared_aliases
 RENAMED = {"read_file": "runner_read_file", "write_file": "runner_write_file", "list_dir": "runner_list_dir"}
 
 
-def test_the_renames_are_the_three_file_functions():
-    assert RENAMED_BUILTIN_FUNCTIONS == RENAMED
+def test_the_runner_renames_are_the_three_file_functions():
+    runner = {former: current for former, current in RENAMED_BUILTIN_FUNCTIONS.items() if current.startswith("runner_")}
+    assert runner == RENAMED
 
 
 def test_a_call_under_a_former_name_resolves_to_the_renamed_function():

@@ -141,7 +141,7 @@ _ADDITIVE_VERBS = frozenset(
         # Files a new proposal (``propose_improvement``): changes nothing that exists.
         "propose",
         "publish",
-        # Queues a new health cycle (``request_concierge_cycle``).
+        # Queues a new health cycle (``request_health_cycle``).
         "request",
         "run",
         "schedule",

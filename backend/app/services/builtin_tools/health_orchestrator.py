@@ -36,20 +36,26 @@ from typing import Any, Final
 from sqlalchemy import func, select
 
 from app.api.v1.helpers import agent_tool_admin_bypass
+from app.services.builtin_tool_aliases import RENAMED_BUILTIN_FUNCTIONS
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
 
 GROUP_ID: Final = "concierge_orchestrator"
 TOOL_NAMES: Final = (
-    "list_concierge_signals",
-    "list_concierge_cycles",
-    "get_concierge_cycle",
-    "request_concierge_cycle",
+    "list_health_signals",
+    "list_health_cycles",
+    "get_health_cycle",
+    "request_health_cycle",
 )
 _MAX_LIMIT: Final = 50
 _GENERIC_ERROR: Final = "Platform Health could not answer this right now."
 _NOT_FOUND: Final = "No such target you may manage."
+
+
+def _former_names(current: str) -> tuple[str, ...]:
+    """The [DEPRECATED] ``*_concierge_*`` names of *current*, declared as its aliases."""
+    return tuple(former for former, name in RENAMED_BUILTIN_FUNCTIONS.items() if name == current)
 
 
 def _uuid(value: Any) -> uuid.UUID | None:
@@ -117,11 +123,11 @@ def build_health_orchestrator_tools(
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The group's tools, acting for *user_id* unless the work acts as Platform Health.
 
-    *allow_requests* False (an assignment run) leaves ``request_concierge_cycle``
+    *allow_requests* False (an assignment run) leaves ``request_health_cycle``
     out: a cycle's own run never starts another cycle, so a run cannot fan out.
     """
 
-    async def list_concierge_signals(target_type: str = "", target: str = "", limit: int = 20) -> str:
+    async def list_health_signals(target_type: str = "", target: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
         from app.services.health.signals import list_signal_states
 
@@ -155,13 +161,13 @@ def build_health_orchestrator_tools(
                     for s in states
                 ]
         except Exception:
-            logger.exception("list_concierge_signals failed")
+            logger.exception("list_health_signals failed")
             return _GENERIC_ERROR
         if not rows:
             return "No signal is crossed."
         return "Crossed Platform Health signals:\n" + _data(rows, "Platform Health signals")
 
-    async def list_concierge_cycles(target_type: str = "", target: str = "", status: str = "", limit: int = 20) -> str:
+    async def list_health_cycles(target_type: str = "", target: str = "", status: str = "", limit: int = 20) -> str:
         from app.core.database import async_session
         from app.models.health import HealthCycle
         from app.models.health_cycle import HealthCycleRun
@@ -189,13 +195,13 @@ def build_health_orchestrator_tools(
                 ).all()
                 items = [_cycle_item(cycle, record, full=False) for cycle, record in rows]
         except Exception:
-            logger.exception("list_concierge_cycles failed")
+            logger.exception("list_health_cycles failed")
             return _GENERIC_ERROR
         if not items:
             return "No Platform Health cycle matches."
         return "Platform Health cycles, newest first (statuses as recorded):\n" + _data(items, "Platform Health cycles")
 
-    async def get_concierge_cycle(cycle_id: str = "") -> str:
+    async def get_health_cycle(cycle_id: str = "") -> str:
         from app.core.database import async_session
         from app.models.health import HealthCycle
         from app.models.health_cycle import HealthCycleRun
@@ -203,7 +209,7 @@ def build_health_orchestrator_tools(
 
         cid = _uuid(cycle_id)
         if cid is None:
-            return "The `cycle_id` argument must be a cycle id from list_concierge_cycles."
+            return "The `cycle_id` argument must be a cycle id from list_health_cycles."
         try:
             async with async_session() as db:
                 principal, user = await _caller(db, user_id)
@@ -227,13 +233,13 @@ def build_health_orchestrator_tools(
                     return "No such cycle."
                 item = _cycle_item(cycle, await db.get(HealthCycleRun, cid), full=True)
         except Exception:
-            logger.exception("get_concierge_cycle failed")
+            logger.exception("get_health_cycle failed")
             return _GENERIC_ERROR
         return "Platform Health cycle and its digest (figures and statuses as recorded):\n" + _data(
             item, "Platform Health cycle"
         )
 
-    async def request_concierge_cycle(target_type: str = "agent", target: str = "") -> str:
+    async def request_health_cycle(target_type: str = "agent", target: str = "") -> str:
         from app.core.database import async_session
         from app.services.health.cycles import start_cycle
         from app.services.health.naming import DEFAULT_NAME
@@ -257,7 +263,7 @@ def build_health_orchestrator_tools(
                     requested_by_user_id=requester,
                 )
         except Exception:
-            logger.exception("request_concierge_cycle failed")
+            logger.exception("request_health_cycle failed")
             return _GENERIC_ERROR
         if not result.started:
             # The platform's own name for it: a model reads no administrator text here.
@@ -265,11 +271,15 @@ def build_health_orchestrator_tools(
         return f"Started Platform Health cycle {result.cycle_id} on the {target_type} {resolved[1]}."
 
     executor = CallableToolExecutor()
-    functions = [list_concierge_signals, list_concierge_cycles, get_concierge_cycle]
+    functions = [list_health_signals, list_health_cycles, get_health_cycle]
     if allow_requests:
-        functions.append(request_concierge_cycle)
+        functions.append(request_health_cycle)
     for fn in functions:
         executor.register(fn.__name__, fn)
+        # The [DEPRECATED] ``*_concierge_*`` names run the same handlers for a
+        # caller holding this executor directly; no definition is offered under them.
+        for former in _former_names(fn.__name__):
+            executor.register(former, fn)
     target_props = {
         "target_type": {
             "type": "string",
@@ -281,12 +291,13 @@ def build_health_orchestrator_tools(
     limit_prop = {"limit": {"type": "integer", "description": f"At most this many, 1 to {_MAX_LIMIT}.", "default": 20}}
     definitions = [
         ToolDefinition(
-            name="list_concierge_signals",
+            name="list_health_signals",
             description="List the Platform Health signals currently crossed (feedback drop, failure spike, cost drift, model change), for one target or all you may read. Read-only.",
             input_schema={"type": "object", "properties": {**target_props, **limit_prop}},
+            aliases=_former_names("list_health_signals"),
         ),
         ToolDefinition(
-            name="list_concierge_cycles",
+            name="list_health_cycles",
             description="List Platform Health cycles with their status and digest summary, for one target or all you may read. Read-only.",
             input_schema={
                 "type": "object",
@@ -299,24 +310,27 @@ def build_health_orchestrator_tools(
                     **limit_prop,
                 },
             },
+            aliases=_former_names("list_health_cycles"),
         ),
         ToolDefinition(
-            name="get_concierge_cycle",
+            name="get_health_cycle",
             description="Read one Platform Health cycle and its digest: consolidations, findings, experiments, proposals, budget spent, what was skipped and why. Read-only.",
             input_schema={
                 "type": "object",
-                "properties": {"cycle_id": {"type": "string", "description": "From list_concierge_cycles."}},
+                "properties": {"cycle_id": {"type": "string", "description": "From list_health_cycles."}},
                 "required": ["cycle_id"],
             },
+            aliases=_former_names("get_health_cycle"),
         ),
         ToolDefinition(
-            name="request_concierge_cycle",
+            name="request_health_cycle",
             description="Ask Platform Health to investigate and improve one agent or flow you may manage. Starts at most one cycle per target at a time.",
             input_schema={"type": "object", "properties": target_props, "required": ["target"]},
+            aliases=_former_names("request_health_cycle"),
         ),
     ]
     if not allow_requests:
-        definitions = [d for d in definitions if d.name != "request_concierge_cycle"]
+        definitions = [d for d in definitions if d.name != "request_health_cycle"]
     return definitions, executor
 
 

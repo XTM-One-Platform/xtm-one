@@ -223,9 +223,9 @@ XTM_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "get_flow_shadow",
         "get_flow_run_comparison",
         # Platform Health (#8261): signals, cycles and digests of the targets the caller manages.
-        "list_concierge_signals",
-        "list_concierge_cycles",
-        "get_concierge_cycle",
+        "list_health_signals",
+        "list_health_cycles",
+        "get_health_cycle",
     }
 )
 
