@@ -173,6 +173,16 @@ class PartnerStillRunningError(Exception):
 #: same call succeeds a few seconds later.
 OUTCOME_VERIFICATION_CONTENDED = "verification_contended"
 
+#: The pre-flight refusals that say nothing about the partner task: the same
+#: collect succeeds a few seconds later. Refusing one of them must not end the
+#: delegation a collect was asking about (#317).
+RETRYABLE_PREFLIGHT_REASONS = frozenset({OUTCOME_VERIFICATION_CONTENDED})
+
+_RETRY_COLLECT_HINT = (
+    "The delegation is still outstanding: collect again in a few seconds with "
+    "the same continue_task_id and no message. The answer is not lost."
+)
+
 
 class PreflightRefusedError(Exception):
     """A delegation refused before any request left the process."""
@@ -1518,6 +1528,24 @@ async def _conclude(
     return result
 
 
+async def _refuse_collect_for_now(
+    integration: Any, target: Any, result: DelegationResult, task_id: str
+) -> DelegationResult:
+    """Hand back a retryable refusal of a collect without recording it.
+
+    Counted like any refusal, but never passed to ``_record``: with the task
+    id it would conclude the outstanding row, without it it would insert a
+    concluded second one. The row stays outstanding for the caller's next
+    collect and for the floor.
+    """
+    from app.a2a import metrics as a2a_metrics
+
+    await _commit_target_outcome(target)
+    a2a_metrics.record_delegation_refused(integration.provider, result.partner_reason or "unknown")
+    result.partner_task_id = task_id
+    result.detail = f"{result.detail} {_RETRY_COLLECT_HINT}" if result.detail else _RETRY_COLLECT_HINT
+    return result
+
 
 @dataclass(frozen=True)
 class CancelOutcome:
@@ -1841,13 +1869,18 @@ async def delegate(
     try:
         await preflight(db, integration, target)
     except PreflightRefusedError as refusal:
-        return await conclude(
-            DelegationResult(
-                outcome=OUTCOME_REFUSED_PREFLIGHT,
-                partner_reason=refusal.reason,
-                detail=refusal.detail,
-            )
+        refused = DelegationResult(
+            outcome=OUTCOME_REFUSED_PREFLIGHT,
+            partner_reason=refusal.reason,
+            detail=refusal.detail,
         )
+        if owned_task_id and refusal.reason in RETRYABLE_PREFLIGHT_REASONS:
+            # A transient refusal of a collect says nothing about the task:
+            # concluding its row would end a delegation that is still running,
+            # which the floor then skips and the next collect duplicates.
+            return await _refuse_collect_for_now(integration, target, refused, owned_task_id)
+        concluded: DelegationResult = await conclude(refused)
+        return concluded
 
     if continue_task_id and not continuation_owned:
         # FR-046. The task id is the ONE field of a delegation the calling

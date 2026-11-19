@@ -895,6 +895,60 @@ class TestARefusedCollectConcludesTheRowItWasCollecting:
         assert result.partner_task_id is None
 
 
+class TestARetryableRefusalLeavesTheCollectedRowOutstanding:
+    """#317. ``verification_contended`` says the target row was held for a
+    moment, nothing about the partner task. Concluding the row on it ended a
+    delegation still running at the partner: the floor skipped it and the
+    caller's next collect inserted another concluded row.
+    """
+
+    @staticmethod
+    def _refuse_with(monkeypatch, reason):
+        async def _refused(_db, _integration, _target):
+            raise delegation.PreflightRefusedError(reason, "held")
+
+        monkeypatch.setattr(delegation, "preflight", _refused)
+        recorded = []
+
+        async def _record(_db, _integration, _target, _calling, result, **_kw):
+            recorded.append(result)
+
+        monkeypatch.setattr(delegation, "_record", _record)
+
+        def handler(request):
+            raise AssertionError("a refusal must not reach the partner")
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        return recorded
+
+    @pytest.mark.asyncio
+    async def test_a_contended_collect_records_nothing(self, monkeypatch):
+        recorded = self._refuse_with(monkeypatch, delegation.OUTCOME_VERIFICATION_CONTENDED)
+        result = await delegation.delegate(RecordingDb(), integration_row(), None, continue_task_id="t-77")
+        assert result.outcome == OUTCOME_REFUSED_PREFLIGHT
+        assert result.partner_reason == delegation.OUTCOME_VERIFICATION_CONTENDED
+        assert result.partner_task_id == "t-77"
+        assert result.detail is not None
+        assert "collect again" in result.detail
+        assert result.detail.startswith("held")
+        assert recorded == []
+
+    @pytest.mark.asyncio
+    async def test_a_contended_first_send_is_still_recorded(self, monkeypatch):
+        """No row to keep open: the refusal is the delegation's record."""
+        recorded = self._refuse_with(monkeypatch, delegation.OUTCOME_VERIFICATION_CONTENDED)
+        result = await delegation.delegate(RecordingDb(), integration_row(), None, message="x")
+        assert result.partner_task_id is None
+        assert [r.partner_reason for r in recorded] == [delegation.OUTCOME_VERIFICATION_CONTENDED]
+
+    @pytest.mark.asyncio
+    async def test_a_lasting_refusal_still_concludes_the_row(self, monkeypatch):
+        recorded = self._refuse_with(monkeypatch, "circuit_open")
+        result = await delegation.delegate(RecordingDb(), integration_row(), None, continue_task_id="t-77")
+        assert result.detail == "held"
+        assert [r.partner_task_id for r in recorded] == ["t-77"]
+
+
 class TestTheAttemptHoldsTheCallbackClaimWhileItPolls:
     def test_the_pending_row_is_published_claimed(self):
         """The route goes live the moment the row commits, so work finishing
