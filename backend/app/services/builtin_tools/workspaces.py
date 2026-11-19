@@ -54,6 +54,7 @@ from ._shared import _platform_label, logger
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.models.user import User
     from app.models.workspace import Workspace
 
 #: The most conversations one call moves, and the most it lists.
@@ -549,6 +550,7 @@ def build_workspace_tools(
         icon: str | None = None,
         color: str | None = None,
         archived: object = None,
+        is_company_managed: object = None,
     ) -> str:
         from app.api.v1.helpers import get_user_group_ids
         from app.core.database import async_session as _session
@@ -559,6 +561,9 @@ def build_workspace_tools(
         if uid is None:
             return _ANONYMOUS_REFUSAL
         archived, err = _bool_arg(archived, "archived", None)
+        if err:
+            return err
+        company, err = _bool_arg(is_company_managed, "is_company_managed", None)
         if err:
             return err
         async with _session() as _db:
@@ -611,6 +616,13 @@ def build_workspace_tools(
                 except WorkspaceActionRefusedError as exc:
                     return exc.detail
                 updated.append("archived" if archived else "restored")
+            if company is not None and bool(company) != bool(workspace.is_company_managed):
+                # #398: an existing workspace changes audience in place, its id kept.
+                refusal = await _set_workspace_company_managed(_db, user, workspace, bool(company))
+                if refusal is not None:
+                    await _db.rollback()
+                    return f"{refusal} Nothing was saved."
+                updated.append("company-managed" if company else "personal")
 
             if not updated:
                 return f"Workspace **{workspace.name}** is already as requested; nothing changed."
@@ -630,6 +642,51 @@ def build_workspace_tools(
                 await _db.rollback()
                 return "Failed to update the workspace. Please try again."
             return f"Workspace **{workspace.name}** updated: {', '.join(updated)}."
+
+    async def _set_workspace_company_managed(
+        _db: AsyncSession, user: User, workspace: Workspace, company: bool
+    ) -> str | None:
+        """Toggle *workspace* company-managed as `PUT /workspaces/{id}` does; a refusal text, else None (#398)."""
+        from sqlalchemy import func, select
+
+        from app.api.v1.helpers import handle_company_managed_toggle
+        from app.models.fleet import Fleet
+        from app.services.workspaces import (
+            WorkspaceActionRefusedError,
+            ensure_can_be_company_managed,
+            lock_workspace_for_hosting,
+        )
+
+        if not user.is_admin:
+            return "Only admins can change whether a workspace is company-managed."
+        try:
+            ensure_can_be_company_managed(workspace, company)
+        except WorkspaceActionRefusedError as exc:
+            return exc.detail
+        if not company:
+            # Serialised with fleet binds: a company-managed fleet never ends up in a personal workspace.
+            await lock_workspace_for_hosting(_db, workspace)
+            hosted = (
+                await _db.execute(
+                    select(func.count(Fleet.id)).where(
+                        Fleet.workspace_id == workspace.id, Fleet.is_company_managed.is_(True)
+                    )
+                )
+            ).scalar() or 0
+            if hosted:
+                return (
+                    f"Workspace **{workspace.name}** hosts {hosted} company-managed fleet(s): a company-managed "
+                    "fleet needs a company-managed workspace. Make the fleet personal or move it first."
+                )
+        await handle_company_managed_toggle(
+            _db,
+            user,
+            workspace,
+            company,
+            agent_field=None,
+            keep_grants=bool(getattr(workspace, "access_restricted", False)),
+        )
+        return None
 
     # ── delete_workspace ──────────────────────────────────────────────
 
@@ -1335,6 +1392,7 @@ def build_workspace_tools(
                         "type": "boolean",
                         "description": "true to archive, false to restore; omit to leave it.",
                     },
+                    "is_company_managed": {"type": "boolean", "description": "Admin only."},
                 },
                 "required": ["workspace_id"],
             },

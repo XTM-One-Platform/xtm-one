@@ -240,6 +240,18 @@ migration, 2.3). `backend/tests/test_health_built_in.py` pins the built-in behav
   (model configuration, knowledge base health, shared OAuth credentials) and
   `get_fleet_health` read the same findings; no second implementation.
 
+**Implementation (S2).** `backend/app/services/health/engine.py` holds the check registry
+(`register_check`), `record_results` (dedupe on `finding_key`, auto-resolve after
+`RESOLVE_AFTER_PASSES` = 2, dismissal with expiry), the score (`score_from_counts`,
+`module_scores`), the daily rollup (`rollup_day`, `health_score_days`, 90 days) and
+`enrolled_agent_ids` (an agent enrolled one by one, or a home member of an enrolled fleet,
+`fleets.health_enrolled`). Findings live in `health_check_findings`
+(`models/health_check.py`, migration `h122healthengine`), apart from the analysis layer's
+`health_findings`. The scheduler runs `health_pass_tick` at step 9c bis of the autonomous
+tick, whatever the AI switch. Tests: `tests/test_health_engine.py` (ids, score, no
+quota import) and `tests/test_health_engine_postgres.py` (dedupe, resolve, dismissal,
+history, test (a) with 900 agents, test (d) with 288 passes).
+
 ## 4. Check catalogue
 
 Default thresholds are starting points, editable where marked (E).

@@ -59,8 +59,8 @@ function CompanionCard({ companion }: { companion: HealthCompanion }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 pt-0">
-        <div className="flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-3.5 content-compact">
-          <span>{t_i18n("Show the companion")}</span>
+        <div className="flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-3.5">
+          <span className="content-base text-default-primary">{t_i18n("Show the companion")}</span>
           <Switch
             checked={companion.enabled}
             disabled={save.isPending}

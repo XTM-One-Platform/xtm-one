@@ -3619,6 +3619,7 @@ def _refresh_from_live(
         and not is_draft_pull_request(b)
         and _ci_green(b)
         and not _full_ci_running(reads.get((b["repo"], b["number"])))
+        and not _merge_queued(reads.get((b["repo"], b["number"])))
     ]
     return green, unannounced
 
@@ -3632,6 +3633,16 @@ def _full_ci_running(read: Any) -> bool:
     the queue for a run that could only read the refusal again (#12040).
     """
     return isinstance(read, dict) and read.get("full_ci") == "running"
+
+
+def _merge_queued(read: Any) -> bool:
+    """Whether the live *read* of a pull request has it waiting in its base's merge queue. Pure.
+
+    ``merge_github_pr`` enqueued it: the queue's merge, or its removal (the
+    ``dequeued`` path), is a wake still to come, so the item is parked on the
+    merge, never put back in the queue for a run with nothing to do (#404).
+    """
+    return isinstance(read, dict) and read.get("merge_queue") is True
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:
