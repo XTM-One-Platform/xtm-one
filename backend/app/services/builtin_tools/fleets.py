@@ -1073,6 +1073,7 @@ def build_fleet_tools(
             from app.models.agent import Agent
             from app.models.fleet import FLEET_ROLE_MEMBER, FleetMember
             from app.models.workspace import Workspace
+            from app.services.workspaces import lock_workspace_for_hosting
 
             if not user.is_admin:
                 raise _RefusedError("Only admins can change whether a fleet is company-managed. Nothing was saved.")
@@ -1108,6 +1109,8 @@ def build_fleet_tools(
                     current = (
                         await db.execute(select(Workspace).where(Workspace.id == fleet.workspace_id))
                     ).scalar_one()
+                    # Serialised with update_workspace turning it personal, as PUT /fleets/{id} does.
+                    await lock_workspace_for_hosting(db, current)
                     if not current.is_company_managed:
                         raise _RefusedError(
                             f"A company-managed fleet needs a company-managed workspace; its workspace "
