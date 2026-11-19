@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.core import database
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
     from app.models.fleet import Fleet
     from app.models.user import User
+    from app.services.fleet_doc_on_create import DocGeneration
     from app.tools.base import FileContext
 
 FLEETS_SUITE_ID = "fleets"
@@ -135,6 +137,32 @@ async def documentation_hint(db: AsyncSession, fleet: Fleet) -> str:
     return (
         "  • documentation_out_of_date: true. Once your changes are done, call "
         f'regenerate_fleet_documentation(fleet_id="{fleet.id}") once.'
+    )
+
+
+def generation_text(state: DocGeneration, *, now: datetime | None = None) -> str:
+    """The running documentation generation of a fleet in words, or '' when none runs.
+
+    A generation's server marker lives while its worker refreshes it: a worker
+    that stopped frees it within its lifetime, so a generation is never stuck
+    for longer and the next ``regenerate_fleet_documentation`` call starts.
+    """
+    from app.services.fleet_doc_on_create import GENERATING_TTL_SECONDS
+
+    if not state.generating:
+        return ""
+    started = "start time unknown"
+    if state.started_at:
+        try:
+            since = datetime.fromisoformat(state.started_at)
+            elapsed = max(0, int(((now or datetime.now(UTC)) - since).total_seconds()))
+            started = f"started {state.started_at} UTC, running for {elapsed // 60} min {elapsed % 60} s"
+        except ValueError:
+            started = f"started {state.started_at}"
+    return (
+        f"  • documentation_generating: true ({started}). No ETA: it ends when the model has answered every section. "
+        f"Its worker keeps it alive; a stopped worker frees it within {GENERATING_TTL_SECONDS // 60} min, "
+        "then regenerate_fleet_documentation starts a new one."
     )
 
 
@@ -565,6 +593,11 @@ def build_fleet_tools(
         hint = await documentation_hint(db, fleet)
         if hint:
             lines.append(hint)
+        from app.services.fleet_doc_on_create import generation_state
+
+        running = generation_text(await generation_state(fleet.id))
+        if running:
+            lines.append(running)
         return "\n".join(lines)
 
     async def _replace_members(
@@ -1843,6 +1876,7 @@ def build_fleet_tools(
                 GENERATION_FAILED,
                 claim_generation,
                 generation_running,
+                generation_state,
                 release_generation,
                 schedule_pending_sections,
             )
@@ -1853,9 +1887,10 @@ def build_fleet_tools(
             # async ``finally`` must not lazy-load it (MissingGreenlet).
             doc_fleet_id = fleet.id
             if not await claim_generation(doc_fleet_id):
+                running = generation_text(await generation_state(doc_fleet_id)).removeprefix("  • ")
                 raise _RefusedError(
                     f"A generation of the documentation of fleet {fleet.name} is already running. "
-                    "Nothing was started: read the page once it lands."
+                    "Nothing was started: read the page once it lands." + (f" {running}" if running else "")
                 )
             failure: str | None = None
             try:
