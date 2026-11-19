@@ -77,6 +77,12 @@ def graph(tmp_path: Path) -> Graph:
             "tests/conftest.py": "from tests.frozen import NOW\n",
             "scripts/dump.py": "def render():\n    from app.core import money\n",
             "tests/test_dump.py": "from scripts.dump import render\n",
+            "alembic/env.py": "from app.core import config\n",
+            "app/core/config.py": "def check():\n    from app.core import urls\n",
+            "app/core/urls.py": "from app.core import hosts\n",
+            "app/core/hosts.py": "def resolve():\n    from app.services import billing\n",
+            "tests/test_db_postgres.py": "import pytest\npytestmark = [pytest.mark.integration]\n",
+            "tests/test_mixed.py": "import pytest\n@pytest.mark.integration\ndef test_db(): ...\n",
         },
     )
     return Graph.read(backend)
@@ -192,6 +198,21 @@ def test_migrations_run_for_what_the_chain_imports_and_loads(graph, tmp_path):
     assert selection.migrations_reason(["backend/app/services/billing.py"], graph, alembic) is None
 
 
+def test_migrations_run_for_what_a_loaded_module_s_functions_import_one_step(graph, tmp_path):
+    # config's validator imports urls while env.py loads config: urls and what it loads run the chain,
+    # hosts's own function import does not travel further.
+    alembic = tmp_path / "backend" / "alembic"
+    assert selection.migrations_reason(["backend/app/core/urls.py"], graph, alembic)
+    assert selection.migrations_reason(["backend/app/core/hosts.py"], graph, alembic)
+    assert selection.migrations_reason(["backend/app/services/billing.py"], graph, alembic) is None
+
+
+def test_migrations_run_for_the_actions_that_install_their_interpreter(graph, tmp_path):
+    alembic = tmp_path / "backend" / "alembic"
+    assert selection.migrations_reason([".github/actions/backend-venv/action.yml"], graph, alembic)
+    assert selection.migrations_reason([".github/actions/uv-sync/action.yml"], graph, alembic)
+
+
 def test_migrations_run_for_what_the_job_s_own_migration_runner_imports(graph, tmp_path):
     # The job calls run_migrations() itself: what its functions import runs too.
     alembic = tmp_path / "backend" / "alembic"
@@ -204,6 +225,20 @@ def test_a_change_to_the_selection_runs_every_suite_it_decides(graph, frontend, 
     assert selection.migrations_reason(change, graph, tmp_path / "backend" / "alembic")
     assert select_frontend_unit(change, frontend).mode == "full"
     assert selection.run_ci(change, None, tmp_path / "out")["frontend-build"] == "true"
+
+
+def test_a_file_of_tests_itself_selects_by_its_name_not_by_the_folder_every_test_imports(graph):
+    # Every test writes "tests" (from tests.x import): the folder would select the whole suite.
+    files = _files(["backend/tests/shard_durations.json"], graph)
+    assert "tests/test_render.py" not in files and "tests/test_billing.py" not in files
+
+
+def test_a_file_marked_integration_as_a_whole_takes_no_unit_shard(graph):
+    marked = selection.Selection(reasons={"tests/test_db_postgres.py": "changed"})
+    assert selection.plan_backend(marked, graph)["unit"] == []
+    assert selection.plan_backend(marked, graph)["integration"] == ["1/1"]
+    mixed = selection.Selection(reasons={"tests/test_mixed.py": "changed"})
+    assert selection.plan_backend(mixed, graph)["unit"] == ["1/1"]
 
 
 def test_a_file_that_does_not_parse_runs_everything(tmp_path):
@@ -377,7 +412,8 @@ def test_a_package_s_own_documentation_reaches_almost_nothing(repository):
 def test_the_migration_helpers_run_the_migrations_job_and_most_modules_do_not(repository):
     chain = selection.migration_chain_modules(repository)
     assert {"app.core.migration_ddl", "app.core.config", "app.core.database", "app.models"} <= chain
-    assert len(chain) < len([name for name in repository.modules if name.startswith("app")]) / 5
+    assert "app.core.url_identity" in chain  # a validator of Settings(), built as env.py loads config
+    assert len(chain) < len([name for name in repository.modules if name.startswith("app")]) / 3
     assert selection.migrations_reason(["backend/app/core/migration_ddl.py"], repository)
     assert selection.migrations_reason(["backend/app/services/video_studio/encoder.py"], repository) is None
 

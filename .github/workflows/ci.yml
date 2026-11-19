@@ -185,15 +185,9 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/betterleaks/betterleaks:v1.9.0 dir /repo --redact -v
 
-  # What the merge group's change reaches, suite by suite: the shards each
-  # sharded job takes (none: the job skips), whether Migrations and the
-  # frontend build run, and the files a selected suite collects. The change is
-  # the group's own (`merge_group.base_sha..sha`, every pull request batched
-  # in it): an entry ahead in the queue is tested in its own group, and merges
-  # only once that group passes (ALLGREEN, dev-docs/ci-test-selection.md). Every
-  # other event runs everything, and so does a change to what every test runs
-  # under (tests/selection.py's module docstring); the nightly run on main is
-  # the full pass that catches what the selection cannot see.
+  # Sizes every suite from the merge group's own change (base_sha..sha), which
+  # is safe only under ALLGREEN grouping; every other event runs everything.
+  # Rules and that dependency: dev-docs/ci-test-selection.md.
   select:
     name: Test selection
     if: github.event_name != 'pull_request'
@@ -601,10 +595,8 @@ jobs:
   # files (679 s on main, 5 Nov 2026, run 42090500694) by file, and the first
   # shard also runs the node:test half (about 35 s). Three shards keep each
   # near 5 minutes, install included. The cap sits on the test step, not the
-  # job, for the reason given above the backend job. In the queue a change
-  # that reaches no vitest file skips the job, and one that does runs
-  # `vitest related` on one shard: the tests that import a changed file, plus
-  # those that read one from disk (tests/selection.py).
+  # job, for the reason given above the backend job. In the queue, `vitest
+  # related` on one shard, or a skip (dev-docs/ci-test-selection.md).
   frontend-unit:
     name: Frontend unit tests
     needs: select
@@ -922,13 +914,8 @@ jobs:
         # point: every upgrade() body runs on its own, so a failure names the
         # exact revision.
         #
-        # Every step runs in one Python process: `alembic upgrade` as its own
-        # process paid about 1.5 s of imports per revision, most of the step's
-        # ten minutes. Each `command.upgrade` still runs `env.py` afresh, with
-        # its own Config, connection and transaction, and loads the revision
-        # files again; only the app modules stay imported, and the migration
-        # helpers keep no state between two runs. The check below is a
-        # separate process that reads the head back from the database.
+        # One Python process for every step (a process per revision paid ~1.5 s
+        # of imports each); each `command.upgrade` still runs env.py afresh.
         run: |
           set -eo pipefail
           PSQL="psql -h localhost -U copilot -v ON_ERROR_STOP=1"
@@ -939,7 +926,7 @@ jobs:
             echo "Expected exactly one Alembic head, got: $HEAD"
             exit 1
           fi
-          python - > "$RUNNER_TEMP/seq-upgrade-steps" <<'PY'
+          python - <<'PY' | tee "$RUNNER_TEMP/seq-upgrade-steps"
           import sys
 
           from alembic import command

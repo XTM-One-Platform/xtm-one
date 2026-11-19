@@ -75,7 +75,7 @@ MIGRATION_INPUTS = re.compile(
     r"^(backend/alembic/|backend/app/models/"
     r"|backend/tests/(test_migration_integrity|test_fresh_install|selection)\.py$"
     r"|backend/(pyproject\.toml|uv\.lock)$"
-    r"|\.github/workflows/ci\.yml$)"
+    r"|\.github/workflows/ci\.yml$|\.github/actions/(backend-venv|uv-sync)/)"
 )
 
 #: What the Migrations job calls besides the chain (``Prepare shared DB``, ``Idempotent re-run``).
@@ -557,8 +557,10 @@ def select_backend(changed: Iterable[str], graph: Graph) -> Selection:
             for folder in _data_folders(path, graph):
                 selection.add(graph.tests_naming(folder), f"reads {folder}/ ({repo_path})")
         elif repo_path.startswith("backend/tests/"):
+            # A file of tests/ itself has only its name: every test writes "tests" (``from tests.x import``).
             folder = Path(path).parent.name
-            selection.add(graph.tests_naming(folder), f"reads {folder}/ ({repo_path})")
+            if Path(path).parent != Path("tests"):
+                selection.add(graph.tests_naming(folder), f"reads {folder}/ ({repo_path})")
         else:
             area = _area(repo_path)
             selection.add(graph.tests_naming(area), f"reads {area}/ ({repo_path})")
@@ -696,16 +698,28 @@ def e2e_projects(changed: Iterable[str], graph: Graph) -> dict[str, str | None]:
     return projects
 
 
+def _loaded(graph: Graph, stack: list[str]) -> set[str]:
+    """``stack`` and what it loads at import, at any depth."""
+    loaded: set[str] = set()
+    while stack:
+        name = stack.pop()
+        if name not in loaded and name in graph.modules:
+            loaded.add(name)
+            stack.extend(graph.reaches[graph.modules[name]])
+    return loaded
+
+
 def migration_chain_modules(graph: Graph, alembic: Path = BACKEND_DIR / "alembic") -> set[str]:
     """The ``app`` modules the migration chain runs: what ``alembic/`` imports, anywhere in a file, and what those load.
 
     A migration body imports its helpers inside ``upgrade()`` (``app.core.migration_ddl``
     in most of them), so every import of the chain counts, as a test's does. The
-    job also calls ``app.core.migrations.run_migrations()`` itself, whose functions
-    import what the boot runs after the chain (``app.core.index_maintenance``).
+    job also calls ``app.core.migrations.run_migrations()`` itself. A function of a
+    loaded module may run during the import (``Settings()``'s validators import
+    ``app.core.url_identity``): what each loaded module's functions import counts
+    one step, then what that loads.
     """
-    runner = graph.modules.get(MIGRATION_RUNNER)
-    stack: list[str] = [MIGRATION_RUNNER, *graph.reaches_later.get(runner, ())] if runner else []
+    stack: list[str] = [MIGRATION_RUNNER]
     for path in sorted(alembic.rglob("*.py")):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -717,13 +731,8 @@ def migration_chain_modules(graph: Graph, alembic: Path = BACKEND_DIR / "alembic
             else:
                 names = [node.module or "", *(f"{node.module}.{alias.name}" for alias in node.names)]
             stack += [module for name in names for module in graph.resolve(name)]
-    chain: set[str] = set()
-    while stack:
-        name = stack.pop()
-        if name not in chain and name in graph.modules:
-            chain.add(name)
-            stack.extend(graph.reaches[graph.modules[name]])
-    return chain
+    loaded = _loaded(graph, stack)
+    return loaded | _loaded(graph, [later for name in loaded for later in graph.reaches_later[graph.modules[name]]])
 
 
 def migrations_reason(changed: Iterable[str], graph: Graph, alembic: Path = BACKEND_DIR / "alembic") -> str | None:
@@ -771,6 +780,22 @@ def _shards(selected: int, total: int, suite: str) -> int:
     return max(1, min(selected, math.ceil(MAX_SHARDS[suite] * selected / max(total, 1))))
 
 
+#: A marker the unit job leaves out: ``-m "not integration"``, and no Chromium installed.
+_NOT_UNIT = re.compile(r"\bmark\.(?:integration|chromium)\b")
+
+
+def _marks_whole_file(source: str) -> bool:
+    """Whether a test file's module-level ``pytestmark`` keeps every one of its tests out of the unit job."""
+    if "pytestmark" not in source or not _NOT_UNIT.search(source):
+        return False
+    return any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "pytestmark" for target in node.targets)
+        and _NOT_UNIT.search(ast.unparse(node.value)) is not None
+        for node in ast.parse(source).body
+    )
+
+
 def plan_backend(selection: Selection, graph: Graph) -> dict[str, list[str]]:
     """The shards of the unit, integration and Chromium jobs."""
     from tests.marked_files import spells_marker
@@ -778,8 +803,10 @@ def plan_backend(selection: Selection, graph: Graph) -> dict[str, list[str]]:
 
     durations = load_durations()
     files = graph.test_files if selection.full else selection.files
-    seconds = sum(durations.get(path, UNTIMED_SECONDS) for path in files)
-    unit = min(MAX_SHARDS["unit"], len(files), math.ceil(seconds / UNIT_SECONDS_PER_SHARD)) if files else 0
+    # A file marked integration or chromium as a whole has no test the unit job runs.
+    unit_files = [path for path in files if not _marks_whole_file(graph.sources[path])]
+    seconds = sum(durations.get(path, UNTIMED_SECONDS) for path in unit_files)
+    unit = min(MAX_SHARDS["unit"], len(unit_files), math.ceil(seconds / UNIT_SECONDS_PER_SHARD)) if unit_files else 0
     plan = {"unit": shard_list(unit)}
     for suite in ("integration", "chromium"):
         marked = [path for path in graph.test_files if spells_marker(graph.sources[path], suite)]
