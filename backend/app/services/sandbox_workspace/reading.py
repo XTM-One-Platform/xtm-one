@@ -363,10 +363,44 @@ def compile_pattern(pattern: object, *, ignore_case: bool = False) -> re.Pattern
         raise PatternError("give a regular expression to search for")
     if len(pattern) > 1000:
         raise PatternError("a search pattern is at most 1000 characters")
+    flags = re.IGNORECASE if ignore_case else 0
     try:
-        return re.compile(pattern, re.IGNORECASE if ignore_case else 0)
+        return re.compile(pattern, flags)
     except re.error as exc:
-        raise PatternError(f"{pattern[:80]!r} does not compile as a regular expression: {exc}") from exc
+        hoisted = _hoist_global_flags(pattern) if "global flags not at the start" in str(exc) else None
+        if hoisted is not None:
+            try:
+                return re.compile(hoisted, flags)
+            except re.error:
+                pass
+        hint = " (pass ignore_case=true instead of an inline (?i))" if "flag" in str(exc) else ""
+        raise PatternError(f"{pattern[:80]!r} does not compile as a regular expression: {exc}{hint}") from exc
+
+
+# A global inline flag group such as ``(?i)``, unescaped (an even run of
+# backslashes before it), not a scoped ``(?i:...)`` group.
+_GLOBAL_FLAG_GROUP = re.compile(r"(?<!\\)((?:\\\\)*)\(\?([aiLmsux]+)\)")
+
+
+def _hoist_global_flags(pattern: str) -> str | None:
+    """Move every global inline flag group of ``pattern`` to its start.
+
+    Python refuses ``foo(?i)bar`` since 3.11, where older versions applied the
+    flag to the whole expression; a pattern written that way (a habit of grep
+    and of other regex engines) is read with that meaning instead of refused.
+    None when the pattern holds no such group.
+    """
+    found: list[str] = []
+
+    def _drop(match: re.Match[str]) -> str:
+        found.append(match.group(2))
+        return match.group(1)
+
+    rest = _GLOBAL_FLAG_GROUP.sub(_drop, pattern)
+    if not found:
+        return None
+    letters = "".join(sorted(set("".join(found))))
+    return f"(?{letters}){rest}"
 
 
 def clamp_matches(max_matches: object) -> int:
