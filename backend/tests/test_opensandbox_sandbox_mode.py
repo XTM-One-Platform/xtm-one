@@ -432,7 +432,7 @@ def _parse_images(raw) -> dict[str, str]:
 
 
 def test_default_images_are_the_published_tags():
-    assert DEFAULT_IMAGES == {"python": "sandbox-python:0.6", "nodejs": "sandbox-nodejs:0.6"}
+    assert DEFAULT_IMAGES == {"python": "sandbox-python:0.7", "nodejs": "sandbox-nodejs:0.7"}
 
 
 def _published_images_checker():
