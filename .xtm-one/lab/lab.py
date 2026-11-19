@@ -178,6 +178,47 @@ def wait_http(url: str, timeout: float, what: str) -> None:
     raise SystemExit(f"lab: {what} not ready within {timeout:.0f}s")
 
 
+HOP_BY_HOP_HEADERS = ("transfer-encoding", "connection", "content-length")
+
+
+def has_body(command: str, status: int) -> bool:
+    """Whether an HTTP/1.1 answer carries a body (RFC 9112 section 6.3).
+
+    The answers to a HEAD, a 1xx, a 204 and a 304 end at their headers: a chunked terminator
+    written after them is read by the browser as the start of the next answer on the keep-alive
+    connection, which Vite's 304 on a cached module turns into ERR_INVALID_HTTP_RESPONSE on the
+    next lazy chunk (every lazy route falls in the error boundary).
+    """
+    return command.upper() != "HEAD" and status >= 200 and status not in (204, 304)
+
+
+def relay_response(handler: http.server.BaseHTTPRequestHandler, response, header=None) -> None:
+    """Write an upstream ``http.client`` answer back through a preview Front, streamed.
+
+    The status and the end-to-end headers go as they came (``header(key, value)`` may rewrite a
+    value), the body is re-chunked as it arrives so a streamed answer is never buffered, and an
+    answer with no body (``has_body``) ends at its headers.
+    """
+    handler.send_response(response.status, response.reason)
+    for key, value in response.getheaders():
+        if key.lower() not in HOP_BY_HOP_HEADERS:
+            handler.send_header(key, header(key, value) if header else value)
+    if not has_body(handler.command, response.status):
+        handler.end_headers()
+        handler.wfile.flush()
+        return
+    handler.send_header("Transfer-Encoding", "chunked")
+    handler.end_headers()
+    while True:
+        chunk = response.read1(65536)
+        if not chunk:
+            break
+        handler.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+        handler.wfile.flush()
+    handler.wfile.write(b"0\r\n\r\n")
+    handler.wfile.flush()
+
+
 def start_stores() -> None:
     """PostgreSQL + pgvector, Dragonfly and Silo on loopback, from the image's /opt/stores when it has them."""
     dest = stores.STORES_DIR

@@ -270,19 +270,7 @@ class Front(proxy.Front):
             return
         payload = self._body()
         connection, response = self._next(self.command, self.path, payload)
-        self.send_response(response.status, response.reason)
-        for key, value in response.getheaders():
-            if key.lower() not in ("transfer-encoding", "connection", "content-length"):
-                self.send_header(key, value)
-        self.send_header("Transfer-Encoding", "chunked")
-        self.end_headers()
-        while True:
-            chunk = response.read1(65536)
-            if not chunk:
-                break
-            self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
-            self.wfile.flush()
-        self.wfile.write(b"0\r\n\r\n")
+        lab.relay_response(self, response)
         connection.close()
 
     def _handle(self) -> None:
