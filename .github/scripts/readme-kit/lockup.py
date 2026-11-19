@@ -17,18 +17,16 @@ def mark_tile(product: str) -> str:
 
 
 def filigran(theme: dict) -> str:
+    """The official Filigran lockup (brand deck filigran-logo.svg outlines, never
+    typeset), every fill recoloured to the theme foreground."""
     fg = theme["fg"]
-    s = open(os.path.join(BRAND, "filigran-mark.svg")).read()
+    s = open(os.path.join(BRAND, "logo", "filigran-logo.svg")).read()
+    vb = re.search(r'viewBox="([^"]+)"', s).group(1)
     inner = re.sub(r"^.*?<svg[^>]*>", "", s, flags=re.S)
     inner = re.sub(r"</svg>\s*$", "", inner, flags=re.S)
     inner = re.sub(r'fill="(?!none)[^"]+"', f'fill="{fg}"', inner)
-    size, emb, gap = 72, 88, 20
-    w = tp.measure("Filigran", size, "heading", 600)
-    W, H = int(emb + gap + w + 8), 100
-    tp.reset_defs()
-    txt = tp.path("Filigran", emb + gap, 76, size, "heading", 600, fill=fg)
-    glyphs = tp.defs()
-    tp.reset_defs()
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
-            f'aria-label="Filigran"><title>Filigran</title><defs>{glyphs}</defs>'
-            f'<svg x="0" y="6" width="{emb}" height="{emb}" viewBox="0 0 24 24" fill="none">{inner}</svg>{txt}</svg>')
+    _, _, vw, vh = (float(v) for v in vb.split())
+    H = 100
+    W = round(vw * H / vh)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="{vb}" role="img" '
+            f'aria-label="Filigran"><title>Filigran</title>{inner}</svg>')
