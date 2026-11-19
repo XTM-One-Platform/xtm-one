@@ -707,8 +707,14 @@ async def _upsert_document(
     source_url: str | None = None,
     *,
     sync_source_id: uuid.UUID | str | None = None,
+    extraction_warning: str | None = None,
 ) -> tuple[KnowledgeDocument | None, bool]:
     """Upsert a document: update if content changed, insert if new.
+
+    ``extraction_warning`` is what ``chunking.extraction_warning`` said of
+    the file the content was extracted from: kept on the document's
+    ``extra_metadata`` (set or cleared on every sync), so a reader sees that
+    the source may be incomplete instead of a silent ``ready``.
 
     ``sync_source_id`` is the :class:`KBSyncSource` behind the sync (None for
     a one-shot import): a new document records it, and an unowned document
@@ -780,6 +786,7 @@ async def _upsert_document(
         existing.source_url = source_url
 
     if existing:
+        _set_extraction_warning(existing, extraction_warning)
         if existing.content_hash == content_hash:
             # Content unchanged — no work needed
             return existing, False
@@ -807,9 +814,24 @@ async def _upsert_document(
         content_hash=content_hash,
         status="pending",
     )
+    _set_extraction_warning(doc, extraction_warning)
     db.add(doc)
     await db.flush()
     return doc, True
+
+
+def _set_extraction_warning(doc: KnowledgeDocument, warning: str | None) -> None:
+    """Record *warning* on ``doc.extra_metadata``, or drop a stale one.
+
+    A new dict is assigned: the JSON column does not track in-place changes.
+    """
+    meta = dict(doc.extra_metadata or {})
+    if warning:
+        meta["extraction_warning"] = warning
+    else:
+        meta.pop("extraction_warning", None)
+    if meta != (doc.extra_metadata or {}):
+        doc.extra_metadata = meta or None
 
 
 _STALE_DOC_BATCH = 500
@@ -2734,12 +2756,20 @@ async def sync_microsoft_drive(
                             dl_resp = await client.get(download_url)
                             raw = dl_resp.content
 
-                        from app.services.chunking import extract_text_from_file_async
+                        from app.services.chunking import (
+                            extract_text_from_file_async,
+                            extraction_warning_async,
+                        )
 
                         # Off-loop: Drive syncs run in the WEB process
                         # scheduler tick; an inline PDF parse froze the
                         # event loop and failed liveness.
                         content = await extract_text_from_file_async(raw, name)
+                        warning = await extraction_warning_async(raw, name, content)
+                        if warning:
+                            logger.warning(
+                                "OneDrive sync: %s may be incomplete: %s", name, warning
+                            )
 
                         # Use the parent path in the filename to avoid collisions
                         parent_path = item.get("parentReference", {}).get("path", "")
@@ -2765,6 +2795,7 @@ async def sync_microsoft_drive(
                                 "drive",
                                 source_url=web_url,
                                 sync_source_id=sync_source_id,
+                                extraction_warning=warning,
                             )
                             if doc:
                                 all_doc_ids.add(str(doc.id))
@@ -2880,6 +2911,7 @@ async def sync_google_drive(
                         folder_queue.append((file_id, subfolder_prefix))
                         continue
 
+                    warning: str | None = None
                     try:
                         if mime in google_export:
                             export_mime, ext = google_export[mime]
@@ -2908,12 +2940,22 @@ async def sync_google_drive(
                             if mime == "application/pdf" or mime.endswith("document"):
                                 from app.services.chunking import (
                                     extract_text_from_file_async,
+                                    extraction_warning_async,
                                 )
 
                                 # Off-loop: see Drive sync above.
                                 content = await extract_text_from_file_async(
                                     dl_resp.content, name
                                 )
+                                warning = await extraction_warning_async(
+                                    dl_resp.content, name, content
+                                )
+                                if warning:
+                                    logger.warning(
+                                        "Google Drive sync: %s may be incomplete: %s",
+                                        name,
+                                        warning,
+                                    )
                             else:
                                 content = dl_resp.text
                             doc_name = name
@@ -2935,6 +2977,7 @@ async def sync_google_drive(
                                 "google_drive",
                                 source_url=web_url,
                                 sync_source_id=sync_source_id,
+                                extraction_warning=warning,
                             )
                             if doc:
                                 all_doc_ids.add(str(doc.id))
