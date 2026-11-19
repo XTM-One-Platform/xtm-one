@@ -591,14 +591,67 @@ async def test_a_certificate_expiring_soon_or_refused_is_a_warning(monkeypatch: 
     async def refused(host: str, port: int) -> datetime:
         raise ssl.SSLCertVerificationError("certificate has expired")
 
-    monkeypatch.setattr(platform_checks, "_certificate_expiry", refused)
-    [result] = await platform_checks.certificate_expiry(None, T0)  # type: ignore[arg-type]
-    assert result.failing and "expired" in result.evidence["values"]["error"]
+    async def unreachable(host: str, port: int) -> datetime:
+        raise OSError("no route to host")
+
+    async with _temp_database("hpc_certificate_read") as sessions, sessions() as db:
+        monkeypatch.setattr(platform_checks, "_certificate_expiry", refused)
+        [result] = await platform_checks.certificate_expiry(db, T0)
+        assert result.failing and "expired" in result.evidence["values"]["error"]
+
+        monkeypatch.setattr(platform_checks, "_certificate_expiry", unreachable)
+        assert await platform_checks.certificate_expiry(db, T0) == []
+        monkeypatch.setattr(settings, "frontend_url", "http://one.example.com")
+        assert await platform_checks.certificate_expiry(db, T0) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moved_to", ["https://two.example.com", "http://one.example.com", "unreachable"])
+async def test_a_certificate_finding_of_a_former_host_resolves(monkeypatch: pytest.MonkeyPatch, moved_to: str) -> None:
+    """S4f review: FRONTEND_URL moved to another host, to http or to a host unreachable from here closes the old host out."""
+
+    async def expiring(host: str, port: int) -> datetime:
+        return T0 + timedelta(days=5)
 
     async def unreachable(host: str, port: int) -> datetime:
         raise OSError("no route to host")
 
-    monkeypatch.setattr(platform_checks, "_certificate_expiry", unreachable)
-    assert await platform_checks.certificate_expiry(None, T0) == []  # type: ignore[arg-type]
-    monkeypatch.setattr(settings, "frontend_url", "http://one.example.com")
-    assert await platform_checks.certificate_expiry(None, T0) == []  # type: ignore[arg-type]
+    monkeypatch.setattr(settings, "frontend_url", "https://one.example.com")
+    monkeypatch.setattr(platform_checks, "_certificate_expiry", expiring)
+    async with _temp_database("hpc_certificate_moved") as sessions, sessions() as db:
+        await _pass(db, T0)
+        assert (await _open(db))["xtm_one.certificate_expiry"].subject == {"host": "one.example.com"}
+
+        if moved_to == "unreachable":
+            monkeypatch.setattr(settings, "frontend_url", "https://two.example.com")
+            monkeypatch.setattr(platform_checks, "_certificate_expiry", unreachable)
+        else:
+            monkeypatch.setattr(settings, "frontend_url", moved_to)
+        await _pass(db, T0 + timedelta(days=1))
+        await _pass(db, T0 + timedelta(days=2))
+        still_open = {
+            r.subject.get("host")
+            for r in (await db.execute(select(HealthCheckFinding))).scalars()
+            if r.check_id == "xtm_one.certificate_expiry" and r.status == STATUS_OPEN
+        }
+        assert "one.example.com" not in still_open
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_host_keeps_its_own_certificate_finding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4f review: a host that stops answering keeps its open finding: nothing was read to resolve it."""
+
+    async def expiring(host: str, port: int) -> datetime:
+        return T0 + timedelta(days=5)
+
+    async def unreachable(host: str, port: int) -> datetime:
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(settings, "frontend_url", "https://one.example.com")
+    monkeypatch.setattr(platform_checks, "_certificate_expiry", expiring)
+    async with _temp_database("hpc_certificate_unreachable") as sessions, sessions() as db:
+        await _pass(db, T0)
+        monkeypatch.setattr(platform_checks, "_certificate_expiry", unreachable)
+        await _pass(db, T0 + timedelta(days=1))
+        await _pass(db, T0 + timedelta(days=2))
+        assert (await _open(db))["xtm_one.certificate_expiry"].subject == {"host": "one.example.com"}

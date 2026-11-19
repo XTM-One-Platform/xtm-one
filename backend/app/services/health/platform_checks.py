@@ -675,22 +675,24 @@ async def certificate_expiry(db: AsyncSession, now: datetime) -> list[CheckResul
 
     from app.core.config import settings
 
+    check_id = "xtm_one.certificate_expiry"
     url = urlsplit(settings.frontend_url or "")
-    if url.scheme != "https" or not url.hostname:  # no TLS to check
-        return []
+    if url.scheme != "https" or not url.hostname:  # no TLS to check: a host read before left the scope
+        return await close_out(db, check_id, [])
     values: dict[str, Any]
     try:
         expires = await _certificate_expiry(url.hostname, url.port or 443)
     except ssl.SSLCertVerificationError as exc:  # expired, untrusted or for another name
         failing, values = True, {"error": str(getattr(exc, "verify_message", None) or exc)[:200]}
     except (OSError, TimeoutError, KeyError, ValueError):  # unreachable from here: nothing to judge
-        return []
+        # The finding of this host stands; one of a former host left the scope.
+        return [r for r in await close_out(db, check_id, []) if r.subject.get("host") != url.hostname]
     else:
         failing = expires - now < CERTIFICATE_EXPIRY_WARNING
         values = {"expires_at": expires.isoformat(), "days_left": (expires - now).days}
-    return [
+    results = [
         _result(
-            "xtm_one.certificate_expiry",
+            check_id,
             "warning",
             "security",
             failing,
@@ -699,6 +701,7 @@ async def certificate_expiry(db: AsyncSession, now: datetime) -> list[CheckResul
             recommendation="Renew the TLS certificate of the public URL, or fix its chain and host name.",
         )
     ]
+    return results + await close_out(db, check_id, results)
 
 
 for _check_id, _run in (

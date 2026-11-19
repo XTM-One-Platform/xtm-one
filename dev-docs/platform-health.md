@@ -342,7 +342,9 @@ out; a local `0.0.0` build or an unreadable list records nothing) and
 `xtm_one.certificate_expiry` (warning, subject the host, when the TLS certificate of
 `FRONTEND_URL` expires within 21 days or fails verification; verified with
 `fetch_ssl_context`, administrator-trusted certificates included; an `http` URL or an
-unreachable host records nothing). The module is listed in `PLATFORM_INTERNAL` of
+unreachable host records nothing for itself, and the finding of a former host, once
+`FRONTEND_URL` moved, goes through `close_out` and resolves after two passes; an
+unreachable host keeps its own open finding). The module is listed in `PLATFORM_INTERNAL` of
 `tests/test_egress_funnel.py`. Sandbox create latency is still owed: the
 `xtmone_sandbox_create_seconds` histogram is per process, so the check needs a shared store
 first (a later slice).
