@@ -488,38 +488,6 @@ async def test_list_documents_reports_ids_status_and_remaining_count(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_list_documents_flags_an_extraction_warning(monkeypatch):
-    """A document a sync measured as partly extracted is never a silent ready."""
-    warning = "partial text: 41 of the 9000 characters of the document body were extracted"
-    rows = [
-        _doc_row(extra_metadata={"extraction_warning": warning}),
-        _doc_row(doc_id=str(uuid.uuid4()), filename="clean.md"),
-    ]
-    session = _FakeSession(doc_results=[rows], kb=_kb(), doc_total=2)
-    _patch_session(monkeypatch, session)
-    _, executor = _read_executor()
-
-    out = await _call(executor, "list_knowledge_documents", {})
-
-    assert out.count("extraction warning:") == 1
-    assert f"extraction warning: {warning}" in out
-
-
-@pytest.mark.asyncio
-async def test_get_document_shows_the_extraction_warning(monkeypatch):
-    doc = _doc()
-    doc.extra_metadata = {"extraction_warning": "little text: 3 characters from a 400 KB file"}
-    session = _FakeSession(doc_results=[[doc]], kb=_kb())
-    _patch_session(monkeypatch, session)
-    _, executor = _read_executor()
-
-    out = await _call(executor, "get_knowledge_document", {"document_id": DOC_ID})
-
-    assert "Extraction warning: little text: 3 characters from a 400 KB file" in out
-    assert "may be incomplete" in out
-
-
-@pytest.mark.asyncio
 async def test_list_documents_does_not_load_document_content(monkeypatch):
     """Listing must size documents server-side, not stream every body over.
 

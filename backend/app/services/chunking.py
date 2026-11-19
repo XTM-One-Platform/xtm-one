@@ -601,14 +601,10 @@ def extraction_warning(content: bytes, filename: str, text: str) -> str | None:
         logger.debug("DOCX text measure failed: %s", format_exception_message(e))
         body = 0
     if body >= _DOCX_BODY_CHARS_MIN and extracted < body * _DOCX_KEPT_SHARE_MIN:
-        return (
-            f"partial text: {extracted} of the {body} characters of the "
-            "document body were extracted"
-        )
+        return f"partial text: {extracted} of the {body} characters of the document body were extracted"
     if len(content) >= _DOCX_SPARSE_FILE_BYTES and extracted < _DOCX_SPARSE_TEXT_CHARS:
         return (
-            f"little text: {extracted} characters from a {len(content) // 1000} KB "
-            "file, its content may be in pictures"
+            f"little text: {extracted} characters from a {len(content) // 1000} KB file, its content may be in pictures"
         )
     return None
 

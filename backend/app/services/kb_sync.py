@@ -2767,9 +2767,7 @@ async def sync_microsoft_drive(
                         content = await extract_text_from_file_async(raw, name)
                         warning = await extraction_warning_async(raw, name, content)
                         if warning:
-                            logger.warning(
-                                "OneDrive sync: %s may be incomplete: %s", name, warning
-                            )
+                            logger.warning("OneDrive sync: %s may be incomplete: %s", name, warning)
 
                         # Use the parent path in the filename to avoid collisions
                         parent_path = item.get("parentReference", {}).get("path", "")
@@ -2944,12 +2942,8 @@ async def sync_google_drive(
                                 )
 
                                 # Off-loop: see Drive sync above.
-                                content = await extract_text_from_file_async(
-                                    dl_resp.content, name
-                                )
-                                warning = await extraction_warning_async(
-                                    dl_resp.content, name, content
-                                )
+                                content = await extract_text_from_file_async(dl_resp.content, name)
+                                warning = await extraction_warning_async(dl_resp.content, name, content)
                                 if warning:
                                     logger.warning(
                                         "Google Drive sync: %s may be incomplete: %s",

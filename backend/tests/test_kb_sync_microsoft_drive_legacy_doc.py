@@ -77,6 +77,7 @@ def _indexed_on_the_baseline() -> SimpleNamespace:
         id=uuid.uuid4(),
         source_url=_ITEM["webUrl"],
         content_hash=hashlib.sha256(_BASELINE_TEXT.encode()).hexdigest(),
+        extra_metadata=None,
     )
 
 
