@@ -432,6 +432,40 @@ async def test_a_file_not_found_without_the_mount_points_at_the_exact_paths(monk
     assert code_interpreter.mount_path_hint(ref.filename, ref.file_id) in result.content
 
 
+_INPUT_NOT_FOUND = {
+    "stdout": "",
+    "stderr": "",
+    "error": "FileNotFoundError: [Errno 2] No such file or directory: 'attachments/input.json'",
+    "images": [],
+    "output_files": [],
+}
+
+
+async def test_the_input_document_path_in_a_run_without_one_says_none_is_mounted(monkeypatch):
+    _capture_execute(monkeypatch, _INPUT_NOT_FOUND)
+    _defs, executor = _executor_with()
+    code = "import json\njson.load(open('attachments/input.json'))"
+    result = await executor.execute_tool(ToolCall(id="c1", name="code_interpreter", arguments={"code": code}))
+    assert media.NO_INPUT_DOCUMENT_HINT in result.content
+
+
+async def test_the_input_document_hint_comes_with_the_mount_line_of_the_conversation_files(monkeypatch):
+    _capture_execute(monkeypatch, {**_INPUT_NOT_FOUND, "mounted": ["report.txt", "index.json"]})
+    _defs, executor = _executor_with(_ref(b"x", "report.txt"))
+    code = "import json\njson.load(open('attachments/input.json'))"
+    result = await executor.execute_tool(ToolCall(id="c1", name="code_interpreter", arguments={"code": code}))
+    assert media.NO_INPUT_DOCUMENT_HINT in result.content
+
+
+async def test_a_run_that_holds_the_input_document_gets_no_absent_hint(monkeypatch):
+    _capture_execute(monkeypatch, _INPUT_NOT_FOUND)
+    _defs, executor = _executor_with()
+    executor.file_context.add_sandbox_input("input.json", b"{}")
+    code = "import json\njson.load(open('attachments/input.json'))"
+    result = await executor.execute_tool(ToolCall(id="c1", name="code_interpreter", arguments={"code": code}))
+    assert media.NO_INPUT_DOCUMENT_HINT not in result.content
+
+
 async def test_a_mount_the_sandbox_could_not_write_is_never_announced(monkeypatch):
     _capture_execute(
         monkeypatch,
