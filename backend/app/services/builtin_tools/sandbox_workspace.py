@@ -920,7 +920,21 @@ def build_sandbox_workspace_tools(
 
     async def sandbox_edit_file(path: str, edits: list[dict] | None = None) -> str | ToolResult:
         try:
-            parsed = editing.parse_edits(edits, allow_ranges=True)
+            sources = editing.replace_from_sources(edits)
+        except editing.EditError as exc:
+            return _error(str(exc))
+        raw_edits: object = edits
+        if sources and isinstance(edits, list):
+            # replace_from: the replacement is a workspace file's text, read here, never re-sent by the model.
+            texts: dict[int, str] = {}
+            for index, source in sources:
+                got_source = await _text_of(source, settle=False)
+                if isinstance(got_source, ToolResult):
+                    return got_source
+                texts[index] = got_source[1]
+            raw_edits = editing.with_replace_from(edits, texts)
+        try:
+            parsed = editing.parse_edits(raw_edits, allow_ranges=True)
         except editing.EditError as exc:
             return _error(str(exc))
         got = await _text_of(path, settle=False)
@@ -3654,6 +3668,10 @@ def build_sandbox_workspace_tools(
                                 "replace": {
                                     "type": "string",
                                     "description": "Replacement text; empty deletes the found text (or the line range).",
+                                },
+                                "replace_from": {
+                                    "type": "string",
+                                    "description": "Instead of replace (give it empty): a workspace file whose text is the replacement.",
                                 },
                                 "replace_all": {
                                     "type": "boolean",

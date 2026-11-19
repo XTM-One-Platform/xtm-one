@@ -80,6 +80,21 @@ async def test_the_edit_probe_reads_the_file():
     assert await landed.edit_probe(session, {**FIRST, "path": "co/absent.md"}) is None
 
 
+async def test_a_replace_from_edit_is_told_from_its_source_file() -> None:
+    session = _session()
+    await session.put_bytes("co/notes.md", INSERTED.encode())
+    await session.put_bytes("work/part.md", b"- one\n- two\n")
+    edit: dict[str, str] = {"find": "- one\n", "replace": "", "replace_from": "work/part.md"}
+    call: dict[str, object] = {"path": "co/notes.md", "edits": [edit]}
+    found = await landed.edit_probe(session, call)
+    assert isinstance(found, str) and found.startswith("already applied")
+    await session.put_bytes("work/part.md", b"- one\n- other\n")
+    assert await landed.edit_probe(session, call) is False
+    gone = {"path": "co/notes.md", "edits": [{**edit, "replace_from": "work/absent.md"}]}
+    assert await landed.edit_probe(session, gone) is None
+    assert await landed.edit_probe(session, {**call, "edits": [{**edit, "replace": "x"}]}) is None
+
+
 def test_a_replace_verdict_reads_every_match():
     regex = re.compile(r"foo", re.MULTILINE)
     assert landed.replace_verdict([("a", "foobar x foobar")], regex, "foobar") is True

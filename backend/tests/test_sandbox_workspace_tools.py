@@ -947,6 +947,56 @@ async def test_edit_file_applies_every_edit_or_none_and_returns_the_diff(store):
     assert not same.is_error and "unchanged" in same.content and "Nothing was written" in same.content
 
 
+async def test_edit_file_takes_a_replacement_from_a_workspace_file(store: MemoryWorkspaceStore) -> None:
+    """replace_from: a section drafted in work/ lands in a source file without its text in the call."""
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "docs/guide.md", b"# Guide\n\n## End\n")
+    await _put(composite, "work/section.md", b"## Drafted\n\nBody.\n\n")
+    inserted = await composite.execute_tool(
+        ToolCall(
+            id="f1",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [
+                    {
+                        "insert_after_line": 2,
+                        "expect_first_blank": True,
+                        "replace": "",
+                        "replace_from": "work/section.md",
+                    }
+                ],
+            },
+        )
+    )
+    assert not inserted.is_error, inserted.content
+    assert await _workspace_bytes(store, conversation, "docs/guide.md") == b"# Guide\n\n## Drafted\n\nBody.\n\n## End\n"
+    both = await composite.execute_tool(
+        ToolCall(
+            id="f2",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [{"find": "## End", "replace": "x", "replace_from": "work/section.md"}],
+            },
+        )
+    )
+    assert both.is_error and "either 'replace' or 'replace_from'" in both.content
+    absent = await composite.execute_tool(
+        ToolCall(
+            id="f3",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [{"find": "## End", "replace": "", "replace_from": "work/absent.md"}],
+            },
+        )
+    )
+    assert absent.is_error and "work/absent.md" in absent.content
+    assert await _workspace_bytes(store, conversation, "docs/guide.md") == b"# Guide\n\n## Drafted\n\nBody.\n\n## End\n"
+
+
 async def test_json_keys_changes_every_catalog_in_one_commit_or_none(store):
     """sandbox_json_keys: one key set, renamed and removed in two catalogs; a bad file refuses the whole call."""
     conversation, user = uuid.uuid4(), uuid.uuid4()
