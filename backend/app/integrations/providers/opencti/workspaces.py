@@ -13,11 +13,24 @@ import logging
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
+from .access import _refuse_unapplied
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
 _WS_PATH = {"investigation": "investigations", "dashboard": "dashboards"}
+_WS_DEFAULT_LIMIT = 20
+# The fields each action of manage_opencti_workspace reads; any other field is refused.
+_WORKSPACE_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"type", "search", "limit"}),
+    "get": frozenset({"workspace_id"}),
+    "create": frozenset({"type", "name", "description", "tags", "entity_ids"}),
+    "update": frozenset({"workspace_id", "name", "description", "tags"}),
+    "delete": frozenset({"workspace_id"}),
+    "duplicate": frozenset({"workspace_id", "name", "description", "tags"}),
+    "add_entities": frozenset({"workspace_id", "entity_ids"}),
+    "remove_entities": frozenset({"workspace_id", "entity_ids"}),
+}
 
 
 def register(
@@ -44,9 +57,29 @@ def register(
         tags: list[str] | None = None,
         entity_ids: list[str] | None = None,
         search: str = "",
-        limit: int = 20,
+        limit: int = _WS_DEFAULT_LIMIT,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        # A field the action ignores (or an undeclared one) is refused by name:
+        # nothing is sent, never a silent "Deleted". Defaults count as not passed.
+        refused = _refuse_unapplied(
+            action,
+            _WORKSPACE_APPLIES,
+            {
+                "type": type,
+                "workspace_id": workspace_id,
+                "name": name,
+                "description": description,
+                "tags": tags,
+                "entity_ids": entity_ids,
+                "search": search,
+                "limit": None if limit == _WS_DEFAULT_LIMIT else limit,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
         wtype = (type or "").strip().lower()
 
         if action == "list":
