@@ -425,6 +425,50 @@ def test_markdown_headings_and_typescript_declarations_are_outlined():
     assert [(d.kind, d.name) for d in ts] == [("const", "Foo"), ("function", "bar"), ("interface", "Props")]
 
 
+GRAPHQL_SDL = '''directive @auth(for: [Capabilities] = []) on FIELD_DEFINITION
+scalar DateTime
+"""
+A report.
+"""
+type Report implements StixDomainObject {
+  id: ID!
+  name: String!
+}
+input ReportAddInput {
+  name: String! @constraint(minLength: 2)
+  published: DateTime
+}
+enum ReportsOrdering {
+  name
+}
+union Container = Report
+interface StixDomainObject {
+  id: ID!
+}
+extend type Query {
+  report(id: String!): Report
+}
+'''
+
+
+def test_a_graphql_schema_lists_its_definitions_and_reads_one_input_whole():
+    defs = reading.outline("w/opencti.graphql", GRAPHQL_SDL)
+    assert [(d.kind, d.name) for d in defs] == [
+        ("directive", "auth"),
+        ("scalar", "DateTime"),
+        ("type", "Report"),
+        ("input", "ReportAddInput"),
+        ("enum", "ReportsOrdering"),
+        ("union", "Container"),
+        ("interface", "StixDomainObject"),
+        ("extend type", "Query"),
+    ]
+    spans = {s.name: (s.first, s.last) for s in reading.symbols("w/opencti.graphql", GRAPHQL_SDL)}
+    assert spans["ReportAddInput"] == (10, 13)
+    assert reading.outline("w/s.gql", "input A {\n  b: Int\n}\n")[0].name == "A"
+    assert "graphql" in reading.outline_kinds()
+
+
 def test_an_extension_without_a_scan_is_named_not_guessed():
     assert reading.outline("w/a.bin", "x") is None
     out = reading.format_outline("w/a.bin", None, total_lines=1)

@@ -799,6 +799,20 @@ _DECLARATIONS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
         ),
     ],
     "md": [("heading", re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$"))],
+    # A GraphQL schema (SDL): its top-level definitions, so one input or type of a
+    # large schema file is read whole by name (the fields of an input at a ref)
+    # without the server's introspection, often disabled in production.
+    "graphql": [
+        ("extend type", re.compile(r"^extend\s+type\s+([A-Za-z_]\w*)")),
+        ("extend input", re.compile(r"^extend\s+input\s+([A-Za-z_]\w*)")),
+        ("type", re.compile(r"^type\s+([A-Za-z_]\w*)")),
+        ("input", re.compile(r"^input\s+([A-Za-z_]\w*)")),
+        ("interface", re.compile(r"^interface\s+([A-Za-z_]\w*)")),
+        ("enum", re.compile(r"^enum\s+([A-Za-z_]\w*)")),
+        ("union", re.compile(r"^union\s+([A-Za-z_]\w*)")),
+        ("scalar", re.compile(r"^scalar\s+([A-Za-z_]\w*)")),
+        ("directive", re.compile(r"^directive\s+@([A-Za-z_]\w*)")),
+    ],
 }
 #: Declarations whose header spans several lines: an opening line (``const Row = ({``) listed only
 #: when a closing line (``}: Props) => {``) follows within :data:`_HEADER_LOOKAHEAD` lines, before
@@ -815,7 +829,19 @@ _OPEN_HEADERS: dict[str, list[tuple[str, re.Pattern[str], re.Pattern[str]]]] = {
     ],
 }
 _HEADER_LOOKAHEAD = 40
-_ALIASES = {"tsx": "ts", "js": "ts", "jsx": "ts", "mjs": "ts", "cjs": "ts", "kt": "java", "scala": "java", "mdx": "md", "markdown": "md"}
+_ALIASES = {
+    "tsx": "ts",
+    "js": "ts",
+    "jsx": "ts",
+    "mjs": "ts",
+    "cjs": "ts",
+    "kt": "java",
+    "scala": "java",
+    "mdx": "md",
+    "markdown": "md",
+    "gql": "graphql",
+    "graphqls": "graphql",
+}
 _PYTHON = {"py", "pyi"}
 
 
