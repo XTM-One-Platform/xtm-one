@@ -5,7 +5,7 @@ Started by ``lab.py`` (``seed_concierge_signals``) with the backend's interprete
 ``GET /api/v1/concierge/signals`` answers ``[]``: a signal is written only by the signal pass
 (``services/health/signals.py``) reading real traces, and no API writes one, so every review
 of the Signals tab overrode ``window.fetch``. This writes the rows through the models
-(``ConciergeSignalState``, ``ConciergeCycle``, ``ConciergeCycleRun``); no model is called and
+(``HealthSignalState``, ``HealthCycle``, ``HealthCycleRun``); no model is called and
 no run is started. Arguments: the agent and the assignment the rows target, the user who owns
 the lab flow, and the JSON file the ids are written to.
 
@@ -92,9 +92,9 @@ async def seed(agent_id: str, assignment_id: str, user_id: str) -> dict[str, obj
     from sqlalchemy import func, select
 
     from app.core.database import async_session, engine
-    from app.models.health import ConciergeCycle
-    from app.models.health_cycle import ConciergeCycleRun, ConciergeSignalState
     from app.models.flow import Flow
+    from app.models.health import HealthCycle
+    from app.models.health_cycle import HealthCycleRun, HealthSignalState
 
     now = datetime.now(UTC)
     month = now.strftime("%Y-%m")
@@ -109,12 +109,12 @@ async def seed(agent_id: str, assignment_id: str, user_id: str) -> dict[str, obj
             flow.graph = flow_graph()
         targets = {"agent": agent_id, "flow": str(flow.id), "assignment": assignment_id}
         rows = plan_signals(targets, now)
-        fresh = (await db.execute(select(func.count(ConciergeCycle.id)))).scalar_one() == 0
+        fresh = (await db.execute(select(func.count(HealthCycle.id)))).scalar_one() == 0
         cycles: list[str] = []
 
         def cycle(specialist: str, trigger: str, target_type: str | None, target_id: str | None,
-                  status: str, opened: datetime, *, spent: int = 0, stop: str | None = None) -> ConciergeCycle:
-            row = ConciergeCycle(
+                  status: str, opened: datetime, *, spent: int = 0, stop: str | None = None) -> HealthCycle:
+            row = HealthCycle(
                 specialist=specialist, trigger=trigger, target_type=target_type,
                 target_id=uuid.UUID(target_id) if target_id else None, month=month, status=status,
                 stop_reason=stop, spent_tokens=spent, spent_cost_usd=Decimal(spent) / Decimal(1_000_000),
@@ -125,21 +125,21 @@ async def seed(agent_id: str, assignment_id: str, user_id: str) -> dict[str, obj
 
         signals: list[str] = []
         for row in rows:
-            state = (await db.execute(select(ConciergeSignalState).where(
-                ConciergeSignalState.target_type == row["target_type"],
-                ConciergeSignalState.target_id == uuid.UUID(row["target_id"]),
-                ConciergeSignalState.kind == row["kind"],
+            state = (await db.execute(select(HealthSignalState).where(
+                HealthSignalState.target_type == row["target_type"],
+                HealthSignalState.target_id == uuid.UUID(row["target_id"]),
+                HealthSignalState.kind == row["kind"],
             ))).scalar_one_or_none()
             if state is None:
-                state = ConciergeSignalState(target_type=row["target_type"],
-                                             target_id=uuid.UUID(row["target_id"]), kind=row["kind"])
+                state = HealthSignalState(target_type=row["target_type"],
+                                          target_id=uuid.UUID(row["target_id"]), kind=row["kind"])
                 db.add(state)
             started = None
             if fresh and row["cycle"]:
                 started = cycle("quality_analyst", "signal", row["target_type"], row["target_id"], row["cycle"],
                                 row["fired_at"] or row["evaluated_at"], spent=41_250)
                 await db.flush()
-                db.add(ConciergeCycleRun(
+                db.add(HealthCycleRun(
                     cycle_id=started.id, target_type=row["target_type"], target_id=uuid.UUID(row["target_id"]),
                     signal={"kind": row["kind"], "target_type": row["target_type"],
                             "target_id": row["target_id"], **(row["last_value"] or {})},
