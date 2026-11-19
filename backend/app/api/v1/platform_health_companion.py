@@ -83,6 +83,10 @@ class ActivityResponse(BaseModel):
     waiting: int
     review: int
     failed_at: datetime | None
+    #: Open Platform Health findings by severity, every module summed: what the bubble says.
+    critical: int = 0
+    warning: int = 0
+    info: int = 0
 
 
 def _pet(info: pets.PetInfo) -> PetResponse:
@@ -197,6 +201,10 @@ async def delete_pet(
 
 
 # ── The user's companion ───────────────────────────────────────────────────
+#
+# The companion exists only for who can open Platform Health: an administrator
+# while the scoped manager view (spec section 8) is not built. A plain user gets
+# a 403 from all three routes, so no answer says anything about the platform.
 
 
 async def _companion(db: AsyncSession, preference: CompanionPreference) -> CompanionResponse:
@@ -206,13 +214,13 @@ async def _companion(db: AsyncSession, preference: CompanionPreference) -> Compa
 
 
 @router.get("/me/companion", response_model=CompanionResponse)
-async def get_companion(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_companion(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     return await _companion(db, read_preference(user))
 
 
 @router.put("/me/companion", response_model=CompanionResponse)
 async def put_companion(
-    body: CompanionUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    body: CompanionUpdate, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ):
     if body.pet is not None and not await pets.pet_exists(db, body.pet):
         raise HTTPException(status_code=422, detail="This pet is not in the library.")
@@ -227,8 +235,8 @@ async def put_companion(
 
 
 @router.get("/me/activity", response_model=ActivityResponse)
-async def get_activity(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """What the companion shows: Platform Health's work and the user's own runs, from what they may read."""
+async def get_activity(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """What the companion shows: Platform Health's work, its open findings and the user's own runs."""
     activity = await companion_activity(db, user)
     return ActivityResponse(
         state=activity.state,
@@ -236,4 +244,7 @@ async def get_activity(user: User = Depends(get_current_user), db: AsyncSession 
         waiting=activity.waiting,
         review=activity.review,
         failed_at=activity.failed_at,
+        critical=activity.critical,
+        warning=activity.warning,
+        info=activity.info,
     )

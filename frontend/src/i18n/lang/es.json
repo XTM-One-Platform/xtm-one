@@ -15066,8 +15066,6 @@
   "Users who picked it see the default pet instead.": "Los usuarios que la eligieron verán la mascota predeterminada.",
   "Your companion was not changed": "Su compañero no se ha modificado",
   "pet.json is missing or does not follow the pet format.": "pet.json falta o no sigue el formato de mascota.",
-  "{name} is at work.": "{name} está trabajando.",
-  "{name} is standing by.": "{name} está a la espera.",
   "{pet} added to the library": "{pet} añadida a la biblioteca",
   "{pet}, the companion": "{pet}, el compañero",
   "Improvement proposal": "Propuesta de mejora",
@@ -19419,5 +19417,9 @@
   "{runs} scored by metric suite {versions}; this review reads the answers with {current}.": "{runs} puntuado por la suite de métricas {versions}; esta revisión lee las respuestas con {current}.",
   "An object the newer suite matches can show as found here while the run's figures still count it as missed. Re-score the run so its figures and this review agree.": "Un objeto que la suite más reciente empareja puede aparecer aquí como encontrado mientras las cifras de la ejecución aún lo cuentan como omitido. Vuelva a puntuar la ejecución para que sus cifras y esta revisión coincidan.",
   "Score the stored answers again with the current suite; the agents do not run again.": "Vuelve a puntuar las respuestas guardadas con la suite actual; los agentes no se ejecutan de nuevo.",
-  "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}"
+  "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}",
+  "{name} is checking the platform.": "{name} está revisando la plataforma.",
+  "{count, plural, one {# critical finding is open} other {# critical findings are open}}": "{count, plural, one {# hallazgo crítico abierto} other {# hallazgos críticos abiertos}}",
+  "{count, plural, one {# warning is open} other {# warnings are open}}": "{count, plural, one {# advertencia abierta} other {# advertencias abiertas}}",
+  "No open finding.": "Ningún hallazgo abierto."
 }

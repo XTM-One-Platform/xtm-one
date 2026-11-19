@@ -24,12 +24,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useHealthName } from "@/hooks/api/useHealthApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useCompanion, usePetSpritesheet, usePets, useSaveCompanion } from "@/hooks/api/useHealthCompanionApi";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { HealthCompanion, HealthPet } from "@/types";
 
+/** Administrators only (#101): the companion links to `/health`, an `AdminRoute`; anyone else sees no card. */
 export function HealthCompanionCard() {
+  const { isAdmin } = useAuth();
+  if (!isAdmin) return null;
+  return <AdminCompanionCard />;
+}
+
+function AdminCompanionCard() {
   const { data } = useCompanion(true);
   if (!data) return null;
   return <CompanionCard companion={data} />;

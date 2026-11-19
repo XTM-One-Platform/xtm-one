@@ -1,5 +1,6 @@
-// The Health companion (#8261): shown only to who turned it on, says what it
-// shows, holds still under reduced motion, and hides through the user's own route.
+// The Health companion (#8261): shown only to an administrator who turned it on
+// (#101: /health is admin-only), says what Platform Health found, holds still
+// under reduced motion, and hides through the user's own route.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -8,19 +9,24 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
-const flags = vi.hoisted(() => ({ reduced: false }));
+const flags = vi.hoisted(() => ({ reduced: false, admin: true }));
 vi.mock("@/lib/api", () => ({ api }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: flags.admin }) }));
 vi.mock("@/hooks/usePrefersReducedMotion", () => ({ usePrefersReducedMotion: () => flags.reduced }));
 
 import { HealthCompanion } from "./HealthCompanion";
 
 const PET = { slug: "butler", display_name: "Butler", description: null, sprite_version: 1, builtin: true, sha256: "abc" };
 
-function serve(companion: { enabled: boolean; pet: string }, state = "review") {
+function serve(
+  companion: { enabled: boolean; pet: string },
+  state = "review",
+  findings = { critical: 0, warning: 0, info: 0 },
+) {
   api.get.mockImplementation((path: string) => {
     if (path === "/health/me/companion") return Promise.resolve({ ...companion, default_pet: "butler" });
     if (path === "/health/pets") return Promise.resolve([PET]);
-    if (path === "/health/me/activity") return Promise.resolve({ state, running: 0, waiting: 0, review: 1, failed_at: null });
+    if (path === "/health/me/activity") return Promise.resolve({ state, running: 0, waiting: 0, review: 1, failed_at: null, ...findings });
     if (path === "/health/name") return Promise.resolve({ name: "Jeeves", default_name: "Concierge" });
     return Promise.reject(new Error(path));
   });
@@ -31,6 +37,7 @@ describe("HealthCompanion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     flags.reduced = false;
+    flags.admin = true;
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
   });
@@ -43,6 +50,29 @@ describe("HealthCompanion", () => {
     expect(api.get).not.toHaveBeenCalledWith("/health/me/activity");
   });
 
+  it("shows nothing to a plain user and calls no companion route (#101)", async () => {
+    flags.admin = false;
+    serve({ enabled: true, pet: "butler" });
+    renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByTestId("health.companion")).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+
+  it("says the open critical findings first, then the state", async () => {
+    serve({ enabled: true, pet: "butler" }, "running", { critical: 2, warning: 3, info: 1 });
+    renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 critical findings are open Jeeves is checking the platform.",
+    );
+  });
+
+  it("says when nothing is open, with no idle filler", async () => {
+    serve({ enabled: true, pet: "butler" }, "idle");
+    renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
+    expect(await screen.findByRole("status")).toHaveTextContent(/^No open finding\.$/);
+  });
+
   it("reads the companion with no feature flag (#101 S1)", async () => {
     serve({ enabled: true, pet: "butler" });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
@@ -52,7 +82,7 @@ describe("HealthCompanion", () => {
   it("says what it shows, with the Platform Health's name", async () => {
     serve({ enabled: true, pet: "butler" });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
-    expect(await screen.findByRole("status")).toHaveTextContent("A proposal is ready for your review.");
+    expect(await screen.findByRole("status")).toHaveTextContent("No open finding. A proposal is ready for your review.");
     fireEvent.click(await screen.findByRole("button", { name: "Butler" }));
     expect(await screen.findByRole("link", { name: "Open Jeeves" })).toHaveAttribute("href", "/health");
   });

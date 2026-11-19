@@ -16166,6 +16166,10 @@ export interface HealthActivity {
   waiting: number;
   review: number;
   failed_at: string | null;
+  /** Open Platform Health findings by severity, every module summed. */
+  critical: number;
+  warning: number;
+  info: number;
 }
 
 /** `GET /health/name`: what every signed-in person calls the Platform Health. */

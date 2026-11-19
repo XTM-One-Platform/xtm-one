@@ -81,14 +81,36 @@ export function framePosition(state: PetState, frame: number, scale: number): st
   return `${x}px ${y}px`;
 }
 
-/** What the bubble says for each state, with `{name}` the Platform Health's name. @i18n-keys */
-export const COMPANION_STATE_LABELS = {
-  idle: "{name} is standing by.",
-  running: "{name} is at work.",
+/**
+ * What the bubble says for each state, with `{name}` the Platform Health's name.
+ * `idle` has no line of its own: the findings line ({@link companionFindingsLabel}) says it. @i18n-keys
+ */
+export const COMPANION_STATE_LABELS: Record<Exclude<CompanionState, "idle">, string> = {
+  running: "{name} is checking the platform.",
   waiting: "A run is waiting for your approval.",
   failed: "Something did not go through. {name} has the details.",
   review: "A proposal is ready for your review.",
+};
+
+/** The findings line of the bubble, most severe first. @i18n-keys */
+export const COMPANION_FINDINGS_LABELS = {
+  critical: "{count, plural, one {# critical finding is open} other {# critical findings are open}}",
+  warning: "{count, plural, one {# warning is open} other {# warnings are open}}",
+  clear: "No open finding.",
 } as const;
+
+/** Which findings line the bubble shows for the open counts (`GET /health/me/activity`). */
+export function companionFindingsLabel(counts: { critical?: number; warning?: number } | undefined): {
+  key: (typeof COMPANION_FINDINGS_LABELS)[keyof typeof COMPANION_FINDINGS_LABELS];
+  count: number;
+  severity: "critical" | "warning" | "clear";
+} {
+  const critical = counts?.critical ?? 0;
+  const warning = counts?.warning ?? 0;
+  if (critical > 0) return { key: COMPANION_FINDINGS_LABELS.critical, count: critical, severity: "critical" };
+  if (warning > 0) return { key: COMPANION_FINDINGS_LABELS.warning, count: warning, severity: "warning" };
+  return { key: COMPANION_FINDINGS_LABELS.clear, count: 0, severity: "clear" };
+}
 
 /** The rule a refused upload broke, by the code of its 422 (`pets.ERROR_MESSAGES`). @i18n-keys */
 const UPLOAD_ERRORS = {
