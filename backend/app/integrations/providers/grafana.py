@@ -525,16 +525,33 @@ async def _find_datasources_by_type(
     return [ds for ds in resp.json() if ds.get("type", "") == ds_type]
 
 
-def _format_loki_logs(data: dict, max_lines: int = 200) -> str:
+# One Loki line can hold a whole multi-KB stack trace: a line is cut at
+# _LOKI_LINE_CHARS and the answer at _LOKI_TOTAL_CHARS, the rest counted,
+# so a few traceback lines never fill the tool-result cap (gap
+# loki-query-result-uncapped: 7 lines answered 198,000 characters).
+_LOKI_LINE_CHARS = 2_000
+_LOKI_TOTAL_CHARS = 40_000
+
+
+def _format_loki_logs(
+    data: dict,
+    max_lines: int = 200,
+    line_chars: int = _LOKI_LINE_CHARS,
+    total_chars: int = _LOKI_TOTAL_CHARS,
+) -> str:
     """Format Loki query_range response into human-readable log output.
 
     Loki response structure:
       {"data": {"resultType": "streams", "result": [
           {"stream": {"job": "app", ...}, "values": [["<ns>", "<line>"], ...]}
       ]}}
+
+    Each line is cut at ``line_chars`` and the answer stops at ``total_chars``;
+    what is left out is counted, never silently dropped.
     """
     result_data = data.get("data", {})
     results = result_data.get("result", [])
+    available = sum(len(s.get("values") or []) for s in results)
 
     if not results:
         status = data.get("status", "unknown")
@@ -542,6 +559,8 @@ def _format_loki_logs(data: dict, max_lines: int = 200) -> str:
 
     lines: list[str] = []
     total_lines = 0
+    size = 0
+    cut_lines = 0
 
     for stream_entry in results:
         stream_labels = stream_entry.get("stream", {})
@@ -559,6 +578,13 @@ def _format_loki_logs(data: dict, max_lines: int = 200) -> str:
             if total_lines >= max_lines:
                 lines.append(f"... (output truncated at {max_lines} lines)")
                 return "\n".join(lines)
+            if size >= total_chars:
+                lines.append(
+                    f"... ({available - total_lines} more log line(s) left out past "
+                    f"{total_chars:,} characters; narrow the LogQL with |= or "
+                    "line_format, or lower limit)"
+                )
+                return "\n".join(lines)
             # Convert nanoseconds → human-readable UTC timestamp
             try:
                 ts_sec = int(ts_ns) / 1_000_000_000
@@ -567,12 +593,21 @@ def _format_loki_logs(data: dict, max_lines: int = 200) -> str:
                 )
             except (ValueError, TypeError):
                 ts_fmt = str(ts_ns)
-            lines.append(f"[{ts_fmt}] {log_line}")
+            text = str(log_line)
+            if len(text) > line_chars:
+                text = f"{text[:line_chars]} [... {len(text) - line_chars:,} chars cut]"
+                cut_lines += 1
+            entry = f"[{ts_fmt}] {text}"
+            lines.append(entry)
+            size += len(entry) + 1
             total_lines += 1
 
         lines.append("")
 
-    lines.append(f"Total: {total_lines} log line(s) across {len(results)} stream(s).")
+    total = f"Total: {total_lines} log line(s) across {len(results)} stream(s)."
+    if cut_lines:
+        total += f" {cut_lines} line(s) cut at {line_chars:,} characters."
+    lines.append(total)
     return "\n".join(lines).strip()
 
 
@@ -1062,6 +1097,9 @@ def build_tools(
                    or ISO 8601 ('2024-01-15T10:00:00Z'). Default: last 1 hour.
         limit: max number of log lines to return (default 100, max 1000).
         direction: 'backward' (newest first, default) or 'forward' (oldest first).
+
+        The answer is bounded: a line past 2,000 characters is cut and the whole
+        output stops at 40,000, the rest counted (_format_loki_logs).
         """
         start_ns = _parse_time_to_ns(start)
         end_ns = _parse_time_to_ns(end)
