@@ -1469,8 +1469,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
-  health_only: boolean;
+  /** A Concierge specialist's suite, carried by the Concierge fleet's own agents: no session picker offers it. */
+  concierge_only: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */
@@ -8087,7 +8087,7 @@ export interface Evaluation {
    *  server-side. Read it through `canManageEntity()`. */
   can_manage?: boolean;
   agent_ids: string[];
-  /** Flow subjects (#8257), linked by the Platform Health; never in `agent_ids`. */
+  /** Flow subjects (#8257), linked by the Concierge; never in `agent_ids`. */
   flows?: { id: string; name: string; tags?: Record<string, string> | null; is_baseline?: boolean }[];
   /** Per-agent prediction extractors (#3290). Absent = score the raw output. */
   agent_extractors?: Record<string, ExtractorSpec> | null;
@@ -8881,6 +8881,7 @@ interface ComparedDataset {
   name: string;
   entry_count: number;
   instructions_digest: string | null;
+  description?: string | null;
 }
 
 export interface ComparedRun {
@@ -8898,11 +8899,20 @@ export interface ComparedRun {
   quality_score: number | null;
   completed_entries: number;
   total_entries: number;
+  completed_at?: string | null;
+  /** The judge's run score; null when the run's judge was off. */
+  judge_score?: number | null;
+  /** Runs with one key ran one setup (subject version, prompts, skills, settings, mode): reruns. */
+  setup_key?: string | null;
+  setup?: Record<string, unknown>;
+  /** Why the last re-score failed, null when it did not. */
+  rescore_error?: string | null;
 }
 
 export interface ComparedEvaluation {
   id: string;
   name: string;
+  created_at?: string | null;
   family: EvaluationFamily | null;
   execution_mode: string | null;
   timeout_seconds: number | null;
@@ -8944,11 +8954,20 @@ export interface ComparedCell {
   metrics: Record<string, [number, number]>;
   cost: number | null;
   seconds: number | null;
+  /** `[tp, fp, fn]` of the metrics that report them (counted results only). */
+  counts?: Record<string, [number, number, number]>;
+  /** The scorer could not read the answer (it counts as everything missing). */
+  unreadable?: boolean;
+  /** The judge's score of the answer; null without a verdict. */
+  judge_score?: number | null;
 }
 
 /** GET /evaluations/compare */
 export interface EvaluationComparison {
   family: EvaluationFamily;
+  /** The metric suite the platform scores with now; a run scored by another reads
+   *  differently in the bundle review until it is re-scored. */
+  metric_suite_version?: string | null;
   metrics: ComparedMetric[];
   evaluations: ComparedEvaluation[];
   entries: ComparedEntry[];
@@ -8983,15 +9002,32 @@ export interface BundleReviewAnswer {
   created_at: string | null;
   /** Null when there is no judge verdict: the judge was off, failed, or the entry was left out. */
   judge_score: number | null;
+  /** The judge's reasoning (absent from a batch read without text). */
+  judge_reasoning?: string | null;
+  /** The suite the answer's run was scored by. */
+  metric_suite_version?: string | null;
   anomaly: string | null;
   metrics: Record<string, number | null>;
+  /** `[tp, fp, fn]` per metric that reports them. */
+  counts?: Record<string, [number, number, number]>;
+  unreadable?: boolean;
+  cost?: number | null;
+  seconds?: number | null;
 }
 
 /** GET /evaluations/bundle-review: an entry's expected STIX bundle against answers.
  *  Sources are `"expected"` and each answer's `key`. */
 export interface BundleReview {
+  /** The suite this review reads the answers with (the platform's current one). */
+  metric_suite_version?: string | null;
   entry: {
     label: string;
+    /** The entry's reference key, as `GET /compare` names its entries. */
+    key?: string | null;
+    position?: number;
+    entry_count?: number | null;
+    dataset_name?: string | null;
+    dataset_description?: string | null;
     /** The text the agent read: its prompt, else the attached file's text layer, one string per page. */
     pages: string[];
     file_name: string | null;
@@ -16077,37 +16113,37 @@ export interface VideoUploadedFile {
   size: number;
 }
 
-// --- Platform Health (#8254) ---
+// --- Platform Concierge (#8254) ---
 
 /** An agent's or a flow's improvement opt-in, as its viewer may act on it. */
-export interface HealthOptIn {
+export interface ConciergeOptIn {
   opt_in: boolean;
   can_manage: boolean;
-  /** False for a Platform Health fleet agent: the Platform Health never improves itself. */
+  /** False for a Concierge fleet agent: the Concierge never improves itself. */
   eligible: boolean;
 }
 
 /** Caps per cycle and per month; `null` sets no cap. Costs are decimal strings. */
-export interface HealthBudgetCaps {
+export interface ConciergeBudgetCaps {
   cycle_tokens: number | null;
   cycle_cost_usd: string | null;
   month_tokens: number | null;
   month_cost_usd: string | null;
 }
 
-/** Settings > Platform Health (`services/health/settings.py`); later levels add fields. */
-export interface HealthSettings extends HealthTriggerSettings {
+/** Settings > Concierge (`services/concierge/settings.py`); later levels add fields. */
+export interface ConciergeSettings extends ConciergeTriggerSettings {
   enabled: boolean;
-  /** The name it goes by with people; `null` is the platform mode's (`HealthName.default_name`). */
+  /** The name it goes by with people; `null` is the platform mode's (`ConciergeName.default_name`). */
   name: string | null;
   scope_mode: "all" | "selected";
   scope_agent_ids: string[];
   scope_flow_ids: string[];
-  budget: HealthBudgetCaps;
+  budget: ConciergeBudgetCaps;
 }
 
-/** A pet of the Health companion's library (#8261). */
-export interface HealthPet {
+/** A pet of the Concierge companion's library (#8261). */
+export interface ConciergePet {
   slug: string;
   display_name: string;
   description: string | null;
@@ -16116,15 +16152,15 @@ export interface HealthPet {
   sha256: string;
 }
 
-/** `GET /health/me/companion`: the signed-in user's own. */
-export interface HealthCompanion {
+/** `GET /concierge/me/companion`: the signed-in user's own. */
+export interface ConciergeCompanion {
   enabled: boolean;
   pet: string;
   default_pet: string;
 }
 
-/** `GET /health/me/activity`: what the companion shows. */
-export interface HealthActivity {
+/** `GET /concierge/me/activity`: what the companion shows. */
+export interface ConciergeActivity {
   state: "idle" | "running" | "waiting" | "failed" | "review";
   running: number;
   waiting: number;
@@ -16132,16 +16168,16 @@ export interface HealthActivity {
   failed_at: string | null;
 }
 
-/** `GET /health/name`: what every signed-in person calls the Platform Health. */
-export interface HealthName {
+/** `GET /concierge/name`: what every signed-in person calls the Concierge. */
+export interface ConciergeName {
   name: string;
   default_name: string;
 }
 
-/** The Platform Health's budget line this month. */
-export interface HealthBudget {
+/** The Concierge's budget line this month. */
+export interface ConciergeBudget {
   month: string;
-  caps: HealthBudgetCaps;
+  caps: ConciergeBudgetCaps;
   used: { tokens: number; cost_usd: string; reserved_tokens: number; reserved_cost_usd: string };
   remaining_tokens: number | null;
   remaining_cost_usd: string | null;
@@ -16150,82 +16186,82 @@ export interface HealthBudget {
   refusal_message: string | null;
 }
 
-// ── Platform Health cycles, signals and inbox (#8261) ─────────────────────
+// ── Platform Concierge cycles, signals and inbox (#8261) ─────────────────────
 
-export type HealthTargetType = "agent" | "flow" | "assignment";
-type HealthCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
+export type ConciergeTargetType = "agent" | "flow" | "assignment";
+type ConciergeCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
 /** A digest's status: ``completed`` only for a completed run with nothing skipped. */
-type HealthDigestStatus = "completed" | "partial" | "failed" | "budget_reached" | "cancelled";
-type HealthSignalKind = "feedback_drop" | "failure_spike" | "cost_drift" | "model_change";
+type ConciergeDigestStatus = "completed" | "partial" | "failed" | "budget_reached" | "cancelled";
+type ConciergeSignalKind = "feedback_drop" | "failure_spike" | "cost_drift" | "model_change";
 
-interface HealthDigestSkip {
+interface ConciergeDigestSkip {
   what: string;
   reason: string;
   count?: number;
 }
 
-export interface HealthDigest {
+export interface ConciergeDigest {
   cycle_id: string;
   specialist: string;
   trigger: string;
-  target_type: HealthTargetType | null;
+  target_type: ConciergeTargetType | null;
   target_id: string | null;
-  status: HealthDigestStatus;
+  status: ConciergeDigestStatus;
   opened_at: string;
   closed_at: string | null;
   run_id: string | null;
   run_status: string | null;
   stop_reason: string | null;
-  signal: HealthSignalReading | null;
+  signal: ConciergeSignalReading | null;
   consolidations: Record<string, number> | null;
   findings: Record<string, number> | null;
   experiments: Record<string, number> | null;
   proposals: { filed: number; applied: number; rolled_back: number; by_verdict: Record<string, number> } | null;
   budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null };
   dry_run_writes: number | null;
-  skipped: HealthDigestSkip[];
+  skipped: ConciergeDigestSkip[];
   unavailable: string[];
   narrative: string | null;
 }
 
-interface HealthSignalReading {
-  kind: HealthSignalKind;
-  target_type: HealthTargetType;
+interface ConciergeSignalReading {
+  kind: ConciergeSignalKind;
+  target_type: ConciergeTargetType;
   target_id: string;
   value: number | string | null;
   baseline: number | string | null;
   detail: Record<string, unknown>;
 }
 
-export interface HealthCycle {
+export interface ConciergeCycle {
   id: string;
   specialist: string;
   trigger: "schedule" | "signal" | "on_demand";
-  target_type: HealthTargetType | null;
+  target_type: ConciergeTargetType | null;
   target_id: string | null;
-  status: HealthCycleStatus;
+  status: ConciergeCycleStatus;
   stop_reason: string | null;
   opened_at: string;
   closed_at: string | null;
   spent_tokens: number;
   spent_cost_usd: string;
   run_id: string | null;
-  signal: HealthSignalReading | null;
-  digest: HealthDigest | null;
+  signal: ConciergeSignalReading | null;
+  digest: ConciergeDigest | null;
   requested_by_me: boolean;
 }
 
-export interface HealthCycleStart {
+export interface ConciergeCycleStart {
   cycle_id: string;
   run_id: string;
 }
 
-export interface HealthSignal {
-  target_type: HealthTargetType;
+export interface ConciergeSignal {
+  target_type: ConciergeTargetType;
   target_id: string;
   /** The target's name; null when it no longer exists. */
   target_name?: string | null;
-  kind: HealthSignalKind;
+  kind: ConciergeSignalKind;
   active: boolean;
   last_value: Record<string, unknown> | null;
   fired_at: string | null;
@@ -16234,7 +16270,7 @@ export interface HealthSignal {
   evaluated_at: string;
 }
 
-export interface HealthScheduleMark {
+export interface ConciergeScheduleMark {
   schedule: string;
   fired_at: string;
   cycle_id: string | null;
@@ -16282,8 +16318,8 @@ export interface ImprovementEvidenceLink {
   hidden: boolean;
 }
 
-/** Settings > Platform Health fields level 8 adds to level 1's ``HealthSettings`` (#8261). */
-export interface HealthSchedules {
+/** Settings > Concierge fields level 8 adds to level 1's ``ConciergeSettings`` (#8261). */
+export interface ConciergeSchedules {
   memory: string;
   quality: string;
   flows: string;
@@ -16295,7 +16331,7 @@ export interface HealthSchedules {
   timezone: string;
 }
 
-export interface HealthSignalSettings {
+export interface ConciergeSignalSettings {
   feedback_enabled: boolean;
   feedback_drop_points: number;
   feedback_window_days: number;
@@ -16310,13 +16346,13 @@ export interface HealthSignalSettings {
   model_change_enabled: boolean;
 }
 
-interface HealthTriggerSettings {
-  schedules: HealthSchedules;
-  signals: HealthSignalSettings;
+interface ConciergeTriggerSettings {
+  schedules: ConciergeSchedules;
+  signals: ConciergeSignalSettings;
   proposal_watch_days: number;
   flow_shadow_days: number;
   flow_watch_days: number;
   flow_shadow_min_pairs: number;
-  /** Level 2's field (#8255): every write of every Platform Health agent logged, not executed. */
+  /** Level 2's field (#8255): every write of every Concierge agent logged, not executed. */
   dry_run: boolean;
 }
