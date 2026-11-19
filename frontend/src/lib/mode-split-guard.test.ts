@@ -1,8 +1,8 @@
 /**
  * Generic AI in both modes - `yarn test` (slice S5 of #9533, `dev-docs/mode-split.md`).
  *
- * A generic AI capability (AI adoption, evaluations, ROI, fleets, Platform Health,
- * intents) runs the same code path in XTM One mode and in Copilot mode; only
+ * A generic AI capability (AI adoption, evaluations, ROI, fleets, Platform Health)
+ * runs the same code path in XTM One mode and in Copilot mode; only
  * domain content, licence and edition semantics, the product-managed built-in
  * agents and the branding differ per mode. These source scans fail the build
  * when a change:
@@ -37,14 +37,15 @@ const FILES: { path: string; text: string }[] = [...sources(SRC)]
 
 const text = (path: string): string => FILES.find((file) => file.path === path)?.text ?? "";
 
-/** Destinations of generic AI capabilities: never gated on the mode. */
-const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/health", "/intents"];
+/** Destinations of generic AI capabilities: never gated on the mode. Intents are
+ *  domain content of the XTM platforms, XTM One mode only (#445, dev-docs/mode-split.md). */
+const GENERIC_AI = ["/ai-adoption", "/evaluations", "/roi", "/flows", "/health"];
 
 type ModeClass = "domain content" | "licence and edition" | "built-in agents" | "branding" | "plumbing";
 
 /** Files that may read the platform mode, each with its class and reason (dev-docs/mode-split.md). */
 const MODE_READERS: Record<string, [ModeClass, string]> = {
-  "App.tsx": ["domain content", "CTEM lifecycle and exposure briefing routes, CTEM home dashboard"],
+  "App.tsx": ["domain content", "CTEM lifecycle, exposure briefing and Intents routes, CTEM home dashboard"],
   "components/companion/CompanionToday.tsx": ["domain content", "CTEM home dashboard vs general dashboard"],
   "components/layout/AboutDialog.tsx": ["branding", "product name and edition in the About dialog"],
   "components/layout/OrganizationSetupPrompt.tsx": ["domain content", "first-login organization (CTEM) profile setup, XTM One mode only"],
