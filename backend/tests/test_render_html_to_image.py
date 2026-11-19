@@ -382,6 +382,7 @@ def test_render_html_to_image_rides_the_file_generation_suite(monkeypatch):
         "scale",
         "name",
         "png_workspace_path",
+        "pages",
     }
     assert "profiles block" in render.description
 
