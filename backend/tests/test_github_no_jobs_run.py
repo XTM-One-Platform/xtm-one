@@ -103,6 +103,46 @@ async def test_list_jobs_of_a_queued_run_without_jobs_keeps_the_plain_answer():
 
 
 @pytest.mark.asyncio
+async def test_list_jobs_of_a_fresh_rerun_without_jobs_names_the_previous_attempt_failures():
+    """Attempt 2 has not queued its jobs: the failed jobs of attempt 1 are named (#355)."""
+    calls: list[tuple[str, str]] = []
+    running = {"id": 42, "status": "queued", "conclusion": None, "run_attempt": 2}
+    failed = [{"id": 7, "name": "Backend unit", "status": "completed", "conclusion": "failure"}]
+    base = _github(running, [], calls)
+
+    async def fake_request(client, method, url, provider, action, **kwargs):
+        if url.endswith("/runs/42/attempts/1/jobs"):
+            calls.append((method, url))
+            return _ok({"total_count": 1, "jobs": failed}), None
+        return await base(client, method, url, provider, action, **kwargs)
+
+    with patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request):
+        result = await _fn("list_github_workflow_jobs")(repo=REPO, run_id=42)
+
+    assert "No jobs yet for run 42 attempt 2 (latest)" in result
+    assert "Attempt 1 (the latest is still running) ended with: Backend unit [failure] (job_id 7)" in result
+    assert "No jobs found" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_of_a_fresh_rerun_without_a_previous_failure_points_to_it():
+    calls: list[tuple[str, str]] = []
+    running = {"id": 42, "status": "queued", "conclusion": None, "run_attempt": 2}
+    base = _github(running, [], calls)
+
+    async def fake_request(client, method, url, provider, action, **kwargs):
+        if url.endswith("/runs/42/attempts/1/jobs"):
+            return _ok({"total_count": 0, "jobs": []}), None
+        return await base(client, method, url, provider, action, **kwargs)
+
+    with patch("app.integrations.providers.github._common.safe_request", side_effect=fake_request):
+        result = await _fn("list_github_workflow_jobs")(repo=REPO, run_id=42)
+
+    assert "No jobs yet for run 42 attempt 2 (latest)" in result
+    assert "list_github_workflow_jobs(run_id=42, attempt=1)" in result
+
+
+@pytest.mark.asyncio
 async def test_rerun_failed_of_a_no_jobs_run_is_a_whole_rerun():
     calls: list[tuple[str, str]] = []
     with patch("app.integrations.providers.github._common.safe_request", side_effect=_github(_run(), [], calls)):
