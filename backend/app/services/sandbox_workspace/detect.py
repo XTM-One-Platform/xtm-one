@@ -156,7 +156,10 @@ _TOOL_CONFIG = re.compile(
     r"|\.browserslistrc|\.stylelintrc(\.[\w.]+)?|stylelint\.config\.\w+"
     # Python formatters and linters that read their own file, not pyproject.toml (isort, pylint, pre-commit).
     r"|\.isort\.cfg|\.?pylintrc|\.pre-commit-config\.ya?ml|\.coveragerc|\.yamllint(\.ya?ml)?"
-    r"|\.markdownlint(\.[\w.]+)?|\.markdownlintignore|\.sqlfluffignore)$"
+    r"|\.markdownlint(\.[\w.]+)?|\.markdownlintignore|\.sqlfluffignore"
+    # Secret scanners read their rules and allow-list at the root they scan from (betterleaks, gitleaks): a
+    # narrow checkout without them reports the allow-listed test fixtures as leaks.
+    r"|\.(better|git)leaks\.toml|\.(better|git)leaksignore)$"
 )
 #: Companion files a narrow checkout keeps at most, and bytes per companion (a lock file runs to megabytes).
 MAX_COMPANIONS = 200
