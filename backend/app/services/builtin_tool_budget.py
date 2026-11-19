@@ -109,7 +109,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: Raised to 467,400 when Platform Health became built in and its eight groups joined the ids
 #: create_agent, update_agent and clone_agent advertise (#101: platform +474,
 #: health_orchestrator +20, on top of user_admin, 19 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 467_400
+#: Raised to 468,300 for list_organization_proposals and decide_organization_proposal (#475:
+#: organization_context +~830, opt-in and administrator-only, 19 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 468_300
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
