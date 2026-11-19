@@ -1223,8 +1223,17 @@ def build_render_html_tool(
             files=[png_ref],
         )
 
+    @functools.wraps(_render_html_to_image)
+    async def _render_counted(*args: object, **kwargs: object) -> ToolResult:
+        # A render that writes its PNG to the workspace is a workspace write from its start, as a
+        # to_workspace_path call is: a reader of the same tool round waits for the PNG (#318 review).
+        workspace = current_workspace() if kwargs.get("png_workspace_path") else None
+        writing = getattr(workspace, "writing", None)
+        with writing() if callable(writing) else contextlib.nullcontext():
+            return await _render_html_to_image(*args, **kwargs)  # type: ignore[arg-type]
+
     executor = executor if executor is not None else CallableToolExecutor()
-    executor.register("render_html_to_image", _render_html_to_image)
+    executor.register("render_html_to_image", _render_counted)
 
     definition = ToolDefinition(
         name="render_html_to_image",

@@ -554,7 +554,11 @@ async def test_render_html_to_image_writes_the_png_to_the_workspace_and_keeps_it
 
     png = b"\x89PNG\r\n\x1a\n-mockup-pixels"
 
+    in_flight: list[int] = []
+
     async def _fake_render(html, *, width, height, scale, font_css):
+        # A reader of the same tool round waits for the PNG: the render counts as a workspace write.
+        in_flight.append(executor.session.writes_in_flight)
         return png, {"out": [], "ovf": [], "overlap": [], "leaves": 1}
 
     async def _summary(_png):
@@ -583,6 +587,7 @@ async def test_render_html_to_image_writes_the_png_to_the_workspace_and_keeps_it
     assert "PNG also written to the workspace:" in result.content and "work/shots/card.png" in result.content
     assert "Probe: clean" in result.content and "as file_id" in result.content, "the answer is unchanged"
     assert [f.filename for f in result.files] == ["card.png"]
+    assert in_flight == [1] and executor.session.writes_in_flight == 0
 
     refused = await composite.execute_tool(
         ToolCall(
@@ -593,6 +598,25 @@ async def test_render_html_to_image_writes_the_png_to_the_workspace_and_keeps_it
     )
     assert refused.is_error is False, "the render stands when the workspace refuses the path"
     assert "PNG not written to the workspace:" in refused.content and "Probe: clean" in refused.content
+
+
+async def test_workspace_write_file_is_counted_while_it_commits(store, monkeypatch):
+    """WorkspaceIngestor.write_file is an in-flight write: a reader of the same round waits for it."""
+    from app.services.sandbox_workspace.ingest import WorkspaceIngestor
+
+    _composite_tool, executor = _composite(uuid.uuid4(), uuid.uuid4())
+    session = executor.session
+    seen: list[int] = []
+    put_bytes = session.put_bytes
+
+    async def _counting_put(*args, **kwargs):
+        seen.append(session.writes_in_flight)
+        return await put_bytes(*args, **kwargs)
+
+    monkeypatch.setattr(session, "put_bytes", _counting_put)
+    line = await WorkspaceIngestor(session).write_file("work/a.png", b"png", tool="render_html_to_image")
+    assert "work/a.png" in line
+    assert seen == [1] and session.writes_in_flight == 0
 
 
 async def test_render_html_to_image_png_workspace_path_without_a_workspace_is_said():

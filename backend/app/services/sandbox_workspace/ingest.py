@@ -231,7 +231,9 @@ class WorkspaceIngestor:
         if not self.session.available:
             raise ValueError(f"{self.session.unavailable_reason}.")
         try:
-            entry, _plan = await self.session.put_bytes(normalize(path), data, operation="write")
+            # Counted as a workspace write while it commits: a reader of the same tool round waits for it.
+            with self.session.writing():
+                entry, _plan = await self.session.put_bytes(normalize(path), data, operation="write")
         except (WorkspacePathError, QuotaExceededError, WorkspaceUnavailableError) as exc:
             metrics.operation("write_for_tool", "refused")
             raise ValueError(f"{exc}.") from None
