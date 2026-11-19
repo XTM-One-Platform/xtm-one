@@ -47,6 +47,7 @@ from app.core.utils import (
     MCP_SERVER_URL_LABELS,
     MaskedArgumentError,
     format_exception_message,
+    is_statement_timeout,
     redact_secret_text,
     restore_masked_args,
     restore_masked_text,
@@ -8730,13 +8731,33 @@ def build_agent_builder_tool(
                 # Fetch ``limit + 1`` rows instead — the ordered page query
                 # can stop early on the ``created_at`` index — and report
                 # "more results exist" without an exact total.
-                result = await _db.execute(
-                    q.order_by(
-                        AssignmentRun.created_at.desc(), AssignmentRun.id
+                try:
+                    result = await _db.execute(
+                        q.order_by(AssignmentRun.created_at.desc(), AssignmentRun.id).limit(limit + 1).offset(offset)
                     )
-                    .limit(limit + 1)
-                    .offset(offset)
-                )
+                except Exception as exc:
+                    # A rare term over a large run table makes that scan
+                    # outlast the database statement timeout: answer how to
+                    # narrow it instead of an opaque error the model retries.
+                    if not is_statement_timeout(exc):
+                        raise
+                    unset = [
+                        name
+                        for name, value in (
+                            ("agent_id", agent_uuid),
+                            ("assignment_id", assignment_uuid),
+                            ("status", status),
+                        )
+                        if not value
+                    ]
+                    narrow = f"add {', '.join(unset)}" if unset else "use a more specific term"
+                    return (
+                        f"The search for `{search}` timed out in the "
+                        "database: the searched fields have no index, so a "
+                        "rare term scans every run. Do not retry the same "
+                        f"call. Narrow it ({narrow}), or use get_run with "
+                        "`search` on run ids you already have."
+                    )
                 runs = result.scalars().all()
                 has_more = len(runs) > limit
                 runs = runs[:limit]

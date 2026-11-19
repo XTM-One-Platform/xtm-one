@@ -73,7 +73,12 @@ from app.core.registration_token import (
 from app.core.security import decrypt_json, decrypt_value, encrypt_value
 from app.core.security_options import security_option
 from app.core.url_identity import url_identity
-from app.core.utils import format_exception_message, if_none_match_hits, is_graceful_shutdown_cancellation
+from app.core.utils import (
+    format_exception_message,
+    if_none_match_hits,
+    is_graceful_shutdown_cancellation,
+)
+from app.core.utils import is_statement_timeout as _is_statement_timeout
 from app.enterprise.licensing import (
     DEFAULT_AGENTIC_DAILY_QUOTA,
     DEFAULT_AGENTIC_MONTHLY_QUOTA,
@@ -3648,29 +3653,6 @@ def _retry_after_seconds(exc: BaseException) -> int | None:
     except (TypeError, ValueError):
         return None
     return seconds if seconds >= 0 else None
-
-
-def _is_statement_timeout(exc: BaseException) -> bool:
-    """Whether *exc*, or an exception it was raised from, is a cancelled database statement.
-
-    PostgreSQL's ``statement_timeout`` (SQLSTATE 57014, asyncpg's
-    ``QueryCanceledError``, wrapped by SQLAlchemy as ``DBAPIError.orig``):
-    transient, the same turn usually passes on the next attempt.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if type(current).__name__ == "QueryCanceledError" or getattr(current, "sqlstate", None) == "57014":
-            return True
-        if "canceling statement due to statement timeout" in str(current):
-            return True
-        orig = getattr(current, "orig", None)
-        if isinstance(orig, BaseException) and id(orig) not in seen:
-            current = orig
-            continue
-        current = current.__cause__ or current.__context__
-    return False
 
 
 def classify_platform_turn_failure(exc: BaseException) -> PlatformTurnFailure:

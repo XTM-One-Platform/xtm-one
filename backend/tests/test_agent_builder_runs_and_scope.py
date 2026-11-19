@@ -88,6 +88,8 @@ class _FakeSession:
         value = (
             self._execute_results.pop(0) if self._execute_results else None
         )
+        if isinstance(value, BaseException):
+            raise value
         return _Result(value)
 
 
@@ -1076,6 +1078,56 @@ async def test_list_runs_search_miss_returns_guidance(monkeypatch):
     # ILIKE predicates over the JSON casts would turn it into a second
     # full scan per call. One page query only.
     assert created[0].executed == 1
+
+
+class _QueryCanceledError(Exception):
+    """Stands in for asyncpg's QueryCanceledError (SQLSTATE 57014)."""
+
+    sqlstate = "57014"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_search_statement_timeout_returns_guidance(monkeypatch):
+    """A search cancelled by the database statement timeout answers how to
+    narrow it (the filters not set yet, get_run search) instead of raising."""
+    from sqlalchemy.exc import DBAPIError
+
+    timeout = DBAPIError("SELECT ...", {}, _QueryCanceledError("canceling statement due to statement timeout"))
+    created = []
+    monkeypatch.setattr(
+        database,
+        "async_session",
+        _session_factory(created, execute_results=[timeout]),
+    )
+    _record_run_visible_filter(monkeypatch)
+
+    _, executor = build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(executor, "list_runs", search="rare-term", status="failed")
+
+    assert not result.is_error
+    assert "The search for `rare-term` timed out" in result.content
+    assert "Do not retry the same call" in result.content
+    assert "add agent_id, assignment_id" in result.content
+    assert "status" not in result.content.split("Narrow it")[1].split(")")[0]
+    assert "get_run" in result.content
+
+
+@pytest.mark.asyncio
+async def test_list_runs_search_other_database_error_still_raises(monkeypatch):
+    """Only a statement timeout becomes guidance; any other error raises."""
+    created = []
+    monkeypatch.setattr(
+        database,
+        "async_session",
+        _session_factory(created, execute_results=[RuntimeError("connection lost")]),
+    )
+    _record_run_visible_filter(monkeypatch)
+
+    _, executor = build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(executor, "list_runs", search="term")
+
+    assert result.is_error
+    assert "timed out" not in result.content
 
 
 @pytest.mark.asyncio
