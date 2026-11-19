@@ -85,6 +85,14 @@ class FleetAgentSpec:
     disable_chat: bool = True
     #: ``(agent slug, handover type)`` of the members it may hand work to.
     handovers: tuple[tuple[str, str], ...] = ()
+    #: Slugs the seed gave this agent before (the Concierge's, until S1 of #101):
+    #: the next seed adopts the company-managed row still carrying one.
+    former_slugs: tuple[str, ...] = ()
+
+    @property
+    def slugs(self) -> tuple[str, ...]:
+        """The current slug first, then every former one."""
+        return (self.slug, *self.former_slugs)
 
 
 @dataclass(frozen=True)
@@ -109,7 +117,10 @@ class FleetAssignmentSpec:
         return (self.name, *self.former_names)
 
 
-ORCHESTRATOR_SLUG: Final = "concierge"
+ORCHESTRATOR_SLUG: Final = "platform-health"
+#: The tag every seeded member carries (``concierge`` until S1 of #101).
+FLEET_AGENT_TAG: Final = "health"
+FORMER_FLEET_AGENT_TAGS: Final = frozenset({"concierge"})
 
 FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
     FleetAgentSpec(
@@ -124,14 +135,16 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         builtin_tool_ids=(ORCHESTRATOR_GROUP, IMPROVEMENTS_GROUP),
         disable_chat=False,
         handovers=(
-            ("concierge-memory-steward", "delegate"),
-            ("concierge-quality-analyst", "delegate"),
-            ("concierge-flow-lab", "delegate"),
-            ("concierge-experimenter", "delegate"),
+            ("health-memory-steward", "delegate"),
+            ("health-quality-analyst", "delegate"),
+            ("health-flow-lab", "delegate"),
+            ("health-experimenter", "delegate"),
         ),
+        former_slugs=("concierge",),
     ),
     FleetAgentSpec(
-        slug="concierge-memory-steward",
+        slug="health-memory-steward",
+        former_slugs=("concierge-memory-steward",),
         role="memory_steward",
         name="Memory Steward",
         description="Consolidates agents' memory lanes, reversibly, within the managers' opt-in and users' opt-out.",
@@ -140,27 +153,30 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         skill_slugs=("memory-steward",),
     ),
     FleetAgentSpec(
-        slug="concierge-quality-analyst",
+        slug="health-quality-analyst",
+        former_slugs=("concierge-quality-analyst",),
         role="quality_analyst",
         name="Quality Analyst",
         description="Diagnoses agents from traces, ratings and analytics, and drafts the variants worth measuring.",
         icon="Stethoscope",
         builtin_tool_ids=("health_diagnosis", IMPROVEMENTS_GROUP),
         skill_slugs=("health-quality-analyst",),
-        handovers=(("concierge-experimenter", "delegate"),),
+        handovers=(("health-experimenter", "delegate"),),
     ),
     FleetAgentSpec(
-        slug="concierge-flow-lab",
+        slug="health-flow-lab",
+        former_slugs=("concierge-flow-lab",),
         role="flow_lab",
         name="Flow Lab",
         description="Diagnoses flows and authors repairs, optimizations and new flows on sandbox copies.",
         icon="FlaskConical",
         builtin_tool_ids=("flow_lab", IMPROVEMENTS_GROUP),
         skill_slugs=("health-flow-lab",),
-        handovers=(("concierge-experimenter", "delegate"),),
+        handovers=(("health-experimenter", "delegate"),),
     ),
     FleetAgentSpec(
-        slug="concierge-experimenter",
+        slug="health-experimenter",
+        former_slugs=("concierge-experimenter",),
         role="experimenter",
         name="Experimenter",
         description="Measures variants on sandbox copies with evaluations and files the improvement proposals.",
@@ -178,7 +194,7 @@ _REPORT = (
 FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     FleetAssignmentSpec(
         key="memory",
-        agent_slug="concierge-memory-steward",
+        agent_slug="health-memory-steward",
         name="Platform Health memory consolidation",
         former_names=("Concierge memory consolidation",),
         description="Consolidates every memory lane Platform Health may read. Started by its schedule in Settings > Automations > Platform Health.",
@@ -186,7 +202,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     ),
     FleetAssignmentSpec(
         key="quality",
-        agent_slug="concierge-quality-analyst",
+        agent_slug="health-quality-analyst",
         name="Platform Health quality review",
         former_names=("Concierge quality review",),
         description="Reviews the quality signals of the enrolled agents. Started by its schedule in Settings > Automations > Platform Health.",
@@ -197,7 +213,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
     ),
     FleetAssignmentSpec(
         key="flows",
-        agent_slug="concierge-flow-lab",
+        agent_slug="health-flow-lab",
         name="Platform Health flow review",
         former_names=("Concierge flow review",),
         description="Reviews the enrolled flows and assignments. Started by its schedule in Settings > Automations > Platform Health.",
@@ -237,6 +253,10 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
 )
 
 ROLE_BY_SLUG: Final[dict[str, str]] = {spec.slug: spec.role for spec in FLEET_AGENTS}
+#: Former seed slug -> current slug (the Concierge's agents, until S1 of #101).
+RENAMED_FLEET_AGENT_SLUGS: Final[dict[str, str]] = {
+    former: spec.slug for spec in FLEET_AGENTS for former in spec.former_slugs
+}
 ASSIGNMENT_BY_KEY: Final[dict[str, FleetAssignmentSpec]] = {spec.key: spec for spec in FLEET_ASSIGNMENTS}
 
 _FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows and experiments."
@@ -276,13 +296,44 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
         disable_chat=spec.disable_chat,
         builtin_tool_ids=list(spec.builtin_tool_ids),
         available_channel_types=["web"],
-        tags=["concierge"],
+        tags=[FLEET_AGENT_TAG],
     )
     db.add(agent)
     await db.flush()
     await seed_initial_agent_versions(db, agent=agent, author_id=None)
     logger.info("Seeded Platform Health agent: %s", spec.slug)
     return agent
+
+
+def _adopt_former_slugs(rows: list[Agent]) -> dict[str, Agent]:
+    """The fleet's rows by current slug, a row still on a former slug renamed in place.
+
+    The row keeps its id, so its handovers, fleet membership, assignments,
+    enrolments and history stay with it: no migration. A row already on the
+    current slug wins; a former one beside it is left as it is (logged), never
+    deleted. A personal agent is never renamed (the caller skips it).
+    """
+    by_slug: dict[str, Agent] = {}
+    for agent in rows:
+        if agent.slug and agent.slug not in RENAMED_FLEET_AGENT_SLUGS:
+            by_slug[agent.slug] = agent
+    for agent in rows:
+        current = RENAMED_FLEET_AGENT_SLUGS.get(agent.slug or "")
+        if current is None or not agent.is_company_managed:
+            continue
+        if current in by_slug:
+            logger.warning(
+                "Platform Health seed: %r and its former slug %r both exist; the former row is left as is",
+                current,
+                agent.slug,
+            )
+            continue
+        logger.info("Platform Health seed: agent %s renamed from %r to %r", agent.id, agent.slug, current)
+        agent.slug = current
+        tags = [tag for tag in (agent.tags or []) if tag not in FORMER_FLEET_AGENT_TAGS]
+        agent.tags = tags if FLEET_AGENT_TAG in tags else [*tags, FLEET_AGENT_TAG]
+        by_slug[current] = agent
+    return by_slug
 
 
 async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent: Agent) -> bool:
@@ -375,12 +426,15 @@ async def seed_health_fleet(db: AsyncSession) -> int:
 
     owner_id = await resolve_company_managed_owner_id(db)
     name = await load_health_agent_name(db)
-    by_slug = {
-        agent.slug: agent
-        for agent in (
-            await db.execute(select(Agent).where(Agent.slug.in_([spec.slug for spec in FLEET_AGENTS])))
-        ).scalars()
-    }
+    by_slug = _adopt_former_slugs(
+        list(
+            (
+                await db.execute(
+                    select(Agent).where(Agent.slug.in_([slug for spec in FLEET_AGENTS for slug in spec.slugs]))
+                )
+            ).scalars()
+        )
+    )
     created = 0
     for spec in FLEET_AGENTS:
         agent = by_slug.get(spec.slug)

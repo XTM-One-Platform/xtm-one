@@ -32,7 +32,7 @@ from ._shared import logger
 ORGANIZATION_PROPOSAL_TOOL = "propose_organization_context_change"
 _SOURCE = "builtin:organization_proposals"
 #: The built-in agents that carry the tool (section 6.1).
-ORGANIZATION_PROPOSAL_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-assistant", "concierge"})
+ORGANIZATION_PROPOSAL_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-assistant", "platform-health"})
 
 
 def offers_organization_proposals(agent_slug: str | None, *, is_builtin: bool, caller_is_admin: bool) -> bool:

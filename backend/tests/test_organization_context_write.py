@@ -403,5 +403,5 @@ def test_the_built_in_proposal_agents_keep_their_offer():
     from app.services.builtin_tools import offers_organization_proposals
 
     assert offers_organization_proposals("ctem-assistant", is_builtin=True, caller_is_admin=True)
-    assert offers_organization_proposals("concierge", is_builtin=True, caller_is_admin=True)
+    assert offers_organization_proposals("platform-health", is_builtin=True, caller_is_admin=True)
     assert not offers_organization_proposals("ctem-assistant", is_builtin=True, caller_is_admin=False)

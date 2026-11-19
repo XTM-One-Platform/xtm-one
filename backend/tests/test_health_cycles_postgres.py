@@ -142,7 +142,7 @@ async def test_an_admin_edit_survives_the_next_seed(concierge_on):
         db.add(_user("admin"))
         await db.commit()
         await fleet_seed.seed_health_fleet(db)
-        steward = (await db.execute(select(Agent).where(Agent.slug == "concierge-memory-steward"))).scalar_one()
+        steward = (await db.execute(select(Agent).where(Agent.slug == "health-memory-steward"))).scalar_one()
         steward.persona = "Edited by an administrator."
         await db.commit()
         await fleet_seed.seed_health_fleet(db)

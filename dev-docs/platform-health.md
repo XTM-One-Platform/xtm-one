@@ -175,6 +175,17 @@ alias for one minor release (section 2.3).
   id and every agent's `skill_ids` keeps pointing at it; no Alembic migration is needed. A
   row already on the current slug wins and the former one is removed as stale
   (`test_health_skill_renames.py`).
+- Fleet agent slugs: `concierge`, `concierge-memory-steward`, `concierge-quality-analyst`,
+  `concierge-flow-lab` and `concierge-experimenter` are `platform-health`,
+  `health-memory-steward`, `health-quality-analyst`, `health-flow-lab` and
+  `health-experimenter` (persona files follow; the seed tag is `health`). Each
+  `FleetAgentSpec` keeps its former slug in `former_slugs` (`RENAMED_FLEET_AGENT_SLUGS`): the
+  next seed renames the company-managed row still on it in place, so its id, handovers
+  (stored by agent id), fleet membership, assignments, enrolment and history stay with it;
+  no Alembic migration is needed. A row already on the current slug wins and a former one
+  beside it is left as it is (logged, never deleted); a personal agent on a former slug is
+  never renamed. The organization proposal offer follows the orchestrator's slug
+  (`test_health_agent_slug_renames.py`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no
