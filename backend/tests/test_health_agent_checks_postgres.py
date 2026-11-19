@@ -138,6 +138,41 @@ async def test_a_failing_assignment_resolves_after_two_passing_passes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pausing_the_assignment_resolves_its_findings() -> None:
+    """The remedy the checks recommend (pause the assignment) takes it out of the read; its findings resolve."""
+    async with _temp_database("hac_paused") as sessions, sessions() as db:
+        _owner, _agent, assignment = await _world(db)
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        found = await _open(db)
+        rows = [found["agents.assignment_failing"], found["agents.schedule_silent"]]
+        assignment.enabled = False
+        await db.flush()
+        for step in (1, 2):
+            engine._LAST_RUN.clear()
+            await engine.run_pass(db, now=T0 + timedelta(minutes=15 * step), checks=CHECKS)
+        for row in rows:
+            await db.refresh(row)
+            assert row.status == STATUS_RESOLVED
+
+
+@pytest.mark.asyncio
+async def test_unenrolling_the_agent_resolves_its_findings() -> None:
+    async with _temp_database("hac_unenrol") as sessions, sessions() as db:
+        _owner, agent, _assignment = await _world(db, owner_active=False)
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        rows = list((await _open(db)).values())
+        assert len(rows) == 3
+        agent.health_enrolled = False
+        await db.flush()
+        for step in (1, 2):
+            engine._LAST_RUN.clear()
+            await engine.run_pass(db, now=T0 + timedelta(minutes=15 * step), checks=CHECKS)
+        for row in rows:
+            await db.refresh(row)
+            assert row.status == STATUS_RESOLVED
+
+
+@pytest.mark.asyncio
 async def test_a_cost_spike_is_reported_over_three_times_the_daily_average() -> None:
     async with _temp_database("hac_cost") as sessions, sessions() as db:
         owner, agent, assignment = await _world(db)
@@ -171,3 +206,24 @@ async def test_with_ai_switched_off_no_agent_is_read(monkeypatch: pytest.MonkeyP
         totals = await engine.run_pass(db, now=T0, checks=CHECKS)
         assert totals["checks"] == 4 and totals["opened"] == 0
         assert await _open(db) == {}
+
+
+@pytest.mark.asyncio
+async def test_with_ai_switched_off_an_open_finding_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.ai_state as ai_state
+
+    async with _temp_database("hac_ai_keep") as sessions, sessions() as db:
+        await _world(db, owner_active=False)
+        await engine.run_pass(db, now=T0, checks=CHECKS)
+        rows = list((await _open(db)).values())
+
+        async def disabled(db: Any) -> bool:
+            return False
+
+        monkeypatch.setattr(ai_state, "is_ai_enabled", disabled)
+        for step in (1, 2):
+            engine._LAST_RUN.clear()
+            await engine.run_pass(db, now=T0 + timedelta(minutes=15 * step), checks=CHECKS)
+        for row in rows:
+            await db.refresh(row)
+            assert row.status == STATUS_OPEN

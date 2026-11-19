@@ -17,7 +17,10 @@ Four deterministic checks on the **enrolled** agents alone
 (:func:`app.services.health.engine.enrolled_agent_ids`), registered on the
 engine when this module is imported. Each answers one result per subject it
 read, failing or passing, so a finding resolves by itself once its cause is
-gone (two passing reads in a row).
+gone (two passing reads in a row). A subject that left the read (an assignment
+paused or deleted, an agent unenrolled or deleted) answers a passing result for
+its open finding (:func:`_close_out`), so applying the recommended remedy
+resolves the finding too.
 
 =============================  ==========  ===========  ===============================================
 Check                          Severity    Category     Rule (shared with the fleet findings)
@@ -38,13 +41,14 @@ it was, neither refreshed nor resolved.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.health_check import STATUS_OPEN, HealthCheckFinding
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
     SILENT_AFTER,
@@ -54,7 +58,7 @@ from app.services.fleet_health_signals import (
     is_cost_spike,
     schedule_is_silent,
 )
-from app.services.health.engine import Check, CheckResult, enrolled_agent_ids, register_check
+from app.services.health.engine import Check, CheckResult, enrolled_agent_ids, finding_key, register_check
 
 MODULE = "agents"
 #: How often the agent checks run (section 3, "Scheduling").
@@ -63,13 +67,58 @@ AGENT_CHECK_INTERVAL = timedelta(minutes=15)
 DOC_LINK = "/docs/administration/platform-health#agent-checks"
 
 
-async def _targets(db: AsyncSession) -> list[uuid.UUID]:
-    """The enrolled agents, or none when AI is switched off (agents do not run then)."""
-    from app.services.ai_state import is_ai_enabled
+AgentRead = Callable[[AsyncSession, datetime, list[uuid.UUID]], Awaitable[list[CheckResult]]]
 
-    if not await is_ai_enabled(db):
-        return []
-    return sorted(await enrolled_agent_ids(db))
+
+async def _close_out(db: AsyncSession, check_id: str, read: Sequence[CheckResult]) -> list[CheckResult]:
+    """A passing result for each open finding of ``check_id`` whose subject this pass did not read.
+
+    The subject left the check's scope (paused, deleted, unenrolled): its cause
+    is gone for this check, so the engine resolves it after two such reads.
+    """
+    seen = {finding_key(r.check_id, r.subject) for r in read}
+    rows = (
+        await db.execute(
+            select(HealthCheckFinding).where(
+                HealthCheckFinding.check_id == check_id, HealthCheckFinding.status == STATUS_OPEN
+            )
+        )
+    ).scalars()
+    return [
+        CheckResult(
+            check_id=check_id,
+            module=row.module,
+            category=row.category,
+            severity=row.severity,
+            failing=False,
+            subject=dict(row.subject or {}),
+            evidence={"values": {"in_scope": False}},
+            doc_link=row.doc_link or DOC_LINK,
+        )
+        for row in rows
+        if row.id not in seen
+    ]
+
+
+def _agent_check(check_id: str, read: AgentRead) -> Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]:
+    """Run ``read`` on the enrolled agents, then close out the subjects it no longer reads.
+
+    With AI switched off agents do not run: nothing is read and nothing is
+    closed out, so an open finding is kept as it was.
+    """
+
+    async def run(db: AsyncSession, now: datetime) -> list[CheckResult]:
+        from app.services.ai_state import is_ai_enabled
+
+        if not await is_ai_enabled(db):
+            return []
+        agents = sorted(await enrolled_agent_ids(db))
+        results = await read(db, now, agents) if agents else []
+        return results + await _close_out(db, check_id, results)
+
+    run.__name__ = read.__name__
+    run.__doc__ = read.__doc__
+    return run
 
 
 def _result(
@@ -87,13 +136,10 @@ def _result(
     )
 
 
-async def assignment_failing(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
+async def assignment_failing(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
     """An enabled assignment of an enrolled agent whose last :data:`FAILING_RUNS` judged runs failed."""
     from app.models.assignment import Assignment, AssignmentRun
 
-    agents = await _targets(db)
-    if not agents:
-        return []
     assignments = (
         await db.execute(
             select(Assignment.id, Assignment.agent_id).where(
@@ -139,13 +185,10 @@ async def assignment_failing(db: AsyncSession, now: datetime) -> Sequence[CheckR
     ]
 
 
-async def schedule_silent(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
+async def schedule_silent(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
     """An enabled schedule of an enrolled agent that has not fired for :data:`SILENT_AFTER`."""
     from app.models.assignment import Assignment
 
-    agents = await _targets(db)
-    if not agents:
-        return []
     rows = (
         await db.execute(
             select(Assignment.id, Assignment.agent_id, Assignment.created_at, Assignment.last_triggered_at).where(
@@ -172,13 +215,10 @@ async def schedule_silent(db: AsyncSession, now: datetime) -> Sequence[CheckResu
     ]
 
 
-async def cost_spike(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
+async def cost_spike(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
     """An enrolled agent whose tokens of the last day are over :data:`SPIKE_FACTOR` times its daily average."""
     from app.models.assignment import AssignmentRun
 
-    agents = await _targets(db)
-    if not agents:
-        return []
     day, week = now - timedelta(days=1), now - timedelta(days=8)
     tokens = func.coalesce(AssignmentRun.total_input_tokens, 0) + func.coalesce(AssignmentRun.total_output_tokens, 0)
     totals = {
@@ -195,7 +235,7 @@ async def cost_spike(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
             )
         ).all()
     }
-    results = []
+    results: list[CheckResult] = []
     for agent_id in agents:
         today, before = totals.get(agent_id, (0, 0))
         results.append(
@@ -215,14 +255,11 @@ async def cost_spike(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
     return results
 
 
-async def owner_disabled(db: AsyncSession, now: datetime) -> Sequence[CheckResult]:
+async def owner_disabled(db: AsyncSession, now: datetime, agents: list[uuid.UUID]) -> list[CheckResult]:
     """An enrolled agent whose owner account is deactivated."""
     from app.models.agent import Agent
     from app.models.user import User
 
-    agents = await _targets(db)
-    if not agents:
-        return []
     rows = (
         await db.execute(
             select(Agent.id, User.is_active).join(User, User.id == Agent.user_id).where(Agent.id.in_(agents))
@@ -248,4 +285,6 @@ for _check_id, _run in (
     ("agents.cost_spike", cost_spike),
     ("agents.owner_disabled", owner_disabled),
 ):
-    register_check(Check(check_id=_check_id, module=MODULE, interval=AGENT_CHECK_INTERVAL, run=_run))
+    register_check(
+        Check(check_id=_check_id, module=MODULE, interval=AGENT_CHECK_INTERVAL, run=_agent_check(_check_id, _run))
+    )
