@@ -1058,6 +1058,123 @@ async def _apply_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datet
     return outcome
 
 
+def apply_dequeue_event(refs: list[dict[str, Any]], event: PullRequestEvent) -> tuple[list[dict[str, Any]], list[str]]:
+    """*refs* after a merge queue removal *event*: ``(refs, removed)``. Pure.
+
+    *removed* names each open reference waiting for the merge of the pull
+    request the queue dropped (a pull request, or the merge stage of a
+    deployment). The removal is stamped on the reference (``dequeued_at``), so a
+    redelivery names nothing and a later removal of the same pull request does.
+    """
+    if event.kind != "dequeued":
+        return refs, []
+    stamp = event.closed_at or event.conclusion or "removed"
+    removed: list[str] = []
+    out: list[dict[str, Any]] = []
+    for ref in refs:
+        ref = dict(ref)
+        waits_merge = (ref.get("kind") == "pull_request" and ref.get("release_on") != "closed") or (
+            ref.get("kind") == "deployment" and not ref.get("merge_sha")
+        )
+        if (
+            waits_merge
+            and ref.get("repo") == event.repo
+            and ref.get("number") in event.pr_numbers
+            and not _satisfied(ref)
+            and ref.get("dequeued_at") != stamp
+        ):
+            ref["dequeued_at"] = stamp
+            removed.append(ref_label(ref))
+        out.append(ref)
+    return out, removed
+
+
+def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *, still_blocked: bool) -> str:
+    """The note of an item whose pull request the merge queue dropped. Pure."""
+    when = _host_stamp(event.closed_at)
+    at = f" at {when}" if when else ""
+    reason = event.conclusion or "unknown"
+    tail = (
+        "it stays blocked until the items it waits for are done"
+        if still_blocked
+        else "back in the queue: fix the pull request and enqueue it again, or re-point blocked_on_refs"
+    )
+    return (
+        f"surfaced: {', '.join(removed)} removed from the merge queue without a merge ({reason}){at}, "
+        f"so no closing will release this item; {tail}; surfaced at {_stamp(now)}"
+    )
+
+
+async def _apply_dequeue_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datetime) -> str | None:
+    """Apply a merge queue removal to one item, on its locked row. ``surfaced`` / ``noted`` / ``None``."""
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        item = (await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())).scalar_one_or_none()
+        if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        refs, removed = apply_dequeue_event(list(item.blocked_on_refs), event)
+        if not removed:
+            return None
+        item.blocked_on_refs = refs
+        still_blocked = bool(item.blocked_on)
+        note = dequeued_note(removed, event, now, still_blocked=still_blocked)
+        item.claim_notes = [*(item.claim_notes or []), {"at": now.isoformat(), "text": note}]
+        item.last_activity_at = now
+        if still_blocked:
+            await db.commit()
+            return "noted"
+        previous = item.description or ""
+        item.description = f"{note}\n\n{previous}" if previous else note
+        # The references stay: the item re-parks on them once the pull request is enqueued again.
+        item.status = "open"
+        item.claimed_by_agent_id = None
+        item.claimed_by_run_id = None
+        item.claimed_at = None
+        item.blocked_reason = None
+        item.needs_human = None
+        await db.commit()
+    await _publish_surfaced(item_id, note)
+    return "surfaced"
+
+
+async def surface_on_dequeue(event: PullRequestEvent) -> dict[str, int]:
+    """Surface the blocked items waiting for the merge of a pull request the merge queue dropped.
+
+    GitHub sends no closing when its merge queue removes a pull request without
+    merging it: an item blocked on that merge through ``blocked_on_refs`` alone
+    would wait forever (#397). ``{"surfaced": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+
+    counts = {"surfaced": 0, "noted": 0}
+    if event.kind != "dequeued":
+        return counts
+    now = datetime.now(UTC)
+    try:
+        async with async_session() as db:
+            ids = await _candidate_ids(db, event)
+    except Exception as exc:
+        logger.warning("Blocked references on %s unreadable: %s", event.repo, format_exception_message(exc))
+        return counts
+    for item_id in ids:
+        try:
+            outcome = await _apply_dequeue_to_item(item_id, event, now)
+        except Exception as exc:
+            logger.warning(
+                "Merge queue removal on %s could not move work item %s: %s",
+                event.repo,
+                item_id,
+                format_exception_message(exc),
+            )
+            continue
+        if outcome:
+            counts[outcome] += 1
+    if any(counts.values()):
+        logger.info("Merge queue removal on %s: %s", event.repo, counts)
+    return counts
+
+
 async def _publish_surfaced(item_id: uuid.UUID, note: str) -> None:
     """``work_item.status_changed`` (blocked to open) of an item a closing surfaced. Best-effort."""
     from app.services.work_item import publish_transition
