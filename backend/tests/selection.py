@@ -185,8 +185,16 @@ def is_test_file(path: str) -> bool:
     return path.startswith("tests/") and path.endswith(".py") and Path(path).name.startswith("test_")
 
 
+#: The fields of a node that hold statements: an import is a statement, so no expression can hold one.
+_STATEMENT_LISTS = ("body", "orelse", "finalbody", "handlers", "cases")
+
+
 def _imports(tree: ast.AST) -> Iterable[tuple[ast.Import | ast.ImportFrom, bool]]:
-    """Every import of ``tree`` but those under ``if TYPE_CHECKING:``, and whether it sits in a function."""
+    """Every import of ``tree`` but those under ``if TYPE_CHECKING:``, and whether it sits in a function.
+
+    Only the statement lists are walked (an expression holds no statement): walking
+    every node took two thirds of ``Graph.read``.
+    """
     stack: list[tuple[ast.AST, bool]] = [(tree, False)]
     while stack:
         node, deferred = stack.pop()
@@ -196,8 +204,9 @@ def _imports(tree: ast.AST) -> Iterable[tuple[ast.Import | ast.ImportFrom, bool]
         if isinstance(node, ast.If) and _is_type_checking(node.test):
             stack.extend((child, deferred) for child in node.orelse)
             continue
-        inner = deferred or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-        stack.extend((child, inner) for child in ast.iter_child_nodes(node))
+        inner = deferred or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        for statements in _STATEMENT_LISTS:
+            stack.extend((child, inner) for child in getattr(node, statements, ()))
 
 
 def _is_type_checking(test: ast.expr) -> bool:
