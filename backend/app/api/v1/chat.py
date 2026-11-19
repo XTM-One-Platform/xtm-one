@@ -732,6 +732,44 @@ def _visible_message_responses(
     ]
 
 
+async def _mark_deleted_attachments(db: AsyncSession, responses: list[MessageResponse]) -> list[MessageResponse]:
+    """Stamp each attachment whose file is a tombstone (#396) with ``deleted_at`` / ``deleted_reason``.
+
+    One query for the page. A message stores its attachments as written; the
+    file's bytes may have gone since (a retention sweep, its owner, an
+    administrator): the card then draws the deleted state instead of a
+    broken preview or a 410 on click.
+    """
+    from app.models.file_attachment import FileAttachment
+
+    ids: set[uuid.UUID] = set()
+    for response in responses:
+        for attachment in response.attachments or []:
+            try:
+                ids.add(uuid.UUID(str(attachment.file_id)))
+            except (TypeError, ValueError):
+                continue
+    if not ids:
+        return responses
+    rows = (
+        await db.execute(
+            select(FileAttachment.id, FileAttachment.deleted_at, FileAttachment.deleted_reason).where(
+                FileAttachment.id.in_(ids), FileAttachment.deleted_at.is_not(None)
+            )
+        )
+    ).all()
+    gone = {str(row[0]): (row[1], row[2]) for row in rows}
+    if not gone:
+        return responses
+    for response in responses:
+        for attachment in response.attachments or []:
+            hit = gone.get(str(attachment.file_id))
+            if hit:
+                attachment.deleted_at = hit[0].isoformat()
+                attachment.deleted_reason = hit[1]
+    return responses
+
+
 def _deserialize_tool_call_trace(raw: object) -> list[ToolCallTraceEntry] | None:
     """Build a list of ToolCallTraceEntry from raw metadata.
 
@@ -1110,6 +1148,11 @@ class MessageAttachment(BaseModel):
     # upload.
     created_at: str | None = None
     sha256: str | None = None
+    # The tombstone (#396), read live from the file's row when the page is
+    # served (``_mark_deleted_attachments``): the card shows the file deleted,
+    # muted, with the date and why, and never asks for its bytes.
+    deleted_at: str | None = None
+    deleted_reason: str | None = None
 
 
 class MessageFeedbackResponse(BaseModel):
@@ -1458,6 +1501,11 @@ class ConversationFileItem(BaseModel):
     # jump-to-message affordance in that case rather than linking nowhere.
     message_id: str | None = None
     download_url: str
+    # The tombstone (#396): set when the file's bytes were deleted (a
+    # retention, its owner, an administrator); the panel draws a deleted card
+    # and the download answers 410.
+    deleted_at: str | None = None
+    deleted_reason: str | None = None
 
 
 class ConversationFilesResponse(BaseModel):
@@ -2665,7 +2713,7 @@ async def get_conversation(
         created_at=conv.created_at.isoformat(),
         updated_at=conv.updated_at.isoformat(),
         workspace_id=str(conv.workspace_id) if conv.workspace_id else None,
-        messages=_visible_message_responses(messages, feedback_by_message_id),
+        messages=await _mark_deleted_attachments(db, _visible_message_responses(messages, feedback_by_message_id)),
         tool_overrides=_tool_overrides,
         is_processing=_turn_state.is_processing,
         pending_approvals=_turn_state.pending_approvals,
@@ -2743,7 +2791,7 @@ async def get_conversation_messages(
         db, [m.id for m in messages], user.id
     )
     return MessagePageResponse(
-        messages=_visible_message_responses(messages, feedback_by_message_id),
+        messages=await _mark_deleted_attachments(db, _visible_message_responses(messages, feedback_by_message_id)),
         has_more=has_more,
     )
 
@@ -3500,7 +3548,7 @@ async def return_to_source(
         is_archived=conv.is_archived,
         created_at=conv.created_at.isoformat(),
         updated_at=conv.updated_at.isoformat(),
-        messages=_visible_message_responses(messages),
+        messages=await _mark_deleted_attachments(db, _visible_message_responses(messages)),
         tool_overrides=_tool_overrides,
         has_more=has_more,
     )
@@ -4209,6 +4257,8 @@ async def list_conversation_files(
                 source=r.source or "",
                 message_id=str(r.message_id) if r.message_id else None,
                 download_url=_download_url(r),
+                deleted_at=r.deleted_at.isoformat() if getattr(r, "deleted_at", None) else None,
+                deleted_reason=getattr(r, "deleted_reason", None),
             )
             for r in page
         ],

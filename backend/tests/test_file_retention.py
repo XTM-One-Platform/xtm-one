@@ -294,6 +294,38 @@ def test_available_files_marks_a_deleted_file():
     assert "DELETED (content gone)" in context.to_prompt_section()
 
 
+# -- the Files page --------------------------------------------------------------
+
+
+def test_the_files_page_shows_when_an_unused_file_expires_and_a_tombstone(monkeypatch):
+    from app.api.v1.files import _serialize
+
+    for category in CATEGORIES:
+        monkeypatch.delenv(category.env_var, raising=False)
+    me = SimpleNamespace(id=uuid.uuid4(), role="user", is_admin=False)
+    rules = policy_of({})
+    live = _row(
+        user_id=me.id,
+        conversation_id=None,
+        assignment_run_id=None,
+        message_id=None,
+        last_accessed_at=NOW - timedelta(days=10),
+    )
+    item = _serialize(live, me, {}, {}, rules)
+    assert item.expires_at == (NOW + timedelta(days=50)).isoformat()
+    assert item.deleted_at is None
+    gone = _row(
+        user_id=me.id,
+        conversation_id=None,
+        assignment_run_id=None,
+        message_id=None,
+        deleted_at=NOW,
+        deleted_reason=DELETED_RETENTION,
+    )
+    item = _serialize(gone, me, {}, {}, rules)
+    assert item.deleted_reason == DELETED_RETENTION and item.expires_at is None
+
+
 # -- what keeps a file -----------------------------------------------------------
 
 
