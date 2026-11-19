@@ -480,7 +480,7 @@ def test_malformed_edits_are_refused_before_reading_the_file(raw):
         editing.parse_edits(raw)
 
 
-def _ranged(raw):
+def _ranged(raw: object) -> list[editing.Edit]:
     return editing.parse_edits(raw, allow_ranges=True)
 
 
@@ -592,6 +592,37 @@ def test_a_stale_or_past_the_end_insert_refuses_the_whole_call():
 def test_malformed_inserts_are_refused(item):
     with pytest.raises(editing.EditError):
         _ranged([item])
+
+
+def test_an_occurrence_replaces_only_that_occurrence_of_a_repeated_find() -> None:
+    text = "block\nx = 1\nblock\nx = 1\nblock\nx = 1\n"
+    second = editing.apply_edits(text, _ranged([{"find": "x = 1", "replace": "x = 2", "occurrence": 2}]))
+    assert second.text == "block\nx = 1\nblock\nx = 2\nblock\nx = 1\n" and second.replacements == [1]
+    # Counted in the text as the previous edits of the call left it: an insert after each block.
+    both = editing.apply_edits(
+        "a\nend\nb\nend\n",
+        _ranged(
+            [
+                {"find": "end\n", "replace": "end\nnew\n", "occurrence": 2},
+                {"find": "end\n", "replace": "end\nnew\n", "occurrence": 1},
+            ]
+        ),
+    )
+    assert both.text == "a\nend\nnew\nb\nend\nnew\n"
+    crlf = editing.apply_edits("k\r\nk\r\n", _ranged([{"find": "k", "replace": "z", "occurrence": 2}]))
+    assert crlf.text == "k\r\nz\r\n"
+
+
+def test_an_occurrence_past_the_count_or_malformed_is_refused() -> None:
+    with pytest.raises(editing.EditError, match=r"occurrence 3 asked but 'find' text occurs 2 time\(s\)"):
+        editing.apply_edits("a\na\n", _ranged([{"find": "a", "replace": "b", "occurrence": 3}]))
+    for bad in (0, -1, True, "2"):
+        with pytest.raises(editing.EditError, match="'occurrence' must be an integer >= 1"):
+            _ranged([{"find": "a", "replace": "b", "occurrence": bad}])
+    with pytest.raises(editing.EditError, match="either 'occurrence' or 'replace_all'"):
+        _ranged([{"find": "a", "replace": "b", "occurrence": 1, "replace_all": True}])
+    # Outside sandbox_edit_file (create_github_commit, comment bodies) the key is not part of the contract.
+    assert editing.parse_edits([{"find": "a", "replace": "b", "occurrence": 2}])[0].occurrence == 0
 
 
 def test_inserts_are_refused_where_not_allowed():
