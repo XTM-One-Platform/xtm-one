@@ -1398,24 +1398,17 @@ class TestCollectOfAConcludedDelegation:
         assert db.added == [], "read back, never recorded again"
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_delegation_is_read_back_from_its_newest_row(self, monkeypatch):
+    async def test_the_newest_row_answers_the_read_back(self, monkeypatch):
         self._no_partner(monkeypatch)
         db = RecordingDb(
             history=[
-                _concluded_row(OUTCOME_CANCELLED, partner_reason="stopped by the caller"),
-                _concluded_row(OUTCOME_PARTNER_FAILED),
+                _concluded_row(OUTCOME_PARTNER_FAILED, partner_reason="invalid input"),
+                _concluded_row(OUTCOME_PARTNER_FAILED, partner_reason="quota exceeded"),
             ]
         )
         result = await delegation.delegate(db, integration_row(), None, continue_task_id="t-9")
-        assert result.outcome == OUTCOME_CANCELLED, "the newest row answers"
-        assert result.partner_reason == "stopped by the caller"
-
-    @pytest.mark.asyncio
-    async def test_a_timeout_that_cancelled_the_task_is_read_back(self, monkeypatch):
-        self._no_partner(monkeypatch)
-        db = RecordingDb(history=[_concluded_row(OUTCOME_TIMEOUT)])
-        result = await delegation.delegate(db, integration_row(), None, continue_task_id="t-9")
-        assert result.outcome == OUTCOME_TIMEOUT
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason == "invalid input", "the newest row answers"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1428,6 +1421,8 @@ class TestCollectOfAConcludedDelegation:
             [_concluded_row(OUTCOME_UNREACHABLE), _concluded_row(OUTCOME_PARTNER_FAILED)],
             [_concluded_row(delegation.OUTCOME_CREDENTIAL_REJECTED)],
             [_concluded_row(OUTCOME_REFUSED_PREFLIGHT, partner_reason="circuit_open")],
+            [_concluded_row(OUTCOME_TIMEOUT)],
+            [_concluded_row(OUTCOME_CANCELLED), _concluded_row(OUTCOME_PARTNER_FAILED)],
         ],
         ids=[
             "completed",
@@ -1437,12 +1432,16 @@ class TestCollectOfAConcludedDelegation:
             "unreachable",
             "credential-rejected",
             "refused-preflight",
+            "cancelling-timeout",
+            "cancelled",
         ],
     )
     async def test_what_the_partner_may_still_answer_goes_to_the_partner(self, monkeypatch, history):
         """The answer text is not stored, an abandoned task may still answer,
-        an outstanding row is the ordinary collect, and a row this side ended
-        on a transient failure of its own call says nothing about the task."""
+        an outstanding row is the ordinary collect, a row this side ended on a
+        transient failure of its own call says nothing about the task, and a
+        timeout or a cancel rests on a best-effort cancel whose result is not
+        recorded."""
         called = []
 
         async def _refuse(*_a, **_k):

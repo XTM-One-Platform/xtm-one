@@ -1818,10 +1818,13 @@ async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
     return (await db.execute(stmt.limit(1))).scalar_one_or_none() is not None
 
 
-# Outcomes a collect answers from the caller's own row: the partner decided
-# them, or the task was cancelled at the partner. Anything this side concluded
-# on a transient failure of its own call is asked of the partner again.
-_READ_BACK_OUTCOMES = frozenset({OUTCOME_PARTNER_FAILED, OUTCOME_CANCELLED, OUTCOME_TIMEOUT})
+# Outcomes a collect answers from the caller's own row: only what the partner
+# itself decided. A timeout or a cancel is recorded after a best-effort cancel
+# at the partner whose result is not stored (``_cancel_at_partner`` and
+# ``cancel_outstanding_for`` swallow its failure), so the partner's task may
+# still be running or finished: those rows, like anything this side concluded
+# on a transient failure of its own call, are asked of the partner again.
+_READ_BACK_OUTCOMES = frozenset({OUTCOME_PARTNER_FAILED})
 
 
 async def _recorded_conclusion(
@@ -1831,16 +1834,17 @@ async def _recorded_conclusion(
 
     Answered only when nothing about the task is left to learn: no row of this
     caller is still outstanding for it, and the newest one ended with an
-    outcome the partner decided or that ended the task at the partner
-    (``_READ_BACK_OUTCOMES``: a failure, a cancel, a timeout that cancelled
-    it). That is what the calling agent asked about and could not read before
+    outcome the partner itself decided (``_READ_BACK_OUTCOMES``: a failure).
+    That is what the calling agent asked about and could not read before
     (no tool returned the row). A completed row is never answered from here
     (the answer text is not stored, a collect re-reads it from the partner),
     nor an abandoned one (this side gave up on a silent partner, whose answer
-    a collect may still get), nor one this side concluded on a transient
-    failure of its own call (``unreachable``, ``credential_rejected``, a
-    pre-flight refusal such as ``circuit_open``): the partner's task may still
-    be running or finished, so the collect goes to the partner again.
+    a collect may still get), nor a ``timeout`` or ``cancelled`` one (the
+    cancel at the partner is best effort and its result is not recorded), nor
+    one this side concluded on a transient failure of its own call
+    (``unreachable``, ``credential_rejected``, a pre-flight refusal such as
+    ``circuit_open``): the partner's task may still be running or finished, so
+    the collect goes to the partner again.
     """
     from sqlalchemy import select
 
