@@ -87,6 +87,14 @@ async def test_a_switch_read_as_off_is_still_chat_unavailable(monkeypatch, own_s
     assert caught.value.reason == "chat_unavailable"
 
 
+def test_every_test_starts_with_the_failed_read_flag_clear():
+    # The flag is process-wide and ``invalidate_cache`` leaves it alone: the
+    # autouse ``_reset_ai_state_cache`` fixture clears it, or a failed read in
+    # an earlier test on the same worker turns a "chat unavailable" refusal
+    # into "could not be read" (merge_group run 44561564902).
+    assert ai_state.last_read_failed() is False
+
+
 def test_the_unreadable_refusal_is_retryable():
     assert delegation.OUTCOME_CHAT_STATE_UNREADABLE in delegation.RETRYABLE_PREFLIGHT_REASONS
 
