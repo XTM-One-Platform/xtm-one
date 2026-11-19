@@ -1504,6 +1504,55 @@ class TestImageEdits:
         assert provider.image_reference_limit("gpt-image-azure") == 0 and not provider.image_takes_mask("gpt-image-azure")
 
     @pytest.mark.asyncio
+    async def test_a_pinned_credential_lists_with_its_target(self):
+        # The gateway flags ``image_edit`` by the provider ``X-Target-Provider`` names.
+        asked: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            asked.append(request)
+            return httpx.Response(200, json={"object": "list", "data": [
+                {"id": "house-image", "object": "model", "owned_by": "litellm", "types": ["image"], "image_edit": True},
+            ]})
+
+        provider = FiligranGatewayProvider(
+            api_key=f"{GATEWAY_URL}||litellm",
+            http_client=_gateway_http_client(XtmJwtAuth(AUD, "litellm"), None, transport=httpx.MockTransport(handler)),
+        )
+        set_llm_caller(USER_ID, EMAIL)
+        await provider.load_image_capabilities("house-image")
+        assert asked[0].url.path == "/v1/models" and asked[0].headers["X-Target-Provider"] == "litellm"
+        assert provider.image_reference_limit("house-image") == 3
+
+    @pytest.mark.asyncio
+    async def test_an_edit_at_capacity_is_asked_again_after_the_wait_named(self, monkeypatch):
+        from app.llm import images
+
+        answers = [
+            httpx.Response(429, headers={"Retry-After": "15"}, json={"error": {
+                "message": "too many image edits at once", "type": "rate_limit_error",
+                "code": "capacity_exceeded", "retry_after_seconds": 15,
+            }}),
+            httpx.Response(200, json={"data": [{"b64_json": "SU1H"}]}),
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            return answers.pop(0)
+
+        waits: list[float] = []
+
+        async def sleep(seconds):
+            waits.append(seconds)
+
+        monkeypatch.setattr(images.asyncio, "sleep", sleep)
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        provider.client = provider.client.with_options(max_retries=0)  # the drawing's own retry, not the SDK's
+        made = await images.draw_retrying(lambda: provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1"))
+        assert made == b"IMG" and len(waits) == 1 and 15 <= waits[0] <= 15 * 1.25
+
+    @pytest.mark.asyncio
     async def test_a_failed_listing_offers_no_pictures(self):
         provider = _mock_provider(lambda r: httpx.Response(500, json={"error": {"message": "down"}}))
         set_llm_caller(USER_ID, EMAIL)
@@ -1528,6 +1577,8 @@ class TestImageEdits:
         assert body.count(b'name="image[]"') == 2 and b'name="mask"; filename="mask.png"' in body
         for field, value in (("model", b"gpt-image-1"), ("prompt", b"Put the mark on the wall"), ("size", b"1536x1024")):
             assert f'name="{field}"\r\n\r\n'.encode() + value in body
+        # The gateway refuses a form without exactly one ``model`` text field.
+        assert body.count(b'name="model"') == 1
 
     @pytest.mark.asyncio
     async def test_one_picture_is_sent_as_image(self):
