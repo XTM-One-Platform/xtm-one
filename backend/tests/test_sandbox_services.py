@@ -8,6 +8,7 @@ says so, the readiness probe answers from the open ports, and
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -682,6 +683,31 @@ def test_a_log_pattern_keeps_only_the_matching_lines_and_counts_them():
     assert "last 1 shown" in last and last.endswith("not seeded: kb sync 404") and "seeded 3" not in last
     unfiltered = services.log_section("lab", "x", text, 2, None)
     assert unfiltered.endswith("yarn step\n[lab 41s] not seeded: kb sync 404")
+
+
+def test_a_recurring_stack_trace_reads_once_with_its_count_and_long_lines_are_cut() -> None:
+    trace = (
+        '{"level":"error","timestamp":"2026-11-15T10:%02d:00Z","message":"catalog 404","stack":"' + "at x " * 600 + '"}'
+    )
+    text = "\n".join([trace % i if i % 2 else f"{i:02d}:00:00 request ok" for i in range(10)])
+    regex = services.compile_log_pattern("error|ok")
+    assert isinstance(regex, re.Pattern)
+    block = services.log_section("opencti", "x", text, 200, regex)
+    head, *body = block.splitlines()
+    assert "10 of 10 lines" in head and "8 repeated line(s) folded" in head
+    assert len(body) == 2
+    assert body[0] == "08:00:00 request ok (x5)"
+    assert "10:09:00Z" in body[1] and body[1].endswith(" chars] (x5)")
+    assert len(body[1]) <= services.MAX_LOG_LINE_CHARS + 30
+    assert len(block) < 2 * services.MAX_LOG_LINE_CHARS
+
+
+def test_only_lines_that_differ_by_their_time_are_folded() -> None:
+    assert services.fold_repeats(["line 1", "line 2", "c"]) == [("line 1", 1), ("line 2", 1), ("c", 1)]
+    stamped = ["10:00:01 a 404", "b", "2026-11-15T10:00:02.5Z a 404", "1763200000123 c", "1763200000999 c"]
+    assert services.fold_repeats(["10:00:01 a 404", "b", "10:00:02 a 404"]) == [("b", 1), ("10:00:02 a 404", 2)]
+    assert [count for _, count in services.fold_repeats(stamped)] == [1, 2, 2]
+    assert services.log_section("lab", "x", "09:59:59 a\nb\n10:00:00 a", 200, None).endswith("\nb\n10:00:00 a (x2)")
 
 
 def test_a_log_pattern_that_matches_nothing_says_so():
