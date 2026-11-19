@@ -836,6 +836,18 @@ jobs:
         run: |
           PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
+      # As in the integration job: the database lives as long as the job, so
+      # no commit needs to reach the disk. The chain walked below is mostly
+      # DDL and one commit per revision. Locks and transactions behave the
+      # same; only crash safety goes.
+      - name: Run PostgreSQL without durability
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "SELECT pg_reload_conf()"
+
       - name: Fresh install — create tables + stamp head + verify schema
         working-directory: backend
         env:
@@ -877,7 +889,7 @@ jobs:
           python -c "import asyncio; from app.core.migrations import run_migrations; asyncio.run(run_migrations())"
           echo "Idempotent re-run completed (no-op)"
 
-      - name: Sequential upgrade (upgrade +1 from empty DB to head)
+      - name: Sequential upgrade (one revision at a time, empty DB to head)
         working-directory: backend
         env:
           DATABASE_URL: "postgresql+asyncpg://copilot:copilot_ci@localhost:5432/copilot_seq_upgrade"
@@ -902,6 +914,14 @@ jobs:
         # are unambiguous in a branched history while keeping this step's whole
         # point: every upgrade() body runs on its own, so a failure names the
         # exact revision.
+        #
+        # Every step runs in one Python process: `alembic upgrade` as its own
+        # process paid about 1.5 s of imports per revision, most of the step's
+        # ten minutes. Each `command.upgrade` still runs `env.py` afresh, with
+        # its own Config, connection and transaction, and loads the revision
+        # files again; only the app modules stay imported, and the migration
+        # helpers keep no state between two runs. The check below is a
+        # separate process that reads the head back from the database.
         run: |
           set -eo pipefail
           PSQL="psql -h localhost -U copilot -v ON_ERROR_STOP=1"
@@ -912,31 +932,35 @@ jobs:
             echo "Expected exactly one Alembic head, got: $HEAD"
             exit 1
           fi
-          # Parents always precede their children, so upgrading to each ID in
-          # turn runs exactly one new revision per step.
-          REVISIONS=$(python -c "
+          python - > "$RUNNER_TEMP/seq-upgrade-steps" <<'PY'
+          import sys
+
+          from alembic import command
           from alembic.config import Config
           from alembic.script import ScriptDirectory
-          script = ScriptDirectory.from_config(Config('alembic/alembic.ini'))
+
+          INI = "alembic/alembic.ini"
+          script = ScriptDirectory.from_config(Config(INI))
           pending = {r.revision: set(r._all_down_revisions) for r in script.walk_revisions()}
-          done_revs: set[str] = set()
+          done: set[str] = set()
           order = []
           while pending:
-              ready = sorted(rev for rev, deps in pending.items() if deps <= done_revs)
+              ready = sorted(rev for rev, deps in pending.items() if deps <= done)
               if not ready:
-                  raise SystemExit(f'unreachable revisions: {sorted(pending)}')
+                  raise SystemExit(f"unreachable revisions: {sorted(pending)}")
               for rev in ready:
                   order.append(rev)
-                  done_revs.add(rev)
+                  done.add(rev)
                   del pending[rev]
-          print('\n'.join(order))
-          ")
-          STEPS=0
-          for REV in $REVISIONS; do
-            STEPS=$((STEPS+1))
-            echo "--- Upgrade step $STEPS (to '$REV') ---"
-            python -m alembic -c alembic/alembic.ini upgrade "$REV"
-          done
+          # Parents always precede their children, so upgrading to each ID in
+          # turn runs exactly one new revision per step. A fresh Config each
+          # time: env.py keeps the run's starting heads in its attributes.
+          for step, rev in enumerate(order, 1):
+              print(f"--- Upgrade step {step} (to '{rev}') ---", file=sys.stderr, flush=True)
+              command.upgrade(Config(INI), rev)
+          print(len(order))
+          PY
+          STEPS=$(tail -n 1 "$RUNNER_TEMP/seq-upgrade-steps")
           CURRENT=$(python -m alembic -c alembic/alembic.ini current | grep -oE '^[a-zA-Z0-9_]+' | head -1)
           if [ "$CURRENT" != "$HEAD" ]; then
             echo "Sequential upgrade never reached head '$HEAD' (stopped at '${CURRENT:-<empty>}' after $STEPS steps)."
