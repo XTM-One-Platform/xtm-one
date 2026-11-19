@@ -1984,6 +1984,18 @@ timeout = 600
 image = "nodejs-dev"
 report = "lines"
 
+# The resolved light and dark value of each design-system token (a UX mock, a
+# contrast check): scripts/ds-tokens.mjs follows the var() chains of the
+# installed @filigran/design-system dist/tokens/theme.css per scheme, instead of
+# reading the 60 KB generated stylesheet by hand.
+[check.frontend-ds-tokens]
+description = "design-system tokens with their resolved light and dark values, tab-separated (after frontend-install); args: a regex on the token name (feedback-.*-primary), --json for one object"
+argv = ["node", "scripts/ds-tokens.mjs"]
+cwd = "frontend"
+timeout = 120
+image = "nodejs-dev"
+report = "lines"
+
 # Dead code in the frontend: an unused file, export, type or dependency, as
 # CI's "Dead code (knip)" step (frontend/AGENTS.md, "No dead code"). Some
 # frontend tests import apps/microsoft-office/src: a checkout without it
