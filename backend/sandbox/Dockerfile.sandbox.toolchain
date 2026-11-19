@@ -48,7 +48,7 @@
 # toolchain-base: Python 3.14 (pip), uv, the runtime toolchain packages, the
 # non-root user. Every target starts here.
 # ---------------------------------------------------------------------------
-FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS toolchain-base
+FROM docker.io/library/python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS toolchain-base
 
 ARG TOOLCHAIN_APT_FILE=backend/sandbox/apt.sandbox.toolchain.runtime.txt
 
