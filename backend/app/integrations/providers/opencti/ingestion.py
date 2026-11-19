@@ -555,7 +555,8 @@ def register(
                 "name": name,
                 "description": description,
                 "form_schema": form_schema,
-                "active": active,
+                # active is bool | None: an explicit False is a deliberate value, so it counts as passed.
+                "active": None if active is None else "set",
                 "values": values,
                 "content": content,
                 "search": search,
