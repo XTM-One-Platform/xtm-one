@@ -31,13 +31,13 @@ def _no_flags(monkeypatch) -> None:
 
 def test_every_concierge_group_is_gated():
     assert {
-        "concierge_sandbox",
-        "concierge_evaluation",
+        "health_sandbox",
+        "health_evaluation",
         "improvement_proposals",
         "memory_steward",
-        "concierge_orchestrator",
-        "concierge_diagnosis",
-        "concierge_experiments",
+        "health_orchestrator",
+        "health_diagnosis",
+        "health_experiments",
         "flow_lab",
     } <= _CONCIERGE_GROUPS
 
@@ -57,7 +57,7 @@ def test_a_chat_turn_wires_the_concierge_groups_with_no_flag():
 
     composite = CompositeToolExecutor()
     _add_platform_builder_tools(
-        composite, None, str(uuid.uuid4()), ["improvement_proposals", "concierge_sandbox", "concierge_evaluation"]
+        composite, None, str(uuid.uuid4()), ["improvement_proposals", "health_sandbox", "health_evaluation"]
     )
 
     assert {"list_improvements", "propose_improvement"} <= set(composite.tool_names)

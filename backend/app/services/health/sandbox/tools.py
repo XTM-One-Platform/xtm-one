@@ -14,7 +14,7 @@
 """The sandbox tools (#8255, PRD section 8): ``create_sandbox_copy``,
 ``run_sandbox``, ``get_sandbox_run``.
 
-The built-in group ``concierge_sandbox`` for Platform Health's agents, and the
+The built-in group ``health_sandbox`` for Platform Health's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
 every surface, read on the rows (:func:`sandbox_access_refusal`): the
 Platform Health available, the caller Platform Health or an administrator, the copy's
@@ -42,7 +42,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-SANDBOX_SUITE_ID = "concierge_sandbox"
+SANDBOX_SUITE_ID = "health_sandbox"
 _SOURCE = f"builtin:{SANDBOX_SUITE_ID}"
 REFUSED = "Refused: the sandbox is not available to this caller for this target."
 #: Recorded traces or runs one copy takes.

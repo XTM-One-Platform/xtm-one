@@ -104,14 +104,14 @@ describe("useBuiltinTools session picker", () => {
       agent_keyed: true,
       health_only: true,
     };
-    const orchestrator = { ...steward, id: "concierge_orchestrator", name: "Concierge", health_only: false };
+    const orchestrator = { ...steward, id: "health_orchestrator", name: "Platform Health", health_only: false };
     get.mockResolvedValueOnce([{ ...GROUP, health_only: false }, steward, orchestrator] as never);
     const { result } = renderHook(() => useBuiltinTools(), { wrapper: withProviders(appClient()) });
     await waitFor(() => expect(result.current.isReady).toBe(true));
     const agent = { builtin_tool_ids: ["memory_steward"], user_id: "u1", is_company_managed: false };
-    expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "concierge_orchestrator"]);
+    expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "health_orchestrator"]);
     expect(result.current.offeredInChat(false).map((tool) => tool.id)).toEqual(["web_fetch"]);
-    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "concierge_orchestrator"]);
+    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "health_orchestrator"]);
     expect(result.current.describe("memory_steward").healthOnly).toBe(true);
   });
 });

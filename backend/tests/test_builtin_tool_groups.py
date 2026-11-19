@@ -75,7 +75,7 @@ def test_health_only_groups_are_the_specialists_suites():
     from app.services.health.fleet_seed import FLEET_AGENTS
 
     health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
-    assert health_only == {"memory_steward", "concierge_diagnosis", "concierge_experiments", "flow_lab"}
+    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab"}
     for group in BUILTIN_TOOL_GROUPS:
         if group.health_only:
             assert group.gate == "health" and group.agent_keyed, group.id
@@ -156,8 +156,8 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "concierge_diagnosis": bt.build_health_diagnosis_tools("")[0],
-        "concierge_experiments": bt.build_health_experiment_tools("")[0],
+        "health_diagnosis": bt.build_health_diagnosis_tools("")[0],
+        "health_experiments": bt.build_health_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
     }
     for group_id, definitions in built.items():

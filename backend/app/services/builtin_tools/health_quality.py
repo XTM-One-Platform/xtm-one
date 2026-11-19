@@ -15,7 +15,7 @@
 Platform Health's tool groups share.
 
 One access rule (``services/health/access.py``) read on the rows at every
-call, on every surface (agent tools, ``/mcp/xtm``). The ``concierge_diagnosis``
+call, on every surface (agent tools, ``/mcp/xtm``). The ``health_diagnosis``
 group: ``get_quality_signals``, ``list_findings`` (reads), ``record_finding``,
 ``draft_variant`` (Platform Health's Quality Analyst only). The Experimenter's
 group is ``health_experiments.py``, on the same helpers.
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
     from app.services.health.access import Reader
 
-DIAGNOSIS_GROUP_ID = "concierge_diagnosis"
+DIAGNOSIS_GROUP_ID = "health_diagnosis"
 
 #: The read functions of the group: the only ones the platform MCP server serves.
 DIAGNOSIS_READ_TOOLS: frozenset[str] = frozenset({"get_quality_signals", "list_findings"})

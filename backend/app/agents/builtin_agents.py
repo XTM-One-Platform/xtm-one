@@ -3678,7 +3678,7 @@ BUILTIN_SKILLS: list[dict] = [
             "tell a pattern from noise, record each finding once with checked evidence, and draft one "
             "targeted variant for the Experimenter to measure."
         ),
-        "compatibility": "concierge_diagnosis",
+        "compatibility": "health_diagnosis",
         "content": "concierge-quality-analyst",
         "tags": ["builtin", "concierge", "quality"],
         "platform_targets": ["global"],
@@ -3693,7 +3693,7 @@ BUILTIN_SKILLS: list[dict] = [
             "experiment to it, read the comparison and the simulated writes, and file only what the "
             "measurement earned, or unmeasured with its reason."
         ),
-        "compatibility": "concierge_experiments",
+        "compatibility": "health_experiments",
         "content": "concierge-experimenter",
         "tags": ["builtin", "concierge", "evaluation"],
         "platform_targets": ["global"],

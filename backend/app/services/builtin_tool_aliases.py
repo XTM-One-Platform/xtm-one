@@ -368,6 +368,48 @@ def current_function_name(name: str) -> str:
     return RENAMED_BUILTIN_FUNCTIONS.get(name, name)
 
 
+#: Former group id -> its current id, a pure rename: the group grants the same
+#: functions under either id (unlike ``BUILTIN_GROUP_ALIASES``, which scopes a
+#: merged group to what each former id granted). Platform Health
+#: (dev-docs/platform-health.md section 2.3): the Concierge groups are named
+#: after the suite. A row, an API call or a ``builtin_allowed_tools`` key
+#: naming a former id keeps working and is stored under the current id
+#: (:func:`canonical_builtin_selection`, migration ``h119healthgrp``).
+RENAMED_BUILTIN_GROUPS: dict[str, str] = {
+    "concierge_diagnosis": "health_diagnosis",
+    "concierge_experiments": "health_experiments",
+    "concierge_sandbox": "health_sandbox",
+    "concierge_orchestrator": "health_orchestrator",
+    "concierge_evaluation": "health_evaluation",
+}
+
+
+def current_group_id(tool_id: str) -> str:
+    """*tool_id* under its current id: a [DEPRECATED] renamed group id is renamed."""
+    return RENAMED_BUILTIN_GROUPS.get(tool_id, tool_id)
+
+
+def is_former_builtin_id(tool_id: str) -> bool:
+    """Whether *tool_id* is a [DEPRECATED] id: merged into a group or renamed."""
+    return tool_id in BUILTIN_GROUP_ALIASES or tool_id in RENAMED_BUILTIN_GROUPS
+
+
+def _renamed_map(allowed_map: Mapping[str, list[str] | None] | None) -> dict[str, list[str] | None]:
+    """*allowed_map* with every renamed group key under its current id.
+
+    Two keys that land on one group (the former and the current id) both
+    apply: the group keeps the functions both keep.
+    """
+    out: dict[str, list[str] | None] = {}
+    for raw_key, functions in (allowed_map or {}).items():
+        key = current_group_id(str(raw_key))
+        if key in out and out[key] is not None and functions is not None:
+            out[key] = [fn for fn in out[key] or [] if fn in functions]
+        elif key not in out or out[key] is None:
+            out[key] = None if functions is None else list(functions)
+    return out
+
+
 def alias_group(tool_id: str) -> str | None:
     """The group a former id merged into, ``None`` for a current id."""
     entry = BUILTIN_GROUP_ALIASES.get(tool_id)
@@ -417,7 +459,7 @@ def fold_allowed_map(allowed_map: Mapping[str, list[str] | None] | None) -> dict
     keeps the functions every one of them keeps.
     """
     out: dict[str, list[str]] = {}
-    for raw_key, functions in (allowed_map or {}).items():
+    for raw_key, functions in _renamed_map(allowed_map).items():
         key = str(raw_key)
         if functions is None:
             continue
@@ -433,7 +475,7 @@ def fold_allowed_map(allowed_map: Mapping[str, list[str] | None] | None) -> dict
 
 def describe_builtin_tool_id(tool_id: str) -> str:
     """*tool_id* as a reader should see it: a former id names its group."""
-    group = alias_group(tool_id)
+    group = alias_group(tool_id) or (current_group_id(tool_id) if tool_id in RENAMED_BUILTIN_GROUPS else None)
     if group is None:
         return tool_id
     return f"{tool_id} {DEPRECATED_ALIAS_LABEL} alias of {group}"
@@ -454,14 +496,18 @@ def canonical_builtin_selection(
     - Any other allow list keyed by a former id is folded into its group's
       key (:func:`fold_allowed_map`).
 
+    - A renamed group id (``RENAMED_BUILTIN_GROUPS``) becomes its current id,
+      ids and allow-list keys alike, with nothing scoped.
+
     Pure and idempotent: a canonical selection comes back unchanged.
     """
     ids_out: list[str] = []
     seen: set[str] = set()
     direct: set[str] = set()
     via_alias: dict[str, list[str]] = {}
+    allowed_map = _renamed_map(allowed_map) if allowed_map else allowed_map
     for raw in tool_ids or ():
-        tool_id = str(raw)
+        tool_id = current_group_id(str(raw))
         group = alias_group(tool_id)
         target = group or tool_id
         if group is None:
@@ -520,8 +566,8 @@ def fold_builtin_selection(target: Any) -> bool:
     """
     ids = list(getattr(target, "builtin_tool_ids", None) or [])
     allowed = getattr(target, "builtin_allowed_tools", None)
-    if not any(alias_group(str(tool_id)) for tool_id in ids) and not any(
-        alias_group(str(key)) for key in (allowed or {})
+    if not any(is_former_builtin_id(str(tool_id)) for tool_id in ids) and not any(
+        is_former_builtin_id(str(key)) for key in (allowed or {})
     ):
         return False
     folded_ids, folded_allowed = canonical_builtin_selection(ids, allowed)
@@ -545,7 +591,11 @@ def platform_scoped_groups(
     its former ids and maps to a list. Such a group got its list from the
     fold of former ids alone: the platform wrote it, no person did (#39).
     """
-    named = {alias_group(str(key)) or str(key) for key, fns in (allowed_before or {}).items() if fns is not None}
+    named = {
+        alias_group(str(key)) or current_group_id(str(key))
+        for key, fns in (allowed_before or {}).items()
+        if fns is not None
+    }
     return [str(g) for g, fns in (allowed_after or {}).items() if fns is not None and str(g) not in named]
 
 

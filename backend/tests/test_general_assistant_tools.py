@@ -92,13 +92,13 @@ def test_the_registry_offers_agents_every_selectable_suite_and_nothing_else():
     Both directions: a suite the platform gains is offered (or named here as
     one no picker offers), and the registry never offers one the platform lacks.
     """
-    from app.services.builtin_tool_aliases import alias_group
+    from app.services.builtin_tool_aliases import is_former_builtin_id
     from app.services.builtin_tool_catalog import build_builtin_tool_catalog
     from app.services.builtin_tools.agent_builder import _VALID_BUILTIN_TOOL_IDS
 
     registry = set(_registry())
     # [DEPRECATED] ids stay accepted but are not cards: their group is.
-    current = {tool_id for tool_id in _VALID_BUILTIN_TOOL_IDS if alias_group(tool_id) is None}
+    current = {tool_id for tool_id in _VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(tool_id)}
     assert current <= registry, current - registry
     catalog = set(build_builtin_tool_catalog(include_disabled=True))
     assert registry <= catalog, registry - catalog

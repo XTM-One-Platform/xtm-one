@@ -6452,7 +6452,7 @@ async def execute_assignment_run(
             )
             # --- Platform Health orchestrator (#8261): read-only in a run, so a
             # cycle's own run never starts another cycle ---
-            if "concierge_orchestrator" in agent_builtin_tool_ids:
+            if "health_orchestrator" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
                 co_defs, co_exec = build_health_orchestrator_tools(
@@ -6479,14 +6479,14 @@ async def execute_assignment_run(
 
             # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
             # own; the tools apply their own rule (Platform Health or an admin).
-            if "concierge_sandbox" in agent_builtin_tool_ids:
+            if "health_sandbox" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Platform Health evaluation (#8257): the same rule, the tools' own.
-            if "concierge_evaluation" in agent_builtin_tool_ids:
+            if "health_evaluation" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(

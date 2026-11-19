@@ -104,7 +104,7 @@ from app.services.builtin_tool_groups import schema_chars
 #: administrator-only, total 466,669 on 18 Nov 2026).
 #: Raised to 467,400 when Platform Health became built in and its eight groups joined the ids
 #: create_agent, update_agent and clone_agent advertise (#101: platform +474,
-#: concierge_orchestrator +20, on top of user_admin, 19 Nov 2026).
+#: health_orchestrator +20, on top of user_admin, 19 Nov 2026).
 TOTAL_SCHEMA_CHARS_CEILING = 467_400
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);

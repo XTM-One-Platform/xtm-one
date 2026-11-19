@@ -118,7 +118,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         ),
     ),
     BuiltinToolGroup(
-        id="concierge_sandbox",
+        id="health_sandbox",
         name="Health Sandbox",
         tagline="Copy agents and flows into the sandbox and run them with writes intercepted",
         detail="Make hidden copies of agents and flows and run them in the sandbox: calls recorded in the source traces are replayed, reads run live, and every write is intercepted and answered by a simulated result, counted per case. For Platform Health and administrators, within the supervision scope.",
@@ -128,7 +128,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
-        id="concierge_evaluation",
+        id="health_evaluation",
         name="Health Evaluation",
         tagline="Build datasets from production and measure agents and flows against them",
         detail="Turn rated answers and failed runs of consented agents and flows into evaluation datasets, evaluate agents, flows and their sandbox copies on them, and compare runs on quality, cost and latency with the simulated writes stated. For Platform Health, and for administrators where evaluation is on.",
@@ -354,7 +354,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         aliases=("inspect_my_traces", "inspect_agent_traces"),
     ),
     BuiltinToolGroup(
-        id="concierge_orchestrator",
+        id="health_orchestrator",
         name="Platform Health",
         tagline="Read Platform Health's signals, cycles and digests, and ask it to improve an agent or flow",
         detail="The Platform Health orchestrator's tools: the signals crossed, the cycles and their digests, and a request to investigate one agent or flow. In a person's chat they read only the targets that person manages; in a Platform Health run, its supervision scope.",
@@ -374,7 +374,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
-        id="concierge_diagnosis",
+        id="health_diagnosis",
         name="Health Diagnosis",
         tagline="Diagnose supervised agents from their traces, ratings and costs",
         detail="Platform Health's Quality Analyst: reads the quality signals of the agents in its supervision scope, records each finding once with its evidence, and drafts the variant an experiment will measure. Works only inside a Platform Health run.",
@@ -386,7 +386,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         core=("get_quality_signals", "list_findings"),
     ),
     BuiltinToolGroup(
-        id="concierge_experiments",
+        id="health_experiments",
         name="Health Experiments",
         tagline="Measure variants on sandbox copies and file what they earn",
         detail="Platform Health's Experimenter: sizes each experiment to the Platform Health budget, evaluates the current configuration and a variant as sandbox copies on the same production cases, and files the improvement proposal the measurement earned, or unmeasured with its reason. Works only inside a Platform Health run.",

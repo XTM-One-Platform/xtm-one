@@ -277,8 +277,8 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     # Platform Health (#8259): every call opens its own session and resolves its caller.
     from app.services.builtin_tools import build_health_diagnosis_tools, build_health_experiment_tools
 
-    catalog["concierge_diagnosis"] = _extract(build_health_diagnosis_tools("")[0])
-    catalog["concierge_experiments"] = _extract(build_health_experiment_tools("")[0])
+    catalog["health_diagnosis"] = _extract(build_health_diagnosis_tools("")[0])
+    catalog["health_experiments"] = _extract(build_health_experiment_tools("")[0])
     # Flow Lab (#8260): same, one session per call.
     from app.services.builtin_tools import build_flow_lab_tools
 
@@ -299,13 +299,13 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     from app.services.health.sandbox.tools import build_sandbox_tools
 
     sandbox_defs, _ = build_sandbox_tools(None, None)  # type: ignore[arg-type]
-    catalog["concierge_sandbox"] = _extract(sandbox_defs)
+    catalog["health_sandbox"] = _extract(sandbox_defs)
 
     # Platform Health evaluation (#8257): its own access rule at execution.
     from app.services.health.evaluation_tools import build_health_evaluation_tools
 
     evaluation_defs, _ = build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
-    catalog["concierge_evaluation"] = _extract(evaluation_defs)
+    catalog["health_evaluation"] = _extract(evaluation_defs)
 
     # Improvement proposals (#8256): every call loads what it needs at execution.
     from app.services.builtin_tools.improvements import build_improvement_tools
@@ -317,7 +317,7 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
     co_defs, _ = build_health_orchestrator_tools("")
-    catalog["concierge_orchestrator"] = _extract(co_defs)
+    catalog["health_orchestrator"] = _extract(co_defs)
 
     # Work-item queue tools (#1713). Builders take no real side-effects at build
     # time, so dummy parameters are safe here.

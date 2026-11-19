@@ -26,7 +26,7 @@ from app.agents import seed as seed_module
 from app.agents.builtin_agents import BUILTIN_SKILLS, FEATURE_GATED_BUILTIN_SKILLS
 from app.core import feature_flags
 from app.core.feature_flags import KNOWN_FEATURE_FLAGS, is_feature_enabled
-from app.services.builtin_tool_aliases import alias_group
+from app.services.builtin_tool_aliases import is_former_builtin_id
 from app.services.builtin_tools import agent_builder
 from app.services.template_container_seed import BUILTIN_TEMPLATE_CONTAINERS, builtin_containers_for
 
@@ -152,7 +152,7 @@ def test_the_agent_builder_does_not_name_the_tool_but_still_accepts_it():
     assert "video_studio" not in agent_builder._advertised_builtin_tool_ids()
     assert "video_studio" in agent_builder._VALID_BUILTIN_TOOL_IDS
     # [DEPRECATED] aliases are accepted but never advertised either.
-    current = {t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if alias_group(t) is None}
+    current = {t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(t)}
     # Every flag-gated id whose flag is off is withheld, this one included.
     withheld = {t for t, flag in agent_builder._FEATURE_GATED_BUILTIN_TOOL_IDS.items() if not is_feature_enabled(flag)}
     assert "video_studio" in withheld
@@ -162,7 +162,7 @@ def test_the_agent_builder_does_not_name_the_tool_but_still_accepts_it():
 def test_with_the_flag_on_the_agent_builder_names_every_tool(monkeypatch):
     monkeypatch.setattr(agent_builder, "is_feature_enabled", lambda _flag: True)
     assert agent_builder._advertised_builtin_tool_ids() == tuple(
-        t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if alias_group(t) is None
+        t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(t)
     )
 
 

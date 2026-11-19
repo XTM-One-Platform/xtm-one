@@ -14,7 +14,7 @@
 """Platform Health's evaluation tools (#8257, PRD section 8): ``build_dataset_from_traces``,
 ``run_health_evaluation``, ``get_health_evaluation``, ``compare_health_runs``.
 
-The built-in group ``concierge_evaluation`` for Platform Health's agents, and the
+The built-in group ``health_evaluation`` for Platform Health's agents, and the
 same functions on the platform MCP server (``/mcp/xtm``). One access rule on
 every surface (:func:`evaluation_tool_refusal`): Platform Health available, and
 the caller Platform Health, or an administrator while the evaluation surface is
@@ -40,7 +40,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-EVALUATION_SUITE_ID = "concierge_evaluation"
+EVALUATION_SUITE_ID = "health_evaluation"
 _SOURCE = f"builtin:{EVALUATION_SUITE_ID}"
 REFUSED = "Refused: Platform Health evaluation is not available to this caller for this target."
 

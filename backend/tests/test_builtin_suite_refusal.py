@@ -135,15 +135,15 @@ def test_the_registry_lists_every_selectable_builtin_id():
     (skill-package validation reads its keys): every id the agent builder
     accepts must be a key, disabled suites included, so a call to any real
     built-in is classified as such."""
-    from app.services.builtin_tool_aliases import alias_group
+    from app.services.builtin_tool_aliases import alias_group, current_group_id, is_former_builtin_id
     from app.services.builtin_tools.agent_builder import _VALID_BUILTIN_TOOL_IDS
 
     catalog = build_builtin_tool_catalog(include_disabled=True)
-    current = {tool_id for tool_id in _VALID_BUILTIN_TOOL_IDS if alias_group(tool_id) is None}
+    current = {tool_id for tool_id in _VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(tool_id)}
     assert current <= set(catalog), current - set(catalog)
     # A [DEPRECATED] id is accepted and resolves to a group the catalog lists.
     for tool_id in set(_VALID_BUILTIN_TOOL_IDS) - current:
-        assert alias_group(tool_id) in catalog, tool_id
+        assert (alias_group(tool_id) or current_group_id(tool_id)) in catalog, tool_id
 
 
 def test_the_traces_group_owns_its_tools_and_the_alias_merely_grants_them():

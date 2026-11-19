@@ -149,6 +149,18 @@ alias for one minor release (section 2.3).
   `compare_health_runs`, formerly `run_concierge_evaluation`, `get_concierge_evaluation` and
   `compare_concierge_runs`; the MCP read-only list names both forms of the comparison
   (`test_health_evaluation_renames.py`).
+- Built-in tool group ids: `concierge_diagnosis`, `concierge_experiments`,
+  `concierge_sandbox`, `concierge_orchestrator` and `concierge_evaluation` are now
+  `health_diagnosis`, `health_experiments`, `health_sandbox`, `health_orchestrator` and
+  `health_evaluation`. The former ids stay accepted as [DEPRECATED] aliases in
+  `RENAMED_BUILTIN_GROUPS` (`builtin_tool_aliases.py`, a pure rename, unlike the merged
+  ids of `BUILTIN_GROUP_ALIASES`): an API call, an import or a `builtin_allowed_tools` key
+  naming one is stored under the current id (`canonical_builtin_selection`), never
+  advertised. Migration `h119healthgrp` rewrites `agents` and `assignments`
+  (`builtin_tool_ids`, `builtin_allowed_tools`); its downgrade writes the former ids back
+  (`test_health_group_renames.py`). The flow-run source marker `concierge_sandbox`
+  (`SANDBOX_RUN_SOURCE`, stored on `flow_runs.trigger_context`) is not a group id and
+  keeps its value.
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no

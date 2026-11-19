@@ -146,12 +146,14 @@ def normalize_builtin_allowed_tools(value: Any) -> dict[str, list[str]] | None:
         alias_group,
         alias_scoped_functions,
         current_function_name,
+        current_group_id,
         fold_allowed_map,
     )
 
     cleaned: dict[str, list[str]] = {}
     for group_id, functions in value.items():
-        group = str(group_id)
+        # A [DEPRECATED] renamed group id keys its current id, nothing scoped.
+        group = current_group_id(str(group_id))
         if functions is None:
             continue
         # A [DEPRECATED] id keys its group, within what it granted.

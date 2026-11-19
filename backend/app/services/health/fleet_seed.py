@@ -62,9 +62,9 @@ AssignmentKey = Literal["memory", "quality", "flows", "investigation", "digest"]
 
 #: Tool groups shipped by levels 3 and 8 (ids registered in ``builtin_tool_groups``).
 IMPROVEMENTS_GROUP: Final = "improvement_proposals"
-ORCHESTRATOR_GROUP: Final = "concierge_orchestrator"
+ORCHESTRATOR_GROUP: Final = "health_orchestrator"
 #: Read traces and platform figures as the acting user, with no consent check:
-#: never on a fleet agent (``concierge_diagnosis`` is the consent-aware read).
+#: never on a fleet agent (``health_diagnosis`` is the consent-aware read).
 NON_CONSENT_TOOL_GROUPS: Final = frozenset(
     {"observability", "platform_insights", "inspect_my_traces", "inspect_agent_traces"}
 )
@@ -145,7 +145,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Quality Analyst",
         description="Diagnoses agents from traces, ratings and analytics, and drafts the variants worth measuring.",
         icon="Stethoscope",
-        builtin_tool_ids=("concierge_diagnosis", IMPROVEMENTS_GROUP),
+        builtin_tool_ids=("health_diagnosis", IMPROVEMENTS_GROUP),
         skill_slugs=("concierge-quality-analyst",),
         handovers=(("concierge-experimenter", "delegate"),),
     ),
@@ -165,7 +165,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Experimenter",
         description="Measures variants on sandbox copies with evaluations and files the improvement proposals.",
         icon="Scale",
-        builtin_tool_ids=("concierge_experiments", "concierge_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
+        builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
         skill_slugs=("concierge-experimenter",),
     ),
 )

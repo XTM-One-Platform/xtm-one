@@ -297,7 +297,7 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
     composite = SimpleNamespace(add_tools=lambda definitions, _executor: added.extend(d.name for d in definitions))
     experimenter = SimpleNamespace(id=uuid.uuid4(), health_role="experimenter", is_company_managed=True)
     principal = identity.health_principal_for(experimenter, None)
-    groups = ["concierge_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
+    groups = ["health_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
     if who == "concierge_alone":
         with identity.acting_as_health_principal(principal):
             agent_chat._add_platform_builder_tools(composite, None, "", groups, agent_id=str(experimenter.id))

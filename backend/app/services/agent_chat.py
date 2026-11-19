@@ -1442,7 +1442,7 @@ def _add_platform_builder_tools(
         from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
         add_flow_lab_tools(composite, health_actor, agent_builtin_tool_ids, agent_id=agent_id)
-    if "concierge_orchestrator" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_orchestrator" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools
 
         # Acts as Platform Health in an administrator's chat with a fleet agent,
@@ -1461,12 +1461,12 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "concierge_sandbox" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_sandbox" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.sandbox.tools import build_sandbox_tools
 
         # Its own access rule (Platform Health or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, health_actor or None))
-    if "concierge_evaluation" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_evaluation" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.evaluation_tools import build_health_evaluation_tools
 
         # Its own access rule (Platform Health, or an administrator where evaluation is on).

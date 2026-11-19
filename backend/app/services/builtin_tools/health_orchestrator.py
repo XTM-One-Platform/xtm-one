@@ -13,7 +13,7 @@
 
 """The Platform Health orchestrator's tools (#8261): signals, cycles, digests, requests.
 
-Group ``concierge_orchestrator``, agent-keyed, offered while Platform Health
+Group ``health_orchestrator``, agent-keyed, offered while Platform Health
 is available. One rule on every path (``services/health/cycle_access.py``), decided at
 each call from the database rows:
 
@@ -41,7 +41,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
 
-GROUP_ID: Final = "concierge_orchestrator"
+GROUP_ID: Final = "health_orchestrator"
 TOOL_NAMES: Final = (
     "list_health_signals",
     "list_health_cycles",

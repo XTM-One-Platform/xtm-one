@@ -13,7 +13,7 @@
 
 """The Experimenter's tools (Platform Health, #8259).
 
-The ``concierge_experiments`` group: ``list_experiments``, ``get_experiment``
+The ``health_experiments`` group: ``list_experiments``, ``get_experiment``
 (reads), ``run_experiment``, ``propose_from_experiment`` (Platform Health's
 Experimenter only: the one actor that launches an experiment and files a
 proposal). Same access rule and helpers as the Quality Analyst's
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
     from app.services.health.access import Reader
 
-EXPERIMENTS_GROUP_ID = "concierge_experiments"
+EXPERIMENTS_GROUP_ID = "health_experiments"
 
 #: The read functions of the group: the only ones the platform MCP server serves.
 EXPERIMENTS_READ_TOOLS: frozenset[str] = frozenset({"list_experiments", "get_experiment"})

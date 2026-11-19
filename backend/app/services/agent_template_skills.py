@@ -114,7 +114,7 @@ def suggested_skill_slugs(builtin_tool_ids: object) -> list[str]:
 
     A former id (``agent_builder``, ``fleets``) counts as its group.
     """
-    from app.services.builtin_tool_aliases import alias_group
+    from app.services.builtin_tool_aliases import alias_group, current_group_id
 
     if not isinstance(builtin_tool_ids, list):
         return []
@@ -122,7 +122,7 @@ def suggested_skill_slugs(builtin_tool_ids: object) -> list[str]:
     for tool_id in builtin_tool_ids:
         if not isinstance(tool_id, str):
             continue
-        group = alias_group(tool_id) or tool_id
+        group = alias_group(tool_id) or current_group_id(tool_id)
         for slug in SKILL_SLUGS_BY_BUILTIN_GROUP.get(group, ()):
             if slug not in slugs:
                 slugs.append(slug)

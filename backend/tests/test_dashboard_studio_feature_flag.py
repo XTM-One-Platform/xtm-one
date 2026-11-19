@@ -29,7 +29,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.feature_flags import KNOWN_FEATURE_FLAGS, is_feature_enabled
-from app.services.builtin_tool_aliases import alias_group
+from app.services.builtin_tool_aliases import is_former_builtin_id
 from app.services.builtin_tools import agent_builder
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -157,7 +157,7 @@ def test_the_tool_is_only_built_with_the_flag_on():
 def test_the_agent_builder_does_not_name_the_tool_but_still_accepts_it():
     assert TOOL not in agent_builder._advertised_builtin_tool_ids()
     assert TOOL in agent_builder._VALID_BUILTIN_TOOL_IDS
-    current = {t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if alias_group(t) is None}
+    current = {t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(t)}
     withheld = {t for t, flag in agent_builder._FEATURE_GATED_BUILTIN_TOOL_IDS.items() if not is_feature_enabled(flag)}
     assert TOOL in withheld
     assert set(agent_builder._advertised_builtin_tool_ids()) == current - withheld

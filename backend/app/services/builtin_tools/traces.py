@@ -93,7 +93,7 @@ TRACE_PAYLOAD_TOOL_NAME = "get_trace_payload"
 TRACE_SUITE_IDS: frozenset[str] = frozenset({"inspect_my_traces", "inspect_agent_traces"})
 
 #: What Platform Health is told for another agent's traces: these tools apply no
-#: consent rule, ``concierge_diagnosis`` does.
+#: consent rule, ``health_diagnosis`` does.
 HEALTH_TRACES_REFUSED = "Error: Platform Health reads other agents' traces through its diagnosis tools only."
 
 
