@@ -4,6 +4,8 @@ Every operation of the Wordsmith public API (https://wordsmithai.mintlify.app/ll
 
 152 operations: the 142 of the published index, 9 documented pages the index omits (artifacts, audit events, OData) and `GET /me`. The legacy aliases (`/assistants`, `/templates`) reach the agents and blueprints tools and are not separate tools. A route Wordsmith adds later is reachable through `get_wordsmith_api_request` (GET) and `wordsmith_api_request` (any method, a write).
 
+Tool-side options of `get_wordsmith_repositories` (read from `query`, never sent to Wordsmith): `name_contains` keeps the documents or passages whose `file_name` holds the text, case insensitive (on `list_documents` the tool walks up to 20 pages of 100 and hands back the cursor when more remain); `metadata_only` drops each search passage's `snippet`. Wordsmith filters documents by folder only and returns every passage whole, so a filing check otherwise lists whole folders or reads every snippet.
+
 Wordsmith's public API does not expose these, so no tool exists for them: creating or configuring an agent (instructions, intake, model); answering an agent's input request (the `input_request.*` events are notified but cannot be answered); deleting a session or a file; managing API keys and OAuth clients.
 
 | Area | Method | Path | Operation | XTM One tool | Status | Doc |

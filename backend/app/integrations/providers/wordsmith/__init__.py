@@ -247,6 +247,110 @@ def _render(resp: httpx.Response, label: str) -> str:
     return head + "\n" + wrap_untrusted(shown, f"{PROVIDER} {label}") + tail
 
 
+def _render_data(status: int, data: Any, label: str, note: str) -> str:
+    """The answer for the model when the tool reshaped Wordsmith's body."""
+    text = json.dumps(redact_secrets(data), ensure_ascii=False, indent=1, default=str)
+    shown = text[:_MAX_BODY_CHARS]
+    more = len(text) - len(shown)
+    tail = f"\n[{more} more characters not shown: narrow the query (limit, cursor, page).]" if more > 0 else ""
+    head = f"Wordsmith HTTP {status} ({label}). {note}"
+    return head + "\n" + wrap_untrusted(shown, f"{PROVIDER} {label}") + tail
+
+
+#: Tool-side options of the repository reads, read from ``query`` (or the
+#: search ``body``) and never sent to Wordsmith, which filters documents by
+#: folder only and returns every search passage whole.
+_LOCAL_OPTIONS = ("name_contains", "metadata_only")
+_LOCAL_OPTION_OPS = frozenset({"list_documents", "search_repository"})
+_LOCAL_OPTION_HINT = "Tool options (query): name_contains (file_name substring), metadata_only (no snippet)."
+#: Pages a name filter walks on list_documents before it hands back the cursor.
+_NAME_FILTER_MAX_PAGES = 20
+
+
+def _pop_local_options(query: Any, body: Any) -> dict[str, Any]:
+    options: dict[str, Any] = {}
+    for source in (query, body):
+        if isinstance(source, dict):
+            for key in _LOCAL_OPTIONS:
+                if key in source:
+                    options[key] = source.pop(key)
+    return options
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def _shape_items(items: list[Any], name: str, metadata_only: bool) -> list[Any]:
+    kept: list[Any] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if name and name not in str(item.get("file_name") or "").casefold():
+            continue
+        kept.append({k: v for k, v in item.items() if k != "snippet"} if metadata_only else item)
+    return kept
+
+
+async def _repository_read(
+    client: WordsmithClient,
+    op: Operation,
+    path: str,
+    query: dict[str, Any] | None,
+    body: Any,
+    options: dict[str, Any],
+) -> str:
+    """``list_documents`` / ``search_repository`` with the tool-side options.
+
+    ``name_contains`` keeps the items whose ``file_name`` holds it (case
+    insensitive); on ``list_documents`` it walks the pages, at most
+    ``_NAME_FILTER_MAX_PAGES``, and hands back the cursor to go on.
+    ``metadata_only`` drops each item's ``snippet``.
+    """
+    name = str(options.get("name_contains") or "").strip().casefold()
+    metadata_only = _truthy(options.get("metadata_only"))
+    params: dict[str, Any] = dict(query) if isinstance(query, dict) else {}
+    paged = op.method == "GET" and bool(name)
+    if paged:
+        params.setdefault("limit", 100)
+    items: list[Any] = []
+    scanned = pages = 0
+    cursor: Any = None
+    while True:
+        resp, err = await client.request(op.method, path, query=params or None, body=body, action=op.operation)
+        if err:
+            return err
+        if resp is None:
+            return "Error: Wordsmith gave no answer."
+        try:
+            data: Any = resp.json()
+        except ValueError:
+            return _render(resp, op.operation)
+        if resp.status_code >= 300 or not isinstance(data, dict) or not isinstance(data.get("items"), list):
+            return _render(resp, op.operation)
+        pages += 1
+        scanned += len(data["items"])
+        items.extend(_shape_items(data["items"], name, metadata_only))
+        cursor = data.get("cursor")
+        if not paged or not cursor or pages >= _NAME_FILTER_MAX_PAGES:
+            break
+        params["cursor"] = cursor
+    result: dict[str, Any] = {"items": items}
+    if op.method == "GET":
+        result["cursor"] = cursor
+    note = f"{len(items)} of {scanned} item(s) kept"
+    if name:
+        note += f" (file_name contains '{options.get('name_contains')}')"
+    if metadata_only:
+        note += ", snippets dropped"
+    note += "."
+    if paged and cursor:
+        note += f" Stopped after {pages} pages: pass query.cursor with the same name_contains to go on."
+    return _render_data(resp.status_code, result, op.operation, note)
+
+
 def _fill_path(op: Operation, values: dict[str, Any]) -> tuple[str | None, str | None]:
     path = op.path
     for name in op.path_params:
@@ -283,6 +387,10 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
         path, error = _fill_path(op, ids)
         if error:
             return error
+        if op.operation in _LOCAL_OPTION_OPS:
+            options = _pop_local_options(query, body)
+            if options:
+                return await _repository_read(client, op, path or "", query, body, options)
         idempotency_key = ""
         if (op.method, op.path) in IDEMPOTENT_STARTS:
             idempotency_key = str((query or {}).pop("idempotency_key", "") or "") if isinstance(query, dict) else ""
@@ -307,6 +415,8 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
     handler.__name__ = group.tool
     executor.register(group.tool, handler)
     lines = [f"- {op.operation}: {op.method} {op.path}. {op.summary}" for op in group.operations]
+    if _LOCAL_OPTION_OPS & set(ops):
+        lines.append(", ".join(sorted(_LOCAL_OPTION_OPS & set(ops))) + ": " + _LOCAL_OPTION_HINT)
     verb = "Read" if group.access == "read" else "Change"
     description = f"{verb} Wordsmith {group.title}. operation picks the call:\n" + "\n".join(lines)
     properties: dict[str, Any] = {
