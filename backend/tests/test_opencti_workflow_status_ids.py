@@ -201,6 +201,59 @@ async def test_entity_setting_get_by_type_shows_the_workflow():
 
 
 @pytest.mark.asyncio
+async def test_entity_setting_add_status_writes_through_sub_type_edit_and_reads_back() -> None:
+    args = {"action": "add_status", "target_type": "Case-Incident", "template_id": TEMPLATE_IDS["NEW"], "order": 1}
+    content, calls = await _run("manage_opencti_entity_setting", args)
+    write = next(c for c in calls if "SubTypeStatusAdd(" in c["query"])
+    assert "subTypeEdit(id: $id) { statusAdd(" in write["query"]
+    assert write["variables"] == {
+        "id": "Case-Incident",
+        "input": {"template_id": TEMPLATE_IDS["NEW"], "order": 1, "scope": "GLOBAL"},
+    }
+    assert content.startswith("Added a status to the Case-Incident workflow. Read back:")
+    assert f"PUBLISHED (status id {CASE_PUBLISHED_ID}" in content
+
+
+@pytest.mark.asyncio
+async def test_entity_setting_update_and_delete_status_take_the_per_type_status_id() -> None:
+    sid = REPORT_STATUS_IDS["QUALIFIED"]
+    _, calls = await _run(
+        "manage_opencti_entity_setting",
+        {"action": "update_status", "target_type": "Report", "status_id": sid, "order": 4},
+    )
+    patch_call = next(c for c in calls if "SubTypeStatusPatch(" in c["query"])
+    assert patch_call["variables"] == {"id": "Report", "statusId": sid, "input": [{"key": "order", "value": [4]}]}
+    content, calls = await _run(
+        "manage_opencti_entity_setting", {"action": "delete_status", "target_type": "Report", "status_id": sid}
+    )
+    delete_call = next(c for c in calls if "SubTypeStatusDelete(" in c["query"])
+    assert delete_call["variables"] == {"id": "Report", "statusId": sid}
+    assert content.startswith("Removed a status from the Report workflow. Read back:")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("arguments", "refusal"),
+    [
+        ({"action": "add_status", "target_type": "Report", "order": 1}, "template_id and order are required"),
+        (
+            {"action": "add_status", "target_type": "Report", "template_id": "t", "order": 1, "scope": "x"},
+            "scope must be",
+        ),
+        ({"action": "update_status", "target_type": "Report", "order": 2}, "status_id (the per-type Status id"),
+        ({"action": "update_status", "target_type": "Report", "status_id": "s"}, "Provide order and/or template_id"),
+        ({"action": "delete_status", "status_id": "s"}, "target_type is required"),
+    ],
+)
+async def test_entity_setting_status_actions_refuse_before_any_write(
+    arguments: dict[str, object], refusal: str
+) -> None:
+    content, calls = await _run("manage_opencti_entity_setting", arguments)
+    assert refusal in content
+    assert not any("subTypeEdit" in c["query"] for c in calls)
+
+
+@pytest.mark.asyncio
 async def test_validate_nlq_filter_resolves_a_status_name_to_its_template_id():
     fg = _fg(_entity_type("Report"), _workflow("published"))
     result, _ = await _run("validate_nlq_filter", {"filter_str": json.dumps(fg)})

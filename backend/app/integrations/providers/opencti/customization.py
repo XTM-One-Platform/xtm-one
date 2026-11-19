@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 _SOURCE = "integration:opencti"
 _RETENTION_SCOPES = ("knowledge", "file", "workbench", "history", "activity")
 _RETENTION_UNITS = ("minutes", "hours", "days")
+_STATUS_ACTIONS = ("add_status", "update_status", "delete_status")
+_STATUS_SCOPES = {"global": "GLOBAL", "request_access": "REQUEST_ACCESS"}
 
 
 def register(
@@ -57,8 +59,17 @@ def register(
         platform_entity_files_ref: bool | None = None,
         attributes_configuration: str = "",
         limit: int = 100,
+        template_id: str = "",
+        status_id: str = "",
+        order: int | None = None,
+        scope: str = "global",
     ) -> str:
         action = (action or "").strip().lower()
+
+        if action in _STATUS_ACTIONS:
+            return await _edit_type_status(
+                action, target_type, template_id=template_id, status_id=status_id, order=order, scope=scope
+            )
 
         if action == "list":
             query = (
@@ -156,7 +167,66 @@ def register(
                 return err
             return f"Updated entity setting for '{target_type}'."
 
-        return f"Unknown action '{action}'. Valid actions: list, get_by_type, patch."
+        return (
+            f"Unknown action '{action}'. Valid actions: list, get_by_type, patch, "
+            "add_status, update_status, delete_status."
+        )
+
+    async def _edit_type_status(
+        action: str, target_type: str, *, template_id: str, status_id: str, order: int | None, scope: str
+    ) -> str:
+        """Write one workflow status of an entity type through ``subTypeEdit``.
+
+        OpenCTI enables a type's workflow once it holds a global status, so
+        ``add_status`` on a type without one turns its workflow on. The answer
+        is the type's workflow read back, with the per-type Status ids.
+        """
+        if not target_type:
+            return f"target_type is required for action '{action}'."
+        if action == "add_status":
+            scope_value = _STATUS_SCOPES.get((scope or "global").strip().lower())
+            if not scope_value:
+                return f"scope must be one of: {', '.join(_STATUS_SCOPES)}."
+            if not template_id or order is None:
+                return "template_id and order are required for action 'add_status'."
+            query = (
+                "mutation SubTypeStatusAdd($id: ID!, $input: StatusAddInput!) {"
+                "  subTypeEdit(id: $id) { statusAdd(input: $input) { id } } }"
+            )
+            variables: dict[str, object] = {
+                "id": target_type,
+                "input": {"template_id": template_id, "order": order, "scope": scope_value},
+            }
+        elif action == "update_status":
+            if not status_id:
+                return "status_id (the per-type Status id, not the template id) is required for 'update_status'."
+            edits: list[dict[str, object]] = []
+            if order is not None:
+                edits.append({"key": "order", "value": [order]})
+            if template_id:
+                edits.append({"key": "template_id", "value": [template_id]})
+            if not edits:
+                return "Provide order and/or template_id for action 'update_status'."
+            query = (
+                "mutation SubTypeStatusPatch($id: ID!, $statusId: String!, $input: [EditInput]!) {"
+                "  subTypeEdit(id: $id) { statusFieldPatch(statusId: $statusId, input: $input) { id } } }"
+            )
+            variables = {"id": target_type, "statusId": status_id, "input": edits}
+        else:
+            if not status_id:
+                return "status_id (the per-type Status id, not the template id) is required for 'delete_status'."
+            query = (
+                "mutation SubTypeStatusDelete($id: ID!, $statusId: String!) {"
+                "  subTypeEdit(id: $id) { statusDelete(statusId: $statusId) { id } } }"
+            )
+            variables = {"id": target_type, "statusId": status_id}
+        _, err = await _gql(query, variables)
+        if err:
+            return err
+        done = {"add_status": "Added a status to", "update_status": "Updated a status of"}.get(
+            action, "Removed a status from"
+        )
+        return "\n".join([f"{done} the {target_type} workflow. Read back:", *await _workflow_lines(target_type)])
 
     # ── Vocabularies ───────────────────────────────────────────────────
     async def manage_opencti_vocabulary(
@@ -871,18 +941,27 @@ def register(
                 "SETTINGS_SETCUSTOMIZATION). Actions: 'list', 'get_by_type' "
                 "(target_type, e.g. 'Report'; includes the workflow Status ids), 'patch' (target_type + any of "
                 "platform_hidden_type, enforce_reference, platform_entity_files_ref "
-                "booleans, or attributes_configuration JSON string)."
+                "booleans, or attributes_configuration JSON string), 'add_status' (target_type + "
+                "template_id + order; the first global status enables the workflow), 'update_status' "
+                "(status_id + order and/or template_id), 'delete_status' (status_id)."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["list", "get_by_type", "patch"]},
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "get_by_type", "patch", *_STATUS_ACTIONS],
+                    },
                     "target_type": {"type": "string", "description": "Entity type, e.g. Report, Malware, Incident."},
                     "platform_hidden_type": {"type": "boolean", "description": "Hide this type from the platform (patch)."},
                     "enforce_reference": {"type": "boolean", "description": "Require external references on update (patch)."},
                     "platform_entity_files_ref": {"type": "boolean", "description": "Enable file references (patch)."},
                     "attributes_configuration": {"type": "string", "description": "Attributes configuration as a JSON string (patch)."},
                     "limit": {"type": "integer", "default": 100},
+                    "template_id": {"type": "string", "description": "Status template id (add_status, update_status)."},
+                    "status_id": {"type": "string", "description": "Per-type Status id from get_by_type."},
+                    "order": {"type": "integer", "description": "Position in the workflow."},
+                    "scope": {"type": "string", "enum": list(_STATUS_SCOPES), "default": "global"},
                 },
                 "required": ["action"],
             },
