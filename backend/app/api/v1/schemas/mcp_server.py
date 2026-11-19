@@ -43,6 +43,8 @@ _OAUTH_URL_FIELDS = ("authorize_url", "token_url", "registration_url")
 #: that fails when it is first used.
 MCPTransport = Literal["stdio", "sse", "streamable_http"]
 MCPAuthMode = Literal["headers", "oauth"]
+#: Whose OAuth account a call carries (``MCPServer.credential_mode``).
+MCPCredentialMode = Literal["shared", "per_user"]
 
 
 def _checked_server_url(cls: type, value: str | None) -> str | None:
@@ -72,6 +74,8 @@ class MCPServerCreate(BaseModel):
 
     # Authentication mode for remote transports
     auth_mode: MCPAuthMode = "headers"
+    # OAuth only: one shared account, or each person's own.
+    credential_mode: MCPCredentialMode = "shared"
 
     # OAuth fields (used when auth_mode == "oauth").
     # All of them are optional: with none set, the platform discovers the
@@ -120,6 +124,7 @@ class MCPServerUpdate(BaseModel):
     headers: dict[str, str] | None = None
 
     auth_mode: MCPAuthMode | None = None
+    credential_mode: MCPCredentialMode | None = None
     client_id: str | None = None
     client_secret: str | None = None
     scopes: str | None = None
@@ -177,6 +182,11 @@ class MCPServerResponse(BaseModel):
 
     # OAuth
     auth_mode: str = "headers"
+    #: ``shared`` (one account for everyone) or ``per_user`` (each person's own).
+    credential_mode: str = "shared"
+    #: On a ``per_user`` server: the reader's own connection (``connected``,
+    #: ``error`` or ``disconnected``); ``None`` on a shared server.
+    my_oauth_status: str | None = None
     has_client_id: bool = False
     #: Whether an OAuth client secret (a value or a vault reference) is stored; never the value.
     has_client_secret: bool = False

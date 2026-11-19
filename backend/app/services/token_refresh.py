@@ -70,10 +70,19 @@ from app.integrations.token_endpoint import (
 from app.models.integration import Integration
 from app.models.integration_user_credential import IntegrationUserCredential
 from app.models.mcp_server import MCPServer
+from app.models.mcp_server_user_credential import MCPServerUserCredential
 from app.services.integration_user_credentials import (
     holder_ref,
     integration_of,
     load_token_holder,
+)
+from app.services.mcp_user_credentials import (
+    PER_USER,
+    MCPTokenHolder,
+    is_per_user,
+    load_mcp_holder,
+    mcp_holder_key,
+    server_of,
 )
 
 logger = logging.getLogger(__name__)
@@ -521,8 +530,8 @@ async def lock_stored_tokens(
     return stored_tokens(integration)
 
 
-async def lock_stored_mcp_tokens(db: AsyncSession, srv: MCPServer) -> tuple[str | None, str | None]:
-    """:func:`lock_stored_tokens` for an MCP server, whose status is ``oauth_status``."""
+async def lock_stored_mcp_tokens(db: AsyncSession, srv: MCPTokenHolder) -> tuple[str | None, str | None]:
+    """:func:`lock_stored_tokens` for an MCP token holder (a server or a person's credential), whose status is ``oauth_status``."""
     await db.refresh(srv, ["access_token_enc", "refresh_token_enc", "oauth_status"], with_for_update=True)
     return stored_tokens(srv)
 
@@ -958,31 +967,32 @@ async def _do_refresh_integration(
 
 
 async def _refresh_one_mcp(
-    srv: MCPServer,
+    srv: MCPTokenHolder,
     http: httpx.AsyncClient,
     sem: asyncio.Semaphore,
 ) -> bool:
-    """Refresh a single MCP server token.  Returns True on success."""
+    """Refresh a single MCP token holder (a server, or a person's credential on one).  Returns True on success."""
     if not srv.client_id_enc or not srv.token_url:
         return False
 
+    key = mcp_holder_key(srv)
     # Check the failure cooldown BEFORE taking a concurrency slot (same
     # rationale as ``_refresh_one_integration``).
-    if await refresh_cooling_down(mcp_refresh_cooldown_key(srv.id), srv.refresh_token_enc):
+    if await refresh_cooling_down(mcp_refresh_cooldown_key(key), srv.refresh_token_enc):
         return False
 
     async with sem:
         # A tick that outlasts the scheduler's tick marker lets another
         # worker's sweep select the same server: only one of them may present
         # its refresh token.
-        lock_id = mcp_refresh_lock_id(srv.id)
+        lock_id = mcp_refresh_lock_id(key)
         lock = await acquire_refresh_lock(lock_id)
         if lock is None:
             logger.debug("Skipping refresh for MCP server %s: another refresh in progress", srv.name)
             return False
 
         try:
-            return await _refresh_stored_mcp(srv.id, http)
+            return await _refresh_stored_mcp(key, http)
         finally:
             await release_refresh_lock(lock_id, lock)
 
@@ -1011,14 +1021,17 @@ def mcp_refresh_due_at(issued_at: datetime | None, expires_at: datetime | None) 
     return max(expires_at - ahead, issued_at + _MCP_MIN_REFRESH_INTERVAL)
 
 
-def _mcp_token_due(srv: MCPServer) -> bool:
+def _mcp_token_due(srv: MCPTokenHolder) -> bool:
     due_at = mcp_refresh_due_at(srv.token_issued_at, srv.token_expires_at)
     return due_at is None or due_at <= datetime.now(UTC)
 
 
-def _mcp_refresh_still_due(srv: MCPServer) -> bool:
-    """Whether the stored server still needs the refresh the sweep selected it for."""
+def _mcp_refresh_still_due(srv: MCPTokenHolder) -> bool:
+    """Whether the stored holder still needs the refresh the sweep selected it for."""
     if srv.auth_mode != "oauth" or srv.oauth_status not in _MCP_SWEEP_STATUSES:
+        return False
+    if isinstance(srv, MCPServer) and is_per_user(srv):
+        # The row's own token is never used in per_user mode.
         return False
     if not srv.refresh_token_enc or not srv.client_id_enc or not srv.token_url:
         return False
@@ -1040,8 +1053,11 @@ def mcp_transient_refresh_cooldown(expires_at: datetime | None) -> int:
     return int(min(_TRANSIENT_FAIL_COOLDOWN, max(_MCP_MIN_TRANSIENT_FAIL_COOLDOWN, remaining / 2)))
 
 
-async def _refresh_stored_mcp(server_id: object, http: httpx.AsyncClient) -> bool:
-    """Refresh an MCP server from its stored row, holding its refresh lock.
+async def _refresh_stored_mcp(holder_key: object, http: httpx.AsyncClient) -> bool:
+    """Refresh an MCP token holder from its stored row, holding its refresh lock.
+
+    *holder_key* is :func:`mcp_holder_key`: a server's id, or a person's
+    credential on a ``per_user`` server.
 
     As :func:`_refresh_stored_integration`: the row is read again on a session
     of its own, so a refresh token another sweep already spent is never
@@ -1053,11 +1069,11 @@ async def _refresh_stored_mcp(server_id: object, http: httpx.AsyncClient) -> boo
     from app.services.relays import mcp_server_egress_route
 
     async with async_session() as db:
-        srv = await db.get(MCPServer, server_id)
+        srv = await load_mcp_holder(db, holder_key)
         if srv is None or not _mcp_refresh_still_due(srv):
             return False
         seen = stored_tokens(srv)
-        route = await mcp_server_egress_route(db, srv)
+        route = await mcp_server_egress_route(db, server_of(srv))
         # No pooled connection is held across the token request.
         await release_db_connection_before_loop(db)
 
@@ -1075,7 +1091,7 @@ async def _refresh_stored_mcp(server_id: object, http: httpx.AsyncClient) -> boo
 
 
 async def _mcp_tokens_still_stored(
-    srv: MCPServer, tokens_unchanged: Callable[[], Awaitable[bool]] | None
+    srv: MCPTokenHolder, tokens_unchanged: Callable[[], Awaitable[bool]] | None
 ) -> bool:
     if tokens_unchanged is None or await tokens_unchanged():
         return True
@@ -1088,7 +1104,7 @@ async def _mcp_tokens_still_stored(
 
 
 async def _do_refresh_mcp(
-    srv: MCPServer,
+    srv: MCPTokenHolder,
     http: httpx.AsyncClient,
     *,
     tokens_unchanged: Callable[[], Awaitable[bool]] | None = None,
@@ -1101,10 +1117,11 @@ async def _do_refresh_mcp(
     """
     from app.services.vault import SecretUnavailableError, reveal_field
 
-    cooldown_key = mcp_refresh_cooldown_key(srv.id)
+    cooldown_key = mcp_refresh_cooldown_key(mcp_holder_key(srv))
     client_id = decrypt_value(srv.client_id_enc)
     try:
-        client_secret = await reveal_field(srv, "client_secret_enc") or ""
+        # The OAuth client is the server's, a person's credential included.
+        client_secret = await reveal_field(server_of(srv), "client_secret_enc") or ""
     except SecretUnavailableError:
         # The client secret's vault did not answer: not the grant's fault,
         # so the server keeps its status and the next sweep tries again.
@@ -1243,9 +1260,15 @@ def _still_valid(token: MCPAccessToken | None) -> bool:
     return token is not None and not token_expires_soon(token.expires_at, timedelta(0))
 
 
-def _sendable_token(srv: MCPServer | None, refused: str | None) -> MCPAccessToken | None:
-    """The stored access token of ``srv``, unless it is ``refused`` or there is none."""
+def _sendable_token(srv: MCPTokenHolder | None, refused: str | None) -> MCPAccessToken | None:
+    """The stored access token of ``srv``, unless it is ``refused`` or there is none.
+
+    Never the token on the row of a ``per_user`` server: only a person's own
+    credential is sent there.
+    """
     if srv is None or srv.auth_mode != "oauth" or not srv.access_token_enc:
+        return None
+    if isinstance(srv, MCPServer) and is_per_user(srv):
         return None
     try:
         value = decrypt_value(srv.access_token_enc)
@@ -1262,6 +1285,9 @@ def _fresh(token: MCPAccessToken | None) -> bool:
 
 async def current_mcp_access_token(server_id: object, *, refused: str | None = None) -> MCPAccessToken | None:
     """The access token a connection to MCP server ``server_id`` should send now.
+
+    ``server_id`` is the token holder's key (:func:`mcp_holder_key`): the
+    server's id, or a person's credential on a ``per_user`` server.
 
     The sweep (:func:`refresh_expiring_tokens`) refreshes a stored token ahead
     of its expiry, but a connection holds the token it was opened with. Its
@@ -1291,7 +1317,7 @@ async def current_mcp_access_token(server_id: object, *, refused: str | None = N
     from app.core.database import async_session
 
     async with async_session() as db:
-        srv = await db.get(MCPServer, server_id)
+        srv = await load_mcp_holder(db, server_id)
         current = _sendable_token(srv, refused)
         if _fresh(current):
             return current
@@ -1331,7 +1357,7 @@ async def _await_refresh_in_flight(server_id: object, refused: str | None) -> MC
         await asyncio.sleep(_LOCK_POLL_SECONDS)
         waited += _LOCK_POLL_SECONDS
         async with async_session() as db:
-            token = _sendable_token(await db.get(MCPServer, server_id), refused)
+            token = _sendable_token(await load_mcp_holder(db, server_id), refused)
         if _fresh(token):
             return token
     return None
@@ -1354,7 +1380,7 @@ async def _refresh_mcp_in_use(server_id: object, refused: str | None) -> MCPAcce
     from app.services.relays import mcp_server_egress_route
 
     async with async_session() as db:
-        srv = await db.get(MCPServer, server_id)
+        srv = await load_mcp_holder(db, server_id)
         if srv is None or srv.oauth_status not in _MCP_SWEEP_STATUSES:
             return None
         if not srv.refresh_token_enc or not srv.client_id_enc or not srv.token_url:
@@ -1363,15 +1389,16 @@ async def _refresh_mcp_in_use(server_id: object, refused: str | None) -> MCPAcce
         current = _sendable_token(srv, refused)
         if _fresh(current):
             return current
-        if await refresh_cooling_down(mcp_refresh_cooldown_key(srv.id), srv.refresh_token_enc):
+        key = mcp_holder_key(srv)
+        if await refresh_cooling_down(mcp_refresh_cooldown_key(key), srv.refresh_token_enc):
             return None
         # Counted here, right before the token endpoint is asked: a refusal
         # nothing could act on (the lock busy, a back-off, a gone row) does not
         # spend the window.
-        if refused is not None and not await _claim_forced_refresh(srv.id):
+        if refused is not None and not await _claim_forced_refresh(key):
             return None
         seen = stored_tokens(srv)
-        route = await mcp_server_egress_route(db, srv)
+        route = await mcp_server_egress_route(db, server_of(srv))
         await release_db_connection_before_loop(db)
 
         async def _tokens_unchanged() -> bool:
@@ -1451,6 +1478,8 @@ async def refresh_expiring_tokens(db: AsyncSession) -> int:
     mcp_result = await db.execute(
         select(MCPServer).where(
             MCPServer.auth_mode == "oauth",
+            # A per_user server's own row token is never used: not refreshed.
+            MCPServer.credential_mode != PER_USER,
             MCPServer.oauth_status.in_(["connected", "error"]),
             MCPServer.refresh_token_enc.isnot(None),
             or_(
@@ -1459,10 +1488,28 @@ async def refresh_expiring_tokens(db: AsyncSession) -> int:
             ),
         )
     )
+    mcp_holders: list[MCPTokenHolder] = list(mcp_result.scalars().all())
+    # People's own credentials on per_user servers: the same selection; the
+    # OAuth client is read from their server.
+    mcp_credential_result = await db.execute(
+        select(MCPServerUserCredential)
+        .join(MCPServer, MCPServer.id == MCPServerUserCredential.server_id)
+        .where(
+            MCPServer.auth_mode == "oauth",
+            MCPServer.credential_mode == PER_USER,
+            MCPServerUserCredential.oauth_status.in_(["connected", "error"]),
+            MCPServerUserCredential.refresh_token_enc.isnot(None),
+            or_(
+                MCPServerUserCredential.token_expires_at < threshold,
+                MCPServerUserCredential.token_expires_at.is_(None),
+            ),
+        )
+    )
+    mcp_holders.extend(mcp_credential_result.scalars().all())
     # The SELECT takes every token within ``_REFRESH_AHEAD`` of its expiry; a
     # short-lived one is only due once part of its lifetime has passed,
     # so a server is neither refreshed nor locked on every tick.
-    mcp_expiring = [srv for srv in mcp_result.scalars().all() if _mcp_token_due(srv)]
+    mcp_expiring = [srv for srv in mcp_holders if _mcp_token_due(srv)]
 
     if not expiring and not mcp_expiring:
         return 0

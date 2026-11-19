@@ -403,8 +403,11 @@ async def build_authorize_url_for_integration(
     return f"{authorize_url}?{query}"
 
 
-async def build_authorize_url_for_mcp_server(mcp_server, user_id: str) -> str:
+async def build_authorize_url_for_mcp_server(mcp_server, user_id: str, *, per_user: bool = False) -> str:
     """Build OAuth authorization URL using an MCP server's stored credentials.
+
+    *per_user*: the account authorized is *user_id*'s own on a ``per_user``
+    server; the callback stores it on their credential, never on the server row.
 
     Two MCP-specific additions on top of the generic authorization-code flow:
 
@@ -436,6 +439,8 @@ async def build_authorize_url_for_mcp_server(mcp_server, user_id: str) -> str:
         "entity_type": "mcp_server",
         "entity_id": str(mcp_server.id),
     }
+    if per_user:
+        state_data["credential"] = "per_user"
 
     params: dict[str, str] = {
         "client_id": client_id,

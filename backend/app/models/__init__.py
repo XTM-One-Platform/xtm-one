@@ -83,6 +83,7 @@ import app.models.llm_config
 import app.models.llm_model_price
 import app.models.llm_trace
 import app.models.mcp_server
+import app.models.mcp_server_user_credential
 import app.models.memory_consolidation
 import app.models.mobile_device
 import app.models.model_catalog_announcement

@@ -3767,10 +3767,17 @@ async def resolve_owner_emails(
     return {str(uid): email for uid, email in result.all()}
 
 
-async def build_mcp_runtime(srv: MCPServer):
+async def build_mcp_runtime(srv: MCPServer, credential: Any = None):
     """Build an ``MCPServerRuntime`` from a DB model, decrypting secrets.
 
     Shared by ``mcp_servers.py``, ``general_chat.py``, and ``assignment_engine.py``.
+
+    On a ``per_user`` OAuth server (``credential_mode``) the token sent is the
+    acting person's own, *credential* (``MCPServerUserCredential``, resolved by
+    ``mcp_user_credentials.credential_for_runtime``); without one the
+    connection sends no token. The token stored on the server row is never
+    used there: nobody is lent another person's account. On a ``shared``
+    server *credential* is ignored.
 
     For OAuth-authenticated servers, the transports get an ``httpx.Auth`` hook
     that sends the stored access token as ``Authorization: Bearer <token>`` and
@@ -3790,6 +3797,7 @@ async def build_mcp_runtime(srv: MCPServer):
 
     from app.core.security import decrypt_value
     from app.services.mcp_oauth_tokens import StoredMCPOAuthToken
+    from app.services.mcp_user_credentials import is_per_user, mcp_holder_key
     from app.services.vault import SecretUnavailableError, reveal_json_field
     from app.tools.mcp_client import MCPServerRuntime
 
@@ -3804,17 +3812,25 @@ async def build_mcp_runtime(srv: MCPServer):
             return None
         return {k: v for k, v in document.items() if isinstance(k, str) and isinstance(v, str)}
 
+    per_user = is_per_user(srv)
+    holder = (credential if credential is not None and credential.server_id == srv.id else None) if per_user else srv
     access_token = None
-    if srv.auth_mode == "oauth" and srv.access_token_enc:
+    if srv.auth_mode == "oauth" and holder is not None and holder.access_token_enc:
         with contextlib.suppress(Exception):
-            access_token = decrypt_value(srv.access_token_enc) or None
+            access_token = decrypt_value(holder.access_token_enc) or None
 
     stdio = srv.transport == "stdio"
     env_dict = await _string_map("env_enc") if stdio else None
-    headers_dict = None if stdio else await _string_map("headers_enc", ("Authorization",) if access_token else ())
+    # A per_user server never sends a stored Authorization header either: it
+    # would be one shared account again.
+    headers_dict = None if stdio else await _string_map("headers_enc", ("Authorization",) if access_token or per_user else ())
 
     # OAuth mode: the hook sets the Bearer header on every request
-    auth = StoredMCPOAuthToken(str(srv.id), access_token, srv.token_expires_at) if access_token else None
+    auth = (
+        StoredMCPOAuthToken(mcp_holder_key(holder), access_token, holder.token_expires_at)
+        if access_token and holder is not None
+        else None
+    )
 
     return MCPServerRuntime(
         name=srv.name,
@@ -3830,6 +3846,10 @@ async def build_mcp_runtime(srv: MCPServer):
         relay_group_id=(
             str(srv.relay_group_id) if getattr(srv, "relay_group_id", None) else None
         ),
+        per_user=per_user,
+        # One person's missing or refused account never opens the circuit
+        # (or the auth escalation) for everyone on a per_user server.
+        failure_scope=(str(holder.user_id) if per_user and holder is not None else ("anonymous" if per_user else None)),
     )
 
 

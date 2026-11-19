@@ -131,6 +131,14 @@ class MCPServer(Base):
     oauth_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="disconnected"
     )
+    # Whose OAuth account a call carries (``auth_mode == "oauth"`` only):
+    # ``shared`` (default) - the one token stored on this row, for everyone who
+    # can use the server; ``per_user`` - each acting person's own token
+    # (``MCPServerUserCredential``), the row's token never used at run time.
+    # Contract: ``dev-docs/mcp-server-user-credentials.md``.
+    credential_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="shared", server_default="shared"
+    )
 
     # ``agent_ids`` (a list of agents this server was meant for) is no longer
     # mapped: nothing ever read it, an agent's servers are its own

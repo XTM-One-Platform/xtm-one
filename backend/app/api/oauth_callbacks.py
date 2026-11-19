@@ -1304,6 +1304,9 @@ async def _handle_mcp_server_callback(
     if not entity_id:
         raise HTTPException(status_code=400, detail="Missing entity_id in state")
 
+    if state_data.get("credential") == "per_user":
+        return await _handle_mcp_user_credential_callback(state_data, code, db)
+
     result = await db.execute(
         select(MCPServer).where(
             MCPServer.id == uuid.UUID(entity_id),
@@ -1311,6 +1314,10 @@ async def _handle_mcp_server_callback(
         )
     )
     mcp_server = result.scalar_one_or_none()
+    if mcp_server is not None and mcp_server.credential_mode == "per_user":
+        # Switched to per_user while this authorization was in flight: the
+        # account authorized was meant to be shared, and nothing is shared now.
+        mcp_server = None
     if not mcp_server:
         # Fallback: for company-managed servers user_id is NULL, so the owner
         # match above never hits. The admin gate ran when this flow was
@@ -1320,6 +1327,7 @@ async def _handle_mcp_server_callback(
             select(MCPServer).where(
                 MCPServer.id == uuid.UUID(entity_id),
                 MCPServer.is_company_managed.is_(True),
+                MCPServer.credential_mode != "per_user",
             )
         )
         mcp_server = result.scalar_one_or_none()
@@ -1395,6 +1403,97 @@ async def _handle_mcp_server_callback(
     return RedirectResponse(
         url=f"{frontend_url}/mcp-servers/{entity_id}?connected=true"
     )
+
+
+async def _handle_mcp_user_credential_callback(
+    state_data: dict,
+    code: str,
+    db: AsyncSession,
+) -> RedirectResponse:
+    """Store the account a person authorized on a ``per_user`` MCP server as their own.
+
+    The server must still be ``per_user`` and visible to that person (it may
+    have been unshared or switched back while the browser was away); the token
+    lands on their ``MCPServerUserCredential``, never on the server row, and
+    the server's tool catalog is left as it is (each person's catalog may
+    differ; Discover tools stays the manager's).
+    """
+    from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+    from app.integrations.oauth import apply_mcp_token_expiry
+    from app.models.mcp_server_user_credential import MCPServerUserCredential
+    from app.services.mcp_user_credentials import is_per_user, mcp_holder_key, user_credential
+    from app.services.token_refresh import clear_refresh_cooldown, mcp_refresh_cooldown_key
+
+    entity_id = state_data["entity_id"]
+    try:
+        user_uuid = uuid.UUID(str(state_data.get("user_id")))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid state") from None
+    user = await db.get(User, user_uuid)
+    if user is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    group_ids = await get_user_group_ids(db, user.id)
+    mcp_server = await db.scalar(
+        select(MCPServer).where(
+            MCPServer.id == uuid.UUID(entity_id),
+            user_visible_filter(MCPServer, user.id, group_ids, is_admin=bool(user.is_admin)),
+        )
+    )
+    if mcp_server is None or not is_per_user(mcp_server):
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    frontend_url = settings.frontend_url or settings.base_url
+    try:
+        with egress_route(await mcp_server_egress_route(db, mcp_server)):
+            tokens = await exchange_code_for_tokens_with_mcp_server(
+                mcp_server, code, code_verifier=state_data.get("code_verifier")
+            )
+    except Exception as exc:
+        detail = ""
+        if isinstance(exc, httpx.HTTPStatusError):
+            with contextlib.suppress(Exception):
+                detail = exc.response.text or ""
+        logger.warning(
+            "OAuth token exchange failed for a person's account on MCP server %s: %s",
+            entity_id,
+            format_exception_message(exc),
+        )
+        if "invalid_client" in detail:
+            from app.services.mcp_oauth_discovery import forget_dynamic_client
+
+            await forget_dynamic_client(db, mcp_server)
+        return RedirectResponse(url=f"{frontend_url}/mcp-servers/{entity_id}?error=token_exchange_failed")
+
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return RedirectResponse(url=f"{frontend_url}/mcp-servers/{entity_id}?error=no_access_token")
+
+    credential = await user_credential(db, mcp_server.id, user.id)
+    if credential is None:
+        credential = MCPServerUserCredential(id=uuid.uuid4(), server_id=mcp_server.id, user_id=user.id)
+        credential.server = mcp_server
+        db.add(credential)
+    credential.access_token_enc = encrypt_value(access_token)
+    if tokens.get("refresh_token"):
+        credential.refresh_token_enc = encrypt_value(tokens["refresh_token"])
+    if tokens.get("scope"):
+        credential.granted_scopes = tokens["scope"]
+    apply_mcp_token_expiry(credential, tokens)
+    credential.oauth_status = "connected"
+    flag_modified(credential, "oauth_status")
+    cooldown_key = mcp_refresh_cooldown_key(mcp_holder_key(credential))
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="mcp_server",
+        entity_id=mcp_server.id,
+        entity_name=mcp_server.name,
+        summary=f"Connected their own account to MCP server '{mcp_server.name}'",
+    )
+    await db.commit()
+    await clear_refresh_cooldown(cooldown_key)
+    return RedirectResponse(url=f"{frontend_url}/mcp-servers/{entity_id}?connected=true")
 
 
 # Bounded well below the MCP client's own 60s connect ceiling: this runs while

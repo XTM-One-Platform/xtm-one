@@ -195,6 +195,7 @@ _UNCHECKED_TEXT_COLUMNS: dict[Any, dict[str, str]] = {
                 "oauth_resource",
                 "oauth_metadata_url",
                 "oauth_status",
+                "credential_mode",
             ),
             "Credentials and OAuth state are not imported.",
         ),

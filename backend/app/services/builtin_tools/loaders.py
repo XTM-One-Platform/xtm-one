@@ -196,6 +196,7 @@ async def load_mcp_tools(
     composite: object,
     allowed_tools: dict | None = None,
     artifact_scope: object | None = None,
+    acting_user_id: object | None = None,
 ) -> object | None:
     """Load MCP server tools into a :class:`CompositeToolExecutor`.
 
@@ -207,6 +208,10 @@ async def load_mcp_tools(
     *artifact_scope* (an :class:`~app.tools.mcp_client.MCPArtifactScope`) is
     what a binary tool result is persisted under - pass the scope the run's
     ``generate_file`` uses.
+
+    *acting_user_id* is the person the calls are made for: on a ``per_user``
+    OAuth server they carry that person's own token (none without one,
+    never another person's).
 
     Returns the :class:`MCPManager` instance (caller **must** call
     ``await cleanup_mcp_manager(manager)`` when done) or *None* if no MCP
@@ -251,6 +256,15 @@ async def load_mcp_tools(
         if not mcp_servers:
             return None
 
+        from app.services.mcp_user_credentials import is_per_user, user_credentials_by_server
+
+        # The acting person's own accounts on the per_user servers, one query.
+        own_credentials = await user_credentials_by_server(
+            db,
+            [srv.id for srv in mcp_servers.values() if is_per_user(srv)],
+            acting_user_id,
+        )
+
         import asyncio as _aio
         import dataclasses as _dc
 
@@ -265,7 +279,7 @@ async def load_mcp_tools(
             if not srv:
                 continue
             try:
-                runtime = await build_mcp_runtime(srv)
+                runtime = await build_mcp_runtime(srv, own_credentials.get(srv.id))
             except SecretUnavailableError:
                 # A header or variable stored in a vault could not be read:
                 # this server is unavailable, every other one still loads.
@@ -768,6 +782,7 @@ async def load_custom_and_mcp_tools(
             composite,
             allowed_tools=mcp_allowed_tools,
             artifact_scope=mcp_scope,
+            acting_user_id=user_id,
         )
 
     from app.core.database import async_session
@@ -808,6 +823,7 @@ async def load_custom_and_mcp_tools(
                     mcp_collector,
                     allowed_tools=mcp_allowed_tools,
                     artifact_scope=mcp_scope,
+                    acting_user_id=user_id,
                 )
         except Exception:
             logger.error(

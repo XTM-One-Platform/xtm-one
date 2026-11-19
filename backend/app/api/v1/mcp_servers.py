@@ -142,6 +142,7 @@ _FIELDS_KEEPING_SECRET_DESTINATION = frozenset(
         "client_id",
         "client_secret",
         "scopes",
+        "credential_mode",
         "is_company_managed",
         "is_public_catalog",
         "user_id",
@@ -198,13 +199,48 @@ def _refuse_stdio_relay(transport: str | None, relay_group_id: object) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _my_oauth_statuses(db: AsyncSession, servers: Any, user_id: Any) -> dict[Any, str]:
+    """The reader's own connection on each ``per_user`` server of *servers* (one query)."""
+    from app.services.mcp_user_credentials import is_per_user, user_credentials_by_server
+
+    per_user = [srv.id for srv in servers if is_per_user(srv)]
+    if not per_user:
+        return {}
+    own = await user_credentials_by_server(db, per_user, user_id)
+    return {sid: (own[sid].oauth_status if sid in own else "disconnected") for sid in per_user}
+
+
+async def _apply_credential_mode(db: AsyncSession, srv: MCPServer, mode: str | None) -> dict[str, Any]:
+    """Switch *srv* to *mode*; the audit details of the change (empty when none).
+
+    ``shared`` -> ``per_user``: the token on the server row is dropped, nobody
+    uses it any more. ``per_user`` -> ``shared``: every person's own credential
+    is deleted (they connected for their own use, never to be lent), as for an
+    integration (``dev-docs/mcp-server-user-credentials.md``).
+    """
+    from app.services.mcp_user_credentials import PER_USER, SHARED, clear_server_tokens, delete_user_credentials
+
+    before = srv.credential_mode or SHARED
+    if mode is None or mode == before:
+        return {}
+    srv.credential_mode = mode
+    if mode == PER_USER:
+        clear_server_tokens(srv)
+        return {"credential_mode_from": before, "shared_token_dropped": True}
+    removed = await delete_user_credentials(db, srv.id)
+    return {"credential_mode_from": before, "user_credentials_deleted": removed}
+
+
 def _to_response(
     srv: MCPServer,
     *,
     can_manage: bool,
     owner_name: str | None = None,
     vault_viewer: VaultPrincipal | None = None,
+    my_oauth_status: str | None = None,
 ) -> MCPServerResponse:
+    # *my_oauth_status*: on a per_user server, the reader's own connection
+    # (``disconnected`` when they never connected); ``None`` elsewhere.
     # Everyone who can see the server reads it - a read_only grantee, every
     # user for a company-managed one - so a credential in its arguments or URLs
     # is masked the way the export masks it for a non-manager.
@@ -234,6 +270,8 @@ def _to_response(
         url=redact_secret_text(srv.url),
         has_headers=srv.headers_enc is not None and srv.headers_enc != "",
         auth_mode=srv.auth_mode,
+        credential_mode=srv.credential_mode or "shared",
+        my_oauth_status=my_oauth_status,
         has_client_id=srv.client_id_enc is not None and srv.client_id_enc != "",
         has_client_secret=bool(srv.client_secret_enc),
         oauth_status=srv.oauth_status,
@@ -293,12 +331,14 @@ async def list_mcp_servers(
     servers = result.scalars().all()
     names = await resolve_owner_names(db, servers)
     viewer = principal_from(user, user_group_ids)
+    mine = await _my_oauth_statuses(db, servers, user.id)
     responses = [
         _to_response(
             srv,
             can_manage=can_manage(user, srv, user_group_ids),
             owner_name=names.get(str(srv.user_id)),
             vault_viewer=viewer,
+            my_oauth_status=mine.get(srv.id),
         )
         for srv in servers
     ]
@@ -337,6 +377,7 @@ async def create_mcp_server(
         url=body.url,
         headers_enc=encrypt_value(json.dumps(body.headers)) if body.headers else None,
         auth_mode=body.auth_mode,
+        credential_mode=body.credential_mode,
         client_id_enc=encrypt_value(body.client_id) if body.client_id else None,
         client_secret_enc=(
             encrypt_value(body.client_secret) if body.client_secret else None
@@ -404,6 +445,7 @@ async def get_mcp_server(
         can_manage=can_manage(user, srv, user_group_ids),
         owner_name=owner_name,
         vault_viewer=principal_from(user, user_group_ids),
+        my_oauth_status=(await _my_oauth_statuses(db, [srv], user.id)).get(srv.id),
     )
     await attach_vault_failures([response], MCPServer.__tablename__)
     return response
@@ -528,6 +570,11 @@ async def update_mcp_server(
             srv.refresh_token_enc = None
             srv.token_expires_at = None
             srv.token_issued_at = None
+            # Nor any person's own OAuth account.
+            from app.services.mcp_user_credentials import delete_user_credentials
+
+            await delete_user_credentials(db, srv.id)
+    mode_change = await _apply_credential_mode(db, srv, body.credential_mode)
     if body.client_id is not None:
         # An operator-entered client ID replaces any dynamically registered
         # one, so the row must stop claiming the credential is disposable —
@@ -615,6 +662,8 @@ async def update_mcp_server(
             "tags": srv.tags or [],
             "hide_from_chat": srv.hide_from_chat,
             "relay_group_id": str(gid) if (gid := getattr(srv, "relay_group_id", None)) else None,
+            "credential_mode": srv.credential_mode,
+            **mode_change,
         },
     )
     await db.commit()
@@ -629,6 +678,7 @@ async def update_mcp_server(
         srv,
         can_manage=can_manage(user, srv, user_group_ids),
         owner_name=owner_name,
+        my_oauth_status=(await _my_oauth_statuses(db, [srv], user.id)).get(srv.id),
     )
 
 
@@ -792,16 +842,22 @@ async def start_mcp_oauth(
         MCPOAuthDiscoveryError,
         ensure_mcp_oauth_client,
     )
+    from app.services.mcp_user_credentials import is_per_user
 
-    srv = await get_user_mcp_server(db, user.id, server_id, is_admin=user.is_admin)
+    user_group_ids = await get_user_group_ids(db, user.id)
+    srv = await get_user_mcp_server(db, user.id, server_id, user_group_ids, is_admin=user.is_admin)
 
-    # A company-managed server holds one shared connection — its token lives on
-    # the server row, exactly like the shared API key of a header-authenticated
-    # company-managed server — so authorizing it grants every user of the
-    # platform that access. Only an admin may do so.
-    require_admin_for_company_managed(
-        srv, user, "Only admins can authorize a company-managed MCP server"
-    )
+    per_user = is_per_user(srv)
+    if not per_user:
+        # A company-managed server holds one shared connection — its token lives on
+        # the server row, exactly like the shared API key of a header-authenticated
+        # company-managed server — so authorizing it grants every user of the
+        # platform that access. Only an admin may do so.
+        require_admin_for_company_managed(
+            srv, user, "Only admins can authorize a company-managed MCP server"
+        )
+    # per_user: anyone who can see the server connects their own account; the
+    # callback stores it on their own credential, never on the server row.
 
     if srv.auth_mode != "oauth":
         raise HTTPException(
@@ -847,8 +903,38 @@ async def start_mcp_oauth(
         )
         await db.commit()
 
-    url = await build_authorize_url_for_mcp_server(srv, str(user.id))
+    url = await build_authorize_url_for_mcp_server(srv, str(user.id), per_user=per_user)
     return {"authorize_url": url}
+
+
+@router.delete("/{server_id}/my-credential", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_my_mcp_credential(
+    server_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disconnect one's own account from a ``per_user`` MCP server (idempotent)."""
+    from app.services.mcp_user_credentials import user_credential
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    srv = await get_user_mcp_server(db, user.id, server_id, user_group_ids, is_admin=user.is_admin)
+    credential = await user_credential(db, srv.id, user.id)
+    if credential is None:
+        return None
+    await db.delete(credential)
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="mcp_server",
+        entity_id=srv.id,
+        entity_name=srv.name,
+        summary=f"Disconnected their own account from MCP server '{srv.name}'",
+        request=request,
+    )
+    await db.commit()
+    return None
 
 
 @router.post("/{server_id}/test")
@@ -870,9 +956,11 @@ async def test_mcp_server(
         db, MCPServer, user, server_id, action="test", entity_label="MCP server"
     )
 
+    from app.services.mcp_user_credentials import credential_for_runtime
     from app.tools.mcp_client import MCPManager
 
-    runtime = await build_mcp_runtime(srv)
+    # On a per_user server the test acts as the caller, with their own account.
+    runtime = await build_mcp_runtime(srv, await credential_for_runtime(db, srv, user.id))
     manager = MCPManager()
     test_result = await manager.test_connection(runtime)
     status_value = test_result.get("status", "error")
@@ -940,10 +1028,11 @@ async def test_mcp_tool(
         db, MCPServer, user, server_id, action="test tool on", entity_label="MCP server"
     )
 
+    from app.services.mcp_user_credentials import credential_for_runtime
     from app.tools.base import ToolCall
     from app.tools.mcp_client import MCPArtifactScope, MCPManager
 
-    runtime = await build_mcp_runtime(srv)
+    runtime = await build_mcp_runtime(srv, await credential_for_runtime(db, srv, user.id))
     # A binary result is the tester's own file (listed in their Files), never
     # an unscoped row nobody but an admin could read.
     manager = MCPManager(artifact_scope=MCPArtifactScope(user_id=str(user.id)))
@@ -991,9 +1080,10 @@ async def refresh_mcp_tools(
         user_group_ids=user_group_ids,
     )
 
+    from app.services.mcp_user_credentials import credential_for_runtime
     from app.tools.mcp_client import MCPManager
 
-    runtime = await build_mcp_runtime(srv)
+    runtime = await build_mcp_runtime(srv, await credential_for_runtime(db, srv, user.id))
     manager = MCPManager()
     test_result = await manager.test_connection(runtime)
 
