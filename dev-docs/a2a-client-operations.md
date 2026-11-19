@@ -273,6 +273,12 @@ resumed, so for that path:
   `continue_task_id` and no message (`_scoped_to_caller`: the run that started
   it, or a run of that agent in a terminal status); another agent, another
   user, or a run still going stays refused `continuation_not_owned` (FR-046);
+- a collect (no message) of a task whose rows for this caller all concluded
+  answers the newest row from the record, nothing sent: its outcome,
+  `partner_reason`, `terminal_at` and mechanism (`_recorded_conclusion`). A
+  completed row (the answer text is not stored) and an abandoned one (the
+  partner may still answer) go to the partner as before. The integration
+  page's delegation list carries `terminal_at` too;
 - the hand-back of a run with no conversation carries
   `if_this_run_ends_first`, which says the above to the model.
 

@@ -426,6 +426,10 @@ class DelegationEntry(BaseModel):
     #: question an operator asks about a timeout, and it has one answer here.
     abandoned_at: str | None = None
     submitted_at: str
+    #: When the delegation ended; NULL while it is outstanding. Without it the
+    #: list says how a delegation ended but not when, which is the first
+    #: question of an operator reading a refusal against a partner's report.
+    terminal_at: str | None = None
 
 
 @router.get("/{integration_id}/delegations", response_model=list[DelegationEntry])
@@ -475,6 +479,7 @@ async def list_delegations(
             mechanism=d.mechanism,
             abandoned_at=d.abandoned_at.isoformat() if d.abandoned_at else None,
             submitted_at=d.submitted_at.isoformat(),
+            terminal_at=d.terminal_at.isoformat() if d.terminal_at else None,
         )
         for d, agent_name in rows
     ]

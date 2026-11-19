@@ -1818,6 +1818,55 @@ async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
     return (await db.execute(stmt.limit(1))).scalar_one_or_none() is not None
 
 
+async def _recorded_conclusion(
+    db: Any, integration: Any, target: Any, calling: CallingRun | None, task_id: str
+) -> DelegationResult | None:
+    """The caller's own concluded row for *task_id*, read back, or ``None``.
+
+    Answered only when nothing about the task is left to learn: no row of this
+    caller is still outstanding for it, and the newest one ended with an
+    outcome the partner cannot change. A completed row is never answered from
+    here (the answer text is not stored, a collect re-reads it from the
+    partner), nor an abandoned one (this side gave up on a silent partner,
+    whose answer a collect may still get). Everything else, a failure, a
+    refusal, a timeout that cancelled the task, a cancel, is what the calling
+    agent asked about and could not read before (no tool returned the row).
+    """
+    from sqlalchemy import select
+
+    from app.models.a2a import A2ADelegation
+
+    stmt = select(A2ADelegation).where(
+        A2ADelegation.integration_id == integration.id,
+        A2ADelegation.partner_task_id == task_id,
+    )
+    target_id = getattr(target, "id", None)
+    if target_id is not None:
+        stmt = stmt.where(A2ADelegation.target_id == target_id)
+    stmt = _scoped_to_caller(stmt, calling).order_by(A2ADelegation.submitted_at.desc())
+    rows = list((await db.execute(stmt)).scalars().all())
+    if not rows or any(row.outcome is None for row in rows):
+        return None
+    row = rows[0]
+    if row.outcome == OUTCOME_COMPLETED or row.abandoned_at is not None:
+        return None
+    ended = row.terminal_at.isoformat() if row.terminal_at else "an unrecorded time"
+    return DelegationResult(
+        outcome=row.outcome,
+        partner_reason=row.partner_reason,
+        detail=(
+            f"This delegation already ended as '{row.outcome}' at {ended}"
+            f" (waited by {row.mechanism or 'an unrecorded mechanism'})."
+            " This is the recorded outcome: nothing was sent to the partner."
+            " Send the work as a new delegation to try again."
+        ),
+        partner_task_id=task_id,
+        protocol_version=row.protocol_version,
+        signature_state=row.signature_state,
+        continuation_count=row.continuation_count or 0,
+    )
+
+
 async def delegate(
     db,
     integration,
@@ -1856,6 +1905,13 @@ async def delegate(
         )
         if continuation_owned:
             owned_task_id = continue_task_id
+            if not message:
+                # A collect of a delegation that already ended: the caller's
+                # only way to read its own row (outcome, reason, when). Read
+                # back, never recorded again, nothing sent.
+                recorded = await _recorded_conclusion(db, integration, target, calling, continue_task_id)
+                if recorded is not None:
+                    return recorded
 
     def conclude(result: DelegationResult):
         if owned_task_id and not result.partner_task_id:

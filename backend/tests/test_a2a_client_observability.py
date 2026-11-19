@@ -304,6 +304,13 @@ class TestTheActivityListIsScopedByRecordedAttribution:
         # And no payload: the delegation record deliberately stores none.
         assert not fields & {"message", "result", "payload"}
 
+    def test_an_entry_says_when_its_delegation_ended(self):
+        # How a delegation ended without when cannot be read against a
+        # partner's report of a refusal.
+        assert "terminal_at" in a2a_client.DelegationEntry.model_fields
+        src = inspect.getsource(a2a_client.list_delegations)
+        assert "terminal_at=" in src
+
 
 class TestTheToolNamesThePageShowsAreTheOnesTheModelSees:
     def test_only_usable_targets_take_a_name(self):
