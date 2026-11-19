@@ -193,6 +193,10 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    # actions: read fetches the shard weights the nightly runs published.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       backend-full: ${{ steps.select.outputs.backend-full }}
       unit-shards: ${{ steps.select.outputs.unit-shards }}
@@ -216,6 +220,26 @@ jobs:
 
       - uses: ./.github/actions/backend-venv
 
+      # The weights every sharded job of this run deals its files by: the
+      # nightly table when it passes its checks, else the committed one. Handed
+      # to the jobs in the test-selection artifact, so all of them deal by the
+      # same table (backend/scripts/shard_weights.py).
+      - name: Fetch the nightly shard weights
+        uses: ./.github/actions/fetch-shard-weights
+        with:
+          workflow: ci.yml
+          artifact: shard-weights
+          path: ${{ runner.temp }}/nightly-weights
+
+      - name: Pick the shard weights
+        working-directory: backend
+        run: |
+          latest=$(find "$RUNNER_TEMP/nightly-weights" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)
+          for kind in unit chromium; do
+            python scripts/shard_weights.py pick --kind "$kind" ${latest:+--candidate "$latest/$kind.json"} \
+              --out "$RUNNER_TEMP/selection/weights/$kind.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Select the tests
         id: select
         working-directory: backend
@@ -229,6 +253,7 @@ jobs:
             scope=(--full "a $EVENT run runs every suite")
           fi
           python -m tests.selection ci "${scope[@]}" --outdir "$RUNNER_TEMP/selection" \
+            --weights "$RUNNER_TEMP/selection/weights" \
             --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
@@ -316,6 +341,7 @@ jobs:
           # collecting the whole suite held about 1.6 GB per xdist worker, and the
           # runner sampler below read under 250 MB available and 3 GB of swap (#10437).
           PYTEST_SHARD_SPLIT: files
+          PYTEST_SHARD_DURATIONS: ${{ runner.temp }}/selection/weights/unit.json
           # A test past this bound ends its worker with its stacks (tests/stall_guard.py)
           # instead of eating the step's 25 minutes and naming nothing.
           PYTEST_STALL_SECONDS: "300"
@@ -346,9 +372,9 @@ jobs:
           python -m pytest -m "not integration" -n "$PYTEST_WORKERS" --dist loadgroup -v --tb=short --durations=25 \
             --junitxml "$RUNNER_TEMP/junit/unit-${PYTEST_SHARD%/*}.xml" -o junit_family=xunit1
 
-      # Each test file's seconds, for tests/shard_durations.json: a full run
-      # (nightly or manual) keeps the reports that refresh it
-      # (backend/scripts/refresh_shard_durations.py).
+      # Each test file's seconds, for the unit shard weights: the nightly run
+      # publishes them (shard-weights below), a manual one keeps them for a
+      # refresh of the committed table by hand.
       - name: Keep the test timings
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
@@ -389,7 +415,9 @@ jobs:
   # are measured on a quiet machine - so the suite is split between jobs
   # (PYTEST_SHARD) instead of between workers: about half an hour of tests,
   # next to a minute of setup per job, so the select job gives the whole
-  # suite five shards and a selected share its share of them.
+  # suite five shards and a selected share its share of them. Whole files are
+  # dealt by their seconds (PYTEST_SHARD_DURATIONS): split test by test, slow
+  # neighbours landed on one shard (4.9 to 8.3 minutes on one run).
   # About 12 minutes with the apt packages cached; the timeout leaves room for
   # a cache the repository's quota evicted, fetched again from a throttled
   # mirror: 37 minutes of installs on their own, at 50 kB/s.
@@ -544,7 +572,20 @@ jobs:
           PYTEST_SELECTED_FILES: ${{ needs.select.outputs.backend-full == 'false' && format('{0}/selection/backend-tests.txt', runner.temp) || '' }}
           # Collect only the files that spell mark.chromium (tests/marked_files.py).
           PYTEST_MARKED_FILES: chromium
-        run: python -m pytest -m chromium -v --tb=short --durations=10
+          PYTEST_SHARD_SPLIT: files
+          PYTEST_SHARD_DURATIONS: ${{ runner.temp }}/selection/weights/chromium.json
+        run: |
+          python -m pytest -m chromium -v --tb=short --durations=10 \
+            --junitxml "$RUNNER_TEMP/junit/chromium-${PYTEST_SHARD%/*}.xml" -o junit_family=xunit1
+
+      # Each test file's seconds, for the Browser tool's shard weights.
+      - name: Keep the test timings
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v7
+        with:
+          name: chromium-junit-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/junit/
+          retention-days: 14
 
   # The frontend group of scripts/ci-local.sh runs every `run:` of
   # frontend-lint, of this job and of office-addin-lint, in order, plus the
@@ -1031,10 +1072,75 @@ jobs:
   # runs even when the run is cancelled (`always()`): skipped, it would count
   # as passed and let a pull request merge with no suite run. A job its event
   # skips counts as passed.
+  # Every nightly run measures the unit and Browser tool files on its own
+  # reports and publishes the median of the last five nightly measures: every
+  # later run's select job deals its shards by it, so the shards follow the
+  # suite as it grows, with no table to refresh by hand. Only a nightly run on
+  # main is read, and it publishes only from green suites; a manual run
+  # publishes too, to check this job, but nothing reads its copy.
+  shard-weights:
+    name: Publish the shard weights
+    needs: [backend, browser-tool]
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.backend.result == 'success' && needs.browser-tool.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: unit-junit-*
+          path: ${{ runner.temp }}/junit/unit
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: chromium-junit-*
+          path: ${{ runner.temp }}/junit/chromium
+
+      - name: Fetch the earlier nightly measures
+        uses: ./.github/actions/fetch-shard-weights
+        with:
+          workflow: ci.yml
+          artifact: shard-weights-measured
+          path: ${{ runner.temp }}/earlier
+          runs: "4"
+
+      - name: Measure this run and take the median
+        working-directory: backend
+        run: |
+          for kind in unit chromium; do
+            python scripts/shard_weights.py measure --kind "$kind" --out "$RUNNER_TEMP/measured/$kind.json" \
+              "$RUNNER_TEMP"/junit/"$kind"/*/*.xml
+            # shellcheck disable=SC2046 # one argument per earlier table; the paths hold no space
+            python scripts/shard_weights.py median --kind "$kind" --out "$RUNNER_TEMP/weights/$kind.json" \
+              "$RUNNER_TEMP/measured/$kind.json" $(find "$RUNNER_TEMP/earlier" -name "$kind.json")
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: shard-weights-measured
+          path: ${{ runner.temp }}/measured/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: shard-weights
+          path: ${{ runner.temp }}/weights/
+          retention-days: 30
+
   verdict:
     name: CI verdict
     if: always()
-    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, select, backend, browser-tool, frontend, frontend-unit, bootstrap, migrations]
+    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, select, backend, browser-tool, frontend, frontend-unit, bootstrap, migrations, shard-weights]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

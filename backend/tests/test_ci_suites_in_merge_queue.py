@@ -41,6 +41,8 @@ ON_PULL_REQUESTS_AND_SELECTED = {
 }
 # Opens an issue when the nightly run fails: it reads the required check, not the reverse.
 NOTIFY = "notify-on-failure"
+# Publishes the shard weights, on a nightly run only (scripts/shard_weights.py).
+PUBLISH = "shard-weights"
 # The jobs a selection sizes, and the output that says whether each runs.
 SELECTED = {
     "ci.yml": {
@@ -126,6 +128,11 @@ def test_a_pull_request_runs_the_static_checks_and_the_queue_the_suites(name):
     for job_name, job in jobs.items():
         if job_name in {REQUIRED[name], NOTIFY}:
             continue
+        if job_name == PUBLISH:
+            assert job["if"].startswith(
+                "always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && "
+            ), f"{name}: {job_name}"
+            continue
         if job_name in ON_PULL_REQUESTS:
             assert "if" not in job, f"{name}: {job_name}"
         elif job_name in ON_PULL_REQUESTS_AND_SELECTED:
@@ -164,8 +171,9 @@ def test_the_required_checks_report_even_a_cancelled_run():
     # reports the required check as passed.
     e2e = _workflow("e2e.yml")["jobs"]["e2e"]
     assert e2e["if"] == f"always() && {IN_THE_QUEUE}"
-    # A failed selection skips the shards: the aggregator reads it too.
-    assert set(e2e["needs"]) == {"select", "shard"}
+    # A failed selection skips the shards: the aggregator reads it too, and a
+    # nightly run's failed publishing of the shard weights.
+    assert set(e2e["needs"]) == {"select", "shard", PUBLISH}
 
 
 @pytest.mark.parametrize("name", SUITES)

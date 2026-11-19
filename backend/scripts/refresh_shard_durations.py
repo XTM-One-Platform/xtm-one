@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Rebuild ``tests/shard_durations.json`` from the JUnit reports of a full CI run.
 
-The unit shards deal the test files out by these seconds (``tests/sharding.py``),
-longest first, so the jobs end together; a stale table leaves one shard far
-behind the others. A full run of ``ci.yml`` (nightly or ``workflow_dispatch``) keeps each shard's report in
-its ``unit-junit-<n>`` artifact:
+The committed unit table, which deals the shards when no nightly table can be
+(``scripts/shard_weights.py``: the nightly runs publish the weights every run
+deals by). A full run of ``ci.yml`` (nightly or ``workflow_dispatch``) keeps
+each shard's report in its ``unit-junit-<n>`` artifact:
 
     gh run download <run id> --pattern 'unit-junit-*' --dir /tmp/junit
     uv run python scripts/refresh_shard_durations.py /tmp/junit/*/*.xml

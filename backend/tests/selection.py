@@ -783,11 +783,12 @@ def shard_list(count: int) -> list[str]:
     return [f"{index}/{count}" for index in range(1, count + 1)]
 
 
-def _shards(selected: int, total: int, suite: str) -> int:
-    """The shards ``selected`` of ``total`` files take, in proportion to the whole suite's."""
-    if selected == 0:
+def _shards(selected: float, total: float, suite: str, files: int | None = None) -> int:
+    """The shards a ``selected`` share of ``total`` takes, in proportion to the whole suite's; no more than its ``files``."""
+    if selected == 0 or files == 0:
         return 0
-    return max(1, min(selected, math.ceil(MAX_SHARDS[suite] * selected / max(total, 1))))
+    cap = files if files is not None else int(selected)
+    return max(1, min(cap, math.ceil(MAX_SHARDS[suite] * selected / max(total, 1))))
 
 
 #: A marker the unit job leaves out: ``-m "not integration"``, and no Chromium installed.
@@ -806,12 +807,17 @@ def _marks_whole_file(source: str) -> bool:
     )
 
 
-def plan_backend(selection: Selection, graph: Graph) -> dict[str, list[str]]:
-    """The shards of the unit, integration and Chromium jobs."""
-    from tests.marked_files import spells_marker
-    from tests.sharding import UNTIMED_SECONDS, load_durations
+def plan_backend(selection: Selection, graph: Graph, weights: Path | None = None) -> dict[str, list[str]]:
+    """The shards of the unit, integration and Chromium jobs.
 
-    durations = load_durations()
+    ``weights``: the directory of the tables this run deals by (``unit.json``,
+    ``chromium.json``, ``scripts/shard_weights.py``); unset, the committed ones.
+    """
+    from tests.marked_files import spells_marker
+    from tests.sharding import CHROMIUM_DURATIONS_PATH, DURATIONS_PATH, UNTIMED_SECONDS, load_durations
+
+    durations = load_durations(weights / "unit.json" if weights else DURATIONS_PATH)
+    chromium = load_durations(weights / "chromium.json" if weights else CHROMIUM_DURATIONS_PATH)
     files = graph.test_files if selection.full else selection.files
     # A file marked integration or chromium as a whole has no test the unit job runs.
     unit_files = [path for path in files if not _marks_whole_file(graph.sources[path])]
@@ -822,7 +828,12 @@ def plan_backend(selection: Selection, graph: Graph) -> dict[str, list[str]]:
         marked = [path for path in graph.test_files if spells_marker(graph.sources[path], suite)]
         whole = selection.full or suite in selection.full_suites
         picked = marked if whole else [path for path in files if path in set(marked)]
-        plan[suite] = shard_list(_shards(len(picked), len(marked), suite))
+        if suite == "chromium":
+            # Its files are dealt by their seconds: the shards follow the share of the seconds selected.
+            seconds_of = [sum(chromium.get(path, UNTIMED_SECONDS) for path in paths) for paths in (picked, marked)]
+            plan[suite] = shard_list(_shards(seconds_of[0], seconds_of[1], suite, files=len(picked)))
+        else:
+            plan[suite] = shard_list(_shards(len(picked), len(marked), suite))
     return plan
 
 
@@ -854,7 +865,9 @@ def frontend_build_reason(changed: Iterable[str]) -> str | None:
     )
 
 
-def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) -> dict[str, object]:
+def run_ci(
+    changed: list[str] | None, full_because: str | None, outdir: Path, weights: Path | None = None
+) -> dict[str, object]:
     """The answer of ``ci.yml``'s ``select`` job: ``changed`` is ``None`` when every suite runs."""
     graph = Graph.read()
     if changed is None:
@@ -867,7 +880,7 @@ def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) ->
         frontend = select_frontend_unit(changed)
         migrations = migrations_reason(changed, graph)
         build = frontend_build_reason(changed)
-    plan = plan_backend(selection, graph)
+    plan = plan_backend(selection, graph, weights)
     frontend_shards = {"skip": 0, "related": 1, "full": MAX_SHARDS["frontend-unit"]}[frontend.mode]
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "backend-tests.txt").write_text("".join(f"{p}\n" for p in selection.files), encoding="utf-8")
@@ -932,6 +945,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--full", metavar="WHY", help="run every suite, for this reason (no merge group to measure)")
     parser.add_argument("--outdir", type=Path, default=Path("selection"), help="where the ci file lists go")
     parser.add_argument("--matrix", help="e2e: the shard matrix entries, as a JSON list")
+    parser.add_argument("--weights", type=Path, help="ci: the shard weights this run deals by (scripts/shard_weights.py)")
     parser.add_argument("--github-output", type=Path, help="append the job outputs here ($GITHUB_OUTPUT)")
     parser.add_argument("--summary", type=Path, help="append a table here ($GITHUB_STEP_SUMMARY)")
     args = parser.parse_args(argv)
@@ -939,7 +953,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("give either --base or --full")
     changed = None if args.full else changed_files(args.base, args.head)
     if args.workflow == "ci":
-        outputs = run_ci(changed, args.full, args.outdir)
+        outputs = run_ci(changed, args.full, args.outdir, args.weights)
     else:
         outputs = run_e2e(changed, args.full, json.loads(args.matrix or "[]"))
     rows = outputs.pop("_rows")
