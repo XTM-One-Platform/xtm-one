@@ -1087,6 +1087,73 @@ async def test_delegate_per_user_company_managed_is_open_to_a_non_admin(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_delegate_hands_its_files_to_the_run(monkeypatch):
+    """The delegation's file ids reach ``trigger_payload['file_ids']``, the
+    list the engine admits as the run's attachments, canonical and once each."""
+    uid = uuid.uuid4()
+    assignment = _cm_assignment()
+    agent = SimpleNamespace(id=assignment.agent_id, enabled=True, hide_runs=False)
+    seen = _stub_delegate_gate(
+        monkeypatch,
+        assignment,
+        caller=SimpleNamespace(id=uid, is_admin=True),
+        agent=agent,
+    )
+    file_id = uuid.uuid4()
+
+    result = await wi_tools_mod._run_delegate_to_assignment(
+        assignment_id=str(assignment.id),
+        task="read the attachment",
+        acting_user_id=str(uid),
+        delegating_agent_id=None,
+        file_ids=[str(file_id).upper(), f" {file_id} "],
+    )
+
+    assert "run-77" in result
+    assert seen["trigger"][0]["payload"]["file_ids"] == [str(file_id)]
+
+
+@pytest.mark.asyncio
+async def test_delegate_without_files_adds_no_file_ids(monkeypatch):
+    uid = uuid.uuid4()
+    assignment = _cm_assignment()
+    agent = SimpleNamespace(id=assignment.agent_id, enabled=True, hide_runs=False)
+    seen = _stub_delegate_gate(
+        monkeypatch,
+        assignment,
+        caller=SimpleNamespace(id=uid, is_admin=True),
+        agent=agent,
+    )
+
+    await _delegate_as(uid, assignment)
+
+    assert "file_ids" not in seen["trigger"][0]["payload"]
+
+
+@pytest.mark.asyncio
+async def test_delegate_refuses_a_malformed_or_oversized_file_list():
+    assignment_id = str(uuid.uuid4())
+
+    bad = await wi_tools_mod._run_delegate_to_assignment(
+        assignment_id=assignment_id,
+        task="t",
+        acting_user_id=None,
+        delegating_agent_id=None,
+        file_ids=["report.pdf"],
+    )
+    too_many = await wi_tools_mod._run_delegate_to_assignment(
+        assignment_id=assignment_id,
+        task="t",
+        acting_user_id=None,
+        delegating_agent_id=None,
+        file_ids=[str(uuid.uuid4()) for _ in range(wi_tools_mod._MAX_DELEGATED_FILES + 1)],
+    )
+
+    assert bad == "Error: 'report.pdf' is not a valid file id."
+    assert "at most 20" in too_many
+
+
+@pytest.mark.asyncio
 async def test_delegate_anonymous_hears_the_rest_refusal_first(monkeypatch):
     """The no-account restriction comes after the shared gate, so a disabled
     assignment is reported as disabled, like REST would, not as admin-only."""
