@@ -712,6 +712,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # PYTEST_SELECTED_FILES below reads the selection's backend-tests.txt.
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-selection
+          path: ${{ runner.temp }}/selection
+
       - name: Start Silo (S3 object storage)
         run: |
           # Pulled first, three attempts 10 s then 20 s apart, so a transient
