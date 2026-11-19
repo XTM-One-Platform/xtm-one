@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import re
 import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests import selection
 from tests.selection import (
@@ -64,6 +67,16 @@ def graph(tmp_path: Path) -> Graph:
             "tests/test_seeds.py": "from app.services import seeds\n",
             "tests/test_gone.py": "from app.services import gone\n",
             "alembic/versions/0001_rate.py": "def upgrade():\n    from app.core.money import RATE\n",
+            "app/core/migrations.py": "def run_migrations():\n    from app.core import indexes\n",
+            "app/core/indexes.py": "",
+            "tests/test_reads_seeds.py": 'SOURCE = (ROOT / "services" / "seeds.py").read_text()\n',
+            "tests/test_globs_persona.py": 'TEXTS = sorted((ROOT / "data" / "persona").glob("*.md"))\n',
+            "tests/test_app_file_walker.py": 'import app\nFILES = Path(app.__file__).parent.rglob("*.py")\n',
+            "tests/test_scans_tests.py": 'FILES = sorted(HERE.glob("test_*.py"))\n',
+            "tests/frozen.py": "NOW = 1\n",
+            "tests/conftest.py": "from tests.frozen import NOW\n",
+            "scripts/dump.py": "def render():\n    from app.core import money\n",
+            "tests/test_dump.py": "from scripts.dump import render\n",
         },
     )
     return Graph.read(backend)
@@ -97,13 +110,24 @@ def test_a_test_helper_carries_its_imports_to_the_tests_that_use_it(graph):
     assert "tests/test_render.py" in _files(["backend/tests/helpers.py"], graph)
 
 
-def test_a_changed_test_file_runs(graph):
-    assert _files(["backend/tests/test_billing.py"], graph) == {"tests/test_billing.py"}
+def test_a_changed_test_file_runs_with_the_tests_that_walk_the_test_files(graph):
+    assert _files(["backend/tests/test_billing.py"], graph) == {"tests/test_billing.py", "tests/test_scans_tests.py"}
+
+
+def test_a_module_runs_the_tests_that_read_its_source_by_path(graph):
+    assert "tests/test_reads_seeds.py" in _files(["backend/app/services/seeds.py"], graph)
+    assert "tests/test_reads_seeds.py" not in _files(["backend/app/services/billing.py"], graph)
+
+
+def test_a_test_that_imports_a_script_reaches_what_the_script_imports(graph):
+    assert "tests/test_dump.py" in _files(["backend/app/core/money.py"], graph)
+    assert "tests/test_dump.py" in _files(["backend/scripts/dump.py"], graph)
 
 
 def test_a_tree_reader_runs_on_any_app_module_and_only_then(graph):
     # Through app_sources, or a walk of the directory it names "app" (a tripwire's APP.rglob).
-    assert {"tests/test_tree.py", "tests/test_walker.py"} <= _files(["backend/app/services/seeds.py"], graph)
+    walkers = {"tests/test_tree.py", "tests/test_walker.py", "tests/test_app_file_walker.py"}
+    assert walkers <= _files(["backend/app/services/seeds.py"], graph)
     assert "tests/test_tree.py" not in _files(["frontend/src/App.tsx"], graph)
 
 
@@ -114,6 +138,10 @@ def test_a_file_outside_backend_selects_the_tests_that_name_its_area(graph):
 
 def test_a_data_file_reaches_the_tests_of_the_module_that_names_its_folder(graph):
     assert "tests/test_seeds.py" in _files(["backend/app/data/persona/one.md"], graph)
+
+
+def test_a_data_file_runs_the_tests_that_glob_its_folder(graph):
+    assert "tests/test_globs_persona.py" in _files(["backend/app/data/persona/one.md"], graph)
 
 
 def test_a_data_file_no_module_names_runs_everything(graph):
@@ -127,13 +155,25 @@ def test_a_markdown_file_beside_a_package_s_modules_is_its_documentation(graph):
 
 def test_a_deleted_module_reaches_what_still_names_it_and_no_more(graph):
     files = _files(["backend/app/services/gone.py", "backend/tests/test_removed.py"], graph)
-    # The tree readers run too: a deletion changes the tree they read.
-    assert files == {"tests/test_gone.py", "tests/test_tree.py", "tests/test_walker.py"}
+    # The tree readers run too, as a deletion changes the tree they read, and the test walkers the tests they read.
+    walkers = {
+        "tests/test_tree.py",
+        "tests/test_walker.py",
+        "tests/test_app_file_walker.py",
+        "tests/test_scans_tests.py",
+    }
+    assert files == {"tests/test_gone.py", *walkers}
 
 
 @pytest.mark.parametrize(
     "path",
-    ["backend/tests/conftest.py", "backend/uv.lock", ".github/workflows/ci.yml", "backend/tests/selection.py"],
+    [
+        "backend/tests/conftest.py",
+        "backend/tests/frozen.py",  # a helper conftest loads: an autouse fixture applies it to every test
+        "backend/uv.lock",
+        ".github/workflows/ci.yml",
+        "backend/tests/selection.py",
+    ],
 )
 def test_what_every_test_runs_under_runs_everything(graph, path):
     assert select_backend([path], graph).full
@@ -150,6 +190,20 @@ def test_migrations_run_for_what_the_chain_imports_and_loads(graph, tmp_path):
     assert selection.migrations_reason(["backend/app/core/money.py"], graph, alembic)
     assert selection.migrations_reason(["backend/alembic/versions/0002.py"], graph, alembic)
     assert selection.migrations_reason(["backend/app/services/billing.py"], graph, alembic) is None
+
+
+def test_migrations_run_for_what_the_job_s_own_migration_runner_imports(graph, tmp_path):
+    # The job calls run_migrations() itself: what its functions import runs too.
+    alembic = tmp_path / "backend" / "alembic"
+    assert selection.migrations_reason(["backend/app/core/indexes.py"], graph, alembic)
+
+
+def test_a_change_to_the_selection_runs_every_suite_it_decides(graph, frontend, tmp_path):
+    # Otherwise a broken rule would decide whether the suite that catches it runs.
+    change = ["backend/tests/selection.py"]
+    assert selection.migrations_reason(change, graph, tmp_path / "backend" / "alembic")
+    assert select_frontend_unit(change, frontend).mode == "full"
+    assert selection.run_ci(change, None, tmp_path / "out")["frontend-build"] == "true"
 
 
 def test_a_file_that_does_not_parse_runs_everything(tmp_path):
@@ -200,6 +254,9 @@ def frontend(tmp_path: Path) -> Path:
             "tests_unit/reads-nothing.test.ts": "const p = '../backend/app';\n",
             "src/testing/forms.ts": "import { readFileSync } from 'node:fs';\nreadFileSync(join(dir, 'fixtures', 'forms.json'));\n",
             "src/lib/forms.test.ts": "import { FORMS } from '../testing/forms';\n",
+            "vitest.setup.ts": "import { failOnWarnings } from './src/testing/warnings';\n",
+            "src/testing/warnings.ts": "import { LIBRARY_DEFECTS } from './defects';\n",
+            "src/testing/defects.ts": "export const LIBRARY_DEFECTS = [];\n",
         },
     )
 
@@ -233,6 +290,12 @@ def test_frontend_unit_skips_a_change_it_does_not_reach(frontend):
 
 @pytest.mark.parametrize("path", ["frontend/package.json", "frontend/vitest.config.ts", "frontend/tests_unit/setup.ts"])
 def test_frontend_unit_runs_whole_on_what_every_test_runs_under(frontend, path):
+    assert select_frontend_unit([path], frontend).mode == "full"
+
+
+@pytest.mark.parametrize("path", ["frontend/src/testing/warnings.ts", "frontend/src/testing/defects.ts"])
+def test_frontend_unit_runs_whole_on_what_a_setup_file_imports_at_any_depth(frontend, path):
+    # vitest related follows the spec files' imports, not the setup files'.
     assert select_frontend_unit([path], frontend).mode == "full"
 
 
@@ -271,6 +334,8 @@ def test_e2e_runs_an_area_for_its_specs_and_its_ui(graph):
 
 
 # The real tree, read once: what CI's select job reads.
+
+_PERSONA = "backend/app/agents/seed_data/agent_persona/aev-detection-rules-generator.md"
 
 
 @pytest.fixture(scope="module")
@@ -326,6 +391,53 @@ def test_a_seeded_persona_runs_the_e2e_stack_and_a_package_s_agents_md_does_not(
 def test_the_dashboard_forms_fixture_reaches_the_helper_its_tests_read_it_through():
     picked = select_frontend_unit(["backend/tests/fixtures/dashboards/platform_forms.json"])
     assert "src/testing/platform-forms.ts" in picked.related
+
+
+@pytest.mark.parametrize(
+    ("changed", "guard"),
+    [
+        # A tripwire that reads the module's source by its path.
+        ("backend/app/api/v1/agent_import.py", "tests/test_agent_copy_manifest.py"),
+        ("backend/app/api/v1/chat.py", "tests/test_handover_gating.py"),
+        # Tests that glob the seeded personas.
+        (_PERSONA, "tests/test_seeded_loop_caps.py"),
+        (_PERSONA, "tests/test_agent_facing_placeholders.py"),
+        # A snapshot reached through the script that renders it.
+        ("backend/app/services/hitl_whitelist_derived.py", "tests/test_hitl_whitelist_snapshots.py"),
+        # A walk of Path(app.__file__).
+        ("backend/app/agents/seed.py", "tests/test_lone_surrogate_writes.py"),
+        # Tests that walk the test files.
+        ("backend/tests/test_evaluations.py", "tests/test_evaluation_guards.py"),
+        ("backend/tests/test_evaluations.py", "tests/test_malformed_path_id_routes.py"),
+    ],
+)
+def test_a_tripwire_runs_when_what_it_guards_changes(repository, changed, guard):
+    # Each pair a review of the selection found missing (#162).
+    assert guard in select_backend([changed], repository).files
+
+
+@pytest.mark.parametrize("helper", ["frozen_clock.py", "redis_unreachable.py", "stall_guard.py"])
+def test_a_helper_conftest_applies_to_every_test_runs_the_suite(repository, helper):
+    assert select_backend([f"backend/tests/{helper}"], repository).full
+
+
+def test_the_design_system_warnings_run_every_vitest_file():
+    assert select_frontend_unit(["frontend/src/testing/design-system-warnings.ts"]).mode == "full"
+
+
+def test_the_index_maintenance_the_migration_runner_calls_runs_the_migrations_job(repository):
+    assert selection.migrations_reason(["backend/app/core/index_maintenance.py"], repository)
+
+
+def test_every_e2e_project_the_workflow_shards_is_one_the_selection_decides():
+    # A project missing from E2E_AREAS would never run in the queue, and nothing would fail.
+    workflow = yaml.safe_load((selection.REPO_ROOT / ".github" / "workflows" / "e2e.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["select"]["steps"]
+    matrix = next(step["env"]["MATRIX"] for step in steps if "MATRIX" in step.get("env", {}))
+    projects = {entry["project"] for entry in json.loads(matrix)}
+    assert projects == {"core", *selection.E2E_AREAS}
+    config = (selection.REPO_ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
+    assert projects <= set(re.findall(r"name:\s*['\"]([\w-]+)['\"]", config))
 
 
 def test_any_change_runs_the_tests_that_read_every_tracked_file(repository):

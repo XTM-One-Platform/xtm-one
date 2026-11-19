@@ -17,15 +17,24 @@ miss it: its lines run during collection, under no test. On top of the graph a
 test file runs when:
 
 - the change adds or edits it;
+- the test names the changed file as a path (``"agent_import.py"``), a module
+  as well as a data file: a tripwire reads a module's source by its path;
 - the change edits a ``.py`` file of ``app/`` and the file reads the whole
-  tree rather than importing it (``tests/app_sources.py``, a package walk);
-- the change edits any other file and the test names that file, its
-  directory or its area as a path (``frontend``, ``.github``, a data file);
+  tree rather than importing it (``tests/app_sources.py``, a package walk,
+  ``Path(app.__file__).rglob``);
+- the change adds, edits or deletes a test file and the file walks the test
+  files (``glob("test_*.py")``);
+- the change edits any other file and the test names its directory or its
+  area as a path (``frontend``, ``.github``, a data file's own directories);
 - the test lists every tracked file (``git ls-files``), whatever the change.
 
-A change to what every test runs under - a ``conftest.py``, the dependencies,
-this module, the workflow - runs the whole suite. So does a data file under
-``app/`` that no module names, and a file the graph cannot parse.
+``scripts/`` is read with ``app/`` and ``tests/``: a test that imports a script
+reaches what the script imports.
+
+A change to what every test runs under - a ``conftest.py`` and the helpers of
+``tests/`` it loads, the dependencies, this module, the workflow - runs the
+whole suite. So does a data file under ``app/`` that no module names, and a
+file the graph cannot parse.
 
 ``dev-docs/ci-test-selection.md`` holds the rules for every suite.
 """
@@ -40,7 +49,7 @@ import re
 import subprocess
 import sys
 from collections import defaultdict, deque
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -64,17 +73,25 @@ DATABASE_INPUTS = re.compile(r"^backend/(alembic/|app/models/|app/core/(database
 #: it runs only when one changes (the chain is otherwise main's, green). The models stay listed for a deletion.
 MIGRATION_INPUTS = re.compile(
     r"^(backend/alembic/|backend/app/models/"
-    r"|backend/tests/(test_migration_integrity|test_fresh_install)\.py$"
+    r"|backend/tests/(test_migration_integrity|test_fresh_install|selection)\.py$"
     r"|backend/(pyproject\.toml|uv\.lock)$"
     r"|\.github/workflows/ci\.yml$)"
 )
 
-#: Every vitest file runs under these.
+#: What the Migrations job calls besides the chain (``Prepare shared DB``, ``Idempotent re-run``).
+MIGRATION_RUNNER = "app.core.migrations"
+
+#: Every vitest file runs under these, and under what the setup files import (``setup_closure``).
 FRONTEND_UNIT_FULL_INPUTS = re.compile(
     r"^(frontend/(package\.json|yarn\.lock|\.yarnrc\.yml|vite\.config\.ts|vitest\.config\.ts|vitest\.setup\.ts"
     r"|tests_unit/setup\.ts|tsconfig[^/]*\.json|scripts/node-test-files\.mjs)"
-    r"|\.github/workflows/ci\.yml)$"
+    r"|\.github/workflows/ci\.yml|backend/tests/selection\.py)$"
 )
+
+#: The vitest setup files, from ``frontend/`` (``setupFiles`` in ``vitest.config.ts``): they run before every test.
+FRONTEND_SETUP_FILES = ("vitest.setup.ts", "tests_unit/setup.ts")
+#: A relative import of a script: ``from "./x"``, ``import "../y"``, ``import("./z")``.
+_RELATIVE_IMPORT = re.compile(r"""(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}/[^"']+)["']""")
 
 #: What a vitest run can import: the files ``vitest related`` follows.
 FRONTEND_UNIT_SOURCES = re.compile(r"^frontend/(src|tests_unit)/")
@@ -127,13 +144,19 @@ E2E_AREAS = {
 #: that runs ``APP.rglob("*.py")`` reads every module (``tests/test_egress_funnel.py``).
 _READS_THE_TREE = re.compile(r"\bapp_sources\b|pkgutil\.(walk_packages|iter_modules)|\bimport_module\(")
 _WALKS = re.compile(r"\.r?glob\(|\.iterdir\(|os\.(walk|scandir|listdir)\(")
-_NAMES_APP = re.compile(r"""["'](?:\.\./)*app/?["']|["']app/[^"'\s]*\*""")
+_NAMES_APP = re.compile(r"""["'](?:\.\./)*app/?["']|["']app/[^"'\s]*\*|\bapp\.__file__\b""")
+
+#: A test file that walks the test files (``tests_dir.glob("test_*.py")``): a new or edited test can break it.
+_READS_THE_TESTS = re.compile(r"""\.r?glob\(\s*["'](?:\*\*/)?test_""")
 
 #: A test file that lists every tracked file of the repository (``git ls-files``): any change reaches it.
 _READS_THE_REPO = re.compile(r"""["']ls-files["']""")
 
 #: A dotted name written as a string: ``"app.services.x.y"``.
-_DOTTED = re.compile(r"\b(?:app|tests)(?:\.[A-Za-z_]\w*)+")
+_DOTTED = re.compile(r"\b(?:app|scripts|tests)(?:\.[A-Za-z_]\w*)+")
+
+#: The directories of ``backend/`` the graph reads: a test imports a script as ``scripts.x``.
+GRAPH_ROOTS = ("app", "scripts", "tests")
 
 #: A package whose ``__init__`` imports its own submodules by computed name.
 _IMPORTS_ITS_SUBMODULES = re.compile(r"import_module\(\s*f[\"']\{__name__\}\.|pkgutil\.\w+\(\s*__path__")
@@ -147,8 +170,8 @@ MAX_SHARDS = {"unit": 8, "integration": 4, "chromium": 5, "frontend-unit": 3}
 
 
 def module_name(path: str) -> str | None:
-    """``app/a/b.py`` -> ``app.a.b``, ``app/a/__init__.py`` -> ``app.a``; ``None`` outside ``app`` and ``tests``."""
-    if not path.endswith(".py") or not path.startswith(("app/", "tests/")):
+    """``app/a/b.py`` -> ``app.a.b``, ``app/a/__init__.py`` -> ``app.a``; ``None`` outside ``GRAPH_ROOTS``."""
+    if not path.endswith(".py") or not path.startswith(tuple(f"{root}/" for root in GRAPH_ROOTS)):
         return None
     parts = path[:-3].split("/")
     if parts[-1] == "__init__":
@@ -228,7 +251,7 @@ def _reverse(edges: Mapping[str, set[str]]) -> dict[str, set[str]]:
 
 @dataclass
 class Graph:
-    """Every ``.py`` file of ``app/`` and ``tests/``: its source and the modules it reaches directly."""
+    """Every ``.py`` file of ``GRAPH_ROOTS``: its source and the modules it reaches directly."""
 
     sources: dict[str, str]
     #: module name -> path from the backend root.
@@ -245,7 +268,7 @@ class Graph:
     @classmethod
     def read(cls, backend: Path = BACKEND_DIR) -> Graph:
         sources: dict[str, str] = {}
-        for top in ("app", "tests"):
+        for top in GRAPH_ROOTS:
             for path in sorted((backend / top).rglob("*.py")):
                 if "__pycache__" not in path.parts:
                     sources[path.relative_to(backend).as_posix()] = path.read_text(encoding="utf-8", errors="replace")
@@ -351,16 +374,41 @@ class Graph:
     def test_files(self) -> list[str]:
         return [path for path in self.sources if is_test_file(path)]
 
-    @cached_property
-    def tree_readers(self) -> set[str]:
-        """The test files that read the whole of ``app/``, themselves or through a helper of ``tests/``."""
+    def _readers(self, reads: Callable[[str], bool]) -> set[str]:
+        """The test files whose source ``reads``, themselves or through a helper of ``tests/``."""
         helpers = {
             name
             for path, source in self.sources.items()
-            if path.startswith("tests/") and not is_test_file(path) and _reads_the_tree(source)
+            if path.startswith("tests/") and not is_test_file(path) and reads(source)
             if (name := module_name(path)) is not None
         }
-        return {path for path in self.test_files if _reads_the_tree(self.sources[path]) or self.reaches[path] & helpers}
+        return {path for path in self.test_files if reads(self.sources[path]) or self.reaches[path] & helpers}
+
+    @cached_property
+    def tree_readers(self) -> set[str]:
+        """The test files that read the whole of ``app/``."""
+        return self._readers(_reads_the_tree)
+
+    @cached_property
+    def test_readers(self) -> set[str]:
+        """The test files that walk the test files (``tests/test_evaluation_guards.py``)."""
+        return self._readers(lambda source: bool(_READS_THE_TESTS.search(source)))
+
+    @cached_property
+    def runs_under_every_test(self) -> set[str]:
+        """Every ``conftest.py`` and the helpers of ``tests/`` it loads, at any depth (``tests/frozen_clock.py``).
+
+        An autouse fixture applies a helper to every test, and a test that
+        depends on it (the frozen instant) does not import it.
+        """
+        stack = [path for path in self.sources if path.startswith("tests/") and Path(path).name == "conftest.py"]
+        seen: set[str] = set()
+        while stack:
+            path = stack.pop()
+            if path not in seen:
+                seen.add(path)
+                stack.extend(self.modules[name] for name in self.reaches[path] if name.startswith("tests."))
+        return seen
 
     @cached_property
     def repo_readers(self) -> set[str]:
@@ -449,6 +497,23 @@ def _data_readers(path: str, graph: Graph) -> set[str] | None:
     return readers or None
 
 
+def _data_folders(path: str, graph: Graph) -> list[str]:
+    """The directories of a data file under ``app/`` (from the backend root) that a test globbing it names.
+
+    Its own directory and those above it, up to the package holding them:
+    ``seed_data/agent_persona/x.md`` gives ``agent_persona`` and ``seed_data``,
+    which ``tests/test_seeded_loop_caps.py`` globs. A file beside a package's
+    modules gives none: a package's name (``services``) is too common a word,
+    and a test reading that file names the file.
+    """
+    folders: list[str] = []
+    for directory in Path(path).parents:
+        if directory.as_posix() in {"app", "."} or module_name(f"{directory.as_posix()}/__init__.py") in graph.modules:
+            break
+        folders.append(directory.name)
+    return folders
+
+
 def select_backend(changed: Iterable[str], graph: Graph) -> Selection:
     """The backend test files ``changed`` (paths from the repository root) can break."""
     selection = Selection()
@@ -458,14 +523,18 @@ def select_backend(changed: Iterable[str], graph: Graph) -> Selection:
     seeds: set[str] = set()
     app_python_changed = False
     for repo_path in sorted(set(changed)):
-        if BACKEND_FULL_INPUTS.search(repo_path):
+        path = repo_path.removeprefix("backend/")
+        if BACKEND_FULL_INPUTS.search(repo_path) or (
+            repo_path.startswith("backend/") and path in graph.runs_under_every_test
+        ):
             selection.full = f"{repo_path} runs under every test"
             return selection
         if DATABASE_INPUTS.search(repo_path):
             selection.full_suites.setdefault("integration", f"{repo_path} builds the database")
         name = Path(repo_path).name
-        path = repo_path.removeprefix("backend/")
         own = module_name(path) if repo_path.startswith("backend/") else None
+        # A tripwire reads a module's source by its path, as a test reads a data file.
+        selection.add(graph.tests_naming(name), f"names {name}")
         if own is not None:
             seeds.add(own)
             if own not in graph.modules:
@@ -473,17 +542,20 @@ def select_backend(changed: Iterable[str], graph: Graph) -> Selection:
                 importers = graph.naming_module(own)
                 selection.add((p for p in importers if is_test_file(p)), f"imports {own}, which the change deletes")
                 seeds.update(importer for p in importers if (importer := module_name(p)) is not None)
-            if is_test_file(path) and path in graph.sources:
-                selection.add([path], "changed")
+            if is_test_file(path):
+                if path in graph.sources:
+                    selection.add([path], "changed")
+                selection.add(graph.test_readers, f"walks the test files ({repo_path})")
             app_python_changed |= path.startswith("app/")
             continue
-        selection.add(graph.tests_naming(name), f"names {name}")
         if repo_path.startswith("backend/app/"):
             readers = _data_readers(path, graph)
             if readers is None:
                 selection.full = f"{repo_path} is read by no module that names it"
                 return selection
             seeds |= readers
+            for folder in _data_folders(path, graph):
+                selection.add(graph.tests_naming(folder), f"reads {folder}/ ({repo_path})")
         elif repo_path.startswith("backend/tests/"):
             folder = Path(path).parent.name
             selection.add(graph.tests_naming(folder), f"reads {folder}/ ({repo_path})")
@@ -522,11 +594,41 @@ def _path_words(source: str) -> set[str]:
     return path_pieces(" ".join(words))
 
 
+def _resolve_script(importer: Path, spec: str) -> Path | None:
+    """The file a relative import of ``importer`` loads: ``./x`` -> ``x.ts``, ``x.tsx``, ``x/index.ts``..."""
+    base = (importer.parent / spec).resolve()
+    candidates = [base, *(base.with_name(base.name + suffix) for suffix in _SCRIPT_SUFFIXES)]
+    candidates += [base / f"index{suffix}" for suffix in _SCRIPT_SUFFIXES]
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def setup_closure(frontend: Path = REPO_ROOT / "frontend") -> set[str]:
+    """The setup files and every file of the repository they import, at any depth: they run before every test.
+
+    ``vitest related`` follows the spec files' imports, not the setup files':
+    ``src/testing/design-system-warnings.ts`` installs hooks on every test.
+    Paths from the repository root.
+    """
+    root = frontend.resolve().parent
+    stack = [frontend.resolve() / name for name in FRONTEND_SETUP_FILES]
+    seen: set[Path] = set()
+    while stack:
+        file = stack.pop()
+        if file in seen or not file.is_file():
+            continue
+        seen.add(file)
+        for spec in _RELATIVE_IMPORT.findall(file.read_text(encoding="utf-8", errors="replace")):
+            if (target := _resolve_script(file, spec)) is not None:
+                stack.append(target)
+    return {path.relative_to(root).as_posix() for path in seen if path.is_relative_to(root)}
+
+
 def select_frontend_unit(changed: Iterable[str], frontend: Path = REPO_ROOT / "frontend") -> FrontendUnit:
     """What the vitest jobs run for ``changed`` (paths from the repository root)."""
     changed = sorted(set(changed))
+    under_every_test = setup_closure(frontend)
     for path in changed:
-        if FRONTEND_UNIT_FULL_INPUTS.search(path):
+        if FRONTEND_UNIT_FULL_INPUTS.search(path) or path in under_every_test:
             return FrontendUnit("full", f"{path} runs under every test")
     related = {path.removeprefix("frontend/") for path in changed if FRONTEND_UNIT_SOURCES.search(path)}
     # A reader names a file by its name or its directory; one that lists a directory reads the whole area it
@@ -598,9 +700,12 @@ def migration_chain_modules(graph: Graph, alembic: Path = BACKEND_DIR / "alembic
     """The ``app`` modules the migration chain runs: what ``alembic/`` imports, anywhere in a file, and what those load.
 
     A migration body imports its helpers inside ``upgrade()`` (``app.core.migration_ddl``
-    in most of them), so every import of the chain counts, as a test's does.
+    in most of them), so every import of the chain counts, as a test's does. The
+    job also calls ``app.core.migrations.run_migrations()`` itself, whose functions
+    import what the boot runs after the chain (``app.core.index_maintenance``).
     """
-    stack: list[str] = []
+    runner = graph.modules.get(MIGRATION_RUNNER)
+    stack: list[str] = [MIGRATION_RUNNER, *graph.reaches_later.get(runner, ())] if runner else []
     for path in sorted(alembic.rglob("*.py")):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -716,7 +821,7 @@ def run_ci(changed: list[str] | None, full_because: str | None, outdir: Path) ->
             (
                 f"{p} changes the frontend"
                 for p in changed
-                if p.startswith("frontend/") or p == ".github/workflows/ci.yml"
+                if p.startswith("frontend/") or p in {".github/workflows/ci.yml", "backend/tests/selection.py"}
             ),
             None,
         )
