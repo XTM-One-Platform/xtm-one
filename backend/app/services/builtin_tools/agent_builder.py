@@ -2373,6 +2373,8 @@ _FEATURE_GATED_BUILTIN_TOOL_IDS: dict[str, FeatureFlag] = {
     "custom_dashboards": "DASHBOARD_STUDIO",
     "phone": "MOBILE_COMPANION",
     "deep_investigation": "DEEP_INVESTIGATION",
+    # Every Concierge group (the memory steward, the fleet's tools): dark with its flag.
+    **{group.id: "CONCIERGE" for group in BUILTIN_TOOL_GROUPS if group.gate == "concierge"},
 }
 
 
@@ -2503,6 +2505,71 @@ async def _load_manageable_entity_for_builder(
             f"You don't have permission to {action} this {entity_label}."
         )
     return entity, None
+
+
+# The sections get_agent can be narrowed to, keyed by the heading that opens
+# each block of its answer (#277). The identity block (name, id, slug, the
+# created/updated stamps) is always kept so a projected read still names its
+# agent; every other block is dropped unless asked for.
+GET_AGENT_SECTIONS: dict[str, tuple[str, ...]] = {
+    "behavior": ("Behavior:",),
+    "model": ("Model:",),
+    "tools": ("Tools & resources:",),
+    "handover": ("Handover:",),
+    "memory": ("Memory:",),
+    "human_in_the_loop": ("Human-in-the-loop:", "Human-in-the-loop prompt (full):"),
+    "channels": ("Channels & web:",),
+    "sharing": ("Visibility & sharing:",),
+    "guardrails": ("Guardrails (full):",),
+    "intents": ("Intent bindings:",),
+    "persona": ("Persona (full):",),
+}
+
+
+def parse_get_agent_sections(sections: object) -> tuple[set[str] | None, str | None]:
+    """Read get_agent's ``sections`` argument: ``(None, None)`` for the whole
+    answer, the set of names asked for, or a refusal naming the valid ones."""
+    if sections is None or sections == "" or sections == []:
+        return None, None
+    if isinstance(sections, str):
+        names = [s.strip() for s in sections.split(",")]
+    elif isinstance(sections, list) and all(isinstance(s, str) for s in sections):
+        names = [s.strip() for s in sections]
+    else:
+        return None, "sections must be a list of section names."
+    wanted = {n.lower() for n in names if n}
+    unknown = sorted(wanted - set(GET_AGENT_SECTIONS))
+    if unknown:
+        return None, (
+            f"Unknown get_agent section(s): {', '.join(unknown)}. "
+            f"Valid sections: {', '.join(GET_AGENT_SECTIONS)} (the identity block is always shown)."
+        )
+    return wanted or None, None
+
+
+def project_get_agent_sections(parts: list[str], wanted: set[str] | None) -> list[str]:
+    """Keep the identity block and the blocks of ``wanted`` from get_agent's
+    answer lines; blocks are separated by an empty line and opened by their
+    heading (a multi-line value such as the persona is one element)."""
+    if wanted is None:
+        return parts
+    heading_to_section = {h: name for name, heads in GET_AGENT_SECTIONS.items() for h in heads}
+    blocks: list[list[str]] = [[]]
+    for line in parts:
+        if line == "":
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+    kept: list[str] = []
+    for block in blocks:
+        if not block:
+            continue
+        section = heading_to_section.get(block[0])
+        if section is None or section in wanted:
+            if kept:
+                kept.append("")
+            kept.extend(block)
+    return kept
 
 
 def build_agent_builder_tool(
@@ -4462,7 +4529,7 @@ def build_agent_builder_tool(
 
     # ── get_agent ─────────────────────────────────────────────────────
 
-    async def _get_agent(agent_id: str) -> str:
+    async def _get_agent(agent_id: str, sections: list[str] | str | None = None) -> str:
         from sqlalchemy import func, select
 
         from app.api.v1.helpers import caller_visible_filter, get_user_group_ids
@@ -4480,6 +4547,9 @@ def build_agent_builder_tool(
         agent_uuid, id_err = await _id_arg(agent_id, "agent_id")
         if id_err:
             return id_err
+        wanted_sections, sections_err = parse_get_agent_sections(sections)
+        if sections_err:
+            return sections_err
 
         try:
             uid = uuid.UUID(user_id)
@@ -4933,7 +5003,7 @@ def build_agent_builder_tool(
             parts.append("")
             parts.append("Persona (full):")
             parts.append(agent.persona or "None")
-            return "\n".join(parts)
+            return "\n".join(project_get_agent_sections(parts, wanted_sections))
 
     # ── list_groups ───────────────────────────────────────────────────
 
@@ -7091,13 +7161,19 @@ def build_agent_builder_tool(
             if _config_versions and not _configuring_new:
                 _version_audit["config_field_versions"] = _config_versions
 
-            # The entry the REST update writes, naming the switch and the
-            # versions it recorded; an edit that only versioned values gets
-            # an entry of its own.
+            # The entry the REST update writes on every edit, naming the fields
+            # changed, the switch and the versions it recorded: an unversioned
+            # edit (description, bindings, flags) is audited too. A per-user
+            # share change has its own sharing row below, never counted twice.
+            _audit_fields = (
+                []
+                if _configuring_new
+                else sorted({label for label in updated if not (label == "users" and _share_audit)})
+            )
             _update_caller = _cipt_caller
-            if _update_caller is None and _version_audit:
+            if _update_caller is None and (_version_audit or _audit_fields):
                 _update_caller = await _load_caller_user_for_builder(_db, uid)
-            if _update_caller is not None and (_cipt_caller is not None or _version_audit):
+            if _update_caller is not None and (_cipt_caller is not None or _version_audit or _audit_fields):
                 from app.services.audit import log_audit
 
                 await log_audit(
@@ -7105,17 +7181,18 @@ def build_agent_builder_tool(
                     user=_update_caller,
                     action="update",
                     entity_type="agent",
-                    entity_id=agent.id,
+                    entity_id=getattr(agent, "id", None),
                     entity_name=agent.name,
                     summary=f"Updated agent '{agent.name}'",
                     details={
-                        "slug": agent.slug,
+                        "slug": getattr(agent, "slug", None),
                         **(
                             {"catalog_include_personal_tools": _cipt_val}
                             if _cipt_caller is not None
                             else {}
                         ),
                         **_version_audit,
+                        **({"fields": _audit_fields} if _audit_fields else {}),
                         "via": "agent",
                     },
                 )
@@ -13473,14 +13550,10 @@ def build_agent_builder_tool(
         ToolDefinition(
             name="get_agent",
             description=(
-                f"Get the COMPLETE configuration of an agent in the "
-                f"{_platform_label()} platform, every editable option: identity, "
-                "persona and guardrails, behavior, model settings, tools and "
-                "resources (integration bindings as 'provider:id' pairs with "
-                "names, built-in tools, deny list, scoping, prompts, skills), "
-                "handover, memory, human-in-the-loop, channels and web, and "
-                "sharing (groups and people with their access level). Read it "
-                "BEFORE editing one option, and to answer who can use the agent."
+                f"Get an agent's configuration in the {_platform_label()} platform, "
+                "every editable option (bindings as 'provider:id' with names, "
+                "scoping, prompts, skills, handover, memory, channels, sharing, "
+                "persona). Read it BEFORE editing one option."
             ),
             input_schema={
                 "type": "object",
@@ -13488,6 +13561,14 @@ def build_agent_builder_tool(
                     "agent_id": {
                         "type": "string",
                         "description": "The UUID of the agent to retrieve",
+                    },
+                    "sections": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only these, identity always shown (default all): behavior, model, tools, "
+                            "handover, memory, human_in_the_loop, channels, sharing, guardrails, intents, persona"
+                        ),
                     },
                 },
                 "required": ["agent_id"],
@@ -16172,7 +16253,7 @@ def build_agent_builder_tool(
         executor.register(tool_name, handler)
     definitions.extend(intent_defs)
 
-    # A Platform Health run reads the platform here, never changes it (#8255).
-    from app.services.health.sandbox.guards import guard_agent_builder
+    # A Concierge run reads the platform here, never changes it (#8255).
+    from app.services.concierge.sandbox.guards import guard_agent_builder
 
     return guard_agent_builder(definitions, executor), executor

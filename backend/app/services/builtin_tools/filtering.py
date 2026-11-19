@@ -389,22 +389,25 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         "deep_investigation",
         # The grounded STIX extraction: its own group, for agents built to extract.
         "stix_extractor",
-        # Platform Health's sandbox acts for its fleet agents, never on the General Assistant (#8255).
+        # The Concierge's sandbox acts for its fleet agents, never on the General Assistant (#8255).
         "concierge_sandbox",
         "improvement_proposals",
         "concierge_evaluation",
         # The Quality Analyst and the Experimenter (#8259).
         "concierge_diagnosis",
         "concierge_experiments",
-        # The Platform Health's memory consolidation (#8258): only its own
+        # The Platform Concierge's memory consolidation (#8258): only its own
         # fleet agent carries it, never a chat session or the assistant.
         "memory_steward",
-        # Platform Health's Flow Lab (#8260).
+        # The Concierge's Flow Lab (#8260).
         "flow_lab",
         "concierge_orchestrator",
         # The write side of the organization profile (#11594): bound to an
         # agent by an administrator, wired for an administrator's turn alone.
         "organization_context",
+        # User and group administration: the same, bound by an administrator
+        # and wired for an administrator's turn alone.
+        "user_admin",
     }
 )
 
