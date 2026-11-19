@@ -25,6 +25,7 @@ function buildQuery(query: RepositoryFilesQuery): string {
   if (query.vis) params.set("vis", query.vis);
   if (query.conversation_id) params.set("conversation_id", query.conversation_id);
   if (query.assignment_run_id) params.set("assignment_run_id", query.assignment_run_id);
+  if (query.status) params.set("status", query.status);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

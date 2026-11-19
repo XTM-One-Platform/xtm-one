@@ -588,6 +588,11 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # The Video Studio render retention: an administrator setting how many
     # days renders are kept. Database only - a stored policy, no model call.
     "save_render_retention",
+    # Settings > Storage & retention: how many days each category of stored
+    # file is kept, and its dry run (counts what the next sweep would delete,
+    # writes nothing). Database only - a stored policy, no model call.
+    "save_file_retention",
+    "preview_file_retention",
     # The departments LLM analytics roll usage up to (Settings >
     # Organization > Departments): the mapping, the directory departments of an
     # HR import and the request to resolve the stored usage again. Database

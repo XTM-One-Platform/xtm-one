@@ -343,6 +343,15 @@ def test_a_bad_pattern_is_refused_with_the_reason():
         reading.compile_pattern("")
 
 
+def test_a_global_flag_written_mid_pattern_applies_to_the_whole_pattern():
+    regex = reading.compile_pattern(r"error|(?i)warning")
+    assert regex.search("WARNING: disk") and regex.search("ERROR")
+    assert reading.compile_pattern(r"a(?i:b)c").search("aBc")
+    assert not reading.compile_pattern(r"\(?i\)x").search("X")
+    with pytest.raises(reading.PatternError, match="ignore_case=true"):
+        reading.compile_pattern(r"x(?au)y")
+
+
 def test_selection_skips_installed_packages_and_honours_globs():
     assert reading.selected("src/a.py", "", [])
     assert not reading.selected(".venv/site-packages/x.py", "", [])

@@ -24,7 +24,7 @@ export type OrganizationSubsection = "profile" | "departments" | "units" | "rate
 export type AutomationsSection = "fleets" | "ctem-agents" | "agent-runs" | "quality" | "health";
 export type IntegrationsSettingsSection = "catalog" | "oauth" | "channels" | "mcp";
 export type AiSection = "models" | "media" | "assistant" | "knowledge";
-export type UsageSection = "quotas" | "observability" | "pricing";
+export type UsageSection = "quotas" | "observability" | "pricing" | "storage";
 
 /** The Platform Health settings: the Platform Health page links here (#9301 N4, renamed #101 S1). */
 export const HEALTH_SETTINGS_PATH = "/settings/automations/health";

@@ -1280,6 +1280,19 @@ async def _cleanup_check_files(db: AsyncSession) -> int:
     return await check_files.sweep(db)
 
 
+async def _cleanup_retained_files(db: AsyncSession) -> int:
+    """Delete the stored files past their category's retention (Settings > Storage & retention).
+
+    The agent's scratch and delivered files go 60 days after their last use by
+    default; a file a live object still names is kept, and a deleted one stays
+    as a tombstone (``services/file_retention.py``). Returns how many files.
+    """
+    from app.services import file_retention
+
+    report = await file_retention.sweep(db)
+    return sum(int(tally.get("files", 0)) for tally in report.values())
+
+
 async def _cleanup_kb_figure_sources(db: AsyncSession) -> int:
     """Delete the PDFs kept for a knowledge-base figure pass that no pass will read.
 
@@ -2459,6 +2472,17 @@ async def _run_autonomous_tick_inner() -> int:
                     )
             except Exception as e:
                 logger.error("Check file retention error: %s", format_exception_message(e), exc_info=True)
+                await db.rollback()
+            try:
+                swept_files = await _cleanup_retained_files(db)
+                if swept_files:
+                    logger.info(
+                        "File retention: deleted the bytes of %d file%s past their retention",
+                        swept_files,
+                        "" if swept_files == 1 else "s",
+                    )
+            except Exception as e:
+                logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
             try:
                 swept_work = await _cleanup_stored_video_work()

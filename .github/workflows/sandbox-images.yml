@@ -106,50 +106,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # PR, merge group and push runs only. setup-buildx makes a docker-container builder,
-      # whose plain `docker build` would not load the image; the weekly and
-      # manual runs use the default driver with no cache.
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-
-      # Keyed per-tag: each matrix entry is its own runner/cache slot, so a
-      # change to e.g. requirements.sandbox.malware.txt only busts that one
-      # tag's cache, not the whole matrix's.
-      # Not on the weekly or manual run: a restored cache reuses the apt and uv
-      # layers while the pinned base is unchanged, so the run would not test
-      # what a fresh build produces, and would fill the repository's cache quota.
-      # A tag's layers run to a gigabyte: keyed on the sandbox's own files, an
-      # unchanged sandbox saves nothing new, and only main saves (a pull
-      # request's entry is readable by that pull request alone) - each set
-      # saved past the quota evicts the oldest-used caches of every workflow.
-      - name: Restore Docker layer cache
-        id: layer-cache
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ matrix.image }}--${{ hashFiles('backend/sandbox/**') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-${{ matrix.image }}--
-
+      # No layer cache: a tag's layers run to a gigabyte, the six tags filled
+      # most of the repository's 10 GB cache quota and evicted the E2E image's
+      # layers, while a cold build takes about two minutes (as long as the
+      # longest cached one) and runs only when backend/sandbox/ changes.
       - name: Build image
         working-directory: backend/sandbox
-        env:
-          BUILDX_CACHE_DIR: ${{ (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') && '/tmp/.buildx-cache' || '' }}
         run: ./build-image.sh "${{ matrix.image }}:ci"
-
-      - name: Move cache
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-
-      - name: Save Docker layer cache
-        if: github.event_name == 'push' && steps.layer-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ matrix.image }}--${{ hashFiles('backend/sandbox/**') }}
 
       # Every check below runs through the image's own python3, not shell
       # utilities: final-minimal (distroless) has no shell/coreutils at all,

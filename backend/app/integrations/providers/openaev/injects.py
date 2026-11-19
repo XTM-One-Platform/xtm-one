@@ -23,6 +23,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 from ._common import (
     _api,
     _fmt_expectation_results_by_type,
+    _inject_row_executed,
     _search_body,
     inject_read_answer,
     inject_targets_line,
@@ -336,7 +337,8 @@ def register(
                 )
                 blocks.append(
                     _fmt_expectation_results_by_type(
-                        row.get("inject_expectation_results") or []
+                        row.get("inject_expectation_results") or [],
+                        executed=_inject_row_executed(row),
                     )
                 )
             return "\n".join(blocks)

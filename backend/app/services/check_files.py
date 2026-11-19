@@ -46,9 +46,13 @@ def retention_days() -> int:
     return int(getattr(settings, "agent_check_file_retention_days", 0) or 0)
 
 
-def cutoff(*, now: datetime | None = None) -> datetime | None:
-    """The creation time before which a check file is deleted; ``None`` when they are kept forever."""
-    days = retention_days()
+def cutoff(*, now: datetime | None = None, days: int | None = None) -> datetime | None:
+    """The creation time before which a check file is deleted; ``None`` when they are kept forever.
+
+    *days* is the value Settings > Storage & retention holds
+    (``file_retention.days_for``); without it, the environment value.
+    """
+    days = retention_days() if days is None else days
     if days <= 0:
         return None
     return (now or datetime.now(UTC)) - timedelta(days=days)
@@ -57,9 +61,10 @@ def cutoff(*, now: datetime | None = None) -> datetime | None:
 async def expired_ids(db: AsyncSession, *, now: datetime | None = None, batch: int = SWEEP_BATCH) -> list[str]:
     """The ids of the check files past retention that no video uses, oldest first, at most *batch*."""
     from app.models.file_attachment import FileAttachment
+    from app.services.file_retention import days_for
     from app.services.video_studio.retention import files_in_use
 
-    before = cutoff(now=now)
+    before = cutoff(now=now, days=await days_for(db, AGENT_CHECK_FILE_SOURCE))
     if before is None:
         return []
     ids = [
