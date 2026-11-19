@@ -12,7 +12,7 @@ EN = '{\n  "Save": "Save",\n  "Cancel": "Cancel"\n}\n'
 FR = '{\n  "Save": "Enregistrer",\n  "Cancel": "Annuler"\n}\n'
 
 
-def _by_path(changes):
+def _by_path(changes: list[jsonkeys.FileChange]) -> dict[str, jsonkeys.FileChange]:
     return {c.path: c for c in changes}
 
 
@@ -148,6 +148,17 @@ def test_bad_requests_are_refused():
         jsonkeys.change_keys({"en.json": EN}, remove="Save")
     with pytest.raises(jsonkeys.JsonKeysError, match="french_spacing"):
         jsonkeys.change_keys({"en.json": EN}, set_keys={"*": {"k": "v"}}, french_spacing="auto")
+
+
+def test_the_key_cap_is_per_file_not_per_call() -> None:
+    texts = {f"{lang}.json": EN for lang in ("en", "fr", "es", "ja", "de", "it", "ko", "zh", "ru")}
+    sets = {path: {f"k{i}": f"{path} {i}" for i in range(83)} for path in texts}
+    out = _by_path(jsonkeys.change_keys(texts, set_keys=sets))
+    assert len(out) == 9
+    assert json.loads(out["ja.json"].text)["k82"] == "ja.json 82"
+    heavy = {"fr.json": {f"k{i}": "v" for i in range(400)}, "*": {f"s{i}": "v" for i in range(101)}}
+    with pytest.raises(jsonkeys.JsonKeysError, match=r"501 keys named for fr\.json, at most 500 per file"):
+        jsonkeys.change_keys({"en.json": EN, "fr.json": EN}, set_keys=heavy)
 
 
 PLURAL = "{count, plural, one {# action : {names}} other {# actions : {names}}}"
