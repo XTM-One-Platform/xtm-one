@@ -184,6 +184,8 @@ A request still running when a normal server restart stops waiting for it stores
 
 A request that ended before storing its answer, or whose agent failed, leaves its tool work to the next message of the conversation, streamed or over REST: the tool calls it made and their results reach the agent before that message, so it continues instead of calling the same tools again. This holds for 24 hours.
 
+After a `done`, the stream that ran the request may send one `reply_suggestion` frame before it closes: `{"type": "reply_suggestion", "conversation_id": ..., "message_id": ..., "text": ...}`, the message the user would likely send next, for the answer `message_id` names. It comes only when your administrator enabled reply suggestions and set a routing model, and not for every answer. It is a suggestion to show, never something the platform sends on its own; ignore it if your client has no use for it.
+
 A stopped request can end with two `cancelled` frames on the stream that runs it: the acknowledgement of the stop, then, once the stop is stored, a second one carrying `message_id`. In the same way, a request whose agent failed can end with an `error` (without `reason`), then, once that reply is stored, a `done` carrying `message_id`. Both frames mean the request is over; the second one says what to read back.
 
 !!! tip "Keep a safety check"
