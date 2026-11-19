@@ -4056,6 +4056,8 @@
 <h3 id="import-sources">Import Sources</h3>
 <p><code>Import Sources</code> manages automatic sync (website, Notion, OneDrive/SharePoint, Google Drive, GitHub, and more). It shows each source's schedule and last-sync status, so it is useful both for setup and for answering "why isn't the knowledge base up to date?". Some source types require a connected integration first; when that is missing, the option stays visible but disabled and the UI explains what is needed.</p>
 <p>A knowledge base can hold several sources of the same type, for example two Notion pages or two repositories. Each sync replaces and removes only the documents its own source imported, so the sources add up rather than replace each other, and <code>Force re-sync</code> purges only that source's documents and the documents of its type that belong to no source. A page or file two sources both reach is stored once. Documents synced before this rule existed belong to no source yet: the next sync of each source takes over the ones it finds, and may still remove the ones another source of the same type has not taken over yet, which that source imports again at its own next sync. After every source has synced once, they no longer touch each other's documents.</p>
+<p>A OneDrive / SharePoint source can read several whole folders and leave some out. Its configuration holds <code>folder_paths</code>, the folders it reads (each like <code>Folder path</code>, new files picked up at every sync), and <code>exclude</code>, what it never reads: a folder or file name matched at any depth (<code>XX. Archives</code> leaves out every folder of that name and all it holds), a path from the top of the drive, or a pattern with <code>*</code> and <code>?</code>, case ignored. An excluded folder is never opened and an excluded file never imported, and a document imported before the exclusion is removed at the next sync.</p>
+<p>Agents manage the same settings with three tools of the platform group: <code>get_knowledge_base_sources</code> lists a knowledge base's sources with their scope, schedule and last sync; <code>update_knowledge_base_source</code> sets the folders, exclusions and subfolder setting of a OneDrive / SharePoint source; <code>resync_knowledge_base</code> starts a sync of one source or of every enabled one, and with <code>full</code> purges each source's documents first like <code>Force re-sync</code>. They follow the rules of this tab: anyone who can open the knowledge base reads its sources, and only the people who can manage it (administrators for a company-managed one) change a source or start a sync.</p>
 <p>When you choose a specific integration for a source, you can only choose one you can see. The source then syncs with that integration every time, on its schedule or with <code>Sync now</code>, whoever starts it. If the person the source syncs for (whoever set it up, else the knowledge base's owner) later loses access to that integration - it is no longer shared with them, or <code>Restrict access</code> leaves them out - the source keeps syncing with it, and the security audit lists the source so that an administrator can share the integration with them or have the source use another one.</p>
 <p>When a sync fails, the full error is shown only to the people who can manage the knowledge base: its owner, the people it is shared with who may configure it, and administrators (only administrators for a company-managed knowledge base). That text is what fixing the source takes, and it can name internal hosts, addresses or paths. Everyone else who can open the knowledge base sees a short, fixed description instead - for example <code>The sync timed out.</code> or <code>The source was disabled after repeated failed syncs.</code> - followed by a note that people who can manage the knowledge base can see the details. The full error is always kept, and the server log records it with the knowledge base and source ids.</p>
 <h3 id="configuration">Configuration</h3>
@@ -4107,7 +4109,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 19, 2026 17:12:11 UTC"><span class="timeago" datetime="2026-11-19T17:12:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 19, 2026 17:12:11 UTC">2026-11-19</span>
   </span>
 
     
@@ -4134,6 +4136,11 @@
 
     
     <nav>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
       
         <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
           
