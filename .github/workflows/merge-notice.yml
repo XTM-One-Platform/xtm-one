@@ -1,0 +1,49 @@
+name: Merge notice
+
+# Hands every push to main to XTM-One-Platform/release (merge-notice.yml),
+# which posts the pull requests it merged to the team's Teams channel with who
+# merged them. The merge queue pushes to main as github-merge-queue[bot], so
+# the GitHub app's commits feed names the bot; the pull request's merged_by
+# still names the person who added it to the queue. The Teams webhook is a
+# secret of the release repository: this one keeps none.
+#
+# Apart from Deploy on purpose: it dispatches at once, without waiting for
+# Deploy's checks, and has no concurrency group, so a burst of merges never
+# replaces a pending run and skips a push. The push's old and new head are
+# all it sends: release reads the rest from GitHub and checks both.
+#
+# The only credential is the release GitHub App, in the deploy-trigger
+# environment (main and release tags only), as in deploy.yml.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch the merge notice
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    environment: deploy-trigger
+    steps:
+      - name: Token of the release App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: XTM-One-Platform
+          repositories: release
+          permission-actions: write
+
+      - name: Dispatch
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          gh workflow run merge-notice.yml --repo XTM-One-Platform/release --ref main \
+            -f before="$BEFORE" -f after="$AFTER"
+          echo "Merge notice of $BEFORE..$AFTER dispatched to XTM-One-Platform/release" >> "$GITHUB_STEP_SUMMARY"
