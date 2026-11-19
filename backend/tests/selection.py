@@ -161,9 +161,10 @@ GRAPH_ROOTS = ("app", "scripts", "tests")
 #: A package whose ``__init__`` imports its own submodules by computed name.
 _IMPORTS_ITS_SUBMODULES = re.compile(r"import_module\(\s*f[\"']\{__name__\}\.|pkgutil\.\w+\(\s*__path__")
 
-#: Worker-seconds of unit tests one shard takes on: four xdist workers, about six minutes of tests
-#: (a sixth of the table, 1750 s, ran in five to seven on 18 Nov 2026), next to about 2.5 of setup.
-UNIT_SECONDS_PER_SHARD = 1400.0
+#: Worker-seconds of unit tests one shard takes on, by ``shard_durations.json``: an eighth of the table
+#: (about 1080 s) ran in 4.7 to 5.8 minutes, setup included, on 19 Nov 2026 (run 44534423144); the whole
+#: suite keeps its eight shards.
+UNIT_SECONDS_PER_SHARD = 1050.0
 #: At most this many shards a suite takes, whole or selected. The Browser tool runs its tests one at a
 #: time, about half an hour of them, and a shard's setup takes about a minute: five keep it under ten.
 MAX_SHARDS = {"unit": 8, "integration": 4, "chromium": 5, "frontend-unit": 3}

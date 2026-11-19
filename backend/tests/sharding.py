@@ -26,7 +26,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 #: Seconds of one worker each test file took on CI (files of 2 s and more), read
-#: from the per-test timestamps of the six unit shards of run 42647558487.
+#: from the JUnit reports of the eight unit shards of run 44534423144
+#: (scripts/refresh_shard_durations.py).
 DURATIONS_PATH = Path(__file__).with_name("shard_durations.json")
 
 #: What a file the table does not name weighs: the median file takes under a second.
