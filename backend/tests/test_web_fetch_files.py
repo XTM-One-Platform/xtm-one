@@ -613,3 +613,46 @@ def test_the_description_says_every_response_is_kept_as_a_file():
     description = next(d for d in definitions if d.name == "web_fetch").description
     assert "Every response is also kept as a file" in description
     assert "file_id" in description and "[[FILE:...]]" in description
+
+
+# ── sanitize: a fetched page kept as a clean fixture (#298) ──────────────────
+
+_ACTIVE_PAGE = (
+    b"<html><head><title>Fixture</title><link rel='stylesheet' href='/a.css'>"
+    b"<style>p{color:red}</style><script>alert(1)</script></head>"
+    b"<body onload='x()'><h1>Heading</h1><p onclick='y()'>Body text stays.</p>"
+    b"<img src='/a.png'><svg><circle r='1'/></svg><iframe src='/f'></iframe></body></html>"
+)
+
+
+def test_sanitize_html_drops_active_and_media_elements_and_keeps_the_text():
+    from app.services.web_fetch import sanitize_html
+
+    clean = sanitize_html(_ACTIVE_PAGE).decode()
+    for gone in ("<script", "<style", "<link", "<img", "<svg", "<iframe", "onload", "onclick", "alert(1)"):
+        assert gone not in clean, gone
+    assert "<h1>Heading</h1>" in clean and "Body text stays." in clean and "<title>Fixture</title>" in clean
+
+
+@pytest.mark.asyncio
+async def test_a_sanitized_fetch_keeps_the_clean_page_and_reads_the_same_text(web, store):
+    import hashlib
+
+    from app.services.web_fetch import sanitize_html
+
+    web({"https://pages.test/active/": ("text/html; charset=utf-8", _ACTIVE_PAGE)})
+    plain = await _fetch(str(uuid.uuid4()), "https://pages.test/active/", file_context=FileContext())
+    clean = await _fetch(str(uuid.uuid4()), "https://pages.test/active/", file_context=FileContext(), sanitize=True)
+
+    assert "Kept file: sanitized" in clean and "Kept file:" not in plain
+    assert "Body text stays." in clean
+    as_fetched, sanitized = store
+    assert as_fetched.sha256 == hashlib.sha256(_ACTIVE_PAGE).hexdigest()
+    assert sanitized.sha256 == hashlib.sha256(sanitize_html(_ACTIVE_PAGE)).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_sanitize_leaves_a_non_html_response_as_fetched(web, store):
+    web({"https://data.test/notes.txt": ("text/plain", b"<script>kept</script>")})
+    content = await _fetch(str(uuid.uuid4()), "https://data.test/notes.txt", file_context=FileContext(), sanitize=True)
+    assert "Kept file: as fetched (sanitize applies to an HTML page only)." in content
