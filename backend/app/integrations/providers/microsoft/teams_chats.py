@@ -49,6 +49,12 @@ from ._voice_notes import audio_hosted_contents, heard_hosted_lines, heard_lines
 
 logger = logging.getLogger(__name__)
 
+#: Graph's ``$top`` ceiling on a chat's messages: a larger value is refused
+#: ("limit of 50 for Top exceeded").
+_CHAT_MESSAGES_PAGE = 50
+#: The most messages ``list_microsoft_chat_messages`` reads, page by page.
+_CHAT_MESSAGES_MAX = 200
+
 
 def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[ToolDefinition]:
     """Register the teams chats tools on *executor* and return their definitions."""
@@ -93,22 +99,30 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         """Read recent messages from a Microsoft Teams chat.
 
         Retrieves the most recent messages from a 1:1 or group chat.
-        Use ``list_chats`` first to find the ``chat_id``.
+        Use ``list_chats`` first to find the ``chat_id``. Graph serves at most
+        ``_CHAT_MESSAGES_PAGE`` messages a page (a larger ``$top`` is refused):
+        *count* is clamped to ``_CHAT_MESSAGES_MAX`` and read page by page.
         """
         if err := _validate_teams_chat_id(chat_id, "list_microsoft_chat_messages"):
             return err
+        count = max(1, min(_coerce_int(count, 20), _CHAT_MESSAGES_MAX))
         async with _client() as client:
-            resp, err = await _throttled_request(
-                client,
-                "get",
-                f"{_BASE_URL}/me/chats/{_teams_segment(chat_id)}/messages",
-                _PROVIDER,
-                "read chat messages",
-                params={"$top": str(count), "$orderby": "createdDateTime desc"},
-            )
-            if err:
-                return err
-            messages = resp.json().get("value", [])
+            messages: list[dict] = []
+            next_url: str | None = f"{_BASE_URL}/me/chats/{_teams_segment(chat_id)}/messages"
+            params: dict | None = {
+                "$top": str(min(count, _CHAT_MESSAGES_PAGE)),
+                "$orderby": "createdDateTime desc",
+            }
+            while next_url and len(messages) < count:
+                kwargs: dict = {"params": params} if params else {}
+                resp, err = await _throttled_request(client, "get", next_url, _PROVIDER, "read chat messages", **kwargs)
+                if err:
+                    return err
+                data = resp.json()
+                messages.extend(data.get("value", []))
+                next_url = data.get("@odata.nextLink")
+                params = None  # the nextLink carries the query
+            messages = messages[:count]
             if not messages:
                 return "No messages in this chat."
             # Reverse to show chronological order
@@ -771,7 +785,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     },
                     "count": {
                         "type": "integer",
-                        "description": "Max messages to return (default 20)",
+                        "description": "Max messages to return (default 20, at most 200)",
                         "default": 20,
                     },
                 },
