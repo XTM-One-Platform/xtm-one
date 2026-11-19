@@ -46,8 +46,11 @@ from ._common import (
     _api,
     _ensure_fresh_token,
     _fmt_expectation_results_by_type,
+    _require_response,
     _scope_path,
     _search_body,
+    _simulation_inject_status_lines,
+    _simulation_state_lines,
     _with_scope_hint,
     json_answer,
 )
@@ -82,6 +85,7 @@ def _fmt_exercise(e: dict, base_url: str = "") -> str:
         lines.append(f"  category: {e.get('exercise_category')}")
     if e.get("exercise_severity"):
         lines.append(f"  severity: {e.get('exercise_severity')}")
+    lines.extend(_simulation_state_lines(e))
     link = _aev_link(base_url, "exercise", eid)
     if link:
         lines.append(link)
@@ -166,7 +170,18 @@ def register(
             )
             if err:
                 return err
-            return _fmt_exercise(resp.json(), base_url)
+            text = _fmt_exercise(_require_response(resp).json(), base_url)
+            rows, rows_err = await _api(
+                base_url,
+                headers,
+                "get",
+                f"/api/exercises/{exercise_id}/injects/results",
+                "read simulation inject statuses",
+            )
+            if rows_err:
+                return text + "\n  Inject statuses: not read (" + rows_err.strip() + ")"
+            statuses = _simulation_inject_status_lines(_require_response(rows).json())
+            return "\n".join([text, *statuses])
 
         if action == "create":
             if not name:

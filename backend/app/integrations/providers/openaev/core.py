@@ -51,6 +51,7 @@ from ._common import (
     _require_response,
     _resolve_output_types,
     _search_body,
+    _simulation_state_lines,
     asset_group_member_ids_lines,
     fmt_asset_group_members,
     inject_targets_line,
@@ -1337,6 +1338,8 @@ def register_core(
             line += f"\n  Description: {desc}"
         if ex.get("exercise_status"):
             line += f"\n  Status: {ex['exercise_status']}"
+        for state_line in _simulation_state_lines(ex):
+            line += "\n" + state_line
         return line
 
     async def search_openaev_exercises(search: str = "", limit: int = 20) -> str:
@@ -1395,6 +1398,7 @@ def register_core(
             lines.append(f"  Status: {data['exercise_status']}")
         if data.get("exercise_subtitle"):
             lines.append(f"  Subtitle: {data['exercise_subtitle']}")
+        lines.extend(_simulation_state_lines(data))
         return "\n".join(lines)
 
     # ── Register all tools ────────────────────────────────────────────
