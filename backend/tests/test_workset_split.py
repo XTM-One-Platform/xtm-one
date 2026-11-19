@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.services import workset_split
+from app.services.content_safety import wrap_untrusted
 from app.services.workset_split import SplitError, SplitSpec, parse_date, split_result
 
 _CASES = """Page 1 of 662 (19832 cases)
@@ -179,6 +180,28 @@ class TestJsonSplit:
     def test_a_json_path_on_json_without_a_list_there_is_still_refused(self) -> None:
         with pytest.raises(SplitError, match="holds no JSON list"):
             split_result(json.dumps({"data": {"items": 3}}), _spec(json_path="data.items"))
+
+    def test_a_json_body_in_an_integration_fence_is_split(self) -> None:
+        """An integration answers a status line, then its JSON body in a quarantine block."""
+        body = {"checks": [{"id": "c1", "name": "Term"}, {"id": "c2", "name": "Cap"}], "total": 2}
+        raw = "Provider HTTP 200 (get_playbook).\n" + wrap_untrusted(json.dumps(body), "Provider get_playbook")
+        result = split_result(raw, _spec(json_path="checks", ref_field="id", title_field="name"))
+        assert result.fallback == ""
+        assert [(item.external_ref, item.title) for item in result.items] == [("c1", "Term"), ("c2", "Cap")]
+        assert json.loads(result.items[1].content) == body["checks"][1]
+        # The status line and the scalars next to the list go to the receipt.
+        assert result.preamble == "Provider HTTP 200 (get_playbook).; total: 2"
+
+    def test_a_fenced_text_body_is_still_stored_whole(self) -> None:
+        raw = "Provider HTTP 200.\n" + wrap_untrusted("plain text, not JSON", "Provider")
+        result = split_result(raw, _spec(json_path=""))
+        assert "the result is not JSON" in result.fallback
+        assert [item.content for item in result.items] == [raw]
+
+    def test_two_fenced_bodies_are_not_guessed(self) -> None:
+        raw = wrap_untrusted("[1]", "a") + "\n" + wrap_untrusted("[2]", "b")
+        result = split_result(raw, _spec(json_path=""))
+        assert "the result is not JSON" in result.fallback
 
     def test_the_values_next_to_the_list_go_to_the_receipt(self):
         """The source's total sits next to its list: dropping it would hide the coverage."""

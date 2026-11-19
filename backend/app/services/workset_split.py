@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from app.services.content_safety import untrusted_block_spans
 from app.services.schema_guard import bounded_regex
 
 #: CPU-bounded time for every pattern of one split together.
@@ -263,6 +264,37 @@ def _split_json(data: Any, spec: SplitSpec) -> list[tuple[str, Any]]:
     return [(json.dumps(item, ensure_ascii=False, indent=1, default=str), item) for item in items]
 
 
+def _fenced_json(text: str) -> tuple[Any, str] | None:
+    """The JSON body of a result that fences it, with the text around the fence.
+
+    An integration answers a status line, then its body in one quarantine
+    block (:func:`app.services.content_safety.wrap_untrusted`): the whole text
+    is not JSON, the block's data is. ``(data, outside)`` when *text* holds
+    exactly one such block and its data parses as a JSON object or list;
+    ``None`` otherwise (no block, several, a memory block, a cut body).
+    """
+    spans = untrusted_block_spans(text)
+    if len(spans) != 1:
+        return None
+    start, end = spans[0]
+    block = text[start:end]
+    marker = block.find("\n<<UNTRUSTED-")
+    if marker < 0:
+        return None
+    # The opening marker line, then the [source: ...] line, then the data.
+    _, _, inside = block[marker + 1 :].partition("\n")
+    _, _, inside = inside.partition("\n")
+    body = inside.rsplit("\n<<END-UNTRUSTED-", 1)[0].strip()
+    if not body or body[0] not in "[{":
+        return None
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return None
+    outside = " ".join(part for part in (text[:start].strip(), text[end:].strip()) if part)
+    return data, outside
+
+
 def split_result(content: str, spec: SplitSpec) -> SplitResult:
     """Cut *content* into items as *spec* says; raises :class:`SplitError` on any doubt."""
     if len(content) > MAX_RESULT_CHARS:
@@ -275,10 +307,15 @@ def split_result(content: str, spec: SplitSpec) -> SplitResult:
     if _wants_json(spec):
         if spec.item_start is not None:
             raise SplitError("Give either a JSON split (json_path, *_field) or item_start, not both.")
+        outside = ""
+        parsed = True
         try:
             as_json = json.loads(stripped)
         except ValueError:
-            as_json = None
+            as_json, parsed = None, False
+        if not parsed and (fenced := _fenced_json(stripped)) is not None:
+            (as_json, outside), parsed = fenced, True
+        if not parsed:
             result.fallback = (
                 "a JSON split was asked for but the result is not JSON (it is text): "
                 "it is stored whole as one item; split such a result with item_start."
@@ -286,7 +323,7 @@ def split_result(content: str, spec: SplitSpec) -> SplitResult:
             pieces = [(stripped, None)]
         if not result.fallback:
             pieces = _split_json(as_json, spec)
-            context = _json_context(as_json, spec.json_path or "")
+            context = "; ".join(part for part in (outside, _json_context(as_json, spec.json_path or "")) if part)
             result.preamble_chars = len(context)
             result.preamble = context[:MAX_PREAMBLE_CHARS]
     elif spec.item_start:
