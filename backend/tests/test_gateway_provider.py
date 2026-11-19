@@ -1481,7 +1481,7 @@ class TestImageEdits:
         def handler(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/v1/models":
                 return httpx.Response(200, json={"object": "list", "data": [
-                    {"id": "gpt-image-1", "object": "model", "owned_by": "openai", "type": "image"},
+                    {"id": "gpt-image-1", "object": "model", "owned_by": "openai", "types": ["image"], "image_edit": True},
                 ]})
             request.read()
             asked.append(request)
@@ -1490,25 +1490,25 @@ class TestImageEdits:
         set_llm_caller(USER_ID, EMAIL)
         return _mock_provider(handler)
 
-    def test_gpt_image_models_take_three_pictures_and_a_mask(self):
-        provider = FiligranGatewayProvider(api_key=GATEWAY_URL)
+    @pytest.mark.asyncio
+    async def test_pictures_and_a_mask_only_for_a_model_the_gateway_declares_editing(self):
+        provider = _listing_provider(
+            {"id": "gpt-image-1", "types": ["image"], "image_edit": True},
+            # An older gateway, or an upstream it does not edit through: no ``image_edit``.
+            {"id": "gpt-image-azure", "types": ["image"]},
+        )
+        # Nothing listed yet: nothing is offered.
+        assert provider.image_reference_limit("gpt-image-1") == 0
+        await provider.load_image_capabilities("gpt-image-1")
         assert provider.image_reference_limit("gpt-image-1") == 3 and provider.image_takes_mask("gpt-image-1")
-        for model in ("dall-e-3", "imagen-4.0", "gemini-2.5-flash-image"):
-            assert provider.image_reference_limit(model) == 0 and not provider.image_takes_mask(model)
+        assert provider.image_reference_limit("gpt-image-azure") == 0 and not provider.image_takes_mask("gpt-image-azure")
 
     @pytest.mark.asyncio
-    async def test_no_pictures_where_the_gateway_refuses_edits(self):
-        # The gateway edits only through openai, litellm and custom_openai (403 policy_denied otherwise).
-        for pinned, limit in (("Azure_OpenAI", 0), ("gemini", 0), ("Custom", 3), ("litellm", 3)):
-            assert FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||{pinned}").image_reference_limit("gpt-image-1") == limit
-        provider = _listing_provider(
-            {"id": "gpt-image-1", "object": "model", "owned_by": "azure_openai", "type": "image"},
-            {"id": "gpt-image-1.5", "object": "model", "owned_by": "custom_openai", "type": "image"},
-        )
+    async def test_a_failed_listing_offers_no_pictures(self):
+        provider = _mock_provider(lambda r: httpx.Response(500, json={"error": {"message": "down"}}))
         set_llm_caller(USER_ID, EMAIL)
-        await provider.list_image_models()
-        assert provider.image_reference_limit("gpt-image-1") == 0 and not provider.image_takes_mask("gpt-image-1")
-        assert provider.image_reference_limit("gpt-image-1.5") == 3
+        await provider.load_image_capabilities("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 0
 
     @pytest.mark.asyncio
     async def test_edit_sends_the_pictures_the_mask_and_the_target(self):
@@ -1538,34 +1538,6 @@ class TestImageEdits:
         assert b'name="mask"' not in body
 
     @pytest.mark.asyncio
-    async def test_a_gateway_without_edits_says_so_and_stops_offering_pictures(self, monkeypatch):
-        from types import SimpleNamespace
-
-        from app.llm import gateway_provider
-        from app.llm.images import ImageGenerationError, failure_message
-
-        asked: list[httpx.Request] = []
-        provider = self._gateway(asked, httpx.Response(404))  # an older gateway: no such route, no error body
-        with pytest.raises(ImageGenerationError) as raised:
-            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
-        assert "does not edit images yet" in failure_message(raised.value, "gpt-image-1")
-        assert len(asked) == 1 and provider.image_reference_limit("gpt-image-1") == 0
-        # Offered again once the gateway may have been upgraded.
-        later = gateway_provider.time.monotonic() + gateway_provider._NO_EDITS_TTL_SECONDS + 1
-        monkeypatch.setattr(gateway_provider, "time", SimpleNamespace(monotonic=lambda: later))
-        assert provider.image_reference_limit("gpt-image-1") == 3
-
-    @pytest.mark.asyncio
-    async def test_a_gateway_404_with_its_error_body_is_not_a_missing_route(self):
-        unknown_model = httpx.Response(404, json={"error": {
-            "message": "model not found", "type": "invalid_request_error", "code": "model_not_found",
-        }})
-        provider = self._gateway([], unknown_model)
-        with pytest.raises(openai.NotFoundError):
-            await provider.edit_image("x", [(_png(), "image/png")], model="gpt-image-1")
-        assert provider.image_reference_limit("gpt-image-1") == 3
-
-    @pytest.mark.asyncio
     async def test_an_oversized_upload_reads_as_too_large(self):
         from app.llm.images import failure_message
 
@@ -1580,39 +1552,17 @@ class TestImageEdits:
 
 
 @pytest.mark.asyncio
-async def test_the_image_tool_no_longer_refuses_pictures_on_the_gateway(monkeypatch):
-    from types import SimpleNamespace
-
-    from app.models.user import User
-    from app.services import file_access
+async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(monkeypatch):
+    """The tool's schema is built before anything else lists the gateway's models."""
+    from app.llm import router
     from app.services.builtin_tools import media
-    from app.services.file_storage import file_storage
 
-    class _Db:
-        async def get(self, model, key):
-            if model is User:
-                return SimpleNamespace(id=key, role="user")
-            return SimpleNamespace(filename="mark.png", content_type="image/png", s3_object_name=str(key))
+    provider = _listing_provider({"id": "gpt-image-1", "types": ["image"], "image_edit": True})
 
-    class _Session:
-        async def __aenter__(self):
-            return _Db()
+    async def image_provider(_db, **_kw):
+        return provider, "gpt-image-1"
 
-        async def __aexit__(self, *exc):
-            return False
-
-    async def can_read(_row, _user, _db):
-        return True
-
-    async def download(name):
-        return b"PNG"
-
-    monkeypatch.setattr(media, "_own_session", _Session)
-    monkeypatch.setattr(file_access, "can_read_file", can_read)
-    monkeypatch.setattr(file_storage, "download", download)
-    provider = FiligranGatewayProvider(api_key=GATEWAY_URL)
-    picture, mask = str(uuid.uuid4()), str(uuid.uuid4())
-    pictures, got = await media._image_inputs(provider, "gpt-image-1", str(USER_ID), [picture], mask)
-    assert pictures == [(b"PNG", "image/png")] and got == (b"PNG", "image/png")
-    with pytest.raises(media.ImageInputError, match="draws from no reference picture"):
-        await media._image_inputs(provider, "imagen-4.0", str(USER_ID), [picture], None)
+    monkeypatch.setattr(router, "get_image_provider", image_provider)
+    (definition,), _executor = await media.build_image_generation_tool(None, str(USER_ID))
+    properties = definition.input_schema["properties"]
+    assert properties["reference_file_ids"]["maxItems"] == 3 and "mask_file_id" in properties

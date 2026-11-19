@@ -2664,6 +2664,9 @@ class BaseLLMProvider(ABC):
             f"{self.provider_name} does not support image generation."
         )
 
+    async def load_image_capabilities(self, model: str | None) -> None:
+        """Read what *model* draws from before the sync checks below; the default has nothing to read."""
+
     def image_reference_limit(self, model: str | None) -> int:
         """How many reference pictures *model* draws from (:meth:`edit_image`); 0 (the default): none."""
         return 0
