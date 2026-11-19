@@ -3014,6 +3014,42 @@ async def test_search_findings_unscoped_has_no_simulation_filter(monkeypatch):
     assert "filterGroup" not in captured["json"]
 
 
+async def test_search_findings_by_inject_uses_the_per_inject_route(monkeypatch):
+    # inject_id reads the findings ONE inject produced through OpenAEV's per-inject
+    # route (it checks the inject is in scope), the id path-quoted.
+    from app.integrations.providers.openaev import core
+
+    captured: dict = {}
+
+    async def fake_api(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        captured.update(method=method, path=path, json=json, params=params)
+        return _FakeResp({"content": [], "totalElements": 0}), None
+
+    monkeypatch.setattr(core, "_api", fake_api)
+    executor, _ = _build()
+    result = await _run(executor, "search_openaev_findings", {"inject_id": " inj/1 "})
+    assert not result.is_error, result.content
+    assert captured["method"] == "post"
+    assert captured["path"] == "/api/findings/injects/inj%2F1/search"
+    assert captured["params"] == {"distinct": "true"}
+    assert "filterGroup" not in captured["json"]
+    assert "inject inj/1" in result.content
+
+
+async def test_search_findings_by_inject_passes_a_not_found_through(monkeypatch):
+    # An unknown inject id answers OpenAEV's error, never "No findings found".
+    from app.integrations.providers.openaev import core
+
+    async def fake_api(*args, **kw):
+        return None, "OpenAEV error 404: inject not found"
+
+    monkeypatch.setattr(core, "_api", fake_api)
+    executor, _ = _build()
+    result = await _run(executor, "search_openaev_findings", {"inject_id": "nope"})
+    assert "404" in result.content
+    assert "No findings found" not in result.content
+
+
 def test_fmt_finding_surfaces_inject_id():
     # The producing inject id ties a finding back to the step that emitted it (item 4).
     from app.integrations.providers.openaev import _common
