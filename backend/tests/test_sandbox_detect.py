@@ -503,6 +503,27 @@ def test_no_relay_step_without_the_compiler_or_its_script() -> None:
     )
 
 
+def test_a_relay_step_never_runs_a_build_that_calls_the_compiler() -> None:
+    """xtm-hub: `build` is `relay-compiler && next build`; the checks ran the whole Next build, offline."""
+    hub = {
+        "relay": "relay-compiler",
+        "build": "relay-compiler && next build",
+        "lint": "eslint .",
+        "test": "vitest run",
+    }
+    manifest = {"packageManager": "yarn@4.18.1", "devDependencies": {"relay-compiler": "21", "vitest": "4"}}
+    found = _detect({"front/package.json": json.dumps({**manifest, "scripts": hub})}, extra=("front/yarn.lock",))
+    argv = _argv(found)
+    shell = ("sh", "-c", 'yarn relay && exec "$@"', "xtm-relay")
+    assert argv["front:node-unit-file"][:4] == shell and argv["front:node-lint"] == (*shell, "yarn", "lint")
+    assert argv["front:node-build"] == ("yarn", "build")
+    chained = {"build": "relay-compiler --validate && next build", "lint": "eslint ."}
+    for lock, prefix in (("yarn.lock", "yarn"), ("package-lock.json", "npx --no-install")):
+        only = json.dumps({"devDependencies": {"relay-compiler": "21"}, "scripts": chained})
+        lint = _argv(_detect({"package.json": only}, extra=(lock,)))["node-lint"]
+        assert lint[:3] == ("sh", "-c", f'{prefix} relay-compiler --validate && exec "$@"'), lint
+
+
 def _graphql_like() -> detect.Detection:
     """opencti-graphql: a yarn workspace member with a native add-on, a Python bridge and a fetched manifest."""
     root = json.dumps(
