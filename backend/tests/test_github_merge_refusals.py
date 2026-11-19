@@ -10,6 +10,7 @@ green claim must be read again. The GitHub answers below are recorded shapes.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -68,7 +69,13 @@ def _facts(
 class _GitHub:
     """A scripted GitHub: the merge PUT, the PR reads, the GraphQL read and enqueue."""
 
-    def __init__(self, merge_answer, facts=None, enqueue=None, heads=None):
+    def __init__(
+        self,
+        merge_answer: tuple[int, dict[str, Any]],
+        facts: dict[str, Any] | None = None,
+        enqueue: dict[str, Any] | None = None,
+        heads: list[str] | None = None,
+    ) -> None:
         self.merge_answer = merge_answer
         self.facts = facts
         self.enqueue = enqueue
@@ -151,6 +158,33 @@ async def test_a_pr_already_in_the_queue_is_said_queued_without_a_branch_update(
     assert "position 3" in result
     assert "No branch update is needed" in result
     assert not any("enqueuePullRequest" in g["query"] for g in github.graphql)
+
+
+@pytest.mark.asyncio
+async def test_an_enqueued_pr_without_its_required_review_is_said_not_to_merge() -> None:
+    enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 5, "state": "UNMERGEABLE"}}}}
+    github = _GitHub(_RULES, facts=_facts(queue=True, review="REVIEW_REQUIRED"), enqueue=enqueue)
+
+    result = await _run(github)
+
+    assert result.startswith("Error: PR #12 in acme/app is in the merge queue but will NOT merge")
+    assert "review required" in result
+    assert "position 5" in result
+    assert "the queue merges it" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_queued_entry_read_unmergeable_names_the_rules() -> None:
+    facts = _facts(queue=True, in_queue=True)
+    facts["data"]["repository"]["pullRequest"]["mergeQueueEntry"]["state"] = "UNMERGEABLE"
+    github = _GitHub(_NOT_MERGEABLE, facts=facts)
+
+    result = await _run(github)
+
+    assert "will NOT merge" in result
+    assert "UNMERGEABLE" in result
+    assert "get_github_branch_rules" in result
+    assert "Nothing else was done: the queue merges it" not in result
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,9 @@ GraphQL (draft, head, merge state, review decision, merge queue) and:
   answers "queued" with the position;
 - says the PR is already queued, with its position, and that no branch
   update is needed;
+- says a queue entry will NOT merge when its required review is missing
+  (the queue applies no review bypass) or GitHub reads it UNMERGEABLE,
+  with the cause, instead of "the queue merges it" (#409);
 - otherwise names the cause (draft, behind, conflict, required review,
   failing or pending check, a protection rule on a clean PR) with one fix.
 
@@ -100,6 +103,35 @@ def _position(position: int | None) -> str:
     return f"position {position}" if position is not None else "position not returned"
 
 
+def _stuck_entry(queue_state: str, review_decision: str) -> str:
+    """Why a queue entry will not merge, or '' when nothing says so.
+
+    A queue does not apply a review bypass: an entry whose required review is
+    missing reads UNMERGEABLE and stays in the queue without merging (#409).
+    """
+    review = review_decision.upper()
+    if review in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+        decision = review.lower().replace("_", " ")
+        return (
+            f"a required review is missing (review decision: {decision}) and the merge queue does not "
+            f"bypass it. Get the approval; the queue then merges it"
+        )
+    if queue_state.upper() == "UNMERGEABLE":
+        return (
+            "GitHub reads the entry UNMERGEABLE (a rule of the base is not satisfied). Read the rules "
+            "with `get_github_branch_rules` and the checks with `get_github_ci_status` (pr_number)"
+        )
+    return ""
+
+
+def _queued_line(lead: str, number: int, repo: str, stuck: str, said: str) -> str:
+    """The answer for a queue entry that will not merge: the cause, then where it sits."""
+    return (
+        f"Error: PR #{number} in {repo} is in the merge queue but will NOT merge as it stands: "
+        f"{stuck}. {lead} No branch update helps.{said}"
+    )
+
+
 def head_moved_line(repo: str, number: int, expected: str, current: str) -> str:
     """The refusal of a merge whose head moved: both SHAs and the claim to re-read."""
     return (
@@ -133,6 +165,13 @@ async def refusal_answer(
     if expected_head and facts.head and facts.head != expected_head:
         return head_moved_line(repo, number, expected_head, facts.head) + said
     if facts.in_queue:
+        stuck = _stuck_entry(facts.queue_state, facts.review_decision)
+        where = (
+            f"It is in the merge queue of {base} "
+            f"({_position(facts.queue_position)}{', ' + facts.queue_state.lower() if facts.queue_state else ''})."
+        )
+        if stuck:
+            return _queued_line(where, number, repo, stuck, said)
         return (
             f"PR #{number} in {repo} is already in the merge queue of {base} "
             f"({_position(facts.queue_position)}{', ' + facts.queue_state.lower() if facts.queue_state else ''}). "
@@ -158,6 +197,14 @@ async def refusal_answer(
         entry = ((data or {}).get("enqueuePullRequest") or {}).get("mergeQueueEntry") or {}
         position = entry.get("position") if isinstance(entry, dict) else None
         state = str(entry.get("state") or "").lower() if isinstance(entry, dict) else ""
+        stuck = _stuck_entry(state, facts.review_decision)
+        if stuck:
+            where = (
+                f"It was added to the merge queue of {base} "
+                f"({_position(position if isinstance(position, int) else None)}{', ' + state if state else ''}) "
+                f"pinned to head {expected_head[:12] or facts.head[:12]}."
+            )
+            return _queued_line(where, number, repo, stuck, said)
         return (
             f"PR #{number} in {repo} queued: {base} is protected by a merge queue, so the PR was added to it "
             f"({_position(position if isinstance(position, int) else None)}{', ' + state if state else ''}) "
