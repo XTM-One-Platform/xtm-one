@@ -15,6 +15,7 @@ import json
 import logging
 from functools import partial
 from typing import Any
+from urllib.parse import quote
 
 from app.core.egress import egress_client
 from app.integrations.http import format_entity_list
@@ -1116,7 +1117,10 @@ def register_core(
     # ── 22. Search findings ───────────────────────────────────────────
 
     async def search_openaev_findings(
-        search: str = "", limit: int = 20, simulation_id: str = ""
+        search: str = "",
+        limit: int = 20,
+        simulation_id: str = "",
+        inject_id: str = "",
     ) -> str:
         """Search for security findings or list all.
 
@@ -1125,8 +1129,14 @@ def register_core(
         search can surface, PROOF-cite, or promote ANOTHER run's finding, so the
         autonomous orchestrator should always pass its run's simulation id when it
         verifies what a step produced.
+
+        Pass ``inject_id`` to read the findings ONE inject (or atomic testing)
+        produced: the search goes to OpenAEV's per-inject route
+        (``/api/findings/injects/{id}/search``), which checks the inject exists
+        in scope, so an unknown id answers not found instead of an empty list.
         """
         simulation_id = (simulation_id or "").strip()
+        inject_id = (inject_id or "").strip()
         filter_group = None
         if simulation_id:
             filter_group = {
@@ -1142,12 +1152,13 @@ def register_core(
         # Route through _api so a long autonomous run keeps its JWT fresh (WS2); the
         # distinct flag rides as a query param and the idempotent read opts into the
         # transient-5xx retry.
+        path = f"/api/findings/injects/{quote(inject_id, safe='')}/search" if inject_id else "/api/findings/search"
         resp, err = await _api(
             base_url,
             hdrs,
             "post",
-            "/api/findings/search",
-            "search findings",
+            path,
+            "search findings of inject" if inject_id else "search findings",
             params={"distinct": "true"},
             json=_search_body(
                 size=min(limit, 50), text_search=search, filter_group=filter_group
@@ -1160,6 +1171,8 @@ def register_core(
         data = resp.json()
         items = data.get("content", [])
         scope = repr(search) if search else ""
+        if inject_id:
+            scope = f"{scope} of inject {inject_id}" if scope else f"inject {inject_id}"
         if simulation_id:
             scope = (
                 f"{scope} in simulation {simulation_id}"
@@ -2091,7 +2104,9 @@ def register_core(
                 "simulation_id to scope the search to ONE run's simulation: on a busy "
                 "tenant an unscoped search can surface, PROOF-cite, or promote ANOTHER "
                 "run's finding, so on an autonomous run ALWAYS pass the run's simulation "
-                "id when verifying what a step produced."
+                "id when verifying what a step produced. Pass inject_id to read the "
+                "findings one inject or atomic testing produced (an unknown inject id "
+                "answers not found)."
             ),
             input_schema={
                 "type": "object",
@@ -2113,6 +2128,13 @@ def register_core(
                             "(the run's simulation id from the cycle context). Strongly "
                             "recommended on an autonomous run to avoid seeing another "
                             "run's findings."
+                        ),
+                        "default": "",
+                    },
+                    "inject_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional inject or atomic testing id: only the findings that inject produced."
                         ),
                         "default": "",
                     },
