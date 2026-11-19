@@ -19423,6 +19423,8 @@
   "Account {name} provisioned": "Compte {name} provisionné",
   "Account {name} changed": "Compte {name} modifié",
   "Account {name} deprovisioned": "Compte {name} déprovisionné",
+  "Account {name} deactivated": "Compte {name} désactivé",
+  "Account {name} reactivated": "Compte {name} réactivé",
   "Group {name} provisioned": "Groupe {name} provisionné",
   "Group {name} changed": "Groupe {name} modifié",
   "Group {name} deleted": "Groupe {name} supprimé",

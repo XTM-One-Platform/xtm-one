@@ -19423,6 +19423,8 @@
   "Account {name} provisioned": "アカウント {name} をプロビジョニングしました",
   "Account {name} changed": "アカウント {name} を変更しました",
   "Account {name} deprovisioned": "アカウント {name} のプロビジョニングを解除しました",
+  "Account {name} deactivated": "アカウント {name} を無効化しました",
+  "Account {name} reactivated": "アカウント {name} を再有効化しました",
   "Group {name} provisioned": "グループ {name} をプロビジョニングしました",
   "Group {name} changed": "グループ {name} を変更しました",
   "Group {name} deleted": "グループ {name} を削除しました",
