@@ -431,7 +431,7 @@ def _fmt_recipient(r: dict) -> str:
 def format_envelope(
     envelope: dict, recipients: dict | None = None, documents: list | None = None
 ) -> str:
-    """A readable envelope: status, dates, recipients, documents."""
+    """A readable envelope: status, dates, sender, recipients, documents."""
     lines = [
         f"Envelope {envelope.get('envelopeId', '?')} - {envelope.get('emailSubject', '')} - "
         f"status: {envelope.get('status', '?')}"
@@ -449,6 +449,12 @@ def format_envelope(
             lines.append(f"  {label}: {envelope[key]}")
     if envelope.get("voidedReason"):
         lines.append(f"  Void reason: {str(envelope['voidedReason'])[:200]}")
+    sender = envelope.get("sender")
+    if isinstance(sender, dict) and (sender.get("userName") or sender.get("email")):
+        line = f"  Sender: {sender.get('userName') or '?'} <{sender.get('email') or '?'}>"
+        if sender.get("userId"):
+            line += f" (user id: {sender['userId']})"
+        lines.append(line)
     if recipients:
         for kind, label in (("signers", "Signers"), ("carbonCopies", "Carbon copies")):
             items = [r for r in recipients.get(kind, []) if isinstance(r, dict)]
