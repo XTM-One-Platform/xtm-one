@@ -34,15 +34,15 @@ What it finds appears under Improvements once its cycle ends.
 
 ## The companion
 
-The companion is a small animated pet in the bottom-right corner of the screen that shows what Platform Health, and your own work, is doing. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. The Butler, with a silver tray, is the built-in pet and the default one.
+The companion is a small animated pet in the bottom-right corner of the screen that shows what Platform Health found, and what your own work is doing. It is offered to administrators, who are the people who can open the Platform Health page; other users see neither the pet nor its profile card. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. The Butler, with a silver tray, is the built-in pet and the default one.
 
 | The pet | When |
 |---|---|
 | Waves | It appears |
-| Looks worried | A Platform Health cycle you asked for (every cycle, for an administrator), or one of your runs, failed in the last 30 minutes |
+| Looks worried | A Platform Health cycle, or one of your runs, failed in the last 30 minutes |
 | Checks its watch | One of your runs is waiting for your approval |
 | Presents a letter | A proposal waits for a decision you may take |
-| Is at work | A cycle you asked for is running, one of your runs is running, or the chat on screen is answering |
+| Is at work | A Platform Health cycle is running, one of your runs is running, or the chat on screen is answering |
 | Stands by | Nothing of the above |
 
-Click the pet to read what it shows, to open the Platform Health page, or to hide it; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.
+Click the pet to read what it shows: first the open findings, the most severe kind with its count (for example "2 critical findings are open.", or "No open finding."), then what is happening now. From there you open the Platform Health page or hide the pet; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.

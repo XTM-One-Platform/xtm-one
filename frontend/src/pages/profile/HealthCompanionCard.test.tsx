@@ -7,7 +7,9 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), download: vi.fn() }));
+const auth = vi.hoisted(() => ({ admin: true }));
 vi.mock("@/lib/api", () => ({ api }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: auth.admin }) }));
 
 import { petUploadErrorKey } from "@/lib/health-pet";
 import { HealthCompanionCard } from "./HealthCompanionCard";
@@ -20,6 +22,7 @@ const PETS = [
 describe("HealthCompanionCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.admin = true;
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
     api.get.mockImplementation((path: string) => {
@@ -48,6 +51,14 @@ describe("HealthCompanionCard", () => {
     expect(await screen.findByRole("radio", { name: /Butler/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(await screen.findByRole("radio", { name: /Owl/ }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "owl" }));
+  });
+
+  it("is not offered to a plain user, who cannot open Platform Health (#101)", async () => {
+    auth.admin = false;
+    renderWithProviders(<HealthCompanionCard />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByTestId("profile.health-companion")).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
   });
 
   it("reads the companion with no feature flag (#101 S1)", async () => {

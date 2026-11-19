@@ -14,11 +14,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Health companion (#8261): a small floating pet, for who turned it on
- * in their profile, showing what the Platform Health and their own work are doing
- * (`GET /health/me/activity`, plus the chat turn on screen). It waves once
- * when it appears, then plays the state's row; a click opens its bubble,
- * with the way to the Platform Health page and to hide it.
+ * The Health companion (#8261): a small floating pet, for an administrator
+ * who turned it on in their profile, showing what Platform Health found and
+ * what their own work is doing (`GET /health/me/activity`, plus the chat turn
+ * on screen). It waves once when it appears, then plays the state's row; a
+ * click opens its bubble, with the open findings, the way to the Platform
+ * Health page and to hide it.
+ *
+ * Administrators only (#101): `/health` is an `AdminRoute`, so the pet that
+ * links to it exists only for who can open it; for anyone else nothing is
+ * mounted and no companion route is called.
  */
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
@@ -27,6 +32,7 @@ import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useHealthName } from "@/hooks/api/useHealthApi";
+import { useAuth } from "@/hooks/useAuth";
 import {
   useCompanion,
   useCompanionActivity,
@@ -37,11 +43,17 @@ import {
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { useChatActivity } from "@/lib/companion-chat-activity";
-import { COMPANION_STATE_LABELS, PET_ROW_FOR, companionState } from "@/lib/health-pet";
+import { COMPANION_STATE_LABELS, PET_ROW_FOR, companionFindingsLabel, companionState } from "@/lib/health-pet";
 
 import { PetSprite } from "./PetSprite";
 
 export function HealthCompanion() {
+  const { isAdmin } = useAuth();
+  if (!isAdmin) return null;
+  return <AdminCompanion />;
+}
+
+function AdminCompanion() {
   const { data: companion } = useCompanion(true);
   if (!companion?.enabled) return null;
   return <FloatingPet slug={companion.pet} fallback={companion.default_pet} />;
@@ -65,7 +77,10 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
   const [open, setOpen] = useState(false);
   const save = useSaveCompanion();
   const onGreeted = useCallback(() => setGreeted(true), []);
-  const status = t_i18n(COMPANION_STATE_LABELS[state], { name: healthName });
+  const findings = companionFindingsLabel(activity);
+  const findingsLine = t_i18n(findings.key, { count: findings.count });
+  const stateLine = state === "idle" ? null : t_i18n(COMPANION_STATE_LABELS[state], { name: healthName });
+  const status = stateLine ? `${findingsLine} ${stateLine}` : findingsLine;
 
   const hide = () =>
     save.mutate(
@@ -92,7 +107,18 @@ function FloatingPet({ slug, fallback }: { slug: string; fallback: string }) {
               <Icon name="x" size={16} />
             </button>
           </div>
-          <p className="text-default-secondary">{status}</p>
+          <p
+            className={
+              findings.severity === "critical"
+                ? "font-medium text-feedback-error-primary"
+                : findings.severity === "warning"
+                  ? "font-medium text-feedback-warning-primary light:text-feedback-warning-tertiary"
+                  : "text-default-primary"
+            }
+          >
+            {findingsLine}
+          </p>
+          {stateLine && <p className="mt-1 text-default-secondary">{stateLine}</p>}
           <div className="mt-3 flex items-center justify-between gap-2">
             <Button asChild size="sm" variant="secondary">
               <Link to="/health" onClick={() => setOpen(false)}>

@@ -421,6 +421,15 @@ APPROVE on its head.
 | S10 | Agent and flow page compaction, Health settings section | yes |
 | S11 | Platform email (SMTP) integration and `send_email` | yes |
 | S12 | Health alert emails | yes |
+| S13 | Consistency and polish pass (Sam, 19 Nov 2026): role matrix (admin, group manager, agent owner, plain user) x mode (Copilot, XTM One, `ai_disabled`) for every Health surface written here and each cell pinned by a test (visible <=> openable <=> API 200); an automated guard walking every in-app link of the Health surfaces per role; one compact Settings section; display quality (empty states, score formula, trends, evidence, links, vocabulary, i18n, dark and light, a11y); UX Director full-journey review per role in the lab, APPROVE closes the program; matrix and before/after captures in the PR body | yes |
+
+Companion (Sam, 19 Nov 2026, ahead of S8): the companion, its profile card and
+`/health/me/{companion,activity}` exist only for who can open Platform Health. While
+the scoped manager view of section 8 is not built that is an administrator: a plain
+user gets no pet, no card and a 403 from the three routes. The bubble says the open
+findings first (most severe kind and its count, or "No open finding."), then the
+current activity; no "standing by" filler. When S8 builds the scoped view, a manager
+of an enrolled agent or fleet gets the companion and its link opens that view.
 
 ## 11. Product decisions (decided by Sam, 18 Nov 2026)
 

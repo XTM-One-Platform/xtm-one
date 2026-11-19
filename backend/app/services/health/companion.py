@@ -30,6 +30,10 @@ user may already see, without any model call:
 Their scope is every cycle for an administrator, the cycles they asked for
 otherwise ("Improve with ..."). The web app adds the chat turn on screen,
 which never reaches the server as an activity.
+
+The open findings of the finding store (``engine.open_counts``) are summed by
+severity so the bubble says what Platform Health found, not only that it runs.
+The routes serve an administrator only (``api/v1/platform_health_companion``).
 """
 
 from __future__ import annotations
@@ -78,6 +82,10 @@ class CompanionActivity:
     waiting: int
     review: int
     failed_at: datetime | None
+    #: Open Platform Health findings by severity, every module summed (the S2 finding store).
+    critical: int = 0
+    warning: int = 0
+    info: int = 0
 
 
 #: How long a user's review count is reused: the pet polls every 30 s, the rule reads every target.
@@ -172,4 +180,25 @@ async def companion_activity(db: AsyncSession, user: User) -> CompanionActivity:
         if running
         else "idle"
     )
-    return CompanionActivity(state=state, running=running, waiting=waiting, review=review, failed_at=failed_at)
+    findings = await open_finding_totals(db)
+    return CompanionActivity(
+        state=state,
+        running=running,
+        waiting=waiting,
+        review=review,
+        failed_at=failed_at,
+        critical=findings["critical"],
+        warning=findings["warning"],
+        info=findings["info"],
+    )
+
+
+async def open_finding_totals(db: AsyncSession) -> dict[str, int]:
+    """Open findings by severity across every module."""
+    from app.services.health.engine import SEVERITY_WEIGHTS, open_counts
+
+    totals = dict.fromkeys(SEVERITY_WEIGHTS, 0)
+    for counts in (await open_counts(db)).values():
+        for severity, count in counts.items():
+            totals[severity] = totals.get(severity, 0) + count
+    return totals
