@@ -53,7 +53,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.core.utils import format_exception_message
-from app.tools.base import WORKSPACE_FILE_SOURCE, CallableToolExecutor, ToolDefinition, ToolResult
+from app.tools.base import (
+    WORKSPACE_FILE_SOURCE,
+    CallableToolExecutor,
+    ToolDefinition,
+    ToolResult,
+    current_workspace,
+)
 
 from ._shared import EMBED_FILE_REF_RE, format_file_size, logger, persist_tool_artifact
 from ._shared import resolve_file_ref as _resolve_file_ref
@@ -979,6 +985,25 @@ async def inline_template_asset_refs(html: str, user_id: str | None) -> tuple[st
     return EMBED_FILE_REF_RE.sub(_replace, html), []
 
 
+async def _png_to_workspace(path: object, png: bytes) -> str:
+    """Write a render's PNG to the run's sandbox workspace at *path*; the answer's line, or "".
+
+    The render itself stands whatever happens here: a run without a
+    workspace or a path the workspace refuses is said in the line, never a
+    failed call.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return ""
+    workspace = current_workspace()
+    if workspace is None:
+        return "PNG not written to the workspace: this run has no sandbox workspace.\n"
+    try:
+        written = await workspace.write_file(path.strip(), png, tool="render_html_to_image")
+    except ValueError as exc:
+        return f"PNG not written to the workspace: {exc}\n"
+    return f"PNG also written to the workspace: {written}.\n"
+
+
 def build_render_html_tool(
     *,
     db: AsyncSession | None = None,
@@ -996,6 +1021,7 @@ def build_render_html_tool(
         scale: object = None,
         name: str | None = None,
         source_file_id: str | None = None,
+        png_workspace_path: str | None = None,
         file_context: FileContext | None = None,
     ) -> ToolResult:
         from app.services.image_summary import format_visual_summary, summarize_image
@@ -1166,6 +1192,7 @@ def build_render_html_tool(
             if extra:
                 probe_line = f"{probe_line}\n{extra}"
         summary_line = format_visual_summary(await summarize_image(png))
+        workspace_line = await _png_to_workspace(png_workspace_path, png)
         fonts_line = (
             "Fonts: Geologica / Elms Sans / IBM Plex Sans / IBM Plex Mono loaded from the platform bundle."
             if font_css
@@ -1190,13 +1217,23 @@ def build_render_html_tool(
                     if from_workspace
                     else ".\n"
                 )
+                + workspace_line
                 + f"{probe_line}\n{fonts_line}\n{summary_line}"
             ),
             files=[png_ref],
         )
 
+    @functools.wraps(_render_html_to_image)
+    async def _render_counted(*args: object, **kwargs: object) -> ToolResult:
+        # A render that writes its PNG to the workspace is a workspace write from its start, as a
+        # to_workspace_path call is: a reader of the same tool round waits for the PNG (#318 review).
+        workspace = current_workspace() if kwargs.get("png_workspace_path") else None
+        writing = getattr(workspace, "writing", None)
+        with writing() if callable(writing) else contextlib.nullcontext():
+            return await _render_html_to_image(*args, **kwargs)  # type: ignore[arg-type]
+
     executor = executor if executor is not None else CallableToolExecutor()
-    executor.register("render_html_to_image", _render_html_to_image)
+    executor.register("render_html_to_image", _render_counted)
 
     definition = ToolDefinition(
         name="render_html_to_image",
@@ -1223,7 +1260,7 @@ def build_render_html_tool(
             "properties": {
                 "html": {
                     "type": "string",
-                    "description": "The HTML to render (a fragment or a full document). Omit when re-rendering a stored source.",
+                    "description": "The HTML to render (a fragment or a full document).",
                 },
                 "source_file_id": {
                     "type": "string",
@@ -1250,6 +1287,10 @@ def build_render_html_tool(
                 "name": {
                     "type": "string",
                     "description": "Base filename for the PNG and its .html source (e.g. 'founders-card').",
+                },
+                "png_workspace_path": {
+                    "type": "string",
+                    "description": "Also write the PNG to this workspace path, for code.",
                 },
             },
         },

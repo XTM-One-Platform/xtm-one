@@ -2738,6 +2738,14 @@ class WorkspaceSink(Protocol):
         """Why *path* cannot be written (the call is then not run), or ``None``."""
         ...
 
+    async def write_file(self, path: object, data: bytes, *, tool: str) -> str:
+        """Write *data* at *path* for *tool*, its answer kept; the line naming the file.
+
+        Raises a ``ValueError`` (its text for the model) for a path or a size
+        the workspace refuses.
+        """
+        ...
+
     async def read_file(self, path: object, *, tool: str) -> tuple[str, str, bytes]:
         """``(normalized path, file name, bytes)`` of a workspace file handed to *tool*.
 
