@@ -22,7 +22,12 @@ the JSON file the ids are written to.
   implicit chat corpus (the runtime's key, ``chat_workset_key``: the "Rolling"
   chip) holding three items after a fourth evicted the lowest one (``max_items``
   3, evicted count 1), and one named workset sealed after two items (the
-  "Sealed" chip) (#73).
+  "Sealed" chip) (#73);
+* the active workset's storage knowledge base (``storage``), created through
+  ``ensure_corpus`` as the first ingestion of a content item would: internal,
+  so ``/knowledge/<id>`` renders the "workset storage" state that points to
+  Operations > Worksets (#169, #265). Its items stay metadata-only: no
+  document, no embedding, no model call.
 
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
@@ -88,7 +93,7 @@ async def _add_items(worksets, db, workset, user, items, prefix: str) -> int:
 
 
 async def seed(agent_id: str, user_id: str) -> dict[str, list[str]]:
-    """Create the tasks, the execution and the worksets; answer their ids."""
+    """Create the tasks, the execution, the worksets and the active one's storage; answer their ids."""
     import app.models  # noqa: F401 - every table, so the rows' foreign keys resolve
     from app.core.database import async_session, engine
     from app.models.orchestration import OrchestrationExecution
@@ -130,6 +135,7 @@ async def seed(agent_id: str, user_id: str) -> dict[str, list[str]]:
             db, user, key="lab-sample-reports", scope="global", label=f"{SEED_NAME} reports",
         )
         await _add_items(worksets, db, active, user, ITEMS, "lab")
+        storage = await worksets.ensure_corpus(db, active, user)
         resolved = await worksets.resolve_workset(
             db, user, key="lab-sample-archive", scope="global", label=f"{SEED_NAME} archive",
         )
@@ -149,7 +155,7 @@ async def seed(agent_id: str, user_id: str) -> dict[str, list[str]]:
         await db.commit()
         workset_ids = [str(active.id), str(resolved.id), str(rolling.id), str(sealed.id)]
     await engine.dispose()
-    return {"tasks": tasks, "worksets": workset_ids}
+    return {"tasks": tasks, "worksets": workset_ids, "storage": [str(storage)]}
 
 
 def main() -> None:

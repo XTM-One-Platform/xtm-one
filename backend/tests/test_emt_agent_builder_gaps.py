@@ -486,6 +486,7 @@ async def test_its_own_id_or_slug_names_the_disabled_self_fan_out(monkeypatch, r
     builder = _owned("CEO Assistant")
     (_definitions, executor), created = _spawn_tools(monkeypatch, builder, self_agent=builder)
     agent_ref = {"self": "self", "id": str(builder.id), "slug": builder.slug.upper()}[reference]
+    builder.allow_self_fanout = False
 
     result = await executor.execute_tool(
         ToolCall(id="1", name="spawn_background_task", arguments={"agent_id": agent_ref, "task": "x"})
@@ -495,6 +496,43 @@ async def test_its_own_id_or_slug_names_the_disabled_self_fan_out(monkeypatch, r
         f"Agent {agent_ref} is not available for background tasks: running a copy of yourself "
         "is turned off for this agent (allow_self_fanout) or for the platform "
         "(AGENT_SELF_FANOUT_ENABLED)."
+    )
+    assert created == []
+
+
+@pytest.mark.asyncio
+async def test_a_delegated_run_is_told_it_is_below_the_top_level(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A background copy asking for a copy of itself is told why: its depth, not a switch."""
+    builder = _owned("CEO Assistant")
+    (_definitions, executor), created = _spawn_tools(monkeypatch, builder, self_agent=builder, delegation_depth=1)
+
+    result = await executor.execute_tool(
+        ToolCall(id="1", name="spawn_background_task", arguments={"agent_id": "self", "task": "x"})
+    )
+
+    assert result.content == (
+        "Agent self is not available for background tasks: this run is itself a delegated run "
+        "(delegation depth 1), and only a top-level run may spawn copies of itself: do the work "
+        "in this run, or return what is left to the run that spawned you."
+    )
+    assert "allow_self_fanout" not in result.content
+    assert created == []
+
+
+@pytest.mark.asyncio
+async def test_switches_on_but_not_offered_does_not_blame_the_switches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both switches on at the top level: the turn did not offer it, no switch is named."""
+    builder = _owned("CEO Assistant")
+    (_definitions, executor), created = _spawn_tools(monkeypatch, builder, self_agent=builder)
+
+    result = await executor.execute_tool(
+        ToolCall(id="1", name="spawn_background_task", arguments={"agent_id": "self", "task": "x"})
+    )
+
+    assert result.content == (
+        "Agent self is not available for background tasks: running a copy of yourself is not "
+        "offered on this turn: it needs handover allowed on the turn and the delegate handover "
+        "type offered."
     )
     assert created == []
 

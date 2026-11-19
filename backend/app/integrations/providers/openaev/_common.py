@@ -14,6 +14,7 @@ integration_tools.py).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -33,6 +34,7 @@ from app.integrations.http import (
     TRANSIENT_RETRY_STATUSES,
     AutoRefreshClient,
     RefreshFn,
+    clip_text,
     safe_request,
 )
 from app.integrations.http import (
@@ -48,6 +50,127 @@ from app.integrations.http import (
 logger = logging.getLogger(__name__)
 
 _PROVIDER = "OpenAEV"
+
+#: Characters of compact JSON a single-object read (an inject, its status trace,
+#: an atomic test, a dashboard, the settings) answers before its cut marker.
+JSON_READ_CHARS = 12000
+
+
+def json_answer(value: Any, limit: int = JSON_READ_CHARS) -> str:
+    """*value* as compact JSON, cut past *limit* characters with a marker.
+
+    An OpenAEV answer never ends mid-JSON without saying so: a cut answer ends
+    with ``... [truncated, N more characters]`` (``clip_text``), so the agent
+    knows the object goes on and reads a narrower call instead of trusting a
+    partial one.
+    """
+    return clip_text(json.dumps(value, default=str), limit)
+
+
+#: Inject content keys that name targets, mapped to the inject relation OpenAEV
+#: actually targets. The "Update the inject" form and the executor both read the
+#: relations (inject_assets, inject_asset_groups); the same ids left in
+#: inject_content alone are ignored: the form shows the field empty and
+#: "Required", the injector receives no target.
+_CONTENT_TARGET_KEYS: tuple[tuple[str, str], ...] = (
+    ("asset_groups", "asset_group_ids"),
+    ("assets", "asset_ids"),
+)
+
+
+def _content_ids(content: dict[str, Any], key: str) -> list[str]:
+    raw = content.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [v.strip() for v in raw if isinstance(v, str) and v.strip()]
+
+
+def mirror_content_targets(
+    content: Any,
+    asset_ids: list[str] | None,
+    asset_group_ids: list[str] | None,
+) -> tuple[list[str] | None, list[str] | None, str, str]:
+    """Carry the targets an inject content names onto the inject relations.
+
+    Returns ``(asset_ids, asset_group_ids, note, error)``. A relation the caller
+    did not pass takes the ids of ``content.asset_groups`` / ``content.assets``,
+    and *note* says so. A relation the caller passed that misses an id the
+    content names is refused in *error* before any write: OpenAEV targets only
+    the relation, so that id would be silently skipped.
+    """
+    if not isinstance(content, dict):
+        return asset_ids, asset_group_ids, "", ""
+    relations: dict[str, list[str] | None] = {
+        "asset_ids": asset_ids,
+        "asset_group_ids": asset_group_ids,
+    }
+    notes: list[str] = []
+    for key, param in _CONTENT_TARGET_KEYS:
+        ids = _content_ids(content, key)
+        if not ids:
+            continue
+        given = relations[param]
+        if given is None:
+            relations[param] = ids
+            notes.append(f"{param} set from content.{key} ({len(ids)})")
+            continue
+        missing = [i for i in ids if i not in given]
+        if missing:
+            return (
+                asset_ids,
+                asset_group_ids,
+                "",
+                (
+                    f"content.{key} names {', '.join(missing)}, absent from {param}. "
+                    f"OpenAEV targets only {param} (the inject form and the executor "
+                    f"read it, never content.{key}): add them to {param} or drop "
+                    f"them from content."
+                ),
+            )
+    note = ""
+    if notes:
+        note = "Targets: " + "; ".join(notes) + ", since OpenAEV targets the inject relations, never the content."
+    return relations["asset_ids"], relations["asset_group_ids"], note, ""
+
+
+def _relation_ids(raw: Any, id_key: str) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for v in raw:
+        if isinstance(v, str) and v:
+            out.append(v)
+        elif isinstance(v, dict) and v.get(id_key):
+            out.append(str(v[id_key]))
+    return out
+
+
+def inject_targets_line(inject: Any) -> str:
+    """One line naming the targets an inject answer stores on its relations.
+
+    Empty when the answer is not an object. A content that selects targets
+    (``target_selector``) with both relations empty is flagged: the injector
+    would receive no target.
+    """
+    if not isinstance(inject, dict):
+        return ""
+    groups = _relation_ids(inject.get("inject_asset_groups"), "asset_group_id")
+    assets = _relation_ids(inject.get("inject_assets"), "asset_id")
+    line = (
+        f"Targets stored: {len(groups)} asset group(s)"
+        + (f" [{', '.join(groups)}]" if groups else "")
+        + f", {len(assets)} asset(s)"
+        + (f" [{', '.join(assets)}]" if assets else "")
+        + "."
+    )
+    content = inject.get("inject_content")
+    if not groups and not assets and isinstance(content, dict) and content.get("target_selector"):
+        line += (
+            " Warning: the content selects targets but no asset or asset group "
+            "is stored: the injector receives no target."
+        )
+    return line
+
 
 # Transient upstream statuses that IDEMPOTENT OpenAEV calls opt into retrying at
 # the HTTP layer (via ``_api(..., retry_transient=True)``). The shared gateway
@@ -1792,7 +1915,51 @@ def _fmt_scenario(s: dict, base_url: str = "") -> str:
         lines.append(f"  Severity: {s['scenario_severity']}")
     if s.get("scenario_main_focus"):
         lines.append(f"  Main focus: {s['scenario_main_focus']}")
+    lines.extend(_scenario_state_lines(s))
     return "\n".join(lines)
+
+
+# OpenAEV marks the scenarios its starter pack installs with this dependency;
+# a scenario without it was created or imported by a user (3.x does not tell
+# those two apart).
+_SCENARIO_BUILTIN_DEPENDENCY = "STARTERPACK"
+
+
+def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
+    """Recurrence, origin, inject count and dates of a scenario, when returned.
+
+    Each line is rendered only when OpenAEV returned the field it reads, so a
+    trimmed payload (an older OpenAEV, a search projection) adds nothing.
+    """
+    lines: list[str] = []
+    if "scenario_recurrence" in s:
+        cron = s.get("scenario_recurrence")
+        if cron:
+            recurrence = f"  Recurrence: {cron} (cron, UTC)"
+            if s.get("scenario_recurrence_start"):
+                recurrence += f", from {s['scenario_recurrence_start']}"
+            if s.get("scenario_recurrence_end"):
+                recurrence += f", until {s['scenario_recurrence_end']}"
+            lines.append(recurrence)
+        else:
+            lines.append("  Recurrence: not planned")
+    if "scenario_dependencies" in s:
+        dependencies = s.get("scenario_dependencies") or []
+        if _SCENARIO_BUILTIN_DEPENDENCY in dependencies:
+            lines.append("  Origin: built-in (starter pack)")
+        else:
+            lines.append("  Origin: created or imported by a user")
+    injects = s.get("scenario_injects")
+    if isinstance(injects, list):
+        lines.append(f"  Injects: {len(injects)}")
+    tags = s.get("scenario_tags")
+    if isinstance(tags, list) and tags:
+        lines.append(f"  Tags: {len(tags)}")
+    if s.get("scenario_created_at"):
+        lines.append(f"  Created: {s['scenario_created_at']}")
+    if s.get("scenario_updated_at"):
+        lines.append(f"  Updated: {s['scenario_updated_at']}")
+    return lines
 
 
 def _fmt_finding(f: dict, base_url: str = "") -> str:
@@ -1900,7 +2067,125 @@ def _fmt_injector_contract(c: dict) -> str:
             lines.append(f"  Produces findings: {', '.join(str(p) for p in providing)}")
         else:
             lines.append(_PRODUCES_NONE_FORK if payload_based else _PRODUCES_NONE_NATIVE)
+    lines.extend(_fmt_contract_fields(c.get("injector_contract_content")))
     return "\n".join(lines)
+
+
+# Input fields of a contract, as ``injector_contract_content`` (a JSON string)
+# declares them: an agent builds valid inject content from this list instead
+# of reading the injector's source code.
+_CONTRACT_FIELDS_MAX = 40
+_CONTRACT_CHOICES_MAX = 25
+_CONTRACT_VALUE_CHARS = 200
+
+
+def _contract_value(value: Any) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    return clip_text(text, _CONTRACT_VALUE_CHARS)
+
+
+def _contract_choices(choices: Any) -> list[str]:
+    """``value (label)`` items of a select (a map) or a choice list."""
+    items: list[str] = []
+    if isinstance(choices, dict):
+        for value, label in choices.items():
+            items.append(f"{value} ({label})" if label not in (None, "", value) else str(value))
+    elif isinstance(choices, list):
+        for choice in choices:
+            if isinstance(choice, dict):
+                value = choice.get("value", choice.get("key"))
+                label = choice.get("label")
+                items.append(f"{value} ({label})" if label not in (None, "", value) else str(value))
+            else:
+                items.append(str(choice))
+    return items
+
+
+def _contract_condition(fields: Any, values: Any) -> str:
+    """``when target_selector = assets`` from the condition fields and values."""
+    keys = [str(k) for k in fields] if isinstance(fields, list) else []
+    parts: list[str] = []
+    for key in keys:
+        if isinstance(values, dict) and key in values:
+            parts.append(f"{key} = {_contract_value(values[key])}")
+        else:
+            parts.append(f"{key} set")
+    if not keys and values:
+        parts.append(_contract_value(values))
+    return " and ".join(parts)
+
+
+def _fmt_contract_fields(content: Any) -> list[str]:
+    """Lines listing the input fields of a contract's ``injector_contract_content``.
+
+    One line per field: key, type, label, mandatory or read-only, cardinality,
+    default, choices, linked fields and the visibility / mandatory conditions.
+    Absent or malformed content adds no line.
+    """
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return []
+    fields = [f for f in content["fields"] if isinstance(f, dict) and f.get("key")]
+    if not fields:
+        return []
+    lines = [f"  Input fields ({len(fields)}; inject_content keys, mandatory ones marked):"]
+    for field in fields[:_CONTRACT_FIELDS_MAX]:
+        head = f"    - {field['key']} [{field.get('type', '?')}]"
+        label = field.get("label")
+        if label and label != field["key"]:
+            head += f" {_contract_value(label)}"
+        flags = []
+        if field.get("mandatory"):
+            flags.append("mandatory")
+        if field.get("readOnly"):
+            flags.append("read-only")
+        if field.get("cardinality"):
+            flags.append(f"cardinality {field['cardinality']}")
+        if flags:
+            head += f" ({', '.join(flags)})"
+        lines.append(head)
+        if field["key"] == "expectations":
+            available = field.get("availableExpectations") or field.get("predefinedExpectations") or []
+            types = [
+                str(e.get("expectation_type")) for e in available if isinstance(e, dict) and e.get("expectation_type")
+            ]
+            if types:
+                lines.append(f"        expectations offered: {', '.join(types)}")
+            continue
+        default = field.get("defaultValue")
+        if default not in (None, "", [], {}):
+            lines.append(f"        default: {_contract_value(default)}")
+        choices = _contract_choices(field.get("choices"))
+        if choices:
+            shown = ", ".join(choices[:_CONTRACT_CHOICES_MAX])
+            more = len(choices) - _CONTRACT_CHOICES_MAX
+            if more > 0:
+                shown += f" (+{more} more)"
+            lines.append(f"        choices: {shown}")
+        linked = [
+            str(lf.get("key")) for lf in field.get("linkedFields") or [] if isinstance(lf, dict) and lf.get("key")
+        ]
+        if linked:
+            lines.append(f"        linked to: {', '.join(linked)}")
+        visible = _contract_condition(field.get("visibleConditionFields"), field.get("visibleConditionValues"))
+        if visible:
+            lines.append(f"        shown when: {visible}")
+        required_when = _contract_condition(
+            field.get("mandatoryConditionFields"), field.get("mandatoryConditionValues")
+        )
+        if required_when:
+            lines.append(f"        mandatory when: {required_when}")
+        groups = field.get("mandatoryGroups")
+        if isinstance(groups, list) and groups:
+            lines.append(f"        one of mandatory with: {', '.join(str(g) for g in groups)}")
+    hidden = len(fields) - _CONTRACT_FIELDS_MAX
+    if hidden > 0:
+        lines.append(f"    ... {hidden} more field(s) not shown")
+    return lines
 
 
 def _fmt_payload(p: dict, base_url: str = "") -> str:
@@ -2146,6 +2431,11 @@ def _fmt_arsenal_action(a: dict, base_url: str = "", *, detailed: bool = False) 
         attack_patterns = a.get("action_attack_patterns_ids") or []
         if attack_patterns:
             lines.append(f"  Attack pattern IDs: {len(attack_patterns)}")
+        if action_id != "N/A":
+            lines.append(
+                "  Input fields (keys, types, choices, defaults, conditions): "
+                f"get_openaev_injector_contract(contract_id='{action_id}')"
+            )
     return "\n".join(lines)
 
 
@@ -2212,6 +2502,7 @@ __all__ = [
     "EXPECTATION_TYPES",
     "FILTER_MODES",
     "FILTER_OPERATORS",
+    "JSON_READ_CHARS",
     "PAYLOAD_TYPES",
     "PLATFORMS",
     "REPORTING_CONTEXT_TYPES",
@@ -2263,6 +2554,9 @@ __all__ = [
     "_with_scope_hint",
     "expectation_label",
     "expectation_result_type",
+    "inject_targets_line",
+    "json_answer",
     "logger",
+    "mirror_content_targets",
     "scoped_safe_request",
 ]

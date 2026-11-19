@@ -1659,8 +1659,13 @@ async def _poll_workflow_run(
     tokens: dict[tuple[str, str], str | None],
     seen: dict[tuple, dict | None],
     counts: dict,
-) -> None:
-    """Read one ``workflow_run`` reference through the providers' readers and apply a successful run."""
+    max_reads: int = POLL_MAX_READS,
+) -> bool:
+    """Read one ``workflow_run`` reference through the providers' readers and apply a successful run.
+
+    False when the read budget (*max_reads* per pass or delivery) left the reference
+    unread, so the item is not stamped polled.
+    """
     key = _ref_key(ref)
     for provider, reader in readers.items():
         token = tokens.get((provider, str(user_id)))
@@ -1668,8 +1673,8 @@ async def _poll_workflow_run(
             continue
         read_key = (provider, str(user_id), *key)
         if read_key not in seen:
-            if counts["read"] >= POLL_MAX_READS:
-                return
+            if counts["read"] >= max_reads:
+                return False
             counts["read"] += 1
             try:
                 seen[read_key] = await reader(
@@ -1681,7 +1686,7 @@ async def _poll_workflow_run(
                     token,
                 )
             except Exception as exc:
-                logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                _note_read_failure(counts, ref, exc, item_id)
                 seen[read_key] = None
         run = seen[read_key]
         if run is None:
@@ -1695,10 +1700,11 @@ async def _poll_workflow_run(
                 item_id,
                 format_exception_message(exc),
             )
-            return
+            return True
         if outcome:
             counts[outcome] = counts.get(outcome, 0) + 1
-        return
+        return True
+    return True
 
 
 async def _poll_branch_successors(
@@ -1751,10 +1757,103 @@ async def _poll_branch_successors(
         return
 
 
+# -- The workflow run delivery -----------------------------------------------------
+
+
+def delivered_workflow_names(event: PullRequestEvent) -> frozenset[str]:
+    """The names a ``workflow_run`` reference may give the workflow of *event*: its file, its id. Pure.
+
+    Empty unless *event* is a completed, successful workflow run (the ``ci``
+    form of a GitHub ``workflow_run`` delivery): a check suite, a run still going
+    or a failed run releases nothing.
+    """
+    if event.kind != "ci" or event.status != "completed" or event.conclusion != "success":
+        return frozenset()
+    if not event.run_key.startswith("workflow:"):
+        return frozenset()
+    names = {event.run_key.removeprefix("workflow:")}
+    workflow_file = (event.extra or {}).get("workflow_file")
+    if isinstance(workflow_file, str) and workflow_file:
+        names.add(workflow_file)
+    return frozenset(n for n in names if n)
+
+
+def named_by_workflow_run(refs: list[Any], event: PullRequestEvent) -> list[dict[str, Any]]:
+    """The open ``workflow_run`` references of *refs* the successful run *event* may satisfy. Pure.
+
+    Same repository, same workflow (file name or id), same branch when the
+    reference names one. The time and title filters are the reader's: the run is
+    read back from the code host before anything is applied.
+    """
+    names = delivered_workflow_names(event)
+    if not names:
+        return []
+    return [
+        r
+        for r in open_refs(refs)
+        if r.get("kind") == "workflow_run"
+        and r.get("repo") == event.repo
+        and str(r.get("workflow")) in names
+        and (not r.get("branch") or r.get("branch") == event.head_branch)
+    ]
+
+
+async def release_from_workflow_run_delivery(event: PullRequestEvent) -> dict[str, Any]:
+    """Release the items waiting on the workflow run a successful ``workflow_run`` delivery reports.
+
+    The delivery, signed or not, only says which reference may be met: each
+    ``workflow_run`` reference it names (:func:`named_by_workflow_run`) is read
+    back through the polling fallback's reader with its owner's credential, and
+    only the run that read returns is applied. The release lands within seconds
+    of the run instead of the next polling pass; the poller stays the fallback.
+    At most :data:`HINT_MAX_READS` reads per delivery.
+
+    ``{"read": r, "released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import workflow_run_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    if not delivered_workflow_names(event):
+        return counts
+    readers = workflow_run_readers()
+    if not readers:
+        return counts
+    try:
+        async with async_session() as db:
+            candidates = [c for c in await _hint_candidates(db, event) if named_by_workflow_run(c[2], event)]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for _, user_id, _ in candidates:
+                for provider in readers:
+                    key = (provider, str(user_id))
+                    if key not in tokens:
+                        tokens[key] = await reference_token(db, provider, user_id)
+    except Exception as exc:
+        logger.warning("Workflow run delivery on %s not read back: %s", event.repo, format_exception_message(exc))
+        return counts
+    seen: dict[tuple[Any, ...], dict[str, Any] | None] = {}
+    for item_id, user_id, refs in candidates:
+        for ref in named_by_workflow_run(refs, event):
+            await _poll_workflow_run(item_id, user_id, ref, readers, tokens, seen, counts, HINT_MAX_READS)
+    counts.pop("_unread", None)
+    if counts["read"]:
+        logger.info("Workflow run %s on %s read back for blocked items: %s", event.run_id, event.repo, counts)
+    return counts
+
+
+def schedule_workflow_run_release(event: PullRequestEvent) -> None:
+    """Run :func:`release_from_workflow_run_delivery` in the background (a webhook must not wait on GitHub)."""
+    if delivered_workflow_names(event):
+        _spawn(release_from_workflow_run_delivery(event))
+
+
 # -- The polling fallback --------------------------------------------------------
 
 #: Item id -> monotonic time of its last read, per process.
 _last_polled: dict[uuid.UUID, float] = {}
+# Items a pass left with a reference unread because its read budget ran out: never
+# stamped polled, and read first by the next pass of this process.
+_budget_skipped: set[uuid.UUID] = set()
 
 
 def open_refs(refs: Any) -> list[dict]:
@@ -1898,7 +1997,7 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
         workflow_run_readers,
     )
 
-    counts = {"read": 0, "released": 0, "noted": 0}
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
     readers = reference_state_readers()
     run_readers = workflow_run_readers()
     branch_readers = branch_closings_readers()
@@ -1909,7 +2008,11 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
     now_mono = time.monotonic()
     try:
         async with async_session() as db:
-            candidates = [c for c in await _poll_candidates(db, now) if _due(c[0], now_mono)][:POLL_MAX_ITEMS]
+            due = [c for c in await _poll_candidates(db, now) if _due(c[0], now_mono)]
+            # An item a previous pass left unread for lack of budget goes first, so a
+            # long queue of blocked items cannot starve it pass after pass.
+            due.sort(key=lambda c: c[0] not in _budget_skipped)
+            candidates = due[:POLL_MAX_ITEMS]
             tokens: dict[tuple[str, str], str | None] = {}
             for _, user_id, _ in candidates:
                 for provider in providers:
@@ -1923,10 +2026,11 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
     runs_seen: dict[tuple, dict | None] = {}
     branches_seen: dict[tuple, list[PullRequestEvent]] = {}
     for item_id, user_id, refs in candidates:
-        _last_polled[item_id] = now_mono
+        complete = True
         for ref in open_refs(refs):
             if ref.get("kind") == "workflow_run":
-                await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts)
+                if not await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts):
+                    complete = False
                 continue
             kind = read_kind(ref)
             if kind is None:
@@ -1938,12 +2042,13 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
                 key = (provider, str(user_id), ref.get("repo"), kind, ref.get("number"))
                 if key not in seen:
                     if counts["read"] >= POLL_MAX_READS:
+                        complete = False
                         break
                     counts["read"] += 1
                     try:
                         seen[key] = await reader(str(ref["repo"]), kind, int(ref["number"]), token)
                     except Exception as exc:
-                        logger.info("Reference %s not read: %s", ref_label(ref), format_exception_message(exc))
+                        _note_read_failure(counts, ref, exc, item_id)
                         seen[key] = None
                 event = seen[key]
                 if event is None:
@@ -1963,9 +2068,163 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
                 break
             if ref.get("kind") == "pull_request" and ref.get("head_branch"):
                 await _poll_branch_successors(item_id, user_id, ref, branch_readers, tokens, branches_seen, counts)
+        if complete:
+            _last_polled[item_id] = now_mono
+            _budget_skipped.discard(item_id)
+        else:
+            counts["skipped_by_budget"] = counts.get("skipped_by_budget", 0) + 1
+            _budget_skipped.add(item_id)
     if len(_last_polled) > POLL_MAX_ITEMS * 40:
         for stale in [k for k, t in _last_polled.items() if now_mono - t >= POLL_QUIET_SECONDS]:
             _last_polled.pop(stale, None)
-    if counts["released"] or counts["noted"] or counts.get("surfaced"):
+    unread: dict[uuid.UUID, list[str]] = counts.pop("_unread", {})
+    if unread:
+        noted = await note_unread_references(unread, now)
+        if noted:
+            counts["failure_noted"] = noted
+    if counts.get("skipped_by_budget") or counts.get("read_failed"):
+        logger.warning("Blocked references polled with items left unread: %s", counts)
+    elif counts["released"] or counts["noted"] or counts.get("surfaced"):
         logger.info("Blocked references polled: %s", counts)
     return counts
+
+
+def _note_read_failure(
+    counts: dict[str, Any], ref: dict[str, Any], exc: Exception, item_id: uuid.UUID | None = None
+) -> None:
+    """Count and log, at warning, a reference the provider could not read, kept per item for its note."""
+    message = format_exception_message(exc)
+    counts["read_failed"] = counts.get("read_failed", 0) + 1
+    logger.warning("Reference %s not read: %s", ref_label(ref), message)
+    if item_id is not None:
+        counts.setdefault("_unread", {}).setdefault(item_id, []).append(f"{ref_label(ref)}: {message}")
+
+
+# -- What the item says when a reference cannot be read -----------------------------
+
+#: An item still blocked this long after it was blocked is told why a read failed.
+READ_FAILURE_NOTE_AFTER_SECONDS = 15 * 60
+#: One read-failure note per item at most this often (the poller retries every pass).
+READ_FAILURE_NOTE_EVERY_SECONDS = 6 * 3600
+READ_FAILURE_NOTE_PREFIX = "not released yet: a reference could not be read"
+
+
+def read_failure_note(failures: list[str], now: datetime) -> str:
+    """The claim note of an item whose references the poller could not read. Pure."""
+    reasons = "; ".join(dict.fromkeys(failures))[:MAX_REASON_CHARS]
+    every = POLL_QUIET_SECONDS // 60
+    return f"{READ_FAILURE_NOTE_PREFIX} at {_stamp(now)} ({reasons}); the poller reads it again every {every} min"
+
+
+def read_failure_note_due(claim_notes: Any, last_activity_at: datetime | None, now: datetime) -> bool:
+    """Whether an item may get a read-failure note now. Pure.
+
+    Blocked and quiet for :data:`READ_FAILURE_NOTE_AFTER_SECONDS`, and no such note
+    in the last :data:`READ_FAILURE_NOTE_EVERY_SECONDS`.
+    """
+    if last_activity_at is not None and now - last_activity_at < timedelta(seconds=READ_FAILURE_NOTE_AFTER_SECONDS):
+        return False
+    horizon = now - timedelta(seconds=READ_FAILURE_NOTE_EVERY_SECONDS)
+    for note in claim_notes or []:
+        if not isinstance(note, dict) or not str(note.get("text") or "").startswith(READ_FAILURE_NOTE_PREFIX):
+            continue
+        at = _parse_stamp(note.get("at"))
+        if at is not None and at >= horizon:
+            return False
+    return True
+
+
+async def note_unread_references(unread: dict[uuid.UUID, list[str]], now: datetime) -> int:
+    """Write :func:`read_failure_note` on the blocked items of *unread* it is due on. Never raises.
+
+    The note goes in the claim notes, the item's activity time untouched, so the
+    polling order is unchanged.
+    """
+    from app.core.database import async_session
+
+    noted = 0
+    try:
+        async with async_session() as db:
+            for item_id, failures in unread.items():
+                item = (
+                    await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+                ).scalar_one_or_none()
+                if item is None or item.status != "blocked":
+                    continue
+                if not read_failure_note_due(item.claim_notes, item.last_activity_at, now):
+                    continue
+                item.claim_notes = [
+                    *(item.claim_notes or []),
+                    {"at": now.isoformat(), "text": read_failure_note(failures, now)},
+                ]
+                noted += 1
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Read failures not noted on their items: %s", format_exception_message(exc))
+    return noted
+
+
+# -- The backstop: every reference met, the item still blocked ----------------------
+
+
+def backstop_note(refs: list[dict[str, Any]], now: datetime) -> str:
+    """The note of an item the backstop released. Pure."""
+    met = "; ".join(ref_label(r) for r in refs)
+    return f"released by the backstop: every reference was already met ({met}); released at {_stamp(now)}"
+
+
+async def release_satisfied_blocks(now: datetime | None = None) -> int:
+    """Release the blocked items whose references are all met but that stayed blocked.
+
+    The class of defect, whatever path missed the release (a delivery lost, a
+    release that failed after recording the state): an item blocked on
+    references only, every one satisfied, no work item and no person to wait
+    for, goes back to ``open``, unclaimed, with :func:`backstop_note` on top of
+    its description. Run once per polling pass. Never raises.
+    """
+    from app.core.database import async_session
+
+    now = now or datetime.now(UTC)
+    released: list[tuple[uuid.UUID, str]] = []
+    try:
+        async with async_session() as db:
+            rows = await db.execute(
+                select(WorkItem)
+                .where(
+                    WorkItem.status == "blocked",
+                    WorkItem.blocked_on_refs.is_not(None),
+                    WorkItem.action_mode.is_(None),
+                    WorkItem.last_activity_at <= now - timedelta(seconds=POLL_MIN_AGE_SECONDS),
+                    # Only items with a recorded state: an unmet reference carries none.
+                    cast(WorkItem.blocked_on_refs, Text).ilike('%"state"%'),
+                )
+                .order_by(WorkItem.last_activity_at.asc())
+                .limit(POLL_MAX_ITEMS * 4)
+                .with_for_update(skip_locked=True)
+            )
+            for item in rows.scalars().all():
+                refs = [r for r in (item.blocked_on_refs or []) if isinstance(r, dict)]
+                if item.blocked_on or item.needs_human or not all_satisfied(refs):
+                    continue
+                note = backstop_note(refs, now) + due_deferral(item.not_before, now)
+                previous = item.description or ""
+                item.description = f"{note}\n\n{previous}" if previous else note
+                item.claim_notes = [*(item.claim_notes or []), {"at": now.isoformat(), "text": note}]
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+                item.blocked_on_refs = None
+                item.blocked_reason = None
+                item.needs_human = None
+                item.last_activity_at = now
+                released.append((item.id, note))
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Blocked items with every reference met not released: %s", format_exception_message(exc))
+        return 0
+    for item_id, note in released:
+        await _publish_surfaced(item_id, note)
+    if released:
+        logger.warning("Backstop released %d blocked work item(s) whose references were all met", len(released))
+    return len(released)

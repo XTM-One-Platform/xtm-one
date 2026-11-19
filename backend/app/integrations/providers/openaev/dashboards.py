@@ -26,7 +26,7 @@ from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, _validate_filter_group
+from ._common import _api, _search_body, _validate_filter_group, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,106 @@ _KIND_TO_CONFIG_TYPES: dict[str, tuple[str, ...]] = {
     "entities_runtime": ("list",),
     "series": ("temporal-histogram", "structural-histogram"),
 }
+
+
+#: The ``base_entity`` values the engine indexes (the EsBase discriminator
+#: mapping of OpenAEV main). A term filter on any other value matches no
+#: document, so the query answers 0 with no error.
+_BASE_ENTITIES = (
+    "asset",
+    "asset-group",
+    "attack-pattern",
+    "expectation-inject",
+    "finding",
+    "inject",
+    "scenario",
+    "security-domain",
+    "security-platform",
+    "simulation",
+    "snapshot-attack-observation",
+    "snapshot-vulnerability-observation",
+    "tag",
+    "team",
+    "vulnerable-endpoint",
+)
+#: Retired engine models, with what replaces them.
+_RETIRED_BASE_ENTITIES = {
+    "endpoint": (
+        "'endpoint' was retired on 25 Jul 2026: the index is now 'asset' "
+        "(the whole inventory). For hosts only, add the filter "
+        '{"key": "asset_category", "operator": "eq", "values": ["HOST"]}.'
+    ),
+}
+
+#: OpenAEV's CustomDashboardTimeRange values. On an ad-hoc query there is no
+#: dashboard to inherit a range from, so DEFAULT (and an absent time_range,
+#: which deserialises to DEFAULT) resolves to LAST_QUARTER: the last 90 days.
+_TIME_RANGES = (
+    "ALL_TIME",
+    "CUSTOM",
+    "DEFAULT",
+    "LAST_DAY",
+    "LAST_WEEK",
+    "LAST_MONTH",
+    "LAST_QUARTER",
+    "LAST_SEMESTER",
+    "LAST_YEAR",
+)
+
+
+def _base_entity_error(node: object) -> str:
+    """Refuse a ``base_entity`` filter value the engine does not index."""
+    if isinstance(node, dict):
+        if node.get("key") == "base_entity":
+            values = node.get("values")
+            if values is None:
+                values = []
+            elif not isinstance(values, list):
+                values = [values]
+            for value in values:
+                token = str(value).strip()
+                retired = _RETIRED_BASE_ENTITIES.get(token.lower())
+                if retired:
+                    return f"base_entity '{value}' is not indexed any more, so the query would answer 0. {retired}"
+                if token not in _BASE_ENTITIES:
+                    return (
+                        f"base_entity '{value}' is not an OpenAEV engine entity, "
+                        "so the query would answer 0. Valid values: "
+                        f"{', '.join(_BASE_ENTITIES)}."
+                    )
+        for value in node.values():
+            err = _base_entity_error(value)
+            if err:
+                return err
+    elif isinstance(node, list):
+        for item in node:
+            err = _base_entity_error(item)
+            if err:
+                return err
+    return ""
+
+
+def _apply_time_range(config: dict) -> tuple[str, str]:
+    """Default an absent time_range to ALL_TIME; answer (note, error)."""
+    raw = config.get("time_range")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        config["time_range"] = "ALL_TIME"
+        return (
+            "time_range not set: ALL_TIME applied (OpenAEV's DEFAULT resolves "
+            "to LAST_QUARTER, the last 90 days, on an ad-hoc query)",
+            "",
+        )
+    time_range = str(raw).strip().upper()
+    if time_range not in _TIME_RANGES:
+        return "", (f"time_range '{raw}' is not an OpenAEV time range. Valid values: {', '.join(_TIME_RANGES)}.")
+    config["time_range"] = time_range
+    if time_range == "DEFAULT":
+        return (
+            "time_range DEFAULT resolves to LAST_QUARTER (the last 90 days) on "
+            "an ad-hoc query; pass ALL_TIME for every document",
+            "",
+        )
+    return f"time_range {time_range}", ""
 
 
 # The fields OpenAEV's CustomDashboardInput binds on POST and PUT; any other
@@ -177,6 +277,12 @@ def register(
         config_err = _walk(config)
         if config_err:
             return f"widget_config contains an invalid filter. {config_err}"
+        entity_err = _base_entity_error(config)
+        if entity_err:
+            return f"widget_config refused, nothing queried. {entity_err}"
+        time_note, time_err = _apply_time_range(config)
+        if time_err:
+            return f"widget_config refused, nothing queried. {time_err}"
 
         params: dict = {}
         if parameters:
@@ -204,7 +310,7 @@ def register(
         rendered = json.dumps(payload, default=str, indent=None)
         if len(rendered) > 6000:
             rendered = rendered[:6000] + " ...[truncated]"
-        return f"Ad-hoc {kind} result:\n{rendered}"
+        return f"Ad-hoc {kind} result ({time_note}):\n{rendered}"
 
     async def manage_openaev_dashboard(
         action: str = "",
@@ -258,7 +364,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "for_resource":
             if not resource_id:
@@ -276,7 +382,7 @@ def register(
             items = resp.json() or []
             if not items:
                 return f"No dashboards can be bound to resource {resource_id}."
-            return json.dumps(items, default=str)[:2000]
+            return json_answer(items)
 
         if action in ("create", "update"):
             ignored = sorted(set(extra) - set(_DASHBOARD_WRITABLE_FIELDS))
@@ -387,7 +493,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "get_widget":
             if not dashboard_id or not widget_id:
@@ -399,7 +505,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("run_count", "run_average", "run_series", "run_entities"):
             if not widget_id:
@@ -419,7 +525,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:4000]
+            return json_answer(resp.json())
 
         if action == "search_engine":
             if not search:
@@ -430,7 +536,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, for_resource, "
@@ -450,14 +556,22 @@ def register(
                 "inline and get the computed aggregate back. Use this for "
                 "quantitative questions the dedicated tools do not answer "
                 "directly (counts, averages and time series over simulations, "
-                "injects, expectations, findings, endpoints, ...). kind: 'count' "
+                "injects, expectations, findings, assets, ...). kind: 'count' "
                 "(a single count with its interval), 'average', 'series' (time "
                 "series), 'entities' (the matching entities, paginated), "
                 "'entities_runtime' (runtime-resolved entities). widget_config is "
                 "the same JSON structure a stored widget holds - read one with "
                 "manage_openaev_dashboard action='get_widget' to copy the shape. "
                 "Filter operators inside it are validated locally because "
-                "OpenAEV silently coerces an unknown operator to 'eq'."
+                "OpenAEV silently coerces an unknown operator to 'eq'. The "
+                "entity is a filter {key: 'base_entity', values: [...]}: valid "
+                f"values are {', '.join(_BASE_ENTITIES)} ('endpoint' was "
+                "retired for 'asset'); any other value is refused, as OpenAEV "
+                "would answer 0. time_range (ALL_TIME, LAST_DAY, LAST_WEEK, "
+                "LAST_MONTH, LAST_QUARTER, LAST_SEMESTER, LAST_YEAR, CUSTOM, "
+                "DEFAULT) defaults to ALL_TIME when left out, because OpenAEV's "
+                "DEFAULT means LAST_QUARTER (90 days) on an ad-hoc query; the "
+                "answer names the range applied."
             ),
             input_schema={
                 "type": "object",

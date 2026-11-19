@@ -458,6 +458,11 @@ _ROLE_GATES = {
     ("services/builtin_tools/roi.py", "_require_admin"): 1,
     ("services/builtin_tools/skills.py", "build_skill_access_context"): 1,
     ("services/builtin_tools/skills.py", "_visible_skill_rows"): 1,
+    # The user administration tools are administrators only: _admin re-reads the
+    # acting person's role at the call; deactivation_refusal refuses the last
+    # active administrator (the TARGET's role, the REST rule) (#250).
+    ("services/builtin_tools/user_admin.py", "_admin"): 1,
+    ("services/builtin_tools/user_admin.py", "deactivation_refusal"): 2,
     ("services/builtin_tools/work_items.py", "_run_delegate_to_assignment"): 1,
     # Company-managed creation is admin-only, like the builder's other creates.
     ("services/builtin_tools/workspaces.py", "_create_workspace"): 1,

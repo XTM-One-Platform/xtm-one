@@ -47,3 +47,12 @@ Admin API (`backend/app/api/v1/users.py`): `GET /api/v1/users/deactivations?open
 ## Preview
 
 `preview_deactivation(db, user)` reads, without writing, what `deactivate_user` would do: `{refusal, successor, counts, kept_without_successor}`, the counts keyed as the cascade's own. `GET /api/v1/users/{id}/deactivation-preview` serves it to the **Disable** confirmation (`frontend/src/components/users/DeactivateUserDialog.tsx`). Figures the cascade learns only while acting (sub-agent tasks under a cancelled run, other people's agents bound to a private integration) are not previewed. `tests/test_user_deactivation_postgres.py::test_preview_matches_the_cascade_and_writes_nothing` keeps the preview equal to the cascade.
+
+## Agent tools (`user_admin`)
+
+The built-in group `user_admin` (`backend/app/services/builtin_tools/user_admin.py`) gives an administrator's agent what Administration > Users and groups offers. It calls `preview_deactivation`, `deactivate_user`, `reactivate_user` and `resolve_review_item` above, never a second cascade, then `after_commit` once the transaction is committed.
+
+- Bound only by an administrator (`ADMIN_BOUND_BUILTIN_TOOL_IDS`), wired only for an administrator's turn (`offers_user_admin`), and every executor reads the acting person again (active and admin) before anything else.
+- `deactivate_platform_users` takes 1 to 100 ids or emails and a required reason; `dry_run` is true unless the caller passes false, and a dry run answers the preview. It refuses the acting account, the `ADMIN_EMAIL` account, the last active administrator and an account flagged `users.deactivation_protected` (a break-glass or service account), per account, the rest of the batch going on.
+- A group with a `scim_external_id` is managed by the identity provider: `add_group_members` and `remove_group_members` refuse it.
+- Every write is audited (`log_audit`) with `details.tool_group`, the agent name and the run id, so `query_audit_log` reads who did what through which agent.

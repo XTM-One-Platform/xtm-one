@@ -22,7 +22,7 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, _validate_filter_group
+from ._common import _api, _search_body, _validate_filter_group, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2500]
+            return json_answer(resp.json(), 2500)
 
         if action in ("create_notifier", "update_notifier"):
             body: dict = dict(extra)
@@ -220,7 +220,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2500]
+            return json_answer(resp.json(), 2500)
 
         if action in ("create_trigger", "update_trigger"):
             body = dict(extra)
@@ -329,7 +329,7 @@ def register(
             )
             if err:
                 return err
-            return f"Unread notifications: {json.dumps(resp.json(), default=str)[:200]}"
+            return f"Unread notifications: {json_answer(resp.json(), 200)}"
 
         if action == "mark_all_read":
             _, err = await _api(

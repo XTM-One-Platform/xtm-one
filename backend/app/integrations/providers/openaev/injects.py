@@ -20,7 +20,14 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _fmt_expectation_results_by_type, _search_body
+from ._common import (
+    _api,
+    _fmt_expectation_results_by_type,
+    _search_body,
+    inject_targets_line,
+    json_answer,
+    mirror_content_targets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +87,7 @@ def register(
                 )
                 if err:
                     return err
-                return json.dumps(resp.json(), default=str)[:3000]
+                return json_answer(resp.json())
             if action == "status":
                 if not inject_id:
                     return "inject_id is required."
@@ -90,7 +97,7 @@ def register(
                 )
                 if err:
                     return err
-                return json.dumps(resp.json(), default=str)[:2000]
+                return json_answer(resp.json())
             return "For scope 'global', valid actions are: get, status."
 
         base = _base(scope, parent_id)
@@ -194,7 +201,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -205,6 +212,17 @@ def register(
                 body = _inject_input(for_create=action == "create")
             except ValueError as exc:
                 return f"content / depends_on must be valid JSON: {exc}"
+            targets_note = ""
+            if "inject_content" in body:
+                assets, groups, targets_note, targets_err = mirror_content_targets(
+                    body["inject_content"], asset_ids, asset_group_ids
+                )
+                if targets_err:
+                    return targets_err
+                if assets is not None:
+                    body["inject_assets"] = assets
+                if groups is not None:
+                    body["inject_asset_groups"] = groups
             if action == "update" and not body:
                 return (
                     "Provide at least one field to update (title, description, "
@@ -225,7 +243,9 @@ def register(
                 return err
             i = resp.json()
             verb = "Created" if action == "create" else "Updated"
-            return f"{verb} inject '{i.get('inject_title')}' (id: {i.get('inject_id')})."
+            lines = [f"{verb} inject '{i.get('inject_title')}' (id: {i.get('inject_id')})."]
+            lines += [t for t in (targets_note, inject_targets_line(i)) if t]
+            return "\n".join(lines)
 
         if action == "delete":
             if not inject_id:

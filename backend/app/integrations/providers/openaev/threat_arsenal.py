@@ -51,6 +51,7 @@ from ._common import (
     _search_body,
     _validate_filter_group,
     _without_providing_filter,
+    json_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -1526,7 +1527,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json(), 3000)
 
         if action == "argument_types":
             # The trailing slash is REQUIRED by the mapping. The result is
@@ -1547,7 +1548,7 @@ def register(
                     "only the base primitive types are offered."
                 )
             )
-            return f"Argument types ({len(types)}): {json.dumps(types, default=str)[:2000]}{note}"
+            return f"Argument types ({len(types)}): {json_answer(types, 2000)}{note}"
 
         if action == "security_platforms":
             if not action_id:
@@ -1589,7 +1590,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json(), 3000)
 
         return (
             f"Unknown action '{action}'. Valid actions: list, list_non_tabletop, "

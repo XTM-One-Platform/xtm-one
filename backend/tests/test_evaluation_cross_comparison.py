@@ -12,12 +12,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.evaluations import compare_evaluations_route, get_bundle_review
-from app.api.v1.schemas.evaluation import BundleReviewResponse, EvaluationComparisonResponse
+from app.api.v1.evaluations import compare_evaluations_route, get_bundle_review, get_bundle_reviews
+from app.api.v1.schemas.evaluation import BundleReviewResponse, BundleReviewsRequest, EvaluationComparisonResponse
 from app.models.agent import Agent
 from app.models.dataset import Dataset, DatasetEntry, EvaluationDataset
 from app.models.evaluation import Evaluation, EvaluationAgent, EvaluationResult, EvaluationRun
 from app.models.evaluation_metric import EvaluationMetric
+from app.services.evaluation.answer_facts import is_unreadable, judge_score, metric_counts, setup_of
 from app.services.evaluation.bundle_review import EXPECTED, build_review
 from app.services.evaluation.metric_package import canonical_stix_bundle, reference_key
 from tests.evaluation_database import _admin, _make_db, _stub_audit_and_groups  # noqa: F401
@@ -289,3 +290,118 @@ async def test_two_evaluations_answers_on_one_stix_entry_are_reviewed_together()
     assert len(served.sources[str(results[0].id)]) == 1 and len(served.sources[str(results[1].id)]) == 2
     assert mismatch.value.status_code == 422 and "same expected bundle" in mismatch.value.detail
     assert unknown.value.status_code == 404
+
+
+# ── What both pages read from one stored answer ──
+
+
+def _scored(value: float, **detail) -> dict:
+    return {"status": "scored", "value": value, "detail": detail}
+
+
+def test_an_answer_gives_its_counts_and_whether_the_scorer_could_read_it():
+    readable = {"stix.entity_prf": _scored(34.1, tp=7, fp=17, fn=10, numerator=14, denominator=41),
+                "performance.cost.llm": _scored(0.13)}
+    unreadable = {"stix.entity_prf": _scored(0.0, reason="prediction_not_well_formed", numerator=0, denominator=34)}
+    assert metric_counts(readable, ("stix.entity_prf",)) == {"stix.entity_prf": [7.0, 17.0, 10.0]}
+    assert metric_counts(unreadable, ("stix.entity_prf",)) == {}
+    assert not is_unreadable(readable) and is_unreadable(unreadable)
+    assert is_unreadable(None) is False
+
+
+def test_a_judge_score_exists_only_when_the_judge_gave_a_verdict():
+    assert judge_score(60.0, scorer_selection=None, is_judge_failure=False, anomaly=None) == 60.0
+    assert judge_score(0.0, scorer_selection=[], is_judge_failure=False, anomaly=None) is None
+    assert judge_score(60.0, scorer_selection=["judge"], is_judge_failure=True, anomaly=None) is None
+    assert judge_score(60.0, scorer_selection=None, is_judge_failure=False, anomaly="transient_error") is None
+
+
+def test_reruns_of_one_setup_share_a_setup_key_whatever_the_model():
+    agent = uuid.uuid4()
+    first = EvaluationRun(agent_id=agent, model_id="m1", persona_version_number=3, execution_mode="full_loop", skill_versions={"s": 2})
+    rerun = EvaluationRun(agent_id=agent, model_id="m2", persona_version_number=3, execution_mode="full_loop", skill_versions={"s": 2})
+    changed = EvaluationRun(agent_id=agent, model_id="m1", persona_version_number=4, execution_mode="full_loop", skill_versions={"s": 2})
+    assert setup_of(first)[0] == setup_of(rerun)[0] != setup_of(changed)[0]
+    assert setup_of(first)[1]["persona_version"] == 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_runs_cells_carry_counts_unreadable_answers_and_judge_scores():
+    sessionmaker, cleanup = await _make_db()
+    try:
+        async with sessionmaker() as session:
+            admin = await _admin(session)
+            a, agent, entries = await _evaluation(session, "A", "CLASSIFICATION", ['["x"]', '["y"]'], "Harvester")
+            run = EvaluationRun(evaluation_id=a.id, agent_id=agent.id, model_id="m1", trigger_reason="schedule", status="completed",
+                                score=72.5, persona_version_number=2, created_at=NOW)
+            session.add(run)
+            await session.flush()
+            details = [
+                {"metric_results": {MICRO: _scored(50.0, tp=1, fp=1, fn=1, numerator=2, denominator=4)}},
+                {"metric_results": {MICRO: _scored(0.0, reason="prediction_not_scorable", numerator=0, denominator=2)}},
+            ]
+            for entry, detail, (num, den) in zip(entries, details, [(2, 4), (0, 2)], strict=True):
+                result = EvaluationResult(run_id=run.id, entry_id=entry.id, agent_output="x", score=40.0, execution_details=detail)
+                session.add(result)
+                await session.flush()
+                session.add(EvaluationMetric(run_id=run.id, result_id=result.id, key=MICRO, value=100 * num / den, numerator=num, denominator=den))
+            await session.commit()
+            served = EvaluationComparisonResponse.model_validate(await compare_evaluations_route(ids=str(a.id), user=admin, db=session))
+    finally:
+        await cleanup()
+
+    cells = sorted(served.cells, key=lambda c: c.unreadable)
+    assert cells[0].counts == {MICRO: [1.0, 1.0, 1.0]} and not cells[0].unreadable
+    assert cells[1].unreadable and cells[1].counts == {}
+    assert [c.judge_score for c in cells] == [40.0, 40.0]
+    run_view = served.evaluations[0].runs[0]
+    assert run_view.judge_score == 72.5 and run_view.trigger_reason == "schedule"
+    assert run_view.setup_key and run_view.setup["persona_version"] == 2
+    # The suite scoring now, against which a run's own version tells a drift.
+    assert served.metric_suite_version
+    assert run_view.rescore_error is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_runs_entries_are_reviewed_in_one_batch_without_their_text():
+    actor, malware = _sdo("threat-actor", "Memento Labs"), _sdo("malware", "Dante")
+    first, second = _bundle(actor, malware, _rel(actor, "uses", malware)), _bundle(actor)
+    sessionmaker, cleanup = await _make_db()
+    try:
+        async with sessionmaker() as session:
+            admin = await _admin(session)
+            a, agent, entries = await _evaluation(session, "A", "STIX_BUNDLE", [first, second], "Grounded")
+            for entry in entries:
+                entry.input_prompt = "Memento Labs uses Dante."
+            run = EvaluationRun(evaluation_id=a.id, agent_id=agent.id, model_id="m1", trigger_reason="manual", status="completed")
+            session.add(run)
+            await session.flush()
+            results = []
+            for entry, answer in zip(entries, [_bundle(actor), "I could not do it"], strict=True):
+                result = EvaluationResult(run_id=run.id, entry_id=entry.id, agent_output=answer, score=55.0,
+                                          evaluator_reasoning="Missing the malware.", duration_seconds=12.0,
+                                          execution_details={"metric_results": {"stix.entity_prf": _scored(66.7, tp=1, fp=0, fn=1, numerator=2, denominator=3)}})
+                session.add(result)
+                await session.flush()
+                session.add(EvaluationMetric(run_id=run.id, result_id=result.id, key="performance.cost.llm", value=0.25))
+                results.append(result)
+            await session.commit()
+            served = [
+                BundleReviewResponse.model_validate(r)
+                for r in await get_bundle_reviews(BundleReviewsRequest(groups=[[str(results[0].id)], [str(results[1].id)]]), user=admin, db=session)
+            ]
+            with_text = BundleReviewResponse.model_validate(await get_bundle_review(result_ids=str(results[0].id), user=admin, db=session))
+    finally:
+        await cleanup()
+
+    assert len(served) == 2
+    assert served[0].entry.pages == [] and served[0].answers[0].judge_reasoning is None
+    assert with_text.entry.pages == ["Memento Labs uses Dante."] and with_text.answers[0].judge_reasoning == "Missing the malware."
+    answer = with_text.answers[0]
+    assert answer.counts == {"stix.entity_prf": [1.0, 0.0, 1.0]} and answer.cost == 0.25 and answer.seconds == 12.0
+    assert served[1].unreadable == [str(results[1].id)]
+    assert (with_text.entry.position, with_text.entry.entry_count, with_text.entry.dataset_name) == (0, 2, "A data")
+    assert with_text.entry.key and served[0].entry.key == with_text.entry.key
+    assert with_text.metric_suite_version and with_text.answers[0].metric_suite_version is None

@@ -15,7 +15,7 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body
+from ._common import _api, _search_body, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "update"):
             if action == "create" and not (field and finding_type and value):
@@ -158,7 +158,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "update"):
             if action == "create" and (not external_id or cvss is None):

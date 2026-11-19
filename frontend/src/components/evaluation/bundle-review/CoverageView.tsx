@@ -105,7 +105,7 @@ function Row({ selected, onSelect, first, muted, children }: { selected: boolean
 export function CoverageView({ ctx }: { ctx: ReviewContext }) {
   const { t_i18n } = useFormatter();
   const { model, filters } = ctx;
-  const answers = ctx.review.answers.map((a) => a.key);
+  const answers = ctx.columns;
   const cols = [EXPECTED, ...answers];
   const shown = (g: ObjectGroup) => cols.some((s) => g.by[s]);
   const rels = model.rels
@@ -204,13 +204,20 @@ export function CoverageView({ ctx }: { ctx: ReviewContext }) {
                 const near = ctx.whatIf ? 0 : expected.filter((g) => compareEntity(g, EXPECTED, s) === "near").length;
                 return (
                   <td key={s} className="px-2 py-1">
-                    {t_i18n("{found} of {total} found · {near} in another form · {missed} missed · {extra} not expected", {
-                      found,
-                      total: expected.length,
-                      near,
-                      missed: expected.filter((g) => !g.by[s]).length,
-                      extra: model.groups.filter((g) => g.by[s] && !g.by[EXPECTED]).length,
-                    })}
+                    {near
+                      ? t_i18n("{found} of {total} found · {near} in another form · {missed} missed · {extra} not expected", {
+                          found,
+                          total: expected.length,
+                          near,
+                          missed: expected.filter((g) => !g.by[s]).length,
+                          extra: model.groups.filter((g) => g.by[s] && !g.by[EXPECTED]).length,
+                        })
+                      : t_i18n("{found} of {total} found · {missed} missed · {extra} not expected", {
+                          found,
+                          total: expected.length,
+                          missed: expected.filter((g) => !g.by[s]).length,
+                          extra: model.groups.filter((g) => g.by[s] && !g.by[EXPECTED]).length,
+                        })}
                   </td>
                 );
               })}

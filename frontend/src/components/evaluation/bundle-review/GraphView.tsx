@@ -64,7 +64,8 @@ const LEGEND_LABELS = {
   spurious: "Spurious",
   broken: "Broken by an entity near-miss",
   wrongType: "Wrong relationship type",
-  whatIf: "Matched (what-if)",
+  whatIf: "Matched in the what-if",
+  correctWhatIf: "Correct in the what-if",
 } as const;
 
 /** What each colour and line means, for the mode on screen. */
@@ -77,7 +78,7 @@ export function GraphLegend({ ctx }: { ctx: ReviewContext }) {
       : ctx.mode === "alone"
         ? [["tp", false, L.correct], ["fp", false, L.notExpected], ["near", false, L.otherForm]]
         : [["tp", false, L.matched], ["fn", true, L.missing], ["fp", false, L.spurious], ["near", true, L.broken], ["type", false, L.wrongType]];
-  if (ctx.whatIf && ctx.mode !== "runs") entries.push(["sim", true, L.whatIf]);
+  if (ctx.whatIf && ctx.mode !== "runs") entries.push(["sim", true, ctx.mode === "alone" ? L.correctWhatIf : L.whatIf]);
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 content-caption text-default-secondary" aria-label={t_i18n("Legend")}>
       {entries.map(([st, dashed, label]) => (
@@ -139,7 +140,7 @@ export function GraphView({ ctx }: { ctx: ReviewContext }) {
               lx = mx;
               ly = (a.y + b.y) / 2;
             }
-            const label = edgeLabel(ctx, it, "both");
+            const label = edgeLabel(ctx, it, "both", t_i18n);
             const selected = isSelected(ctx, "r", it.r.id);
             const shown = selected || (selE && (it.r.src === selE || it.r.tgt === selE));
             const visible = relationshipVisible(model, it, filters, mode);

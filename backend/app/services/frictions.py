@@ -790,7 +790,39 @@ async def finalisation_nag(scope: FrictionScope | None = None) -> str | None:
         f"[SYSTEM: frictions] {len(rows)} friction(s) of this run have no disposition: "
         f"{'; '.join(named)}{more}. Before you finish, call dispose_friction on each "
         "(class, and the work item, shared state, skill or prompt edit that carries its fix, "
-        "or accepted), then give your final answer."
+        "or accepted), then give your final answer." + await _finished_item_clause(scope)
+    )
+
+
+async def _finished_item_clause(scope: FrictionScope) -> str:
+    """The sentence the finalisation line adds when the run's own work item is already finished.
+
+    A work item run that completed its item before its final answer is still
+    given the disposal round; without this sentence it writes on the item
+    again and is refused (gap work-item-autocompleted-before-friction-nudge,
+    #269). Empty when the scope names no item, the item is open, or it cannot
+    be read.
+    """
+    from app.core.database import async_session
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+    if scope.work_item_id is None:
+        return ""
+    try:
+        async with async_session() as db:
+            status = (
+                await db.execute(select(WorkItem.status).where(WorkItem.id == scope.work_item_id))
+            ).scalar_one_or_none()
+    except Exception as exc:
+        logger.debug(
+            "Work item %s of the finalisation line unread: %s", scope.work_item_id, format_exception_message(exc)
+        )
+        return ""
+    if status not in WORK_ITEM_TERMINAL_STATUSES:
+        return ""
+    return (
+        f" Your work item `{scope.work_item_id}` is already {status}: write nothing more on it "
+        "(no status, no note); this round is for dispose_friction and your final answer."
     )
 
 

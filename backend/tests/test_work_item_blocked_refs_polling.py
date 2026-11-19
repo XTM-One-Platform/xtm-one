@@ -120,6 +120,7 @@ def harness(monkeypatch):
     monkeypatch.setattr(refs_mod, "_apply_to_item", apply)
     monkeypatch.setattr(reference_state, "_READERS", {"github": reader})
     monkeypatch.setattr(refs_mod, "_last_polled", {})
+    monkeypatch.setattr(refs_mod, "_budget_skipped", set())
     return state
 
 
@@ -149,8 +150,26 @@ async def test_an_open_or_unreadable_reference_keeps_the_item_blocked(harness):
 
     out = await refs_mod.poll_blocked_on_refs(NOW)
 
-    assert out == {"read": 2, "released": 0, "noted": 0}
+    assert out == {"read": 2, "released": 0, "noted": 0, "read_failed": 1}
     assert harness["applied"] == []
+
+
+async def test_an_unreadable_reference_is_handed_to_its_item_note(harness, monkeypatch):
+    user, failing = uuid.uuid4(), uuid.uuid4()
+    harness["candidates"] = [(uuid.uuid4(), user, [_ref(301)]), (failing, user, [_ref(302)])]
+    harness["tokens"] = {str(user): "tok"}
+    harness["answers"] = {(REPO, "pull_request", 302): RuntimeError("GitHub down")}
+    handed: list = []
+
+    async def note(unread, now):
+        handed.append(unread)
+        return 1
+
+    monkeypatch.setattr(refs_mod, "note_unread_references", note)
+    out = await refs_mod.poll_blocked_on_refs(NOW)
+
+    assert out["read_failed"] == 1 and out["failure_noted"] == 1 and "_unread" not in out
+    assert list(handed[0]) == [failing] and "GitHub down" in handed[0][failing][0]
 
 
 async def test_satisfied_references_are_not_read_and_one_read_serves_every_item(harness):
@@ -195,6 +214,27 @@ async def test_an_item_is_read_again_only_after_the_quiet_window(harness, monkey
     clock["t"] += refs_mod.POLL_QUIET_SECONDS
     await refs_mod.poll_blocked_on_refs(NOW)
     assert len(harness["reads"]) == 2
+
+
+async def test_an_item_the_budget_skipped_is_not_stamped_and_goes_first(harness, monkeypatch):
+    user = uuid.uuid4()
+    first, starved = uuid.uuid4(), uuid.uuid4()
+    harness["candidates"] = [(first, user, [_ref(400)]), (starved, user, [_ref(401)])]
+    harness["tokens"] = {str(user): "tok"}
+    monkeypatch.setattr(refs_mod, "POLL_MAX_READS", 1)
+
+    out = await refs_mod.poll_blocked_on_refs(NOW)
+
+    assert out["read"] == 1 and out["skipped_by_budget"] == 1
+    assert first in refs_mod._last_polled and starved not in refs_mod._last_polled
+    assert starved in refs_mod._budget_skipped
+
+    # The next pass reads the starved item first, even though the query lists it last.
+    refs_mod._last_polled.clear()
+    await refs_mod.poll_blocked_on_refs(NOW)
+
+    assert harness["reads"][-1] == (REPO, "pull_request", 401, "tok")
+    assert starved in refs_mod._last_polled and starved not in refs_mod._budget_skipped
 
 
 async def test_no_reader_registered_reads_nothing(harness, monkeypatch):

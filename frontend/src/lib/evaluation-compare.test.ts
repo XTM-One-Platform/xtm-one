@@ -87,3 +87,21 @@ test("only two to four evaluations of one family can be compared", () => {
   assert.equal(comparisonEligibility([stix, { family: null }]).canCompare, false);
   assert.equal(comparisonEligibility([stix, stix, stix, stix, stix]).canCompare, false);
 });
+
+test("Bundle F1 pools the objects and the relationships of a STIX cell, listed first", async () => {
+  const { withDerivedMetrics } = await import("./evaluation-compare.ts");
+  const stix = {
+    ...comparison,
+    family: "STIX_BUNDLE" as const,
+    metrics: [
+      { key: "stix.entity_prf", label: "Entity F1", direction: "higher_is_better" },
+      { key: "stix.relationship_prf", label: "Relationship F1", direction: "higher_is_better" },
+    ],
+    cells: [{ ...comparison.cells[0], metrics: { "stix.entity_prf": [14, 41] as [number, number], "stix.relationship_prf": [6, 27] as [number, number] }, counts: { "stix.entity_prf": [7, 17, 10] as [number, number, number], "stix.relationship_prf": [3, 7, 14] as [number, number, number] } }],
+  };
+  const out = withDerivedMetrics(stix);
+  assert.equal(out.metrics[0].key, "stix.bundle_f1");
+  assert.deepEqual(out.cells[0].metrics["stix.bundle_f1"], [20, 68]);
+  assert.deepEqual(out.cells[0].counts?.["stix.bundle_f1"], [10, 24, 24]);
+  assert.equal(withDerivedMetrics(comparison), comparison);
+});

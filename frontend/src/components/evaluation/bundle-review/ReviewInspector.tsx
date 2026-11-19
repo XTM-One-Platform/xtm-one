@@ -23,8 +23,10 @@ import {
   compareRelationship,
   displayStatus,
   endName,
+  entityVerdict,
   nearKind,
   relationshipOk,
+  relationshipVerdict,
   tripleText,
   type ObjectGroup,
   type RelationshipItem,
@@ -33,6 +35,7 @@ import {
 } from "@/lib/evaluation-bundle-review";
 import { cn } from "@/lib/utils";
 import { MENTION_LABELS, NEAR_KIND_LABELS, STATUS_SURFACE, STATUS_TEXT, statusLabel } from "./labels";
+import { noteFor } from "./graph-text";
 import type { ReviewContext } from "./context";
 
 type Translate = ReturnType<typeof useFormatter>["t_i18n"];
@@ -117,6 +120,41 @@ function fieldValue(o: StixObject | undefined, key: (typeof FIELDS)[number]): st
   return o.hashes ? Object.entries(o.hashes).map(([a, h]) => `${a} ${h}`).join(" · ") : null;
 }
 
+/** How the answer's agent and model did on this object in each of their runs on this
+ *  report: "matched → missing → …", and what changed since the previous run. */
+function HistoryLine({ ctx, kind, id }: { ctx: ReviewContext; kind: "e" | "r"; id: string }) {
+  const { t_i18n } = useFormatter();
+  const h = ctx.history;
+  if (!h || h.runs.length < 2) return null;
+  const g = kind === "e" ? ctx.fullModel.byId.get(id) : undefined;
+  const r = kind === "r" ? ctx.fullModel.relById.get(id) : undefined;
+  if (!g && !r) return null;
+  const said = (key: string) => {
+    if (ctx.review.unreadable.includes(key)) return t_i18n("no readable answer");
+    const st = g ? compareEntity(g, EXPECTED, key) : r ? compareRelationship(ctx.fullModel, r, EXPECTED, key)?.st : null;
+    return st ? t_i18n(statusLabel(st, "score")).toLowerCase() : t_i18n("absent");
+  };
+  const B = ctx.pair.under;
+  const prev = ctx.comparator && ctx.mode !== "runs" ? ctx.comparator.key : null;
+  const verdict = prev ? (g ? entityVerdict(g, prev, B, ctx.whatIf) : r ? relationshipVerdict(ctx.fullModel, r, prev, B, ctx.whatIf) : null) : null;
+  return (
+    <p aria-label={t_i18n("History of this object")} className="flex flex-wrap items-center gap-x-1.5 gap-y-1 content-caption text-default-secondary">
+      <span className="font-mono-plex text-default-primary">{h.label}</span>
+      {h.runs.map((run, i) => (
+        <span key={run.key} className="inline-flex items-center gap-1.5">
+          {i > 0 && <span aria-hidden>→</span>}
+          <span className={cn(run.key === B && "font-semibold text-default-primary")}>
+            {run.code}: {said(run.key)}
+          </span>
+        </span>
+      ))}
+      {verdict && verdict !== "same" && (
+        <span className={cn("rounded-full border px-1.5 text-default-primary", STATUS_SURFACE[verdict])}>{t_i18n(statusLabel(verdict, "runs"))}</span>
+      )}
+    </p>
+  );
+}
+
 function EntityInspector({ ctx, g }: { ctx: ReviewContext; g: ObjectGroup }) {
   const { t_i18n } = useFormatter();
   const it = ctx.derived.ents.get(g.id);
@@ -147,12 +185,21 @@ function EntityInspector({ ctx, g }: { ctx: ReviewContext; g: ObjectGroup }) {
       </h3>
       <p className="content-compact text-default-secondary">
         {mentions
-          ? t_i18n("{count, plural, one {# mention} other {# mentions}} in the report, page {pages}, found by {hows}", {
-              count: mentions.length,
-              pages: [...new Set(mentions.map((m) => m.page))].join(", "),
-              hows: [...new Set(mentions.map((m) => t_i18n(MENTION_LABELS[m.how])))].join("; "),
-            })
-          : t_i18n("Not located in the report text")}
+          ? ctx.review.entry.file_name
+            ? t_i18n("{count, plural, one {# mention} other {# mentions}} in {file}, page {pages}, found by {hows}", {
+                count: mentions.length,
+                file: ctx.review.entry.file_name,
+                pages: [...new Set(mentions.map((m) => m.page))].join(", "),
+                hows: [...new Set(mentions.map((m) => t_i18n(MENTION_LABELS[m.how])))].join("; "),
+              })
+            : t_i18n("{count, plural, one {# mention} other {# mentions}} in the report, page {pages}, found by {hows}", {
+                count: mentions.length,
+                pages: [...new Set(mentions.map((m) => m.page))].join(", "),
+                hows: [...new Set(mentions.map((m) => t_i18n(MENTION_LABELS[m.how])))].join("; "),
+              })
+          : ctx.review.entry.file_name
+            ? t_i18n("Not located in {file}", { file: ctx.review.entry.file_name })
+            : t_i18n("Not located in the report text")}
       </p>
       <div className="overflow-x-auto">
         <table className="w-full content-compact">
@@ -205,10 +252,13 @@ function EntityInspector({ ctx, g }: { ctx: ReviewContext; g: ObjectGroup }) {
       </div>
       {whys.map(([s, w]) => (
         <p key={s} className={cn("rounded-sm border-l-2 px-2 py-1 content-compact", STATUS_SURFACE[st])}>
-          <span className="font-semibold">{ctx.letter(s)} · </span>
+          <span className="font-semibold">
+            {ctx.letter(s)} · {ctx.sourceName(s)}
+          </span>{" "}
           {w}
         </p>
       ))}
+      <HistoryLine ctx={ctx} kind="e" id={g.id} />
       {rels.length > 0 && (
         <div>
           <h4 className="content-caption font-medium uppercase tracking-wider text-default-secondary mb-1">
@@ -243,7 +293,16 @@ function whyRelationship(ctx: ReviewContext, it: RelationshipItem, t_i18n: Trans
   if (ctx.mode === "runs") {
     const say = (s: string) =>
       relationshipOk(ctx.model, r, s, ctx.whatIf) ? t_i18n("correct") : r.kinds[s] ? t_i18n("wrong") : r.kinds[EXPECTED] ? t_i18n("missing") : t_i18n("absent");
-    return t_i18n("{a}: {stateA}. {b}: {stateB}.", { a: ctx.letter(A), stateA: say(A), b: answer, stateB: say(B) });
+    const note = noteFor(ctx, it, t_i18n);
+    const states = t_i18n("{a} ({nameA}): {stateA}. {b} ({nameB}): {stateB}.", {
+      a: ctx.letter(A),
+      nameA: ctx.sourceName(A),
+      stateA: say(A),
+      b: answer,
+      nameB: ctx.sourceName(B),
+      stateB: say(B),
+    });
+    return note ? `${states} ${t_i18n("Between the two: {note}.", { note })}` : states;
   }
   const c = it.cause ? ctx.model.byId.get(it.cause) : undefined;
   switch (it.pairSt) {
@@ -321,6 +380,7 @@ function RelationshipInspector({ ctx, r }: { ctx: ReviewContext; r: Relationship
           </button>
         </p>
       )}
+      <HistoryLine ctx={ctx} kind="r" id={r.id} />
     </div>
   );
 }
@@ -338,10 +398,22 @@ export function ReviewInspector({ ctx }: { ctx: ReviewContext }) {
         <RelationshipInspector ctx={ctx} r={r} />
       ) : (
         <div className="space-y-2">
+          <div className="flex flex-wrap gap-1">
+            {[...new Set(ctx.review.answers.map((a) => a.evaluation_name))].map((name) => (
+              <TypeChip key={name}>{name}</TypeChip>
+            ))}
+          </div>
           <h3 className="content-base-bold">{t_i18n("Pick an object")}</h3>
           <p className="content-compact text-default-secondary">
             {t_i18n("Select a row, a mention in the report, a node or an edge to see it in the expected bundle and in the compared answers side by side.")}
           </p>
+          {ctx.review.entry.dataset_name && (
+            <p className="content-compact text-default-secondary">
+              {ctx.review.entry.dataset_description
+                ? t_i18n("Dataset “{name}”: {description}", { name: ctx.review.entry.dataset_name, description: ctx.review.entry.dataset_description })
+                : t_i18n("Dataset “{name}”", { name: ctx.review.entry.dataset_name })}
+            </p>
+          )}
         </div>
       )}
     </aside>

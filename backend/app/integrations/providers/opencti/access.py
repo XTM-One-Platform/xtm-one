@@ -153,6 +153,34 @@ def _format_level(level: dict[str, Any] | None) -> str:
     return f"{text} (overrides: {', '.join(overrides)})" if overrides else text
 
 
+#: Members a group ``get`` names; past it the answer says how many more exist.
+_GROUP_MEMBERS_SHOWN = 200
+
+
+def _group_member_lines(group: dict[str, Any]) -> list[str]:
+    """``members: N`` then one line per member: name, id, email, service account or not.
+
+    The count is OpenCTI's ``globalCount`` when it answers one, so a group larger
+    than the page says how many members are left unnamed instead of a short count.
+    """
+    connection = group.get("members") or {}
+    members = [(e or {}).get("node") or {} for e in connection.get("edges") or []]
+    page = connection.get("pageInfo") or {}
+    total = page.get("globalCount")
+    total = total if isinstance(total, int) and total >= len(members) else len(members)
+    lines = [f"  members: {total}"]
+    for m in members:
+        kind = "service account" if m.get("user_service_account") else "user"
+        email = f", {m['user_email']}" if m.get("user_email") else ""
+        lines.append(f"    - {m.get('name')} (id: {m.get('id')}{email}, {kind})")
+    if total > len(members) or page.get("hasNextPage"):
+        lines.append(
+            f"    ... {max(total - len(members), 0) or 'more'} not shown "
+            f"(first {len(members)} listed; the user 'get' action lists a user's groups)"
+        )
+    return lines
+
+
 def _format_source(source: dict[str, Any] | None) -> str:
     obj = (source or {}).get("object") or {}
     kind = (source or {}).get("type") or obj.get("entity_type") or "?"
@@ -549,7 +577,9 @@ def register(
                 "  group(id: $id) { id name description default_assignation"
                 f"    auto_new_marking group_confidence_level {{ {_LEVEL_FIELDS} }}"
                 "    roles { edges { node { id name } } }"
-                "    members(first: 50) { edges { node { id name } } } } }"
+                f"    members(first: {_GROUP_MEMBERS_SHOWN}) {{ edges {{ node {{"
+                "      id name user_email user_service_account } }"
+                "      pageInfo { hasNextPage globalCount } } } }"
             )
             data, err = await _gql(query, {"id": group_id})
             if err:
@@ -560,7 +590,6 @@ def register(
             roles = ", ".join(
                 e.get("name", "") for e in _edges(g, "roles")
             ) or "none"
-            members = _edges(g, "members")
             return "\n".join(
                 [
                     f"{g.get('name')} (id: {g.get('id')})",
@@ -569,7 +598,7 @@ def register(
                     f"  auto_new_marking: {g.get('auto_new_marking')}",
                     f"  group_confidence_level: {_format_level(g.get('group_confidence_level'))}",
                     f"  roles: {roles}",
-                    f"  members: {len(members)}",
+                    *_group_member_lines(g),
                 ]
             )
 
@@ -999,7 +1028,8 @@ def register(
                 "'update' (group_id + any of name/description/max_confidence/"
                 "confidence_overrides; the answer reads the stored level back), "
                 "'delete' (group_id), 'add_role'/'remove_role' (group_id + role_id). "
-                "'get' shows the group's max confidence and overrides. A field the "
+                "'get' shows the group's max confidence, overrides and members "
+                "(name, id, email, service account). A field the "
                 "action does not apply is refused with nothing written."
             ),
             input_schema={

@@ -17,11 +17,71 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _normalize_output_parsers, _search_body
+from ._common import (
+    _api,
+    _normalize_output_parsers,
+    _search_body,
+    inject_targets_line,
+    json_answer,
+    mirror_content_targets,
+)
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:openaev"
+
+# OpenAEV parses a recurrence with cron-utils CronType.SPRING53 (6 fields,
+# seconds first, no year) or as an ISO 8601 period, and computes the next run
+# in UTC (CronService.getNextOccurrence). PUT /recurrence stores any non-blank
+# string, so a 5-field Unix or 7-field Quartz expression is saved and never
+# fires: it is refused here before the write (xtm-one #242).
+_SPRING_CRON_FIELDS = 6
+
+
+def recurrence_refusal(recurrence: str) -> str | None:
+    """Why OpenAEV would never fire ``recurrence``, or None when it is usable."""
+    value = recurrence.strip()
+    if value.startswith(("P", "@")):
+        return None
+    fields = value.split()
+    if len(fields) == _SPRING_CRON_FIELDS:
+        return None
+    shape = {5: "a 5-field Unix cron", 7: "a 7-field Quartz cron"}.get(len(fields), f"{len(fields)} field(s)")
+    return (
+        f"Refused: recurrence '{value}' is {shape}. OpenAEV stores it without "
+        "error but never fires it. Send a 6-field Spring cron, seconds first "
+        "(sec min hour day-of-month month day-of-week, e.g. '0 0 2 * * *' for "
+        "every day at 02:00 UTC), or an ISO 8601 period such as 'P1D'. The "
+        "schedule is evaluated in UTC. Nothing was written."
+    )
+
+
+def recurrence_answer(inject_id: str, recurrence: str, start: str, end: str) -> str:
+    """What the recurrence call stored, and what it cleared."""
+    cleared = [
+        name
+        for name, value in (("recurrence", recurrence), ("recurrence_start", start), ("recurrence_end", end))
+        if not value
+    ]
+    if not recurrence:
+        head = f"Cleared the schedule of atomic test {inject_id}: no recurrence was sent."
+    else:
+        head = f"Set the recurrence of atomic test {inject_id} to '{recurrence}' (UTC)"
+        head += f", start {start}" if start else ""
+        head += f", end {end}" if end else ""
+        head += "."
+    if cleared:
+        head += (
+            " The call replaces the three fields together; cleared: "
+            + ", ".join(cleared)
+            + ". Send all three to keep a field."
+        )
+    return (
+        head + " Every scheduled run is a relaunch: previous results are archived, "
+        "new expectations are created for all targets and the atomic test gets "
+        "a NEW inject id, so find it again by title with 'list' after a run."
+    )
+
 
 
 def register(
@@ -101,7 +161,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -109,6 +169,17 @@ def register(
             if action == "update" and not inject_id:
                 return "inject_id is required for 'update'."
             body = _atomic_body(for_create=action == "create")
+            targets_note = ""
+            if content:
+                assets, groups, targets_note, targets_err = mirror_content_targets(
+                    body.get("inject_content"), asset_ids, asset_group_ids
+                )
+                if targets_err:
+                    return targets_err
+                if assets is not None:
+                    body["inject_assets"] = assets
+                if groups is not None:
+                    body["inject_asset_groups"] = groups
             if action == "update" and not body:
                 return (
                     "Provide at least one field to update (title, description, "
@@ -128,7 +199,9 @@ def register(
                 return err
             i = resp.json()
             verb = "Created" if action == "create" else "Updated"
-            return f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."
+            lines = [f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."]
+            lines += [t for t in (targets_note, inject_targets_line(i)) if t]
+            return "\n".join(lines)
 
         if action == "delete":
             if not inject_id:
@@ -164,8 +237,12 @@ def register(
         if action == "recurrence":
             if not inject_id:
                 return "inject_id is required for action 'recurrence'."
+            recurrence = (recurrence or "").strip()
             body: dict = {}
             if recurrence:
+                refusal = recurrence_refusal(recurrence)
+                if refusal:
+                    return refusal
                 body["inject_recurrence"] = recurrence
             if recurrence_start:
                 body["inject_recurrence_start"] = recurrence_start
@@ -174,9 +251,11 @@ def register(
             if not body:
                 return (
                     "Provide at least one field for 'recurrence': recurrence (a "
-                    "cron expression), recurrence_start or recurrence_end (ISO "
-                    "timestamps). Pass recurrence='' with a start/end to clear a "
-                    "schedule."
+                    "6-field Spring cron, seconds first, or an ISO 8601 period, "
+                    "evaluated in UTC), recurrence_start or recurrence_end (ISO "
+                    "timestamps). The call replaces the three together: a field "
+                    "left out is cleared, so a call without recurrence clears "
+                    "the schedule."
                 )
             resp, err = await _api(
                 base_url, headers, "put",
@@ -185,11 +264,7 @@ def register(
             )
             if err:
                 return err
-            return (
-                f"Set the recurrence of atomic test {inject_id}. Every scheduled "
-                "run behaves like a manual relaunch: previous results are archived "
-                "and new expectations are created for all targets."
-            )
+            return recurrence_answer(inject_id, recurrence, recurrence_start, recurrence_end)
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, create, update, "
@@ -243,7 +318,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:3000]
+            return json_answer(resp.json())
 
         if action == "update":
             if not payload_id:
@@ -341,8 +416,9 @@ def register(
                 "content JSON), 'update' (inject_id + fields), 'delete' (inject_id), "
                 "'launch' / 'relaunch' (inject_id - EXECUTES the test against the "
                 "targeted assets), 'duplicate' (inject_id), 'recurrence' "
-                "(inject_id + recurrence cron, optional recurrence_start / "
-                "recurrence_end - run the test on a schedule). Every launch, "
+                "(inject_id + recurrence, recurrence_start, recurrence_end: send "
+                "all three, a field left out is cleared; each scheduled run gives "
+                "the test a NEW inject id). Every launch, "
                 "relaunch or scheduled run ARCHIVES the previous results and "
                 "creates fresh expectations for all targets, so re-read the "
                 "results afterwards instead of reusing earlier verdicts."
@@ -364,9 +440,18 @@ def register(
                     "asset_ids": {"type": "array", "items": {"type": "string"}},
                     "asset_group_ids": {"type": "array", "items": {"type": "string"}},
                     "content": {"type": "string", "description": "Inject content as a JSON object string."},
-                    "recurrence": {"type": "string", "description": "Cron expression for the 'recurrence' action."},
-                    "recurrence_start": {"type": "string", "description": "ISO timestamp when the recurrence starts."},
-                    "recurrence_end": {"type": "string", "description": "ISO timestamp when the recurrence ends."},
+                    "recurrence": {
+                        "type": "string",
+                        "description": "6-field Spring cron, seconds first ('0 0 2 * * *' = daily 02:00 UTC), or ISO 8601 period ('P1D'); UTC. Empty clears the schedule.",
+                    },
+                    "recurrence_start": {
+                        "type": "string",
+                        "description": "ISO timestamp when the recurrence starts (cleared when left out).",
+                    },
+                    "recurrence_end": {
+                        "type": "string",
+                        "description": "ISO timestamp when the recurrence ends (cleared when left out).",
+                    },
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
                 },

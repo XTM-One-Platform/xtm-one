@@ -55,7 +55,11 @@ async def test_a_call_that_does_not_name_the_switch_leaves_it_alone(monkeypatch)
 
     assert not result.is_error
     assert agent.catalog_include_personal_tools is True
-    assert entries == []
+    # The edit is still audited (#251), naming its field and not the switch.
+    [entry] = entries
+    assert entry["action"] == "update" and entry["details"]["via"] == "agent"
+    assert "disable_chat" in entry["details"]["fields"]
+    assert "catalog_include_personal_tools" not in entry["details"]
 
 
 async def test_the_owner_sets_it_and_the_download_follows(monkeypatch):

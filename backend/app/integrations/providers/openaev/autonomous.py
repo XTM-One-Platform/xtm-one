@@ -38,7 +38,7 @@ import re
 from app.core.utils import strip_null_bytes
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api
+from ._common import _api, mirror_content_targets
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,12 @@ def _build_inject(
                 "in an object or omit content."
             )
         inject["inject_content"] = parsed_content
+        # OpenAEV targets the relations, never content.assets / content.asset_groups.
+        asset_ids, asset_group_ids, _note, targets_err = mirror_content_targets(
+            parsed_content, asset_ids, asset_group_ids
+        )
+        if targets_err:
+            return None, targets_err
     # Targeting: a step normally inherits the run scope, but the orchestrator may narrow it.
     inject["inject_all_teams"] = all_teams if all_teams is not None else False
     if team_ids is not None:

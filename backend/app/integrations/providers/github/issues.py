@@ -13,7 +13,7 @@ from app.core.egress import egress_client
 from app.services.pii_redactor import redact_pii
 from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition
 
-from . import _common, attachments, body_edits, pr_title
+from . import _common, attachments, body_edits, pr_inherit, pr_title
 from ._common import (
     _BASE_URL,
     _GRAPHQL_URL,
@@ -145,6 +145,16 @@ def _type_suffix(issue: dict[str, Any]) -> str:
     t = issue.get("type")
     name = t.get("name") if isinstance(t, dict) else None
     return f" [type {name}]" if name else ""
+
+
+def _milestone_given(milestone: int | str | None) -> bool:
+    """Whether the caller named a milestone (a number or a non-blank title)."""
+    return milestone is not None and bool(str(milestone).strip())
+
+
+def _milestone_suffix(title: str) -> str:
+    """' in milestone '1. Now'' once a milestone was resolved and set, else ''."""
+    return f" in milestone '{title}'" if title else ""
 
 
 def register(
@@ -355,14 +365,17 @@ def register(
         body: str = "",
         labels: list[str] | None = None,
         assignees: list[str] | None = None,
-        milestone: int | None = None,
+        milestone: int | str | None = None,
         issue_type: str = "",
     ) -> str:
         """Create a new issue in a repository, optionally with its issue type.
 
         The title is checked first against the ``[issue]`` rule the repository
         declares on its default branch (:mod:`.pr_title`): a title that breaks it
-        is refused with the rule named and nothing is written.
+        is refused with the rule named and nothing is written. ``milestone`` is a
+        number or an exact title, resolved on the repository
+        (:func:`.pr_inherit.resolve_milestone`): an unknown one refuses, nothing
+        written, and a milestone is never created.
         """
         owner, name, rerr = parse_repo(repo)
         if rerr:
@@ -393,8 +406,14 @@ def register(
                 payload["labels"] = labels
             if assignees:
                 payload["assignees"] = assignees
-            if milestone is not None:
-                payload["milestone"] = milestone
+            milestone_title = ""
+            if _milestone_given(milestone):
+                milestone_number, milestone_title, refusal = await pr_inherit.resolve_milestone(
+                    client, owner, name, str(milestone), headers
+                )
+                if refusal:
+                    return refusal
+                payload["milestone"] = milestone_number
             if issue_type and issue_type.strip():
                 type_name, terr = await _resolve_issue_type(client, owner, name, issue_type, headers)
                 if terr:
@@ -413,7 +432,10 @@ def register(
                 return err
             issue = resp.json()
             await mark_self_action(repo, issue.get("number"))
-            created = f"Issue #{issue['number']} created{_type_suffix(issue)}: {issue['html_url']}"
+            created = (
+                f"Issue #{issue['number']} created{_type_suffix(issue)}{_milestone_suffix(milestone_title)}: "
+                f"{issue['html_url']}"
+            )
             return f"{created}\n{title_note}" if title_note else created
 
     async def update_github_issue(
@@ -424,7 +446,7 @@ def register(
         body: str = "",
         labels: list[str] | None = None,
         assignees: list[str] | None = None,
-        milestone: int | None = None,
+        milestone: int | str | None = None,
         state_reason: str = "",
         issue_type: str = "",
         edits: list[dict[str, Any]] | None = None,
@@ -438,6 +460,7 @@ def register(
         Use state='closed' to close, state='open' to reopen.
         state_reason can be 'completed' or 'not_planned' when closing.
         issue_type sets the issue type by name (e.g. Feature, Bug, Task).
+        milestone is a number or an exact title, resolved as create_github_issue does.
         A new title is checked against the repository's ``[issue]`` title rule
         on the default branch, as create_github_issue does.
         """
@@ -464,12 +487,11 @@ def register(
             payload["labels"] = labels
         if assignees is not None:
             payload["assignees"] = assignees
-        if milestone is not None:
-            payload["milestone"] = milestone
         if state_reason:
             payload["state_reason"] = state_reason
         want_type = bool(issue_type and issue_type.strip())
-        if not payload and not want_type and not edits:
+        want_milestone = _milestone_given(milestone)
+        if not payload and not want_type and not want_milestone and not edits:
             return "No fields to update."
         async with egress_client(timeout=30) as client:
             title_note = None
@@ -498,6 +520,14 @@ def register(
                 if terr:
                     return terr
                 payload["type"] = type_name
+            milestone_title = ""
+            if want_milestone:
+                milestone_number, milestone_title, refusal = await pr_inherit.resolve_milestone(
+                    client, owner, name, str(milestone), headers
+                )
+                if refusal:
+                    return refusal
+                payload["milestone"] = milestone_number
             resp, err = await _common.safe_request(
                 client,
                 "patch",
@@ -511,7 +541,10 @@ def register(
                 return err
             issue = resp.json()
             await mark_self_action(repo, number)
-            updated = f"Issue #{number} updated [{issue['state']}]{_type_suffix(issue)}: {issue['html_url']}"
+            updated = (
+                f"Issue #{number} updated [{issue['state']}]{_type_suffix(issue)}"
+                f"{_milestone_suffix(milestone_title)}: {issue['html_url']}"
+            )
             if title_note:
                 updated = f"{updated}\n{title_note}"
             return f"{updated}\nBody diff:\n{diff}" if diff else updated
@@ -1206,6 +1239,13 @@ def register(
             "with the available ones."
         ),
     }
+    _milestone_param = {
+        "type": "string",
+        "description": (
+            "Existing milestone, number or exact title (optional), e.g. '1. Now'. Resolved on the repository "
+            "before any write; an unknown one is refused with the open milestones named, never created."
+        ),
+    }
 
     return [
         ToolDefinition(
@@ -1303,7 +1343,7 @@ def register(
                         "items": {"type": "string"},
                         "description": "GitHub usernames to assign (optional)",
                     },
-                    "milestone": {"type": "integer", "description": "Milestone number to attach (optional)"},
+                    "milestone": _milestone_param,
                     "issue_type": _issue_type,
                 },
                 "required": ["repo", "title"],
@@ -1339,7 +1379,7 @@ def register(
                         "items": {"type": "string"},
                         "description": "Replace all assignees (optional)",
                     },
-                    "milestone": {"type": "integer", "description": "Milestone number (optional)"},
+                    "milestone": _milestone_param,
                     "state_reason": {
                         "type": "string",
                         "enum": ["completed", "not_planned", "reopened"],

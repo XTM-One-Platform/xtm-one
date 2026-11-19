@@ -26,7 +26,14 @@ from app.integrations.http import safe_request
 from app.services.content_safety import single_line
 from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition, ToolResult
 
-from ._common import _PROVIDER, _api, _scope_path, _search_body, _with_scope_hint
+from ._common import (
+    _PROVIDER,
+    _api,
+    _scope_path,
+    _search_body,
+    _with_scope_hint,
+    json_answer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +97,7 @@ def register(
             if err:
                 return err
             return (
-                json.dumps(resp.json(), default=str)[:2000]
+                json_answer(resp.json(), 2000)
                 + f"\nDownload URL: {_document_file_url(document_id)}"
             )
 
@@ -248,7 +255,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         if action in ("create", "update"):
             if action == "create" and not (channel_type and name and description):
@@ -465,7 +472,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:1000]
+            return json_answer(resp.json(), 1000)
 
         return (
             f"Unknown action '{action}'. Valid actions: list, create, update, delete, try."

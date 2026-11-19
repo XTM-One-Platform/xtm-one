@@ -75,7 +75,9 @@ SHARED_CONTEXT_CLAUSE = (
 )
 
 #: Built-in groups only an administrator may bind to an agent.
-ADMIN_BOUND_BUILTIN_TOOL_IDS: frozenset[str] = frozenset({ORGANIZATION_CONTEXT_WRITE_GROUP})
+#: ``user_admin`` (``builtin_tools/user_admin.py``) is named here by its id, not
+#: imported, so this module stays the single owner of the set.
+ADMIN_BOUND_BUILTIN_TOOL_IDS: frozenset[str] = frozenset({ORGANIZATION_CONTEXT_WRITE_GROUP, "user_admin"})
 
 
 def offers_organization_context_write(builtin_tool_ids, *, acting_user_id: str | None, acting_is_admin: bool) -> bool:

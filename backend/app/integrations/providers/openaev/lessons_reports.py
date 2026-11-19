@@ -34,6 +34,7 @@ from ._common import (
     _fmt_reporting,
     _fmt_reporting_generation,
     _search_body,
+    json_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2500]
+            return json_answer(resp.json(), 2500)
 
         if action == "create_category":
             if not extra:
@@ -197,7 +198,7 @@ def register(
             )
             if err:
                 return err
-            return json.dumps(resp.json(), default=str)[:2000]
+            return json_answer(resp.json(), 2000)
 
         return (
             f"Unknown action '{action}'. Valid actions: list_templates, "
