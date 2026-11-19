@@ -71,6 +71,49 @@ _WORD_TYPES = frozenset(
 # ---------------------------------------------------------------------------
 
 
+#: Agreement stages ``ListAgreements`` accepts (``ContractLibraryStatusEnum``).
+_AGREEMENT_STATUSES = (
+    "DRAFT",
+    "VALIDATION",
+    "NEGOTIATION",
+    "SIGNING",
+    "UNKNOWN_CONTRACT",
+    "FUTURE_CONTRACT",
+    "CURRENT_CONTRACT",
+    "COMPLETED_CONTRACT",
+    "COMPLETED_CANCEL_CONTRACT",
+    "COMPLETED_CONTRACT_RENEWABLE",
+    "BROKEN",
+    "TRASHED",
+    "NEGO_INVITE",
+    "TEMPLATE",
+    "TEMPLATE_AUTO",
+)
+#: Stages listed when the caller names none: every one but the trash.
+_DEFAULT_AGREEMENT_STATUSES = tuple(s for s in _AGREEMENT_STATUSES if s != "TRASHED")
+#: Largest page ``ListAgreements`` is asked for.
+_MAX_PAGE_SIZE = 50
+
+
+def _agreement_statuses(raw: str) -> tuple[list[str], str | None]:
+    """The stages named in *raw* (comma or space separated), or an error.
+
+    Empty *raw* answers every stage but ``TRASHED``. An unknown stage is
+    refused with the list of valid ones, since Concord would refuse the
+    whole request or bind nothing.
+    """
+    names = [part.strip().upper() for part in raw.replace(",", " ").split()]
+    if not names:
+        return list(_DEFAULT_AGREEMENT_STATUSES), None
+    unknown = [name for name in names if name not in _AGREEMENT_STATUSES]
+    if unknown:
+        return [], (
+            f"Error: unknown Concord agreement status {', '.join(unknown)}. "
+            f"Valid statuses: {', '.join(_AGREEMENT_STATUSES)}."
+        )
+    return list(dict.fromkeys(names)), None
+
+
 def _hdrs(api_key: str) -> dict[str, str]:
     """Build standard Concord request headers."""
     return {
@@ -288,34 +331,55 @@ def build_tools(
         page: int = 1,
         page_size: int = 20,
     ) -> str:
-        """List agreements in a Concord organisation with optional filters."""
-        params: dict[str, Any] = {
-            "page": page,
-            "numberOfItemsByPage": min(page_size, 50),
-        }
-        if statuses:
-            params["statuses"] = statuses
-        if search:
-            params["search"] = search
+        """List agreements in a Concord organisation with optional filters.
+
+        ``statuses`` goes out as one repeated query parameter per stage (the
+        API's ``style: form, explode: true`` array) and ``page`` is 1-based
+        for the caller, sent zero-based as ``ListAgreements`` reads it.
+        """
+        stages, bad = _agreement_statuses(statuses)
+        if bad:
+            return bad
+        size = max(1, min(int(page_size or 20), _MAX_PAGE_SIZE))
+        number = max(1, int(page or 1))
+        params: list[tuple[str, str | int]] = [("statuses", s) for s in stages]
+        params += [("page", number - 1), ("numberOfItemsByPage", size)]
+        if search.strip():
+            params.append(("search", search.strip()))
 
         async with egress_client(timeout=30) as client:
-            data, err = await _get(
+            resp, err = await safe_request(
                 client,
-                f"user/me/organizations/{organization_id}/agreements",
-                params,
+                "get",
+                f"{_BASE_URL}/user/me/organizations/{organization_id}/agreements",
+                _PROVIDER,
+                "list agreements",
+                headers=headers,
+                params=params,
             )
-            if err:
-                return err
-        items = (
-            data
-            if isinstance(data, list)
-            else data.get("agreements", data.get("items", []))
-        )
-        return format_entity_list(
-            items[:page_size],
-            _fmt_agreement,
-            noun="agreement",
-        )
+            if err or resp is None:
+                return err or "Error: Concord answered nothing to the agreement list."
+        try:
+            data = resp.json()
+        except ValueError:
+            data = None
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return (
+                "Error: Concord answered the agreement list without an items "
+                f"list (HTTP {resp.status_code}); nothing can be listed."
+            )
+        total = data.get("total")
+        if not items:
+            if isinstance(total, int) and total > 0:
+                pages = -(-total // size)
+                return f"No agreements on page {number}: {total} match, {pages} page(s) of {size}."
+            return "No agreements found."
+        listing = format_entity_list(items[:size], _fmt_agreement, noun="agreement")
+        if isinstance(total, int):
+            pages = -(-total // size)
+            listing = f"Page {number} of {pages} ({total} agreements match, {size} per page).\n" + listing
+        return listing
 
     # ── 2. Get agreement details ──────────────────────────────────────────
 
@@ -1112,8 +1176,9 @@ def build_tools(
             name="list_concord_agreements",
             description=(
                 "List agreements in a Concord organisation. Supports filtering by status "
-                "(DRAFT, NEGOTIATION, SIGNING, CURRENT_CONTRACT, COMPLETED_CONTRACT, TEMPLATE, etc.) "
-                "and full-text search. Returns titles, UIDs, statuses, dates, and parties."
+                "(DRAFT, NEGOTIATION, SIGNING, CURRENT_CONTRACT, COMPLETED_CONTRACT, TEMPLATE, etc.; "
+                "every status but TRASHED when none is named) and search on name and description. "
+                "Returns titles, UIDs, statuses, dates, and parties."
             ),
             input_schema={
                 "type": "object",
@@ -1124,11 +1189,11 @@ def build_tools(
                     },
                     "statuses": {
                         "type": "string",
-                        "description": "Comma-separated status filter (e.g. 'DRAFT,SIGNING,CURRENT_CONTRACT')",
+                        "description": "Comma-separated status filter (e.g. 'DRAFT,SIGNING,CURRENT_CONTRACT'); empty lists all but TRASHED",
                     },
                     "search": {
                         "type": "string",
-                        "description": "Full-text search query",
+                        "description": "Search on agreement name and description",
                     },
                     "page": {
                         "type": "integer",
