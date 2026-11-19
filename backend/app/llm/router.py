@@ -638,6 +638,16 @@ def _is_size_error(exc: BaseException) -> bool:
     return any(kw in msg for kw in REQUEST_TOO_LARGE_KEYWORDS)
 
 
+def _is_gateway_body_cap(exc: BaseException, provider: object) -> bool:
+    from app.services.failure_causes import exception_status_code
+
+    # The AI Gateway's 10 MiB body cap is its own, below some providers' (Anthropic:
+    # 32 MB), so another provider may still take the request (ai-gateway#360).
+    return getattr(provider, "provider_name", None) == FiligranGatewayProvider.provider_name and (
+        exception_status_code(exc) == 413
+    )
+
+
 # Lowercased substrings identifying a provider that could not serve the call at
 # all: the platform could not reach a model. Sibling of
 # ``REQUEST_TOO_LARGE_KEYWORDS`` and used the same way — keyword matching rather
@@ -2527,7 +2537,7 @@ class FailoverLLMProvider(BaseLLMProvider):
         return AllProvidersFailedError(failures, skipped=skipped, tried=tried)
 
     @staticmethod
-    def _is_non_failoverable(exc: Exception) -> bool:
+    def _is_non_failoverable(exc: Exception, provider: BaseLLMProvider | None = None) -> bool:
         """Return True if the error is caused by the request itself (not the provider).
 
         These errors will reproduce on every provider, so failing over is
@@ -2536,6 +2546,8 @@ class FailoverLLMProvider(BaseLLMProvider):
         handed to another model only in the categories
         ``ModelDeclinedError.failover_allowed`` names.
         """
+        if _is_gateway_body_cap(exc, provider):
+            return False
         if isinstance(exc, ContextOverflowError):
             return True
         if isinstance(exc, ModelDeclinedError):
@@ -2789,7 +2801,7 @@ class FailoverLLMProvider(BaseLLMProvider):
         except Exception as exc:
             failures.append((self.primary.provider_name, exc))
             tried.append(self._primary_leg(model, routed))
-            if self._is_non_failoverable(exc):
+            if self._is_non_failoverable(exc, self.primary):
                 logger.warning(
                     "Primary LLM provider '%s' %s failed with non-failoverable error (model=%s): %s",
                     self.primary.provider_name, method_name, routed or model, format_exception_message(exc),
@@ -2870,7 +2882,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 failures.append((fallback.provider_name, fb_exc))
                 tried.append((self._config_of(fallback), served_model))
                 self._record_fallback_failure(fallback, fallback_model, fb_exc)
-                if self._is_non_failoverable(fb_exc):
+                if self._is_non_failoverable(fb_exc, fallback):
                     # A request-caused error surfacing mid-chain (e.g. the
                     # primary failed transiently, then a fallback got the 413)
                     # reproduces on every remaining target too — stop here
@@ -2961,7 +2973,7 @@ class FailoverLLMProvider(BaseLLMProvider):
         except Exception as exc:
             failures.append((self.primary.provider_name, exc))
             tried.append(self._primary_leg(model, routed))
-            if self._is_non_failoverable(exc):
+            if self._is_non_failoverable(exc, self.primary):
                 logger.warning(
                     "Primary LLM stream failed with non-failoverable error (model=%s): %s",
                     routed or model,
@@ -3042,7 +3054,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 failures.append((fallback.provider_name, fb_exc))
                 tried.append((self._config_of(fallback), served_model))
                 self._record_fallback_failure(fallback, fallback_model, fb_exc)
-                if self._is_non_failoverable(fb_exc):
+                if self._is_non_failoverable(fb_exc, fallback):
                     # Same rationale as ``_failover_call``: a request-caused
                     # error (413 payload size, context overflow) reproduces on
                     # every remaining target — stop the chain here.

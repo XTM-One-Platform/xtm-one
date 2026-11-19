@@ -683,14 +683,76 @@ def test_gateway_400_invalid_request_is_not_request_too_large():
     assert is_request_too_large_error(_gateway_error(400, "invalid_request")) is False
 
 
+# The gateway's 10 MiB cap is its own, below some providers' (Anthropic: 32 MB):
+# its 413 falls over, and a chain that ends on it still reads as too large.
+
+
 @pytest.mark.asyncio
-async def test_gateway_413_short_circuits_remaining_chain():
-    from app.llm.router import AllProvidersFailedError
+async def test_gateway_413_falls_over_to_the_next_provider():
+    primary = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    fallback = _RecordingProvider("anthropic")
+    provider = _make_failover(primary, [fallback])
+
+    await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert fallback.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_gateway_413_falls_over_to_the_next_provider_streaming():
+    primary = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    fallback = _RecordingProvider("anthropic")
+    provider = _make_failover(primary, [fallback])
+
+    chunks = [chunk async for chunk in provider.chat_stream([], model="claude-sonnet-5")]
+    assert chunks == ["ok"]
+    assert fallback.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_gateway_413_mid_chain_falls_over():
+    primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
+    gateway = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    last = _RecordingProvider("gemini")
+    provider = _make_failover(primary, [gateway, last])
+
+    await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert last.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_chain_ending_on_gateway_413_is_request_too_large():
+    from app.api.v1.chat import _friendly_error_message
+    from app.llm.router import AllProvidersFailedError, is_request_too_large_error
 
     primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
     gateway = _FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large"))
+    provider = _make_failover(primary, [gateway])
+
+    with pytest.raises(AllProvidersFailedError) as excinfo:
+        await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert is_request_too_large_error(excinfo.value) is True
+    assert "too large" in _friendly_error_message(excinfo.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_lone_gateway_413_is_request_too_large():
+    from app.llm.router import is_request_too_large_error
+
+    provider = _make_failover(_FailingProvider("filigran_gateway", _gateway_error(413, "request_too_large")), [])
+
+    with pytest.raises(Exception) as excinfo:
+        await provider._failover_call("chat", [], model="claude-sonnet-5")
+    assert is_request_too_large_error(excinfo.value) is True
+
+
+@pytest.mark.asyncio
+async def test_provider_413_still_short_circuits_remaining_chain():
+    from app.llm.router import AllProvidersFailedError
+
+    primary = _FailingProvider("anthropic", RuntimeError("Error code: 529 - overloaded"))
+    openai_413 = _FailingProvider("openai", _gateway_error(413, "request_too_large"))
     untouched = _RecordingProvider("gemini")
-    provider = _make_failover(primary, [gateway, untouched])
+    provider = _make_failover(primary, [openai_413, untouched])
 
     with pytest.raises(AllProvidersFailedError):
         await provider._failover_call("chat", [], model="claude-sonnet-5")
