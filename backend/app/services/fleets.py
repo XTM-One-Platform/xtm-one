@@ -256,6 +256,7 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
         "prerequisite_confirmations",
         "health_dismissals",
         "health_check",
+        "health_enrolled",
         "hide_activity_from_non_admins",
     }
 )

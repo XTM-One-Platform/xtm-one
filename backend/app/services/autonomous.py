@@ -2570,6 +2570,15 @@ async def _run_autonomous_tick_inner() -> int:
             await health_tick(ai_on=_ai_on)
         except Exception as e:
             logger.error("Platform Health tick error: %s", format_exception_message(e), exc_info=True)
+        # --- 9c bis. Platform Health checks (#101 S2, dev-docs/platform-health.md 3) ---
+        # Deterministic, no model call, never metered: runs whatever the AI
+        # switch, so health stays visible with AI off.
+        try:
+            from app.services.health.engine import health_pass_tick
+
+            await health_pass_tick()
+        except Exception as e:
+            logger.error("Platform Health pass error: %s", format_exception_message(e), exc_info=True)
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new
