@@ -19,11 +19,24 @@ import logging
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
+from .access import _refuse_unapplied
 from .workflow import resolve_filters_json, with_status_notes
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencti"
+
+# The fields each action reads, for every share_type; any other field passed (an
+# argument the tool does not declare included) is refused by name and nothing is sent.
+# A field left at its default (limit, enabled) counts as not passed.
+_DATA_SHARING_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"share_id"}),
+    "create": frozenset({"name", "description", "filters", "config"}),
+    "update": frozenset({"share_id", "name", "description", "filters", "config"}),
+    "toggle": frozenset({"share_id", "enabled"}),
+    "delete": frozenset({"share_id"}),
+}
 
 
 def register(
@@ -60,11 +73,31 @@ def register(
         config: str = "",
         search: str = "",
         limit: int = 50,
+        **unknown: object,
     ) -> str:
         action = (action or "").strip().lower()
         share_type = (share_type or "").strip().lower()
         if share_type not in ("live_stream", "feed", "taxii_collection"):
             return "share_type must be 'live_stream', 'feed', or 'taxii_collection'."
+        refused = _refuse_unapplied(
+            action,
+            _DATA_SHARING_APPLIES,
+            {
+                "share_id": share_id,
+                "name": name,
+                "description": description,
+                "filters": filters,
+                # enabled defaults to True: only an explicit false is a field passed
+                # (named as text, since a bare False counts as empty).
+                "enabled": None if enabled else "false",
+                "config": config,
+                "search": search,
+                "limit": None if limit == 50 else limit,
+            },
+            dict(unknown),
+        )
+        if refused:
+            return refused
 
         extra: dict = {}
         if config:
