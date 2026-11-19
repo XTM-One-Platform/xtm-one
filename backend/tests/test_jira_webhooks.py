@@ -363,7 +363,7 @@ def _patch_dispatch(monkeypatch, wf, search):
     from app.core import database, redis
     from app.services import assignment_engine, docusign_connect, integration_event_filters, slack_events
 
-    seen: dict[str, list] = {"runs": [], "filtered": []}
+    seen: dict[str, list] = {"runs": [], "filtered": [], "claimed": []}
 
     @contextlib.asynccontextmanager
     async def _session():
@@ -376,6 +376,9 @@ def _patch_dispatch(monkeypatch, wf, search):
         return [(wf, type("A", (), {"name": "Legal"})())]
 
     async def _claim(redis_, assignment_id, msg_id):
+        if (assignment_id, msg_id) in seen["claimed"]:
+            return False
+        seen["claimed"].append((assignment_id, msg_id))
         return True
 
     async def _record(assignment_id, count):
@@ -413,7 +416,16 @@ async def test_a_delivery_the_free_jql_excludes_starts_nothing_and_counts_filter
     result = await jira_webhooks.dispatch_delivery("i-1", _delivery())
     assert result["count"] == 0 and seen["runs"] == []
     assert seen["filtered"] == [("a-1", 1)]
+    assert seen["claimed"] == [("a-1", "jira:OPS-7:history:555")]
     assert search.calls[0][2]["jql"] == 'issuekey = "OPS-7" AND (status = "Awaiting approval")'
+
+
+async def test_a_change_the_free_jql_rejected_is_claimed_once(monkeypatch):
+    seen = _patch_dispatch(monkeypatch, _jql_assignment(), _SearchJira(issues=[]))
+    await jira_webhooks.dispatch_delivery("i-1", _delivery())
+    await jira_webhooks.dispatch_delivery("i-1", _delivery())
+    assert seen["filtered"] == [("a-1", 1)]
+    assert seen["claimed"] == [("a-1", "jira:OPS-7:history:555")]
 
 
 async def test_a_delivery_the_free_jql_matches_runs(monkeypatch):
@@ -426,10 +438,10 @@ async def test_a_delivery_the_free_jql_matches_runs(monkeypatch):
 async def test_a_failed_jql_check_leaves_the_delivery_to_the_poll(monkeypatch):
     seen = _patch_dispatch(monkeypatch, _jql_assignment(), _SearchJira(err="Jira API error (400)"))
     assert (await jira_webhooks.dispatch_delivery("i-1", _delivery()))["count"] == 0
-    assert seen["runs"] == [] and seen["filtered"] == []
+    assert seen["runs"] == [] and seen["filtered"] == [] and seen["claimed"] == []
     seen = _patch_dispatch(monkeypatch, _jql_assignment(), None)
     assert (await jira_webhooks.dispatch_delivery("i-1", _delivery()))["count"] == 0
-    assert seen["runs"] == [] and seen["filtered"] == []
+    assert seen["runs"] == [] and seen["filtered"] == [] and seen["claimed"] == []
 
 
 async def test_a_filter_without_jql_makes_no_search(monkeypatch):
