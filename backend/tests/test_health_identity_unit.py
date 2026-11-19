@@ -18,11 +18,6 @@ from app.services.health import identity
 from app.services.health.settings import HealthBudgetCaps, HealthSettings, _read, scope_narrowed
 
 
-@pytest.fixture
-def flag_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
-
-
 def _agent(*, role: str | None = "experimenter", company_managed: bool = True):
     return SimpleNamespace(id=uuid.uuid4(), health_role=role, is_company_managed=company_managed)
 
@@ -63,7 +58,7 @@ def test_the_principal_id_is_stable_and_only_it_names_the_concierge() -> None:
         (_agent(company_managed=False), None, False),
     ],
 )
-def test_who_acts_as_the_concierge(flag_on, agent, user, expected: bool) -> None:
+def test_who_acts_as_the_concierge(agent, user, expected: bool) -> None:
     principal = identity.health_principal_for(agent, user)
     assert (principal is not None) is expected
     if principal is not None:
@@ -85,7 +80,7 @@ def test_the_principal_lives_for_its_scope_with_no_flag(monkeypatch) -> None:
     assert identity._CURRENT.get() is None
 
 
-def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope(flag_on) -> None:
+def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope() -> None:
     agent = _agent()
 
     async def scenario() -> None:
@@ -100,7 +95,7 @@ def test_a_mark_outside_a_run_scope_marks_nothing_and_ends_with_the_scope(flag_o
     asyncio.run(scenario())
 
 
-def test_a_concierge_run_never_takes_the_admin_bypass(flag_on) -> None:
+def test_a_concierge_run_never_takes_the_admin_bypass() -> None:
     # A Concierge run has no user (a company-managed assignment run).
     assert agent_tool_admin_bypass(None) is False
 
@@ -136,7 +131,7 @@ def test_a_fleet_run_with_no_user_acts_with_no_user_never_its_admin_owner() -> N
     assert _acting_identity(None, personal) == owner
 
 
-def test_the_concierge_acts_alone_only_with_nobody_behind_it(flag_on) -> None:
+def test_the_concierge_acts_alone_only_with_nobody_behind_it() -> None:
     agent = _agent()
     assert identity.health_acts_alone() is False
     with identity.acting_as_health_principal(identity.health_principal_for(agent, None)):
@@ -145,7 +140,7 @@ def test_the_concierge_acts_alone_only_with_nobody_behind_it(flag_on) -> None:
         assert identity.health_acts_alone() is False
 
 
-def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only(flag_on, monkeypatch) -> None:
+def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only(monkeypatch) -> None:
     """``sub_agent_tasks.user_id`` needs a row: the owner of record, offered only to the Concierge acting alone."""
     owner, fallback = uuid.uuid4(), uuid.uuid4()
     fleet = SimpleNamespace(**vars(_agent(role="orchestrator")), user_id=owner)
@@ -168,7 +163,7 @@ def test_a_delegation_with_no_user_is_recorded_under_the_fleet_agents_owner_only
     assert asyncio.run(scenario()) == [None, owner, fallback, None, None]
 
 
-def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -> None:
+def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not() -> None:
     """A copy runs as its source's owner, often an admin: its turn is the
     Platform Health's reach whoever started it (an evaluation case has no principal)."""
     from app.services.health.sandbox.session import SandboxSession, sandbox_session
@@ -187,7 +182,7 @@ def test_a_sandbox_turn_never_takes_the_admin_bypass_principal_or_not(flag_on) -
         assert agent_tool_admin_bypass(admin) is False
 
 
-def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds(flag_on) -> None:
+def test_a_sandbox_copys_turn_keeps_the_principal_its_runner_holds() -> None:
     """``health_turn_scoped`` would reset it for a non-fleet agent: a copy's
     turn, and any turn inside a sandbox case, keep it (``calling_health_principal``
     still refuses the copy the Concierge's own tools)."""
@@ -258,7 +253,7 @@ def test_a_narrowed_scope_is_told_apart(before: dict, after: dict, narrowed: boo
     assert scope_narrowed(HealthSettings(**before), HealthSettings(**after)) is narrowed
 
 
-def test_the_assignment_engine_scope_bounds_the_mark(flag_on) -> None:
+def test_the_assignment_engine_scope_bounds_the_mark() -> None:
     from app.api.v1.helpers import company_managed_run_scoped
 
     agent = _agent()

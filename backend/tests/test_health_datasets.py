@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, select
 
-from app.core.config import settings
 from app.models.health_dataset import CASE_NON_REGRESSION, CASE_TO_FIX, HealthDatasetEntrySource
 from app.services.health.datasets import WITHDRAWN_RUN_ERROR, DatasetBuildError, _Case, _judge_instructions
 
@@ -36,11 +35,6 @@ def test_a_case_to_fix_quarantines_the_comment_and_the_answer():
     assert text.count("<<UNTRUSTED-") == 2
     assert "<<END-UNTRUSTED-00000000>>" not in text
     assert _judge_instructions(_Case(CASE_NON_REGRESSION, "message", uuid.uuid4(), "q", "a")) is None
-
-
-@pytest.fixture
-def concierge_on(monkeypatch):
-    monkeypatch.setattr(settings, "enabled_features", "CONCIERGE")
 
 
 async def _world(s):
@@ -120,7 +114,6 @@ async def _sources(s):
     return (await s.execute(select(HealthDatasetEntrySource))).scalars().all()
 
 
-@pytest.mark.usefixtures("concierge_on")
 async def test_rated_answers_and_failed_runs_become_entries_within_consent():
     import app.models  # noqa: F401
     from app.models.audit_log import AuditLog
@@ -168,7 +161,6 @@ async def test_rated_answers_and_failed_runs_become_entries_within_consent():
     assert (again.added, again.skipped) == ({CASE_TO_FIX: 0, CASE_NON_REGRESSION: 0}, {"already_in_dataset": 3})
 
 
-@pytest.mark.usefixtures("concierge_on")
 async def test_a_target_outside_the_scope_is_refused_before_any_read():
     import app.models  # noqa: F401
     from app.models.dataset import Dataset
@@ -190,7 +182,6 @@ async def test_a_target_outside_the_scope_is_refused_before_any_read():
     assert datasets == 0
 
 
-@pytest.mark.usefixtures("concierge_on")
 @pytest.mark.parametrize("kind", ["user_opt_out", "agent_opt_in_revoked"])
 async def test_a_revocation_removes_the_entries_their_copies_and_their_results(kind):
     import app.models  # noqa: F401
@@ -282,7 +273,6 @@ def test_a_cap_keeps_some_of_every_kind_of_case():
     assert [c.input_prompt for c in _interleaved([messages, runs])] == ["m0", "r0", "f0", "m1", "f1", "m2"]
 
 
-@pytest.mark.usefixtures("concierge_on")
 async def test_a_flow_run_needs_the_consent_of_every_agent_node_and_goes_with_it():
     import app.models  # noqa: F401
     from app.models.dataset import DatasetEntry
@@ -351,7 +341,6 @@ async def test_a_flow_run_needs_the_consent_of_every_agent_node_and_goes_with_it
     assert left == 0
 
 
-@pytest.mark.usefixtures("concierge_on")
 async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with_them():
     import app.models  # noqa: F401
     from app.models.dataset import DatasetEntry
@@ -431,7 +420,6 @@ async def test_a_flow_run_needs_the_consent_of_the_flows_it_called_and_goes_with
     assert left == 0
 
 
-@pytest.mark.usefixtures("concierge_on")
 async def test_a_narrowed_scope_removes_a_flow_entry_whose_agent_node_left_it():
     import app.models  # noqa: F401
     from app.models.platform_settings import PlatformSettings
