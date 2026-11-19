@@ -2971,19 +2971,31 @@ def build_sandbox_workspace_tools(
         ran = outcome.command or command
         if ran is not None and not outcome.stopped and not outcome.timed_out:
             await prepush.record_run(session, checkout, check=ran.check, argv=ran.argv, exit_code=outcome.exit_code)
-        return outcome.text + await _outside_checkout_note(outcome, checkout)
+        return outcome.text + await _outside_checkout_note(outcome, checkout, ran)
 
-    async def _outside_checkout_note(outcome: commands.CommandOutcome, checkout: str) -> str:
-        """Lines naming what a run read or wrote outside a narrow checkout's sub_paths; "" when nothing was."""
+    async def _outside_checkout_note(
+        outcome: commands.CommandOutcome, checkout: str, ran: commands.ResolvedCommand | None = None
+    ) -> str:
+        """Lines naming the manifests an install rewrote and what a run did outside the sub_paths; "" if none."""
         if not (outcome.missing or outcome.written or outcome.uncollected):
             return ""
         try:
             record, _changes = await WorkspaceIngestor(session).checkout_changes(checkout, [])
         except ValueError:
             return ""
-        if not record.sub_paths:
-            return ""
         notes: list[str] = []
+        tracked = [p for p in map(record.repo_path, outcome.rewritten) if p and record.tracks(p)]
+        manifests = commands.rewritten_manifests(ran, tracked)
+        if manifests:
+            notes.append(
+                f"The install rewrote {len(manifests)} tracked manifest(s) of the checkout: "
+                + ", ".join(manifests[:5])
+                + (", ..." if len(manifests) > 5 else "")
+                + ". create_github_commit(from_checkout=...) would commit them as a change of the branch: "
+                "restore them, or pass paths naming only your changes."
+            )
+        if not record.sub_paths:
+            return "".join(f"\n{note}" for note in notes)
         kept = ", ".join(record.sub_paths)
         missing = record.outside(outcome.missing)
         if missing:
