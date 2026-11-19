@@ -13,7 +13,7 @@
 
 """The name Platform Health goes by with people (#8261, #101).
 
-An administrator may still name it in Settings > Automations > Platform Health
+An administrator may still name it in Settings > Agents and automations > Platform Health
 (``HealthSettings.name``) until the S1 migration drops the setting; left
 empty, the name is "Platform Health" in every platform mode (#101, decided
 18 Nov 2026: no mode-specific name). The name is what people read: the

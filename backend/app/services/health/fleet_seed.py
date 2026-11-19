@@ -197,7 +197,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         agent_slug="health-memory-steward",
         name="Platform Health memory consolidation",
         former_names=("Concierge memory consolidation",),
-        description="Consolidates every memory lane Platform Health may read. Started by its schedule in Settings > Automations > Platform Health.",
+        description="Consolidates every memory lane Platform Health may read. Started by its schedule in Settings > Agents and automations > Platform Health.",
         prompt=f"List the memory lanes you may consolidate, then consolidate each one. {_REPORT}",
     ),
     FleetAssignmentSpec(
@@ -205,7 +205,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         agent_slug="health-quality-analyst",
         name="Platform Health quality review",
         former_names=("Concierge quality review",),
-        description="Reviews the quality signals of the enrolled agents. Started by its schedule in Settings > Automations > Platform Health.",
+        description="Reviews the quality signals of the enrolled agents. Started by its schedule in Settings > Agents and automations > Platform Health.",
         prompt=(
             "Review the quality signals of the agents you supervise, record the findings the evidence "
             f"supports, and hand the variants worth measuring to the Experimenter. {_REPORT}"
@@ -216,7 +216,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         agent_slug="health-flow-lab",
         name="Platform Health flow review",
         former_names=("Concierge flow review",),
-        description="Reviews the enrolled flows and assignments. Started by its schedule in Settings > Automations > Platform Health.",
+        description="Reviews the enrolled flows and assignments. Started by its schedule in Settings > Agents and automations > Platform Health.",
         prompt=(
             "Diagnose the flows and assignments you supervise, author the candidates worth measuring on "
             f"sandbox copies, and hand them to the Experimenter. {_REPORT}"
@@ -239,7 +239,7 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         agent_slug=ORCHESTRATOR_SLUG,
         name="Platform Health weekly digest",
         former_names=("Concierge weekly digest",),
-        description="Summarizes the Platform Health cycles closed since the last digest. Started by its schedule in Settings > Automations > Platform Health.",
+        description="Summarizes the Platform Health cycles closed since the last digest. Started by its schedule in Settings > Agents and automations > Platform Health.",
         prompt=(
             "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "

@@ -264,7 +264,7 @@ async def set_my_opt_out(
 
 
 class HealthNameResponse(BaseModel):
-    #: What people call it: the name set in Settings > Automations > Platform Health, else ``default_name``.
+    #: What people call it: the name set in Settings > Agents and automations > Platform Health, else ``default_name``.
     name: str
     #: "Platform Health", the same in every platform mode (#101).
     default_name: str
