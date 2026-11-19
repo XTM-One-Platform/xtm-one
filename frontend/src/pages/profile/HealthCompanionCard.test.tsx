@@ -13,7 +13,7 @@ import { petUploadErrorKey } from "@/lib/health-pet";
 import { HealthCompanionCard } from "./HealthCompanionCard";
 
 const PETS = [
-  { slug: "alfred", display_name: "Alfred", description: null, sprite_version: 1, builtin: true, sha256: "a" },
+  { slug: "butler", display_name: "Butler", description: null, sprite_version: 1, builtin: true, sha256: "a" },
   { slug: "owl", display_name: "Owl", description: "A night owl.", sprite_version: 2, builtin: false, sha256: "b" },
 ];
 
@@ -23,14 +23,14 @@ describe("HealthCompanionCard", () => {
     globalThis.URL.createObjectURL = vi.fn(() => "blob:pet");
     globalThis.URL.revokeObjectURL = vi.fn();
     api.get.mockImplementation((path: string) => {
-      if (path === "/health/me/companion") return Promise.resolve({ enabled: false, pet: "alfred", default_pet: "alfred" });
+      if (path === "/health/me/companion") return Promise.resolve({ enabled: false, pet: "butler", default_pet: "butler" });
       if (path === "/health/pets") return Promise.resolve(PETS);
-      if (path === "/health/name") return Promise.resolve({ name: "Alfred", default_name: "Alfred" });
+      if (path === "/health/name") return Promise.resolve({ name: "Platform Health", default_name: "Platform Health" });
       return Promise.reject(new Error(path));
     });
     api.download.mockResolvedValue({ blob: new Blob(["x"]), filename: null });
     api.put.mockImplementation((_path: string, body: { enabled: boolean; pet: string }) =>
-      Promise.resolve({ ...body, default_pet: "alfred" }),
+      Promise.resolve({ ...body, default_pet: "butler" }),
     );
   });
 
@@ -39,13 +39,13 @@ describe("HealthCompanionCard", () => {
     const toggle = await screen.findByRole("switch", { name: "Show the companion" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: true, pet: "alfred" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: true, pet: "butler" }));
     expect(api.put).toHaveBeenCalledTimes(1);
   });
 
   it("picks a pet of the library", async () => {
     renderWithProviders(<HealthCompanionCard />);
-    expect(await screen.findByRole("radio", { name: /Alfred/ })).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByRole("radio", { name: /Butler/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(await screen.findByRole("radio", { name: /Owl/ }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/me/companion", { enabled: false, pet: "owl" }));
   });

@@ -77,15 +77,15 @@ async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
 # ── The library ────────────────────────────────────────────────────────────
 
 
-async def test_every_user_reads_the_library_and_alfred_comes_first() -> None:
+async def test_every_user_reads_the_library_and_butler_comes_first() -> None:
     async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.stranger) as client:
             listing = await client.get("/api/v1/health/pets")
-            sheet = await client.get("/api/v1/health/pets/alfred/spritesheet")
+            sheet = await client.get("/api/v1/health/pets/butler/spritesheet")
             missing = await client.get("/api/v1/health/pets/nobody/spritesheet")
             too_long = await client.get(f"/api/v1/health/pets/{'x' * 300}/spritesheet")
-    assert [(p["slug"], p["builtin"], p["sprite_version"]) for p in listing.json()] == [("alfred", True, 1)]
+    assert [(p["slug"], p["builtin"], p["sprite_version"]) for p in listing.json()] == [("butler", True, 1)]
     assert sheet.status_code == 200
     assert sheet.headers["content-type"] == "image/webp"
     assert sheet.headers["x-content-type-options"] == "nosniff"
@@ -103,7 +103,7 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
         async with _client(sessions, world.admin) as client:
             created = await _upload(client, package)
             again = await _upload(client, package)
-            builtin_id = await _upload(client, _package("alfred"))
+            builtin_id = await _upload(client, _package("butler"))
         async with _client(sessions, world.reader) as client:
             listing = await client.get("/api/v1/health/pets")
             sheet = await client.get("/api/v1/health/pets/owl/spritesheet")
@@ -116,7 +116,7 @@ async def test_only_an_administrator_adds_a_pet_and_it_is_stored_re_encoded() ->
     assert created.status_code == 201 and created.json()["slug"] == "owl"
     assert again.status_code == 409 and again.json()["detail"]["code"] == "slug_taken"
     assert builtin_id.status_code == 409
-    assert [p["slug"] for p in listing.json()] == ["alfred", "owl"]
+    assert [p["slug"] for p in listing.json()] == ["butler", "owl"]
     assert [(r.slug, r.created_by_user_id) for r in rows] == [("owl", world.admin.id)]
     assert sheet.content == rows[0].spritesheet and sheet.content[8:12] == b"WEBP"
     assert audits == ["create"]
@@ -172,7 +172,7 @@ async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> No
         async with _client(sessions, world.reader) as client:
             refused = await client.delete("/api/v1/health/pets/owl")
         async with _client(sessions, world.admin) as client:
-            builtin = await client.delete("/api/v1/health/pets/alfred")
+            builtin = await client.delete("/api/v1/health/pets/butler")
             removed = await client.delete("/api/v1/health/pets/owl")
             gone = await client.delete("/api/v1/health/pets/owl")
             listing = await client.get("/api/v1/health/pets")
@@ -189,7 +189,7 @@ async def test_removing_a_pet_is_for_administrators_and_a_built_in_never() -> No
                 .all()
             )
     assert (refused.status_code, builtin.status_code, removed.status_code, gone.status_code) == (403, 409, 204, 404)
-    assert [p["slug"] for p in listing.json()] == ["alfred"]
+    assert [p["slug"] for p in listing.json()] == ["butler"]
     assert audits == ["create", "delete"]
 
 
@@ -201,7 +201,7 @@ async def test_every_library_route_is_served_without_any_flag(monkeypatch) -> No
         async with _client(sessions, world.admin) as client:
             for method, url in [
                 ("GET", "/api/v1/health/pets"),
-                ("GET", "/api/v1/health/pets/alfred/spritesheet"),
+                ("GET", "/api/v1/health/pets/butler/spritesheet"),
                 ("POST", "/api/v1/health/pets"),
                 ("DELETE", "/api/v1/health/pets/owl"),
             ]:

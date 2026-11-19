@@ -1,13 +1,14 @@
-"""Draw Alfred, the Concierge companion's built-in pet (#8261), and write its package.
+"""Draw the Butler, the Platform Health companion's built-in pet (#8261), and write its package.
 
-Alfred is an original character: an elderly gentleman butler in a tailcoat,
-bow tie and white gloves, with a silver tray and a pocket watch. Every pixel
-is drawn by this script, nothing is traced or copied from existing art, and
-the output is regenerated from it alone:
+The Butler (slug ``butler``, formerly ``alfred``, #101) is an original
+character: an elderly gentleman butler in a tailcoat, bow tie and white
+gloves, with a silver tray and a pocket watch. Every pixel is drawn by this
+script, nothing is traced or copied from existing art, and the output is
+regenerated from it alone:
 
-    cd backend && uv run python scripts/generate_alfred_pet.py
+    cd backend && uv run python scripts/generate_butler_pet.py
 
-It writes ``app/agents/seed_data/health_pets/alfred/pet.json`` and
+It writes ``app/agents/seed_data/health_pets/butler/pet.json`` and
 ``spritesheet.webp``: a version 1 Codex pet atlas, 8 columns of 192x208 cells
 and 9 rows, one state a row with the format's frame counts
 (``app/services/health/pets.py``, ``STATES``). Each cell is drawn on a
@@ -32,7 +33,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.services.health.pets import CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS_BY_VERSION, STATES
 
-OUT_DIR = ROOT / "app" / "agents" / "seed_data" / "health_pets" / "alfred"
+OUT_DIR = ROOT / "app" / "agents" / "seed_data" / "health_pets" / "butler"
 GRID_W, GRID_H = 48, 52
 SCALE = CELL_WIDTH // GRID_W
 if GRID_W * SCALE != CELL_WIDTH or GRID_H * SCALE != CELL_HEIGHT:
@@ -367,9 +368,9 @@ def build_atlas() -> Image.Image:
 
 
 MANIFEST = {
-    "id": "alfred",
-    "displayName": "Alfred",
-    "description": "A gentleman butler with a silver tray: he shows what the Concierge is doing.",
+    "id": "butler",
+    "displayName": "Butler",
+    "description": "A gentleman butler with a silver tray: he shows what Platform Health is doing.",
     "spritesheetPath": "spritesheet.webp",
 }
 
@@ -388,7 +389,7 @@ def main() -> int:
     if args.check:
         committed = Image.open(OUT_DIR / "spritesheet.webp").convert("RGBA")
         same = committed.size == atlas.size and committed.tobytes() == atlas.tobytes()
-        print("up to date" if same else "differs: rerun scripts/generate_alfred_pet.py")
+        print("up to date" if same else "differs: rerun scripts/generate_butler_pet.py")
         return 0 if same else 1
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "spritesheet.webp").write_bytes(encode(atlas))

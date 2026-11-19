@@ -33,7 +33,7 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ### Name
 
-The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Platform Health** on every deployment; an orchestrator, fleet or workspace still carrying a former default name (Concierge, or Alfred on Filigran Copilot) is renamed **Platform Health** at the next start, and a name set by hand is kept. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
+The **Name** field sets the name of the orchestrator agent, its fleet and its workspace, and the name the entry points ("Improve with …") and its refusals use. The page, the navigation entry and the Settings section always read **Platform Health**. Left empty, the name is **Platform Health** on every deployment; an orchestrator, fleet or workspace still carrying a former default name (the former Concierge names) is renamed **Platform Health** at the next start, and a name set by hand is kept. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.
 
 Saving a new name renames the orchestrator, the fleet and the workspace that still carry the previous one. A row an administrator renamed by hand keeps its own name. The agents' personas are not changed: the name is what people read, not an instruction to the model.
 
@@ -41,7 +41,7 @@ A schedule that is due while the budget is reached, or while agentic AI is off, 
 
 ### Companion pets
 
-The **Companion pets** block lists the pets users may pick for their companion (see [Platform Health](../usage/health.md#the-companion)). **Alfred** is built in and cannot be removed. **Add a pet** takes a pet in the Codex pet format, as one `.zip` holding `pet.json` and its spritesheet, or as the two files:
+The **Companion pets** block lists the pets users may pick for their companion (see [Platform Health](../usage/health.md#the-companion)). **Butler** is built in and cannot be removed. **Add a pet** takes a pet in the Codex pet format, as one `.zip` holding `pet.json` and its spritesheet, or as the two files:
 
 - `pet.json` with `id` (lowercase letters, digits and dashes), `displayName`, an optional `description`, `spritesheetPath` (a `.webp` or `.png` path inside the package) and, for a version 2 pet, `"spriteVersionNumber": 2`;
 - a spritesheet of 8 columns of 192x208 cells: 1536x1872 for version 1 (9 rows: idle, running right, running left, waving, jumping, failed, waiting, running, review), 1536x2288 for version 2 (two more rows, the look directions).

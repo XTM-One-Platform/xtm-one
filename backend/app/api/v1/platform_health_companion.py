@@ -176,7 +176,7 @@ async def delete_pet(
     slug: str, request: Request, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> Response:
     """Remove an uploaded pet; its users see the default pet. A built-in pet is never removed."""
-    if slug in pets.BUILTIN_SLUGS:
+    if pets.canonical_slug(slug) in pets.BUILTIN_SLUGS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A built-in pet cannot be removed.")
     pet = await pets.remove_pet(db, slug) if len(slug) <= 64 else None
     if pet is None:
@@ -200,7 +200,7 @@ async def delete_pet(
 
 
 async def _companion(db: AsyncSession, preference: CompanionPreference) -> CompanionResponse:
-    chosen = preference.pet
+    chosen = pets.canonical_slug(preference.pet) if preference.pet else None
     shown = chosen if chosen and await pets.pet_exists(db, chosen) else pets.DEFAULT_PET
     return CompanionResponse(enabled=preference.enabled, pet=shown, default_pet=pets.DEFAULT_PET)
 
@@ -219,7 +219,8 @@ async def put_companion(
     row = await db.get(User, user.id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    preference = CompanionPreference(enabled=body.enabled, pet=body.pet)
+    pet = pets.canonical_slug(body.pet) if body.pet is not None else None
+    preference = CompanionPreference(enabled=body.enabled, pet=pet)
     row.concierge_companion = preference.model_dump()
     await db.commit()
     return await _companion(db, preference)

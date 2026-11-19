@@ -186,6 +186,12 @@ alias for one minor release (section 2.3).
   beside it is left as it is (logged, never deleted); a personal agent on a former slug is
   never renamed. The organization proposal offer follows the orchestrator's slug
   (`test_health_agent_slug_renames.py`).
+- Built-in pet: "Alfred" (slug `alfred`) is the Butler (slug `butler`, files under
+  `health_pets/butler/`, `scripts/generate_butler_pet.py`). The former slug stays a read
+  alias in `RENAMED_BUILTIN_PETS` (`pets.py`): a stored preference, a `PUT` or a spritesheet
+  URL naming it answers the Butler and no upload may take it. Migration `h121healthpet`
+  rewrites `users.concierge_companion` (`pet` only, other keys kept); its downgrade writes
+  `alfred` back (`test_health_pets.py`, `test_health_companion_postgres.py`).
 - Deployments: FiligranHQ/platform and the helm charts are searched for
   `ENABLED_FEATURES=CONCIERGE` at slice S1; any hit is removed in the same slice (Copilot
   values) with its helm-xtm-suite mirror when it exists. Searched 18 Nov 2026 (S1): no

@@ -20,7 +20,9 @@ upload passes, and the code each refusal answers, is the table of
 ``dev-docs/health-companion.md``. The platform stores the spritesheet it
 decoded and re-encoded itself, never the uploaded bytes. The built-in pets
 (:data:`BUILTIN_SLUGS`) ship as files, drawn by
-``backend/scripts/generate_alfred_pet.py``; they have no row.
+``backend/scripts/generate_butler_pet.py``; they have no row. A built-in
+slug renamed since (:data:`RENAMED_BUILTIN_PETS`) is still read as its
+current slug (:func:`canonical_slug`).
 """
 
 from __future__ import annotations
@@ -71,9 +73,19 @@ MAX_MANIFEST_BYTES: Final = 16 * 1024
 MAX_ZIP_ENTRIES: Final = 32
 
 BUILTIN_DIR: Final = Path(__file__).resolve().parents[2] / "agents" / "seed_data" / "health_pets"
-#: Shipped with the platform, listed first; Alfred is every user's default.
-BUILTIN_SLUGS: Final[tuple[str, ...]] = ("alfred",)
-DEFAULT_PET: Final = "alfred"
+#: Shipped with the platform, listed first; the Butler is every user's default.
+BUILTIN_SLUGS: Final[tuple[str, ...]] = ("butler",)
+DEFAULT_PET: Final = "butler"
+#: Former built-in slug -> current slug (#101: "alfred" is the Butler). A stored
+#: preference or a cached spritesheet URL naming a former slug keeps working;
+#: migration ``h121healthpet`` rewrites the stored preferences.
+RENAMED_BUILTIN_PETS: Final[dict[str, str]] = {"alfred": "butler"}
+
+
+def canonical_slug(slug: str) -> str:
+    """*slug*, or the current slug of the built-in pet it formerly named."""
+    return RENAMED_BUILTIN_PETS.get(slug, slug)
+
 
 PetErrorCode = Literal[
     "too_large",
@@ -311,6 +323,7 @@ async def list_pets(db: AsyncSession) -> list[PetInfo]:
 
 
 async def pet_exists(db: AsyncSession, slug: str) -> bool:
+    slug = canonical_slug(slug)
     if slug in BUILTIN_SLUGS:
         return True
     return (await db.execute(select(HealthPet.id).where(HealthPet.slug == slug))).scalar_one_or_none() is not None
@@ -318,6 +331,7 @@ async def pet_exists(db: AsyncSession, slug: str) -> bool:
 
 async def load_spritesheet(db: AsyncSession, slug: str) -> tuple[bytes, str] | None:
     """``(WebP bytes, sha256)`` of the pet *slug*, ``None`` when there is none."""
+    slug = canonical_slug(slug)
     if slug in BUILTIN_SLUGS:
         sheet = _builtin(slug)[1]
         return sheet, hashlib.sha256(sheet).hexdigest()
@@ -331,7 +345,7 @@ async def load_spritesheet(db: AsyncSession, slug: str) -> tuple[bytes, str] | N
 
 async def add_pet(db: AsyncSession, parsed: ParsedPet, *, actor_id) -> HealthPet:
     """Store *parsed* in the library. Flushed, not committed; ``slug_taken`` when its id is in use."""
-    if await pet_exists(db, parsed.manifest.id):
+    if await pet_exists(db, parsed.manifest.id):  # a former built-in slug counts as taken
         raise PetPackageError("slug_taken", parsed.manifest.id)
     pet = HealthPet(
         slug=parsed.manifest.id,

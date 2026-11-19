@@ -21,7 +21,7 @@ from app.services.health.pets import ATLAS_SIZE, PetPackageError, parse_package
 
 V1 = ATLAS_SIZE[1]
 V2 = ATLAS_SIZE[2]
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "generate_alfred_pet.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "generate_butler_pet.py"
 
 
 def _image(size=V1, fmt="PNG", **save) -> bytes:
@@ -234,22 +234,47 @@ def test_every_refusal_tells_the_rule_not_the_input() -> None:
     assert "<img" not in exc.value.message
 
 
-# ── Alfred, the built-in pet ───────────────────────────────────────────────
+# ── The Butler, the built-in pet ───────────────────────────────────────────
 
 
-def test_alfred_is_a_valid_version_1_package() -> None:
-    folder = pets.BUILTIN_DIR / "alfred"
+def test_butler_is_a_valid_version_1_package() -> None:
+    folder = pets.BUILTIN_DIR / "butler"
     manifest = (folder / "pet.json").read_bytes()
     sheet = (folder / "spritesheet.webp").read_bytes()
     parsed = parse_package([("pet.json", manifest), ("spritesheet.webp", sheet)])
-    assert (parsed.manifest.id, parsed.manifest.display_name, parsed.manifest.sprite_version) == ("alfred", "Alfred", 1)
+    assert (parsed.manifest.id, parsed.manifest.display_name, parsed.manifest.sprite_version) == ("butler", "Butler", 1)
     assert Image.open(io.BytesIO(sheet)).size == V1
-    assert pets.BUILTIN_SLUGS == ("alfred",)
-    assert pets.DEFAULT_PET == "alfred"
+    assert pets.BUILTIN_SLUGS == ("butler",)
+    assert pets.DEFAULT_PET == "butler"
 
 
-def test_alfred_draws_every_frame_of_every_state_and_nothing_else() -> None:
-    atlas = Image.open(pets.BUILTIN_DIR / "alfred" / "spritesheet.webp").convert("RGBA")
+def test_the_former_alfred_slug_reads_as_the_butler() -> None:
+    assert pets.RENAMED_BUILTIN_PETS == {"alfred": "butler"}
+    assert pets.canonical_slug("alfred") == "butler"
+    assert pets.canonical_slug("owl") == "owl"
+    assert not set(pets.RENAMED_BUILTIN_PETS) & set(pets.BUILTIN_SLUGS)
+
+
+def test_the_pet_rename_migration_rewrites_only_the_former_slug() -> None:
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    spec = importlib.util.spec_from_file_location(
+        "h121healthpet", path / "h121healthpet_rename_builtin_pet_alfred_to_butler.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    renamed = module._RENAMED
+    assert renamed == pets.RENAMED_BUILTIN_PETS
+    assert module.rewrite_preference({"enabled": True, "pet": "alfred"}, renamed) == {"enabled": True, "pet": "butler"}
+    assert module.rewrite_preference({"enabled": True, "pet": "owl"}, renamed) is None
+    assert module.rewrite_preference({"enabled": False}, renamed) is None
+    assert module.rewrite_preference("junk", renamed) is None
+    back = {new: old for old, new in renamed.items()}
+    assert module.rewrite_preference({"enabled": True, "pet": "butler"}, back) == {"enabled": True, "pet": "alfred"}
+
+
+def test_butler_draws_every_frame_of_every_state_and_nothing_else() -> None:
+    atlas = Image.open(pets.BUILTIN_DIR / "butler" / "spritesheet.webp").convert("RGBA")
     for _state, row, durations in pets.STATES:
         for column in range(pets.COLUMNS):
             box = (
@@ -262,8 +287,8 @@ def test_alfred_draws_every_frame_of_every_state_and_nothing_else() -> None:
             assert drawn == (column < len(durations)), (row, column)
 
 
-def test_the_committed_alfred_is_the_generators_output() -> None:
-    spec = importlib.util.spec_from_file_location("generate_alfred_pet", SCRIPT)
+def test_the_committed_butler_is_the_generators_output() -> None:
+    spec = importlib.util.spec_from_file_location("generate_butler_pet", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -271,8 +296,8 @@ def test_the_committed_alfred_is_the_generators_output() -> None:
         spec.loader.exec_module(module)
     finally:
         sys.modules.pop(spec.name, None)
-    committed = Image.open(pets.BUILTIN_DIR / "alfred" / "spritesheet.webp").convert("RGBA")
+    committed = Image.open(pets.BUILTIN_DIR / "butler" / "spritesheet.webp").convert("RGBA")
     generated = module.build_atlas()
     assert generated.size == committed.size
     assert generated.tobytes() == committed.tobytes()
-    assert json.loads((pets.BUILTIN_DIR / "alfred" / "pet.json").read_text()) == module.MANIFEST
+    assert json.loads((pets.BUILTIN_DIR / "butler" / "pet.json").read_text()) == module.MANIFEST

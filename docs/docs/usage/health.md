@@ -34,7 +34,7 @@ What it finds appears under Improvements once its cycle ends.
 
 ## The companion
 
-The companion is a small animated pet in the bottom-right corner of the screen that shows what Platform Health, and your own work, is doing. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. Alfred, a butler with a silver tray, is the built-in pet and the default one.
+The companion is a small animated pet in the bottom-right corner of the screen that shows what Platform Health, and your own work, is doing. It is off until you turn it on in **Profile > Profile > Companion**, where you also pick the pet. The Butler, with a silver tray, is the built-in pet and the default one.
 
 | The pet | When |
 |---|---|

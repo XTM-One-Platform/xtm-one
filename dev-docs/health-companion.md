@@ -1,6 +1,6 @@
 # The Concierge companion and its pets (#8261)
 
-A floating, animated pet in the web app that shows what the Concierge, and the user's own work, is doing. Per user, off by default, behind `CONCIERGE`. Code: `backend/app/services/health/pets.py` (the package format and the library), `companion.py` (the preference and the activity), `api/v1/platform_health_companion.py`, model `models/health_pet.py`, migrations `c8cnc8254083` (the library) and `c8cnc8254084` (`users.concierge_companion`); the built-in Alfred under `app/agents/seed_data/health_pets/alfred/`, drawn by `backend/scripts/generate_alfred_pet.py`.
+A floating, animated pet in the web app that shows what the Concierge, and the user's own work, is doing. Per user, off by default, behind `CONCIERGE`. Code: `backend/app/services/health/pets.py` (the package format and the library), `companion.py` (the preference and the activity), `api/v1/platform_health_companion.py`, model `models/health_pet.py`, migrations `c8cnc8254083` (the library) and `c8cnc8254084` (`users.concierge_companion`); the built-in Butler under `app/agents/seed_data/health_pets/butler/`, drawn by `backend/scripts/generate_butler_pet.py`.
 
 ## The pet package (Codex pet format)
 
@@ -21,13 +21,13 @@ An upload (`POST /concierge/pets`, administrators) is one `.zip`, or `pet.json` 
 
 A refusal answers its code and the rule (`pets.ERROR_MESSAGES`), never the input; the detail is logged with `%r`. The platform stores the spritesheet it re-encoded (lossless WebP, RGBA): no uploaded byte, metadata chunk or second frame reaches a browser. `GET /pets/{slug}/spritesheet` serves it as `image/webp` with `nosniff`, `default-src 'none'` and an ETag. The library is a platform one, not a shareable entity: every signed-in user lists and uses every pet; administrators add and remove them (audited). A built-in is never removed (409); a removed pet's users see the default.
 
-## Alfred
+## The Butler
 
-The built-in pet and the default one: an original elderly butler in a tailcoat, bow tie and white gloves, with a silver tray and a pocket watch. No gallery asset (the awesome-codex-pet pets are CC BY-NC 4.0) and no likeness of any existing character is used: every pixel is drawn by `generate_alfred_pet.py` on a 48x52 grid scaled 4x. `tests/test_health_pets.py` regenerates the atlas in memory and fails when the committed one differs; rerun the script after a change.
+The built-in pet and the default one (slug `butler`; formerly `alfred`, #101): an original elderly butler in a tailcoat, bow tie and white gloves, with a silver tray and a pocket watch. No gallery asset (the awesome-codex-pet pets are CC BY-NC 4.0) and no likeness of any existing character is used: every pixel is drawn by `generate_butler_pet.py` on a 48x52 grid scaled 4x. `tests/test_health_pets.py` regenerates the atlas in memory and fails when the committed one differs; rerun the script after a change.
 
 ## The preference and the activity
 
-`users.concierge_companion` holds `{"enabled", "pet"}`; unset or invalid reads as off with the default pet. `GET` / `PUT /me/companion` are the signed-in user's own; an unknown pet is a 422.
+`users.concierge_companion` holds `{"enabled", "pet"}`; unset or invalid reads as off with the default pet. The former built-in slug `alfred` stays a read alias of `butler` (`pets.RENAMED_BUILTIN_PETS`, `canonical_slug`): a stored preference, a `PUT` or a spritesheet URL naming it answers the Butler, a save stores `butler`, and no upload may take it; migration `h121healthpet` rewrites the stored preferences (its downgrade writes `alfred` back). `GET` / `PUT /me/companion` are the signed-in user's own; an unknown pet is a 422.
 
 `GET /me/activity` is what the pet shows, from what the user may already read and without any model call (`companion.companion_activity`), in this order:
 

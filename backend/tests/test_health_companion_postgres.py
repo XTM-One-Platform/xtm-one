@@ -83,7 +83,7 @@ async def _upload(client: httpx.AsyncClient, package: bytes) -> httpx.Response:
 # ── The preference ─────────────────────────────────────────────────────────
 
 
-async def test_a_removed_pet_falls_back_to_alfred_for_who_picked_it() -> None:
+async def test_a_removed_pet_falls_back_to_butler_for_who_picked_it() -> None:
     async with health_database() as sessions:
         world = await World().build(sessions)
         async with _client(sessions, world.admin) as client:
@@ -94,9 +94,28 @@ async def test_a_removed_pet_falls_back_to_alfred_for_who_picked_it() -> None:
             removed = await client.delete("/api/v1/health/pets/owl")
         async with _client(sessions, world.reader) as client:
             after = await client.get("/api/v1/health/me/companion")
-    assert chosen.json() == {"enabled": True, "pet": "owl", "default_pet": "alfred"}
+    assert chosen.json() == {"enabled": True, "pet": "owl", "default_pet": "butler"}
     assert removed.status_code == 204
-    assert after.json() == {"enabled": True, "pet": "alfred", "default_pet": "alfred"}
+    assert after.json() == {"enabled": True, "pet": "butler", "default_pet": "butler"}
+
+
+async def test_a_preference_on_the_former_alfred_slug_reads_and_saves_as_the_butler() -> None:
+    async with health_database() as sessions:
+        world = await World().build(sessions)
+        async with sessions() as db:
+            row = await db.get(User, world.member.id)
+            row.concierge_companion = {"enabled": True, "pet": "alfred"}
+            await db.commit()
+        async with _client(sessions, world.member) as client:
+            read = await client.get("/api/v1/health/me/companion")
+            saved = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "alfred"})
+            sheet = await client.get("/api/v1/health/pets/alfred/spritesheet")
+        async with sessions() as db:
+            stored = (await db.get(User, world.member.id)).concierge_companion
+    assert read.json() == {"enabled": True, "pet": "butler", "default_pet": "butler"}
+    assert saved.json() == {"enabled": True, "pet": "butler", "default_pet": "butler"}
+    assert stored == {"enabled": True, "pet": "butler"}
+    assert sheet.status_code == 200
 
 
 async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
@@ -104,7 +123,7 @@ async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
         world = await World().build(sessions)
         async with _client(sessions, world.member) as client:
             default = await client.get("/api/v1/health/me/companion")
-            saved = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "alfred"})
+            saved = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "butler"})
             unknown = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "owl"})
             malformed = await client.put("/api/v1/health/me/companion", json={"enabled": True, "pet": "../x"})
             extra = await client.put(
@@ -115,10 +134,10 @@ async def test_the_companion_is_off_by_default_and_each_users_own() -> None:
             others = await client.get("/api/v1/health/me/companion")
         async with sessions() as db:
             stored = (await db.get(User, world.member.id)).concierge_companion
-    assert default.json() == {"enabled": False, "pet": "alfred", "default_pet": "alfred"}
-    assert saved.json() == {"enabled": True, "pet": "alfred", "default_pet": "alfred"}
+    assert default.json() == {"enabled": False, "pet": "butler", "default_pet": "butler"}
+    assert saved.json() == {"enabled": True, "pet": "butler", "default_pet": "butler"}
     assert (unknown.status_code, malformed.status_code, extra.status_code, not_bool.status_code) == (422, 422, 422, 422)
-    assert stored == {"enabled": True, "pet": "alfred"}
+    assert stored == {"enabled": True, "pet": "butler"}
     assert others.json()["enabled"] is False
 
 
