@@ -35,6 +35,8 @@ Check                              Severity    Category       Fails when
 ``xtm_one.trace_backlog``          warning     capacity       over 1,000 traces wait in the tracing overflow queue
 ``xtm_one.worker_absent``          critical    availability   no worker says it is running, so queued runs, renders and indexing wait
 ``xtm_one.provider_error_rate``    warning     availability   over 5 % of a model's traces of the last hour failed (20 traces at least)
+``xtm_one.version_behind``         info/warn   configuration  a newer XTM One release is published (two or more: warning), read daily
+``xtm_one.certificate_expiry``     warning     security       the TLS certificate of the public URL expires within 21 days or is refused, read daily
 =================================  ==========  =============  ==============================================
 
 The per-subject checks answer one result per subject (an integration, a server, a
@@ -47,7 +49,8 @@ runs in the XTM One modes (``xtm_one`` and ``ai_disabled``) and records nothing
 in the Copilot modes (``settings.is_copilot_like``), so no XTM One finding ever exists there.
 Unlike the agent checks it does not read the AI switch: these reads run with AI
 switched off too (``ai_disabled``). Each check reads a setting or one row,
-calls no model, reaches no network and is never metered.
+calls no model and is never metered; only the two daily checks below reach
+the network.
 
 The quota check reads the counters the gates read and moves none of them.
 
@@ -62,14 +65,22 @@ is the dependency finding. The provider check counts the traces of the last
 :data:`PROVIDER_ERROR_WINDOW` per model in PostgreSQL (every trace store writes
 there), one finding per model, closed out when the model no longer fails.
 
-The remaining 4.2 checks (sandbox latency, version, certificates) follow in a
+The two daily checks (:data:`DAILY_CHECK_INTERVAL`) are the only ones that
+leave the platform: the version check reads the public release list of
+:data:`RELEASES_URL` and the certificate check opens a TLS handshake with the
+host of ``FRONTEND_URL`` (verified as ``web_fetch`` verifies, administrator
+trusted certificates included). A read that cannot reach its source (an
+air-gapped platform, a URL the backend cannot resolve) records nothing.
+
+The sandbox create latency needs a store every process writes (the
+``xtmone_sandbox_create_seconds`` histogram is per process) and follows in a
 later slice; the security audit stays its own page.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import func, select
@@ -98,6 +109,14 @@ PROVIDER_ERROR_WINDOW = timedelta(hours=1)
 PROVIDER_ERROR_RATIO = 0.05
 #: Fewer traces than this in the window are too few to judge a model.
 PROVIDER_MIN_TRACES = 20
+#: How often the slow checks run (section 3, "Scheduling": version behind, certificate expiry).
+DAILY_CHECK_INTERVAL = timedelta(days=1)
+#: The public release list of XTM One the version check reads.
+RELEASES_URL = "https://api.github.com/repos/XTM-One-Platform/xtm-one/releases"
+#: Newer releases from which being behind is a warning (one newer release is info).
+VERSION_BEHIND_WARNING = 2
+#: A certificate of the public URL expiring sooner than this raises a warning.
+CERTIFICATE_EXPIRY_WARNING = timedelta(days=21)
 #: The dependencies probed, in the order findings are recorded.
 PROBED_DEPENDENCIES = ("redis", "object_storage")
 #: Where a finding of these checks is explained.
@@ -570,6 +589,121 @@ async def provider_error_rate(db: AsyncSession, now: datetime) -> list[CheckResu
     return results + await close_out(db, "xtm_one.provider_error_rate", results)
 
 
+def _version_core(raw: str) -> tuple[int, int, int] | None:
+    """The ``(x, y, z)`` core of a version or release tag (``1.261119.1``, ``v1.2.3-dev.abc``); ``None`` otherwise."""
+    import re
+
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", raw.strip())
+    if not match:
+        return None
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch
+
+
+async def _released_versions() -> list[str] | None:
+    """The tags of the published XTM One releases (drafts and pre-releases left out); ``None`` when unreadable."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=10, follow_redirects=True, headers={"Accept": "application/vnd.github+json"}
+        ) as client:
+            response = await client.get(RELEASES_URL, params={"per_page": 30})
+            response.raise_for_status()
+            return [
+                str(release.get("tag_name") or "")
+                for release in response.json()
+                if not release.get("draft") and not release.get("prerelease")
+            ]
+    except (httpx.HTTPError, ValueError, AttributeError, TypeError):
+        return None
+
+
+async def version_behind(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A newer XTM One release is published: its fixes and features are not running here."""
+    from app.services.xtm_hub_registration import registration_platform_version
+
+    current = registration_platform_version()
+    running = _version_core(current)
+    if running is None or running == (0, 0, 0):  # a local build has no release to compare
+        return []
+    released = await _released_versions()
+    if released is None:  # no network to the release list: nothing to judge
+        return []
+    newer = sorted(
+        {tag for tag in released if (core := _version_core(tag)) is not None and core > running},
+        key=lambda tag: _version_core(tag) or (0, 0, 0),
+    )
+    return [
+        _result(
+            "xtm_one.version_behind",
+            "warning" if len(newer) >= VERSION_BEHIND_WARNING else "info",
+            "configuration",
+            bool(newer),
+            evidence={
+                "values": {"running": current, "newer": newer[-5:], "behind": len(newer)},
+                "threshold": f"{VERSION_BEHIND_WARNING} releases behind for a warning",
+                "source": RELEASES_URL,
+            },
+            recommendation="Upgrade XTM One to the latest release; its release notes list what changed.",
+        )
+    ]
+
+
+async def _certificate_expiry(host: str, port: int) -> datetime:
+    """When the certificate ``host:port`` presents expires; raises when the handshake fails."""
+    import asyncio
+    import ssl
+
+    from app.core.pinned_request import fetch_ssl_context
+
+    _, writer = await asyncio.wait_for(
+        asyncio.open_connection(host, port, ssl=fetch_ssl_context(), server_hostname=host),
+        timeout=PROBE_TIMEOUT_SECONDS,
+    )
+    try:
+        certificate = writer.get_extra_info("peercert") or {}
+    finally:
+        writer.close()
+    return datetime.fromtimestamp(ssl.cert_time_to_seconds(str(certificate["notAfter"])), tz=UTC)
+
+
+async def certificate_expiry(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """The TLS certificate of the public URL expires soon or is refused: browsers will stop connecting."""
+    import ssl
+    from urllib.parse import urlsplit
+
+    from app.core.config import settings
+
+    check_id = "xtm_one.certificate_expiry"
+    url = urlsplit(settings.frontend_url or "")
+    if url.scheme != "https" or not url.hostname:  # no TLS to check: a host read before left the scope
+        return await close_out(db, check_id, [])
+    values: dict[str, Any]
+    try:
+        expires = await _certificate_expiry(url.hostname, url.port or 443)
+    except ssl.SSLCertVerificationError as exc:  # expired, untrusted or for another name
+        failing, values = True, {"error": str(getattr(exc, "verify_message", None) or exc)[:200]}
+    except (OSError, TimeoutError, KeyError, ValueError):  # unreachable from here: nothing to judge
+        # The finding of this host stands; one of a former host left the scope.
+        return [r for r in await close_out(db, check_id, []) if r.subject.get("host") != url.hostname]
+    else:
+        failing = expires - now < CERTIFICATE_EXPIRY_WARNING
+        values = {"expires_at": expires.isoformat(), "days_left": (expires - now).days}
+    results = [
+        _result(
+            check_id,
+            "warning",
+            "security",
+            failing,
+            subject={"host": url.hostname},
+            evidence={"values": values, "threshold": "21 days", "source": "TLS handshake with FRONTEND_URL"},
+            recommendation="Renew the TLS certificate of the public URL, or fix its chain and host name.",
+        )
+    ]
+    return results + await close_out(db, check_id, results)
+
+
 for _check_id, _run in (
     ("xtm_one.registration_token", registration_token),
     ("xtm_one.licence", licence),
@@ -591,3 +725,9 @@ for _check_id, _run in (
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))
     )
+
+for _check_id, _run in (
+    ("xtm_one.version_behind", version_behind),
+    ("xtm_one.certificate_expiry", certificate_expiry),
+):
+    register_check(Check(check_id=_check_id, module=MODULE, interval=DAILY_CHECK_INTERVAL, run=_platform_check(_run)))

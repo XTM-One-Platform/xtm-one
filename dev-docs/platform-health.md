@@ -334,6 +334,21 @@ trace store writes; closed out when the model no longer fails). The scheduler ti
 pass itself, so a stopped scheduler records nothing new and its findings age on the page.
 The rows still owed (sandbox latency, version, certificates) follow in S4f.
 
+**Implementation (S4f).** Two daily checks (`DAILY_CHECK_INTERVAL`, 1 day), the only
+platform checks that reach the network: `xtm_one.version_behind` (info when one newer
+release than the running `x.y.z` core is published, warning from two; read from the public
+release list of `XTM-One-Platform/xtm-one` on api.github.com, drafts and pre-releases left
+out; a local `0.0.0` build or an unreadable list records nothing) and
+`xtm_one.certificate_expiry` (warning, subject the host, when the TLS certificate of
+`FRONTEND_URL` expires within 21 days or fails verification; verified with
+`fetch_ssl_context`, administrator-trusted certificates included; an `http` URL or an
+unreachable host records nothing for itself, and the finding of a former host, once
+`FRONTEND_URL` moved, goes through `close_out` and resolves after two passes; an
+unreachable host keeps its own open finding). The module is listed in `PLATFORM_INTERNAL` of
+`tests/test_egress_funnel.py`. Sandbox create latency is still owed: the
+`xtmone_sandbox_create_seconds` histogram is per process, so the check needs a shared store
+first (a later slice).
+
 ### 4.3 OpenCTI (XTM One mode, automatic)
 
 | Check | Source | Default |

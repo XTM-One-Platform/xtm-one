@@ -83,6 +83,8 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Trace backlog | Warning | Over 1,000 traces wait to be written to the trace store, so analytics and traces lag |
 | No worker running | Critical | No worker says it is running, so queued runs, renders and indexing wait until one starts |
 | Model failing | Warning | Over 5 % of a model's calls in the last hour failed, with at least 20 calls (one finding per model) |
+| Version behind | Info, Warning | A newer XTM One release is published (info), or two or more (warning). Read once a day from the public release list; an air-gapped platform records nothing |
+| Certificate expiry | Warning | The TLS certificate of the public URL (`FRONTEND_URL`) expires within 21 days or is refused (expired, untrusted, another host name). Read once a day; a URL the backend cannot reach records nothing |
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 

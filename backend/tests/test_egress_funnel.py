@@ -75,6 +75,7 @@ PLATFORM_INTERNAL = {
     "services/ctem_cases_source.py": "registered platforms, reached at their registered API URL (CTEM Cases, #11545)",
     "services/ctem_metrics_collector.py": "registered platforms, reached at their registered API URL",
     "services/github_token_installations.py": "GitHub App installation tokens from api.github.com",
+    "services/health/platform_checks.py": "Platform Health version check: the public XTM One release list on api.github.com",
     "services/mcp_oauth_clients.py": (
         "Client ID Metadata Documents of MCP clients signing in to this platform's authorization server, SSRF-checked"
     ),
