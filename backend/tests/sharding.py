@@ -30,6 +30,9 @@ from pathlib import Path
 #: (scripts/refresh_shard_durations.py).
 DURATIONS_PATH = Path(__file__).with_name("shard_durations.json")
 
+#: The Browser tool job's table: its tests run one at a time, under a real Chromium.
+CHROMIUM_DURATIONS_PATH = Path(__file__).with_name("shard_durations_chromium.json")
+
 #: What a file the table does not name weighs: the median file takes under a second.
 UNTIMED_SECONDS = 1.0
 
@@ -61,6 +64,21 @@ def parse_split(value: str | None) -> str:
 def shard_node_ids(node_ids: Iterable[str], index: int, total: int) -> frozenset[str]:
     """The node ids job ``index`` of ``total`` keeps."""
     return frozenset(sorted(set(node_ids))[index - 1 :: total])
+
+
+def durations_path(value: str | None) -> Path:
+    """``PYTEST_SHARD_DURATIONS``: the table the run's select job handed every job (``scripts/shard_weights.py``).
+
+    Unset, the committed unit table. Set, it must read: a job that fell back on
+    another table than its siblings would deal the files differently, and a
+    file would run twice or never.
+    """
+    if not value:
+        return DURATIONS_PATH
+    path = Path(value)
+    if not path.is_file():
+        raise ValueError(f"PYTEST_SHARD_DURATIONS names {value!r}, which is not a file")
+    return path
 
 
 def load_durations(path: Path = DURATIONS_PATH) -> dict[str, float]:
