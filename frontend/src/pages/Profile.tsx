@@ -46,6 +46,7 @@ import { CtemStageAgentsCard } from "@/pages/xtm-one/ctem/CtemStageAgentsCard";
 import { TwoFactorRow } from "@/pages/profile/TwoFactorRow";
 import { ToolApprovalsRow } from "@/pages/profile/ToolApprovalsRow";
 import { HealthCompanionCard } from "@/pages/profile/HealthCompanionCard";
+import { ReplySuggestionsCard } from "@/pages/profile/ReplySuggestionsCard";
 import { WaitingWorkItemsNotifyCard } from "@/pages/profile/WaitingWorkItemsNotifyCard";
 import { HealthOptOutRow } from "@/pages/profile/HealthOptOutRow";
 import { PersonalApiKeys } from "@/pages/profile/PersonalApiKeys";
@@ -404,6 +405,9 @@ export default function Profile() {
 
           {/* The bell's waiting work items (#9437): on by default. */}
           <WaitingWorkItemsNotifyCard />
+
+          {/* The composer's reply suggestion after a chat turn: on by default. */}
+          <ReplySuggestionsCard />
 
           {/* The Health companion (#8261): off by default. */}
           <HealthCompanionCard />

@@ -598,6 +598,7 @@ ee:
   - frontend/src/pages/ToolsAndIntegrations.tsx
   - frontend/src/pages/analytics/top-agents.tsx
   - frontend/src/pages/integration-detail/ToolsCard.tsx
+  - frontend/src/pages/profile/ReplySuggestionsCard.tsx
   - frontend/src/pages/profile/WaitingWorkItemsNotifyCard.tsx
   - frontend/src/pages/settings/ScannedToolsField.tsx
   - frontend/src/pages/settings/scanned-tools.ts

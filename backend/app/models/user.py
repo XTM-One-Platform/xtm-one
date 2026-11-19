@@ -315,6 +315,13 @@ class User(Base):
         Boolean, nullable=False, default=True, server_default="true"
     )
 
+    # The composer's reply suggestion after a chat turn
+    # (``services/chat_reply_suggestions.py``), on by default; off = none is
+    # generated for this person, whatever the platform switch says.
+    reply_suggestions_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
     # Favorite agents – the ids this user starred on /agents. Purely a per-user
     # UI preference: the agent list pins them to the top of whatever sort/filter
     # is active, and orders the pinned block by that same sort — so this is an

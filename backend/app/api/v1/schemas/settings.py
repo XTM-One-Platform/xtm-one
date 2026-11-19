@@ -596,6 +596,8 @@ class UserPreferencesRequest(BaseModel):
     oauth_share_dismissed_integration_ids: list[str] | None = None
     # The bell shows the work items waiting for this person (#9437).
     notify_waiting_work_items: bool | None = None
+    # The composer's reply suggestion after a chat turn.
+    reply_suggestions_enabled: bool | None = None
     # The chat sidebar's workspace groups shown expanded (#9179), written
     # whole; an explicit null forgets the choice (every group collapsed).
     chat_sidebar_expanded_workspaces: (
@@ -717,6 +719,8 @@ class GeneralAssistantConfigRequest(BaseModel):
     mcp_exposed_agent_ids: list[str] | None = None
     platform_mcp_enabled: bool | None = None
     xtm_mcp_enabled: bool | None = None
+    # The composer's reply suggestion after a chat turn, on the routing model.
+    reply_suggestions_enabled: bool | None = None
     enterprise_license: str | None = None
     # Email every user that ``agent_default_model`` is now the default,
     # delivered by the scheduler like the env announcements.
@@ -787,6 +791,9 @@ class GeneralAssistantConfigResponse(BaseModel):
     # XTM One's own MCP server (/mcp/xtm) global toggle. Default off — it
     # exposes this instance's configuration surface, not a connected platform's.
     xtm_mcp_enabled: bool = False
+    # The composer's reply suggestion after a chat turn, generated on the
+    # routing model: nothing is generated while ``routing_model`` is unset.
+    reply_suggestions_enabled: bool = True
     # Names of default-model fields unconditionally re-seeded from environment
     # variables on every startup and therefore read-only in the UI (e.g.
     # ``agent_default_model``, ``default_reasoning_effort``, ``routing_model``,

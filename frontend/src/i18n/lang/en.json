@@ -19817,5 +19817,13 @@
   "Page not found": "Page not found",
   "No page answers this address. The menu on the left lists every page.": "No page answers this address. The menu on the left lists every page.",
   "Go to Home": "Go to Home",
-  "Back to Home": "Back to Home"
+  "Back to Home": "Back to Home",
+  "Your reply suggestion choice was not changed": "Your reply suggestion choice was not changed",
+  "Reply suggestions": "Reply suggestions",
+  "Once an agent has answered, the message box proposes what you would likely ask next. Press Tab to use it, then Enter to send.": "Once an agent has answered, the message box proposes what you would likely ask next. Press Tab to use it, then Enter to send.",
+  "Suggest my next message": "Suggest my next message",
+  "What this reply suggestion setting does": "What this reply suggestion setting does",
+  "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.",
+  "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.",
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated."
 }
