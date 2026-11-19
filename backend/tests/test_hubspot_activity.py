@@ -11,6 +11,7 @@ import contextlib
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -74,7 +75,7 @@ def unpaced(monkeypatch):
     monkeypatch.setattr(hubspot, "get_shared_rate_limiter", lambda *a, **k: _Unpaced())
 
 
-def _tools(scope=None, persist=None):
+def _tools(scope: Any = None, persist: Any = None) -> tuple[dict[str, Any], _SafeIntegrationExecutor]:
     executor = _SafeIntegrationExecutor()
     defs = hubspot.build_tools("pat-token", executor, object_type_scope=scope, persist_file_fn=persist)
     return {d.name: d for d in defs}, executor
@@ -246,6 +247,54 @@ async def test_the_timeline_range_and_types_narrow_it():
     assert not any(r.url.path.endswith("/profile") for r in sent)
     bad = await call(executor, "get_hubspot_record_timeline", object_type="contacts", record_id="501", types="sms")
     assert bad.is_error and "unknown timeline type 'sms'" in bad.content
+
+
+@pytest.mark.asyncio
+async def test_the_timeline_reads_the_history_of_the_extra_properties_passed() -> None:
+    api = FakeHubSpot()
+    api.routes[("GET", "/crm/v3/objects/companies/601")] = {
+        "id": "601",
+        "properties": {},
+        "propertiesWithHistory": {
+            "partner_tier": [
+                {"value": "gold", "timestamp": iso_utc(T0), "sourceType": "INTEGRATION", "sourceId": "app-42"},
+            ],
+        },
+    }
+    _defs, executor = _tools()
+    with fake_api(api) as sent:
+        result = await call(
+            executor,
+            "get_hubspot_record_timeline",
+            object_type="companies",
+            record_id="601",
+            types="notes",
+            properties="Partner_Tier, partner_tier",
+        )
+    assert not result.is_error, result.content
+    history = [r for r in sent if r.url.path == "/crm/v3/objects/companies/601"]
+    assert len(history) == 1
+    assert history[0].url.params["propertiesWithHistory"].split(",") == [
+        "lifecyclestage",
+        "hubspot_owner_id",
+        "partner_tier",
+    ]
+    assert "PROPERTY CHANGE" in result.content and "gold" in result.content
+    assert "source INTEGRATION" in result.content
+
+
+@pytest.mark.asyncio
+async def test_the_timeline_refuses_malformed_or_too_many_extra_properties() -> None:
+    _defs, executor = _tools()
+    bad = await call(
+        executor, "get_hubspot_record_timeline", object_type="companies", record_id="601", properties="a b"
+    )
+    assert bad.is_error and "invalid property name(s): a b" in bad.content
+    many = ",".join(f"p{i}" for i in range(51))
+    over = await call(
+        executor, "get_hubspot_record_timeline", object_type="companies", record_id="601", properties=many
+    )
+    assert over.is_error and "at most 50 per call" in over.content
 
 
 @pytest.mark.asyncio
@@ -503,6 +552,60 @@ async def test_a_search_pages_200_at_a_time_up_to_the_count():
     assert limits == [200, 200, 50] and cursors == [None, "200", "400"]
     assert result.content.startswith("Found 1000 contacts:")
     assert result.content.count("| ID: ") == 450 and 'after="450"' in result.content
+
+
+@pytest.mark.asyncio
+async def test_a_search_page_without_a_cursor_goes_on_from_the_offset_while_the_total_says_more() -> None:
+    api = FakeHubSpot()
+    limits, cursors = [], []
+
+    def search(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        limits.append(body["limit"])
+        cursors.append(body.get("after"))
+        start = int(body.get("after") or 0)
+        size = min(100, body["limit"], 230 - start)
+        page = [{"id": str(start + i), "properties": {"dealname": "D"}} for i in range(size)]
+        return _ok({"total": 230, "results": page})
+
+    api.routes[("POST", "/crm/v3/objects/deals/search")] = search
+    _defs, executor = _tools()
+    with fake_api(api):
+        result = await call(executor, "search_hubspot_deals", count=200)
+    assert cursors == [None, "100"] and limits == [200, 100]
+    assert result.content.startswith("Found 230 deals:")
+    assert result.content.count("| ID: ") == 200
+    assert "Showing 200 of 230" in result.content and 'after="200"' in result.content
+
+
+@pytest.mark.asyncio
+async def test_a_search_without_a_total_counts_what_it_lists_and_adds_no_note() -> None:
+    api = FakeHubSpot()
+    api.routes[("POST", "/crm/v3/objects/deals/search")] = lambda r: _ok(
+        {"results": [{"id": str(i), "properties": {"dealname": "D"}} for i in range(3)]}
+    )
+    _defs, executor = _tools()
+    with fake_api(api):
+        result = await call(executor, "search_hubspot_deals", count=10)
+    assert result.content.startswith("Found 3 deals:")
+    assert "Showing" not in result.content and "after=" not in result.content
+
+
+@pytest.mark.asyncio
+async def test_a_search_whose_cursor_is_not_an_offset_stops_and_tells_how_many_are_left() -> None:
+    api = FakeHubSpot()
+    calls = []
+
+    def search(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content).get("after"))
+        return _ok({"total": 50, "results": [{"id": str(i), "properties": {"dealname": "D"}} for i in range(5)]})
+
+    api.routes[("POST", "/crm/v3/objects/deals/search")] = search
+    _defs, executor = _tools()
+    with fake_api(api):
+        result = await call(executor, "search_hubspot_deals", count=20, after="opaque-token")
+    assert calls == ["opaque-token"]
+    assert "Showing 5 of 50: HubSpot gave no next page; narrow the filters" in result.content
 
 
 @pytest.mark.asyncio

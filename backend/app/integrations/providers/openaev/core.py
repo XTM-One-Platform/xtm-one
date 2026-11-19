@@ -15,6 +15,7 @@ import json
 import logging
 from functools import partial
 from typing import Any
+from urllib.parse import quote
 
 from app.core.egress import egress_client
 from app.integrations.http import format_entity_list
@@ -22,6 +23,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
     _PROVIDER,
+    ASSET_GROUP_MEMBERS_MAX,
     COMMAND_EXECUTORS,
     CONTRACT_OUTPUT_TYPES,
     EXPECTATION_TYPES,
@@ -49,6 +51,9 @@ from ._common import (
     _require_response,
     _resolve_output_types,
     _search_body,
+    _simulation_state_lines,
+    asset_group_member_ids_lines,
+    fmt_asset_group_members,
     inject_targets_line,
     mirror_content_targets,
     scoped_safe_request,
@@ -314,8 +319,13 @@ def register_core(
 
     # ── 4. Get asset group ────────────────────────────────────────────
 
-    async def get_openaev_asset_group(group_id: str) -> str:
-        """Get full details of a specific asset group by ID."""
+    async def get_openaev_asset_group(
+        group_id: str,
+        members_limit: int = 20,
+        members_page: int = 0,
+        member_search: str = "",
+    ) -> str:
+        """An asset group with its dynamic filter and its members, paged."""
         async with egress_client(timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
@@ -329,9 +339,30 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return (
-            _fmt_asset_group(data) if data else f"Asset group '{group_id}' not found."
-        )
+        if not data:
+            return f"Asset group '{group_id}' not found."
+        out = _fmt_asset_group(data)
+        size = max(0, min(int(members_limit), ASSET_GROUP_MEMBERS_MAX))
+        if size == 0:
+            return out
+        page = max(0, int(members_page))
+        # Static and dynamic members alike: OpenAEV resolves the dynamic
+        # filter server-side on this search, the group read carries ids only.
+        async with egress_client(timeout=30) as client:
+            members_resp, members_err = await scoped_safe_request(
+                client,
+                "post",
+                f"{base_url}/api/asset_groups/{group_id}/assets/search",
+                _PROVIDER,
+                "list asset group members",
+                headers=hdrs,
+                json=_search_body(page=page, size=size, text_search=member_search.strip()),
+            )
+        if members_err or members_resp is None:
+            lines = asset_group_member_ids_lines(data, members_err or "OpenAEV answered no member page")
+        else:
+            lines = fmt_asset_group_members(members_resp.json(), page, size, member_search.strip())
+        return "\n".join([out, *lines])
 
     # ── 5. Search teams ───────────────────────────────────────────────
 
@@ -1087,7 +1118,10 @@ def register_core(
     # ── 22. Search findings ───────────────────────────────────────────
 
     async def search_openaev_findings(
-        search: str = "", limit: int = 20, simulation_id: str = ""
+        search: str = "",
+        limit: int = 20,
+        simulation_id: str = "",
+        inject_id: str = "",
     ) -> str:
         """Search for security findings or list all.
 
@@ -1096,8 +1130,14 @@ def register_core(
         search can surface, PROOF-cite, or promote ANOTHER run's finding, so the
         autonomous orchestrator should always pass its run's simulation id when it
         verifies what a step produced.
+
+        Pass ``inject_id`` to read the findings ONE inject (or atomic testing)
+        produced: the search goes to OpenAEV's per-inject route
+        (``/api/findings/injects/{id}/search``), which checks the inject exists
+        in scope, so an unknown id answers not found instead of an empty list.
         """
         simulation_id = (simulation_id or "").strip()
+        inject_id = (inject_id or "").strip()
         filter_group = None
         if simulation_id:
             filter_group = {
@@ -1113,12 +1153,13 @@ def register_core(
         # Route through _api so a long autonomous run keeps its JWT fresh (WS2); the
         # distinct flag rides as a query param and the idempotent read opts into the
         # transient-5xx retry.
+        path = f"/api/findings/injects/{quote(inject_id, safe='')}/search" if inject_id else "/api/findings/search"
         resp, err = await _api(
             base_url,
             hdrs,
             "post",
-            "/api/findings/search",
-            "search findings",
+            path,
+            "search findings of inject" if inject_id else "search findings",
             params={"distinct": "true"},
             json=_search_body(
                 size=min(limit, 50), text_search=search, filter_group=filter_group
@@ -1131,6 +1172,8 @@ def register_core(
         data = resp.json()
         items = data.get("content", [])
         scope = repr(search) if search else ""
+        if inject_id:
+            scope = f"{scope} of inject {inject_id}" if scope else f"inject {inject_id}"
         if simulation_id:
             scope = (
                 f"{scope} in simulation {simulation_id}"
@@ -1295,6 +1338,8 @@ def register_core(
             line += f"\n  Description: {desc}"
         if ex.get("exercise_status"):
             line += f"\n  Status: {ex['exercise_status']}"
+        for state_line in _simulation_state_lines(ex):
+            line += "\n" + state_line
         return line
 
     async def search_openaev_exercises(search: str = "", limit: int = 20) -> str:
@@ -1353,6 +1398,7 @@ def register_core(
             lines.append(f"  Status: {data['exercise_status']}")
         if data.get("exercise_subtitle"):
             lines.append(f"  Subtitle: {data['exercise_subtitle']}")
+        lines.extend(_simulation_state_lines(data))
         return "\n".join(lines)
 
     # ── Register all tools ────────────────────────────────────────────
@@ -1459,14 +1505,29 @@ def register_core(
         # 4. Get asset group
         ToolDefinition(
             name="get_openaev_asset_group",
-            description="Get full details of a specific asset group by ID.",
+            description=(
+                "Get an asset group by ID: its dynamic filter, tags and its "
+                "members, static and dynamic, paged (name, id, type, hostname)."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "group_id": {
                         "type": "string",
                         "description": "The asset group's ID",
-                    }
+                    },
+                    "members_limit": {
+                        "type": "integer",
+                        "description": "Members per page, 0 to 100 (default 20; 0: none)",
+                    },
+                    "members_page": {
+                        "type": "integer",
+                        "description": "Members page, from 0",
+                    },
+                    "member_search": {
+                        "type": "string",
+                        "description": "Only members whose name contains it",
+                    },
                 },
                 "required": ["group_id"],
             },
@@ -2047,7 +2108,9 @@ def register_core(
                 "simulation_id to scope the search to ONE run's simulation: on a busy "
                 "tenant an unscoped search can surface, PROOF-cite, or promote ANOTHER "
                 "run's finding, so on an autonomous run ALWAYS pass the run's simulation "
-                "id when verifying what a step produced."
+                "id when verifying what a step produced. Pass inject_id to read the "
+                "findings one inject or atomic testing produced (an unknown inject id "
+                "answers not found)."
             ),
             input_schema={
                 "type": "object",
@@ -2069,6 +2132,13 @@ def register_core(
                             "(the run's simulation id from the cycle context). Strongly "
                             "recommended on an autonomous run to avoid seeing another "
                             "run's findings."
+                        ),
+                        "default": "",
+                    },
+                    "inject_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional inject or atomic testing id: only the findings that inject produced."
                         ),
                         "default": "",
                     },

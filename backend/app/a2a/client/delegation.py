@@ -173,6 +173,23 @@ class PartnerStillRunningError(Exception):
 #: same call succeeds a few seconds later.
 OUTCOME_VERIFICATION_CONTENDED = "verification_contended"
 
+#: The pre-flight refusals that say nothing about the partner task: the same
+#: collect succeeds a few seconds later. Refusing one of them must not end the
+#: delegation a collect was asking about (#317).
+RETRYABLE_PREFLIGHT_REASONS = frozenset({OUTCOME_VERIFICATION_CONTENDED})
+
+_RETRY_COLLECT_HINT = (
+    "The delegation is still outstanding: collect again in a few seconds with "
+    "the same continue_task_id and no message. The answer is not lost."
+)
+# A continuation that carries a follow-up was refused before anything was
+# sent: the collect hint would make the caller drop its message (#320).
+_RETRY_SEND_HINT = (
+    "The delegation is still outstanding but your follow-up message was NOT "
+    "sent: send it again in a few seconds with the same continue_task_id and "
+    "the same message."
+)
+
 
 class PreflightRefusedError(Exception):
     """A delegation refused before any request left the process."""
@@ -400,6 +417,26 @@ def _artifact_text(payload: dict) -> list[str]:
 def _status_text(payload: dict) -> list[str]:
     """What the partner SAID: the text of a task's status message."""
     return _parts_text((payload.get("status") or {}).get("message"))
+
+
+def _terminal_reason(payload: dict[str, Any]) -> str | None:
+    """What the partner gave as the reason of a failed or canceled task.
+
+    A2A carries it in the status message; a ``status.reason`` some partners
+    add is kept in front of it. ``None`` when the partner said nothing.
+    """
+    reason = (payload.get("status") or {}).get("reason")
+    said = [str(reason)] if isinstance(reason, str) and reason.strip() else []
+    said += [text for text in _status_text(payload) if text not in said]
+    return _bounded(said) or None
+
+
+def _terminal_detail(state: A2AState | None, payload: dict[str, Any]) -> str:
+    """Our own line on a failed or canceled task: the state seen, and whether the partner said why."""
+    seen = state.value if state is not None else "unknown"
+    if _terminal_reason(payload):
+        return f"The partner ended the task in state '{seen}' and gave the reason in partner_reason."
+    return f"The partner ended the task in state '{seen}' and gave no reason."
 
 
 def _bounded(chunks: list[str]) -> str:
@@ -1498,6 +1535,26 @@ async def _conclude(
     return result
 
 
+async def _refuse_collect_for_now(
+    integration: Any, target: Any, result: DelegationResult, task_id: str, *, message_unsent: bool = False
+) -> DelegationResult:
+    """Hand back a retryable refusal of a collect without recording it.
+
+    Counted like any refusal, but never passed to ``_record``: with the task
+    id it would conclude the outstanding row, without it it would insert a
+    concluded second one. The row stays outstanding for the caller's next
+    collect and for the floor. ``message_unsent`` says the attempt carried a
+    follow-up message, which the hint then asks the caller to send again.
+    """
+    from app.a2a import metrics as a2a_metrics
+
+    await _commit_target_outcome(target)
+    a2a_metrics.record_delegation_refused(integration.provider, result.partner_reason or "unknown")
+    result.partner_task_id = task_id
+    hint = _RETRY_SEND_HINT if message_unsent else _RETRY_COLLECT_HINT
+    result.detail = f"{result.detail} {hint}" if result.detail else hint
+    return result
+
 
 @dataclass(frozen=True)
 class CancelOutcome:
@@ -1770,6 +1827,69 @@ async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
     return (await db.execute(stmt.limit(1))).scalar_one_or_none() is not None
 
 
+# Outcomes a collect answers from the caller's own row: only what the partner
+# itself decided. A timeout or a cancel is recorded after a best-effort cancel
+# at the partner whose result is not stored (``_cancel_at_partner`` and
+# ``cancel_outstanding_for`` swallow its failure), so the partner's task may
+# still be running or finished: those rows, like anything this side concluded
+# on a transient failure of its own call, are asked of the partner again.
+_READ_BACK_OUTCOMES = frozenset({OUTCOME_PARTNER_FAILED})
+
+
+async def _recorded_conclusion(
+    db: Any, integration: Any, target: Any, calling: CallingRun | None, task_id: str
+) -> DelegationResult | None:
+    """The caller's own concluded row for *task_id*, read back, or ``None``.
+
+    Answered only when nothing about the task is left to learn: no row of this
+    caller is still outstanding for it, and the newest one ended with an
+    outcome the partner itself decided (``_READ_BACK_OUTCOMES``: a failure).
+    That is what the calling agent asked about and could not read before
+    (no tool returned the row). A completed row is never answered from here
+    (the answer text is not stored, a collect re-reads it from the partner),
+    nor an abandoned one (this side gave up on a silent partner, whose answer
+    a collect may still get), nor a ``timeout`` or ``cancelled`` one (the
+    cancel at the partner is best effort and its result is not recorded), nor
+    one this side concluded on a transient failure of its own call
+    (``unreachable``, ``credential_rejected``, a pre-flight refusal such as
+    ``circuit_open``): the partner's task may still be running or finished, so
+    the collect goes to the partner again.
+    """
+    from sqlalchemy import select
+
+    from app.models.a2a import A2ADelegation
+
+    stmt = select(A2ADelegation).where(
+        A2ADelegation.integration_id == integration.id,
+        A2ADelegation.partner_task_id == task_id,
+    )
+    target_id = getattr(target, "id", None)
+    if target_id is not None:
+        stmt = stmt.where(A2ADelegation.target_id == target_id)
+    stmt = _scoped_to_caller(stmt, calling).order_by(A2ADelegation.submitted_at.desc())
+    rows = list((await db.execute(stmt)).scalars().all())
+    if not rows or any(row.outcome is None for row in rows):
+        return None
+    row = rows[0]
+    if row.outcome not in _READ_BACK_OUTCOMES or row.abandoned_at is not None:
+        return None
+    ended = row.terminal_at.isoformat() if row.terminal_at else "an unrecorded time"
+    return DelegationResult(
+        outcome=row.outcome,
+        partner_reason=row.partner_reason,
+        detail=(
+            f"This delegation already ended as '{row.outcome}' at {ended}"
+            f" (waited by {row.mechanism or 'an unrecorded mechanism'})."
+            " This is the recorded outcome: nothing was sent to the partner."
+            " Send the work as a new delegation to try again."
+        ),
+        partner_task_id=task_id,
+        protocol_version=row.protocol_version,
+        signature_state=row.signature_state,
+        continuation_count=row.continuation_count or 0,
+    )
+
+
 async def delegate(
     db,
     integration,
@@ -1808,6 +1928,13 @@ async def delegate(
         )
         if continuation_owned:
             owned_task_id = continue_task_id
+            if not message:
+                # A collect of a delegation that already ended: the caller's
+                # only way to read its own row (outcome, reason, when). Read
+                # back, never recorded again, nothing sent.
+                recorded = await _recorded_conclusion(db, integration, target, calling, continue_task_id)
+                if recorded is not None:
+                    return recorded
 
     def conclude(result: DelegationResult):
         if owned_task_id and not result.partner_task_id:
@@ -1821,13 +1948,20 @@ async def delegate(
     try:
         await preflight(db, integration, target)
     except PreflightRefusedError as refusal:
-        return await conclude(
-            DelegationResult(
-                outcome=OUTCOME_REFUSED_PREFLIGHT,
-                partner_reason=refusal.reason,
-                detail=refusal.detail,
-            )
+        refused = DelegationResult(
+            outcome=OUTCOME_REFUSED_PREFLIGHT,
+            partner_reason=refusal.reason,
+            detail=refusal.detail,
         )
+        if owned_task_id and refusal.reason in RETRYABLE_PREFLIGHT_REASONS:
+            # A transient refusal of a collect says nothing about the task:
+            # concluding its row would end a delegation that is still running,
+            # which the floor then skips and the next collect duplicates.
+            return await _refuse_collect_for_now(
+                integration, target, refused, owned_task_id, message_unsent=bool(message)
+            )
+        concluded: DelegationResult = await conclude(refused)
+        return concluded
 
     if continue_task_id and not continuation_owned:
         # FR-046. The task id is the ONE field of a delegation the calling
@@ -2077,7 +2211,8 @@ async def delegate(
             )
             result = DelegationResult(
                 outcome=outcome,
-                partner_reason=(payload.get("status") or {}).get("reason"),
+                partner_reason=_terminal_reason(payload),
+                detail=_terminal_detail(state, payload),
                 partner_task_id=task_id,
                 protocol_version=version,
                 signature_state=signature_state,

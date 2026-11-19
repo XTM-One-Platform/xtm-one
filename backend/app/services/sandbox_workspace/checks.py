@@ -1026,6 +1026,35 @@ def _drop_reported(lines: list[str]) -> list[str]:
     return kept
 
 
+#: One line of a bundler's asset listing: a built file under a directory and its size, vite's gzip and map
+#: columns included ("dist/assets/index-a1b2.js   1,234.56 kB │ gzip: 345.67 kB").
+_ASSET_LINE = re.compile(r"^\s*\S+/\S+\s+[\d.,]+\s*[kKmM]?i?B(\s*[│|].*)?$")
+#: Consecutive asset lines from which the listing is folded into a marker.
+ASSET_LISTING_MIN = 3
+
+
+def _drop_asset_listing(lines: list[str]) -> list[str]:
+    """*lines* with each bundler asset listing (vite's ``dist/assets/...  12.3 kB``) left as a one-line marker.
+
+    A build's listing names every emitted file with its size: thousands of characters that say nothing
+    a reader acts on (a passing frontend build answered with about 9.8k characters of it). Its warnings
+    ("Some chunks are larger than 500 kB") and its closing line ("built in 12.3s") are kept.
+    """
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        end = index
+        while end < len(lines) and _ASSET_LINE.match(lines[end]):
+            end += 1
+        if end - index >= ASSET_LISTING_MIN:
+            kept.append(f"[... build asset listing, {end - index} file(s), left out: see the run directory ...]")
+            index = end
+            continue
+        kept.extend(lines[index : max(end, index + 1)])
+        index = max(end, index + 1)
+    return kept
+
+
 def _collapse_repeats(lines: list[str]) -> list[str]:
     """*lines* with back-to-back repeats of a block of up to REPEAT_BLOCK_MAX lines kept once and counted."""
     kept: list[str] = []
@@ -1071,7 +1100,7 @@ def _thin_frequent(lines: list[str]) -> list[str]:
 
 
 def condense(text: str, *, reported: bool = False) -> str:
-    """*text* without what buries a failure: warnings summaries, coverage tables, repeated lines and blocks.
+    """*text* without what buries a failure: warnings, coverage tables, asset listings, repeated blocks.
 
     Pure and lossless for the reader: every part left out is named by a marker line, and the
     run directory keeps the output whole. *reported*: the findings already list each failure,
@@ -1083,7 +1112,7 @@ def condense(text: str, *, reported: bool = False) -> str:
     lines = _ANSI.sub("", text).splitlines()
     if reported:
         lines = _drop_reported(lines)
-    return "\n".join(_thin_frequent(_collapse_repeats(_drop_sections(lines))))
+    return "\n".join(_thin_frequent(_collapse_repeats(_drop_asset_listing(_drop_sections(lines)))))
 
 
 def clip(text: str, head: int = OUTPUT_HEAD, tail: int = OUTPUT_TAIL) -> str:

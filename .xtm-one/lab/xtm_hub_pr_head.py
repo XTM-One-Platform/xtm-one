@@ -546,6 +546,11 @@ def preview_csp(policy: str) -> str:
     return "; ".join(part for part in kept if part)
 
 
+def preview_header(key: str, value: str) -> str:
+    """An upstream header as the preview relays it: the content security policy through ``preview_csp``."""
+    return preview_csp(value) if key.lower() == "content-security-policy" else value
+
+
 def tunnel_head(command: str, path: str, version: str, headers) -> bytes:
     """The upgrade request next dev gets: Host and Origin on loopback, since next dev refuses its HMR socket to an
     origin outside allowedDevOrigins (the preview's address is not one, and the product's config is not ours)."""
@@ -619,22 +624,7 @@ class Front(proxy.Front):
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=600)
         connection.request(self.command, self.path, body=payload or None, headers=upstream_headers(self.headers,
                                                                                                     payload))
-        response = connection.getresponse()
-        self.send_response(response.status, response.reason)
-        for key, value in response.getheaders():
-            if key.lower() == "content-security-policy":
-                value = preview_csp(value)
-            if key.lower() not in ("transfer-encoding", "connection", "content-length"):
-                self.send_header(key, value)
-        self.send_header("Transfer-Encoding", "chunked")
-        self.end_headers()
-        while True:
-            chunk = response.read1(65536)
-            if not chunk:
-                break
-            self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
-            self.wfile.flush()
-        self.wfile.write(b"0\r\n\r\n")
+        lab.relay_response(self, connection.getresponse(), preview_header)
         connection.close()
 
     def _handle(self) -> None:

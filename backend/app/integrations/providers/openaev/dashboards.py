@@ -9,7 +9,9 @@ surface for an agent: any aggregate the OpenAEV dashboards can draw can be
 asked for directly, without an admin first creating a widget.
 
 ``manage_openaev_dashboard`` covers the saved custom dashboards and their
-widgets, including running a stored widget by id.
+widgets: create, update, move and delete a widget, and run a stored widget by
+id. OpenAEV's widget PUT replaces the widget whole, so an update reads the
+stored widget and carries over what the call does not name.
 
 The widget configuration is passed through as-is (it is an engine-level
 structure that evolves with the platform), but the entity type and the filter
@@ -109,6 +111,29 @@ _TIME_RANGES = (
 )
 
 
+def _filter_error(node: object) -> str:
+    """Validate every filter group nested anywhere in a widget configuration.
+
+    OpenAEV coerces an unknown operator to ``eq``, so a typo would answer a
+    different question without an error.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("filter", "filters", "filterGroup") and isinstance(value, dict):
+                err = _validate_filter_group(value)
+                if err:
+                    return err
+            err = _filter_error(value)
+            if err:
+                return err
+    elif isinstance(node, list):
+        for item in node:
+            err = _filter_error(item)
+            if err:
+                return err
+    return ""
+
+
 def _base_entity_error(node: object) -> str:
     """Refuse a ``base_entity`` filter value the engine does not index."""
     if isinstance(node, dict):
@@ -175,6 +200,81 @@ _DASHBOARD_WRITABLE_FIELDS = (
 # call does not name them (parameters are left out: OpenAEV keeps them when the
 # PUT omits them, and replaces them whole when it carries them).
 _DASHBOARD_MERGED_FIELDS = ("custom_dashboard_name", "custom_dashboard_description")
+
+#: OpenAEV's WidgetType values (``widget_type``); any other is a 400.
+_WIDGET_TYPES = (
+    "attack-path",
+    "average",
+    "command-center",
+    "donut",
+    "exposure-score",
+    "horizontal-barchart",
+    "line",
+    "list",
+    "number",
+    "posture-radar",
+    "resilience-gauge",
+    "security-coverage",
+    "vertical-barchart",
+)
+#: The fields of OpenAEV's WidgetInput, the body of a widget POST and PUT.
+_WIDGET_FIELDS = ("widget_type", "widget_config", "widget_layout")
+#: WidgetLayout, with the short names a call may use for each field.
+_LAYOUT_FIELDS = {
+    "widget_layout_x": "x",
+    "widget_layout_y": "y",
+    "widget_layout_w": "w",
+    "widget_layout_h": "h",
+}
+#: Size of a widget created without a layout (the grid is 12 columns wide).
+_DEFAULT_WIDGET_SIZE = {"widget_layout_w": 6, "widget_layout_h": 4}
+
+
+def _layout_from(raw: object) -> tuple[dict[str, int], str]:
+    """Read a widget layout given with long or short field names.
+
+    Answers (fields given, error). OpenAEV binds the layout to primitive ints,
+    so a field left out of a body would be stored as 0, never refused: the
+    caller merges what this returns over the stored layout.
+    """
+    if not isinstance(raw, dict):
+        return {}, "widget_layout must be a JSON object of x, y, w and h."
+    short_to_long = {short: long for long, short in _LAYOUT_FIELDS.items()}
+    layout: dict[str, int] = {}
+    for key, value in raw.items():
+        field = short_to_long.get(key, key)
+        if field not in _LAYOUT_FIELDS:
+            return {}, f"widget_layout field '{key}' is not a layout field (x, y, w, h)."
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return {}, f"widget_layout {_LAYOUT_FIELDS[field]} must be a whole number of 0 or more."
+        if field in ("widget_layout_w", "widget_layout_h") and value < 1:
+            return {}, f"widget_layout {_LAYOUT_FIELDS[field]} must be 1 or more."
+        layout[field] = value
+    return layout, ""
+
+
+def _widget_config_error(config: object) -> str:
+    """Refuse a widget configuration OpenAEV would reject or answer wrong."""
+    if not isinstance(config, dict):
+        return "widget_config must be a JSON object."
+    declared = config.get(_WIDGET_CONFIG_DISCRIMINATOR)
+    if not isinstance(declared, str) or not declared.strip():
+        return (
+            f"widget_config must carry the '{_WIDGET_CONFIG_DISCRIMINATOR}' discriminator "
+            "(flat, average, list, temporal-histogram, structural-histogram...): copy "
+            "the shape of a stored widget with action 'get_widget'."
+        )
+    err = _filter_error(config)
+    if err:
+        return f"widget_config contains an invalid filter. {err}"
+    return _base_entity_error(config)
+
+
+def _layout_text(layout: object) -> str:
+    if not isinstance(layout, dict):
+        return "layout not returned"
+    values = {short: layout.get(long) for long, short in _LAYOUT_FIELDS.items()}
+    return f"x {values['x']}, y {values['y']}, {values['w']} wide, {values['h']} high"
 
 
 def register(
@@ -255,26 +355,7 @@ def register(
 
         # Validate every filter group nested anywhere in the configuration, so a
         # typo in an operator cannot silently degrade to `eq`.
-        def _walk(node: object) -> str:
-            if isinstance(node, dict):
-                for key, value in node.items():
-                    if key in ("filter", "filters", "filterGroup") and isinstance(
-                        value, dict
-                    ):
-                        err = _validate_filter_group(value)
-                        if err:
-                            return err
-                    err = _walk(value)
-                    if err:
-                        return err
-            elif isinstance(node, list):
-                for item in node:
-                    err = _walk(item)
-                    if err:
-                        return err
-            return ""
-
-        config_err = _walk(config)
+        config_err = _filter_error(config)
         if config_err:
             return f"widget_config contains an invalid filter. {config_err}"
         entity_err = _base_entity_error(config)
@@ -394,7 +475,8 @@ def register(
                     f"Nothing was written: config field(s) {', '.join(ignored)} "
                     "are not stored by OpenAEV's custom dashboard endpoint, which "
                     "keeps only " + ", ".join(_DASHBOARD_WRITABLE_FIELDS) + ". "
-                    "Widgets are not written through this action."
+                    "Widgets are written with create_widget, update_widget, "
+                    "update_layout and delete_widget."
                 )
             changes: dict[str, Any] = dict(extra)
             if name:
@@ -507,6 +589,9 @@ def register(
                 return err
             return json_answer(resp.json())
 
+        if action in ("create_widget", "update_widget", "update_layout", "delete_widget"):
+            return await _write_widget(action, dashboard_id, widget_id, extra, bool(config))
+
         if action in ("run_count", "run_average", "run_series", "run_entities"):
             if not widget_id:
                 return f"widget_id is required for action '{action}'."
@@ -540,9 +625,179 @@ def register(
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, for_resource, "
-            "create, update, delete, list_widgets, get_widget, run_count, "
+            "create, update, delete, list_widgets, get_widget, create_widget, "
+            "update_widget, update_layout, delete_widget, run_count, "
             "run_average, run_series, run_entities, search_engine."
         )
+
+    async def _read_widget(dashboard_id: str, widget_id: str) -> tuple[dict[str, Any], str]:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "get",
+            f"/api/custom-dashboards/{dashboard_id}/widgets/{widget_id}",
+            "read widget before the write",
+        )
+        if err or resp is None:
+            return {}, err or f"widget {widget_id} could not be read"
+        stored = resp.json()
+        if not isinstance(stored, dict):
+            return {}, f"widget {widget_id} could not be read"
+        return stored, ""
+
+    async def _next_free_row(dashboard_id: str) -> tuple[int, str]:
+        """The first grid row under every stored widget of the dashboard."""
+        resp, err = await _api(
+            base_url,
+            headers,
+            "get",
+            f"/api/custom-dashboards/{dashboard_id}/widgets",
+            "list widgets",
+        )
+        if err or resp is None:
+            return 0, err or f"dashboard {dashboard_id} widgets could not be read"
+        bottom = 0
+        for stored in resp.json() or []:
+            layout = stored.get("widget_layout") if isinstance(stored, dict) else None
+            if isinstance(layout, dict):
+                bottom = max(
+                    bottom,
+                    int(layout.get("widget_layout_y") or 0) + int(layout.get("widget_layout_h") or 0),
+                )
+        return bottom, ""
+
+    async def _write_widget(
+        action: str, dashboard_id: str, widget_id: str, extra: dict[str, Any], has_config: bool
+    ) -> str:
+        if not dashboard_id:
+            return f"dashboard_id is required for action '{action}'."
+        if action != "create_widget" and not widget_id:
+            return f"widget_id is required for action '{action}'."
+        base = f"/api/custom-dashboards/{dashboard_id}/widgets"
+
+        if action == "delete_widget":
+            _, err = await _api(base_url, headers, "delete", f"{base}/{widget_id}", "delete widget")
+            if err:
+                return err
+            return f"Deleted widget {widget_id} from dashboard {dashboard_id}."
+
+        if not has_config:
+            return f"config is required for action '{action}': " + (
+                "a JSON object of x, y, w and h (any of them)."
+                if action == "update_layout"
+                else "a JSON object of widget_type, widget_config and widget_layout."
+            )
+
+        if action == "update_layout":
+            layout, lerr = _layout_from(extra)
+            if lerr:
+                return f"Nothing was written: {lerr}"
+            stored, rerr = await _read_widget(dashboard_id, widget_id)
+            if rerr:
+                return f"Nothing was written: {rerr}"
+            moved = {**(stored.get("widget_layout") or {}), **layout}
+            missing = [short for long, short in _LAYOUT_FIELDS.items() if long not in moved]
+            if missing:
+                return f"Nothing was written: the stored layout has no {', '.join(missing)}; pass every one of x, y, w and h."
+            resp, err = await _api(
+                base_url,
+                headers,
+                "put",
+                f"{base}/{widget_id}/layout",
+                "move widget",
+                json=moved,
+            )
+            if err:
+                return err
+            saved = resp.json() if resp is not None else {}
+            saved = saved if isinstance(saved, dict) else {}
+            return f"Moved widget {widget_id}: {_layout_text(saved.get('widget_layout') or moved)}."
+
+        ignored = sorted(set(extra) - set(_WIDGET_FIELDS))
+        if ignored:
+            return (
+                f"Nothing was written: config field(s) {', '.join(ignored)} are not widget "
+                "fields; a widget keeps only " + ", ".join(_WIDGET_FIELDS) + "."
+            )
+        kept: list[str] = []
+        stored_layout: dict[str, Any] = {}
+        body: dict[str, Any]
+        if action == "update_widget":
+            # OpenAEV's widget PUT replaces type, configuration and layout whole:
+            # carry over the stored values the call does not name.
+            stored, rerr = await _read_widget(dashboard_id, widget_id)
+            if rerr:
+                return f"Nothing was written: {rerr}"
+            if isinstance(stored.get("widget_layout"), dict):
+                stored_layout = stored["widget_layout"]
+            body = {}
+            for field in _WIDGET_FIELDS:
+                if field not in extra and stored.get(field) is not None:
+                    body[field] = stored[field]
+                    kept.append(field)
+            body.update(extra)
+        else:
+            body = dict(extra)
+            if "widget_type" not in body or "widget_config" not in body:
+                return "Nothing was written: create_widget needs widget_type and widget_config in config."
+
+        widget_type = body.get("widget_type")
+        if widget_type not in _WIDGET_TYPES:
+            return (
+                f"Nothing was written: widget_type '{widget_type}' is not an OpenAEV "
+                f"widget type. Valid values: {', '.join(_WIDGET_TYPES)}."
+            )
+        if "widget_config" in extra:
+            config_err = _widget_config_error(body.get("widget_config"))
+            if config_err:
+                return f"Nothing was written: {config_err}"
+        if "widget_layout" in extra:
+            layout, lerr = _layout_from(extra["widget_layout"])
+            if lerr:
+                return f"Nothing was written: {lerr}"
+            # A layout field left out keeps its stored value (OpenAEV would store 0).
+            body["widget_layout"] = {**stored_layout, **layout}
+        placed = ""
+        if action == "create_widget":
+            layout = dict(body.get("widget_layout") or {})
+            for field, size in _DEFAULT_WIDGET_SIZE.items():
+                layout.setdefault(field, size)
+            layout.setdefault("widget_layout_x", 0)
+            if "widget_layout_y" not in layout:
+                row, rerr = await _next_free_row(dashboard_id)
+                if rerr:
+                    return f"Nothing was written: {rerr}"
+                layout["widget_layout_y"] = row
+                placed = " Placed under the existing widgets."
+            body["widget_layout"] = layout
+        missing = [short for long, short in _LAYOUT_FIELDS.items() if long not in (body.get("widget_layout") or {})]
+        if missing:
+            return f"Nothing was written: widget_layout has no {', '.join(missing)}; pass every one of x, y, w and h."
+
+        if action == "create_widget":
+            resp, err = await _api(base_url, headers, "post", base, "create widget", json=body)
+        else:
+            resp, err = await _api(
+                base_url,
+                headers,
+                "put",
+                f"{base}/{widget_id}",
+                "update widget",
+                json=body,
+            )
+        if err:
+            return err
+        saved = resp.json() if resp is not None else {}
+        saved = saved if isinstance(saved, dict) else {}
+        verb = "Created" if action == "create_widget" else "Updated"
+        answer = (
+            f"{verb} {saved.get('widget_type') or body['widget_type']} widget "
+            f"{saved.get('widget_id') or widget_id} on dashboard {dashboard_id}: "
+            f"{_layout_text(saved.get('widget_layout') or body['widget_layout'])}.{placed}"
+        )
+        if kept:
+            answer += " Kept as they were: " + ", ".join(kept) + "."
+        return answer
 
     executor.register("query_openaev_analytics", query_openaev_analytics)
     executor.register("manage_openaev_dashboard", manage_openaev_dashboard)
@@ -614,7 +869,12 @@ def register(
                 "dashboard and kept), 'delete', "
                 "'list_widgets' (dashboard_id), 'get_widget' (dashboard_id + "
                 "widget_id - also the best way to learn a widget_config shape for "
-                "query_openaev_analytics), 'run_count' / 'run_average' / "
+                "query_openaev_analytics), 'create_widget' (dashboard_id + config "
+                "widget_type, widget_config, optional widget_layout; placed under "
+                "the existing widgets when no y is given), 'update_widget' "
+                "(dashboard_id + widget_id + config; fields left out are kept), "
+                "'update_layout' (config x, y, w, h on a 12-column grid), "
+                "'delete_widget', 'run_count' / 'run_average' / "
                 "'run_series' / 'run_entities' (widget_id + optional parameters - "
                 "execute a stored widget), 'search_engine' (search - quick "
                 "cross-entity engine search)."
@@ -626,7 +886,8 @@ def register(
                         "type": "string",
                         "enum": [
                             "list", "get", "for_resource", "create", "update",
-                            "delete", "list_widgets", "get_widget", "run_count",
+                            "delete", "list_widgets", "get_widget", "create_widget",
+                            "update_widget", "update_layout", "delete_widget", "run_count",
                             "run_average", "run_series", "run_entities",
                             "search_engine",
                         ],
@@ -637,7 +898,7 @@ def register(
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "parameters": {"type": "string", "description": "JSON object of string parameters for the run_* actions."},
-                    "config": {"type": "string", "description": "JSON object of raw fields: custom_dashboard_name, custom_dashboard_description, custom_dashboard_parameters (replaces the parameters whole). Any other field (widgets included) is refused, as OpenAEV would drop it."},
+                    "config": {"type": "string", "description": "JSON object. create/update: custom_dashboard_name, custom_dashboard_description, custom_dashboard_parameters. Widget actions: widget_type, widget_config, widget_layout. update_layout: x, y, w, h. Any other field is refused."},
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
                 },

@@ -22,7 +22,10 @@ ceiling of their own. ``tests/test_builtin_tool_groups.py`` asserts them.
 This module answers the question a change adding tool arguments has before the
 test runs: per group, its size, its ceiling, the headroom left and the delta
 against a baseline measured on the base checkout, plus the functions that grew
-most. ``scripts/tool_schema_budget.py`` prints it (the ``backend-schema-budget``
+most. ``format_breakdown`` then says where one group's weight is: its functions
+by size with their largest arguments, and the arguments whose schema is the
+same text in several of its functions, so a group at its ceiling is trimmed in
+one round. ``scripts/tool_schema_budget.py`` prints it (the ``backend-schema-budget``
 check of ``.xtm-one/checks.toml``); the size test prints the same table when it
 fails. Read-only: nothing here changes a ceiling.
 """
@@ -32,6 +35,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from app.services.builtin_tool_groups import schema_chars
 
@@ -146,12 +150,24 @@ DEFAULT_BASELINE = Path(".xtm") / "tool-schema-baseline.json"
 #: Sizes per group, then per function: ``{group id: {function name: chars}}``.
 SchemaSizes = dict[str, dict[str, int]]
 
+#: Function definitions per group, as the catalog builds them: ``{group id: [definition]}``.
+GroupDefinitions = dict[str, list[dict[str, Any]]]
 
-def measure_schema_sizes() -> SchemaSizes:
-    """Every built-in group's functions with what each costs on the wire, every flag on."""
+#: Below this size a repeated argument (a ``limit``, an ``offset``) is not worth naming.
+REPEATED_ARGUMENT_MIN_CHARS = 100
+
+
+def measure_definitions() -> GroupDefinitions:
+    """Every built-in group's function definitions, every flag on."""
     from app.services.builtin_tool_catalog import build_builtin_tool_catalog
 
-    catalog = build_builtin_tool_catalog(include_disabled=True)
+    return build_builtin_tool_catalog(include_disabled=True)
+
+
+def measure_schema_sizes(catalog: GroupDefinitions | None = None) -> SchemaSizes:
+    """Every built-in group's functions with what each costs on the wire, every flag on."""
+    if catalog is None:
+        catalog = measure_definitions()
     return {
         group_id: {definition["name"]: schema_chars(definition) for definition in definitions}
         for group_id, definitions in catalog.items()
@@ -289,16 +305,117 @@ def load_baseline(path: Path) -> SchemaSizes | None:
     return stored
 
 
+@dataclass(frozen=True)
+class FunctionBreakdown:
+    """One function's cost on the wire: its total, its description, its arguments largest first."""
+
+    name: str
+    size: int
+    description: int
+    arguments: list[tuple[str, int]]
+
+
+def _properties(definition: dict[str, Any]) -> dict[str, Any]:
+    properties = (definition.get("input_schema") or {}).get("properties")
+    return properties if isinstance(properties, dict) else {}
+
+
+def _compact(schema: Any, *, sort_keys: bool = False) -> str:
+    return json.dumps(schema, separators=(",", ":"), ensure_ascii=False, sort_keys=sort_keys)
+
+
+def breakdown_definitions(definitions: list[dict[str, Any]]) -> list[FunctionBreakdown]:
+    """Each function of *definitions*, largest first, with its arguments by the size of their schema."""
+    rows = [
+        FunctionBreakdown(
+            name=definition["name"],
+            size=schema_chars(definition),
+            description=len(definition["description"]),
+            arguments=sorted(
+                ((name, len(_compact(schema))) for name, schema in _properties(definition).items()),
+                key=lambda item: -item[1],
+            ),
+        )
+        for definition in definitions
+    ]
+    rows.sort(key=lambda row: -row.size)
+    return rows
+
+
+def repeated_arguments(
+    definitions: list[dict[str, Any]], *, min_chars: int = REPEATED_ARGUMENT_MIN_CHARS
+) -> list[tuple[str, int, list[str]]]:
+    """Arguments whose schema is the same text in several functions: ``(name, chars, functions)``.
+
+    The text is paid once per function on the wire; the ones that cost the most
+    beyond their first copy come first, and those under *min_chars* are left out.
+    """
+    seen: dict[tuple[str, str], list[str]] = {}
+    for definition in definitions:
+        for name, schema in _properties(definition).items():
+            seen.setdefault((name, _compact(schema, sort_keys=True)), []).append(definition["name"])
+    repeated = [
+        (name, len(text), functions)
+        for (name, text), functions in seen.items()
+        if len(functions) > 1 and len(text) >= min_chars
+    ]
+    repeated.sort(key=lambda item: (-(item[1] * (len(item[2]) - 1)), item[0]))
+    return repeated
+
+
+def format_breakdown(
+    group_id: str,
+    definitions: list[dict[str, Any]],
+    *,
+    ceiling: int | None = None,
+    top: int | None = None,
+    arguments: int = 3,
+) -> str:
+    """Where *group_id*'s weight is: its functions by size, then its repeated arguments.
+
+    *top* bounds the functions listed (all when None); *arguments* the largest
+    arguments named per function.
+    """
+    rows = breakdown_definitions(definitions)
+    size = sum(row.size for row in rows)
+    head = f"{group_id}: {size:,} chars in {len(rows)} functions"
+    if ceiling is not None:
+        head += f", ceiling {ceiling:,}, headroom {ceiling - size:,}"
+    lines = [head]
+    shown = rows if top is None else rows[:top]
+    width = max((len(row.name) for row in shown), default=0)
+    for row in shown:
+        largest = ", ".join(f"{name} {chars:,}" for name, chars in row.arguments[:arguments])
+        line = f"  {row.name.ljust(width)}  {row.size:>7,}  description {row.description:,}"
+        lines.append(f"{line}  arguments: {largest}" if largest else line)
+    if len(shown) < len(rows):
+        lines.append(f"  ... {len(rows) - len(shown)} more (--group {group_id} lists them all)")
+    repeated = repeated_arguments(definitions)
+    if repeated:
+        lines.append("repeated arguments (the same schema paid in each function):")
+        lines += [
+            f"  {name} {chars:,} x{len(functions)}: {', '.join(functions)}" for name, chars, functions in repeated
+        ]
+    return "\n".join(lines)
+
+
 __all__ = [
     "DEFAULT_BASELINE",
     "GROUP_SCHEMA_CHARS_CEILING",
+    "REPEATED_ARGUMENT_MIN_CHARS",
     "TOTAL_SCHEMA_CHARS_CEILING",
+    "FunctionBreakdown",
     "GroupBudget",
+    "GroupDefinitions",
     "SchemaBudget",
     "SchemaSizes",
+    "breakdown_definitions",
     "compute_budget",
+    "format_breakdown",
     "format_budget",
     "load_baseline",
+    "measure_definitions",
     "measure_schema_sizes",
+    "repeated_arguments",
     "save_baseline",
 ]

@@ -759,15 +759,46 @@ async def test_the_same_page_twice_adds_nothing(monkeypatch):
 async def test_a_split_that_fails_stores_nothing_and_says_why(monkeypatch):
     queued = _record_queued(monkeypatch)
     async with _bound_tools(monkeypatch) as (_user, executor, factory):
-        result = await _ingest_through_composite(executor, {"to_workset": {"item_start": "^### Article"}})
+        result = await _ingest_through_composite(
+            executor, {"to_workset": {"item_start": "^### Article", "json_path": "items"}}
+        )
         assert result.is_error is True
         assert result.content == (
-            "Error: nothing from search_cases was put into your workset: item_start matched nothing in the "
-            "result; nothing was ingested. The tool did run; call it again with a corrected to_workset, or without it."
+            "Error: nothing from search_cases was put into your workset: Give either a JSON split (json_path, "
+            "*_field) or item_start, not both. The tool did run; call it again with a corrected to_workset, or "
+            "without it."
         )
         assert queued == []
         async with factory() as session:
             assert (await session.execute(select(func.count()).select_from(WorksetItem))).scalar_one() == 0
+
+
+@pytest.mark.parametrize(
+    ("spec", "why"),
+    [
+        ({"item_start": "^### Article"}, "item_start matched no line of the result"),
+        ({"json_path": "items", "ref_field": "id"}, "a JSON split was asked for but the result is not JSON"),
+    ],
+)
+async def test_a_split_that_cannot_apply_stores_the_result_whole(
+    monkeypatch: pytest.MonkeyPatch, spec: dict[str, str], why: str
+) -> None:
+    """The tool ran: a text result asked to split as JSON (or by an item_start that
+    matches no line) is stored as one item, never dropped, and the receipt says why."""
+    queued = _record_queued(monkeypatch)
+    async with _bound_tools(monkeypatch) as (_user, executor, factory):
+        result = await _ingest_through_composite(executor, {"to_workset": spec})
+        assert result.is_error is False
+        lines = str(result.content).splitlines()
+        assert "1 item(s) cut from it, 1 stored (1 added" in lines[0]
+        assert lines[1].startswith(f"Not split as asked: {why}")
+        assert "stored whole as one item" in lines[1]
+        assert len(queued) == 1
+        async with factory() as session:
+            items = (await session.execute(select(WorksetItem))).scalars().all()
+        assert len(items) == 1
+        read = await _call(executor, "workset_read_item", item_id=str(items[0].id))
+        assert "The post asserts that the vote was rigged." in read
 
 
 async def test_an_anonymous_caller_gets_no_to_workset():

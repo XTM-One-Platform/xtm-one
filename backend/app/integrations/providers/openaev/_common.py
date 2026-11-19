@@ -172,6 +172,37 @@ def inject_targets_line(inject: Any) -> str:
     return line
 
 
+#: Inject keys moved to the end of an inject read's JSON: the bulky ones
+#: (content, documents, expectation and status trees) so the relations and
+#: scalar fields are read before any cut marker.
+_INJECT_BULKY_KEYS: tuple[str, ...] = (
+    "inject_content",
+    "inject_documents",
+    "inject_expectations",
+    "inject_status",
+    "inject_kill_chain_phases",
+    "inject_attack_patterns",
+)
+
+
+def inject_read_answer(inject: Any, limit: int = JSON_READ_CHARS) -> str:
+    """An inject read: its targets line first, then its JSON, bulky keys last.
+
+    The stored targets (``inject_asset_groups``, ``inject_assets``) are always
+    named in full ahead of the JSON, so a large ``inject_content`` (a long
+    command line, many arguments) that pushes the answer past *limit* never
+    hides the relations the executor targets. Not an object: plain
+    ``json_answer``.
+    """
+    if not isinstance(inject, dict):
+        return json_answer(inject, limit)
+    ordered = {k: v for k, v in inject.items() if k not in _INJECT_BULKY_KEYS}
+    ordered.update({k: inject[k] for k in _INJECT_BULKY_KEYS if k in inject})
+    head = inject_targets_line(inject)
+    body = json_answer(ordered, limit)
+    return f"{head}\n{body}" if head else body
+
+
 # Transient upstream statuses that IDEMPOTENT OpenAEV calls opt into retrying at
 # the HTTP layer (via ``_api(..., retry_transient=True)``). The shared gateway
 # set is 502/503/504; OpenAEV also surfaces its own transient faults (a brief EE
@@ -1840,10 +1871,112 @@ def _fmt_asset_group(g: dict) -> str:
         lines.append(f"  Description: {g['asset_group_description'][:300]}")
     if g.get("asset_group_assets_number") is not None:
         lines.append(f"  Assets count: {g['asset_group_assets_number']}")
+    if "asset_group_dynamic_filter" in g:
+        described = describe_filter_group(g.get("asset_group_dynamic_filter"))
+        lines.append(
+            f"  Dynamic filter: {clip_text(described, 600)}"
+            if described
+            else "  Dynamic filter: none (static members only)"
+        )
+    static_ids = g.get("asset_group_assets")
+    dynamic_ids = g.get("asset_group_dynamic_assets")
+    if isinstance(static_ids, list) or isinstance(dynamic_ids, list):
+        counts = []
+        if isinstance(static_ids, list):
+            counts.append(f"{len(static_ids)} static")
+        if isinstance(dynamic_ids, list):
+            counts.append(f"{len(dynamic_ids)} dynamic")
+        lines.append(f"  Member ids on the group: {', '.join(counts)}")
     tags = g.get("asset_group_tags") or []
     if tags:
         lines.append(f"  Tags: {', '.join(tags)}")
     return "\n".join(lines)
+
+
+#: Members listed per call by get_openaev_asset_group (OpenAEV pages them).
+ASSET_GROUP_MEMBERS_MAX = 100
+
+
+def describe_filter_group(group: Any) -> str:
+    """An OpenAEV ``FilterGroup`` as one readable line (``""`` when empty).
+
+    ``asset_name contains [web, db] AND (asset_tags eq [t1] OR ...)``: the
+    values of one filter are alternatives, the group's mode joins the filters.
+    """
+    if not isinstance(group, dict):
+        return ""
+    mode = str(group.get("mode") or "and").upper()
+    parts: list[str] = []
+    for f in group.get("filters") or []:
+        if not isinstance(f, dict):
+            continue
+        nested = f.get("filterGroup")
+        if isinstance(nested, dict):
+            inner = describe_filter_group(nested)
+            if inner:
+                parts.append(f"({inner})")
+            continue
+        key = f.get("key")
+        if not key:
+            continue
+        operator = f.get("operator") or "eq"
+        values = [str(v) for v in (f.get("values") or [])]
+        if operator in ("empty", "not_empty") or not values:
+            parts.append(f"{key} {operator}")
+        else:
+            parts.append(f"{key} {operator} [{', '.join(values)}]")
+    return f" {mode} ".join(parts)
+
+
+def _fmt_asset_group_member(m: dict[str, Any]) -> str:
+    name = m.get("asset_name") or m.get("endpoint_name") or "?"
+    details = [f"id: {m.get('asset_id') or m.get('endpoint_id') or 'N/A'}"]
+    for label, key in (
+        ("type", "asset_type"),
+        ("hostname", "asset_hostname"),
+        ("platform", "endpoint_platform"),
+        ("criticality", "asset_criticality"),
+    ):
+        if m.get(key):
+            details.append(f"{label}: {m[key]}")
+    line = f"    - {name} ({', '.join(details)})"
+    if m.get("is_static") is not None:
+        line += " [static]" if m["is_static"] else " [dynamic]"
+    return line
+
+
+def fmt_asset_group_members(page: Any, page_index: int, size: int, search: str = "") -> list[str]:
+    """Lines for one page of ``POST /api/asset_groups/{id}/assets/search``."""
+    if not isinstance(page, dict):
+        return ["  Members: not listed (OpenAEV answered no page)."]
+    content = [m for m in page.get("content") or [] if isinstance(m, dict)]
+    total = page.get("totalElements")
+    if not isinstance(total, int):
+        total = len(content)
+    scope = f" matching '{search}'" if search else ""
+    if total == 0:
+        return [f"  Members{scope}: none (static and dynamic)."]
+    start = page_index * size
+    if not content:
+        return [f"  Members{scope}: {total} in all; page {page_index} is past the last one."]
+    end = start + len(content)
+    lines = [f"  Members{scope}: {total} in all (static and dynamic), showing {start + 1}-{end}:"]
+    lines.extend(_fmt_asset_group_member(m) for m in content)
+    if end < total:
+        lines.append(f"    ... {total - end} more: call again with members_page={page_index + 1}.")
+    return lines
+
+
+def asset_group_member_ids_lines(g: dict[str, Any], reason: str, limit: int = 20) -> list[str]:
+    """Fallback when the member search is refused: the ids the group carries."""
+    lines = [f"  Members: not listed by name ({clip_text(reason, 200)})."]
+    for label, key in (("Static", "asset_group_assets"), ("Dynamic", "asset_group_dynamic_assets")):
+        ids = g.get(key)
+        if isinstance(ids, list) and ids:
+            shown = ", ".join(str(i) for i in ids[:limit])
+            more = f" (+{len(ids) - limit} more)" if len(ids) > limit else ""
+            lines.append(f"    {label} member ids: {shown}{more}")
+    return lines
 
 
 def _fmt_team(t: dict, base_url: str = "") -> str:
@@ -1959,6 +2092,65 @@ def _scenario_state_lines(s: dict[str, Any]) -> list[str]:
         lines.append(f"  Created: {s['scenario_created_at']}")
     if s.get("scenario_updated_at"):
         lines.append(f"  Updated: {s['scenario_updated_at']}")
+    return lines
+
+
+def _simulation_state_lines(e: dict[str, Any]) -> list[str]:
+    """Parent scenario, dates and inject count of a simulation, when returned.
+
+    A simulation a scenario recurrence created carries the scenario id and its
+    start date; without them a reader cannot tell that the recurrence fired.
+    Each line is rendered only when OpenAEV returned the field it reads.
+    """
+    lines: list[str] = []
+    scenario = e.get("exercise_scenario")
+    if isinstance(scenario, dict):
+        scenario = scenario.get("scenario_id")
+    if scenario:
+        lines.append(f"  Scenario: {scenario}")
+    for key, label in (
+        ("exercise_start_date", "Start"),
+        ("exercise_end_date", "End"),
+        ("exercise_created_at", "Created"),
+        ("exercise_updated_at", "Updated"),
+    ):
+        if e.get(key):
+            lines.append(f"  {label}: {e[key]}")
+    injects = e.get("exercise_injects")
+    if isinstance(injects, list):
+        lines.append(f"  Injects: {len(injects)}")
+    return lines
+
+
+#: Injects listed with their execution status on a simulation read.
+SIMULATION_INJECT_ROWS = 25
+
+
+def _simulation_inject_status_lines(rows: Any) -> list[str]:
+    """One line per inject of a simulation with its execution status.
+
+    ``rows`` is the answer of ``GET /api/exercises/{id}/injects/results``.
+    The status says whether the inject ran (SUCCESS, ERROR, PENDING...), not
+    whether the defense worked; an inject not executed yet has no status.
+    """
+    if not isinstance(rows, list):
+        return []
+    rows = [r for r in rows if isinstance(r, dict)]
+    lines = [f"  Inject statuses ({len(rows)}):"]
+    if not rows:
+        lines.append("    none")
+        return lines
+    for row in rows[:SIMULATION_INJECT_ROWS]:
+        status = row.get("inject_status")
+        if isinstance(status, dict):
+            status = status.get("status_name")
+        title = row.get("inject_title") or "?"
+        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {status or 'not executed'}")
+    if len(rows) > SIMULATION_INJECT_ROWS:
+        lines.append(
+            f"    {len(rows) - SIMULATION_INJECT_ROWS} more not shown; "
+            "manage_openaev_inject action 'results' lists them all."
+        )
     return lines
 
 
@@ -2495,6 +2687,7 @@ def _fmt_reporting_generation(g: dict) -> str:
 
 
 __all__ = [
+    "ASSET_GROUP_MEMBERS_MAX",
     "COMMAND_EXECUTORS",
     "EXPECTATION_EXPIRED_RESULT",
     "EXPECTATION_RESULT_TYPES",
@@ -2552,8 +2745,11 @@ __all__ = [
     "_tenant_path",
     "_validate_filter_group",
     "_with_scope_hint",
+    "asset_group_member_ids_lines",
+    "describe_filter_group",
     "expectation_label",
     "expectation_result_type",
+    "fmt_asset_group_members",
     "inject_targets_line",
     "json_answer",
     "logger",

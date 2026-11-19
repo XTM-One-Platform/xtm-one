@@ -113,12 +113,18 @@ def test_fleet_desks_are_reached_through_the_orchestrator_only(fleet):
 
 
 @pytest.mark.parametrize("fleet", BUILTIN_FLEETS, ids=lambda f: f["slug"])
-def test_every_fleet_orchestrator_is_its_conversational_entry_point(fleet):
-    # The fleet seed always exposes the orchestrator; with chat off the exposed
-    # root could not be talked to (#10674).
+def test_every_fleet_orchestrator_is_reachable(fleet):
+    # The fleet seed always exposes the orchestrator. A person talks to it only
+    # when it answers people (the posture fleet); a run orchestrator (a JSON
+    # run or case schema) or one the CTEM Assistant delegates to
+    # (entry_handovers) keeps chat off: delegation and assignments never read
+    # disable_chat, only the chat picker does.
     agents = {a["slug"]: a for a in BUILTIN_AGENTS}
     root = agents.get(fleet["orchestrator"], {})
-    assert not root.get("disable_chat"), f"enable chat on the orchestrator {fleet['orchestrator']}"
+    if root.get("disable_chat"):
+        assert root.get("output_schema") or fleet.get("entry_handovers"), (
+            f"{fleet['orchestrator']} has chat off and nothing reaches it"
+        )
     assert all(m.get("exposed", True) for m in fleet.get("members", []) if m["agent"] == fleet["orchestrator"])
 
 

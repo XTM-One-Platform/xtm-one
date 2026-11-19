@@ -374,7 +374,16 @@ def test_render_html_to_image_rides_the_file_generation_suite(monkeypatch):
     assert names[-1] == "render_html_to_image"
     assert {d.source for d in defs} == {"builtin:files"}
     render = defs[-1]
-    assert set(render.input_schema["properties"]) == {"html", "source_file_id", "width", "height", "scale", "name"}
+    assert set(render.input_schema["properties"]) == {
+        "html",
+        "source_file_id",
+        "width",
+        "height",
+        "scale",
+        "name",
+        "png_workspace_path",
+        "pages",
+    }
     assert "profiles block" in render.description
 
 

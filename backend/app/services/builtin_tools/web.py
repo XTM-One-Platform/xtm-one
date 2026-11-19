@@ -352,7 +352,12 @@ def build_web_fetch_tool(
             )
         return "\n".join(notes)
 
-    async def _web_fetch(url: str, max_chars: int = 80000, file_context: FileContext | None = None) -> str:
+    async def _web_fetch(
+        url: str,
+        max_chars: int = 80000,
+        sanitize: bool = False,
+        file_context: FileContext | None = None,
+    ) -> str:
         import hashlib
         import json
 
@@ -361,7 +366,7 @@ def build_web_fetch_tool(
         from app.services.code_interpreter import code_interpreter_offered
         from app.services.content_safety import wrap_untrusted
         from app.services.file_storage import MAX_UPLOAD_SIZE_BYTES
-        from app.services.web_fetch import fetch_and_extract
+        from app.services.web_fetch import fetch_and_extract, sanitize_html
         from app.tools.base import offered_tools
 
         # Validate URL
@@ -382,7 +387,8 @@ def build_web_fetch_tool(
         # fetch kept, which only this conversation or run may be handed. The
         # page is stored unwrapped - every call gets a fresh boundary - and the
         # platform's lines are rebuilt from the entry's facts (``_notes``).
-        cache_key = "web_fetch:v4:" + hashlib.sha256(f"{cache_scope}\n{max_chars}\n{url}".encode()).hexdigest()
+        scope = f"{cache_scope}\n{max_chars}\n{url}" + ("\nsanitize" if sanitize else "")
+        cache_key = "web_fetch:v4:" + hashlib.sha256(scope.encode()).hexdigest()
         redis = None
         try:
             from app.core.redis import redis_client
@@ -432,6 +438,11 @@ def build_web_fetch_tool(
         storage_type = _base_mime(result.content_type) or "application/octet-stream"
         filename = fetched_filename(result.url, result.content_type)
         body = result.body or b""
+        # ``sanitize``: the kept page (and its ``to_workspace_path`` write) loses what runs or
+        # fetches, so it is a test fixture as written; the text read below is the same.
+        sanitized = bool(sanitize and page and body)
+        if sanitized:
+            body = await run_parse(sanitize_html, body)
         ref: FileRef | None = None
         stored = False
         not_kept = ""
@@ -460,6 +471,10 @@ def build_web_fetch_tool(
         parts = [f"# {result.title}" if result.title else f"# {result.url}"]
         parts.append(f"URL: {result.url}")
         parts.append(f"Content-Type: {result.content_type}")
+        if sanitized:
+            parts.append("Kept file: sanitized (script, style, svg, img, link, iframe and media elements dropped).")
+        elif sanitize:
+            parts.append("Kept file: as fetched (sanitize applies to an HTML page only).")
         no_text = ""
         shown = total = 0
         if page:
@@ -544,6 +559,10 @@ def build_web_fetch_tool(
                         "Reduce for faster responses when you only need a summary."
                     ),
                     "default": 80000,
+                },
+                "sanitize": {
+                    "type": "boolean",
+                    "description": "HTML page: keep it without script, style, svg, img, link, iframe, media (a test fixture).",
                 },
             },
             "required": ["url"],

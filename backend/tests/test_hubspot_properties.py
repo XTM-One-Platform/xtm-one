@@ -106,6 +106,43 @@ def test_normalize_filter_between_keeps_low_and_high():
     }
 
 
+def test_normalize_filter_sends_an_iso_date_range_bound_as_epoch_ms() -> None:
+    """A custom date property refuses ``GTE 2026-11-18`` with a bare 400 and
+    reads epoch milliseconds: every range bound written as an ISO date or
+    time is sent as its epoch milliseconds (UTC when no offset is given)."""
+    midnight = "1794960000000"  # 2026-11-18T00:00:00Z
+    out = _normalize_filter({"propertyName": "services_end_date", "operator": "GTE", "value": "2026-11-18"})
+    assert out == {"propertyName": "services_end_date", "operator": "GTE", "value": midnight}
+    out = _normalize_filter({"propertyName": "createdate", "operator": "LT", "value": "2026-11-18T01:00:00+01:00"})
+    assert out == {"propertyName": "createdate", "operator": "LT", "value": midnight}
+    out = _normalize_filter(
+        {
+            "propertyName": "closedate",
+            "operator": "BETWEEN",
+            "value": "2026-11-18",
+            "highValue": "2026-11-18T00:00:01Z",
+        }
+    )
+    assert out == {
+        "propertyName": "closedate",
+        "operator": "BETWEEN",
+        "value": midnight,
+        "highValue": "1794960001000",
+    }
+
+
+def test_normalize_filter_keeps_non_date_and_equality_values() -> None:
+    """Numbers, epoch values already given, and an equality on a date stay as written."""
+    for flt, value in (
+        ({"propertyName": "amount", "operator": "GT", "value": "2026"}, "2026"),
+        ({"propertyName": "closedate", "operator": "GTE", "value": "1794960000000"}, "1794960000000"),
+        ({"propertyName": "closedate", "operator": "EQ", "value": "2026-11-18"}, "2026-11-18"),
+        ({"propertyName": "closedate", "operator": "GTE", "value": "2026-13-40"}, "2026-13-40"),
+    ):
+        out = _normalize_filter(flt)
+        assert out is not None and out["value"] == value
+
+
 def test_normalize_filter_has_property_drops_stray_value():
     out = _normalize_filter(
         {"propertyName": "email", "operator": "HAS_PROPERTY", "value": ["junk"]}

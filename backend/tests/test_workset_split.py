@@ -90,9 +90,18 @@ class TestTextSplit:
         assert result.preamble == "Page 1 of 662 (19832 cases)"
         assert result.preamble_chars == len("Page 1 of 662 (19832 cases)")
 
-    def test_an_item_start_that_matches_nothing_ingests_nothing(self):
-        with pytest.raises(SplitError, match="matched nothing"):
-            split_result(_CASES, _spec(item_start=r"^### Article"))
+    def test_an_item_start_that_matches_nothing_stores_the_result_whole(self) -> None:
+        # The tool ran: storing nothing would waste the call (partner reports
+        # on text results). One item, the exact text, and the receipt says why.
+        result = split_result(_CASES, _spec(item_start=r"^### Article", ref_pattern=r"^## Case (\d+):"))
+        assert [item.content for item in result.items] == [_CASES.strip()]
+        assert result.items[0].external_ref == "101"
+        assert result.preamble_chars == 0
+        assert "item_start matched no line" in result.fallback
+        assert "stored whole as one item" in result.fallback
+
+    def test_a_split_that_applies_has_no_fallback(self) -> None:
+        assert split_result(_CASES, _spec(item_start=r"^## Case ")).fallback == ""
 
     def test_without_a_reference_the_item_gets_a_digest(self):
         result = split_result(_CASES, _spec(item_start=r"^## Case"))
@@ -157,9 +166,19 @@ class TestJsonSplit:
         with pytest.raises(SplitError, match=r"no JSON list at 'data\.total'"):
             split_result(json.dumps(self._DATA), _spec(json_path="data.total"))
 
-    def test_a_json_path_on_text_is_refused(self):
-        with pytest.raises(SplitError, match="A JSON split was asked for but the result is not JSON"):
-            split_result("plain text", _spec(json_path="data.items"))
+    def test_a_json_path_on_text_stores_the_text_whole(self) -> None:
+        result = split_result("Report: plain text\nLine two", _spec(json_path="data.items", ref_field="id"))
+        assert [(item.title, item.content) for item in result.items] == [
+            ("Report: plain text", "Report: plain text\nLine two")
+        ]
+        # No JSON record, so no ref_field: the reference is the text's digest.
+        assert result.items[0].ref_is_digest is True
+        assert "the result is not JSON" in result.fallback
+        assert "item_start" in result.fallback
+
+    def test_a_json_path_on_json_without_a_list_there_is_still_refused(self) -> None:
+        with pytest.raises(SplitError, match="holds no JSON list"):
+            split_result(json.dumps({"data": {"items": 3}}), _spec(json_path="data.items"))
 
     def test_the_values_next_to_the_list_go_to_the_receipt(self):
         """The source's total sits next to its list: dropping it would hide the coverage."""

@@ -53,7 +53,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.core.utils import format_exception_message
-from app.tools.base import WORKSPACE_FILE_SOURCE, CallableToolExecutor, ToolDefinition, ToolResult
+from app.tools.base import (
+    WORKSPACE_FILE_SOURCE,
+    CallableToolExecutor,
+    ToolDefinition,
+    ToolResult,
+    current_workspace,
+)
 
 from ._shared import EMBED_FILE_REF_RE, format_file_size, logger, persist_tool_artifact
 from ._shared import resolve_file_ref as _resolve_file_ref
@@ -96,6 +102,8 @@ MAX_INLINE_FILE_BYTES = 8 * 1024 * 1024
 RENDER_TIMEOUT_SECONDS = 45
 #: Probe findings reported, worst first.
 MAX_PROBE_FINDINGS = 20
+#: Workspace pages one ``pages`` call renders: a design round's mock set, not a site.
+MAX_BATCH_PAGES = 30
 #: Viewport captures tried when Chromium has no compositor frame yet.
 SCREENSHOT_ATTEMPTS = 3
 #: The one transient error a capture is retried on: ``Page.captureScreenshot``
@@ -754,6 +762,23 @@ def format_svg_stats(findings: dict) -> str:
     return line
 
 
+def format_probe_report(findings: dict, *, width: int, height: int) -> str:
+    """The probe verdict of one render: clean, or its findings, then the coverage and SVG lines."""
+    probe_text, probe_total = format_probe(findings, width=width, height=height)
+    if probe_total == 0:
+        report = (
+            "Probe: clean - nothing outside the canvas, nothing clipped, no overlapping text or images"
+            ", no wrapped table cell, no label crossed by an edge, no edge end, lane or border defect."
+        )
+    else:
+        more = f" (+{probe_total - MAX_PROBE_FINDINGS} more)" if probe_total > MAX_PROBE_FINDINGS else ""
+        report = f"Probe: {probe_total} finding(s){more} - fix them in the source and re-render:\n{probe_text}"
+    for extra in (format_coverage(findings, height=height), format_svg_stats(findings)):
+        if extra:
+            report = f"{report}\n{extra}"
+    return report
+
+
 async def _capture_viewport(page: Page) -> bytes:
     """Screenshot the viewport, retrying only while Chromium has no frame.
 
@@ -979,6 +1004,25 @@ async def inline_template_asset_refs(html: str, user_id: str | None) -> tuple[st
     return EMBED_FILE_REF_RE.sub(_replace, html), []
 
 
+async def _png_to_workspace(path: object, png: bytes) -> str:
+    """Write a render's PNG to the run's sandbox workspace at *path*; the answer's line, or "".
+
+    The render itself stands whatever happens here: a run without a
+    workspace or a path the workspace refuses is said in the line, never a
+    failed call.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return ""
+    workspace = current_workspace()
+    if workspace is None:
+        return "PNG not written to the workspace: this run has no sandbox workspace.\n"
+    try:
+        written = await workspace.write_file(path.strip(), png, tool="render_html_to_image")
+    except ValueError as exc:
+        return f"PNG not written to the workspace: {exc}\n"
+    return f"PNG also written to the workspace: {written}.\n"
+
+
 def build_render_html_tool(
     *,
     db: AsyncSession | None = None,
@@ -996,6 +1040,8 @@ def build_render_html_tool(
         scale: object = None,
         name: str | None = None,
         source_file_id: str | None = None,
+        png_workspace_path: str | None = None,
+        pages: object = None,
         file_context: FileContext | None = None,
     ) -> ToolResult:
         from app.services.image_summary import format_visual_summary, summarize_image
@@ -1015,6 +1061,14 @@ def build_render_html_tool(
             check_canvas_area(canvas_w, canvas_h, density)
         except HtmlRenderError as exc:
             return ToolResult(tool_call_id="", content=f"Error: {exc}", is_error=True)
+        if pages is not None:
+            if html or source_file_id or png_workspace_path:
+                return ToolResult(
+                    tool_call_id="",
+                    content="Error: pages renders workspace files on its own: leave html, source_file_id and png_workspace_path out.",
+                    is_error=True,
+                )
+            return await _render_pages(pages, width=canvas_w, height=canvas_h, scale=density, file_context=file_context)
 
         source_ref = None
         from_workspace = False
@@ -1153,19 +1207,9 @@ def build_render_html_tool(
                 is_error=True,
             )
 
-        probe_text, probe_total = format_probe(probe, width=canvas_w, height=canvas_h)
-        if probe_total == 0:
-            probe_line = (
-                "Probe: clean - nothing outside the canvas, nothing clipped, no overlapping text or images"
-                ", no wrapped table cell, no label crossed by an edge, no edge end, lane or border defect."
-            )
-        else:
-            more = f" (+{probe_total - MAX_PROBE_FINDINGS} more)" if probe_total > MAX_PROBE_FINDINGS else ""
-            probe_line = f"Probe: {probe_total} finding(s){more} - fix them in the source and re-render:\n{probe_text}"
-        for extra in (format_coverage(probe, height=canvas_h), format_svg_stats(probe)):
-            if extra:
-                probe_line = f"{probe_line}\n{extra}"
+        probe_line = format_probe_report(probe, width=canvas_w, height=canvas_h)
         summary_line = format_visual_summary(await summarize_image(png))
+        workspace_line = await _png_to_workspace(png_workspace_path, png)
         fonts_line = (
             "Fonts: Geologica / Elms Sans / IBM Plex Sans / IBM Plex Mono loaded from the platform bundle."
             if font_css
@@ -1190,13 +1234,117 @@ def build_render_html_tool(
                     if from_workspace
                     else ".\n"
                 )
+                + workspace_line
                 + f"{probe_line}\n{fonts_line}\n{summary_line}"
             ),
             files=[png_ref],
         )
 
+    async def _render_pages(
+        pages: object, *, width: int, height: int, scale: int, file_context: FileContext | None
+    ) -> ToolResult:
+        """Render each workspace page of *pages* on one canvas; its file id and probe verdict, no pixels.
+
+        A design round iterates a set of generated mock pages: what it needs per
+        page is the probe, not the PNG in its context. Each PNG is stored as a
+        conversation file (read one with read_file_content to look at it); a page
+        that cannot be read or rendered is named and the others still render.
+        """
+        from .media import _inline_embedded_file_refs, decode_file_text
+
+        if (
+            not isinstance(pages, list)
+            or not pages
+            or not all(isinstance(page, str) and page.strip() for page in pages)
+        ):
+            return ToolResult(
+                tool_call_id="",
+                content="Error: pages takes a list of .html file paths of the sandbox workspace.",
+                is_error=True,
+            )
+        if len(pages) > MAX_BATCH_PAGES:
+            return ToolResult(
+                tool_call_id="",
+                content=f"Error: pages names {len(pages)} files; one call renders at most {MAX_BATCH_PAGES}. Nothing was rendered.",
+                is_error=True,
+            )
+        workspace = current_workspace()
+        if workspace is None:
+            return ToolResult(
+                tool_call_id="",
+                content="Error: pages reads the sandbox workspace and this run has none. Nothing was rendered.",
+                is_error=True,
+            )
+        font_css = font_face_css()
+        blocks: list[str] = []
+        files = []
+        for index, path in enumerate(pages, 1):
+            try:
+                shown, filename, raw = await workspace.read_file(path, tool="render_html_to_image")
+            except ValueError as exc:
+                blocks.append(f"{index}. {path.strip()}: not rendered - {exc}")
+                continue
+            html = decode_file_text(raw)
+            if html is None or not html.strip():
+                blocks.append(f"{index}. {shown}: not rendered - not a UTF-8 HTML file.")
+                continue
+            if len(html) > MAX_HTML_CHARS:
+                blocks.append(
+                    f"{index}. {shown}: not rendered - {len(html):,} characters, the ceiling is {MAX_HTML_CHARS:,}."
+                )
+                continue
+            too_big = oversized_inline_refs(html, file_context)
+            document = html if too_big else await _inline_embedded_file_refs(html, file_context)
+            if not too_big:
+                try:
+                    document, too_big = await inline_template_asset_refs(document, user_id)
+                except Exception as exc:
+                    logger.warning(
+                        "render_html_to_image: template assets not inlined: %s", format_exception_message(exc)
+                    )
+            if too_big or len(document) > MAX_INLINED_HTML_CHARS:
+                blocks.append(f"{index}. {shown}: not rendered - its images are over the inlining ceilings.")
+                continue
+            stem = _safe_name(re.sub(r"\.html?$", "", filename, flags=re.IGNORECASE))
+            try:
+                png, probe = await render_html(document, width=width, height=height, scale=scale, font_css=font_css)
+                png_ref = await persist_tool_artifact(
+                    db=db,
+                    user_id=user_id or "",
+                    filename=f"{stem}.png",
+                    raw_bytes=png,
+                    content_type="image/png",
+                    conversation_id=conversation_id,
+                    assignment_run_id=assignment_run_id,
+                    file_context=file_context,
+                    source="agent_working",
+                )
+            except Exception as exc:
+                logger.warning("render_html_to_image page %s failed: %s", shown, format_exception_message(exc))
+                blocks.append(f"{index}. {shown}: not rendered - {format_exception_message(exc)}")
+                continue
+            files.append(png_ref)
+            blocks.append(
+                f"{index}. {shown}: file_id {png_ref.file_id} ({format_file_size(len(png))}).\n"
+                + format_probe_report(probe, width=width, height=height)
+            )
+        header = (
+            f"Rendered {len(files)} of {len(pages)} workspace page(s) at {width}x{height} px, {scale}x. "
+            "The PNGs are stored by file_id, not attached: read one with read_file_content to look at it.\n\n"
+        )
+        return ToolResult(tool_call_id="", content=header + "\n\n".join(blocks), is_error=not files)
+
+    @functools.wraps(_render_html_to_image)
+    async def _render_counted(*args: object, **kwargs: object) -> ToolResult:
+        # A render that writes its PNG to the workspace is a workspace write from its start, as a
+        # to_workspace_path call is: a reader of the same tool round waits for the PNG (#318 review).
+        workspace = current_workspace() if kwargs.get("png_workspace_path") else None
+        writing = getattr(workspace, "writing", None)
+        with writing() if callable(writing) else contextlib.nullcontext():
+            return await _render_html_to_image(*args, **kwargs)  # type: ignore[arg-type]
+
     executor = executor if executor is not None else CallableToolExecutor()
-    executor.register("render_html_to_image", _render_html_to_image)
+    executor.register("render_html_to_image", _render_counted)
 
     definition = ToolDefinition(
         name="render_html_to_image",
@@ -1209,11 +1357,9 @@ def build_render_html_tool(
             "edge crossing a label; EDGE-END/LANE/BORDER: edge geometry; a figure taller than "
             f"the {MAX_CANVAS_PX} px cap is probed over its whole height) and returns "
             "the PNG file_id, the probe findings and the visual summary. The HTML source is "
-            "saved as a sibling .html file: to change one word or one colour, edit it with "
-            "edit_file_content and re-render with source_file_id - never rebuild the figure "
-            "from memory. A mockup built in the sandbox workspace renders in one call with "
-            "workspace_path (read on the server, its HTML never enters the context); edit it "
-            "there with sandbox_edit_file and re-render with the same path. Scripts do not run; "
+            "saved as a sibling .html file: edit it with edit_file_content and re-render with "
+            "source_file_id, never from memory. A workspace mockup renders with workspace_path "
+            "(read on the server); edit it with sandbox_edit_file and re-render. Scripts do not run; "
             "external URLs do not load - inline data: URIs or file:id / [[FILE:id]] handles "
             "(a logo from fetch_image_asset, a template asset id from get_template). For a team "
             "slide prefer the native profiles block."
@@ -1223,7 +1369,7 @@ def build_render_html_tool(
             "properties": {
                 "html": {
                     "type": "string",
-                    "description": "The HTML to render (a fragment or a full document). Omit when re-rendering a stored source.",
+                    "description": "The HTML to render (a fragment or a full document).",
                 },
                 "source_file_id": {
                     "type": "string",
@@ -1250,6 +1396,16 @@ def build_render_html_tool(
                 "name": {
                     "type": "string",
                     "description": "Base filename for the PNG and its .html source (e.g. 'founders-card').",
+                },
+                "png_workspace_path": {
+                    "type": "string",
+                    "description": "Also write the PNG to this workspace path, for code.",
+                },
+                "pages": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": MAX_BATCH_PAGES,
+                    "description": "Instead of html: workspace .html files rendered in one call, each answering its PNG file_id and probe.",
                 },
             },
         },

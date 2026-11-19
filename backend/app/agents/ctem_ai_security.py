@@ -141,6 +141,9 @@ AI_SECURITY_AGENTS: list[dict] = [
         "icon": "BrainCircuit",
         "output_format": "json",
         "output_schema": _CASE_SCHEMA,
+        # A case orchestrator (JSON case schema), reached by delegation and its
+        # assignments; nobody talks to it directly.
+        "disable_chat": True,
         "max_iterations": 120,
         "temperature": 0.2,
         "tags": ["builtin", "ctem", "fleet", "ai-security"],

@@ -219,6 +219,28 @@ class WorkspaceIngestor:
             return f"Error: to_workspace_path refused: {exc}. Nothing was run."
         return None
 
+    async def write_file(self, path: object, data: bytes, *, tool: str) -> str:
+        """Write *data* at *path* for *tool*, beside its answer; the line naming the file.
+
+        Unlike ``to_workspace_path`` the tool's answer is kept: a render's PNG
+        lands in the workspace for a measurement in code while its probe
+        findings still reach the model (``render_html_to_image``'s
+        ``png_workspace_path``). Raises :class:`ValueError` with the sentence
+        for the model.
+        """
+        if not self.session.available:
+            raise ValueError(f"{self.session.unavailable_reason}.")
+        try:
+            # Counted as a workspace write while it commits: a reader of the same tool round waits for it.
+            with self.session.writing():
+                entry, _plan = await self.session.put_bytes(normalize(path), data, operation="write")
+        except (WorkspacePathError, QuotaExceededError, WorkspaceUnavailableError) as exc:
+            metrics.operation("write_for_tool", "refused")
+            raise ValueError(f"{exc}.") from None
+        metrics.operation("write_for_tool", "ok")
+        logger.debug("%s wrote %s to the sandbox workspace", tool, entry.path)
+        return f"{display(entry.path)} ({format_size(entry.size)}, sha256 {entry.sha256})"
+
     async def read_file(self, path: object, *, tool: str) -> tuple[str, str, bytes]:
         """The bytes of a workspace file a ``workspace_path`` argument hands to *tool*.
 

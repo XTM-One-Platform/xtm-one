@@ -47,6 +47,7 @@ from app.core.utils import (
     MCP_SERVER_URL_LABELS,
     MaskedArgumentError,
     format_exception_message,
+    is_statement_timeout,
     redact_secret_text,
     restore_masked_args,
     restore_masked_text,
@@ -2527,8 +2528,26 @@ GET_AGENT_SECTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
-def parse_get_agent_sections(sections: object) -> tuple[set[str] | None, str | None]:
-    """Read get_agent's ``sections`` argument: ``(None, None)`` for the whole
+# The sections get_assignment can be narrowed to (#283), keyed by the heading
+# that opens each block of its answer. The first block (name, id, agent,
+# trigger and its config, every execution setting, schedule and delivery) is
+# always kept: a read of the trigger or of the gates no longer carries the
+# prompts whole.
+GET_ASSIGNMENT_SECTIONS: dict[str, tuple[str, ...]] = {
+    "gates": ("Gate stages (evaluated in order before the action prompt; a failed stage skips the run):",),
+    "activation_prompt": (
+        "Activation gate prompt (pre-filter deciding whether the assignment runs; empty = it always runs):",
+    ),
+    "prompt": ("Action prompt (the main instruction executed when the gate passes):",),
+    "ai_label_prompt": ("AI label prompt (override):",),
+    "human_in_the_loop_prompt": ("Human-in-the-loop prompt (override):",),
+}
+
+
+def parse_answer_sections(
+    tool: str, sections: object, valid: dict[str, tuple[str, ...]], kept: str
+) -> tuple[set[str] | None, str | None]:
+    """Read a read tool's ``sections`` argument: ``(None, None)`` for the whole
     answer, the set of names asked for, or a refusal naming the valid ones."""
     if sections is None or sections == "" or sections == []:
         return None, None
@@ -2539,22 +2558,39 @@ def parse_get_agent_sections(sections: object) -> tuple[set[str] | None, str | N
     else:
         return None, "sections must be a list of section names."
     wanted = {n.lower() for n in names if n}
-    unknown = sorted(wanted - set(GET_AGENT_SECTIONS))
+    unknown = sorted(wanted - set(valid))
     if unknown:
         return None, (
-            f"Unknown get_agent section(s): {', '.join(unknown)}. "
-            f"Valid sections: {', '.join(GET_AGENT_SECTIONS)} (the identity block is always shown)."
+            f"Unknown {tool} section(s): {', '.join(unknown)}. "
+            f"Valid sections: {', '.join(valid)} ({kept} is always shown)."
         )
     return wanted or None, None
 
 
+def parse_get_agent_sections(sections: object) -> tuple[set[str] | None, str | None]:
+    """Read get_agent's ``sections`` argument (see ``parse_answer_sections``)."""
+    return parse_answer_sections("get_agent", sections, GET_AGENT_SECTIONS, "the identity block")
+
+
+def parse_get_assignment_sections(sections: object) -> tuple[set[str] | None, str | None]:
+    """Read get_assignment's ``sections`` argument (see ``parse_answer_sections``)."""
+    return parse_answer_sections(
+        "get_assignment", sections, GET_ASSIGNMENT_SECTIONS, "the settings block (trigger included)"
+    )
+
+
 def project_get_agent_sections(parts: list[str], wanted: set[str] | None) -> list[str]:
-    """Keep the identity block and the blocks of ``wanted`` from get_agent's
-    answer lines; blocks are separated by an empty line and opened by their
-    heading (a multi-line value such as the persona is one element)."""
+    """Keep get_agent's identity block and the blocks of ``wanted``."""
+    return project_answer_sections(parts, wanted, GET_AGENT_SECTIONS)
+
+
+def project_answer_sections(parts: list[str], wanted: set[str] | None, valid: dict[str, tuple[str, ...]]) -> list[str]:
+    """Keep the blocks no section names and the blocks of ``wanted`` from a
+    read tool's answer lines; blocks are separated by an empty line and opened
+    by their heading (a multi-line value such as a prompt is one element)."""
     if wanted is None:
         return parts
-    heading_to_section = {h: name for name, heads in GET_AGENT_SECTIONS.items() for h in heads}
+    heading_to_section = {h: name for name, heads in valid.items() for h in heads}
     blocks: list[list[str]] = [[]]
     for line in parts:
         if line == "":
@@ -7410,7 +7446,7 @@ def build_agent_builder_tool(
 
     # ── get_assignment ────────────────────────────────────────────────
 
-    async def _get_assignment(assignment_id: str) -> str:
+    async def _get_assignment(assignment_id: str, sections: list[str] | str | None = None) -> str:
         import json as json_mod
 
         from sqlalchemy import select
@@ -7422,6 +7458,10 @@ def build_agent_builder_tool(
         assignment_uuid, id_err = await _id_arg(assignment_id, "assignment_id")
         if id_err:
             return id_err
+        # An unknown section is refused before any query (#283).
+        wanted_sections, sections_err = parse_get_assignment_sections(sections)
+        if sections_err:
+            return sections_err
 
         try:
             uid = uuid.UUID(user_id)
@@ -7623,10 +7663,7 @@ def build_agent_builder_tool(
             # otherwise assume the single ``prompt`` field is the gate).
             _check = getattr(assignment, "activation_check", None)
             parts.append("")
-            parts.append(
-                "Gate stages (evaluated in order before the action prompt; a "
-                "failed stage skips the run):"
-            )
+            parts.append(GET_ASSIGNMENT_SECTIONS["gates"][0])
             parts.append(
                 "  1. Tool check (no model call): "
                 + (_describe_gate_check(_check) if isinstance(_check, dict) and _check else "None")
@@ -7636,16 +7673,10 @@ def build_agent_builder_tool(
                 + ("set, below" if (assignment.activation_prompt or "").strip() else "None")
             )
             parts.append("")
-            parts.append(
-                "Activation gate prompt (pre-filter deciding whether the "
-                "assignment runs; empty = it always runs):"
-            )
+            parts.append(GET_ASSIGNMENT_SECTIONS["activation_prompt"][0])
             parts.append(assignment.activation_prompt or "None (always runs)")
             parts.append("")
-            parts.append(
-                "Action prompt (the main instruction executed when the gate "
-                "passes):"
-            )
+            parts.append(GET_ASSIGNMENT_SECTIONS["prompt"][0])
             # ``prompt`` is NOT NULL, so the only falsy value is an empty
             # string; render that as "(empty)" rather than "None" so the read
             # tool does not misrepresent a persisted empty action prompt.
@@ -7654,14 +7685,14 @@ def build_agent_builder_tool(
             # Optional per-assignment prompt overrides (NULL = platform default).
             if assignment.ai_label_prompt:
                 parts.append("")
-                parts.append("AI label prompt (override):")
+                parts.append(GET_ASSIGNMENT_SECTIONS["ai_label_prompt"][0])
                 parts.append(assignment.ai_label_prompt)
             if assignment.human_in_the_loop_prompt:
                 parts.append("")
-                parts.append("Human-in-the-loop prompt (override):")
+                parts.append(GET_ASSIGNMENT_SECTIONS["human_in_the_loop_prompt"][0])
                 parts.append(assignment.human_in_the_loop_prompt)
 
-            return "\n".join(parts)
+            return "\n".join(project_answer_sections(parts, wanted_sections, GET_ASSIGNMENT_SECTIONS))
 
     # ── update_assignment ─────────────────────────────────────────────
 
@@ -8701,13 +8732,33 @@ def build_agent_builder_tool(
                 # Fetch ``limit + 1`` rows instead — the ordered page query
                 # can stop early on the ``created_at`` index — and report
                 # "more results exist" without an exact total.
-                result = await _db.execute(
-                    q.order_by(
-                        AssignmentRun.created_at.desc(), AssignmentRun.id
+                try:
+                    result = await _db.execute(
+                        q.order_by(AssignmentRun.created_at.desc(), AssignmentRun.id).limit(limit + 1).offset(offset)
                     )
-                    .limit(limit + 1)
-                    .offset(offset)
-                )
+                except Exception as exc:
+                    # A rare term over a large run table makes that scan
+                    # outlast the database statement timeout: answer how to
+                    # narrow it instead of an opaque error the model retries.
+                    if not is_statement_timeout(exc):
+                        raise
+                    unset = [
+                        name
+                        for name, value in (
+                            ("agent_id", agent_uuid),
+                            ("assignment_id", assignment_uuid),
+                            ("status", status),
+                        )
+                        if not value
+                    ]
+                    narrow = f"add {', '.join(unset)}" if unset else "use a more specific term"
+                    return (
+                        f"The search for `{search}` timed out in the "
+                        "database: the searched fields have no index, so a "
+                        "rare term scans every run. Do not retry the same "
+                        f"call. Narrow it ({narrow}), or use get_run with "
+                        "`search` on run ids you already have."
+                    )
                 runs = result.scalars().all()
                 has_more = len(runs) > limit
                 runs = runs[:limit]
@@ -14560,19 +14611,13 @@ def build_agent_builder_tool(
         ToolDefinition(
             name="get_assignment",
             description=(
-                "Get detailed information about a specific assignment. "
-                "Returns name, trigger configuration, delay, enabled status, "
-                "every execution setting (human-in-the-loop ON/OFF, AI label, "
-                "notify-on-complete, show-in-digest, dry run, "
-                "ignore-self-triggered-events, retry-on-failure, max_retries, "
-                "max_iterations, timeout_seconds), the gate stages (the tool "
-                "check, then the prompt gate), for an integration_event trigger "
-                "its delivery mode (subscription or poll), last poll and "
-                "notification times and filtered-event count, and the FULL "
-                "prompts (never truncated): the activation gate prompt (the "
-                "pre-filter that decides whether the assignment runs) and the "
-                "action prompt (the main instruction), plus any AI-label and "
-                "human-in-the-loop prompt overrides."
+                "Get one assignment: name, trigger and its configuration, delay, "
+                "enabled, every execution setting (HITL, AI label, notify, digest, "
+                "dry run, ignore-self-triggered, retries, max_iterations, timeout), "
+                "the gate stages (tool check, then prompt gate), for an "
+                "integration_event trigger its delivery, last poll and filtered "
+                "count, and the FULL prompts: activation gate, action, AI-label "
+                "and HITL overrides."
             ),
             input_schema={
                 "type": "object",
@@ -14580,6 +14625,14 @@ def build_agent_builder_tool(
                     "assignment_id": {
                         "type": "string",
                         "description": ("The UUID of the assignment to retrieve"),
+                    },
+                    "sections": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only these, settings and trigger always shown (default all): gates, "
+                            "activation_prompt, prompt, ai_label_prompt, human_in_the_loop_prompt"
+                        ),
                     },
                 },
                 "required": ["assignment_id"],

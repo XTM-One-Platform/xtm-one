@@ -303,6 +303,59 @@ async def _member_id(session, fleet: Fleet, agent: Agent) -> uuid.UUID:
     return (await session.execute(statement)).scalar_one()
 
 
+async def test_create_fleet_sets_member_labels_and_parents_in_the_same_call() -> None:
+    """#371: ``members`` carries each member's role label and parent; a bad parent creates nothing."""
+    async with _database() as session:
+        alice = await _user(session, "alice")
+        ea = await _agent(session, alice, "EA")
+        dev = await _agent(session, alice, "Dev")
+        ux = await _agent(session, alice, "UX")
+        outsider = await _agent(session, alice, "Outsider")
+        lead = await _agent(session, alice, "Lead")
+        helper = await _agent(session, alice, "Helper")
+        await session.commit()
+
+        answer = await _call(
+            alice,
+            "create_fleet",
+            name="Office",
+            orchestrator_agent_id=str(ea.id),
+            member_agent_ids=[
+                {"agent_id": str(dev.id), "role_label": "Engineering", "parent_agent_id": str(ea.id)},
+                {"agent_id": str(ux.id), "role_label": "Design", "parent_agent_id": str(dev.id)},
+            ],
+        )
+        assert "Fleet **Office** created." in answer
+        fleet = await _fleet_named(session, "Office")
+        assert fleet is not None
+        assert await _parent_of(session, fleet, dev) == await _member_id(session, fleet, ea)
+        assert await _parent_of(session, fleet, ux) == await _member_id(session, fleet, dev)
+        assert f"reports to EA `{ea.id}`)" in answer and "role label: Engineering" in answer
+        assert f"reports to Dev `{dev.id}`)" in answer and "role label: Design" in answer
+
+        # A parent outside the fleet, or the orchestrator given a parent: refused, no fleet left behind.
+        outside = await _call(
+            alice,
+            "create_fleet",
+            name="Broken",
+            orchestrator_agent_id=str(lead.id),
+            member_agent_ids=[{"agent_id": str(helper.id), "parent_agent_id": str(outsider.id)}],
+        )
+        assert "is not a home member of this fleet" in outside and "Nothing was created" in outside
+        root = await _call(
+            alice,
+            "create_fleet",
+            name="Broken",
+            orchestrator_agent_id=str(lead.id),
+            member_agent_ids=[
+                {"agent_id": str(lead.id), "parent_agent_id": str(helper.id)},
+                {"agent_id": str(helper.id)},
+            ],
+        )
+        assert "reports to no one" in root
+        assert await _fleet_named(session, "Broken") is None
+
+
 async def test_a_member_s_parent_is_set_read_back_reset_and_refused_through_the_service_rules() -> None:
     async with _database() as session:
         alice = await _user(session, "alice")

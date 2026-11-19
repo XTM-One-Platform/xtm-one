@@ -39,9 +39,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import Text, cast, select, text
@@ -1183,6 +1184,93 @@ async def _platform_event_seen(
     return found is not None
 
 
+def _flow_skips_platform_event(flow: Flow, name: str, payload: Mapping[str, Any]) -> bool:
+    """Whether *flow* never hears event *name*: ownerless, or the event is about its own writes."""
+    if _skip_ownerless(flow, "platform_event"):
+        return True
+    if payload.get("actor_flow_id") == str(flow.id):
+        return True
+    return name.startswith("run.") and str(payload.get("assignment_id")) in _graph_config_ids(
+        flow.graph or {}, "action.trigger_assignment", "assignment_id"
+    )
+
+
+async def _flow_node_takes(
+    db: AsyncSession,
+    flow: Flow,
+    node: dict,
+    name: str,
+    payload: Mapping[str, Any],
+    reads: dict[str, Any],
+) -> bool:
+    """Whether trigger *node* of *flow* takes event *name*: events, filter, scope and workspaces.
+
+    *reads* caches the owner's role, manageable agents and readable workspaces
+    across the nodes of one flow (pass a fresh dict per flow).
+    """
+    from app.services.flow_catalog import PLATFORM_EVENT_SCOPE_ALL
+    from app.services.integration_event_filters import payload_filter_reason
+    from app.services.platform_events import personal_owners, touched_workspaces
+    from app.services.workspaces import workspace_scope_tiers
+
+    config = node.get("config") or {}
+    events = config.get("events")
+    events = [events] if isinstance(events, str) else events
+    if not isinstance(events, list) or name not in events:
+        return False
+    flt = config.get("filter") if isinstance(config.get("filter"), dict) else {}
+    if payload_filter_reason(payload, flt) is not None:
+        return False
+
+    async def _role() -> str:
+        if "role" not in reads:
+            reads["role"] = await _owner_role(db, flow.user_id)
+        return reads["role"]
+
+    scope_all = config.get("scope") == PLATFORM_EVENT_SCOPE_ALL and await _role() == "admin"
+    if "agent_ids" not in reads:
+        # Only the agents the event names are worth a read.
+        participants = {str(a) for a in payload.get("participant_agent_ids") or ()}
+        named = _graph_config_ids(flow.graph or {}, "agent", "agent_id") & participants
+        if named and not personal_owners(payload):
+            reads["agent_ids"] = await _manageable_agent_ids(db, flow.user_id, await _role() == "admin", named)
+        else:
+            reads["agent_ids"] = set()
+    if not platform_event_in_flow_scope(
+        owner_id=flow.user_id, agent_ids=reads["agent_ids"], payload=dict(payload), scope_all=scope_all
+    ):
+        return False
+    wanted = touched_workspaces(payload)
+    if wanted and not scope_all:
+        if "readable" not in reads:
+            ids, _writable = await workspace_scope_tiers(db, str(flow.user_id))
+            reads["readable"] = {str(w) for w in ids}
+        if not wanted <= reads["readable"]:
+            return False
+    return True
+
+
+async def flows_taking_platform_event(name: str, payload: Mapping[str, Any]) -> list[str]:
+    """The ids of the active flows a trigger node of which takes event *name*, as the dispatch tests it.
+
+    Read-only: no run, no dedupe read. For a publisher that must know whether
+    anything hears an event before it raises it (``platform_timers``).
+    """
+    from app.services.flow_catalog import PLATFORM_EVENT_TRIGGER_KIND
+
+    taking: list[str] = []
+    async with async_session() as db:
+        for flow, nodes in await _active_flows_with_trigger(db, PLATFORM_EVENT_TRIGGER_KIND):
+            if _flow_skips_platform_event(flow, name, payload):
+                continue
+            reads: dict[str, Any] = {}
+            for node in nodes:
+                if await _flow_node_takes(db, flow, node, name, payload, reads):
+                    taking.append(str(flow.id))
+                    break
+    return taking
+
+
 async def dispatch_flow_platform_event(name: str, payload: dict) -> list[str]:
     """Start the active flows whose ``trigger.platform_event`` takes event *name*.
 
@@ -1197,67 +1285,23 @@ async def dispatch_flow_platform_event(name: str, payload: dict) -> list[str]:
     one outcome string per run started or refused, for the dispatcher's log.
     """
     from app.services import orchestration_engine as engine
-    from app.services.flow_catalog import PLATFORM_EVENT_SCOPE_ALL, PLATFORM_EVENT_TRIGGER_KIND
-    from app.services.integration_event_filters import payload_filter_reason
-    from app.services.platform_events import personal_owners, touched_workspaces
-    from app.services.workspaces import workspace_scope_tiers
+    from app.services.flow_catalog import PLATFORM_EVENT_TRIGGER_KIND
 
     outcomes: list[str] = []
     event_id = str(payload.get("event_id") or "")
     if not event_id:
         return outcomes
-    participants = {str(a) for a in payload.get("participant_agent_ids") or ()}
     try:
         async with async_session() as db:
             targets = await _active_flows_with_trigger(db, PLATFORM_EVENT_TRIGGER_KIND)
             for flow, nodes in targets:
-                if _skip_ownerless(flow, "platform_event"):
-                    continue
-                graph = flow.graph or {}
-                if payload.get("actor_flow_id") == str(flow.id):
-                    continue
-                if name.startswith("run.") and str(payload.get("assignment_id")) in _graph_config_ids(
-                    graph, "action.trigger_assignment", "assignment_id"
-                ):
+                if _flow_skips_platform_event(flow, name, payload):
                     continue
                 # Read once per flow, and only when a node needs them.
-                role: str | None = None
-                readable: set[str] | None = None
-                agent_ids: set[str] | None = None
+                reads: dict[str, Any] = {}
                 for node in nodes:
-                    config = node.get("config") or {}
-                    events = config.get("events")
-                    events = [events] if isinstance(events, str) else events
-                    if not isinstance(events, list) or name not in events:
+                    if not await _flow_node_takes(db, flow, node, name, payload, reads):
                         continue
-                    flt = config.get("filter") if isinstance(config.get("filter"), dict) else {}
-                    if payload_filter_reason(payload, flt) is not None:
-                        continue
-                    scope_all = False
-                    if config.get("scope") == PLATFORM_EVENT_SCOPE_ALL:
-                        role = role if role is not None else await _owner_role(db, flow.user_id)
-                        scope_all = role == "admin"
-                    if agent_ids is None:
-                        # Only the agents the event names are worth a read.
-                        named = _graph_config_ids(graph, "agent", "agent_id") & participants
-                        if named and not personal_owners(payload):
-                            role = role if role is not None else await _owner_role(db, flow.user_id)
-                            agent_ids = await _manageable_agent_ids(
-                                db, flow.user_id, role == "admin", named
-                            )
-                        else:
-                            agent_ids = set()
-                    if not platform_event_in_flow_scope(
-                        owner_id=flow.user_id, agent_ids=agent_ids, payload=payload, scope_all=scope_all
-                    ):
-                        continue
-                    wanted = touched_workspaces(payload)
-                    if wanted and not scope_all:
-                        if readable is None:
-                            ids, _writable = await workspace_scope_tiers(db, str(flow.user_id))
-                            readable = {str(w) for w in ids}
-                        if not wanted <= readable:
-                            continue
                     node_id = str(node.get("id") or "")
                     context = {
                         "type": PLATFORM_EVENT_TRIGGER_TYPE,

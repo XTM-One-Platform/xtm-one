@@ -156,7 +156,10 @@ _TOOL_CONFIG = re.compile(
     r"|\.browserslistrc|\.stylelintrc(\.[\w.]+)?|stylelint\.config\.\w+"
     # Python formatters and linters that read their own file, not pyproject.toml (isort, pylint, pre-commit).
     r"|\.isort\.cfg|\.?pylintrc|\.pre-commit-config\.ya?ml|\.coveragerc|\.yamllint(\.ya?ml)?"
-    r"|\.markdownlint(\.[\w.]+)?|\.markdownlintignore|\.sqlfluffignore)$"
+    r"|\.markdownlint(\.[\w.]+)?|\.markdownlintignore|\.sqlfluffignore"
+    # Secret scanners read their rules and allow-list at the root they scan from (betterleaks, gitleaks): a
+    # narrow checkout without them reports the allow-listed test fixtures as leaks.
+    r"|\.(better|git)leaks\.toml|\.(better|git)leaksignore)$"
 )
 #: Companion files a narrow checkout keeps at most, and bytes per companion (a lock file runs to megabytes).
 MAX_COMPANIONS = 200
@@ -2218,6 +2221,8 @@ def _node_eslint_files(
 _RELAY_KINDS = ("lint", "lint-file", "types", "unit", "unit-file")
 #: The ``sh -c`` program a Relay-first check runs: the generator, then the check with the call's args.
 _RELAY_SHELL = '{generate} && exec "$@"'
+#: A shell operator that chains a second command after the first in a package script.
+_SHELL_CHAIN = re.compile(r"&&|\|\||[;|]")
 
 
 def _relay_first(
@@ -2230,18 +2235,27 @@ def _relay_first(
     unresolved. Each such check runs ``sh -c '<manager> <script> && exec "$@"'`` with its own argv
     after, so the call's args still reach the check; the output stays out of the change set
     (``.gitignore``). A check whose argv already runs the script is left as is.
+
+    A script that runs the compiler alone (``relay``) is preferred: xtm-hub's ``build`` is
+    ``relay-compiler && next build``, and running it before a unit or lint check built the whole app
+    (Google Fonts fetched, failing offline). When only a chained script calls the compiler, its first
+    command runs alone through the package manager (``yarn relay-compiler ...``).
     """
     deps = {**_mapping(manifest.get("devDependencies")), **_mapping(manifest.get("dependencies"))}
     named = _mapping(scripts)
     if "relay-compiler" not in deps:
         return
-    script = next(
-        (n for n in sorted(named) if isinstance(named[n], str) and str(named[n]).split()[:1] == ["relay-compiler"]),
-        "",
-    )
-    if not script:
+    bodies = {n: str(v) for n, v in named.items() if isinstance(v, str) and v.split()[:1] == ["relay-compiler"]}
+    if not bodies:
         return
-    generate = [manager, script] if manager == "yarn" else [manager, "run", script]
+    alone = sorted(n for n, body in bodies.items() if not _SHELL_CHAIN.search(body))
+    if alone:
+        script = alone[0]
+        generate = [manager, script] if manager == "yarn" else [manager, "run", script]
+    else:
+        script = "relay-compiler"
+        first = _SHELL_CHAIN.split(bodies[min(bodies)], maxsplit=1)[0].split()
+        generate = [*_NODE_EXEC.get(manager, _NODE_EXEC["npm"]), *first]
     program = _RELAY_SHELL.format(generate=shlex.join(generate))
     for key, spec in list(collector.found.items()):
         where, stack, kind = key

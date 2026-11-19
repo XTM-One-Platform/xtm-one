@@ -92,6 +92,16 @@ SEED_SIMULATION = {
     "exercise_severity": "high",
 }
 STATE: dict[str, str] = {}
+#: The seed steps the database holds (step name: created id), written after each step: a kept database seeds only
+#: the steps this record lacks, so a step that failed or was cut on the first start lands on the next one.
+SEEDED = lab.CACHE / "openaev-seeded.json"
+#: A seed call that meets a backend still warming up (refused, 5xx) is tried again; a 4xx answer is final.
+SEED_ATTEMPTS = 5
+SEED_RETRY_SECONDS = 6.0
+
+
+class SeedError(Exception):
+    """A seed step that did not land, with the reason the backend gave."""
 
 
 def missing_sub_paths(where: Path) -> list[str]:
@@ -208,35 +218,77 @@ def tenant_path(resource: str) -> str:
     return f"/api/tenants/{TENANT_ID}/{resource}"
 
 
-def seed() -> list[str]:
-    """The seed through the API; each step is logged and a failed one is named, never hidden."""
-    done: list[str] = []
-    asset_ids: list[str] = []
-    for asset in SEED_ASSETS:
+def seed_call(method: str, path: str, body: object) -> object:
+    """One seed write, tried again while the backend refuses or answers 5xx; a 4xx is final, its answer quoted."""
+    for attempt in range(1, SEED_ATTEMPTS + 1):
         try:
-            created = api("POST", tenant_path("endpoints/agentless"), asset)
-            asset_ids.append(str(created["asset_id"]))
-            done.append(f"asset {asset['asset_name']}")
-        except (urllib.error.URLError, KeyError, TypeError) as exc:
-            lab.log(f"openaev seed: asset {asset['asset_name']} failed: {exc}")
+            return api(method, path, body)
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read()[:300].decode("utf-8", "replace").strip()
+            except OSError:
+                detail = ""
+            reason = f"HTTP {exc.code} {detail or exc.reason}"
+            if exc.code < 500:
+                raise SeedError(reason) from exc
+        except urllib.error.URLError as exc:
+            reason = str(exc.reason)
+        if attempt == SEED_ATTEMPTS:
+            raise SeedError(f"{reason} (after {SEED_ATTEMPTS} attempts)")
+        time.sleep(SEED_RETRY_SECONDS)
+    raise SeedError("no attempt")
+
+
+def seed_steps() -> list[tuple[str, str, object, str | None, str | None]]:
+    """The seed in order: (step name, tenant resource, body, id field of the answer, STATE key of that id)."""
+    steps: list[tuple[str, str, object, str | None, str | None]] = [
+        (f"asset {asset['asset_name']}", "endpoints/agentless", asset, "asset_id", None) for asset in SEED_ASSETS
+    ]
+    steps.append(("asset group Lab servers", "asset_groups",
+                  {"asset_group_name": "Lab servers", "asset_group_description": "Seeded by the lab"}, None, None))
+    steps.append((f"scenario {SEED_SCENARIO['scenario_name']}", "scenarios", SEED_SCENARIO, "scenario_id", "scenario"))
+    steps.append((f"simulation {SEED_SIMULATION['exercise_name']}", "exercises", SEED_SIMULATION, "exercise_id",
+                  "simulation"))
+    return steps
+
+
+def seeded_record() -> dict[str, str]:
     try:
-        api("POST", tenant_path("asset_groups"), {"asset_group_name": "Lab servers",
-                                                   "asset_group_description": "Seeded by the lab"})
-        done.append("asset group Lab servers")
-    except urllib.error.URLError as exc:
-        lab.log(f"openaev seed: asset group failed: {exc}")
-    try:
-        scenario = api("POST", tenant_path("scenarios"), SEED_SCENARIO)
-        STATE["scenario"] = str(scenario["scenario_id"])
-        done.append(f"scenario {SEED_SCENARIO['scenario_name']}")
-    except (urllib.error.URLError, KeyError, TypeError) as exc:
-        lab.log(f"openaev seed: scenario failed: {exc}")
-    try:
-        simulation = api("POST", tenant_path("exercises"), SEED_SIMULATION)
-        STATE["simulation"] = str(simulation["exercise_id"])
-        done.append(f"simulation {SEED_SIMULATION['exercise_name']}")
-    except (urllib.error.URLError, KeyError, TypeError) as exc:
-        lab.log(f"openaev seed: simulation failed: {exc}")
+        record = json.loads(SEEDED.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in record.items()} if isinstance(record, dict) else {}
+
+
+def seed() -> list[str]:
+    """The seed through the API; each step is logged, recorded once it lands, and a failed one is named in
+    ``STATE["seed_missing"]`` (read by ``/lab/ready`` and the lab-up line), never hidden."""
+    record = seeded_record()
+    done: list[str] = []
+    missing: list[str] = []
+    for name, resource, body, id_field, state_key in seed_steps():
+        if name in record:
+            if state_key and record[name]:
+                STATE[state_key] = record[name]
+            lab.log(f"openaev seed: {name} kept from the previous run")
+            continue
+        try:
+            created = seed_call("POST", tenant_path(resource), body)
+            created_id = str(created[id_field]) if id_field else ""  # type: ignore[index]
+        except (SeedError, KeyError, TypeError) as exc:
+            lab.log(f"openaev seed: {name} failed: {exc}")
+            missing.append(f"{name} ({exc})")
+            continue
+        if state_key:
+            STATE[state_key] = created_id
+        record[name] = created_id
+        SEEDED.parent.mkdir(parents=True, exist_ok=True)
+        SEEDED.write_text(json.dumps(record))
+        done.append(name)
+    if missing:
+        STATE["seed_missing"] = "; ".join(missing)
+    else:
+        STATE.pop("seed_missing", None)
     return done
 
 
@@ -331,10 +383,15 @@ def main() -> None:
     # /api/health is the backend's unauthenticated route (AppSecurityConfig permitAll), keyed by
     # openaev.healthcheck.key; /api/settings answers 401 without a session.
     lab.wait_http(f"http://127.0.0.1:{BACKEND_PORT}{HEALTH_PATH}", 900, "openaev-back")
-    if kept:
-        # The seed of the previous run is in the kept database: seeding again would duplicate every row.
-        lab.log("openaev seed kept from the previous run")
+    if kept and not SEEDED.is_file():
+        # A database kept from a run older than the seed record: seeding again would duplicate every row.
+        lab.log("openaev seed kept from the previous run (no seed record: restart without the kept database to reseed)")
     else:
+        if not kept:
+            # A new database holds none of the record's rows: an empty record, so even a seed whose every step
+            # failed is completed by the next start on the kept database.
+            SEEDED.parent.mkdir(parents=True, exist_ok=True)
+            SEEDED.write_text("{}")
         for item in seed():
             lab.log(f"seeded openaev {item}")
     STATE["seeded"] = "1"
@@ -344,7 +401,8 @@ def main() -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     lab.log(
         f"lab up: http://localhost:{PORT}/lab/sign-in signs in as {ADMIN_EMAIL} (OpenAEV built from {root.name}/, "
-        f"seeded); theme at /lab/theme/dark or /lab/theme/light"
+        + (f"seed INCOMPLETE, missing: {STATE['seed_missing']}" if "seed_missing" in STATE else "seeded")
+        + "); theme at /lab/theme/dark or /lab/theme/light"
     )
     while True:
         for child in lab.CHILDREN:

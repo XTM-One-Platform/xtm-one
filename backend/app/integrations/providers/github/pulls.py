@@ -190,6 +190,33 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
 """
 
 
+#: The pending review requests of a PR, users and bots: the REST answer of a
+#: request leaves the Copilot bot out of requested_reviewers.
+_REVIEW_REQUESTS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewRequests(first: 100) {
+        nodes { requestedReviewer { __typename ... on User { login } ... on Bot { login } ... on Mannequin { login } } }
+      }
+    }
+  }
+}
+"""
+
+
+def _requested_logins(data: dict[str, Any]) -> list[str]:
+    """The logins of the pending review requests in a _REVIEW_REQUESTS_QUERY answer."""
+    pull = (data.get("repository") or {}).get("pullRequest") or {}
+    nodes = (pull.get("reviewRequests") or {}).get("nodes") or []
+    logins = []
+    for node in nodes:
+        reviewer = (node or {}).get("requestedReviewer") or {}
+        if isinstance(reviewer, dict) and reviewer.get("login"):
+            logins.append(str(reviewer["login"]))
+    return logins
+
+
 #: Pages of 100 review threads a PR read counts before it says the count is partial.
 _THREADS_MAX_PAGES = 5
 
@@ -1497,6 +1524,12 @@ def register(
             receipt = await _receipt(str(data.get("sha") or ""))
             return f"PR #{number} merged ({merge_method}){retried}: {message}.{receipt}"
 
+    def _reviewer_key(login: str) -> str:
+        """One key per reviewer: logins are case-insensitive, and GitHub names the Copilot
+        reviewer 'Copilot' in the REST answer while the request takes its bot account."""
+        key = login.lower().removesuffix("[bot]")
+        return "copilot" if key in {"copilot", "copilot-pull-request-reviewer"} else key
+
     async def request_github_reviewers(repo: str, number: int, reviewers: list[str]) -> str:
         """Request reviewers on a pull request by GitHub username.
 
@@ -1523,7 +1556,22 @@ def register(
                 return err
             actual = {r["login"] for r in (resp.json() if resp else {}).get("requested_reviewers", [])}
             await mark_self_action(repo, number)
-            missing = [r for r in resolved if r not in actual]
+            confirmed = {_reviewer_key(login) for login in actual}
+            missing = [r for r in resolved if _reviewer_key(r) not in confirmed]
+            if missing:
+                # The REST answer leaves a bot reviewer (Copilot) out of requested_reviewers
+                # even when GitHub took the request: read the pull request's own record.
+                data, gerr = await _common.gh_graphql(
+                    client,
+                    headers,
+                    _REVIEW_REQUESTS_QUERY,
+                    {"owner": owner, "name": name, "number": number},
+                    action=f"read the review requests of PR #{number}",
+                )
+                if not gerr and data:
+                    confirmed |= {_reviewer_key(login) for login in _requested_logins(data)}
+                    actual = actual | {r for r in missing if _reviewer_key(r) in confirmed}
+                    missing = [r for r in resolved if _reviewer_key(r) not in confirmed]
             if missing:
                 return (
                     f"Warning: reviewers requested on PR #{number} but these were NOT confirmed by GitHub: "

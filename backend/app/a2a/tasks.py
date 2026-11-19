@@ -854,6 +854,18 @@ _PARTNER_VISIBLE_ERROR_PREFIXES = (
     "Exposure revoked",  # the executor's revoked-mid-flight text
 )
 
+#: The prefix the stale-run sweep writes on a run it fails
+#: (``app.services.autonomous.STALE_ASSIGNMENT_CLEANUP_ERROR_PREFIX``, pinned
+#: equal by a test). Its text names internal timings, so the partner gets
+#: :data:`ORPHANED_ERROR_TEXT` instead of the generic line.
+_STALE_RUN_CLEANUP_PREFIX = "Run marked as failed by stale-assignment-run cleanup."
+#: What a partner reads when the run serving its task stopped (a restart or a
+#: crash) and the stale-run sweep failed it.
+ORPHANED_ERROR_TEXT = (
+    "External task interrupted: the run serving it stopped (platform restart or "
+    "crash) and was failed by the stale-run cleanup"
+)
+
 
 async def failure_detail(db: AsyncSession, task: A2ATask) -> str | None:
     """The stored failure reason for a FAILED task, curated, or ``None``.
@@ -875,6 +887,8 @@ async def failure_detail(db: AsyncSession, task: A2ATask) -> str | None:
         return None
     if run.error.startswith(_PARTNER_VISIBLE_ERROR_PREFIXES):
         return run.error
+    if run.error.startswith(_STALE_RUN_CLEANUP_PREFIX):
+        return ORPHANED_ERROR_TEXT
     return "Task execution failed"
 
 

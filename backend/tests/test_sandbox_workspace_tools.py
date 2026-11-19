@@ -536,6 +536,202 @@ async def test_render_html_to_image_refuses_a_missing_workspace_file(store):
     assert result.is_error and "is not in the workspace" in result.content and "Nothing was run" in result.content
 
 
+async def test_render_html_to_image_writes_the_png_to_the_workspace_and_keeps_its_answer(store, monkeypatch):
+    """png_workspace_path: the PNG lands in the workspace for code, the probe findings and file_id stay in the answer."""
+    from types import SimpleNamespace
+
+    from app.services.builtin_tools import html_render
+
+    async def _fake_persist(**kwargs):
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            filename=kwargs["filename"],
+            content_type=kwargs["content_type"],
+            size=len(kwargs["raw_bytes"]),
+            s3_object_name=f"chat/conv/{kwargs['filename']}",
+            source=kwargs["source"],
+        )
+
+    png = b"\x89PNG\r\n\x1a\n-mockup-pixels"
+
+    in_flight: list[int] = []
+
+    async def _fake_render(html, *, width, height, scale, font_css):
+        # A reader of the same tool round waits for the PNG: the render counts as a workspace write.
+        in_flight.append(executor.session.writes_in_flight)
+        return png, {"out": [], "ovf": [], "overlap": [], "leaves": 1}
+
+    async def _summary(_png):
+        return None
+
+    monkeypatch.setattr("app.services.builtin_tools._shared._persist_generated_file", _fake_persist)
+    monkeypatch.setattr(html_render, "render_html", _fake_render)
+    monkeypatch.setattr(html_render, "font_face_css", lambda: "")
+    monkeypatch.setattr("app.services.image_summary.summarize_image", _summary)
+    monkeypatch.setattr("app.services.image_summary.format_visual_summary", lambda _s: "Visual summary: -")
+
+    composite, executor = _composite(uuid.uuid4(), uuid.uuid4())
+    composite.add_tools(
+        *html_render.build_render_html_tool(db=object(), user_id=str(uuid.uuid4()), conversation_id="c")
+    )
+    await executor.session.put_bytes("work/card.html", b"<div>card</div>")
+    result = await composite.execute_tool(
+        ToolCall(
+            id="r1",
+            name="render_html_to_image",
+            arguments={WORKSPACE_FILE_ARGUMENT: "work/card.html", "png_workspace_path": "work/shots/card.png"},
+        )
+    )
+    assert result.is_error is False, result.content
+    assert (await executor.session.get_bytes("work/shots/card.png"))[1] == png
+    assert "PNG also written to the workspace:" in result.content and "work/shots/card.png" in result.content
+    assert "Probe: clean" in result.content and "as file_id" in result.content, "the answer is unchanged"
+    assert [f.filename for f in result.files] == ["card.png"]
+    assert in_flight == [1] and executor.session.writes_in_flight == 0
+
+    refused = await composite.execute_tool(
+        ToolCall(
+            id="r2",
+            name="render_html_to_image",
+            arguments={WORKSPACE_FILE_ARGUMENT: "work/card.html", "png_workspace_path": "../outside.png"},
+        )
+    )
+    assert refused.is_error is False, "the render stands when the workspace refuses the path"
+    assert "PNG not written to the workspace:" in refused.content and "Probe: clean" in refused.content
+
+
+async def test_render_html_to_image_pages_renders_each_workspace_page_without_pixels(store, monkeypatch):
+    """pages: every workspace page is rendered and probed in one call; file ids and verdicts, no PNG attached."""
+    from types import SimpleNamespace
+
+    from app.services.builtin_tools import html_render
+
+    persisted: list[str] = []
+
+    async def _fake_persist(**kwargs):
+        persisted.append(kwargs["filename"])
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            filename=kwargs["filename"],
+            content_type=kwargs["content_type"],
+            size=len(kwargs["raw_bytes"]),
+            s3_object_name=f"chat/conv/{kwargs['filename']}",
+            source=kwargs["source"],
+        )
+
+    rendered: list[tuple[str, int, int]] = []
+
+    async def _fake_render(html, *, width, height, scale, font_css):
+        rendered.append((html, width, height))
+        if "boom" in html:
+            raise RuntimeError("layout crashed")
+        overflow = [{"el": "h1.title", "scroll": [480, 40], "box": [440, 40]}] if "wide" in html else []
+        return b"\x89PNG-" + html.encode(), {"out": [], "ovf": overflow, "overlap": [], "leaves": 1}
+
+    monkeypatch.setattr("app.services.builtin_tools._shared._persist_generated_file", _fake_persist)
+    monkeypatch.setattr(html_render, "render_html", _fake_render)
+    monkeypatch.setattr(html_render, "font_face_css", lambda: "")
+
+    composite, executor = _composite(uuid.uuid4(), uuid.uuid4())
+    composite.add_tools(
+        *html_render.build_render_html_tool(db=object(), user_id=str(uuid.uuid4()), conversation_id="c")
+    )
+    await executor.session.put_bytes("work/mocks/home.html", b"<div>home</div>")
+    await executor.session.put_bytes("work/mocks/list.html", b"<div>wide</div>")
+    await executor.session.put_bytes("work/mocks/bad.html", b"<div>boom</div>")
+    result = await composite.execute_tool(
+        ToolCall(
+            id="p1",
+            name="render_html_to_image",
+            arguments={
+                "pages": [
+                    "work/mocks/home.html",
+                    "work/mocks/list.html",
+                    "work/mocks/nope.html",
+                    "work/mocks/bad.html",
+                ],
+                "width": 1440,
+                "height": 900,
+            },
+        )
+    )
+    assert result.is_error is False, result.content
+    assert not result.files, "no pixels are attached in batch mode"
+    assert persisted == ["home.png", "list.png"], "only the PNGs are stored, no HTML sibling"
+    assert [(w, h) for _html, w, h in rendered] == [(1440, 900)] * 3
+    assert "Rendered 2 of 4 workspace page(s) at 1440x900 px" in result.content
+    home, wide = result.content.split("\n\n")[1:3]
+    assert home.startswith("1. work/mocks/home.html: file_id ") and "Probe: clean" in home
+    assert wide.startswith("2. work/mocks/list.html: file_id ") and "Probe: 1 finding(s)" in wide
+    assert "OVF h1.title: content clipped (480x40 in 440x40)" in wide
+    assert "\n\n3. work/mocks/nope.html: not rendered - " in result.content
+    assert result.content.endswith("\n\n4. work/mocks/bad.html: not rendered - layout crashed")
+
+
+async def test_render_html_to_image_pages_is_refused_when_it_cannot_run(store, monkeypatch):
+    from app.services.builtin_tools import html_render
+
+    async def _never(*_args, **_kwargs):
+        raise AssertionError("nothing renders")
+
+    monkeypatch.setattr(html_render, "render_html", _never)
+    composite, _executor = _composite(uuid.uuid4(), uuid.uuid4())
+    composite.add_tools(
+        *html_render.build_render_html_tool(db=object(), user_id=str(uuid.uuid4()), conversation_id="c")
+    )
+
+    async def _call(**arguments):
+        return await composite.execute_tool(ToolCall(id="p", name="render_html_to_image", arguments=arguments))
+
+    mixed = await _call(pages=["work/a.html"], html="<div>x</div>")
+    assert mixed.is_error and "leave html, source_file_id and png_workspace_path out" in mixed.content
+    empty = await _call(pages=[])
+    assert empty.is_error and "list of .html file paths" in empty.content
+    too_many = await _call(pages=[f"work/p{n}.html" for n in range(html_render.MAX_BATCH_PAGES + 1)])
+    assert too_many.is_error and f"at most {html_render.MAX_BATCH_PAGES}" in too_many.content
+    none_rendered = await _call(pages=["work/nope.html"])
+    assert none_rendered.is_error and "Rendered 0 of 1" in none_rendered.content
+
+
+async def test_render_html_to_image_pages_without_a_workspace_is_refused(monkeypatch):
+    from app.services.builtin_tools import html_render
+
+    _defs, executor = html_render.build_render_html_tool(db=object(), user_id=str(uuid.uuid4()), conversation_id="c")
+    result = await executor.execute_tool(
+        ToolCall(id="p", name="render_html_to_image", arguments={"pages": ["work/a.html"]})
+    )
+    assert result.is_error and "this run has none" in result.content
+
+
+async def test_workspace_write_file_is_counted_while_it_commits(store, monkeypatch):
+    """WorkspaceIngestor.write_file is an in-flight write: a reader of the same round waits for it."""
+    from app.services.sandbox_workspace.ingest import WorkspaceIngestor
+
+    _composite_tool, executor = _composite(uuid.uuid4(), uuid.uuid4())
+    session = executor.session
+    seen: list[int] = []
+    put_bytes = session.put_bytes
+
+    async def _counting_put(*args, **kwargs):
+        seen.append(session.writes_in_flight)
+        return await put_bytes(*args, **kwargs)
+
+    monkeypatch.setattr(session, "put_bytes", _counting_put)
+    line = await WorkspaceIngestor(session).write_file("work/a.png", b"png", tool="render_html_to_image")
+    assert "work/a.png" in line
+    assert seen == [1] and session.writes_in_flight == 0
+
+
+async def test_render_html_to_image_png_workspace_path_without_a_workspace_is_said():
+    from app.services.builtin_tools import html_render
+
+    assert await html_render._png_to_workspace("work/x.png", b"png") == (
+        "PNG not written to the workspace: this run has no sandbox workspace.\n"
+    )
+    assert await html_render._png_to_workspace("", b"png") == ""
+    assert await html_render._png_to_workspace(None, b"png") == ""
+
+
 def _upload_tool(seen: list) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """A file-taking tool of some integration: ``file_id`` resolved through the file context, as the pipe does."""
     executor = CallableToolExecutor()
@@ -945,6 +1141,56 @@ async def test_edit_file_applies_every_edit_or_none_and_returns_the_diff(store):
         ToolCall(id="e5", name="sandbox_edit_file", arguments={"path": "src/a.py", "edits": [{"find": "b =2", "replace": "b =2"}]})
     )
     assert not same.is_error and "unchanged" in same.content and "Nothing was written" in same.content
+
+
+async def test_edit_file_takes_a_replacement_from_a_workspace_file(store: MemoryWorkspaceStore) -> None:
+    """replace_from: a section drafted in work/ lands in a source file without its text in the call."""
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "docs/guide.md", b"# Guide\n\n## End\n")
+    await _put(composite, "work/section.md", b"## Drafted\n\nBody.\n\n")
+    inserted = await composite.execute_tool(
+        ToolCall(
+            id="f1",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [
+                    {
+                        "insert_after_line": 2,
+                        "expect_first_blank": True,
+                        "replace": "",
+                        "replace_from": "work/section.md",
+                    }
+                ],
+            },
+        )
+    )
+    assert not inserted.is_error, inserted.content
+    assert await _workspace_bytes(store, conversation, "docs/guide.md") == b"# Guide\n\n## Drafted\n\nBody.\n\n## End\n"
+    both = await composite.execute_tool(
+        ToolCall(
+            id="f2",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [{"find": "## End", "replace": "x", "replace_from": "work/section.md"}],
+            },
+        )
+    )
+    assert both.is_error and "either 'replace' or 'replace_from'" in both.content
+    absent = await composite.execute_tool(
+        ToolCall(
+            id="f3",
+            name="sandbox_edit_file",
+            arguments={
+                "path": "docs/guide.md",
+                "edits": [{"find": "## End", "replace": "", "replace_from": "work/absent.md"}],
+            },
+        )
+    )
+    assert absent.is_error and "work/absent.md" in absent.content
+    assert await _workspace_bytes(store, conversation, "docs/guide.md") == b"# Guide\n\n## Drafted\n\nBody.\n\n## End\n"
 
 
 async def test_json_keys_changes_every_catalog_in_one_commit_or_none(store):

@@ -79,6 +79,22 @@ def test_a_stray_file_beside_a_narrow_checkout_keeps_it():
     assert not footprint.clean, "a file the record does not cover would be lost with the root"
 
 
+def test_a_leftover_of_an_earlier_wider_tree_never_keeps_a_clean_checkout():
+    leftover = hashlib.sha256(b"old tree").hexdigest()
+    narrow = dataclasses.replace(
+        _record("n", sub_paths=("src",)), outside_baseline={"docs/old.md": leftover, "docs/gone.md": "x"}
+    )
+    entries = _entries(narrow, {"n/docs/old.md": b"old tree"})
+    (footprint,) = eviction.footprints(entries, {"n": narrow})
+    assert footprint.clean, "a file still as the earlier tree left it holds nothing of the agent"
+    assert eviction.chosen([footprint], prune=True) == [footprint]
+
+    edited = _entries(narrow, {"n/docs/old.md": b"edited by the agent"})
+    (kept,) = eviction.footprints(edited, {"n": narrow})
+    assert not kept.clean and kept.changes == 1, "an edited leftover is the agent's work: the checkout is kept"
+    assert eviction.chosen([kept], prune=True) == []
+
+
 def test_the_destination_and_a_pinned_ref_are_never_candidates():
     dest, pinned, default = _record("dest"), _record("pin", ref="0a1b2c3d4e"), _record("main", ref="")
     entries = {**_entries(dest), **_entries(pinned), **_entries(default)}

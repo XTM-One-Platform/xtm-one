@@ -99,7 +99,9 @@ blocked.
   the runs whose display title holds it (``"refs/tags/"``: the tag build of a
   release workflow that also runs for a push on main, #34). The polling fallback reads it through
   the provider's :data:`~app.integrations.reference_state.WorkflowRunReader`
-  (:func:`_poll_workflow_run`); the release note names the run.
+  (:func:`_poll_workflow_run`); the release note names the run. A run that succeeded
+  before the item was blocked sends no delivery any more: the write that blocks it
+  reads its references once (:func:`schedule_workflow_run_check`), as for a deployment.
 """
 
 from __future__ import annotations
@@ -1845,6 +1847,49 @@ def schedule_workflow_run_release(event: PullRequestEvent) -> None:
     """Run :func:`release_from_workflow_run_delivery` in the background (a webhook must not wait on GitHub)."""
     if delivered_workflow_names(event):
         _spawn(release_from_workflow_run_delivery(event))
+
+
+async def check_item_workflow_runs(item_id: uuid.UUID | str) -> dict[str, Any]:
+    """Read the open ``workflow_run`` references of one item once, at the write that blocks it.
+
+    A run that already succeeded after ``after`` sends no delivery any more: without this
+    read the item waits for the next run of the workflow or the polling pass. Same reader,
+    credential and apply as the polling fallback. ``{"read": r, "released": n, "noted": m}``.
+    Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import workflow_run_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    readers = workflow_run_readers()
+    if not readers:
+        return counts
+    try:
+        item_uuid = uuid.UUID(str(item_id))
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(WorkItem.user_id, WorkItem.status, WorkItem.blocked_on_refs).where(WorkItem.id == item_uuid)
+                )
+            ).one_or_none()
+            if row is None or row[0] is None or row[1] != "blocked":
+                return counts
+            waiting = [r for r in open_refs(row[2]) if r.get("kind") == "workflow_run"]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for provider in readers if waiting else ():
+                tokens[(provider, str(row[0]))] = await reference_token(db, provider, row[0])
+        seen: dict[tuple[Any, ...], dict[str, Any] | None] = {}
+        for ref in waiting[:POLL_MAX_ITEMS]:
+            await _poll_workflow_run(item_uuid, row[0], ref, readers, tokens, seen, counts, HINT_MAX_READS)
+    except Exception as exc:
+        logger.warning("Workflow run check of work item %s failed: %s", item_id, format_exception_message(exc))
+    counts.pop("_unread", None)
+    return counts
+
+
+def schedule_workflow_run_check(item_id: uuid.UUID | str) -> None:
+    """Run :func:`check_item_workflow_runs` in the background (a write must not wait on the code host)."""
+    _spawn(check_item_workflow_runs(item_id))
 
 
 # -- The polling fallback --------------------------------------------------------

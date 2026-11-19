@@ -503,6 +503,27 @@ def test_no_relay_step_without_the_compiler_or_its_script() -> None:
     )
 
 
+def test_a_relay_step_never_runs_a_build_that_calls_the_compiler() -> None:
+    """xtm-hub: `build` is `relay-compiler && next build`; the checks ran the whole Next build, offline."""
+    hub = {
+        "relay": "relay-compiler",
+        "build": "relay-compiler && next build",
+        "lint": "eslint .",
+        "test": "vitest run",
+    }
+    manifest = {"packageManager": "yarn@4.18.1", "devDependencies": {"relay-compiler": "21", "vitest": "4"}}
+    found = _detect({"front/package.json": json.dumps({**manifest, "scripts": hub})}, extra=("front/yarn.lock",))
+    argv = _argv(found)
+    shell = ("sh", "-c", 'yarn relay && exec "$@"', "xtm-relay")
+    assert argv["front:node-unit-file"][:4] == shell and argv["front:node-lint"] == (*shell, "yarn", "lint")
+    assert argv["front:node-build"] == ("yarn", "build")
+    chained = {"build": "relay-compiler --validate && next build", "lint": "eslint ."}
+    for lock, prefix in (("yarn.lock", "yarn"), ("package-lock.json", "npx --no-install")):
+        only = json.dumps({"devDependencies": {"relay-compiler": "21"}, "scripts": chained})
+        lint = _argv(_detect({"package.json": only}, extra=(lock,)))["node-lint"]
+        assert lint[:3] == ("sh", "-c", f'{prefix} relay-compiler --validate && exec "$@"'), lint
+
+
 def _graphql_like() -> detect.Detection:
     """opencti-graphql: a yarn workspace member with a native add-on, a Python bridge and a fetched manifest."""
     root = json.dumps(
@@ -1654,6 +1675,24 @@ def test_a_narrow_checkout_keeps_the_root_requirements_and_python_tool_configs_i
     assert set(tree.named) == {"ci-requirements.txt", "shared/pylint_plugins/requirements.txt"}
     assert "shared/pylint_plugins/plugin.py" not in written
     assert "external-import/other/src/main.py" not in written
+
+
+def test_a_narrow_checkout_keeps_the_root_secret_scanner_config() -> None:
+    # xtm-one: the secrets check runs `betterleaks dir .` from the root, which loads
+    # .betterleaks.toml (useDefault plus the allow-list of fake-secret fixtures); a
+    # checkout of backend/ alone lacked it and reported the allow-listed fixtures.
+    tree, written = _narrow_tree(
+        {
+            ".betterleaks.toml": b"[extend]\nuseDefault = true\n",
+            ".gitleaksignore": b"",
+            "backend/app/main.py": b"",
+            "other/.betterleaks.toml": b"",
+        },
+        ["backend"],
+    )
+    for kept in (".betterleaks.toml", ".gitleaksignore"):
+        assert kept in written and kept in tree.companions
+    assert "other/.betterleaks.toml" not in written
 
 
 def test_a_narrow_checkout_keeps_the_directory_a_ci_step_cds_into() -> None:

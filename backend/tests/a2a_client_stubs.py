@@ -368,6 +368,7 @@ class RecordingDb:
         fail: bool = False,
         owns_continuation: bool = True,
         outstanding: Any = None,
+        history: list | None = None,
     ):
         self.added: list = []
         self._fail = fail
@@ -378,13 +379,20 @@ class RecordingDb:
         #: The unconcluded delegation row, if this exchange already has one.
         #: ``None`` is the ordinary case: nothing handed back yet.
         self._outstanding = outstanding
+        #: Every row of this caller for the task, newest first, as the read
+        #: back of a concluded delegation sees them. Empty is the ordinary
+        #: case: nothing recorded, so a collect goes to the partner.
+        self._history = list(history or [])
 
     async def execute(self, _stmt):
-        owns, outstanding = self._owns_continuation, self._outstanding
+        owns, outstanding, history = self._owns_continuation, self._outstanding, self._history
 
         class _Scalars:
             def first(self):
                 return outstanding
+
+            def all(self):
+                return history
 
         class _Result:
             # The ownership lookup selects an id; the outstanding-row lookup

@@ -1521,6 +1521,19 @@ default_args = ["--count", "Report"]
 timeout = 90
 image = "python-dev"
 
+# SQL on the lab's PostgreSQL from inside the lab (#327): the stores' psql lives in the container of the service
+# that started them, not in the workspace container a service_id check runs in, and no lab image carries a driver;
+# .xtm-one/lab/lab_sql.py speaks the simple query protocol itself. Run with sandbox_run_command(check="lab-sql",
+# service_id=<a lab on .xtm-one/stores.py: lab-openaev, lab-opencrq, lab-xtm-hub, lab-filigran-licenses, lab>); args
+# replace the default listing: --database NAME --sql TEXT (or --file PATH), --var NAME=VALUE for :'NAME' / :"NAME".
+# JSON answer; exit 1 on a SQL error, 2 when the database does not answer, 3 on an unbound variable.
+[check.lab-sql]
+description = "SQL on the lab PostgreSQL from inside the lab, JSON rows: run with service_id = a lab on the stores; args: --database NAME --sql TEXT | --file PATH [--var NAME=VALUE] | --list"
+argv = ["python", ".xtm-one/lab/lab_sql.py"]
+default_args = ["--list"]
+timeout = 90
+image = "python-dev"
+
 # The type checker on the change: affected = "lines" hands scripts/types_changed.py
 # the Python files the checkout changed (a modified one as PATH:A-B,C-D, never a
 # test file the change left alone); mypy runs once over them with [tool.mypy] and
@@ -1710,7 +1723,7 @@ report = "lines"
 # checkout (base sizes), then again after a change that touches a tool's
 # description or arguments. Exits 1 when a ceiling is crossed.
 [check.backend-schema-budget]
-description = "the built-in tool schema budget per group: size, ceiling, headroom, delta against the baseline and the functions that grew most (no test run); args: --save-baseline on the base checkout first, --top N"
+description = "the built-in tool schema budget per group: size, ceiling, headroom, delta against the baseline and the functions that grew most (no test run); args: --save-baseline on the base checkout first, --top N, --group NAME (a group's functions and repeated arguments by size)"
 argv = ["python", "-m", "scripts.tool_schema_budget"]
 cwd = "backend"
 timeout = 300
@@ -1981,6 +1994,18 @@ description = "the codemod runner of sandbox_codemod (after frontend-install); c
 argv = ["node", "scripts/codemod.mjs"]
 cwd = "frontend"
 timeout = 600
+image = "nodejs-dev"
+report = "lines"
+
+# The resolved light and dark value of each design-system token (a UX mock, a
+# contrast check): scripts/ds-tokens.mjs follows the var() chains of the
+# installed @filigran/design-system dist/tokens/theme.css per scheme, instead of
+# reading the 60 KB generated stylesheet by hand.
+[check.frontend-ds-tokens]
+description = "design-system tokens with their resolved light and dark values, tab-separated (after frontend-install); args: a regex on the token name (feedback-.*-primary), --json for one object"
+argv = ["node", "scripts/ds-tokens.mjs"]
+cwd = "frontend"
+timeout = 120
 image = "nodejs-dev"
 report = "lines"
 

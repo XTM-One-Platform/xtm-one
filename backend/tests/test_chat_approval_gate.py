@@ -683,6 +683,10 @@ class _GatedExecutor:
         return ToolResult(tool_call_id=tool_call.id, content="ok")
 
 
+# A hang guard for the loop's cold first round, never a latency assertion.
+_SETUP_BUDGET_S = 60
+
+
 async def test_a_cancel_ends_an_approval_wait_and_runs_nothing():
     """A stop pressed while a turn waits on a reviewer (the user's own cancel,
     or an emergency stop reaching another replica through the turn's bridge)
@@ -707,11 +711,6 @@ async def test_a_cancel_ends_an_approval_wait_and_runs_nothing():
             withdrawn.set()
         return {p["tool_call_id"]: {"decision": "approve"} for p in proposals}
 
-    async def _stop_once_asked():
-        await asked.wait()
-        cancel.set()
-
-    stopper = asyncio.create_task(_stop_once_asked())
     executor = _GatedExecutor()
     tools = [
         ToolDefinition(
@@ -720,7 +719,7 @@ async def test_a_cancel_ends_an_approval_wait_and_runs_nothing():
         for name in ("send_mail", "read_inbox")
     ]
 
-    response = await asyncio.wait_for(
+    turn = asyncio.create_task(
         run_agent_loop(
             llm=_GatedToolLLM(),
             messages=[ChatMessage(role="user", content="mail Bob")],
@@ -729,10 +728,14 @@ async def test_a_cancel_ends_an_approval_wait_and_runs_nothing():
             max_iterations=3,
             cancel_event=cancel,
             request_approval=_request_approval,
-        ),
-        timeout=5,
+        )
     )
-    await stopper
+    # Only the cancel is timed. The loop's first round does seconds of cold,
+    # synchronous setup on a loaded CI worker, and a deadline around the whole
+    # turn fired at its first await (merge-queue run 44483186460).
+    await asyncio.wait_for(asked.wait(), timeout=_SETUP_BUDGET_S)
+    cancel.set()
+    response = await asyncio.wait_for(turn, timeout=5)
 
     assert response.content == _CANCELLED_MESSAGE
     assert response.stop_reason == "cancelled"
@@ -782,7 +785,9 @@ async def test_an_answer_landing_with_the_cancel_runs_nothing():
             request_approval=_answer_as_the_stop_lands,
             on_approve_always=_remember,
         ),
-        timeout=5,
+        # A hang guard, not a latency check: the answer and the cancel land
+        # together, so nothing here waits on time.
+        timeout=_SETUP_BUDGET_S,
     )
 
     assert response.content == _CANCELLED_MESSAGE

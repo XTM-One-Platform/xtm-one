@@ -24,7 +24,9 @@ first repeat (``turn_checkpoint.in_flight_writes``).
 
 A line-range or ``insert_after_line`` edit is told from the lines at its
 number (the replacing or inserted block is there, or the anchor line still
-holds its expected text) when it is the call's only line-numbered edit.
+holds its expected text) when it is the call's only line-numbered edit. A
+move (``move_to_after_line``) writes no text to look for: it gets no verdict,
+and its key names its range and target.
 
 The same verdict is the tool's ``landed_probe`` (:func:`edit_probe`) and its
 anchors the tool's ``landed_key`` (:func:`edit_key`): a REWORDED repeat of an
@@ -33,6 +35,9 @@ the call digest, so it is matched by its path and anchors and answered
 "already applied" when the interrupted call landed, instead of inserting the
 block a second time (#12097). An edit at another anchor has another key and
 runs.
+
+A ``replace_from`` edit is told from the text of its source file, read again
+(:func:`_with_sources`); a source file gone since leaves the call untold.
 
 Anything this module cannot tell (an argument the replay cut, a file changed
 since, line-numbered edits combined in one call) is left without a verdict:
@@ -47,6 +52,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.core.utils import format_exception_message
+from app.services.sandbox_workspace.editing import EditError, replace_from_sources, with_replace_from
 from app.services.sandbox_workspace.paths import WorkspacePathError, normalize
 
 logger = logging.getLogger(__name__)
@@ -162,6 +168,11 @@ def edit_key(arguments: Mapping[str, Any]) -> str | None:
             return None
         if "insert_after_line" in edit:
             anchors.append(f"insert after {edit.get('insert_after_line')}: {edit.get('expect_first') or ''}")
+        elif "move_to_after_line" in edit:
+            anchors.append(
+                f"move {edit.get('start_line')}-{edit.get('end_line', edit.get('start_line'))} after "
+                f"{edit.get('move_to_after_line')}: {edit.get('expect_first') or ''}"
+            )
         elif _line_edit(edit):
             anchors.append(
                 f"lines {edit.get('start_line')}-{edit.get('end_line', edit.get('start_line'))}: "
@@ -172,6 +183,31 @@ def edit_key(arguments: Mapping[str, Any]) -> str | None:
         else:
             return None
     return "\n".join([path, *anchors])
+
+
+#: :func:`_with_sources` could not read a ``replace_from`` file: no verdict.
+_UNTOLD = object()
+
+
+async def _with_sources(session: Any, edits: object) -> object:
+    """*edits* with each ``replace_from`` edit's replacement read from its workspace file, as the call wrote it.
+
+    :data:`_UNTOLD` when a source file cannot be read (absent, moved since): the call gets no verdict.
+    """
+    try:
+        sources = replace_from_sources(edits)
+    except EditError:
+        return _UNTOLD
+    if not sources or not isinstance(edits, list):
+        return edits
+    texts: dict[int, str] = {}
+    for index, source in sources:
+        try:
+            _entry, source_data = await session.get_bytes(normalize(source))
+        except (WorkspacePathError, FileNotFoundError):
+            return _UNTOLD
+        texts[index] = source_data.decode("utf-8", errors="replace")
+    return with_replace_from(edits, texts)
 
 
 async def edit_probe(session: Any, arguments: Mapping[str, Any]) -> str | bool | None:
@@ -186,7 +222,10 @@ async def edit_probe(session: Any, arguments: Mapping[str, Any]) -> str | bool |
         entry, data = await session.get_bytes(path)
     except (WorkspacePathError, FileNotFoundError):
         return None
-    verdict = edit_verdict(arguments.get("edits"), data.decode("utf-8", errors="replace"))
+    edits = await _with_sources(session, arguments.get("edits"))
+    if edits is _UNTOLD:
+        return None
+    verdict = edit_verdict(edits, data.decode("utf-8", errors="replace"))
     if verdict is True:
         return (
             f"already applied: workspace/{path} already holds every edit of that call "
@@ -356,7 +395,10 @@ async def judge(in_flight: list[dict[str, Any]], session: object) -> int:
                 if entry is not None:
                     _entry, data = await session.read_entry(entry)  # type: ignore[attr-defined]
                     text = data.decode("utf-8", errors="replace")
-                landed = edit_verdict(arguments.get("edits"), text)
+                edits = await _with_sources(session, arguments.get("edits"))
+                if edits is _UNTOLD:
+                    continue
+                landed = edit_verdict(edits, text)
             if landed is None:
                 continue
             call["landed"] = landed

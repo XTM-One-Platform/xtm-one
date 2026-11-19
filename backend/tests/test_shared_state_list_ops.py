@@ -1169,6 +1169,29 @@ async def test_tool_passes_update_and_reads_back_the_updated_count(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tool_counts_a_list_changed_under_a_write_path(monkeypatch):
+    async def _upsert(**kwargs):
+        return {
+            "key": kwargs["key"],
+            "value": {"pools": {"opencti": {"open": [{"number": 1}, {"number": 2}]}}},
+            "notes": [],
+            "list_changes": {"pools.opencti.open": {"appended": 1, "removed": 0}},
+        }
+
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="pr-pools",
+        path="pools.opencti",
+        append_json='{"open": [{"number": 2}]}',
+    )
+    assert not result.is_error
+    assert 'list "pools.opencti.open": 1 appended, 0 removed, 2 item(s) now' in result.content
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("raw", ['{"gaps": 3}', '{"gaps": []}', '{"gaps": [1]}', '["gaps"]', "{"])
 async def test_tool_refuses_a_bad_update_before_any_write(monkeypatch, raw):
     called = False

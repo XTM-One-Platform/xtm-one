@@ -212,7 +212,11 @@ def register(
             )
             if err:
                 return err
-            return f"Deleted atomic test {inject_id}."
+            return (
+                f"Deleted atomic test {inject_id}. Its queued agent jobs went with "
+                "it, so a job not yet fetched never runs; an execution an agent or "
+                "injector already picked up is NOT stopped by the delete."
+            )
 
         if action in ("launch", "relaunch", "duplicate"):
             if not inject_id:
@@ -232,7 +236,20 @@ def register(
                 "expectations for every target, so read the results again "
                 "afterwards rather than reusing earlier verdicts."
             )
-            return f"{action.capitalize()}ed atomic test {inject_id}.{note}"
+            if action == "relaunch":
+                new_id = i.get("inject_id") if isinstance(i, dict) else None
+                moved = (
+                    f" OpenAEV relaunches a copy and deletes the original: the test "
+                    f"is now inject {new_id}, use that id from here on."
+                    if new_id and new_id != inject_id
+                    else ""
+                )
+                return (
+                    f"Relaunched atomic test {inject_id}.{moved} An execution of the "
+                    "previous run that an agent or injector already picked up is "
+                    f"NOT stopped.{note}"
+                )
+            return f"Launched atomic test {inject_id}.{note}"
 
         if action == "recurrence":
             if not inject_id:
@@ -265,6 +282,16 @@ def register(
             if err:
                 return err
             return recurrence_answer(inject_id, recurrence, recurrence_start, recurrence_end)
+
+        if action in ("stop", "cancel", "abort"):
+            return (
+                f"OpenAEV has no '{action}' for an atomic test: no API route stops "
+                "one execution (cancel exists for a whole simulation only). To keep "
+                "a queued job from running, 'delete' the test before an agent or "
+                "injector fetches it; an execution already picked up keeps running "
+                "and must be stopped on the executing side. 'relaunch' does not "
+                "stop the running execution either."
+            )
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, create, update, "
@@ -421,7 +448,11 @@ def register(
                 "the test a NEW inject id). Every launch, "
                 "relaunch or scheduled run ARCHIVES the previous results and "
                 "creates fresh expectations for all targets, so re-read the "
-                "results afterwards instead of reusing earlier verdicts."
+                "results afterwards instead of reusing earlier verdicts. "
+                "OpenAEV cannot stop a running atomic test: 'relaunch' runs a "
+                "copy under a NEW inject id and deletes the original, and "
+                "'delete' only keeps a job not yet fetched from running; an "
+                "execution already picked up is never stopped."
             ),
             input_schema={
                 "type": "object",

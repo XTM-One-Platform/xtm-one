@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from posixpath import basename
+from urllib.parse import unquote, urlparse
 
 from app.integrations.http import AutoRefreshClient
 from app.tools.base import ToolDefinition
@@ -24,6 +26,34 @@ from ._common import (
 # Distinct comment authors looked up per call: a comment's ``created_by`` is
 # only ever the author's id, whatever the integration may read.
 _MAX_AUTHOR_LOOKUPS = 25
+
+
+def _attachment_lines(comment: dict) -> list[str]:
+    """One line per file attached to a comment: category, name, signed URL, expiry.
+
+    Notion returns ``attachments`` as ``{category, file: {url, expiry_time}}``;
+    the URL is signed and short-lived, so the line names the tool that keeps
+    the bytes.
+    """
+    lines: list[str] = []
+    for attachment in comment.get("attachments") or []:
+        if not isinstance(attachment, dict):
+            continue
+        file_obj = attachment.get("file") if isinstance(attachment.get("file"), dict) else {}
+        url = str(file_obj.get("url") or "")
+        if not url:
+            continue
+        category = str(attachment.get("category") or "file")
+        name = unquote(basename(urlparse(url).path)) or "(unnamed)"
+        expiry = str(file_obj.get("expiry_time") or "")
+        line = f"  Attachment ({category}): {name}"
+        if expiry:
+            line += f", URL expires {expiry}"
+        lines.append(line)
+        lines.append(f"    file_url: {url}")
+    if lines:
+        lines.append("    Keep the bytes with download_notion_file(file_url=...) before the URL expires.")
+    return lines
 
 
 def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
@@ -124,6 +154,7 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 # Surfaced so the agent can reply into this thread via
                 # add_notion_comment(discussion_id=...).
                 lines.append(f"  Discussion: {discussion_id}")
+            lines.extend(_attachment_lines(c))
             return "\n".join(lines)
 
         return format_entity_list(
@@ -201,7 +232,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
             description=(
                 "Read page-level discussion comments and inline block comments "
                 "from a Notion page or block. Returns author names, timestamps, "
-                "and text content."
+                "text content and attached files (signed file_url for "
+                "download_notion_file)."
             ),
             input_schema={
                 "type": "object",

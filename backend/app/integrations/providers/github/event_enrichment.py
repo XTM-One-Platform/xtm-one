@@ -26,6 +26,13 @@ finish on the head, whatever its workflow name: a filter on
 ``enriched.head.checks.all_green`` wakes once per fully green head without a
 list of workflow names.
 
+Check runs never carry a commit status (CircleCI, Snyk, any app on the Status
+API), so when the check runs read ``all_green`` the head's commit statuses are
+read too (``GET /repos/{repo}/commits/{sha}/status``, on a candidate green head
+only): a pending status counts as a pending check and a red one as a failed
+check (``status:<context>``), weighed against the base's required contexts
+when they were read, so a status still running never wakes a green filter.
+
 The red side has its own facts, because a workflow run completes only when its
 last job ends (a slow or hung shard holds a failed one back for up to its
 ``timeout-minutes``): ``failed_names[]`` (the failed checks) and
@@ -590,6 +597,54 @@ def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]
     }
 
 
+def with_commit_statuses(
+    checks: dict[str, Any], statuses: list[Any], required: frozenset[str] | None = None
+) -> dict[str, Any]:
+    """*checks* with the head's commit statuses weighed: a pending or red status holds a green head. Pure.
+
+    Check runs alone never see a commit status (CircleCI, Snyk, a Jenkins job),
+    so a head they read green woke a filter while a status was still pending.
+    Each pending status (named ``status:<context>``) counts as a pending check,
+    each ``error`` / ``failure`` one as a failed check, the latter only when
+    *required* names it or names nothing (a red outside the base's required
+    contexts is ``failed_not_required``, as for a check run). A status named in
+    ``stale_optional`` was already left out by :func:`with_stale_optional`.
+    """
+    left_out = {s.get("name") for s in checks.get("stale_optional") or [] if isinstance(s, dict)}
+    pending: list[dict[str, Any]] = []
+    red: list[str] = []
+    red_optional: list[str] = []
+    for status in statuses:
+        if not isinstance(status, dict):
+            continue
+        context = str(status.get("context") or "?")
+        state = status.get("state") or "pending"
+        if state == "pending" and context not in left_out:
+            pending.append({"name": f"status:{context}", "status": "pending", "conclusion": None})
+        elif state in ("error", "failure"):
+            (red if not required or context in required else red_optional).append(f"status:{context}")
+    if not pending and not red and not red_optional:
+        return checks
+    held = bool(pending or red)
+    return {
+        **checks,
+        "total": checks["total"] + len(pending) + len(red) + len(red_optional),
+        "pending": checks["pending"] + len(pending),
+        "failed": checks["failed"] + len(red),
+        "failed_names": [*checks["failed_names"], *red],
+        "failed_not_required": checks.get("failed_not_required", 0) + len(red_optional),
+        "failed_not_required_names": [*checks.get("failed_not_required_names", []), *red_optional],
+        "all_completed": checks["all_completed"] and not pending,
+        "all_green": checks["all_green"] and not held,
+        "names": [
+            *checks["names"],
+            *pending,
+            *({"name": n, "status": "completed", "conclusion": "failure"} for n in [*red, *red_optional]),
+        ],
+        **({"verdict": "pending" if pending else "failure"} if "verdict" in checks and held else {}),
+    }
+
+
 def held_by_stale_only(check_runs: list[Any], checks: dict[str, Any], now: datetime | None = None) -> bool:
     """Whether a head reads nothing failed and only checks pending for over the stale age. Pure.
 
@@ -754,6 +809,7 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
     run: dict[str, Any] | None = None
     async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         check_runs: list[Any] = []
+        statuses: list[Any] | None = None
         if with_checks or with_required:
             pulls, check_runs = await asyncio.gather(_pulls(client, base, token), _check_runs(client, base, token))
         else:
@@ -778,7 +834,14 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                 if contexts is None:
                     contexts = await gh_checks.read_required_contexts(client, _headers(token), owner, name, branch)
                 if contexts:
-                    checks = with_stale_optional(checks, check_runs, await _statuses(client, base, token), contexts)
+                    statuses = await _statuses(client, base, token)
+                    checks = with_stale_optional(checks, check_runs, statuses, contexts)
+            if checks["all_green"]:
+                # Check runs never see a commit status (CircleCI, Snyk): a pending
+                # or red one holds the head. One more read, on a candidate green head only.
+                if statuses is None:
+                    statuses = await _statuses(client, base, token)
+                checks = with_commit_statuses(checks, statuses, contexts or None)
             if checks["all_green"]:
                 running, events = await _running_workflow_runs(client, repo_base, sha, token)
                 if workflows_not_created(check_runs, events, _opened_at(pulls, sha)):

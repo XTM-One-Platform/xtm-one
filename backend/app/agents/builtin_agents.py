@@ -621,7 +621,7 @@ BUILTIN_AGENTS: list[dict] = [
         "icon": "FileText",
         "output_format": "json",
         "output_schema": NlqOutputSchema.model_json_schema(),
-        "disable_chat": False,
+        "disable_chat": True,
         "tags": ["builtin", "opencti"],
         "builtin_tool_ids": [],
         "temperature": 0.0,
@@ -856,7 +856,7 @@ BUILTIN_AGENTS: list[dict] = [
         # ``x-opencti-case-rfi``) are — see the ``$comment`` on that branch in
         # ``cti-stix-harvester.json``.
         "output_schema": cti_stix_transformer_schema(),
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "filigran", "cti", "fimi", "transformer", "stix"],
         # Stateless playbook step — no memory tiers.
@@ -889,7 +889,7 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "Network",
         "output_format": "markdown",
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "opencti", "fimi", "infrastructure"],
         "builtin_tool_ids": ["web_fetch"],
@@ -1158,7 +1158,9 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "GitPullRequest",
         "output_format": "markdown",
-        "disable_chat": False,
+        # A transfer target: a transferred conversation keeps answering
+        # (handovers never read disable_chat), only the picker hides it.
+        "disable_chat": True,
         "max_iterations": DEFAULT_MAX_ITERATIONS,
         "tags": ["builtin", "openaev"],
         "handover_agent_slugs": [
@@ -1424,7 +1426,7 @@ BUILTIN_AGENTS: list[dict] = [
         "icon": "Bug",
         "output_format": "json",
         "output_schema": "aev-detection-rules-generator",
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "remediation"],
         "handover_agent_slugs": ["remediation-rule-type-detector"],
@@ -1517,7 +1519,8 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "BrainCircuit",
         "output_format": "html",
-        "disable_chat": False,
+        # A transfer target, as openaev-scenario-publisher.
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "opencti", "insights"],
         "handover_agent_slugs": [
@@ -1549,7 +1552,7 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "ScanSearch",
         "output_format": "json",
-        "disable_chat": False,
+        "disable_chat": True,
         "skip_llm": True,
         "prepare_tool_ref": {
             "source": "integration",
@@ -1570,6 +1573,7 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "Sparkles",
         "output_format": "json",
+        "disable_chat": True,
         "tags": ["builtin", "filigran", "cti", "harvester", "stix"],
         "memory_short_term_enabled": False,
         "memory_medium_term_enabled": False,
@@ -1596,7 +1600,7 @@ BUILTIN_AGENTS: list[dict] = [
         "icon": "Rss",
         "output_format": "json",
         "output_schema": "cti-stix-harvester",
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 5,
         "tags": ["builtin", "filigran", "cti", "harvester", "stix"],
         "memory_short_term_enabled": False,
@@ -1634,7 +1638,7 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "ScanSearch",
         "output_format": "json",
-        "disable_chat": False,
+        "disable_chat": True,
         # Bounded on purpose: the extraction is the tool's own pipeline (about six
         # to seven model calls per chunk with its shipped options, plus per-batch
         # steps; up to its 30-minute timeout), and the loop needs one tool call
@@ -1676,7 +1680,7 @@ BUILTIN_AGENTS: list[dict] = [
         # matching X" transform that ends up empty still conforms. The
         # ``stix_bundle_validator`` builtin tool remains the dynamic safety net.
         "output_schema": cti_stix_transformer_schema(),
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "filigran", "cti", "transformer", "stix"],
         "memory_short_term_enabled": False,
@@ -1714,7 +1718,7 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "Megaphone",
         "output_format": "markdown",
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 100,
         "tags": ["builtin", "filigran", "cti", "consumer", "stix"],
         "memory_short_term_enabled": False,
@@ -2078,9 +2082,9 @@ BUILTIN_AGENTS: list[dict] = [
         ),
         "icon": "ListOrdered",
         "output_format": "markdown",
-        # The fleet root: always exposed by the fleet seed, so its chat stays on
-        # (tests/test_seeded_fleet_guards.py, #10674).
-        "disable_chat": False,
+        # Reached by delegation from the CTEM Assistant (entry_handovers) and
+        # by its assignments; nobody talks to it directly.
+        "disable_chat": True,
         "max_iterations": 100,
         "platform_targets": ["xtm_one", "dev"],
         "tags": ["builtin", "ctem", "vulnerability", "fleet"],
@@ -2165,7 +2169,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         ),
         "icon": "Crosshair",
         "output_format": "markdown",
-        "disable_chat": False,
+        "disable_chat": True,
         "max_iterations": 150,
         "tags": ["builtin", "ctem", "fleet", "ctem-threat-response"],
         "handover_agent_slugs": [
@@ -2304,6 +2308,8 @@ BUILTIN_AGENTS.append(
         "icon": "Gauge",
         "output_format": "markdown",
         "temperature": 0.2,
+        # Kept open to chat: it answers "where do we stand" to a person.
+        "disable_chat": False,
         "tags": ["builtin", "ctem", "fleet", "posture"],
         "platform_targets": ["xtm_one", "dev"],
         # The orchestrator delegates each stage to its analyst and the briefing

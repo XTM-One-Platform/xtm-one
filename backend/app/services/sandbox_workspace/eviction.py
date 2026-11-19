@@ -172,8 +172,17 @@ def footprints(
         changes = changes_since(record, mine)
         runs = record.workspace_path(RUNS_DIR)
         # A file outside the recorded sub_paths is no change of the checkout,
-        # but an eviction would remove it with the root: it counts too.
-        stray = [p for p in record.outside(paths) if not is_bytecode_cache(p)]
+        # but an eviction would remove it with the root: it counts too, unless
+        # it is still byte for byte what an earlier, wider tree of the same
+        # checkout left (the record's out-of-scope baseline, #10144): nothing
+        # written by the agent is lost with it, so it never keeps a clean
+        # checkout from a prune.
+        baseline = record.outside_baseline or {}
+        stray = [
+            p
+            for p in record.outside(paths)
+            if not is_bytecode_cache(p) and not _leftover(baseline, p, entries.get(record.workspace_path(p)))
+        ]
         counted = {
             p
             for p in (*changes.modified, *changes.added, *changes.removed, *stray)
@@ -194,6 +203,12 @@ def footprints(
         )
     out.sort(key=lambda f: (-f.files, f.path))
     return out
+
+
+def _leftover(baseline: Mapping[str, str], repo_path: str, entry: object) -> bool:
+    """Whether *repo_path* is still as the record's out-of-scope baseline holds it (an earlier tree's file)."""
+    sha = str(getattr(entry, "sha256", "") or "")
+    return bool(sha) and baseline.get(repo_path) == sha
 
 
 def _looks_pinned(record: CheckoutRecord) -> bool:

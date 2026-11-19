@@ -920,7 +920,21 @@ def build_sandbox_workspace_tools(
 
     async def sandbox_edit_file(path: str, edits: list[dict] | None = None) -> str | ToolResult:
         try:
-            parsed = editing.parse_edits(edits, allow_ranges=True)
+            sources = editing.replace_from_sources(edits)
+        except editing.EditError as exc:
+            return _error(str(exc))
+        raw_edits: object = edits
+        if sources and isinstance(edits, list):
+            # replace_from: the replacement is a workspace file's text, read here, never re-sent by the model.
+            texts: dict[int, str] = {}
+            for index, source in sources:
+                got_source = await _text_of(source, settle=False)
+                if isinstance(got_source, ToolResult):
+                    return got_source
+                texts[index] = got_source[1]
+            raw_edits = editing.with_replace_from(edits, texts)
+        try:
+            parsed = editing.parse_edits(raw_edits, allow_ranges=True)
         except editing.EditError as exc:
             return _error(str(exc))
         got = await _text_of(path, settle=False)
@@ -3634,7 +3648,8 @@ def build_sandbox_workspace_tools(
                 "applies. Returns the unified diff. Use it, not a code_interpreter script, to change a source file; "
                 "copy each find from sandbox_read_file exactly (whitespace included). For a long block, give "
                 "start_line/end_line (as sandbox_read_file numbers them) with expect_first/expect_last (text of "
-                "those lines, checked; *_blank for a blank line) instead of find; insert_after_line inserts."
+                "those lines, checked; *_blank for a blank line) instead of find; insert_after_line inserts; "
+                "move_to_after_line moves that range (replace empty)."
             ),
             input_schema={
                 "type": "object",
@@ -3654,9 +3669,17 @@ def build_sandbox_workspace_tools(
                                     "type": "string",
                                     "description": "Replacement text; empty deletes the found text (or the line range).",
                                 },
+                                "replace_from": {
+                                    "type": "string",
+                                    "description": "Instead of replace (give it empty): a workspace file whose text is the replacement.",
+                                },
                                 "replace_all": {
                                     "type": "boolean",
                                     "description": "Replace every occurrence (default false: the snippet must be unique).",
+                                },
+                                "occurrence": {
+                                    "type": "integer",
+                                    "description": "Replace only this occurrence of find (1-based) when it is not unique.",
                                 },
                                 "start_line": {
                                     "type": "integer",
@@ -3686,6 +3709,15 @@ def build_sandbox_workspace_tools(
                                     "type": "integer",
                                     "description": "Insert replace after this line (0: top); expect_first checks it.",
                                 },
+                                "move_to_after_line": {
+                                    "type": "integer",
+                                    "description": "Move start_line-end_line after this line (0: top; before the move).",
+                                },
+                                "expect_target": {
+                                    "type": "string",
+                                    "description": "Text the move_to_after_line holds.",
+                                },
+                                "expect_target_blank": {"type": "boolean", "description": "That line is blank."},
                             },
                             "required": ["replace"],
                         },

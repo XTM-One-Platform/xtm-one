@@ -200,6 +200,28 @@ async def test_ids_are_checked_before_anything_is_read(monkeypatch, session):
     assert answer == "member_agent_ids: `not-an-id` is not an id."
     answer = await _call(str(user.id), "create_fleet", name="F", connected=[{"agent_id": str(uuid.uuid4()), "context_inclusion": "all"}])
     assert answer == "context_inclusion is one of none, summary, full."
+    member = str(uuid.uuid4())
+    answer = await _call(
+        str(user.id), "create_fleet", name="F", member_agent_ids=[{"agent_id": member, "role": "lead"}]
+    )
+    assert answer == (
+        "member_agent_ids: unknown field(s) role; a member takes agent_id, role_label, parent_agent_id. Nothing was created."
+    )
+    answer = await _call(
+        str(user.id), "create_fleet", name="F", member_agent_ids=[{"agent_id": member, "parent_agent_id": "boss"}]
+    )
+    assert answer == "member_agent_ids parent_agent_id: `boss` is not an id. Nothing was created."
+    answer = await _call(
+        str(user.id), "create_fleet", name="F", member_agent_ids=[{"agent_id": member, "parent_agent_id": member}]
+    )
+    assert answer == f"member_agent_ids: agent `{member}` cannot report to itself. Nothing was created."
+    answer = await _call(str(user.id), "create_fleet", name="F", member_agent_ids=[member, {"agent_id": member}])
+    assert answer == f"member_agent_ids: agent `{member}` is listed twice. Nothing was created."
+    answer = await _call(
+        str(user.id), "create_fleet", name="F", member_agent_ids=[{"agent_id": member, "role_label": "x" * 500}]
+    )
+    assert answer.startswith("member_agent_ids role_label is 500 characters, at most ")
+    assert session.commits == 0
     fleet_id = str(uuid.uuid4())
     answer = await _call(str(user.id), "set_fleet_member_parent", fleet_id=fleet_id, agent_id="x")
     assert answer == "agent_id is required: pass the id `list_fleets` shows."

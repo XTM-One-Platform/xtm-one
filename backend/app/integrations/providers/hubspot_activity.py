@@ -16,6 +16,7 @@ with its time, type, direction, owner, subject and body, never as a bare id.
 
 from __future__ import annotations
 
+import re
 import time
 from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
@@ -72,6 +73,8 @@ Request = Callable[..., Awaitable[tuple[httpx.Response | None, str | None]]]
 #: Records per CRM search page (HubSpot's maximum) and per search tool call.
 SEARCH_PAGE = 200
 SEARCH_MAX_RESULTS = 500
+#: HubSpot's CRM search answers at most this many records per query.
+SEARCH_OFFSET_CEILING = 10_000
 #: Inputs per batch request (HubSpot's batch read limit).
 BATCH_SIZE = 100
 _BATCH_MAX_IDS = 500
@@ -302,6 +305,21 @@ def _next_after(data: Mapping[str, Any]) -> str:
     paging = data.get("paging")
     nxt = paging.get("next") if isinstance(paging, Mapping) else None
     return str(nxt.get("after") or "") if isinstance(nxt, Mapping) else ""
+
+
+def search_total(results: Sequence[Any], total: int) -> int:
+    """The match count a search header shows: never below what it lists (a missing ``total``)."""
+    return max(total, len(results))
+
+
+def search_shown_note(results: Sequence[Any], total: int, after: str) -> str:
+    """``\\nShowing N of TOTAL ...`` when a search lists fewer records than match, else ``""``."""
+    shown, total = len(results), search_total(results, total)
+    if not shown or shown >= total:
+        return ""
+    if after:
+        return f"\nShowing {shown} of {total}: pass the after cursor below for the next page."
+    return f"\nShowing {shown} of {total}: HubSpot gave no next page; narrow the filters to read the rest."
 
 
 def _results(data: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -587,11 +605,18 @@ class HubSpotActivity:
         action: str,
         cap: int = SEARCH_MAX_RESULTS,
     ) -> tuple[list[dict[str, Any]], int, str, str | None]:
-        """``(results, total, next cursor, error)``: up to *count* results, paged 200 at a time."""
+        """``(results, total, next cursor, error)``: up to *count* results, paged 200 at a time.
+
+        HubSpot sometimes ends a page without ``paging.next`` while its
+        ``total`` says more records match (a page of 100 out of 200 asked):
+        a search cursor is the record offset, so the next page is read from
+        the offset reached instead of stopping short and silent.
+        """
         want = max(1, min(_int(count, 10), cap))
         results: list[dict[str, Any]] = []
         total = 0
         after = str(body.get("after") or "")
+        offset = _int(after or 0, -1)
         while True:
             page = {k: v for k, v in body.items() if k != "after"}
             page["limit"] = min(SEARCH_PAGE, want - len(results))
@@ -604,8 +629,13 @@ class HubSpotActivity:
             batch = _results(data)
             results.extend(batch)
             after = _next_after(data)
+            if offset >= 0:
+                offset += len(batch)
+            if not after and batch and offset >= 0 and offset < min(total, SEARCH_OFFSET_CEILING):
+                after = str(offset)
             if not after or not batch or len(results) >= want:
                 return results, total, after, None
+            offset = _int(after, -1)
 
     async def associated_ids(
         self, client: httpx.AsyncClient, from_type: str, from_id: str, to_type: str, *, cap: int
@@ -1068,6 +1098,7 @@ class HubSpotActivity:
         limit: int = 100,
         order: str = "asc",
         body_chars: int = 400,
+        properties: str = "",
     ) -> str | ToolResult:
         """The merged, chronological activity of one record."""
         api_type = api_object_type(object_type)
@@ -1086,6 +1117,11 @@ class HubSpotActivity:
                     "sequences, property_changes."
                 )
             wanted.append(source)
+        extra_history, extra_err = _history_property_names(properties)
+        if extra_err:
+            return _refuse(extra_err)
+        if extra_history:
+            wanted.append("property_changes")
         wanted = list(dict.fromkeys(wanted))
         is_contact = api_type == "contacts"
         events: list[TimelineEvent] = []
@@ -1118,10 +1154,19 @@ class HubSpotActivity:
                 for s in submissions:
                     counts["form submissions"] += 1
                     events.append(TimelineEvent(s.timestamp, "form submission", s.conversion_id, format_submission(s)))
-            history_names = [
-                *(_HISTORY_PROPERTIES.get(api_type, ("hubspot_owner_id",)) if "property_changes" in wanted else ()),
-                *(_SEQUENCE_HISTORY if is_contact and "sequences" in wanted else ()),
-            ]
+            history_names = list(
+                dict.fromkeys(
+                    [
+                        *(
+                            _HISTORY_PROPERTIES.get(api_type, ("hubspot_owner_id",))
+                            if "property_changes" in wanted
+                            else ()
+                        ),
+                        *extra_history,
+                        *(_SEQUENCE_HISTORY if is_contact and "sequences" in wanted else ()),
+                    ]
+                )
+            )
             if history_names:
                 events.extend(await self._history_events(client, api_type, rid, history_names, start, end, counts, notes))
             if is_contact and "sequences" in wanted:
@@ -2000,6 +2045,21 @@ def _same_submission(recorded: FormSubmission, candidate: FormSubmission) -> boo
 _ENGAGEMENT_TYPE_ENUM = list(ENGAGEMENT_TYPES)
 _DATE_HELP = "a date (YYYY-MM-DD, a whole UTC day), an ISO-8601 time or epoch milliseconds"
 
+#: The most extra properties one timeline reads the history of.
+_MAX_HISTORY_PROPERTIES = 50
+_PROPERTY_NAME = re.compile(r"^[a-z0-9_]+$")
+
+
+def _history_property_names(raw: str) -> tuple[list[str], str]:
+    """The extra property names a timeline reads the history of, or a refusal."""
+    names = list(dict.fromkeys(n.strip().lower() for n in str(raw or "").split(",") if n.strip()))
+    bad = [n for n in names if not _PROPERTY_NAME.match(n)]
+    if bad:
+        return [], f"Error: invalid property name(s): {', '.join(bad)}. Pass internal names (list_hubspot_properties)."
+    if len(names) > _MAX_HISTORY_PROPERTIES:
+        return [], f"Error: {len(names)} properties passed; at most {_MAX_HISTORY_PROPERTIES} per call."
+    return names, ""
+
 
 def activity_definitions(source: str) -> list[ToolDefinition]:
     """The activity tools' definitions (``hubspot.build_tools`` adds their scopes)."""
@@ -2013,8 +2073,8 @@ def activity_definitions(source: str) -> list[ToolDefinition]:
                 "WhatsApp message, each with its time, owner (name and email) and body (HTML stripped, cut at "
                 "body_chars); for a contact also its form submissions (form, page, submitted values) and sequence "
                 "enrollments; and the changes of lifecycle stage, owner and lead status (deal stage, ticket stage) "
-                "with who made them. Restrict with from_date / to_date and types. A type the private app cannot read "
-                "is named with the scope it misses; the rest is still returned."
+                "with who made them, plus any properties named. Restrict with from_date / to_date and types. A type "
+                "the private app cannot read is named with the scope it misses; the rest is still returned."
             ),
             input_schema={
                 "type": "object",
@@ -2042,6 +2102,11 @@ def activity_definitions(source: str) -> list[ToolDefinition]:
                         "type": "integer",
                         "description": "Characters of each body shown (default 400, 0 for none, max 20000)",
                         "default": 400,
+                    },
+                    "properties": {
+                        "type": "string",
+                        "description": "Comma-separated extra properties whose change history is shown (max 50)",
+                        "default": "",
                     },
                 },
                 "required": ["object_type", "record_id"],
