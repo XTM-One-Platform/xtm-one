@@ -297,7 +297,19 @@ Default thresholds are starting points, editable where marked (E).
 configuration checks `xtm_one.registration_token`, `xtm_one.licence`,
 `xtm_one.licence_expiry`, `xtm_one.smtp` and `xtm_one.hub_registration` (5 minutes),
 gated on the mode (nothing recorded when `settings.is_copilot_like`, AI switch not read).
-Tests: `tests/test_health_platform_checks_postgres.py`. The other rows of 4.2 follow in S4b.
+Tests: `tests/test_health_platform_checks_postgres.py`.
+
+**Implementation (S4b).** The same module registers four per-subject checks:
+`xtm_one.integration_broken` (company-managed integrations in `error` or `reauthorize`,
+or a failed connection test), `xtm_one.mcp_server_broken` (enabled company-managed MCP
+servers whose OAuth refresh failed), `xtm_one.kb_indexing_stalled` (documents in
+`processing` untouched for over 1 hour, one finding per knowledge base) and
+`xtm_one.kb_stale_embeddings` (a knowledge base whose embedding model is not the
+platform's). Each closes out the open findings whose subject it no longer reads through
+`engine.close_out` (moved out of `agent_checks.py`, which now calls it), so a fixed or
+deleted subject resolves after two passes. Personal integrations and servers stay out:
+their owner sees them on the agent checks. The rows still owed (scheduler lag, queues,
+probes, sandbox latency, providers, quota, version, certificates) follow in S4c.
 
 ### 4.3 OpenCTI (XTM One mode, automatic)
 

@@ -58,7 +58,6 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.health_check import STATUS_OPEN, HealthCheckFinding
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
     SILENT_AFTER,
@@ -69,7 +68,7 @@ from app.services.fleet_health_signals import (
     is_cost_spike,
     schedule_is_silent,
 )
-from app.services.health.engine import Check, CheckResult, enrolled_agent_ids, finding_key, register_check
+from app.services.health.engine import Check, CheckResult, close_out, enrolled_agent_ids, register_check
 from app.services.health.settings import HealthSignalSettings
 from app.services.health.signals import FAILURE_LOOKBACK, cost_crossed, failure_crossed, feedback_crossed
 
@@ -87,30 +86,10 @@ async def _close_out(db: AsyncSession, check_id: str, read: Sequence[CheckResult
     """A passing result for each open finding of ``check_id`` whose subject this pass did not read.
 
     The subject left the check's scope (paused, deleted, unenrolled): its cause
-    is gone for this check, so the engine resolves it after two such reads.
+    is gone for this check, so the engine resolves it after two such reads
+    (:func:`app.services.health.engine.close_out`).
     """
-    seen = {finding_key(r.check_id, r.subject) for r in read}
-    rows = (
-        await db.execute(
-            select(HealthCheckFinding).where(
-                HealthCheckFinding.check_id == check_id, HealthCheckFinding.status == STATUS_OPEN
-            )
-        )
-    ).scalars()
-    return [
-        CheckResult(
-            check_id=check_id,
-            module=row.module,
-            category=row.category,
-            severity=row.severity,
-            failing=False,
-            subject=dict(row.subject or {}),
-            evidence={"values": {"in_scope": False}},
-            doc_link=row.doc_link or DOC_LINK,
-        )
-        for row in rows
-        if row.id not in seen
-    ]
+    return await close_out(db, check_id, read)
 
 
 def _agent_check(check_id: str, read: AgentRead) -> Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]:

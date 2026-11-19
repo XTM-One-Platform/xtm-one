@@ -24,7 +24,16 @@ Check                              Severity    Category       Fails when
 ``xtm_one.licence_expiry``         warning     licence        the validated Filigran licence expires within 30 days
 ``xtm_one.smtp``                   info        configuration  no SMTP host is configured
 ``xtm_one.hub_registration``       info        configuration  XTM Hub is not registered, or its registration is not fine
+``xtm_one.integration_broken``     warning     availability   a company-managed integration is in error, to re-authorize, or failing its test
+``xtm_one.mcp_server_broken``      warning     availability   an enabled company-managed MCP server's OAuth refresh failed
+``xtm_one.kb_indexing_stalled``    warning     performance    a knowledge base has documents processing for over 1 hour
+``xtm_one.kb_stale_embeddings``    warning     configuration  a knowledge base was embedded with another model than the platform's
 =================================  ==========  =============  ==============================================
+
+The four last checks answer one result per subject (an integration, a server, a
+knowledge base) and close out the open findings whose subject they no longer
+read (:func:`app.services.health.engine.close_out`), so fixing or deleting the
+subject resolves its finding.
 
 **Mode gate** (section 1.1): XTM One platform health is domain content. It
 runs in the XTM One modes (``xtm_one`` and ``ai_disabled``) and records nothing
@@ -33,9 +42,9 @@ Unlike the agent checks it does not read the AI switch: these reads run with AI
 switched off too (``ai_disabled``). Each check reads a setting or one row,
 calls no model, reaches no network and is never metered.
 
-The remaining 4.2 checks (scheduler lag, queues, probes, providers, quota,
-version, integrations, MCP servers, knowledge bases, certificates) follow in a
-later slice; the security audit stays its own page.
+The remaining 4.2 checks (scheduler lag, queues, probes, sandbox latency,
+providers, quota, version, certificates) follow in a later slice; the security
+audit stays its own page.
 """
 
 from __future__ import annotations
@@ -44,30 +53,36 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.engine import Check, CheckResult, register_check
+from app.services.health.engine import Check, CheckResult, close_out, register_check
 
 MODULE = "xtm_one"
 #: How often the platform checks run (section 3, "Scheduling": aligned on the registration heartbeat).
 PLATFORM_CHECK_INTERVAL = timedelta(minutes=5)
 #: A validated licence expiring sooner than this raises a warning.
 LICENCE_EXPIRY_WARNING = timedelta(days=30)
+#: Documents processing for longer than this mean a stalled indexing worker.
+KB_STALLED_AFTER = timedelta(hours=1)
+#: The integration states that stop its tools (as the agent check reads them).
+BROKEN_INTEGRATION_STATUSES = frozenset({"error", "reauthorize"})
 #: Where a finding of these checks is explained.
 DOC_LINK = "/docs/administration/health#platform-checks"
 
 PlatformRead = Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]
 
 
-def _result(check_id: str, severity: str, category: str, failing: bool, **kw: Any) -> CheckResult:
+def _result(
+    check_id: str, severity: str, category: str, failing: bool, subject: dict[str, str] | None = None, **kw: Any
+) -> CheckResult:
     return CheckResult(
         check_id=check_id,
         module=MODULE,
         category=category,
         severity=severity,
         failing=failing,
-        subject={},
+        subject=subject or {},
         doc_link=DOC_LINK,
         **kw,
     )
@@ -200,12 +215,126 @@ async def hub_registration(db: AsyncSession, now: datetime) -> list[CheckResult]
     ]
 
 
+async def integration_broken(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A company-managed integration is in error, to re-authorize, or failed its last connection test."""
+    from app.models.integration import Integration
+
+    rows = (
+        await db.execute(
+            select(Integration.id, Integration.provider, Integration.status, Integration.connection_test_status).where(
+                # access_restricted: bypass - an administrator health signal on every company-managed
+                # integration, read for no acting user; lists nothing to a caller.
+                Integration.is_company_managed.is_(True)
+            )
+        )
+    ).all()
+    results = [
+        _result(
+            "xtm_one.integration_broken",
+            "warning",
+            "availability",
+            status in BROKEN_INTEGRATION_STATUSES or tested == "error",
+            subject={"integration_id": str(iid)},
+            evidence={"values": {"provider": provider, "status": status, "connection_test": tested}},
+            recommendation="Re-authorize the integration or fix its credentials, then test its connection.",
+        )
+        for iid, provider, status, tested in rows
+    ]
+    return results + await close_out(db, "xtm_one.integration_broken", results)
+
+
+async def mcp_server_broken(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """An enabled company-managed MCP server's OAuth token refresh failed (``oauth_status`` error)."""
+    from app.models.mcp_server import MCPServer
+
+    rows = (
+        await db.execute(
+            select(MCPServer.id, MCPServer.oauth_status).where(
+                MCPServer.is_company_managed.is_(True), MCPServer.enabled.is_(True)
+            )
+        )
+    ).all()
+    results = [
+        _result(
+            "xtm_one.mcp_server_broken",
+            "warning",
+            "availability",
+            oauth_status == "error",
+            subject={"mcp_server_id": str(sid)},
+            evidence={"values": {"oauth_status": oauth_status}},
+            recommendation="Connect the MCP server again so its OAuth token is renewed.",
+        )
+        for sid, oauth_status in rows
+    ]
+    return results + await close_out(db, "xtm_one.mcp_server_broken", results)
+
+
+async def kb_indexing_stalled(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A knowledge base has documents in ``processing`` untouched for over :data:`KB_STALLED_AFTER`."""
+    from app.models.knowledge_base import KnowledgeDocument
+
+    rows = (
+        await db.execute(
+            select(KnowledgeDocument.knowledge_base_id, func.count())
+            .where(KnowledgeDocument.status == "processing", KnowledgeDocument.updated_at < now - KB_STALLED_AFTER)
+            .group_by(KnowledgeDocument.knowledge_base_id)
+        )
+    ).all()
+    results = [
+        _result(
+            "xtm_one.kb_indexing_stalled",
+            "warning",
+            "performance",
+            True,
+            subject={"knowledge_base_id": str(kb_id)},
+            evidence={"values": {"documents": count}, "threshold": "1 hour"},
+            recommendation="Check that the background worker runs, then reprocess the stalled documents.",
+        )
+        for kb_id, count in rows
+    ]
+    return results + await close_out(db, "xtm_one.kb_indexing_stalled", results)
+
+
+async def kb_stale_embeddings(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A knowledge base's embedding model is not the platform's, so its search reads stale vectors."""
+    from app.models.knowledge_base import KnowledgeBase
+    from app.models.platform_settings import PlatformSettings
+
+    expected = (
+        await db.execute(
+            select(PlatformSettings.embedding_model)
+            .order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    results: list[CheckResult] = []
+    if expected:
+        rows = (await db.execute(select(KnowledgeBase.id, KnowledgeBase.embedding_model))).all()
+        results = [
+            _result(
+                "xtm_one.kb_stale_embeddings",
+                "warning",
+                "configuration",
+                (model or "") != expected,
+                subject={"knowledge_base_id": str(kb_id)},
+                evidence={"values": {"model": model, "platform_model": expected}},
+                recommendation="Re-embed the knowledge base with the platform's embedding model.",
+            )
+            for kb_id, model in rows
+        ]
+    return results + await close_out(db, "xtm_one.kb_stale_embeddings", results)
+
+
 for _check_id, _run in (
     ("xtm_one.registration_token", registration_token),
     ("xtm_one.licence", licence),
     ("xtm_one.licence_expiry", licence_expiry),
     ("xtm_one.smtp", smtp),
     ("xtm_one.hub_registration", hub_registration),
+    ("xtm_one.integration_broken", integration_broken),
+    ("xtm_one.mcp_server_broken", mcp_server_broken),
+    ("xtm_one.kb_indexing_stalled", kb_indexing_stalled),
+    ("xtm_one.kb_stale_embeddings", kb_stale_embeddings),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))

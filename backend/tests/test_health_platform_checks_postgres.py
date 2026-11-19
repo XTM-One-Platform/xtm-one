@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.health_check import STATUS_OPEN, STATUS_RESOLVED, HealthCheckFinding
+from app.models.integration import Integration
+from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
+from app.models.mcp_server import MCPServer
+from app.models.platform_settings import PlatformSettings
 from app.models.xtm_hub_registration import STATUS_LOST_CONNECTIVITY, STATUS_REGISTERED, XtmHubRegistration
 from app.services.health import engine, platform_checks
 from tests.test_provisioning_postgres import _temp_database
@@ -62,6 +66,10 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.licence_expiry",
         "xtm_one.smtp",
         "xtm_one.hub_registration",
+        "xtm_one.integration_broken",
+        "xtm_one.mcp_server_broken",
+        "xtm_one.kb_indexing_stalled",
+        "xtm_one.kb_stale_embeddings",
     }
     assert {c.interval for c in CHECKS} == {platform_checks.PLATFORM_CHECK_INTERVAL}
 
@@ -76,7 +84,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 5
+        assert totals["checks"] == 9
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"
@@ -186,3 +194,87 @@ async def test_the_checks_run_with_ai_switched_off(monkeypatch: pytest.MonkeyPat
         monkeypatch.setattr(registration_token, "registration_token_state", lambda: "published_default")
         await _pass(db, T0)
         assert "xtm_one.registration_token" in await _open(db)
+
+
+@pytest.mark.asyncio
+async def test_a_broken_company_integration_or_mcp_server_is_a_finding_and_resolves_once_fixed() -> None:
+    """S4b: one finding per broken company-managed integration or MCP server; a personal one is not read."""
+    async with _temp_database("hpc_integrations") as sessions, sessions() as db:
+        broken = Integration(id=uuid.uuid4(), provider="github", name="org", is_company_managed=True, status="error")
+        tested = Integration(
+            id=uuid.uuid4(),
+            provider="jira",
+            name="org",
+            is_company_managed=True,
+            status="connected",
+            connection_test_status="error",
+        )
+        healthy = Integration(
+            id=uuid.uuid4(), provider="notion", name="org", is_company_managed=True, status="connected"
+        )
+        personal = Integration(id=uuid.uuid4(), provider="slack", name="mine", is_company_managed=False, status="error")
+        server = MCPServer(id=uuid.uuid4(), name="tools", is_company_managed=True, enabled=True, oauth_status="error")
+        db.add_all([broken, tested, healthy, personal, server])
+        await db.flush()
+        await _pass(db, T0)
+        rows = (await db.execute(select(HealthCheckFinding))).scalars().all()
+        open_rows = [r for r in rows if r.status == STATUS_OPEN]
+        integration_subjects = {
+            r.subject["integration_id"] for r in open_rows if r.check_id == "xtm_one.integration_broken"
+        }
+        assert integration_subjects == {str(broken.id), str(tested.id)}
+        assert [r.subject for r in open_rows if r.check_id == "xtm_one.mcp_server_broken"] == [
+            {"mcp_server_id": str(server.id)}
+        ]
+
+        broken.status = "connected"
+        await db.delete(server)
+        await db.flush()
+        await _pass(db, T0 + timedelta(minutes=5))
+        await _pass(db, T0 + timedelta(minutes=10))
+        rows = (await db.execute(select(HealthCheckFinding))).scalars().all()
+        still_open = {
+            (r.check_id, next(iter(r.subject.values()))) for r in rows if r.status == STATUS_OPEN and r.subject
+        }
+        assert still_open == {("xtm_one.integration_broken", str(tested.id))}
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_indexing_and_stale_embeddings_are_findings_per_knowledge_base() -> None:
+    async with _temp_database("hpc_kb") as sessions, sessions() as db:
+        ps = (await db.execute(select(PlatformSettings).limit(1))).scalar_one_or_none()
+        if ps is None:
+            ps = PlatformSettings()
+            db.add(ps)
+        ps.embedding_model = "embed-new"
+        current = KnowledgeBase(id=uuid.uuid4(), name="current", embedding_model="embed-new")
+        stale = KnowledgeBase(id=uuid.uuid4(), name="stale", embedding_model="embed-old")
+        db.add_all([current, stale])
+        await db.flush()
+        db.add_all(
+            [
+                KnowledgeDocument(
+                    knowledge_base_id=current.id,
+                    filename="a.md",
+                    source_type="text",
+                    status="processing",
+                    updated_at=T0 - timedelta(hours=2),
+                ),
+                KnowledgeDocument(
+                    knowledge_base_id=stale.id,
+                    filename="b.md",
+                    source_type="text",
+                    status="processing",
+                    updated_at=T0 - timedelta(minutes=10),
+                ),
+            ]
+        )
+        await db.flush()
+        await _pass(db, T0)
+        rows = [r for r in (await db.execute(select(HealthCheckFinding))).scalars().all() if r.status == STATUS_OPEN]
+        stalled = [r for r in rows if r.check_id == "xtm_one.kb_indexing_stalled"]
+        assert [r.subject for r in stalled] == [{"knowledge_base_id": str(current.id)}]
+        assert stalled[0].evidence["values"] == {"documents": 1}
+        embeddings = [r for r in rows if r.check_id == "xtm_one.kb_stale_embeddings"]
+        assert [r.subject for r in embeddings] == [{"knowledge_base_id": str(stale.id)}]
+        assert embeddings[0].evidence["values"] == {"model": "embed-old", "platform_model": "embed-new"}
