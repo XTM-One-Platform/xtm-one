@@ -57,10 +57,16 @@ def _ext(stem: str) -> str:
     return "svg" if stem in ("flow", "xtm-platform-ctem", "stars", "filigran") else "webp"
 
 
+# Rule H2: every badge value is brand deep blue under white text (contrast > 7:1), every label ink;
+# no cyan, green or light fill under white text, same row and colours in all five READMEs.
+BADGE_VALUE = "001BDA"
+BADGE_LABEL = "0A0C1C"
+
+
 def badge(label: str, message: str, color: str, link: str, logo: str = "", dynamic: str = "") -> str:
     src = dynamic or f"https://img.shields.io/badge/{_esc(label)}-{_esc(message)}-{color}"
     sep = "&" if "?" in src else "?"
-    src += f"{sep}style=flat-square&labelColor=0A0C1C" + (f"&logo={logo}&logoColor=white" if logo else "")
+    src += f"{sep}style=flat-square&labelColor={BADGE_LABEL}" + (f"&logo={logo}&logoColor=white" if logo else "")
     if dynamic:
         src += f"&color={color}"
     return f'<a href="{link}"><img src="{src}" alt="{label}"></a>'
@@ -74,19 +80,19 @@ def badges(d: dict) -> str:
     repo, b = d["repo"], []
     if d.get("private"):
         # shields.io cannot read a private repository ("repo not found"): static badges, same order
-        b.append(badge("stars", "star the repo", "001BDA", f"https://github.com/{repo}/stargazers", "github"))
-        b.append(badge("release", "latest", "001BDA", f"https://github.com/{repo}/releases/latest"))
+        b.append(badge("stars", "star the repo", BADGE_VALUE, f"https://github.com/{repo}/stargazers", "github"))
+        b.append(badge("release", "latest", BADGE_VALUE, f"https://github.com/{repo}/releases/latest"))
     else:
-        b.append(badge("stars", "", "001BDA", f"https://github.com/{repo}/stargazers", "github",
+        b.append(badge("stars", "", BADGE_VALUE, f"https://github.com/{repo}/stargazers", "github",
                        f"https://img.shields.io/github/stars/{repo}"))
-        b.append(badge("release", "", "001BDA", f"https://github.com/{repo}/releases/latest", "",
+        b.append(badge("release", "", BADGE_VALUE, f"https://github.com/{repo}/releases/latest", "",
                        f"https://img.shields.io/github/v/release/{repo}"))
-    b.append(badge("license", d["license_badge"], "0FBCFF", "LICENSE"))
-    b.append(badge("docs", d["docs_host"], "0FBCFF", d["docs"]))
+    b.append(badge("license", d["license_badge"], BADGE_VALUE, "LICENSE"))
+    b.append(badge("docs", d["docs_host"], BADGE_VALUE, d["docs"]))
     if d.get("docker"):
-        b.append(badge("docker pulls", "", "00F1BD", f"https://hub.docker.com/r/{d['docker']}", "docker",
+        b.append(badge("docker pulls", "", BADGE_VALUE, f"https://hub.docker.com/r/{d['docker']}", "docker",
                        f"https://img.shields.io/docker/pulls/{d['docker']}"))
-    b.append(badge("slack", "community", "00F1BD", "https://community.filigran.io", "slack"))
+    b.append(badge("slack", "community", BADGE_VALUE, "https://community.filigran.io", "slack"))
     return '<p align="center">\n  ' + "\n  ".join(b) + "\n</p>"
 
 
@@ -184,7 +190,9 @@ def render(d: dict) -> str:
     a("## About Filigran\n")
     a(f"{n} is designed and developed by [Filigran](https://filigran.io), the company behind the "
       "[XTM Platform](https://filigran.io) for Agentic CTEM.\n")
-    a(f'<a href="https://filigran.io">{picture("filigran", "Filigran", "240")}</a>')
+    # Rule H1: GitHub's sanitizer empties a <picture> nested in <a> (the bare <img> then shows the
+    # light logo on the dark theme): the logo stands alone, the link is the word Filigran above.
+    a(picture("filigran", "Filigran", "240"))
     return "\n".join(out) + "\n"
 
 
@@ -200,6 +208,15 @@ def check(text: str) -> list[str]:
     lone -= text.count("img.shields.io")
     lone -= text.count('/banner.svg"')  # rule G5: the header banner is Filigran blue on both themes
     errs += [f"single-theme <img> outside a <picture>: {lone}"] if lone > 0 else []
+    # rule H1: a <picture> inside <a> loses its <source> children on github.com
+    nested = len(re.findall(r"<a\b[^>]*>\s*<picture>", text))
+    errs += [f"<picture> nested in <a>: {nested}"] if nested else []
+    # rule H2: badge values and labels in the two brand tokens only
+    for m in re.finditer(r"img\.shields\.io/[^\"]+", text):
+        url = m.group(0)
+        cols = re.findall(r"(?:[?&](?:color|labelColor)=|/badge/[^\"?]*-)([0-9A-Fa-f]{6})\b", url)
+        bad = [c for c in cols if c.upper() not in (BADGE_VALUE, BADGE_LABEL)]
+        errs += [f"badge colour off-brand {bad}: {url[:60]}"] if bad else []
     heads = re.findall(r"^## (.+)$", text, re.M)
     errs += [f"headings {len(heads)}"] if len(heads) != 15 else []
     return errs
