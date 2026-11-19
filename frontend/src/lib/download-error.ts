@@ -28,7 +28,7 @@ export function downloadErrorStatus(error: unknown): number | undefined {
  * Why a `410 Gone` download's file went (`deleted_reason` of the backend's
  * body, read from the error's `detail` or `body`), `undefined` when unsaid.
  */
-export function downloadErrorReason(error: unknown): string | undefined {
+function downloadErrorReason(error: unknown): string | undefined {
   const holder = error as { detail?: unknown; body?: unknown; data?: unknown } | null;
   for (const candidate of [holder?.detail, holder?.body, holder?.data]) {
     const inner = (candidate as { detail?: unknown } | null)?.detail ?? candidate;
