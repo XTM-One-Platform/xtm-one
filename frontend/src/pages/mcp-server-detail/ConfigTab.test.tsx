@@ -12,12 +12,15 @@ import type { MCPServer } from "@/types";
 import { ConfigTab } from "./ConfigTab";
 
 const mutate = vi.fn();
+const authorizeMutate = vi.fn();
+const disconnectMutate = vi.fn();
 
 vi.mock("@/hooks/api/useMCPServerApi", () => ({
   useUpdateMCPServer: () => ({ mutate, isPending: false }),
   useRefreshMCPTools: () => ({ mutate: vi.fn(), isPending: false }),
   useTestMCPTool: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
-  useAuthorizeMCPServer: () => ({ mutate: vi.fn(), isPending: false }),
+  useAuthorizeMCPServer: () => ({ mutate: authorizeMutate, isPending: false }),
+  useDisconnectMyMCPCredential: () => ({ mutate: disconnectMutate, isPending: false }),
 }));
 vi.mock("@/hooks/useUserShareGrants", () => ({
   useUserShareGrants: () => ({ reset: () => undefined, toPayload: () => ({}), props: undefined }),
@@ -97,6 +100,38 @@ describe("MCP server Configuration edit: required fields", () => {
     fireEvent.change(name, { target: { value: "Renamed" } });
     expect(name.getAttribute("aria-invalid")).toBeNull();
     expect(screen.queryByText("Enter a name for this server.")).toBeNull();
+  });
+});
+
+describe("MCP server OAuth: each person's own account (#443)", () => {
+  const perUser = (overrides: Partial<MCPServer> = {}) =>
+    server({ auth_mode: "oauth", credential_mode: "per_user", oauth_status: "disconnected", is_company_managed: true, ...overrides });
+
+  it("offers a reader who cannot manage the server to connect their own account", () => {
+    authorizeMutate.mockClear();
+    renderWithProviders(<ConfigTab srv={perUser({ my_oauth_status: "disconnected" })} canManage={false} />);
+    expect(screen.getByText("Connect your account to use this server")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Connect your account" }));
+    expect(authorizeMutate).toHaveBeenCalledWith("srv-1", expect.anything());
+    expect(screen.queryByRole("button", { name: "Disconnect your account" })).toBeNull();
+  });
+
+  it("reads the reader's own connection, never the server row's, and lets them disconnect", () => {
+    disconnectMutate.mockClear();
+    renderWithProviders(<ConfigTab srv={perUser({ oauth_status: "disconnected", my_oauth_status: "connected" })} canManage={false} />);
+    expect(screen.getByText("Your account is connected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect your account" }));
+    expect(disconnectMutate).toHaveBeenCalledWith("srv-1", expect.anything());
+  });
+
+  it("offers the credential mode on an OAuth server and warns what saving discards", () => {
+    mutate.mockClear();
+    renderEdit(server({ auth_mode: "oauth", credential_mode: "shared", oauth_status: "connected" }));
+    const perUserButton = screen.getByRole("button", { name: "Each person's own account" });
+    expect(perUserButton.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(perUserButton);
+    expect(perUserButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Saving discards the shared connection: each person then connects their own account.")).toBeTruthy();
   });
 });
 

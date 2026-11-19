@@ -115,6 +115,15 @@ export function useAuthorizeMCPServer() {
   });
 }
 
+/** Disconnect one's own account from a `per_user` MCP server (idempotent). */
+export function useDisconnectMyMCPCredential() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id: string) => api.delete(`/mcp-servers/${id}/my-credential`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mcp-servers"] }),
+  });
+}
+
 /** Probe a remote MCP server for its OAuth metadata before saving it. */
 export function useDiscoverMCPOAuth() {
   return useMutation<

@@ -43,13 +43,13 @@ import { useUserShareGrants } from "@/hooks/useUserShareGrants";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { pickSharingChange } from "@/lib/credential-exposure";
-import { useUpdateMCPServer, useRefreshMCPTools, useTestMCPTool, useAuthorizeMCPServer } from "@/hooks/api/useMCPServerApi";
+import { useUpdateMCPServer, useRefreshMCPTools, useTestMCPTool, useAuthorizeMCPServer, useDisconnectMyMCPCredential } from "@/hooks/api/useMCPServerApi";
 import { TRANSPORT_DISPLAY_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
-import type { MCPServer, MCPToolInfo } from "@/types";
+import type { MCPCredentialMode, MCPServer, MCPToolInfo } from "@/types";
 import { argsFieldText, editedArgs } from "./edited-args";
-import { AuthModePicker, TransportPicker } from "./ConnectionPickers";
+import { AuthModePicker, CredentialModePicker, TransportPicker } from "./ConnectionPickers";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { Spinner } from "@filigran/design-system";
 
@@ -76,6 +76,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
   const [editEnvPairs, setEditEnvPairs] = useState<{ key: string; value: string }[]>([{ key: "", value: "" }]);
   const [editHeaderPairs, setEditHeaderPairs] = useState<{ key: string; value: string }[]>([{ key: "", value: "" }]);
   const [editAuthMode, setEditAuthMode] = useState<"headers" | "oauth">(srv.auth_mode);
+  const [editCredentialMode, setEditCredentialMode] = useState<MCPCredentialMode>(srv.credential_mode ?? "shared");
   const [editAuthorizeUrl, setEditAuthorizeUrl] = useState(srv.authorize_url || "");
   const [editTokenUrl, setEditTokenUrl] = useState(srv.token_url || "");
   const [editRegistrationUrl, setEditRegistrationUrl] = useState(srv.registration_url || "");
@@ -104,6 +105,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
     setEditEnvPairs([{ key: "", value: "" }]);
     setEditHeaderPairs([{ key: "", value: "" }]);
     setEditAuthMode(srv.auth_mode);
+    setEditCredentialMode(srv.credential_mode ?? "shared");
     setEditAuthorizeUrl(srv.authorize_url || "");
     setEditTokenUrl(srv.token_url || "");
     setEditRegistrationUrl(srv.registration_url || "");
@@ -130,6 +132,11 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
   //  (mcp_servers.py), so the connection has to be re-authorized afterwards.
   const willDropTokens =
     srv.auth_mode === "oauth" && editAuthMode === "headers" && srv.oauth_status === "connected";
+  // Changing whose account the calls carry discards what the other mode
+  // stored (mcp_servers.py _apply_credential_mode): the shared token, or every
+  // person's own connection.
+  const savedCredentialMode: MCPCredentialMode = srv.credential_mode ?? "shared";
+  const credentialModeChanged = srv.auth_mode === "oauth" && editCredentialMode !== savedCredentialMode;
 
   const handleSave = async () => {
     // Say what is missing instead of a disabled Save, as the create form does:
@@ -153,7 +160,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
 
     const resolvedGroupIds = editCompanyManaged ? null : (editSharedGroupIds && editSharedGroupIds.length > 0 ? editSharedGroupIds : null);
     const resolvedGroupPermissions = editCompanyManaged ? null : (editSharedGroupPermissions && Object.keys(editSharedGroupPermissions).length > 0 ? editSharedGroupPermissions : null);
-    const payload: { id: string; name?: string; tags?: string[]; transport?: "stdio" | "sse" | "streamable_http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; auth_mode?: "headers" | "oauth"; authorize_url?: string; token_url?: string; registration_url?: string; scopes?: string; client_id?: string; client_secret?: string; hide_from_chat?: boolean; is_company_managed?: boolean; is_public_catalog?: boolean; shared_group_ids?: string[] | null; shared_group_permissions?: Record<string, string> | null } = {
+    const payload: { id: string; name?: string; tags?: string[]; transport?: "stdio" | "sse" | "streamable_http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; auth_mode?: "headers" | "oauth"; credential_mode?: MCPCredentialMode; authorize_url?: string; token_url?: string; registration_url?: string; scopes?: string; client_id?: string; client_secret?: string; hide_from_chat?: boolean; is_company_managed?: boolean; is_public_catalog?: boolean; shared_group_ids?: string[] | null; shared_group_permissions?: Record<string, string> | null } = {
       id: srv.id,
       name: editName.trim(),
       tags: editTags,
@@ -190,6 +197,7 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
       payload.token_url = editTokenUrl.trim();
       payload.registration_url = editRegistrationUrl.trim();
       payload.scopes = editScopes.trim();
+      if (editCredentialMode !== savedCredentialMode) payload.credential_mode = editCredentialMode;
       // Credentials are only sent when typed: a blank field means "leave the
       // stored value alone", not "erase it".
       if (editClientId.trim()) payload.client_id = editClientId.trim();
@@ -298,6 +306,12 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
                       <p className="content-base font-mono-plex">{srv.scopes}</p>
                     </div>
                   )}
+                  <div className="sm:col-span-2">
+                    <div className="content-compact text-default-secondary mb-1">{t_i18n("Connected account")}</div>
+                    <p className="content-base">
+                      {srv.credential_mode === "per_user" ? t_i18n("Each person's own account") : t_i18n("One shared account")}
+                    </p>
+                  </div>
                   <div className="sm:col-span-2">
                     <div className="content-compact text-default-secondary mb-1">{t_i18n("OAuth Client")}</div>
                     <p className="content-base">
@@ -436,6 +450,15 @@ function ConfigurationCard({ srv, canManage }: { srv: MCPServer; canManage: bool
           {isOAuth && (
             <div className="space-y-3">
               <div className="content-compact font-medium text-default-secondary">{t_i18n("OAuth 2.0 Configuration")}</div>
+              <CredentialModePicker value={editCredentialMode} onChange={setEditCredentialMode}>
+                {credentialModeChanged && (
+                  <p className="content-compact text-feedback-warning-primary pt-1">
+                    {editCredentialMode === "per_user"
+                      ? t_i18n("Saving discards the shared connection: each person then connects their own account.")
+                      : t_i18n("Saving disconnects every person's own account: the server then has to be authorized once for everyone.")}
+                  </p>
+                )}
+              </CredentialModePicker>
               <div className="grid gap-4 sm:grid-cols-2">
                 <SettingsField
                   id="edit-server-authorize-url"
@@ -747,6 +770,105 @@ function ToolsCard({ srv, canManage }: { srv: MCPServer; canManage: boolean }) {
 // ---------------------------------------------------------------------------
 
 function OAuthStatusCard({ srv, canManage }: { srv: MCPServer; canManage: boolean }) {
+  // Each person's own account (#443): a different card, whoever reads it.
+  if (srv.credential_mode === "per_user") return <MyOAuthAccountCard srv={srv} />;
+  return <SharedOAuthStatusCard srv={srv} canManage={canManage} />;
+}
+
+/**
+ * The reader's own connection on a `per_user` server: anyone who can see the
+ * server connects (or disconnects) their own account; nobody else's account is
+ * ever used for their calls.
+ */
+function MyOAuthAccountCard({ srv }: { srv: MCPServer }) {
+  const { t_i18n } = useFormatter();
+  const authorize = useAuthorizeMCPServer();
+  const disconnect = useDisconnectMyMCPCredential();
+  const { toast } = useToast();
+  const status = srv.my_oauth_status ?? "disconnected";
+  const isConnected = status === "connected";
+  const isError = status === "error";
+
+  const handleConnect = () => {
+    authorize.mutate(srv.id, {
+      onSuccess: (data) => {
+        if (data.authorize_url) {
+          window.location.href = data.authorize_url;
+        }
+      },
+      onError: (err) => {
+        toast({ title: t_i18n("OAuth failed"), description: err.message || t_i18n("Could not start authorization flow."), variant: "error" });
+      },
+    });
+  };
+
+  const handleDisconnect = () => {
+    disconnect.mutate(srv.id, {
+      onSuccess: () => toast({ title: t_i18n("Your account is disconnected"), variant: "success" }),
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+        <CardTitle className="content-base flex items-center gap-2">
+          <Lock className="h-4 w-4 text-accent" />
+          {t_i18n("Your account")}
+        </CardTitle>
+        <Badge
+          variant={isConnected ? "success" : isError ? "destructive" : "outline"}
+          className="content-caption"
+        >
+          {isConnected ? t_i18n("Connected") : isError ? t_i18n("Error") : t_i18n("Not connected")}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-3 rounded-sm bg-elevation-hover p-3">
+          {isConnected ? (
+            <CheckCircle2 className="h-5 w-5 text-feedback-success-primary shrink-0" />
+          ) : isError ? (
+            <AlertCircle className="h-5 w-5 text-feedback-error-primary shrink-0" />
+          ) : (
+            <AlertCircle className="h-5 w-5 text-default-secondary shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="content-base font-medium">
+              {isConnected
+                ? t_i18n("Your account is connected")
+                : isError
+                  ? t_i18n("Your connection failed to refresh")
+                  : t_i18n("Connect your account to use this server")}
+            </p>
+            <p className="content-compact text-default-secondary mt-0.5">
+              {isConnected
+                ? t_i18n("Calls to this server made for you carry your own account. Tokens are refreshed automatically.")
+                : isError
+                  ? t_i18n("Connect again to restore your connection.")
+                  : t_i18n("Each person uses their own account on this server. Until you connect, its tools are called for you without any account and fail.")}
+            </p>
+          </div>
+        </div>
+
+        <Button className="w-full gap-2" onClick={handleConnect} disabled={authorize.isPending}>
+          <ExternalLink className="h-4 w-4" />
+          {authorize.isPending
+            ? t_i18n("Redirecting...")
+            : isConnected || isError
+              ? t_i18n("Connect again")
+              : t_i18n("Connect your account")}
+        </Button>
+
+        {(isConnected || isError) && (
+          <Button variant="outline" className="w-full" onClick={handleDisconnect} disabled={disconnect.isPending}>
+            {t_i18n("Disconnect your account")}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SharedOAuthStatusCard({ srv, canManage }: { srv: MCPServer; canManage: boolean }) {
   const { t_i18n } = useFormatter();
   const authorize = useAuthorizeMCPServer();
   const { toast } = useToast();

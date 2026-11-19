@@ -36,6 +36,7 @@ import { useAgents } from "@/hooks/api/useAgentApi";
 import type { MCPServer } from "@/types";
 import { formatShortDate, formatTime, pluralize } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
+import { readerOAuthStatus } from "@/lib/mcp-oauth-status";
 
 // ---------------------------------------------------------------------------
 // Overview Card
@@ -95,15 +96,15 @@ function OverviewCard({ srv }: { srv: MCPServer }) {
               <div className="flex items-center gap-1.5">
                 <Lock className="h-3 w-3 text-accent" />
                 <span className="content-compact text-default-secondary">OAuth 2.0</span>
-                {srv.oauth_status === "connected" ? (
+                {readerOAuthStatus(srv) === "connected" ? (
                   <CheckCircle2 className="h-3 w-3 text-feedback-success-primary" />
-                ) : srv.oauth_status === "error" ? (
+                ) : readerOAuthStatus(srv) === "error" ? (
                   <AlertCircle className="h-3 w-3 text-feedback-error-primary" />
                 ) : (
                   <AlertCircle className="h-3 w-3 text-feedback-warning-primary" />
                 )}
                 <span className="content-compact text-default-secondary">
-                  {srv.oauth_status === "connected" ? t_i18n("Connected") : srv.oauth_status === "error" ? t_i18n("Error") : t_i18n("Not connected")}
+                  {readerOAuthStatus(srv) === "connected" ? t_i18n("Connected") : readerOAuthStatus(srv) === "error" ? t_i18n("Error") : t_i18n("Not connected")}
                 </span>
               </div>
             )}

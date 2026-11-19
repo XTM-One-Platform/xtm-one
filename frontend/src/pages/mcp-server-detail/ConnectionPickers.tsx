@@ -21,10 +21,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * its own copy of these buttons (connection-pickers.test.ts).
  */
 import type { ReactNode } from "react";
-import { Globe, KeyRound, Lock, Radio, Terminal } from "lucide-react";
+import { Globe, KeyRound, Lock, Radio, Terminal, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useFormatter } from "@/i18n";
+import type { MCPCredentialMode } from "@/types";
 
 export type MCPTransport = "stdio" | "sse" | "streamable_http";
 export type MCPAuthMode = "headers" | "oauth";
@@ -79,6 +80,42 @@ export function AuthModePicker({
           <Lock className="h-3.5 w-3.5" /> OAuth 2.0
         </Button>
       </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Whose account an OAuth server's calls carry (#443): one connection shared by
+ * everyone who can use the server, or each person's own account.
+ */
+export function CredentialModePicker({
+  value,
+  onChange,
+  children,
+}: {
+  value: MCPCredentialMode;
+  onChange: (value: MCPCredentialMode) => void;
+  /** A note under the buttons (what the change discards). */
+  children?: ReactNode;
+}) {
+  const { t_i18n } = useFormatter();
+  const helper =
+    value === "per_user"
+      ? t_i18n("Each person connects their own account once and acts as themselves.")
+      : t_i18n("One account, authorized once, is used for every person who can use this server.");
+  return (
+    <div className="space-y-1.5">
+      <Label className="block text-default-primary">{t_i18n("Connected account")}</Label>
+      <div className="flex gap-2" role="group" aria-label={t_i18n("Connected account")}>
+        <Button type="button" variant={value === "shared" ? "default" : "outline"} aria-pressed={value === "shared"} onClick={() => onChange("shared")} className="flex-1 gap-1.5">
+          <Users className="h-3.5 w-3.5" /> {t_i18n("One shared account")}
+        </Button>
+        <Button type="button" variant={value === "per_user" ? "default" : "outline"} aria-pressed={value === "per_user"} onClick={() => onChange("per_user")} className="flex-1 gap-1.5">
+          <User className="h-3.5 w-3.5" /> {t_i18n("Each person's own account")}
+        </Button>
+      </div>
+      <p className="content-compact text-default-secondary">{helper}</p>
       {children}
     </div>
   );
