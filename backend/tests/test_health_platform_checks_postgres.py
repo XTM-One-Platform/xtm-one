@@ -66,6 +66,8 @@ def _world(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(platform_checks, "_probe", _probe_ok)
     monkeypatch.setattr(platform_checks, "_trace_backlog_length", _no_backlog)
     monkeypatch.setattr(platform_checks, "_running_workers", _one_worker)
+    monkeypatch.setattr(platform_checks, "_released_versions", _no_release)
+    monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000")
     engine._LAST_RUN.clear()
 
 
@@ -79,6 +81,10 @@ async def _no_backlog() -> int:
 
 async def _one_worker() -> int:
     return 1
+
+
+async def _no_release() -> list[str]:
+    return []
 
 
 async def _open(db: AsyncSession) -> dict[str, HealthCheckFinding]:
@@ -109,8 +115,12 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.trace_backlog",
         "xtm_one.worker_absent",
         "xtm_one.provider_error_rate",
+        "xtm_one.version_behind",
+        "xtm_one.certificate_expiry",
     }
-    assert {c.interval for c in CHECKS} == {platform_checks.PLATFORM_CHECK_INTERVAL}
+    daily = {"xtm_one.version_behind", "xtm_one.certificate_expiry"}
+    assert {c.interval for c in CHECKS if c.check_id in daily} == {platform_checks.DAILY_CHECK_INTERVAL}
+    assert {c.interval for c in CHECKS if c.check_id not in daily} == {platform_checks.PLATFORM_CHECK_INTERVAL}
 
 
 @pytest.mark.asyncio
@@ -123,7 +133,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 16
+        assert totals["checks"] == 18
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"
@@ -510,3 +520,85 @@ async def test_a_failing_model_is_a_warning_per_model_and_resolves() -> None:
         await _pass(db, T0 + timedelta(hours=1))
         await _pass(db, T0 + timedelta(hours=1, minutes=5))
         assert "xtm_one.provider_error_rate" not in await _open(db)
+
+
+@pytest.mark.asyncio
+async def test_newer_releases_are_info_then_warning_and_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4f: one newer release is info, two a warning; drafts, pre-releases and older tags do not count."""
+    import app.services.xtm_hub_registration as hub
+
+    released: list[str] | None = ["1.261119.1", "1.261117.3"]
+
+    async def releases() -> list[str] | None:
+        return released
+
+    monkeypatch.setattr(hub, "registration_platform_version", lambda: "1.261119.0")
+    async with _temp_database("hpc_version") as sessions, sessions() as db:
+        monkeypatch.setattr(platform_checks, "_released_versions", releases)
+        await _pass(db, T0)
+        found = (await _open(db))["xtm_one.version_behind"]
+        assert (found.severity, found.category) == ("info", "configuration")
+        assert found.evidence["values"] == {"running": "1.261119.0", "newer": ["1.261119.1"], "behind": 1}
+
+        released = ["1.261120.0", "1.261119.1"]
+        await _pass(db, T0 + timedelta(days=1))
+        assert (await _open(db))["xtm_one.version_behind"].severity == "warning"
+
+        monkeypatch.setattr(hub, "registration_platform_version", lambda: "1.261120.0")
+        await _pass(db, T0 + timedelta(days=2))
+        await _pass(db, T0 + timedelta(days=3))
+        assert "xtm_one.version_behind" not in await _open(db)
+
+    released = None  # the release list cannot be read: nothing judged
+    assert await platform_checks.version_behind(None, T0) == []  # type: ignore[arg-type]
+    monkeypatch.setattr(hub, "registration_platform_version", lambda: "0.0.0")
+    released = ["9.9.9"]  # a local build has no release to compare
+    assert await platform_checks.version_behind(None, T0) == []  # type: ignore[arg-type]
+
+
+def test_a_release_tag_core_is_read_whatever_its_prefix_or_suffix() -> None:
+    assert platform_checks._version_core("v1.2.3") == (1, 2, 3)
+    assert platform_checks._version_core("1.261105.0-dev.2ffcbd3") == (1, 261105, 0)
+    assert platform_checks._version_core("latest") is None
+
+
+@pytest.mark.asyncio
+async def test_a_certificate_expiring_soon_or_refused_is_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4f: a certificate of the public URL expiring within 21 days or refused warns; unreachable or http records nothing."""
+    import ssl
+
+    expires = T0 + timedelta(days=10)
+    calls: list[tuple[str, int]] = []
+
+    async def handshake(host: str, port: int) -> datetime:
+        calls.append((host, port))
+        return expires
+
+    monkeypatch.setattr(settings, "frontend_url", "https://one.example.com:8443/app")
+    monkeypatch.setattr(platform_checks, "_certificate_expiry", handshake)
+    async with _temp_database("hpc_certificate") as sessions, sessions() as db:
+        await _pass(db, T0)
+        found = (await _open(db))["xtm_one.certificate_expiry"]
+        assert (found.severity, found.category, found.subject) == ("warning", "security", {"host": "one.example.com"})
+        assert found.evidence["values"]["days_left"] == 10
+        assert calls[-1] == ("one.example.com", 8443)
+
+        expires = T0 + timedelta(days=90)
+        await _pass(db, T0 + timedelta(days=1))
+        await _pass(db, T0 + timedelta(days=2))
+        assert "xtm_one.certificate_expiry" not in await _open(db)
+
+    async def refused(host: str, port: int) -> datetime:
+        raise ssl.SSLCertVerificationError("certificate has expired")
+
+    monkeypatch.setattr(platform_checks, "_certificate_expiry", refused)
+    [result] = await platform_checks.certificate_expiry(None, T0)  # type: ignore[arg-type]
+    assert result.failing and "expired" in result.evidence["values"]["error"]
+
+    async def unreachable(host: str, port: int) -> datetime:
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(platform_checks, "_certificate_expiry", unreachable)
+    assert await platform_checks.certificate_expiry(None, T0) == []  # type: ignore[arg-type]
+    monkeypatch.setattr(settings, "frontend_url", "http://one.example.com")
+    assert await platform_checks.certificate_expiry(None, T0) == []  # type: ignore[arg-type]
