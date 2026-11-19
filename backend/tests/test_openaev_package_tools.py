@@ -4124,6 +4124,116 @@ async def test_analytics_non_string_discriminator_rejected(monkeypatch):
     assert not fake.calls
 
 
+# ── Regression tests: analytics base_entity and time_range (#272) ───────────
+
+
+def _entity_config(entity, **extra):
+    config = {
+        "widget_configuration_type": "flat",
+        "series": [
+            {
+                "name": "s",
+                "filter": {
+                    "mode": "and",
+                    "filters": [
+                        {"key": "base_entity", "operator": "eq", "values": [entity], "mode": "or"},
+                    ],
+                },
+            }
+        ],
+    }
+    config.update(extra)
+    return json.dumps(config)
+
+
+async def test_analytics_refuses_retired_endpoint_base_entity(monkeypatch):
+    # 'endpoint' was retired for 'asset': OpenAEV answers a silent 0, so the
+    # tool refuses before any query and names the replacement.
+    from app.integrations.providers.openaev import dashboards
+
+    fake = _RecordingApi({})
+    monkeypatch.setattr(dashboards, "_api", fake)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("endpoint")},
+    )
+    assert "nothing queried" in result.content
+    assert "'asset'" in result.content and "asset_category" in result.content
+    assert not fake.calls
+
+
+async def test_analytics_refuses_unknown_base_entity(monkeypatch):
+    from app.integrations.providers.openaev import dashboards
+
+    fake = _RecordingApi({})
+    monkeypatch.setattr(dashboards, "_api", fake)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("hosts")},
+    )
+    assert "not an OpenAEV engine entity" in result.content
+    assert "vulnerable-endpoint" in result.content
+    assert not fake.calls
+
+
+async def test_analytics_defaults_absent_time_range_to_all_time(monkeypatch):
+    # An absent time_range is DEFAULT in OpenAEV, which is LAST_QUARTER on an
+    # ad-hoc query: the tool sends ALL_TIME and says so.
+    from app.integrations.providers.openaev import dashboards
+
+    fake = _RecordingApi({"interval_count": 440})
+    monkeypatch.setattr(dashboards, "_api", fake)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("asset")},
+    )
+    assert fake.calls
+    assert fake.last_json()["widget_config"]["time_range"] == "ALL_TIME"
+    assert "ALL_TIME applied" in result.content
+
+
+async def test_analytics_keeps_explicit_time_range_and_flags_default(monkeypatch):
+    from app.integrations.providers.openaev import dashboards
+
+    fake = _RecordingApi({"interval_count": 1})
+    monkeypatch.setattr(dashboards, "_api", fake)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("inject", time_range="last_week")},
+    )
+    assert fake.last_json()["widget_config"]["time_range"] == "LAST_WEEK"
+    assert "time_range LAST_WEEK" in result.content
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("inject", time_range="DEFAULT")},
+    )
+    assert "LAST_QUARTER" in result.content
+
+
+async def test_analytics_refuses_invalid_time_range(monkeypatch):
+    from app.integrations.providers.openaev import dashboards
+
+    fake = _RecordingApi({})
+    monkeypatch.setattr(dashboards, "_api", fake)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "query_openaev_analytics",
+        {"kind": "count", "widget_config": _entity_config("inject", time_range="LAST_30_DAYS")},
+    )
+    assert "not an OpenAEV time range" in result.content
+    assert not fake.calls
+
+
 # ── Regression tests: chaining placeholder / fabricated-id guard ─────────────
 
 

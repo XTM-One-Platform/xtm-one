@@ -520,7 +520,7 @@ def register(
             if not class_name:
                 return (
                     "class_name is required for 'filter_keys' - the OpenAEV model "
-                    "class to introspect, e.g. Endpoint, Payload, Exercise, "
+                    "class to introspect, e.g. Asset, Payload, Exercise, "
                     "Scenario, Finding, Vulnerability, InjectExpectation."
                 )
             resp, err = await _api(
@@ -534,7 +534,7 @@ def register(
             if not schemas:
                 return (
                     f"No filterable attributes reported for '{class_name}'. Check "
-                    "the class name (it is the OpenAEV model class, e.g. Endpoint)."
+                    "the class name (it is the OpenAEV model class, e.g. Asset)."
                 )
             lines = [
                 f"Filterable attributes of {class_name} ({len(schemas)}) - use these "
@@ -759,7 +759,7 @@ def register(
                         "type": "string",
                         "description": (
                             "OpenAEV model class to introspect for 'filter_keys', "
-                            "e.g. Endpoint, Payload, Exercise, Scenario, Finding, "
+                            "e.g. Asset, Payload, Exercise, Scenario, Finding, "
                             "Vulnerability, InjectExpectation."
                         ),
                     },
