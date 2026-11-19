@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/** The Concierge cycles the viewer may read, newest first, each opening its digest (#8261). */
+/** The Platform Health cycles the viewer may read, newest first, each opening its digest (#8261). */
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Compass } from "lucide-react";
 import { Link } from "react-router-dom";

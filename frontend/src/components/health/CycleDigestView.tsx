@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * One Concierge cycle's digest (#8261). Every figure comes from the rows the
- * cycle left (`services/concierge/digest.py`): a section a lower level could
+ * One Platform Health cycle's digest (#8261). Every figure comes from the rows the
+ * cycle left (`services/health/digest.py`): a section a lower level could
  * not give reads "Unavailable", never 0, and a status other than "Completed"
  * is shown as what it is, with what was skipped and why.
  */

@@ -1156,7 +1156,7 @@ const AUDIT_ENTITY_LABELS = {
   langfuse: "Langfuse",
   llm_provider: "LLM Provider",
   mcp_server: "MCP Server",
-  // What a `concierge_content_read` entry names (`services/concierge/consent.py`).
+  // What a `concierge_content_read` entry names (`services/health/consent.py`).
   memory: "Memory",
   memory_consolidation: "Memory consolidation",
   mfa: "MFA",

@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Platform Concierge improvement opt-in of an agent or a flow (#8254):
- * whoever may manage it lets the Concierge read its content to improve it
+ * The Platform Health improvement opt-in of an agent or a flow (#8254):
+ * whoever may manage it lets the Platform Health read its content to improve it
  * (PRD decision B21), under the consent notice (B16). Built in since #101
  * (S1), no flag; read-only for a viewer who cannot manage it.
  */

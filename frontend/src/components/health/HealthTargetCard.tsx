@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * One agent's or flow's Concierge card (#8261): its improvement proposals,
- * its cycles and their digests, and "Improve with Concierge". Shown only to who
+ * One agent's or flow's Platform Health card (#8261): its improvement proposals,
+ * its cycles and their digests, and "Improve with {name}". Shown only to who
  * may manage the target (built in since #101 S1, no flag): the server reads the
  * same rule (`cycle_access`), so nothing here widens what the viewer sees.
  */

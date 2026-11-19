@@ -1,4 +1,4 @@
-/** The Concierge companion's pet (#8261): the atlas, the frame clock and the state shown - `yarn test:unit`. */
+/** The Health companion's pet (#8261): the atlas, the frame clock and the state shown - `yarn test:unit`. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

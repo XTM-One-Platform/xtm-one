@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Settings > Agents and automations > Concierge, the blocks level 8 adds (#8261) to level 1's page:
+ * Settings > Agents and automations > Platform Health, the blocks level 8 adds (#8261) to level 1's page:
  * when each specialist's fleet-wide cycle runs, the signal thresholds
  * (decision B18's defaults), the watch and shadow durations, and dry-run
  * (level 2's switch). Same draft, same Edit / Save as the page's other blocks;

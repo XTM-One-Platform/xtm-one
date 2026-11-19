@@ -56,7 +56,7 @@ export interface BuiltinToolOption {
    *  an agent's grid shows it locked, and keeps it removable where the agent
    *  already carries it (`toggledInAgentConfig`). */
   bindLocked?: boolean;
-  /** A Concierge specialist's suite, carried by the Concierge fleet's own
+  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own
    *  agents: a chat's session picker never offers it. */
   healthOnly: boolean;
   /** False for an id this build's registry does not list. */
@@ -72,7 +72,7 @@ export interface BuiltinToolCatalog {
   offered: (surface: BuiltinToolSurface) => BuiltinToolOption[];
   /** The suites a chat's session picker offers: the General Assistant's own,
    *  or in an agent chat `offeredInAgentChat` (`lib/builtin-tool-offers.ts`);
-   *  never a Concierge specialist's suite (`healthOnly`). */
+   *  never a Platform Health specialist's suite (`healthOnly`). */
   offeredInChat: (agentChat: boolean, agent?: ChatAgentTools) => BuiltinToolOption[];
   /** The suites an agent's configuration grid lists: the ones it offers, plus
    *  a switched-off one the agent carries, saved or in the draft, so it can be

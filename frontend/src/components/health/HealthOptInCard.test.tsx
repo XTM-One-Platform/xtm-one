@@ -14,7 +14,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => true }));
 
-describe("the Concierge opt-in of a flow", () => {
+describe("the Platform Health opt-in of a flow", () => {
   it("reads and writes the flow's opt-in", async () => {
     vi.mocked(api.get).mockResolvedValue({ opt_in: false, can_manage: true, eligible: true });
     vi.mocked(api.put).mockResolvedValue({ opt_in: true, can_manage: true });

@@ -1,4 +1,4 @@
-// The Concierge companion (#8261): shown only to who turned it on, says what it
+// The Health companion (#8261): shown only to who turned it on, says what it
 // shows, holds still under reduced motion, and hides through the user's own route.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +49,7 @@ describe("HealthCompanion", () => {
     expect(await screen.findByTestId("health.companion")).toBeInTheDocument();
   });
 
-  it("says what it shows, with the Concierge's name", async () => {
+  it("says what it shows, with the Platform Health's name", async () => {
     serve({ enabled: true, pet: "alfred" });
     renderWithProviders(<MemoryRouter><HealthCompanion /></MemoryRouter>);
     expect(await screen.findByRole("status")).toHaveTextContent("A proposal is ready for your review.");

@@ -252,10 +252,10 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
       {/* ── Fleet: home fleet and connecting fleets, read only ── */}
       <AgentFleetCard agent={agent} assignments={assignments} onAddAssignment={canManage ? openAddAssignment : undefined} />
 
-      {/* ── Platform Concierge improvement opt-in (#8254) ── */}
+      {/* ── Platform Health improvement opt-in (#8254) ── */}
       <HealthOptInCard targetType="agent" targetId={agent.id} />
 
-      {/* ── Concierge: its proposals and cycles, for its managers (#8261) ── */}
+      {/* ── Platform Health: its proposals and cycles, for its managers (#8261) ── */}
       <HealthTargetCard targetType="agent" targetId={agent.id} canManage={canManage} />
 
       {/* ── General Assistant Badge ── */}

@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The Improvements inbox (#8261): the proposals the viewer may read, from
- * `GET /concierge/improvements` (level 3's read rule: who may manage the
+ * `GET /health/improvements` (level 3's read rule: who may manage the
  * target). On the platform page it lists every proposal; on an agent or flow
  * page, that target's own. A proposal's measured result is shown as measured:
  * `unmeasured` is said, never read as a gain.

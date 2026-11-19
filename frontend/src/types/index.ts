@@ -8087,7 +8087,7 @@ export interface Evaluation {
    *  server-side. Read it through `canManageEntity()`. */
   can_manage?: boolean;
   agent_ids: string[];
-  /** Flow subjects (#8257), linked by the Concierge; never in `agent_ids`. */
+  /** Flow subjects (#8257), linked by the Platform Health; never in `agent_ids`. */
   flows?: { id: string; name: string; tags?: Record<string, string> | null; is_baseline?: boolean }[];
   /** Per-agent prediction extractors (#3290). Absent = score the raw output. */
   agent_extractors?: Record<string, ExtractorSpec> | null;
@@ -16077,13 +16077,13 @@ export interface VideoUploadedFile {
   size: number;
 }
 
-// --- Platform Concierge (#8254) ---
+// --- Platform Health (#8254) ---
 
 /** An agent's or a flow's improvement opt-in, as its viewer may act on it. */
 export interface HealthOptIn {
   opt_in: boolean;
   can_manage: boolean;
-  /** False for a Concierge fleet agent: the Concierge never improves itself. */
+  /** False for a Platform Health fleet agent: the Platform Health never improves itself. */
   eligible: boolean;
 }
 
@@ -16095,7 +16095,7 @@ export interface HealthBudgetCaps {
   month_cost_usd: string | null;
 }
 
-/** Settings > Concierge (`services/concierge/settings.py`); later levels add fields. */
+/** Settings > Platform Health (`services/health/settings.py`); later levels add fields. */
 export interface HealthSettings extends HealthTriggerSettings {
   enabled: boolean;
   /** The name it goes by with people; `null` is the platform mode's (`HealthName.default_name`). */
@@ -16106,7 +16106,7 @@ export interface HealthSettings extends HealthTriggerSettings {
   budget: HealthBudgetCaps;
 }
 
-/** A pet of the Concierge companion's library (#8261). */
+/** A pet of the Health companion's library (#8261). */
 export interface HealthPet {
   slug: string;
   display_name: string;
@@ -16116,14 +16116,14 @@ export interface HealthPet {
   sha256: string;
 }
 
-/** `GET /concierge/me/companion`: the signed-in user's own. */
+/** `GET /health/me/companion`: the signed-in user's own. */
 export interface HealthCompanion {
   enabled: boolean;
   pet: string;
   default_pet: string;
 }
 
-/** `GET /concierge/me/activity`: what the companion shows. */
+/** `GET /health/me/activity`: what the companion shows. */
 export interface HealthActivity {
   state: "idle" | "running" | "waiting" | "failed" | "review";
   running: number;
@@ -16132,13 +16132,13 @@ export interface HealthActivity {
   failed_at: string | null;
 }
 
-/** `GET /concierge/name`: what every signed-in person calls the Concierge. */
+/** `GET /health/name`: what every signed-in person calls the Platform Health. */
 export interface HealthName {
   name: string;
   default_name: string;
 }
 
-/** The Concierge's budget line this month. */
+/** The Platform Health's budget line this month. */
 export interface HealthBudget {
   month: string;
   caps: HealthBudgetCaps;
@@ -16150,7 +16150,7 @@ export interface HealthBudget {
   refusal_message: string | null;
 }
 
-// ── Platform Concierge cycles, signals and inbox (#8261) ─────────────────────
+// ── Platform Health cycles, signals and inbox (#8261) ─────────────────────
 
 export type HealthTargetType = "agent" | "flow" | "assignment";
 type HealthCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
@@ -16282,7 +16282,7 @@ export interface ImprovementEvidenceLink {
   hidden: boolean;
 }
 
-/** Settings > Concierge fields level 8 adds to level 1's ``HealthSettings`` (#8261). */
+/** Settings > Platform Health fields level 8 adds to level 1's ``HealthSettings`` (#8261). */
 export interface HealthSchedules {
   memory: string;
   quality: string;
@@ -16317,6 +16317,6 @@ interface HealthTriggerSettings {
   flow_shadow_days: number;
   flow_watch_days: number;
   flow_shadow_min_pairs: number;
-  /** Level 2's field (#8255): every write of every Concierge agent logged, not executed. */
+  /** Level 2's field (#8255): every write of every Platform Health agent logged, not executed. */
   dry_run: boolean;
 }

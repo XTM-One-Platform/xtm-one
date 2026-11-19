@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Labels and statuses of the Concierge's cycles, signals and digests (#8261),
+ * Labels and statuses of the Platform Health's cycles, signals and digests (#8261),
  * one module. Every label is an i18n key; an unknown code (a newer server's)
  * is shown as itself, never as a known one.
  */
@@ -116,7 +116,7 @@ export function healthReasonLabel(reason: string): string {
   return labelOf(REASON_LABELS, reason);
 }
 
-/** Why "Improve with Concierge" started nothing, by the code a 409 carries (`cycles.REFUSAL_MESSAGES`). */
+/** Why "Improve with {name}" started nothing, by the code a 409 carries (`cycles.REFUSAL_MESSAGES`). */
 /** @i18n-keys */
 const REFUSAL_LABELS = {
   inactive: "{name} is not enabled.",

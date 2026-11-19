@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Concierge companion's pet (#8261): the Codex pet atlas, its states and
- * which one shows. The format is the server's (`services/concierge/pets.py`,
+ * The Health companion's pet (#8261): the Codex pet atlas, its states and
+ * which one shows. The format is the server's (`services/health/pets.py`,
  * `STATES`): 8 columns of 192x208 cells, one state a row.
  */
 
@@ -39,7 +39,7 @@ export const PET_STATES = {
 
 export type PetState = keyof typeof PET_STATES;
 
-/** What the companion shows: the server's activity (`GET /concierge/me/activity`). */
+/** What the companion shows: the server's activity (`GET /health/me/activity`). */
 export type CompanionState = "idle" | "running" | "waiting" | "failed" | "review";
 
 /** What the chat page on screen is doing, which never reaches the server as an activity. */
@@ -81,7 +81,7 @@ export function framePosition(state: PetState, frame: number, scale: number): st
   return `${x}px ${y}px`;
 }
 
-/** What the bubble says for each state, with `{name}` the Concierge's name. @i18n-keys */
+/** What the bubble says for each state, with `{name}` the Platform Health's name. @i18n-keys */
 export const COMPANION_STATE_LABELS = {
   idle: "{name} is standing by.",
   running: "{name} is at work.",

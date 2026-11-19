@@ -56,8 +56,8 @@ const BEFORE = new RegExp(`\\b${NOUN} $`);
 
 /** en keys whose count stays bare on purpose, each with why. */
 const BARE: Record<string, string> = {
-  "Proposals {name} files appear here for who may approve them.": "{name} is the Concierge's name (\"files\" is a verb), not a count.",
-  "A small pet in the corner of the screen shows what {name} and your runs are doing.": "{name} is the Concierge's name, not a count.",
+  "Proposals {name} files appear here for who may approve them.": "{name} is the Platform Health's name (\"files\" is a verb), not a count.",
+  "A small pet in the corner of the screen shows what {name} and your runs are doing.": "{name} is the Platform Health's name, not a count.",
   "Connect external AI tools (Cursor, Claude Desktop, etc.) to your {platform} agents via MCP.":
     "{platform} is the product name, not a count.",
   "Consulting {count} specialist agents…": "Shown only when count > 1; one agent reads \"Consulting {name}…\".",

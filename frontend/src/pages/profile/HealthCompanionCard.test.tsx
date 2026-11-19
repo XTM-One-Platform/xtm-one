@@ -1,4 +1,4 @@
-// Profile > Concierge companion (#8261): off by default, turned on and pointed
+// Profile > Health companion (#8261): off by default, turned on and pointed
 // at a pet through the user's own route; built in since #101 (S1), no flag.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

@@ -14,11 +14,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Concierge companion (#8261): a small floating pet, for who turned it on
- * in their profile, showing what the Concierge and their own work are doing
- * (`GET /concierge/me/activity`, plus the chat turn on screen). It waves once
+ * The Health companion (#8261): a small floating pet, for who turned it on
+ * in their profile, showing what the Platform Health and their own work are doing
+ * (`GET /health/me/activity`, plus the chat turn on screen). It waves once
  * when it appears, then plays the state's row; a click opens its bubble,
- * with the way to the Concierge page and to hide it.
+ * with the way to the Platform Health page and to hide it.
  */
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";

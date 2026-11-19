@@ -216,7 +216,7 @@ export default function ChatPanelPage() {
 
   const tools = useSessionTools({ agentId: agentForNext, conversation, createdHere });
   const storedMessages = conversation?.messages;
-  // The Concierge companion follows the turn on screen.
+  // The Health companion follows the turn on screen.
   useEffect(() => {
     setChatActivity(frames.working ? "running" : "idle");
     return () => setChatActivity("idle");

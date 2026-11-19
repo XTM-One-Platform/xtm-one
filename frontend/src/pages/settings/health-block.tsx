@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/** The frame every Settings > Agents and automations > Concierge block shares (#8254, #8261): one draft of the whole settings, one Edit / Save. */
+/** The frame every Settings > Agents and automations > Platform Health block shares (#8254, #8261): one draft of the whole settings, one Edit / Save. */
 import { SettingsGroupDescription, SettingsGroupTitle } from "@/components/ui/settings-form";
 import type { HealthSettings } from "@/types";
 

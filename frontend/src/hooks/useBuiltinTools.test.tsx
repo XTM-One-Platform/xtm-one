@@ -94,7 +94,7 @@ describe("useBuiltinTools administrator-bound suite", () => {
 });
 
 describe("useBuiltinTools session picker", () => {
-  it("never offers a Concierge specialist's suite in a chat, while an agent's configuration still lists it", async () => {
+  it("never offers a Platform Health specialist's suite in a chat, while an agent's configuration still lists it", async () => {
     const steward = {
       ...GROUP,
       id: "memory_steward",

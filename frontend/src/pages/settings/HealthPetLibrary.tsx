@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Settings > Agents and automations > Concierge > Companion pets (#8261): the platform's pet library.
+ * Settings > Agents and automations > Platform Health > Companion pets (#8261): the platform's pet library.
  * Administrators add a Codex-format pet (one .zip, or pet.json and its
  * spritesheet) and remove an uploaded one; the built-in pets stay. The
  * server checks every upload and answers the rule a refused one broke.

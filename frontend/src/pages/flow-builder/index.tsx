@@ -151,7 +151,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
   const [showVersions, setShowVersions] = useState(false);
   const [showRuns, setShowRuns] = useState(false);
   const [showOwnership, setShowOwnership] = useState(false);
-  // The Concierge panel (#8261), shown while no other side panel is.
+  // The Platform Health panel (#8261), shown while no other side panel is.
   const [showHealth, setShowHealth] = useState(false);
   // The dotted guide grid: a per-user preference toggled from the toolbar
   // (off by default — the canvas reads cleaner without it).

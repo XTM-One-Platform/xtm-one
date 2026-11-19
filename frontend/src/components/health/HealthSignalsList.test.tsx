@@ -1,4 +1,4 @@
-// The Concierge's crossed signals draw through the shared data table (#9378, slice 6a):
+// The Platform Health's crossed signals draw through the shared data table (#9378, slice 6a):
 // search, filters, sort, Export and the error row with Retry.
 
 import { describe, expect, it, vi } from "vitest";
@@ -52,7 +52,7 @@ const renderList = () =>
     </MemoryRouter>,
   );
 
-describe("the Concierge signals list", () => {
+describe("the Platform Health signals list", () => {
   it("draws the signals in the shared data table with search, filters and Export", async () => {
     answer(SIGNALS);
     renderList();

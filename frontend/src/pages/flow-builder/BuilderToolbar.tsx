@@ -75,7 +75,7 @@ interface BuilderToolbarProps {
   onRun?: () => void;
   onToggleActive?: () => void;
   onToggleRuns?: () => void;
-  /** The Concierge panel (#8261); omitted when the flag is off or the viewer may not manage the flow. */
+  /** The Platform Health panel (#8261); omitted when the flag is off or the viewer may not manage the flow. */
   onToggleHealth?: () => void;
   onNameChange: (name: string) => void;
   onSave: () => void;

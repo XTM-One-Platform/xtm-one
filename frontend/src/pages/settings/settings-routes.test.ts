@@ -7,7 +7,7 @@
  * `#` or `/`; API calls (`api.get("/settings/quotas")`) and the API hooks are
  * left out, they name backend endpoints, not pages.
  * UX condition C3: bare `/settings/automations` opens Fleets in XTM One mode
- * and Agent runs in Copilot mode; Concierge with its flag off falls back to it.
+ * and Agent runs in Copilot mode; Platform Health with its flag off falls back to it.
  * Fleets (and its member presets) is reachable in both modes (#9162 scope).
  */
 import { describe, expect, it } from "vitest";

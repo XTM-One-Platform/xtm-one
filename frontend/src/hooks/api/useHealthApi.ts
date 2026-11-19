@@ -14,11 +14,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Platform Concierge (#8254): the improvement opt-in of an agent or a flow, the user's
- * opt-out, Settings > Agents and automations > Concierge and the budget line. Built in since
+ * Platform Health (#8254): the improvement opt-in of an agent or a flow, the user's
+ * opt-out, Settings > Agents and automations > Platform Health and the budget line. Built in since
  * #101 (S1): no feature flag gates these routes; callers pass `enabled` for their own reasons.
  * Level 8 (#8261): cycles and their digests, signals, schedule marks, "Improve
- * with Concierge" and the Improvements inbox (Approve / Reject are level 3's).
+ * with {name}" and the Improvements inbox (Approve / Reject are level 3's).
  */
 import { hashKey, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -179,7 +179,7 @@ export function useHealthScheduleMarks() {
   });
 }
 
-/** "Improve with Concierge" on an agent or a flow. */
+/** "Improve with {name}" on an agent or a flow. */
 export function useRequestHealthCycle() {
   const qc = useQueryClient();
   return useMutation({

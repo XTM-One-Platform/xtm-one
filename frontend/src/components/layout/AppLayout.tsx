@@ -83,7 +83,7 @@ function AppShell() {
     >
       <ImpersonationBanner />
       <Sidebar impersonating={isImpersonating} />
-      {/* The Concierge companion (#8261), for who turned it on. */}
+      {/* The Health companion (#8261), for who turned it on. */}
       <HealthCompanion />
       {/* The first-login organization setup (#9173, S3): administrators, XTM One, once per instance. */}
       <OrganizationSetupPrompt />

@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The user's Concierge companion (#8261), on Profile > Profile: a switch, off
+ * The user's Health companion (#8261), on Profile > Profile: a switch, off
  * by default, and the pet of the library it shows. Built in since #101 (S1).
  */
 import { Sparkles } from "lucide-react";

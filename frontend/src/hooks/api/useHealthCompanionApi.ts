@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Concierge companion (#8261): the pet library, the signed-in user's
+ * The Health companion (#8261): the pet library, the signed-in user's
  * companion and what it shows. Built in since #101 (S1), no flag;
  * callers pass `enabled` for their own reasons.
  */

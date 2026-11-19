@@ -1,5 +1,5 @@
 /**
- * Unit tests for the Concierge labels (#8261) - `yarn test:unit`.
+ * Unit tests for the Platform Health labels (#8261) - `yarn test:unit`.
  *
  * An unknown code is shown as itself, never as a known label; a refusal reads
  * by its code, the generic message otherwise; a target links to its own page.

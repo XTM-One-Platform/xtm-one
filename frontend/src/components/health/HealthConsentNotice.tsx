@@ -15,8 +15,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { Icon } from "@filigran/design-system";
 /**
- * The Platform Concierge consent notice (#8254, PRD decision B16): what the
- * Concierge reads once an agent or a flow is opted in, and who then sees it.
+ * The Platform Health consent notice (#8254, PRD decision B16): what the
+ * Platform Health reads once an agent or a flow is opted in, and who then sees it.
  * Shown where its managers opt it in and, the agent text, where a user opts out.
  */
 

@@ -399,7 +399,7 @@ export default function Profile() {
           {/* The bell's waiting work items (#9437): on by default. */}
           <WaitingWorkItemsNotifyCard />
 
-          {/* The Concierge companion (#8261): off by default. */}
+          {/* The Health companion (#8261): off by default. */}
           <HealthCompanionCard />
         </div>
       )}
@@ -551,7 +551,7 @@ function ProfileMemorySection() {
         )}
       </div>
 
-      {/* Platform Concierge opt-out (#8254) */}
+      {/* Platform Health opt-out (#8254) */}
       <HealthOptOutRow />
 
       <MyMemoryConsolidations />

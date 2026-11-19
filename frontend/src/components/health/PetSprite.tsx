@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * One pet of the Concierge companion (#8261), playing a row of its atlas. Under
+ * One pet of the Health companion (#8261), playing a row of its atlas. Under
  * `prefers-reduced-motion`, or with `still`, it shows the row's first frame.
  */
 import { useEffect, useState } from "react";

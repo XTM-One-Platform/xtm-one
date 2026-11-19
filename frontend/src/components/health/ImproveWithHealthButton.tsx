@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * "Improve with Concierge" (#8261): asks the Concierge to investigate one agent
+ * "Improve with {name}" (#8261): asks the Platform Health to investigate one agent
  * or flow the viewer manages. Shown while the viewer may manage the target
  * (built in since #101 S1, no flag); disabled, with the reason, while agentic AI is
  * off; a refusal (another cycle open, outside the scope, budget reached) is

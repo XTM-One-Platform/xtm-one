@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/** The flow's Concierge panel (#8261): its improvement opt-in, its proposals and cycles, and "Improve with Concierge", for its managers. */
+/** The flow's Platform Health panel (#8261): its improvement opt-in, its proposals and cycles, and "Improve with {name}", for its managers. */
 import { Icon } from "@filigran/design-system";
 import { HealthCyclesList } from "@/components/health/HealthCyclesList";
 import { HealthOptInCard } from "@/components/health/HealthOptInCard";
