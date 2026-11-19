@@ -2012,7 +2012,7 @@ report = "lines"
 # matches nothing, a stale `ce` entry) to CI. Fix what it lists with `python scripts/license_headers.py --fix`
 # (backend-generate does not run it: the script is not a generator).
 [check.editions]
-description = "the Editions gate: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
+description = "the License edition check: every file classified in licensing/editions.yml and every EE file carrying its header, as editions.yml runs it (whole tree checkout)"
 argv = ["python", "scripts/license_headers.py", "--check"]
 cwd = "backend"
 timeout = 300

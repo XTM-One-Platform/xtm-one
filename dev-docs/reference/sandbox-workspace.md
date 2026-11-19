@@ -203,7 +203,7 @@ xtm-one (`.xtm-one/checks.toml`):
 | Backend lint, format, types, unit, Alembic heads (ci.yml) | `backend-lint`, `backend-format`, `backend-types`, `backend-unit`, `backend-alembic-heads` | |
 | Frontend types, lint, i18n, unit, knip (ci.yml) | `frontend-types`, `frontend-e2e-types`, `frontend-lint`, `frontend-i18n`, `frontend-unit`, `frontend-knip` | |
 | Frontend "Command manifests" (ci.yml) | `frontend-commands` | |
-| Editions (editions.yml) | `editions` (`git_repo`; whole tree checkout) | |
+| License edition check (editions.yml) | `editions` (`git_repo`; whole tree checkout) | |
 | AGENTS.md hygiene (agents-md-hygiene.yml) | `agents-md-hygiene` (`git_repo`, pre-push guard) | |
 | Workflow scripts (ci.yml) | `github-scripts-node-test`, `actions-lint` (detected) | |
 | Published image pin (sandbox-image-pin.yml) | `sandbox-image-pin` (pre-push guard on every build input `check-published-images.py` hashes, `.xtm-one/stores.py` included) | the comparison with the base branch's manifest (inputs changed, same version) needs the base: CI-only |

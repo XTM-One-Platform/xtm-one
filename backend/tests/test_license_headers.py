@@ -1,7 +1,7 @@
 """The Enterprise Edition list and the rules that tag a file with its license header (#5493).
 
 ``licensing/editions.yml`` lists the EE files; ``scripts/license_headers.py``
-is the one module that reads it. The real tree is checked by the Editions
+is the one module that reads it. The real tree is checked by the License edition
 workflow (``--check``), in seconds and outside this suite; these tests pin the
 rules on small trees: the classification, the header, ``copyright.md``, the
 manifests, ``--which``, the pre-commit check and the files a pull request makes
