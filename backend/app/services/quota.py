@@ -28,6 +28,7 @@ import uuid
 from collections.abc import AsyncIterable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from typing import Any
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -3476,6 +3477,40 @@ async def get_agentic_quota_periods(
                 "resets_at": resets.strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
         )
+    return rows
+
+
+async def platform_agentic_usage(db: AsyncSession, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The platform-wide agentic ceilings and their use: one ``{period, used, limit}`` per capped period.
+
+    The ceilings :func:`check_agentic_quota` enforces for the whole platform (the
+    license ceilings in XTM One mode, ``platform_limit`` in Copilot mode), each
+    with the shared agentic plus sandbox count of its current period. Empty when
+    no platform-wide ceiling is set. A pure read: no counter moves (a counter
+    Redis lost is put back at its durable count, as every gate reads it).
+    """
+    now = now or _utcnow()
+    caps: dict[str, int] = {}
+    if settings.is_xtm_one:
+        caps = dict(await get_xtm_agentic_ceilings(db) or {})
+    else:
+        platform_cfg = await _load_platform_wide_config(db, "agentic")
+        if platform_cfg:
+            cap = ceiling_or_none(platform_cfg.get("platform_limit"))
+            if cap is not None:
+                caps[platform_cfg.get("period", "monthly")] = cap
+    if not caps:
+        return []
+    redis = await redis_client()
+    rows: list[dict[str, Any]] = []
+    for period, limit in caps.items():
+        if limit <= 0:
+            continue
+        period_key = _current_period_key(period, now)
+        used = await _get_global_count(redis, "agentic", period_key) + await _get_global_count(
+            redis, "sandbox", period_key
+        )
+        rows.append({"period": period, "used": int(used), "limit": int(limit)})
     return rows
 
 

@@ -76,6 +76,9 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | MCP server broken | Warning | An enabled company-managed MCP server could not renew its OAuth token (one finding per server) |
 | Knowledge base indexing stalled | Warning | A knowledge base has documents still processing after 1 hour (one finding per knowledge base) |
 | Stale embeddings | Warning | A knowledge base was embedded with another model than the platform's embedding model (one finding per knowledge base) |
+| Default model | Critical | No default model is set, so agents without a model of their own cannot run |
+| Embedding model | Critical | No embedding model is set, so knowledge bases can neither index nor search |
+| Quota near ceiling | Warning | A platform-wide agentic ceiling is 90 % used in its current period (one finding per period). Reading it consumes no quota |
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 

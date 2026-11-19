@@ -28,6 +28,9 @@ Check                              Severity    Category       Fails when
 ``xtm_one.mcp_server_broken``      warning     availability   an enabled company-managed MCP server's OAuth refresh failed
 ``xtm_one.kb_indexing_stalled``    warning     performance    a knowledge base has documents processing for over 1 hour
 ``xtm_one.kb_stale_embeddings``    warning     configuration  a knowledge base was embedded with another model than the platform's
+``xtm_one.default_model``          critical    configuration  no default model is set, so agents without a model of their own cannot run
+``xtm_one.embedding_model``        critical    configuration  no embedding model is set, so knowledge bases cannot index or search
+``xtm_one.quota_near_ceiling``     warning     capacity       a platform-wide agentic ceiling is over 90 % used in its current period
 =================================  ==========  =============  ==============================================
 
 The four last checks answer one result per subject (an integration, a server, a
@@ -42,9 +45,11 @@ Unlike the agent checks it does not read the AI switch: these reads run with AI
 switched off too (``ai_disabled``). Each check reads a setting or one row,
 calls no model, reaches no network and is never metered.
 
+The quota check reads the counters the gates read and moves none of them.
+
 The remaining 4.2 checks (scheduler lag, queues, probes, sandbox latency,
-providers, quota, version, certificates) follow in a later slice; the security
-audit stays its own page.
+provider error rates, version, certificates) follow in a later slice; the
+security audit stays its own page.
 """
 
 from __future__ import annotations
@@ -67,6 +72,8 @@ LICENCE_EXPIRY_WARNING = timedelta(days=30)
 KB_STALLED_AFTER = timedelta(hours=1)
 #: The integration states that stop its tools (as the agent check reads them).
 BROKEN_INTEGRATION_STATUSES = frozenset({"error", "reauthorize"})
+#: A platform-wide agentic ceiling used past this share of its period raises a warning.
+QUOTA_WARNING_RATIO = 0.9
 #: Where a finding of these checks is explained.
 DOC_LINK = "/docs/administration/health#platform-checks"
 
@@ -325,6 +332,71 @@ async def kb_stale_embeddings(db: AsyncSession, now: datetime) -> list[CheckResu
     return results + await close_out(db, "xtm_one.kb_stale_embeddings", results)
 
 
+async def _platform_settings(db: AsyncSession) -> Any:
+    from app.models.platform_settings import PlatformSettings
+
+    return (
+        await db.execute(
+            select(PlatformSettings).order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc()).limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def default_model(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """No platform default model: an agent with no model of its own has nothing to run on."""
+    from app.llm.router import get_platform_default_model
+
+    model = await get_platform_default_model(db)
+    return [
+        _result(
+            "xtm_one.default_model",
+            "critical",
+            "configuration",
+            not model,
+            evidence={"values": {"model": model or "unset"}, "source": "agent_default_model"},
+            recommendation="Choose a default model in Settings > Platform.",
+        )
+    ]
+
+
+async def embedding_model(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """No platform embedding model: knowledge bases can neither index nor search."""
+    ps = await _platform_settings(db)
+    model = getattr(ps, "embedding_model", None)
+    return [
+        _result(
+            "xtm_one.embedding_model",
+            "critical",
+            "configuration",
+            not model,
+            evidence={"values": {"model": model or "unset"}, "source": "embedding_model"},
+            recommendation="Choose an embedding model in Settings > Platform.",
+        )
+    ]
+
+
+async def quota_near_ceiling(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """A platform-wide agentic ceiling is used past :data:`QUOTA_WARNING_RATIO` in its current period."""
+    from app.services.quota import platform_agentic_usage
+
+    results = [
+        _result(
+            "xtm_one.quota_near_ceiling",
+            "warning",
+            "capacity",
+            row["used"] >= QUOTA_WARNING_RATIO * row["limit"],
+            subject={"period": row["period"]},
+            evidence={"values": dict(row), "threshold": "90 %"},
+            recommendation=(
+                "Agentic runs stop for everyone once the ceiling is reached: raise it with Filigran "
+                "or reduce the scheduled and event-driven runs."
+            ),
+        )
+        for row in await platform_agentic_usage(db, now)
+    ]
+    return results + await close_out(db, "xtm_one.quota_near_ceiling", results)
+
+
 for _check_id, _run in (
     ("xtm_one.registration_token", registration_token),
     ("xtm_one.licence", licence),
@@ -335,6 +407,9 @@ for _check_id, _run in (
     ("xtm_one.mcp_server_broken", mcp_server_broken),
     ("xtm_one.kb_indexing_stalled", kb_indexing_stalled),
     ("xtm_one.kb_stale_embeddings", kb_stale_embeddings),
+    ("xtm_one.default_model", default_model),
+    ("xtm_one.embedding_model", embedding_model),
+    ("xtm_one.quota_near_ceiling", quota_near_ceiling),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))
