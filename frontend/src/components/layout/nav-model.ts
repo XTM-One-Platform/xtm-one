@@ -61,6 +61,11 @@ export interface NavFlags {
   evaluation: boolean;
   /** The Platform Health page (#8261: improvements, cycles, signals); built in since #101 (S1), no flag, so callers pass true. */
   health: boolean;
+  /** Intents: agent routing for requests of the XTM platforms (OpenCTI,
+   *  OpenAEV), XTM One domain content (dev-docs/mode-split.md). The callers set
+   *  it from the mode: on in XTM One mode (AI on or off), off in Copilot mode,
+   *  where nothing routes through an intent (Sam, 19 Nov 2026, #445). */
+  intents: boolean;
 }
 
 /** Why a `locked` entry is locked — picks the tooltip that explains it. */
@@ -229,8 +234,8 @@ export const NAV_SECTIONS: NavSection[] = [
              Only the `Flows` library tab is hidden, by `Flows.tsx` itself. */
           leaf("/flows", Route, "Agentic Flow"),
           /* Agent routing, next to the agents it routes to; administrators only,
-             as it was in Admin. */
-          { ...aiLeaf("/intents", Zap, "Intents"), adminOnly: true },
+             as it was in Admin, and XTM One mode only (#445). */
+          { ...aiLeaf("/intents", Zap, "Intents", (f) => f.intents), adminOnly: true },
         ],
         /* The existing full-page creation wizard: a button on the Agents list
            and the Agent Studio hub, and a palette destination here. */

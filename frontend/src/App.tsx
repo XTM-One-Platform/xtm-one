@@ -780,7 +780,7 @@ export default function App() {
         <Route path="/groups/new" element={<AdminRoute><Page><NewGroup /></Page></AdminRoute>} />
         <Route path="/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
         <Route path="/objects" element={<AdminRoute><Page><AdminObjects /></Page></AdminRoute>} />
-        <Route path="/intents" element={<Page><Intents /></Page>} />
+        <Route path="/intents" element={<XtmOneRoute><Page><Intents /></Page></XtmOneRoute>} />
         <Route path="/analytics/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
         {/* The Value page (#9836 R5b): every user, both modes; the page itself shows the Community Edition upgrade path. */}
         {/* The methodology (#9836 R7b): every user, both modes, linked from every "How this is computed". */}

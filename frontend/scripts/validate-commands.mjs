@@ -31,7 +31,7 @@ const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const CONTEXT_KEYS = new Set([
   "isAdmin", "chatEnabled", "chatSendEnabled", "agenticAI", "customVariables",
   "xtmOne", "aiAdoption", "catalogEnabled", "flowBuilder", "deepInvestigation", "evaluation", "runnersEnabled",
-  "arcadeEnabled", "relaysEnabled",
+  "arcadeEnabled", "relaysEnabled", "intents",
 ]);
 
 /** Keep in sync with `CommandDef["requires"]` in src/lib/commands/types.ts. */

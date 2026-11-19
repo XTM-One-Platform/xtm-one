@@ -56,6 +56,9 @@ export const CONTEXT_KEYS = [
   /** On-premises relays (`RELAYS_ENABLED`). Off means the Relays page
    *  explains they are off, so its commands are not offered. */
   "relaysEnabled",
+  /** Intents are listed: XTM One mode only, domain content of the XTM
+   *  platforms (#445). Off in Copilot mode, so Browse intents is not offered. */
+  "intents",
 ] as const;
 
 type ContextKey = (typeof CONTEXT_KEYS)[number];
