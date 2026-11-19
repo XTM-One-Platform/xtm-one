@@ -625,6 +625,128 @@ def test_an_occurrence_past_the_count_or_malformed_is_refused() -> None:
     assert editing.parse_edits([{"find": "a", "replace": "b", "occurrence": 2}])[0].occurrence == 0
 
 
+def test_a_move_carries_a_block_down_up_and_to_the_top() -> None:
+    text = "a\nb\nc\nd\ne\n"
+    down = editing.apply_edits(
+        text,
+        _ranged(
+            [
+                {
+                    "start_line": 1,
+                    "end_line": 2,
+                    "expect_first": "a",
+                    "expect_last": "b",
+                    "move_to_after_line": 4,
+                    "expect_target": "d",
+                    "replace": "",
+                }
+            ]
+        ),
+    )
+    assert down.text == "c\nd\na\nb\ne\n" and down.replacements == [1]
+    up = editing.apply_edits(
+        text,
+        _ranged(
+            [
+                {
+                    "start_line": 4,
+                    "end_line": 5,
+                    "expect_first": "d",
+                    "expect_last": "e",
+                    "move_to_after_line": 1,
+                    "expect_target": "a",
+                }
+            ]
+        ),
+    )
+    assert up.text == "a\nd\ne\nb\nc\n"
+    top = editing.apply_edits(text, _ranged([{"start_line": 3, "expect_first": "c", "move_to_after_line": 0}]))
+    assert top.text == "c\na\nb\nd\ne\n"
+    # Numbered as the previous edits of the call left the text.
+    chained = editing.apply_edits(
+        text,
+        _ranged(
+            [
+                {"insert_after_line": 0, "replace": "z"},
+                {"start_line": 1, "expect_first": "z", "move_to_after_line": 6, "expect_target": "e"},
+            ]
+        ),
+    )
+    assert chained.text == text + "z\n"
+
+
+def test_a_move_keeps_crlf_and_gives_an_ending_to_a_last_line_without_one() -> None:
+    crlf = editing.apply_edits(
+        "a\r\nb\r\nc\r\n",
+        _ranged([{"start_line": 1, "expect_first": "a", "move_to_after_line": 3, "expect_target": "c"}]),
+    )
+    assert crlf.text == "b\r\nc\r\na\r\n"
+    last = editing.apply_edits(
+        "a\nb\nc", _ranged([{"start_line": 3, "expect_first": "c", "move_to_after_line": 1, "expect_target": "a"}])
+    )
+    assert last.text == "a\nc\nb\n"
+    onto_last = editing.apply_edits(
+        "a\nb\nc", _ranged([{"start_line": 1, "expect_first": "a", "move_to_after_line": 3, "expect_target": "c"}])
+    )
+    assert onto_last.text == "b\nc\na\n"
+    blank = editing.apply_edits(
+        "a\n\nb\n",
+        _ranged([{"start_line": 1, "expect_first": "a", "move_to_after_line": 2, "expect_target_blank": True}]),
+    )
+    assert blank.text == "\na\nb\n"
+
+
+@pytest.mark.parametrize(
+    ("item", "message"),
+    [
+        (
+            {
+                "start_line": 2,
+                "end_line": 3,
+                "expect_first": "b",
+                "expect_last": "c",
+                "move_to_after_line": 2,
+                "expect_target": "b",
+            },
+            "would not move",
+        ),
+        ({"start_line": 2, "expect_first": "b", "move_to_after_line": 1, "expect_target": "a"}, "would not move"),
+        ({"start_line": 1, "expect_first": "a", "move_to_after_line": 3}, "needs 'expect_target'"),
+        ({"start_line": 1, "expect_first": "a", "move_to_after_line": -1}, "integer >= 0"),
+        ({"start_line": 1, "expect_first": "a", "move_to_after_line": True}, "integer >= 0"),
+        (
+            {"start_line": 1, "expect_first": "a", "move_to_after_line": 3, "expect_target": "c", "replace": "x"},
+            "leave 'replace' empty",
+        ),
+        ({"find": "a", "move_to_after_line": 3, "expect_target": "c"}, "not 'find'"),
+        ({"move_to_after_line": 3, "expect_target": "c"}, "needs 'start_line'"),
+        ({"start_line": 1, "move_to_after_line": 3, "expect_target": "c"}, "needs 'expect_first'"),
+    ],
+)
+def test_malformed_moves_are_refused(item: dict[str, object], message: str) -> None:
+    with pytest.raises(editing.EditError, match=message):
+        _ranged([item])
+
+
+def test_a_stale_move_is_refused_with_nothing_written() -> None:
+    for item, message in (
+        (
+            {"start_line": 1, "expect_first": "x", "move_to_after_line": 3, "expect_target": "c"},
+            "does not contain expect_first",
+        ),
+        (
+            {"start_line": 1, "expect_first": "a", "move_to_after_line": 3, "expect_target": "x"},
+            "does not contain expect_target",
+        ),
+        ({"start_line": 1, "expect_first": "a", "move_to_after_line": 9, "expect_target": "c"}, "past the end"),
+    ):
+        with pytest.raises(editing.EditError, match=message):
+            editing.apply_edits("a\nb\nc\n", _ranged([item]))
+    # Outside sandbox_edit_file the key is not part of the contract: a find edit stays a find edit.
+    with pytest.raises(editing.EditError, match="'find' must be a non-empty string"):
+        editing.parse_edits([{"start_line": 1, "move_to_after_line": 3, "replace": ""}])
+
+
 def test_inserts_are_refused_where_not_allowed():
     with pytest.raises(editing.EditError, match="'find' must be a non-empty string"):
         editing.parse_edits([{"insert_after_line": 0, "replace": "x"}])

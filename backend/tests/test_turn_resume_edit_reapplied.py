@@ -60,6 +60,17 @@ def test_the_edit_key_is_the_path_and_the_anchors_whatever_the_inserted_text():
     assert landed.edit_key({"path": "../x", "edits": FIRST["edits"]}) is None
 
 
+def test_a_move_has_no_verdict_and_a_key_naming_its_range_and_target() -> None:
+    move = {"start_line": 1, "end_line": 2, "expect_first": "a", "expect_last": "b", "move_to_after_line": 4}
+    assert landed.edit_verdict([{**move, "expect_target": "d", "replace": ""}], "a\nb\nc\nd\n") is None
+    key = landed.edit_key({"path": "co/n.md", "edits": [move]})
+    assert key is not None and "move 1-2 after 4: a" in key
+    assert key != landed.edit_key({"path": "co/n.md", "edits": [{**move, "move_to_after_line": 5}]})
+    assert key != landed.edit_key(
+        {"path": "co/n.md", "edits": [{k: v for k, v in move.items() if k != "move_to_after_line"}]}
+    )
+
+
 async def test_the_edit_probe_reads_the_file():
     session = _session()
     await session.put_bytes("co/notes.md", INSERTED.encode())

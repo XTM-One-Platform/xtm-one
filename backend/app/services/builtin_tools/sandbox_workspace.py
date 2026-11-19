@@ -3634,7 +3634,8 @@ def build_sandbox_workspace_tools(
                 "applies. Returns the unified diff. Use it, not a code_interpreter script, to change a source file; "
                 "copy each find from sandbox_read_file exactly (whitespace included). For a long block, give "
                 "start_line/end_line (as sandbox_read_file numbers them) with expect_first/expect_last (text of "
-                "those lines, checked; *_blank for a blank line) instead of find; insert_after_line inserts."
+                "those lines, checked; *_blank for a blank line) instead of find; insert_after_line inserts; "
+                "move_to_after_line moves that range (replace empty)."
             ),
             input_schema={
                 "type": "object",
@@ -3690,6 +3691,15 @@ def build_sandbox_workspace_tools(
                                     "type": "integer",
                                     "description": "Insert replace after this line (0: top); expect_first checks it.",
                                 },
+                                "move_to_after_line": {
+                                    "type": "integer",
+                                    "description": "Move start_line-end_line after this line (0: top; before the move).",
+                                },
+                                "expect_target": {
+                                    "type": "string",
+                                    "description": "Text the move_to_after_line holds.",
+                                },
+                                "expect_target_blank": {"type": "boolean", "description": "That line is blank."},
                             },
                             "required": ["replace"],
                         },
