@@ -95,6 +95,33 @@ _GROUP_APPLIES: dict[str, frozenset[str]] = {
     "add_role": frozenset({"group_id", "role_id"}),
     "remove_role": frozenset({"group_id", "role_id"}),
 }
+_ROLE_APPLIES: dict[str, frozenset[str]] = {
+    "list": frozenset({"search", "limit"}),
+    "get": frozenset({"role_id"}),
+    "create": frozenset({"name", "description"}),
+    "update": frozenset({"role_id", "name", "description"}),
+    "delete": frozenset({"role_id"}),
+    "add_capability": frozenset({"role_id", "capability_id"}),
+    "remove_capability": frozenset({"role_id", "capability_id"}),
+}
+_ROLE_DEFAULT_LIMIT = 50
+_PROFILE_APPLIES: dict[str, frozenset[str]] = {
+    "get": frozenset(),
+    "update": frozenset(
+        {
+            "name",
+            "user_email",
+            "firstname",
+            "lastname",
+            "description",
+            "theme",
+            "language",
+            "unit_system",
+            "new_password",
+            "current_password",
+        }
+    ),
+}
 _DEFAULT_LIMIT = 20
 
 
@@ -728,9 +755,26 @@ def register(
         description: str = "",
         capability_id: str = "",
         search: str = "",
-        limit: int = 50,
+        limit: int = _ROLE_DEFAULT_LIMIT,
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        # Defaults count as not passed: a field is refused only when the caller set it.
+        refused = _refuse_unapplied(
+            action,
+            _ROLE_APPLIES,
+            {
+                "role_id": role_id,
+                "name": name,
+                "description": description,
+                "capability_id": capability_id,
+                "search": search,
+                "limit": None if limit == _ROLE_DEFAULT_LIMIT else limit,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "list":
             query = (
@@ -885,8 +929,28 @@ def register(
         unit_system: str = "",
         new_password: str = "",
         current_password: str = "",
+        **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
+        refused = _refuse_unapplied(
+            action,
+            _PROFILE_APPLIES,
+            {
+                "name": name,
+                "user_email": user_email,
+                "firstname": firstname,
+                "lastname": lastname,
+                "description": description,
+                "theme": theme,
+                "language": language,
+                "unit_system": unit_system,
+                "new_password": new_password,
+                "current_password": current_password,
+            },
+            dict(extra),
+        )
+        if refused:
+            return refused
 
         if action == "get":
             query = (
@@ -1068,7 +1132,8 @@ def register(
                 "'create' (name, optional description), 'update' (role_id + "
                 "name/description), 'delete' (role_id), 'add_capability'/"
                 "'remove_capability' (role_id + capability_id from "
-                "list_opencti_capabilities)."
+                "list_opencti_capabilities). A field the action does not apply is "
+                "refused with nothing written."
             ),
             input_schema={
                 "type": "object",
@@ -1109,7 +1174,8 @@ def register(
                 "groups) and 'update' (any of name, user_email, firstname, lastname, "
                 "description, theme, language, unit_system). To change the password, "
                 "set new_password AND current_password (OpenCTI verifies the current "
-                "password first)."
+                "password first). A field the action does not apply is refused with "
+                "nothing written."
             ),
             input_schema={
                 "type": "object",
