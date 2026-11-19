@@ -107,6 +107,15 @@ def _unless(value: object, default: object) -> object:
     return None if value == default else value
 
 
+def _flag(value: bool | None) -> object:
+    """A tri-state boolean as the guard sees it: None when not passed, else its text.
+
+    The shared guard counts ``False`` as not passed; an explicit ``false`` on an action
+    that does not apply the field must be refused like ``true``.
+    """
+    return None if value is None else str(bool(value)).lower()
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -146,9 +155,9 @@ def register(
             _ENTITY_SETTING_APPLIES,
             {
                 "target_type": target_type,
-                "platform_hidden_type": platform_hidden_type,
-                "enforce_reference": enforce_reference,
-                "platform_entity_files_ref": platform_entity_files_ref,
+                "platform_hidden_type": _flag(platform_hidden_type),
+                "enforce_reference": _flag(enforce_reference),
+                "platform_entity_files_ref": _flag(platform_entity_files_ref),
                 "attributes_configuration": attributes_configuration,
                 "limit": _unless(limit, 100),
                 "template_id": template_id,
@@ -619,7 +628,7 @@ def register(
                 "name": name,
                 "description": description,
                 "order": order,
-                "active": active,
+                "active": _flag(active),
                 "decay_lifetime": decay_lifetime,
                 "decay_pound": decay_pound,
                 "decay_points": decay_points,
@@ -984,7 +993,7 @@ def register(
                 "description": description,
                 "entity_types": entity_types,
                 "content": content,
-                "enabled": enabled,
+                "enabled": _flag(enabled),
                 "search": search,
                 "limit": _unless(limit, 50),
             },

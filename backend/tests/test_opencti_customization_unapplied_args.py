@@ -71,6 +71,13 @@ async def _run(executor: CallableToolExecutor, tool: str, arguments: dict[str, A
             {"action": "create", "name": "n", "entity_types": ["IPv4-Addr"], "content": "1.1.1.1", "enabled": True},
             "enabled",
         ),
+        (
+            "manage_opencti_exclusion_list",
+            {"action": "create", "name": "n", "entity_types": ["IPv4-Addr"], "content": "1.1.1.1", "enabled": False},
+            "enabled",
+        ),
+        ("manage_opencti_decay_rule", {"action": "delete", "decay_rule_id": "d1", "active": False}, "active"),
+        ("manage_opencti_entity_setting", {"action": "list", "enforce_reference": False}, "enforce_reference"),
         ("manage_opencti_exclusion_list", {"action": "list", "force": True}, "force"),
     ],
 )
