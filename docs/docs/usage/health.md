@@ -45,4 +45,4 @@ The companion is a small animated pet in the bottom-right corner of the screen t
 | Is at work | A Platform Health cycle is running, one of your runs is running, or the chat on screen is answering |
 | Stands by | Nothing of the above |
 
-Click the pet to read what it shows: first the open findings, the most severe kind with its count (for example "2 critical findings are open", or "No open finding."), then what is happening now. From there you open the Platform Health page or hide the pet; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.
+Click the pet to read what it shows: first the open findings, the most severe kind with its count (for example "2 critical findings are open.", or "No open finding."), then what is happening now. From there you open the Platform Health page or hide the pet; you can show it again from your profile. When your system asks for reduced motion, the pet holds still. It reads only what you may already see, without calling any model.
