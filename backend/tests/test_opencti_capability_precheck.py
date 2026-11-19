@@ -500,12 +500,29 @@ async def test_each_instance_probes_with_its_own_credentials(monkeypatch):
     assert sent == [("MeCapabilities", "Bearer token-b"), ("MeCapabilities", "Bearer token-a")]
 
 
+# Gated tools that take every argument (**unknown) and refuse the ones their action
+# does not apply by name, instead of dropping them silently (the unapplied-arguments
+# contract, tests/test_opencti_pir_unapplied_args.py).
+_REFUSES_UNKNOWN_ARGUMENTS = frozenset({"manage_opencti_pir"})
+
+
 def test_gate_keeps_the_handler_signature_for_argument_filtering():
-    """Hallucinated arguments are still dropped for a wrapped handler."""
+    """Hallucinated arguments are still dropped (or refused) for a wrapped handler."""
     executor = _executor()
     for tool in TOOL_CAPABILITIES:
+        if tool in _REFUSES_UNKNOWN_ARGUMENTS:
+            assert executor._accepted_params[tool] is None, tool
+            continue
         assert executor._accepted_params[tool] is not None, tool
         assert "hallucinated" not in executor._accepted_params[tool]
+
+
+async def test_gate_keeps_the_refusal_of_unknown_arguments() -> None:
+    """A gated tool that refuses unknown arguments still refuses them once wrapped."""
+    executor = _executor()
+    for tool in _REFUSES_UNKNOWN_ARGUMENTS:
+        content = await _run(executor, tool, action="list", hallucinated="x")
+        assert "hallucinated" in content, (tool, content)
 
 
 # ---------------------------------------------------------------------------
