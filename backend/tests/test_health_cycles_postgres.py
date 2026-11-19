@@ -113,7 +113,7 @@ async def _fleet_counts(db) -> tuple:
     return agents, assignments, fleets, members, workspaces
 
 
-async def test_the_fleet_is_seeded_once_company_managed(concierge_on):
+async def test_the_fleet_is_seeded_once_built_in(concierge_on):
     async with _scratch("cc_seed") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
@@ -122,32 +122,70 @@ async def test_the_fleet_is_seeded_once_company_managed(concierge_on):
         agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
 
     assert sorted((a.health_role, a.is_company_managed, a.is_builtin) for a in agents) == [
-        ("experimenter", True, False),
-        ("flow_lab", True, False),
-        ("memory_steward", True, False),
-        ("orchestrator", True, False),
-        ("quality_analyst", True, False),
+        ("experimenter", True, True),
+        ("flow_lab", True, True),
+        ("memory_steward", True, True),
+        ("orchestrator", True, True),
+        ("quality_analyst", True, True),
     ]
     # The fleet's own assignments, plus the weekly fleet health check every orchestrator gets (#11700).
     assert assignments == len(fleet_seed.FLEET_ASSIGNMENTS) + 1
-    assert [(f.is_company_managed, f.orchestrator_agent_id) for f in fleets] == [
-        (True, next(a.id for a in agents if a.health_role == "orchestrator"))
+    assert [(f.is_company_managed, f.is_builtin, f.slug, f.orchestrator_agent_id) for f in fleets] == [
+        (True, True, "platform-health", next(a.id for a in agents if a.health_role == "orchestrator"))
     ]
     assert members == 5
     assert [w.is_company_managed for w in workspaces] == [True]
 
 
-async def test_an_admin_edit_survives_the_next_seed(concierge_on):
+async def test_an_upgrade_rewrites_a_hand_edit_and_keeps_the_rows(concierge_on):
+    """A deployment seeded before #101 S1b: an edited persona, a disabled member, a
+    disabled assignment, a non-built-in fleet. The next seed makes them built in, same
+    ids, with the seeded definition back."""
     async with _scratch("cc_seed_edit") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
         await fleet_seed.seed_health_fleet(db)
-        steward = (await db.execute(select(Agent).where(Agent.slug == "health-memory-steward"))).scalar_one()
-        steward.persona = "Edited by an administrator."
+        orchestrator = (await db.execute(select(Agent).where(Agent.health_role == "orchestrator"))).scalar_one()
+        steward = (await db.execute(select(Agent).where(Agent.health_role == "memory_steward"))).scalar_one()
+        seeded_persona = orchestrator.persona
+        ids = (orchestrator.id, steward.id)
+        orchestrator.persona = "Edited by an administrator."
+        orchestrator.is_builtin = steward.is_builtin = False
+        steward.enabled = False
+        digest, _ = await fleet_seed.fleet_assignment(db, "digest")
+        digest.enabled = False
+        digest.prompt = "Edited."
+        fleet = (await db.execute(select(Fleet))).scalar_one()
+        fleet.is_builtin = False
+        fleet.slug = "concierge"
         await db.commit()
         await fleet_seed.seed_health_fleet(db)
-        await db.refresh(steward)
-    assert steward.persona == "Edited by an administrator."
+        for row in (orchestrator, steward, digest, fleet):
+            await db.refresh(row)
+
+    assert (orchestrator.id, steward.id) == ids
+    assert orchestrator.persona == seeded_persona
+    assert (orchestrator.is_builtin, steward.is_builtin, steward.enabled) == (True, True, True)
+    assert (digest.enabled, digest.prompt) == (True, fleet_seed.ASSIGNMENT_BY_KEY["digest"].prompt)
+    assert (fleet.is_builtin, fleet.slug) == (True, "platform-health")
+
+
+async def test_the_built_in_seeds_never_sweep_the_health_rows(concierge_on):
+    """The built-in agent and fleet seeds delete a built-in row their lists do not
+    name; the health fleet is seeded apart and must survive both."""
+    from app.agents import fleet_seed as builtin_fleet_seed
+    from app.agents.seed import seed_builtin_agents
+
+    async with _scratch("cc_seed_sweep") as sessions, sessions() as db:
+        db.add(_user("admin"))
+        await db.commit()
+        await fleet_seed.seed_health_fleet(db)
+        await seed_builtin_agents(db, platform_mode="xtm_one")
+        await builtin_fleet_seed.seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[])
+        agents, _, fleets, _, _ = await _fleet_counts(db)
+
+    assert len(agents) == 5
+    assert [f.slug for f in fleets if f.is_builtin and f.slug == "platform-health"] == ["platform-health"]
 
 
 async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concierge_on):
@@ -171,7 +209,8 @@ async def test_a_reseed_renames_an_assignment_still_under_its_former_name(concie
         await db.refresh(row)
 
     assert after == before
-    assert (row.id, row.name, row.enabled) == (row_id, spec.name, False)
+    # Built in: renamed in place and switched back on by the seed.
+    assert (row.id, row.name, row.enabled) == (row_id, spec.name, True)
     assert all(not s.name.startswith("Concierge") for s in fleet_seed.FLEET_ASSIGNMENTS)
 
 
