@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1963 tools across 113 providers; 52 held back by hand.
+# 1963 tools across 114 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
