@@ -259,6 +259,64 @@ def _reverse(edges: Mapping[str, set[str]]) -> dict[str, set[str]]:
     return reverse
 
 
+#: What a file's source writes: the module names it imports as it loads, those it imports
+#: once one of its functions runs, and whether it imports its own submodules by name.
+WrittenImports = tuple[frozenset[str], frozenset[str], bool]
+
+#: Fewer files than this are parsed in the calling process: a pool costs more than it saves.
+_POOL_FROM_FILES = 200
+
+
+def _written_imports(path: str, source: str) -> WrittenImports | None:
+    """The module names ``path``'s source writes (``None``: ``ast`` cannot parse it).
+
+    A test file, or a helper of ``tests/``, runs every import it writes, so
+    all of them count as it loads. An ``app`` module's import inside a
+    function runs only when the function does; a dotted string resolves at
+    run time too.
+    """
+    own = module_name(path) or ""
+    package = own if path.endswith("__init__.py") else own.rpartition(".")[0]
+    in_tests = path.startswith("tests/")
+    eager: set[str] = set()
+    lazy: set[str] = set()
+    try:
+        tree = ast.parse(source, filename=path)
+    except SyntaxError:
+        return None
+    for node, deferred in _imports(tree):
+        names = eager if in_tests or not deferred else lazy
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+            continue
+        base = node.module or ""
+        if node.level:
+            anchor = package.split(".")
+            if node.level > 1:
+                anchor = anchor[: len(anchor) - (node.level - 1)]
+            base = ".".join([*anchor, base] if base else anchor)
+        names.add(base)
+        names.update(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
+    (eager if in_tests else lazy).update(_DOTTED.findall(source))
+    submodules = path.endswith("__init__.py") and bool(_IMPORTS_ITS_SUBMODULES.search(source))
+    return frozenset(eager), frozenset(lazy), submodules
+
+
+def _read_written_imports(backend: str, path: str) -> WrittenImports | None:
+    return _written_imports(path, (Path(backend) / path).read_text(encoding="utf-8", errors="replace"))
+
+
+def _written_imports_of(backend: Path, paths: list[str]) -> list[WrittenImports | None]:
+    """:func:`_written_imports` of every path, parsed on every CPU: ``ast`` takes most of the select job's time."""
+    if len(paths) < _POOL_FROM_FILES:
+        return [_read_written_imports(str(backend), path) for path in paths]
+    from concurrent.futures import ProcessPoolExecutor
+    from itertools import repeat
+
+    with ProcessPoolExecutor() as pool:
+        return list(pool.map(_read_written_imports, repeat(str(backend)), paths, chunksize=64))
+
+
 @dataclass
 class Graph:
     """Every ``.py`` file of ``GRAPH_ROOTS``: its source and the modules it reaches directly."""
@@ -284,8 +342,8 @@ class Graph:
                     sources[path.relative_to(backend).as_posix()] = path.read_text(encoding="utf-8", errors="replace")
         modules = {name: path for path in sources if (name := module_name(path)) is not None}
         graph = cls(sources=sources, modules=modules)
-        for path, source in sources.items():
-            graph.reaches[path], graph.reaches_later[path], graph.names[path] = graph._direct(path, source)
+        for path, written in zip(sources, _written_imports_of(backend, list(sources)), strict=True):
+            graph.reaches[path], graph.reaches_later[path], graph.names[path] = graph._direct(path, written)
         return graph
 
     def resolve(self, dotted: str) -> list[str]:
@@ -297,40 +355,19 @@ class Graph:
                 return [candidate, *(p for p in _parents(candidate) if p in self.modules)]
         return []
 
-    def _direct(self, path: str, source: str) -> tuple[set[str], set[str], set[str]]:
+    def _direct(self, path: str, written: WrittenImports | None) -> tuple[set[str], set[str], set[str]]:
         """What ``path`` reaches as it loads, what it reaches once one of its functions runs, and what it names as it loads.
 
-        A test file, or a helper of ``tests/``, runs every import it writes, so
-        all of them count as it loads. An ``app`` module's import inside a
-        function runs only when the function does; a dotted string resolves at
-        run time too.
+        ``written``: the module names its source writes (:func:`_written_imports`),
+        ``None`` when ``ast`` could not parse it.
         """
-        own = module_name(path) or ""
-        package = own if path.endswith("__init__.py") else own.rpartition(".")[0]
-        in_tests = path.startswith("tests/")
-        eager: set[str] = set()
-        lazy: set[str] = set()
-        try:
-            tree = ast.parse(source, filename=path)
-        except SyntaxError:
+        if written is None:
             self.unparsed.append(path)
             return set(), set(), set()
-        for node, deferred in _imports(tree):
-            names = eager if in_tests or not deferred else lazy
-            if isinstance(node, ast.Import):
-                names.update(alias.name for alias in node.names)
-                continue
-            base = node.module or ""
-            if node.level:
-                anchor = package.split(".")
-                if node.level > 1:
-                    anchor = anchor[: len(anchor) - (node.level - 1)]
-                base = ".".join([*anchor, base] if base else anchor)
-            names.add(base)
-            names.update(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
-        (eager if in_tests else lazy).update(_DOTTED.findall(source))
+        own = module_name(path) or ""
+        eager, lazy, imports_its_submodules = written
         reached = {module for name in eager for module in self.resolve(name)}
-        if path.endswith("__init__.py") and _IMPORTS_ITS_SUBMODULES.search(source):
+        if imports_its_submodules:
             reached.update(name for name in self.modules if name.startswith(f"{own}."))
         reached.update(p for p in _parents(own) if p in self.modules)
         reached.discard(own)
