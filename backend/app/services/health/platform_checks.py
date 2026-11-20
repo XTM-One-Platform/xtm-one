@@ -35,6 +35,7 @@ Check                              Severity    Category       Fails when
 ``xtm_one.trace_backlog``          warning     capacity       over 1,000 traces wait in the tracing overflow queue
 ``xtm_one.worker_absent``          critical    availability   no worker says it is running, so queued runs, renders and indexing wait
 ``xtm_one.provider_error_rate``    warning     availability   over 5 % of a model's traces of the last hour failed (20 traces at least)
+``xtm_one.maintenance_stalled``    warning     availability   the hourly maintenance (retention sweeps, purges) has not completed in two hours
 ``xtm_one.version_behind``         info/warn   configuration  a newer XTM One release is published (two or more: warning), read daily
 ``xtm_one.certificate_expiry``     warning     security       the TLS certificate of the public URL expires within 21 days or is refused, read daily
 =================================  ==========  =============  ==============================================
@@ -550,6 +551,34 @@ async def worker_absent(db: AsyncSession, now: datetime) -> list[CheckResult]:
     ]
 
 
+async def maintenance_stalled(db: AsyncSession, now: datetime) -> list[CheckResult]:
+    """The hourly maintenance has not completed in two intervals: files, purges and retention pile up."""
+    from app.services import wall_clock_schedule
+
+    job = wall_clock_schedule.HOURLY_MAINTENANCE
+    state = await wall_clock_schedule.status(job, now=now)
+    if state.since is None and state.last_completed_at is None:  # never scheduled yet, or Redis unreadable
+        return []
+    last = state.last_completed_at.isoformat() if state.last_completed_at else "never"
+    return [
+        _result(
+            "xtm_one.maintenance_stalled",
+            "warning",
+            "availability",
+            state.overdue,
+            evidence={
+                "values": {"last_completed_at": last, "since": state.since.isoformat() if state.since else None},
+                "threshold": "2 hours",
+                "source": "scheduler schedule hourly_maintenance",
+            },
+            recommendation=(
+                f"Hourly maintenance has not run since {last}: read the web process logs for "
+                "'Schedule of hourly_maintenance' and the errors of the scheduler tick."
+            ),
+        )
+    ]
+
+
 async def _model_trace_counts(db: AsyncSession, since: datetime) -> list[tuple[str, int, int]]:
     """``(model, traces, failed)`` per model of the traces started since ``since``."""
     from app.models.llm_trace import LLMTrace
@@ -721,6 +750,7 @@ for _check_id, _run in (
     ("xtm_one.trace_backlog", trace_backlog),
     ("xtm_one.worker_absent", worker_absent),
     ("xtm_one.provider_error_rate", provider_error_rate),
+    ("xtm_one.maintenance_stalled", maintenance_stalled),
 ):
     register_check(
         Check(check_id=_check_id, module=MODULE, interval=PLATFORM_CHECK_INTERVAL, run=_platform_check(_run))

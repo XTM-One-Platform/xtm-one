@@ -115,6 +115,7 @@ def test_the_platform_checks_are_registered_on_the_engine() -> None:
         "xtm_one.trace_backlog",
         "xtm_one.worker_absent",
         "xtm_one.provider_error_rate",
+        "xtm_one.maintenance_stalled",
         "xtm_one.version_behind",
         "xtm_one.certificate_expiry",
     }

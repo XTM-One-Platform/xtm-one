@@ -264,9 +264,17 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
       </table>
 
       {data && (
-        <p className="content-compact text-default-secondary">
-          {t_i18n("Next sweep {next}.", { next: when(data.next_sweep_at) })}{" "}
+        <p className="content-compact text-default-secondary" data-testid="settings.file-retention.schedule">
+          {data.next_sweep_at ? t_i18n("Next sweep {next}.", { next: when(data.next_sweep_at) }) : t_i18n("Next sweep: due now, at the next scheduler tick.")}{" "}
           {data.last_sweep ? t_i18n("Last sweep {last}.", { last: when(data.last_sweep.at) }) : t_i18n("No sweep has run yet.")}
+        </p>
+      )}
+      {data?.sweep_overdue && (
+        <p className="content-compact flex items-center gap-1.5" role="status" data-testid="settings.file-retention.overdue">
+          <Icon name="triangle-alert" size={16} className="shrink-0 text-feedback-warning-primary" aria-hidden />
+          {data.maintenance_completed_at
+            ? t_i18n("The hourly sweep has not completed since {last}: files past their retention are not deleted.", { last: when(data.maintenance_completed_at) })
+            : t_i18n("The hourly sweep has not completed yet: files past their retention are not deleted.")}
         </p>
       )}
 
