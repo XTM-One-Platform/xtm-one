@@ -887,7 +887,7 @@ def build_shared_state_tools(
                 "  - RETENTION WARNING: the policy has no archive_when, so the OLDEST items rolled "
                 "whatever their state; set archive_when to roll terminal items only"
             )
-        if state.get("retention_held_open"):
+        if state.get("retention_held_open") and state.get("retention_unmatched") is None:
             held = ", ".join(f"{n} {c}" for n, c in state["retention_held_open"].items())
             lines.append(
                 f"  - RETENTION WARNING: open items kept past the cap ({held}): archive_when "
