@@ -129,6 +129,7 @@ from app.api.v1 import (
     platform_health,
     platform_health_companion,
     platform_health_cycles,
+    platform_health_findings,
     presentation_public,
     presentations,
     prompts,
@@ -4398,7 +4399,12 @@ application.include_router(agents.router, prefix="/api/v1/agents", tags=["agents
 # /api/v1/concierge prefix answers the same handlers as a deprecated alias
 # (DeprecatedAliasMiddleware, dev-docs/reference/api-routes.md).
 for _health_prefix, _in_schema in ((HEALTH_API_PREFIX, True), (CONCIERGE_ALIAS_PREFIX, False)):
-    for _health_router in (platform_health.router, platform_health_cycles.router, platform_health_companion.router):
+    for _health_router in (
+        platform_health.router,
+        platform_health_cycles.router,
+        platform_health_companion.router,
+        platform_health_findings.router,
+    ):
         application.include_router(_health_router, prefix=_health_prefix, tags=["health"], include_in_schema=_in_schema)
 
 application.include_router(
