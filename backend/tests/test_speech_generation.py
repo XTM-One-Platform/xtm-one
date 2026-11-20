@@ -572,6 +572,84 @@ def test_the_callers_choice_and_the_missing_ones(_speech):
         asyncio.run(router.get_speech_provider(_Db([_config("anthropic")])))
 
 
+class _Gateway:
+    """The AI Gateway marking *default* as its speech model (XTM-One-Platform/ai-gateway#376)."""
+
+    def __init__(self, default: str | None, voices: tuple[str, ...] = ("marin", "cedar")):
+        self.default, self.voices = default, voices
+
+    async def marked_default_model(self, kind: str) -> str | None:
+        return self.default if kind == "speech" else None
+
+    async def list_voices(self, model: str | None = None) -> list[Voice]:
+        return [Voice(v, v.title()) for v in self.voices]
+
+
+@pytest.fixture
+def _gateway_speech(_speech, monkeypatch):
+    _speech["gateway"] = _Gateway("gpt-4o-mini-tts")
+
+    async def _cached(config):
+        return _speech["gateway"] if config.provider == "filigran_gateway" else f"provider:{config.provider}"
+
+    monkeypatch.setattr(router, "_cached_provider", _cached)
+    return _speech
+
+
+def test_the_gateway_default_speaks_when_nothing_else_does(_gateway_speech):
+    gateway = _config("filigran_gateway")
+    target = asyncio.run(router.get_speech_provider(_Db([_config("anthropic"), gateway])))
+    assert (target.provider, target.model, target.config, target.voice) == (
+        _gateway_speech["gateway"], "gpt-4o-mini-tts", gateway, None,
+    )
+    # A caller naming the gateway without a model gets its default too.
+    named = asyncio.run(router.get_speech_provider(_Db([gateway]), provider_id=gateway.id))
+    assert named.model == "gpt-4o-mini-tts"
+
+
+def test_a_built_in_speech_default_and_the_admins_choice_come_first(_gateway_speech):
+    gateway, openai_config = _config("filigran_gateway"), _config("openai")
+    target = asyncio.run(router.get_speech_provider(_Db([gateway, openai_config])))
+    assert target.config is openai_config
+    _gateway_speech["ps"] = SimpleNamespace(speech_provider_id=gateway.id, speech_model="tts-1", speech_voice=None)
+    target = asyncio.run(router.get_speech_provider(_Db([gateway])))
+    assert target.model == "tts-1"
+
+
+def test_the_platform_voice_on_the_gateway_default_or_its_first_voice(_gateway_speech):
+    gateway = _config("filigran_gateway")
+    _gateway_speech["ps"] = SimpleNamespace(speech_provider_id=None, speech_model=None, speech_voice="Cedar")
+    assert asyncio.run(router.get_speech_provider(_Db([gateway]))).voice == "cedar"
+    # A voice the default model lacks is its first voice, never an error.
+    _gateway_speech["ps"].speech_voice = "rachel"
+    assert asyncio.run(router.get_speech_provider(_Db([gateway]))).voice == "marin"
+    # The same when the caller names the gateway.
+    named = asyncio.run(router.get_speech_provider(_Db([gateway]), provider_id=gateway.id))
+    assert (named.model, named.voice) == ("gpt-4o-mini-tts", "marin")
+
+
+def test_the_gateway_the_admin_chose_without_a_model_speaks_first(_gateway_speech, monkeypatch):
+    first, chosen = _config("filigran_gateway"), _config("filigran_gateway")
+    gateways = {first.id: _Gateway("first-tts"), chosen.id: _Gateway("chosen-tts")}
+
+    async def _cached(config):
+        return gateways[config.id]
+
+    monkeypatch.setattr(router, "_cached_provider", _cached)
+    _gateway_speech["ps"] = SimpleNamespace(speech_provider_id=chosen.id, speech_model=None, speech_voice=None)
+    target = asyncio.run(router.get_speech_provider(_Db([first, chosen])))
+    assert (target.config, target.model) == (chosen, "chosen-tts")
+
+
+def test_a_gateway_marking_no_speech_default_is_todays_refusal(_gateway_speech):
+    _gateway_speech["gateway"] = _Gateway(None)
+    gateway = _config("filigran_gateway")
+    with pytest.raises(ValueError, match="Speech generation"):
+        asyncio.run(router.get_speech_provider(_Db([gateway])))
+    with pytest.raises(ValueError, match="Name the speech model"):
+        asyncio.run(router.get_speech_provider(_Db([gateway]), provider_id=gateway.id))
+
+
 # ── The setting ───────────────────────────────────────────────────────────
 
 
