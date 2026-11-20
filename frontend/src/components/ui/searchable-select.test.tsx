@@ -7,6 +7,8 @@ import {
   SearchableSelect,
   SEARCH_THRESHOLD,
   SHRINKING_TRIGGER_STYLE,
+  SHRINKING_WRAPPER_CLASS,
+  FILLING_WRAPPER_CLASS,
   TWO_LINE_LIST_CLASS,
   type SelectOption,
 } from "@/components/ui/searchable-select";
@@ -294,6 +296,19 @@ describe("SearchableSelect", () => {
     // The inline style the trigger carries (happy-dom has no layout: the lab render proves the width).
     expect(trigger.style.minWidth).toMatch(/^0(px)?$/);
     expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
+  });
+
+  it("reaches the DS wrapper, the flex item of a cell, so it shrinks and fills (UX r1 B1 and A1, #611)", () => {
+    // The DS SelectTrigger wraps the trigger in a span with no prop: a display-contents box carries
+    // the rules that reach it. Asserted on the exported rules and the rendered nesting (no layout in happy-dom).
+    expect(SHRINKING_WRAPPER_CLASS.split(" ")).toEqual(["contents", "[&>span]:min-w-0", "[&>span]:max-w-full"]);
+    expect(FILLING_WRAPPER_CLASS).toBe("[&>span]:flex-1");
+    const { container } = renderWithProviders(<Harness options={PROVIDERS} searchable="auto" initial={PROVIDERS[0].value} />);
+    const trigger = screen.getByRole("combobox", { name: "Provider" });
+    const dsWrapper = trigger.parentElement;
+    expect(dsWrapper?.tagName).toBe("SPAN");
+    expect(dsWrapper?.parentElement?.matches("span.contents")).toBe(true);
+    expect(container.contains(dsWrapper)).toBe(true);
   });
 
   it("puts no title on an empty search field", () => {

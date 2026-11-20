@@ -88,6 +88,26 @@ export const TWO_LINE_LIST_CLASS =
  */
 export const SHRINKING_TRIGGER_STYLE = { minWidth: 0 } as const;
 
+/**
+ * The DS `SelectTrigger` renders its trigger inside a `<span class="flex">` wrapper (the room
+ * for its clear control) and exposes no prop for it. In a flex row (a table cell) that span is
+ * the flex item, and at `min-width: auto` it holds the field at the label's min-content: the
+ * trigger's own `min-width: 0` alone never shrank it (UX r1 B1, #611). A `display: contents`
+ * box adds no layout of its own and reaches the span: `min-w-0 max-w-full` lets it shrink to
+ * its container. LIBRARY-FEEDBACK: a wrapper prop on SelectTrigger would replace this.
+ */
+export const SHRINKING_WRAPPER_CLASS = "contents [&>span]:min-w-0 [&>span]:max-w-full";
+
+/**
+ * A consumer that asks the field to fill (`w-full`) also gets a wrapper that fills a flex row,
+ * so a short label (`dmz`, `None`) does not hug its text beside full-width neighbours (UX r1
+ * A1, #611). A fixed width (`w-48 shrink-0`) keeps a wrapper that hugs the trigger, the DS
+ * default, so a toolbar row is never claimed by one picker.
+ */
+export const FILLING_WRAPPER_CLASS = "[&>span]:flex-1";
+
+const asksToFill = (className: string | undefined) => /(^|\s)w-full(\s|$)/.test(className ?? "");
+
 type Naming =
   | { "aria-label": string; "aria-labelledby"?: string }
   | { "aria-label"?: string; "aria-labelledby": string };
@@ -195,6 +215,7 @@ export function SearchableSelect({
     const sections = grouped ? groupsOf(ordered) : [{ label: null, options: ordered }];
     const hasDescriptions = ordered.some((option) => !!option.description);
     return (
+      <span className={cn(SHRINKING_WRAPPER_CLASS, asksToFill(className) && FILLING_WRAPPER_CLASS)}>
       <Select
         value={value ?? ""}
         onValueChange={onValueChange}
@@ -241,6 +262,7 @@ export function SearchableSelect({
           ))}
         </SelectContent>
       </Select>
+      </span>
     );
   }
 
