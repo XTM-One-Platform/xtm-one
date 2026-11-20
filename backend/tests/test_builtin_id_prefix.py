@@ -248,6 +248,7 @@ class _NoSession:
         ("get_skill", "skill_id", "Skill"),
         ("update_skill", "skill_id", "Skill"),
         ("get_agent", "agent_id", "Agent"),
+        ("list_assignments", "agent_id", "Agent"),
     ],
 )
 async def test_a_prefix_that_starts_no_visible_object_is_answered_not_found(monkeypatch, tool, arg, entity):
@@ -276,6 +277,31 @@ async def test_a_prefix_that_starts_no_visible_object_is_answered_not_found(monk
 
 
 @pytest.mark.asyncio
+async def test_list_assignments_refuses_a_prefix_of_two_agents(monkeypatch):
+    from app.api.v1 import helpers
+    from app.core import database
+    from app.models.agent import Agent
+    from app.services.builtin_tools import agent_builder
+
+    async def _groups(db, uid):
+        return []
+
+    async def _ambiguous(db, model, value, clauses=(), *, noun, label=None):
+        assert model is Agent and noun == "agents"
+        assert clauses, "the agent visibility clause is applied"
+        return value, idp.ambiguous_text(value, noun, [(FULL, "One"), (OTHER, "Two")])
+
+    monkeypatch.setattr(database, "async_session", lambda: _NoSession())
+    monkeypatch.setattr(helpers, "get_user_group_ids", _groups)
+    monkeypatch.setattr(idp, "resolve_id_prefix", _ambiguous)
+    _, executor = agent_builder.build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(executor, "list_assignments", agent_id="48b4e177")
+    # Read as an id prefix, never refused as a malformed UUID.
+    assert FULL in result.content and OTHER in result.content
+    assert "must be a valid UUID" not in result.content
+
+
+@pytest.mark.asyncio
 async def test_get_skill_still_refuses_a_value_that_is_no_id():
     from app.services.builtin_tools.agent_builder import build_agent_builder_tool
 
@@ -284,6 +310,8 @@ async def test_get_skill_still_refuses_a_value_that_is_no_id():
     assert "skill_id must be a valid UUID" in result.content
     result = await _call(executor, "get_assignment", assignment_id="9196660z")
     assert "assignment_id must be a valid UUID" in result.content
+    result = await _call(executor, "list_assignments", agent_id="9196660z")
+    assert "agent_id must be a valid UUID" in result.content
 
 
 # ── one knowledge tool ───────────────────────────────────────────────────────
