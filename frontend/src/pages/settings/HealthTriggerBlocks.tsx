@@ -205,7 +205,16 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full content-compact" data-testid="settings.health.schedule.table">
+        <table className="w-full table-fixed content-compact" data-testid="settings.health.schedule.table">
+          {/* Fixed widths sized to the all-valid layout: a row flipping to "Not a valid cron expression" while typing never moves a column. */}
+          <colgroup>
+            <col className="w-[19%]" />
+            <col className="w-[6%]" />
+            <col className="w-[23%]" />
+            <col className="w-[24%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+          </colgroup>
           <thead>
             <tr className="border-b border-elevation-subtle-soft text-left text-default-secondary">
               <th className="py-1.5 pr-3 font-medium">{t_i18n("Name")}</th>
@@ -229,8 +238,8 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
               return (
                 <tr key={key} className="border-b border-elevation-subtle-soft last:border-b-0" data-testid={`settings.health.schedule.row.${key}`}>
                   <td className="py-1.5 pr-3">
-                    <span className="flex items-center gap-1.5">
-                      <span id={`${switchId}-label`} className="content-base font-medium">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span id={`${switchId}-label`} className="truncate content-base font-medium" title={label}>
                         {label}
                       </span>
                       <InfoTip
@@ -273,16 +282,24 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                       <span className="font-mono-plex content-base">{cron.trim()}</span>
                     )}
                   </td>
-                  <td className={cn("py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")}>
-                    {next === null ? t_i18n("Not a valid cron expression") : `${humanizeCron(cron.trim(), locale)} (${timezone.replace(/_/g, " ")})`}
-                  </td>
-                  <td className="py-1.5 pr-3 text-default-secondary" data-testid={`settings.health.schedule.last.${key}`}>
-                    {fired ? when(fired.fired_at) : t_i18n("Never")}
-                    {fired?.refusal && ` · ${t_i18n(healthRefusalKey({ detail: { code: fired.refusal } }), { name: healthName })}`}
-                  </td>
-                  <td className="py-1.5 text-default-secondary" data-testid={`settings.health.schedule.next.${key}`}>
-                    {enabled && next ? when(next.toISOString()) : t_i18n("Not scheduled")}
-                  </td>
+                  {(() => {
+                    const reading = next === null ? t_i18n("Not a valid cron expression") : `${humanizeCron(cron.trim(), locale)} (${timezone.replace(/_/g, " ")})`;
+                    const last = `${fired ? when(fired.fired_at) : t_i18n("Never")}${fired?.refusal ? ` · ${t_i18n(healthRefusalKey({ detail: { code: fired.refusal } }), { name: healthName })}` : ""}`;
+                    const upcoming = enabled && next ? when(next.toISOString()) : t_i18n("Not scheduled");
+                    return (
+                      <>
+                        <td className={cn("truncate py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")} title={reading}>
+                          {reading}
+                        </td>
+                        <td className="truncate py-1.5 pr-3 text-default-secondary" title={last} data-testid={`settings.health.schedule.last.${key}`}>
+                          {last}
+                        </td>
+                        <td className="truncate py-1.5 text-default-secondary" title={upcoming} data-testid={`settings.health.schedule.next.${key}`}>
+                          {upcoming}
+                        </td>
+                      </>
+                    );
+                  })()}
                 </tr>
               );
             })}
