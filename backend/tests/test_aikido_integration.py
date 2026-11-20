@@ -507,3 +507,14 @@ def test_catalog_entry_shape():
     assert entry["fields"] == ["api_key"]
     assert {"region", "client_id", "webhook_secret"} <= set(entry["extra_fields"])
     assert {o["value"] for o in entry["extra_field_options"]["region"]} == set(REGIONS)
+
+
+def test_setup_guide_names_fields_as_rendered():
+    """The setup guide quotes each form field by the label the form renders (UX round 1, B1)."""
+    entry = PROVIDER_CATALOG["aikido"]
+    steps = " ".join(entry["setup_guide"]["steps"])
+    for label in entry["extra_fields"].values():
+        assert f"'{label}'" in steps, label
+    assert "'API key' field" in steps
+    assert "'API Key'" not in steps
+    assert "'Webhook signing secret'" not in steps

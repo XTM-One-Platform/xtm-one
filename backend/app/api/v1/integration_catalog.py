@@ -4622,8 +4622,8 @@ PROVIDER_CATALOG = {
             "steps": [
                 "In Aikido, as a workspace admin, open Settings > Integrations > API and create a REST API client.",
                 "Grant the scopes the agents need: the read scopes for a read-only binding, the write scopes for triage and configuration tools.",
-                "Pick the data region of the workspace, paste the client ID in its field and the client secret in the 'API Key' field.",
-                "Optional, for webhook triggers: in Settings > Integrations > Webhooks, click 'Add secret', paste the HMAC signing secret in 'Webhook signing secret', then add a webhook per event pointing to the webhook URL shown below.",
+                "Pick the region in 'Data region of the Aikido workspace', paste the client ID in the 'API client ID' field and the client secret in the 'API key' field.",
+                "Optional, for webhook triggers: in Settings > Integrations > Webhooks, click 'Add secret', paste the HMAC signing secret in the 'Webhook HMAC signing secret (X-Aikido-Webhook-Signature)' field, then add a webhook per event pointing to the webhook URL shown below.",
                 "Click 'Test Connection': it mints a token and reads the workspace.",
             ],
             "permissions": [
