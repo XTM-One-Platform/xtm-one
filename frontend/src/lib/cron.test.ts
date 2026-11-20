@@ -22,6 +22,12 @@ describe("nextCronRun", () => {
     expect(nextCronRun("not a cron", "UTC", friday)).toBeNull();
     expect(nextCronRun("99 3 * * *", "UTC", friday)).toBeNull();
   });
+
+  it("answers null for a 4-field or a 6-field expression the server refuses", () => {
+    expect(nextCronRun("0 2 * *", "UTC", friday)).toBeNull();
+    expect(nextCronRun("0 0 2 * * *", "UTC", friday)).toBeNull();
+    expect(nextCronRun("  0 2 * * *  ", "UTC", friday)?.toISOString()).toBe("2026-11-21T02:00:00.000Z");
+  });
 });
 
 describe("humanizeCron", () => {

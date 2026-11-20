@@ -76,11 +76,14 @@ export function humanizeCron(cron: string | null | undefined, locale?: string): 
  * zone such as `Europe/Paris`; UTC when absent), or null when the expression
  * does not parse. The Platform Health schedule table reads it for its "Next
  * run" column; the server's own `next_cron_run` decides when a cycle starts.
+ * Only the 5-field form the server accepts is read: a 4-field or a 6-field
+ * expression (which the parser would read with defaults or seconds) is null.
  */
 export function nextCronRun(cron: string | null | undefined, timeZone?: string, from: Date = new Date()): Date | null {
-  if (!cron || !cron.trim()) return null;
+  const expression = cron?.trim();
+  if (!expression || expression.split(/\s+/).length !== 5) return null;
   try {
-    return CronExpressionParser.parse(cron.trim(), { currentDate: from, tz: timeZone || "UTC" }).next().toDate();
+    return CronExpressionParser.parse(expression, { currentDate: from, tz: timeZone || "UTC" }).next().toDate();
   } catch {
     return null;
   }
