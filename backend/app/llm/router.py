@@ -3374,6 +3374,22 @@ _IMAGE_PROVIDERS = ("openai", "gemini", "azure_openai")
 _EMBEDDING_MODEL_OPTIONAL_PROVIDERS = EMBEDDING_ONLY_PROVIDERS
 
 
+async def gateway_default(
+    configs: Iterable[LLMProviderConfig], kind: str
+) -> tuple[LLMProviderConfig, BaseLLMProvider, str] | None:
+    """The first AI Gateway of *configs* marking a default *kind* model, the last fallback (#746).
+
+    Read from its listing at each resolution, never written to ``PlatformSettings``.
+    """
+    for config in configs:
+        if config.provider != FiligranGatewayProvider.provider_name:
+            continue
+        provider = await _cached_provider(config)
+        if model := await provider.marked_default_model(kind):
+            return config, provider, model
+    return None
+
+
 def implicit_embedding_fallback(
     configs: list[LLMProviderConfig],
     *,
@@ -3506,6 +3522,8 @@ async def get_image_provider(
     2. Fallback: the first configured provider in :data:`_IMAGE_PROVIDERS`
        order that has a model (its built-in default, or the admin's
        ``image_model`` for that provider; Azure OpenAI has no default).
+    3. Last: the default image model of the gateway the admin chose, else of
+       the newest AI Gateway (:func:`gateway_default`).
 
     Uses a single DB query for all provider configs and the provider
     instance cache.
@@ -3545,6 +3563,13 @@ async def get_image_provider(
             if model:
                 await ensure_not_excluded(db, matching[-1], "Image generation", user_id)
                 return await _cached_provider(matching[-1]), model
+
+    # 3. Last: the gateway's default image model
+    chosen_first = sorted(reversed(configs), key=lambda c: c.id != getattr(ps, "image_provider_id", None))
+    if listed := await gateway_default(chosen_first, "image"):
+        config, provider, model = listed
+        await ensure_not_excluded(db, config, "Image generation", user_id)
+        return provider, model
 
     raise ValueError(
         "An image-capable provider is required for image generation. An admin must configure one in Settings "
@@ -4140,6 +4165,9 @@ async def get_speech_provider(
        Speech generation).
     3. Fallback: the first provider with a built-in speech model
        (:data:`SPEECH_DEFAULTS`), the person's team's first.
+    4. Last: the default speech model of the gateway the admin chose, else of
+       the person's team's first (:func:`gateway_default`), with the
+       platform's voice when it offers it, else its first voice.
 
     Only among the providers the person may use: one reserved for teams they
     are not in, or one that excludes them, never speaks for them
@@ -4168,6 +4196,9 @@ async def get_speech_provider(
         chosen = model or (platform_model if platform_provider_id == config.id else None) or SPEECH_DEFAULTS.get(
             config.provider
         )
+        if not chosen and (listed := await gateway_default([config], "speech")):
+            _, provider, chosen = listed
+            return SpeechTarget(provider, chosen, config, await _offered_voice(provider, chosen, platform_voice))
         if not chosen:
             raise ValueError(f"Name the speech model to use on {getattr(config, 'display_name', None) or config.provider}.")
         return SpeechTarget(await _cached_provider(config), chosen, config, _voice_for(config, chosen))
@@ -4183,9 +4214,28 @@ async def get_speech_provider(
         if config is not None:
             return SpeechTarget(await _cached_provider(config), model or SPEECH_DEFAULTS[prov_name], config)
 
+    if listed := await gateway_default(sorted(usable, key=lambda c: c.id != platform_provider_id), "speech"):
+        config, provider, chosen = listed
+        chosen = model or chosen
+        return SpeechTarget(provider, chosen, config, await _offered_voice(provider, chosen, platform_voice))
+
     raise ValueError(
         "No speech model is available to you. An admin chooses one in Settings > AI and models > Media > Speech generation."
     )
+
+
+async def _offered_voice(provider: BaseLLMProvider, model: str, voice: str | None) -> str | None:
+    """*voice* when *model* offers it, else its first voice (``pick_voice``); kept as is when none are listed."""
+    if not voice:
+        return None
+    from app.llm.speech import pick_voice
+
+    try:
+        voices = await provider.list_voices(model)
+    except Exception as exc:
+        logger.info("Voices of %s not listed: %s", model, format_exception_message(exc))
+        return voice
+    return pick_voice(voices, voice, None, [])
 
 
 async def list_speech_models_for(db: AsyncSession, *, user_id: object) -> list[dict[str, str]]:

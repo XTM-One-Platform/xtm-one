@@ -86,6 +86,10 @@ _OWNER_MISS_TTL_SECONDS = 30.0
 _OWNER_LISTING_TIMEOUT = httpx.Timeout(5.0)
 # A voices read answers within the 20 s the speech settings wait for it.
 _VOICES_TIMEOUT = httpx.Timeout(15.0)
+# The listing's default image and speech models are read again after this.
+_DEFAULTS_TTL_SECONDS = 300.0
+# The types whose default model the listing marks (``"default": true``, XTM-One-Platform/ai-gateway#376).
+_DEFAULT_TYPES = ("image", "speech")
 
 # One composition is one request. The read outlasts the gateway's own 10 minute
 # upstream wait, so its answer (a refusal included) arrives before the client
@@ -291,6 +295,9 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._refused_dimensions: set[tuple[str, int]] = set()
         # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358).
         self._editing_models: set[str] = set()
+        # Per type, the model the listing marks default, and until when that listing holds.
+        self._listed_defaults: dict[str, str] = {}
+        self._listed_defaults_until = 0.0
         # Per model: the ElevenLabs account's voices (``GET /v1/audio/voices``) and when they were read,
         # and a failed read's message until it is tried again.
         self._account_voices: dict[str, tuple[float, list[Voice]]] = {}
@@ -357,6 +364,7 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
                 f"{redact_token(str(e), self._token)}"
             ) from None
         out: list[GatewayModel] = []
+        defaults: dict[str, str] = {}
         for m in response.data:
             owner = getattr(m, "owned_by", None) or "gateway"
             self._owner_cache[m.id] = owner
@@ -365,8 +373,30 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
                 self._editing_models.add(m.id)
             else:
                 self._editing_models.discard(m.id)
+            # Absent on an older gateway: no default. Only for a type the entry declares, never its id's guess.
+            if getattr(m, "default", None) is True:
+                declared = declared_model_types(getattr(m, "types", None), getattr(m, "type", None))
+                for t in _DEFAULT_TYPES:
+                    if t in declared:
+                        defaults.setdefault(t, m.id)
             out.append(GatewayModel(m.id, owner, _types_of(m)))
+        self._listed_defaults = defaults
+        self._listed_defaults_until = time.monotonic() + _DEFAULTS_TTL_SECONDS
         return out
+
+    async def marked_default_model(self, kind: str) -> str | None:
+        """The model the gateway marks default for *kind* (``image``, ``speech``), the last fallback (#746).
+
+        Read from a listing at most :data:`_DEFAULTS_TTL_SECONDS` old. While one is read, or after one
+        failed, the last defaults read answer: one listing at a time, retried after the miss TTL.
+        """
+        if self._listed_defaults_until <= time.monotonic():
+            self._listed_defaults_until = time.monotonic() + _OWNER_MISS_TTL_SECONDS
+            try:
+                await self._models_with_meta(self.client.with_options(max_retries=0, timeout=_OWNER_LISTING_TIMEOUT))
+            except RuntimeError as exc:
+                logger.warning("Gateway default models not read: %s", format_exception_message(exc))
+        return self._listed_defaults.get(kind)
 
     async def list_models(self) -> list[str]:
         """Chat models only (the reasoning picker + chat routing)."""

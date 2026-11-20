@@ -1636,6 +1636,154 @@ async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(mon
     assert properties["reference_file_ids"]["maxItems"] == 3 and "mask_file_id" in properties
 
 
+class TestListedDefaults:
+    """The gateway's ``"default": true`` per type (XTM-One-Platform/ai-gateway#376), read for #746."""
+
+    # As XTM-One-Platform/ai-gateway#381 lists them: never on a chat-only or decision model.
+    _LISTING = (
+        {"id": "gpt-image-1", "type": "image", "types": ["image"], "image_edit": True},
+        {"id": "gpt-image-2", "type": "image", "types": ["image"], "image_edit": True, "default": True},
+        {"id": "gpt-4o-mini-tts", "type": "speech", "types": ["speech"], "default": True},
+        {"id": "gpt-6", "type": "chat", "types": ["chat"]},
+    )
+
+    @staticmethod
+    def _counting(entries, listed: list[httpx.Request], answer: httpx.Response | None = None):
+        data = [{"object": "model", "owned_by": "acme", **e} for e in entries]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            listed.append(request)
+            return answer or httpx.Response(200, json={"object": "list", "data": data})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @pytest.mark.asyncio
+    async def test_the_model_marked_default_per_type(self):
+        provider = _listing_provider(*self._LISTING)
+        assert await provider.marked_default_model("image") == "gpt-image-2"
+        assert await provider.marked_default_model("speech") == "gpt-4o-mini-tts"
+        assert await provider.marked_default_model("chat") is None
+
+    @pytest.mark.asyncio
+    async def test_a_flagged_model_is_default_for_the_types_it_lists_only(self):
+        provider = _listing_provider(
+            # A chat model that also draws is the image default.
+            {"id": "gemini-3-image", "type": "chat", "types": ["chat", "image"], "default": True},
+            # An entry declaring no type is never taken by its id's look.
+            {"id": "tts-1", "default": True},
+        )
+        assert await provider.marked_default_model("image") == "gemini-3-image"
+        assert await provider.marked_default_model("speech") is None
+
+    @pytest.mark.asyncio
+    async def test_an_older_gateway_marks_none(self):
+        provider = _listing_provider({"id": "gpt-image-2", "types": ["image"]}, {"id": "tts-1", "types": ["speech"]})
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("speech") is None
+
+    @pytest.mark.asyncio
+    async def test_the_listing_is_reused_then_read_again(self):
+        from app.llm import gateway_provider
+
+        listed: list[httpx.Request] = []
+        provider = self._counting(self._LISTING, listed)
+        await provider.marked_default_model("image")
+        await provider.marked_default_model("speech")
+        assert len(listed) == 1
+        assert provider._listed_defaults_until - gateway_provider.time.monotonic() > 290
+        # A new gateway default reaches the platform once the listing is stale.
+        provider._listed_defaults_until = 0.0
+        await provider.marked_default_model("image")
+        assert len(listed) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_keeps_the_last_defaults_read(self):
+        answers = [httpx.Response(200, json={"object": "list", "data": [
+            {"id": "gpt-image-2", "object": "model", "owned_by": "openai", "types": ["image"], "default": True},
+        ]}), httpx.Response(503, json={"error": {"message": "down"}})]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda _r: answers.pop(0))
+        assert await provider.marked_default_model("image") == "gpt-image-2"
+        provider._listed_defaults_until = 0.0
+        assert await provider.marked_default_model("image") == "gpt-image-2" and not answers
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_marks_none_and_is_not_asked_again_at_once(self):
+        listed: list[httpx.Request] = []
+        provider = self._counting((), listed, httpx.Response(503, json={"error": {"message": "down"}}))
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("speech") is None
+        assert len(listed) == 1
+
+
+class TestImageFallsBackToTheGatewayDefault:
+    """#746: with no image model chosen, the gateway's default draws, after every other fallback."""
+
+    _LISTING = ({"id": "gpt-image-1", "types": ["image"]}, {"id": "gpt-image-2", "types": ["image"], "default": True})
+
+    @pytest.fixture
+    def resolve(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.llm import router
+
+        state = {
+            "ps": SimpleNamespace(image_provider_id=None, image_provider=None, image_model=None),
+            "gateway": _listing_provider(*self._LISTING),
+        }
+
+        async def _ps(_db):
+            return state["ps"]
+
+        async def _cached(config):
+            return state["gateway"] if config.provider == "filigran_gateway" else f"provider:{config.provider}"
+
+        async def _allowed(*_a, **_kw):
+            return None
+
+        class _Db:
+            def __init__(self, configs):
+                self.configs = configs
+
+            async def execute(self, _statement):
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(self.configs)))
+
+        monkeypatch.setattr(router, "_get_platform_settings", _ps)
+        monkeypatch.setattr(router, "_cached_provider", _cached)
+        monkeypatch.setattr(router, "ensure_not_excluded", _allowed)
+
+        async def _resolve(*providers: str):
+            configs = [SimpleNamespace(id=uuid.uuid4(), provider=p) for p in providers]
+            return await router.get_image_provider(_Db(configs))
+
+        _resolve.state = state
+        return _resolve
+
+    @pytest.mark.asyncio
+    async def test_the_gateway_default_draws_when_nothing_else_does(self, resolve):
+        assert await resolve("anthropic", "filigran_gateway") == (resolve.state["gateway"], "gpt-image-2")
+
+    @pytest.mark.asyncio
+    async def test_a_built_in_default_comes_first(self, resolve):
+        assert await resolve("filigran_gateway", "openai") == ("provider:openai", "gpt-image-1")
+
+    @pytest.mark.asyncio
+    async def test_the_admins_choice_wins(self, resolve):
+        from types import SimpleNamespace
+
+        resolve.state["ps"] = SimpleNamespace(
+            image_provider_id=None, image_provider="filigran_gateway", image_model="gpt-image-1"
+        )
+        assert await resolve("filigran_gateway") == (resolve.state["gateway"], "gpt-image-1")
+
+    @pytest.mark.asyncio
+    async def test_no_default_marked_is_todays_refusal(self, resolve):
+        resolve.state["gateway"] = _listing_provider({"id": "gpt-image-2", "types": ["image"]})
+        with pytest.raises(ValueError, match="image-capable provider is required"):
+            await resolve("filigran_gateway")
+
+
 class TestSpeechVoices:
     """A Gemini speech model through the gateway offers Gemini's prebuilt voices (#703)."""
 
