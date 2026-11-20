@@ -140,6 +140,12 @@ REVIEWED_ESCAPES: dict[str, str] = {
         "through it; its only route caller, GET /roi/declarations/backfill-preview, runs "
         "the pass with dry_run=True and rolls back before answering"
     ),
+    r"passes the session to llm_factory\(\) in app\.services\.health\.analysis\.analyse_module": (
+        "Platform Health analysis (#101 S9): the factory only resolves the routing model "
+        "and its provider (reads); analyse_module commits every write it makes (the "
+        "reservation before the model call, the booking and the analysis row after) "
+        "before POST /health/analysis/{module}/run answers"
+    ),
     r"passes the session to handler\(\) in app\.services\.health\.consent\.apply_revocation": (
         "the Concierge revocation handlers (#8254) write in the caller's transaction; "
         "the only caller, the /api/v1/concierge routes, commits right after them "

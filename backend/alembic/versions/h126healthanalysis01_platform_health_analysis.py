@@ -39,13 +39,9 @@ _ANALYSES = "health_module_analyses"
 _SPEND = "health_analysis_spend"
 
 _NEW_CHECK = (
-    "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', "
-    "'memory', 'evaluation', 'proxy', 'platform_health')"
+    "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', 'memory', 'evaluation', 'proxy', 'platform_health')"
 )
-_OLD_CHECK = (
-    "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', "
-    "'memory', 'evaluation', 'proxy')"
-)
+_OLD_CHECK = "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', 'memory', 'evaluation', 'proxy')"
 
 
 def _has_table(conn: sa.engine.Connection, table: str) -> bool:

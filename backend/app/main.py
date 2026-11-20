@@ -127,6 +127,7 @@ from app.api.v1 import (
     platform_access_notices,
     platform_chat_workspaces,
     platform_health,
+    platform_health_analysis,
     platform_health_companion,
     platform_health_cycles,
     platform_health_findings,
@@ -4404,6 +4405,7 @@ for _health_prefix, _in_schema in ((HEALTH_API_PREFIX, True), (CONCIERGE_ALIAS_P
         platform_health_cycles.router,
         platform_health_companion.router,
         platform_health_findings.router,
+        platform_health_analysis.router,
     ):
         application.include_router(_health_router, prefix=_health_prefix, tags=["health"], include_in_schema=_in_schema)
 

@@ -179,10 +179,10 @@ async def reserve(
     """Reserve ``tokens`` and ``cost`` on today and this month; the refusal reason, or ``None`` once reserved."""
     if not settings.ceilings_set():
         return REFUSED_CEILING_NOT_SET
+    day_tokens, day_cost = settings.day_tokens or 0, settings.day_cost_usd or Decimal(0)
+    month_tokens, month_cost = settings.month_tokens or 0, settings.month_cost_usd or Decimal(0)
     day, month = await _locked_periods(db, now)
-    if _over(day, tokens, cost, settings.day_tokens, settings.day_cost_usd) or _over(  # type: ignore[arg-type]
-        month, tokens, cost, settings.month_tokens, settings.month_cost_usd  # type: ignore[arg-type]
-    ):
+    if _over(day, tokens, cost, day_tokens, day_cost) or _over(month, tokens, cost, month_tokens, month_cost):
         return REFUSED_CEILING_REACHED
     for row in (day, month):
         row.reserved_tokens += tokens
@@ -216,9 +216,7 @@ async def spend(db: AsyncSession, now: datetime) -> dict[str, dict[str, Any]]:
         row.period: row
         for row in (
             await db.execute(
-                select(HealthAnalysisSpend).where(
-                    HealthAnalysisSpend.period.in_((day_period(now), month_period(now)))
-                )
+                select(HealthAnalysisSpend).where(HealthAnalysisSpend.period.in_((day_period(now), month_period(now))))
             )
         ).scalars()
     }
@@ -233,7 +231,7 @@ async def spend(db: AsyncSession, now: datetime) -> dict[str, dict[str, Any]]:
     return out
 
 
-def _usage_tokens(usage: dict | None) -> int:
+def _usage_tokens(usage: dict[str, Any] | None) -> int:
     usage = usage or {}
     total = usage.get("total_tokens")
     if isinstance(total, int) and not isinstance(total, bool):
@@ -338,7 +336,7 @@ async def analyse_module(
         input_data={"module": module, "findings": len(rows)},
         metadata={"health_module": module, "trigger": trigger},
     )
-    usage: dict | None = None
+    usage: dict[str, Any] | None = None
     try:
         response = await llm.chat(
             messages=[ChatMessage(role="system", content=SYSTEM_PROMPT), ChatMessage(role="user", content=prompt)],
@@ -351,8 +349,24 @@ async def analyse_module(
     except Exception as exc:
         end_trace(trace, error=str(exc)[:500], usage=usage, model=model)
         logger.warning("Platform Health analysis of %s failed: %s", module, exc)
-        await book(db, now=now, reserved_tokens=reserved_tokens, reserved_cost=reserved_cost, spent_tokens=0, spent_cost=Decimal(0))
-        await _store(db, module, finding_hash=digest, status="failed", reason="model_error", trigger=trigger, now=now, model=model)
+        await book(
+            db,
+            now=now,
+            reserved_tokens=reserved_tokens,
+            reserved_cost=reserved_cost,
+            spent_tokens=0,
+            spent_cost=Decimal(0),
+        )
+        await _store(
+            db,
+            module,
+            finding_hash=digest,
+            status="failed",
+            reason="model_error",
+            trigger=trigger,
+            now=now,
+            model=model,
+        )
         await db.commit()
         return AnalysisOutcome(module, "failed", "model_error")
     end_trace(trace, output=summary, usage=usage, model=model)
@@ -360,7 +374,12 @@ async def analyse_module(
     spent_cost = priced.total_cost if priced is not None else reserved_cost
     spent_tokens = _usage_tokens(usage) or reserved_tokens
     await book(
-        db, now=now, reserved_tokens=reserved_tokens, reserved_cost=reserved_cost, spent_tokens=spent_tokens, spent_cost=spent_cost
+        db,
+        now=now,
+        reserved_tokens=reserved_tokens,
+        reserved_cost=reserved_cost,
+        spent_tokens=spent_tokens,
+        spent_cost=spent_cost,
     )
     await _store(
         db,
