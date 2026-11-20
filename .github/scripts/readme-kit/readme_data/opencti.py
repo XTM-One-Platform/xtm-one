@@ -11,7 +11,7 @@ DATA = {
     "docs_host": "docs.opencti.io",
     "docker": "opencti/platform",
     "ci": ("ci-main.yml", "master"),
-    "license_badge": "Apache 2.0 + EE",
+    "license_badge": "Apache 2.0",
     "tagline": "The open source threat intelligence platform at the heart of Continuous Threat Exposure Management.",
     "pitch": (
         "OpenCTI turns cyber threat intelligence into a living knowledge graph: who targets you, how they operate, "

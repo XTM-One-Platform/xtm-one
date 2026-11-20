@@ -13,7 +13,7 @@ DATA = {
     "docker": "filigran/opencrq",
     "ci": ("ci.yml", "main"),
     "private": True,  # private repository: static stars and release badges
-    "license_badge": "Apache 2.0 + EE",
+    "license_badge": "Apache 2.0",
     "tagline": "Threat-informed cyber risk quantification: know what each exposure would cost you, and fix what removes the most loss.",
     "pitch": (
         "OpenCRQ turns the threats you know in [OpenCTI](https://github.com/OpenCTI-Platform/opencti), the defenses "

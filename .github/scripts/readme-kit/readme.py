@@ -79,6 +79,9 @@ def _esc(s: str) -> str:
 # Rule K1 (doc 33, "Alignment over repo state"): ONE badge row, the same 7 badges in this order in
 # all five READMEs, no product-specific omission.
 BADGE_ORDER = ("stars", "release", "docker pulls", "license", "CI", "docs", "community")
+# Rule K2: the 7 badges fit on ONE line of the github.com article (823 px at 1280, 838 at 1728):
+# UX round 1 of openaev #9474 measured 833 px with "Apache 2.0 + EE" and "docs.openaev.io" and
+# the community badge wrapped. Keep static values short: license "Apache 2.0", docs "read".
 
 
 def badges(d: dict) -> str:
@@ -108,7 +111,9 @@ def badges(d: dict) -> str:
         b.append(badge("CI", "", BADGE_VALUE, ci_link, "githubactions",
                        f"https://img.shields.io/github/actions/workflow/status/{repo}/{ci_wf}"
                        f"?branch={ci_branch}&label=CI"))
-    b.append(badge("docs", d["docs_host"], BADGE_VALUE, d["docs"]))
+    # Rule K2: the row fits on one line of the github.com article (823 px at 1280): short values,
+    # the docs host is the link target, never the badge text.
+    b.append(badge("docs", "read", BADGE_VALUE, d["docs"]))
     b.append(badge("community", "slack", BADGE_VALUE, "https://community.filigran.io", "slack"))
     return '<p align="center">\n  ' + "\n  ".join(b) + "\n</p>"
 

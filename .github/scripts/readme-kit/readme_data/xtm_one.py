@@ -11,7 +11,7 @@ DATA = {
     "docs_host": "docs.xtmone.io",
     "docker": "xtmone/platform",
     "ci": ("ci.yml", "main"),
-    "license_badge": "Apache 2.0 + EE",
+    "license_badge": "Apache 2.0",
     "tagline": "The open source agentic core of the XTM Platform: Agentic CTEM, from threat signal to verified fix.",
     "pitch": (
         "XTM One gives security teams one command center for Continuous Threat Exposure Management (CTEM). "

@@ -11,7 +11,7 @@ DATA = {
     "docs_host": "docs.openaev.io",
     "docker": "openaev/platform",
     "ci": ("core-ci.yml", "main"),
-    "license_badge": "Apache 2.0 + EE",
+    "license_badge": "Apache 2.0",
     "tagline": "The open source adversarial exposure validation platform: prove which threats get through your defenses.",
     "pitch": (
         "OpenAEV turns threat intelligence from [OpenCTI](https://github.com/OpenCTI-Platform/opencti) into attack "
@@ -34,7 +34,7 @@ DATA = {
     ],
     "capabilities": {
         "Scoping": "Assets, asset groups and endpoints in scope, and the threats from OpenCTI security coverage "
-                   "that the scenarios will test.",
+                   "that the scenarios test.",
         "Discovery": "CVEs, open ports, credentials, shares and Active Directory weaknesses extracted from execution "
                      "output, deduplicated across runs and enriched with CVSS.",
         "Prioritization": "The exploration graph and attack path map show which findings an attacker chains to "
@@ -52,18 +52,19 @@ DATA = {
          "The threat arsenal: MITRE ATT&CK mapped actions filtered by domain, platform and status"),
         ("Exploration graph", "Every asset, finding and technique of a run, and how they connect.",
          "The OpenAEV exploration graph: endpoints, findings and techniques of a simulation linked in one graph"),
-        ("Attack path map", "How a chained simulation propagated and where it was stopped.",
-         "Attack path map of a chained simulation: endpoints reached, findings produced, prevention and detection "
-         "outcome"),
+        ("Estate overview", "Every asset group of the estate, sized and coloured by how often attacks got through.",
+         "The estate overview graph: asset groups sized by asset count and coloured by failure rate, linked to the "
+         "scenarios that tested them"),
         ("Custom dashboards", "Widgets over simulations, findings and coverage, for each audience.",
          "A custom dashboard with the exposure command center widget and prevention, detection and vulnerability "
          "breakdowns"),
-        ("OpenCTI pivot", "Every object both products know shows its OpenCTI counterpart in one click.",
-         "An OpenAEV attack pattern with its OpenCTI counterpart panel: the threats that use it and next actions"),
+        ("Findings", "Every CVE and exposure a run surfaced, tied to the asset it was found on.",
+         "The findings of a simulation: CVEs found by Nuclei scans, each tied to the endpoint it was found on"),
     ],
-    "walkthrough": "From a threat in OpenCTI to a scenario, its execution and the gaps it found, in 15 seconds.",
-    "walkthrough_alt": ("Animated walkthrough: a scenario generated from an OpenCTI threat, its execution on "
-                        "endpoints, the expectation results and the findings"),
+    "walkthrough": ("From the exposure command center to a scenario, its execution and the findings it produced, "
+                    "in 15 seconds."),
+    "walkthrough_alt": ("Animated walkthrough: the exposure command center, a scenario and its injects, the threat "
+                        "arsenal, the exploration graph, the estate view, a custom dashboard and the findings"),
     "how": (
         "OpenAEV builds scenarios from OpenCTI security coverage and the XTM Hub scenarios library, runs them "
         "through the OpenAEV agent and implant, Caldera or the EDR executors, and reaches network, cloud, web and "
