@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 
 #: Rows a sweep pass reads at most: one tick never holds a long transaction.
 SWEEP_BATCH = 500
+#: Most check files one tick deletes; a backlog drains on the next ticks (#768).
+SWEEP_MAX_PER_TICK = 2000
 
 
 def retention_days() -> int:
@@ -104,3 +106,21 @@ async def sweep(db: AsyncSession, *, now: datetime | None = None, batch: int = S
     await db.commit()
     await purge_storage_objects(keys)
     return len(keys)
+
+
+async def sweep_pass(
+    db: AsyncSession, *, now: datetime | None = None, limit: int = SWEEP_MAX_PER_TICK, batch: int = SWEEP_BATCH
+) -> tuple[int, bool]:
+    """Batches of :func:`sweep` up to *limit* files: ``(deleted, more left)``.
+
+    ``more`` is True when the pass stopped at *limit* with a full last batch, so
+    the scheduler runs another pass at the next tick instead of the next hour.
+    A batch whose files a video all uses deletes nothing and ends the pass.
+    """
+    deleted = 0
+    while deleted < limit:
+        count = await sweep(db, now=now, batch=min(batch, limit - deleted))
+        if count == 0:
+            return deleted, False
+        deleted += count
+    return deleted, True

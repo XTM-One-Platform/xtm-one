@@ -15,7 +15,6 @@ The rules and the sweep live in ``app.services.file_retention``.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.models.user import User
-from app.services import file_retention
+from app.services import file_retention, wall_clock_schedule
 from app.services.audit import log_audit
 
 router = APIRouter()
@@ -37,21 +36,22 @@ class FileRetentionWrite(BaseModel):
     days: dict[str, int] = Field(default_factory=dict)
 
 
-def _next_sweep(now: datetime) -> str:
-    """The cleanup loop sweeps once an hour: the next full hour."""
-    return (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).isoformat()
-
-
 async def _payload(db: AsyncSession, user: User) -> dict[str, Any]:
     rules = await file_retention.load_policy(db)
     held = await file_retention.holdings(db)
-    now = datetime.now(UTC)
+    # The sweep rides the hourly maintenance pass: its next run is the last
+    # COMPLETED pass plus the interval, read from the persisted schedule
+    # (``None``: due now, it runs at the next scheduler tick), never a clock
+    # computed from now (#768).
+    schedule = await wall_clock_schedule.status(wall_clock_schedule.HOURLY_MAINTENANCE)
     return {
         "categories": [
             {**rules[c.key].as_dict(), **held.get(c.key, {}), "unit": "days"} for c in file_retention.CATEGORIES
         ],
         "max_days": file_retention.MAX_DAYS,
-        "next_sweep_at": _next_sweep(now),
+        "next_sweep_at": schedule.next_due_at.isoformat() if schedule.next_due_at else None,
+        "sweep_overdue": schedule.overdue,
+        "maintenance_completed_at": (schedule.last_completed_at.isoformat() if schedule.last_completed_at else None),
         "last_sweep": await file_retention.last_sweep(),
         "can_edit": bool(getattr(user, "is_admin", False)),
     }
