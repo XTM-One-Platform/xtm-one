@@ -114,6 +114,15 @@ In XTM One mode, AI switched off included, every registered OpenAEV is checked e
 | Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) |
 | Agents offline | Warning | Over half of the agents are offline |
 
+## OpenCRQ checks
+
+In XTM One mode, AI switched off included, every registered OpenCRQ is checked every 5 minutes, with no enrolment, on the same rules as OpenCTI and OpenAEV: the heartbeat reads the registration, the job check reads the health snapshot OpenCRQ sends with its registration while it is under 15 minutes old. An OpenCRQ release that sends no snapshot is only checked for its heartbeat.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Heartbeat | Critical | OpenCRQ has not registered for 15 minutes |
+| Job failing | Warning | The last run of a background job ended in the dead-letter queue (one finding per job) |
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:

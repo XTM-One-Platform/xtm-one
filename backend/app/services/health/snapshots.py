@@ -13,7 +13,7 @@
 
 """Platform Health snapshots pushed with the registration (#101 S5, ``dev-docs/platform-health.md`` section 5).
 
-A registered OpenCTI (OpenAEV and OpenCRQ in their slices) adds an optional
+A registered OpenCTI, OpenAEV or OpenCRQ adds an optional
 ``health`` object to the registration it sends every 5 minutes. It rides on the
 heartbeat, so nothing about it may refuse one: a snapshot that does not read,
 is too large or names another format is ignored and logged, never a 422.
@@ -37,10 +37,12 @@ Snapshot format, version :data:`SCHEMA_VERSION` (every key optional)::
       "healthchecks": [{"type": str, "status": "ERROR" | "WARNING", "count": int}],
       "integrations": [{"id", "name", "kind": "injector" | "collector" | "executor",
                         "updated_at": ISO 8601}],
-      "agents": {"total": int, "offline": int}
+      "agents": {"total": int, "offline": int},
+      "jobs": [{"kind": str, "health": "running" | "queued" | "never_ran" | "healthy" | "failing"}]
     }
 
-OpenCTI sends the first four keys, OpenAEV the last three (#101 S6).
+OpenCTI sends the first four keys, OpenAEV the next three (#101 S6), OpenCRQ
+``jobs`` (#101 S7).
 """
 
 from __future__ import annotations
@@ -68,6 +70,10 @@ _HEALTHCHECK_STATUSES = ("ERROR", "WARNING")
 _INTEGRATION_KINDS = ("injector", "collector", "executor")
 #: Healthcheck rows (type and status pairs) kept from one snapshot.
 MAX_HEALTHCHECKS = 100
+#: The job healths OpenCRQ derives (``module/src/modules/jobs/health.ts``).
+_JOB_HEALTHS = ("running", "queued", "never_ran", "healthy", "failing")
+#: Job kinds kept from one snapshot.
+MAX_JOBS = 200
 
 
 def _finite(value: Any) -> float | int | None:
@@ -147,6 +153,13 @@ def _integration(entry: Any) -> dict[str, Any] | None:
     return kept
 
 
+def _job(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict) or entry.get("health") not in _JOB_HEALTHS:
+        return None
+    kind = _text(entry.get("kind"))
+    return None if kind is None else {"kind": kind, "health": entry["health"]}
+
+
 def read_snapshot(raw: Any) -> dict[str, Any] | None:
     """The snapshot as kept, or ``None`` when it does not read as one of :data:`SCHEMA_VERSION`."""
     if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
@@ -190,6 +203,9 @@ def read_snapshot(raw: Any) -> dict[str, Any] | None:
         fleet = {k: n for k in ("total", "offline") if (n := _count(agents.get(k))) is not None}
         if fleet:
             kept["agents"] = fleet
+    jobs = raw.get("jobs")
+    if isinstance(jobs, list):
+        kept["jobs"] = [j for j in (_job(e) for e in jobs[:MAX_JOBS]) if j is not None]
     return kept
 
 
