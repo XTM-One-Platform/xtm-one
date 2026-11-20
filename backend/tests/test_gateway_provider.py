@@ -1515,9 +1515,34 @@ class TestImageEdits:
         for model in ("gemini-2.5-flash-image", "house-image"):
             assert provider.image_reference_limit(model) == 3 and not provider.image_takes_mask(model)
 
+    @pytest.mark.asyncio
+    async def test_the_listed_image_mask_decides_over_the_model_family(self):
+        # The gateway judges by the provider the edit is routed to (XTM-One-Platform/ai-gateway#369).
+        provider = _listing_provider(
+            {"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": False},
+            {"id": "house-image", "owned_by": "gemini", "types": ["image"], "image_edit": True, "image_mask": True},
+            {"id": "gpt-image-2", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": True},
+        )
+        await provider.load_image_capabilities("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 3 and not provider.image_takes_mask("gpt-image-1")
+        assert provider.image_takes_mask("house-image") and provider.image_takes_mask("gpt-image-2")
+
+    @pytest.mark.asyncio
+    async def test_a_relisting_without_image_mask_falls_back_to_the_model_family(self):
+        listed = [{"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": False}]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda r: httpx.Response(200, json={"object": "list", "data": listed}))
+        await provider.list_image_models()
+        assert not provider.image_takes_mask("gpt-image-1")
+        # A gateway older than 1.261120.0 lists no ``image_mask``; a value that is no bool says nothing either.
+        for unsaid in ({}, {"image_mask": None}):
+            listed[0] = {**{k: v for k, v in listed[0].items() if k != "image_mask"}, **unsaid}
+            await provider.list_image_models()
+            assert provider.image_takes_mask("gpt-image-1")
+
     def test_a_credential_pinned_to_gemini_takes_no_mask(self):
         provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||gemini")
-        provider._editing_models.add("house-image")
+        provider._editing_models["house-image"] = None
         assert provider.image_reference_limit("house-image") == 3 and not provider.image_takes_mask("house-image")
 
     @pytest.mark.asyncio
