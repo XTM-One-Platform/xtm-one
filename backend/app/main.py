@@ -6,7 +6,6 @@ import asyncio
 import functools
 import json
 import logging
-import os
 import re
 import time
 from collections.abc import Awaitable
@@ -629,79 +628,25 @@ def _load_dotenv_files() -> None:
     load_dotenv_files()
 
 
-# Providers whose chat models the seed lists when ``LLM_PROVIDER_{P}_MODELS``
-# is unset: the gateway's catalog is curated upstream, so "all" is meaningful.
-_SEED_LISTED_PROVIDERS = frozenset({"filigran_gateway"})
-# Short: it runs on every boot and under the AI toggle's bootstrap lock.
-_SEED_LISTING_TIMEOUT_SECONDS = 5.0
-
-
-async def _list_models_for_seed(provider_name: str, api_key: str) -> list[str] | None:
-    """The chat models *provider_name* lists, or ``None`` when it cannot answer."""
-    from app.llm.router import PROVIDER_MAP, is_chat_capable_model, provider_instance
-    from app.services.vault import resolve_secret_text
-
-    provider = None
-    try:
-        provider = provider_instance(PROVIDER_MAP[provider_name], await resolve_secret_text(api_key))
-        listed = await asyncio.wait_for(provider.list_models(), timeout=_SEED_LISTING_TIMEOUT_SECONDS)
-    except Exception as exc:
-        logger.warning(
-            "LLM env seed: could not list the %s models, its model list is left as it is: %s",
-            provider_name,
-            format_exception_message(exc),
-        )
-        return None
-    finally:
-        if close := getattr(getattr(provider, "client", None), "close", None):
-            with suppress(Exception):
-                await close()
-    return [m for m in listed if is_chat_capable_model(m)] or None
-
-
-def _listing_default(current: str | None, declared: str | None, listed: list[str]) -> str | None:
-    """The default for a listed catalog: *current*, else *declared*, while listed; else the first."""
-    from app.llm.env_models import resolve_default_model
-
-    return resolve_default_model(current if current in listed else declared, listed)
-
-
 async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
-    """List the models of the seeded providers that have no ``*_MODELS`` list.
+    """List the models of the seeded providers whose catalog is their listing.
 
-    A catalog still equal to its last listing (``env_models``) is refreshed;
-    one an admin edited is left alone. A provider never listed is listed only
-    while no other provider offers a chat model (next to one, a gateway key is
-    there for its other models), and in editable mode only while it has no
-    catalog. Done before the seed's transaction so no network call holds the
-    provider lock.
+    Which ones: ``app.llm.env_listing.catalogs_to_list``. Done before the
+    seed's transaction so no network call holds the provider lock.
     """
     from sqlalchemy import select as _sel
 
     from app.core.database import async_session
+    from app.llm.env_listing import SEED_LISTED_PROVIDERS, catalogs_to_list, list_models_for_seed
     from app.llm.env_models import env_models_for
-    from app.llm.router import is_chat_capable_model
     from app.models.llm_config import LLMProviderConfig
 
-    wanted = [(n, k) for n, k in providers if n in _SEED_LISTED_PROVIDERS and env_models_for(n) is None]
-    if not wanted:
+    if not any(n in SEED_LISTED_PROVIDERS and env_models_for(n) is None for n, _ in providers):
         return {}
-    names = {n for n, _ in wanted}
     async with async_session() as db:
         rows = (await db.execute(_sel(LLMProviderConfig))).scalars().all()
-    # The seeded rows of the providers to list, and every other config's models.
-    own = {r.provider: r for r in rows if r.provider in names and r.user_id is None}
-    offered = [m for r in rows if not (r.provider in names and r.user_id is None) for m in r.available_models or []]
-    offered += [m for n, _ in providers if n not in names for m in env_models_for(n) or []]
-    sole = not any(is_chat_capable_model(m) for m in offered)
-
-    def _to_list(name: str) -> bool:
-        row = own.get(name)
-        if row is not None and row.env_models is not None:
-            return row.available_models == row.env_models
-        return sole and (not models_editable or row is None or row.available_models is None)
-
-    listed = {n: await _list_models_for_seed(n, k) for n, k in wanted if _to_list(n)}
+    names = catalogs_to_list(providers, rows, models_editable)
+    listed = {n: await list_models_for_seed(n, k) for n, k in providers if n in names}
     return {n: models for n, models in listed.items() if models}
 
 
@@ -747,8 +692,14 @@ async def _seed_llm_providers_from_env() -> set[str]:
     from app.core.security import decrypt_stored_value as _dec
     from app.core.security import encrypt_value
     from app.llm import env_capability_defaults
+    from app.llm.env_listing import (
+        SEED_LISTED_PROVIDERS,
+        apply_listing,
+        env_provider_keys,
+        listing_platform_model,
+    )
+    from app.llm.env_listing import listing_default as _listing_default
     from app.llm.env_models import (
-        ENV_PREFIX,
         env_models_for,
         merge_env_models,
         resolve_default_model,
@@ -756,28 +707,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
     from app.llm.router import PROVIDER_MAP
     from app.models.llm_config import LLMProviderConfig
 
-    prefix = ENV_PREFIX
-    key_suffix = "_API_KEY"
-    pattern = re.compile(rf"^{prefix}([A-Z][A-Z0-9_]*){key_suffix}$")
-
-    providers_to_seed: list[tuple[str, str]] = []
-    for key, value in os.environ.items():
-        m = pattern.match(key)
-        if m and value.strip():
-            provider_name = m.group(1).lower()
-            if provider_name in PROVIDER_MAP:
-                from app.services.vault import reference_problem
-
-                # A vault reference is stored as it is and read where the key is used.
-                if problem := reference_problem(value.strip()):
-                    logger.warning("LLM env seed: %s holds an unusable vault reference: %s", key, problem)
-                providers_to_seed.append((provider_name, value.strip()))
-            else:
-                logger.warning(
-                    "LLM env seed: unknown provider %r (from %s), skipped",
-                    provider_name,
-                    key,
-                )
+    providers_to_seed = env_provider_keys()
 
     platform_default_model = settings.default_model
     routing_default_model = settings.default_routing_model.strip() or None
@@ -897,7 +827,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                         await _cleanup_orphaned_model_references(
                             db, provider_name, retired, provider_id=existing.id
                         )
-                elif provider_name not in _SEED_LISTED_PROVIDERS or existing.available_models != existing.env_models:
+                elif provider_name not in SEED_LISTED_PROVIDERS or existing.available_models != existing.env_models:
                     # Kept while the catalog still equals it: a failed listing is no
                     # catalog change, and the next boot refreshes it again.
                     existing.env_models = None
@@ -922,9 +852,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
             if listed and models_editable and cfg.available_models in (None, cfg.env_models):
                 # Editable: refreshed until an admin edits it (it then differs from the snapshot).
-                cfg.available_models = listed
-                cfg.default_model = _listing_default(cfg.default_model, declared_default, listed)
-                cfg.env_models = listed
+                apply_listing(cfg, listed)
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
@@ -933,14 +861,16 @@ async def _seed_llm_providers_from_env() -> set[str]:
             available_models: list[str] = list(cfg.available_models or [])
             provider_default = cfg.default_model
 
-            model_for_platform = (
-                platform_default_model
-                if platform_default_model and platform_default_model in available_models
-                else provider_default
-            )
-            if listed and model_for_platform not in (platform_default_model, declared_default):
-                # A first-in-alphabet pick is no one's choice: not pinned platform-wide.
-                model_for_platform = None
+            if listed:
+                model_for_platform = listing_platform_model(
+                    available_models, provider_default, platform_default_model, declared_default
+                )
+            else:
+                model_for_platform = (
+                    platform_default_model
+                    if platform_default_model and platform_default_model in available_models
+                    else provider_default
+                )
             if model_for_platform:
                 await _ensure_platform_default_model(
                     db,

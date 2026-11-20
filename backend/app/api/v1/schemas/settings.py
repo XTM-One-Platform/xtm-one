@@ -125,6 +125,13 @@ class ModelCatalogChangeSummary(BaseModel):
     saves: int = 1
 
 
+class RefreshModelsRequest(BaseModel):
+    """``POST /settings/llm-providers/{id}/refresh-models``."""
+
+    # Replace an admin-edited catalog with the listing, which it then follows.
+    discard_edits: bool = False
+
+
 class LLMProviderResponse(BaseModel):
     id: str
     provider: str
@@ -145,6 +152,12 @@ class LLMProviderResponse(BaseModel):
     # ``default_model`` changes. ``is_from_env`` alone only says the API key
     # is env-managed.
     models_env_locked: bool = False
+    # Env-seeded with no ``LLM_PROVIDER_{P}_MODELS``: its catalog is its own
+    # listing, which ``POST .../refresh-models`` reads again. Set on the listing.
+    models_listed: bool = False
+    # Editable mode, same provider, catalog edited by an admin: ``refresh-models``
+    # with ``discard_edits`` makes it follow the listing again. Set on the listing.
+    models_followable: bool = False
     # Model ids this config advertises that another config advertises too, each
     # with the other configs offering it. Overlap is legitimate — a gateway
     # fronting a vendor beside that vendor's own key — but it is what makes a

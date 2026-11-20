@@ -473,3 +473,123 @@ describe("ProviderCard retired models", () => {
     expect(onUpdateModels).toHaveBeenCalledWith(["model-a", "model-b"], { "model-a": 1_050_000 });
   });
 });
+
+describe("ProviderCard refresh of a listed catalog", () => {
+  const GATEWAY: LLMProvider = {
+    ...PROVIDER,
+    provider: "filigran_gateway",
+    display_name: null,
+    is_from_env: true,
+    models_env_locked: true,
+    models_listed: true,
+  };
+
+  function renderCard(provider: LLMProvider, isAdmin = true) {
+    renderWithProviders(
+      <ProviderCard
+        provider={provider}
+        isAdmin={isAdmin}
+        isEditingModels={false}
+        onEditModels={() => {}}
+        onCloseEditModels={() => {}}
+        onDelete={() => {}}
+        onRenameDisplayName={() => {}}
+        onUpdateModels={() => {}}
+        onUpdateAccess={() => {}}
+        isUpdating={false}
+        platformDefaultModel={null}
+        canSetPlatformDefault={false}
+        onSetPlatformDefault={() => {}}
+      />,
+    );
+  }
+
+  const refreshButton = () => screen.queryByRole("button", { name: "Refresh models" });
+
+  it("lists the provider's models again on click", async () => {
+    post.mockResolvedValue({ ...GATEWAY, available_models: ["model-a", "model-c"] });
+    renderCard(GATEWAY);
+    fireEvent.click(refreshButton()!);
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/settings/llm-providers/p-1/refresh-models"),
+    );
+  });
+
+  it("is offered only for a listed catalog, to an admin", () => {
+    renderCard({ ...GATEWAY, models_listed: false });
+    expect(refreshButton()).toBeNull();
+  });
+
+  it("is not offered to someone who is not an admin", () => {
+    renderCard(GATEWAY, false);
+    expect(refreshButton()).toBeNull();
+  });
+
+  it("is disabled while AI is off: it calls the provider", () => {
+    platform.aiEnabled = false;
+    renderCard(GATEWAY);
+    expect(refreshButton()).toBeDisabled();
+  });
+});
+
+describe("ProviderCard follow of an edited listed catalog", () => {
+  const EDITED: LLMProvider = {
+    ...PROVIDER,
+    provider: "filigran_gateway",
+    display_name: null,
+    is_from_env: true,
+    models_env_locked: false,
+    models_listed: false,
+    models_followable: true,
+  };
+
+  function renderCard(provider: LLMProvider, isAdmin = true) {
+    renderWithProviders(
+      <ProviderCard
+        provider={provider}
+        isAdmin={isAdmin}
+        isEditingModels={false}
+        onEditModels={() => {}}
+        onCloseEditModels={() => {}}
+        onDelete={() => {}}
+        onRenameDisplayName={() => {}}
+        onUpdateModels={() => {}}
+        onUpdateAccess={() => {}}
+        isUpdating={false}
+        platformDefaultModel={null}
+        canSetPlatformDefault={false}
+        onSetPlatformDefault={() => {}}
+      />,
+    );
+  }
+
+  const followButton = () => screen.queryByRole("button", { name: "Follow the provider's list" });
+
+  it("discards the edits once the admin confirms", async () => {
+    post.mockResolvedValue({ ...EDITED, models_listed: true, models_followable: false });
+    renderCard(EDITED);
+    fireEvent.click(followButton()!);
+    fireEvent.click(await screen.findByRole("button", { name: "Discard my edits" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/settings/llm-providers/p-1/refresh-models", { discard_edits: true }),
+    );
+  });
+
+  it("keeps the edits when the admin cancels", async () => {
+    renderCard(EDITED);
+    fireEvent.click(followButton()!);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is offered only for an edited catalog that may follow, to an admin", () => {
+    renderCard({ ...EDITED, models_followable: false });
+    expect(followButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh models" })).toBeNull();
+  });
+
+  it("is not offered to someone who is not an admin", () => {
+    renderCard(EDITED, false);
+    expect(followButton()).toBeNull();
+  });
+});

@@ -75,6 +75,7 @@ from app.api.v1.schemas.settings import (
     QuotaConfig,
     QuotaPeriodUsage,
     QuotaUsageEntry,
+    RefreshModelsRequest,
     ResolveModelsRequest,
     ResolveModelsResponse,
     ScanContextWindowsRequest,
@@ -1287,8 +1288,35 @@ async def list_llm_providers(
         _serialize_llm_provider_response(c, owner_index, with_audience=user.is_admin)
         for c in configs
     ]
+    if user.is_admin:
+        listed, followable = _listed_catalog_ids(configs), _followable_catalog_ids(configs)
+        for response in responses:
+            response.models_listed = response.id in listed
+            response.models_followable = response.id in followable
     await attach_vault_failures(responses, LLMProviderConfig.__tablename__)
     return responses
+
+
+def _listed_catalog_ids(configs: list[LLMProviderConfig]) -> set[str]:
+    """Ids of the env-seeded configs whose catalog the boot seed would list again."""
+    from app.llm.env_listing import catalogs_to_list
+
+    return _env_config_ids(configs, catalogs_to_list)
+
+
+def _followable_catalog_ids(configs: list[LLMProviderConfig]) -> set[str]:
+    """Ids of the env-seeded configs whose admin-edited catalog may follow the listing again."""
+    from app.llm.env_listing import catalogs_to_follow
+
+    return _env_config_ids(configs, catalogs_to_follow)
+
+
+def _env_config_ids(configs: list[LLMProviderConfig], rule) -> set[str]:
+    from app.core.config import settings as app_settings
+    from app.llm.env_listing import env_provider_keys
+
+    names = rule(env_provider_keys(warn=False), configs, app_settings.provider_models_admin_curated)
+    return {str(c.id) for c in configs if c.provider in names and c.user_id is None and c.is_from_env}
 
 
 async def _snapshot_offered_models(db: AsyncSession) -> "CatalogSnapshot | None":
@@ -2457,6 +2485,124 @@ async def scan_provider_context_windows(
             for item in scan.results
         ],
     )
+
+
+@router.post("/llm-providers/{provider_id}/refresh-models", response_model=LLMProviderResponse)
+async def refresh_llm_provider_models(
+    provider_id: str,
+    request: Request,
+    body: RefreshModelsRequest | None = None,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    _ai_gate: None = Depends(require_ai_enabled),
+):
+    """List an env-seeded provider's models again, as a boot would, without a restart.
+
+    For a catalog that is the provider's own listing (``models_listed``),
+    env-only mode included: it applies the environment, not an admin edit.
+    With ``discard_edits``, also for one an admin edited (``models_followable``),
+    which then follows the listing again. Nothing else of the env configuration
+    is re-applied.
+    """
+    from app.core.config import settings as app_settings
+    from app.core.migrations import bootstrap_lock
+    from app.llm.env_listing import apply_listing, env_provider_keys, list_models_for_seed, listing_platform_model
+    from app.main import _byollm_install_configured
+    from app.services.model_catalog_announcements import model_catalog_watch
+
+    config_id = parse_path_id(provider_id, not_found_detail="Provider config not found")
+    discard_edits = bool(body and body.discard_edits)
+
+    async def _listed_config() -> LLMProviderConfig:
+        # Fresh rows even for objects the session still holds: the read before
+        # the provider call ends with a commit, which expires nothing.
+        configs = list(
+            (await db.execute(select(LLMProviderConfig).execution_options(populate_existing=True)))
+            .scalars()
+            .all()
+        )
+        config = next((c for c in configs if c.id == config_id), None)
+        if config is None:
+            raise HTTPException(status_code=404, detail="Provider config not found")
+        allowed = _listed_catalog_ids(configs)
+        if discard_edits:
+            allowed |= _followable_catalog_ids(configs)
+        if str(config.id) not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"The '{config.provider}' model list is not read from the provider: "
+                    f"{models_env_var(config.provider)} is set, the list was edited in Settings, "
+                    "or another provider serves the chat models."
+                ),
+            )
+        return config
+
+    provider = (await _listed_config()).provider
+    # No transaction held while the provider answers. A commit, not a rollback:
+    # a rollback expires the user loaded on this session (MissingGreenlet).
+    await db.commit()
+    set_llm_caller(user.id, user.email)
+    listed = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
+    if listed is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"The '{provider}' provider did not list its models; the model list is unchanged.",
+        )
+    try:
+        # The catalog watch records the change for the users' emails, under the
+        # lock it requires; bounded like the AI toggle.
+        async with bootstrap_lock(wait_timeout=25), model_catalog_watch():
+            await lock_provider_configs(db)
+            config = await _listed_config()  # an admin may have edited it meanwhile
+            removed = sorted(set(config.available_models or []) - set(listed))
+            # Read before anything is written, as at boot.
+            install_configured = await _byollm_install_configured(db)
+            apply_listing(config, listed)
+            # A first listing fills the empty platform defaults, as boot does.
+            declared = getattr(PROVIDER_MAP.get(config.provider), "default_model", None)
+            if model := listing_platform_model(listed, config.default_model, app_settings.default_model, declared):
+                await _ensure_platform_default_model(
+                    db,
+                    config.provider,
+                    model,
+                    provider_id=str(config.id),
+                    available_models=None,
+                    fill_empty_defaults=not install_configured,
+                )
+            await log_audit(
+                db,
+                user=user,
+                action="update",
+                entity_type="llm_provider",
+                entity_id=config.id,
+                entity_name=config.provider,
+                summary=f"Refreshed the models of LLM provider '{config.provider}' from its listing",
+                details={
+                    "provider": config.provider,
+                    "available_models": config.available_models,
+                    "removed_models": removed or None,
+                    "discarded_edits": discard_edits,
+                },
+                request=request,
+            )
+            await db.commit()
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Another instance is applying the provider configuration; try again in a minute.",
+        ) from exc
+    from app.llm.router import invalidate_provider_cache
+
+    # After the commit, as for a catalog edit.
+    invalidate_provider_cache()
+
+    configs = list((await db.execute(select(LLMProviderConfig))).scalars().all())
+    config = next(c for c in configs if c.id == config_id)
+    response = _serialize_llm_provider_response(config, build_model_owner_index(configs))
+    response.models_listed = str(config.id) in _listed_catalog_ids(configs)
+    response.models_followable = str(config.id) in _followable_catalog_ids(configs)
+    return response
 
 
 # ---------------------------------------------------------------------------

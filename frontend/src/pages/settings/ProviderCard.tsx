@@ -10,6 +10,7 @@ import {
   Lock,
   Link2,
   Pencil,
+  RefreshCw,
   Trash2,
   Sparkles,
   ScanSearch,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Badge } from "@/components/ui/badge";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { EnvLockBadge } from "@/components/ui/env-lock-badge";
 import { PrincipalSharingCard } from "@/components/ui/principal-sharing-card";
 import { Tip } from "@/components/ui/tooltip";
@@ -26,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { VaultSecretsNotice } from "@/components/ui/vault-secrets";
-import { useProviderModels, useScanContextWindows } from "@/hooks/api/useSettingsApi";
+import { useProviderModels, useRefreshProviderModels, useScanContextWindows } from "@/hooks/api/useSettingsApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { cn, pluralize, providerConfigName, toggleArrayItem } from "@/lib/utils";
 import { formatTokenCount, parseTokenCount } from "@/lib/token-count";
@@ -172,6 +174,8 @@ export function ProviderCard({
   );
   const { toast } = useToast();
   const scanContextWindows = useScanContextWindows(p.id);
+  const refreshModels = useRefreshProviderModels(p.id);
+  const [confirmEl, confirm] = useConfirm();
   // The scan reads the provider: unavailable, and not run on enabling a model, with AI off.
   const aiOff = useAiActionDisabled();
 
@@ -274,6 +278,38 @@ export function ProviderCard({
     );
   };
 
+  // Its catalog is its own listing (no `*_MODELS`): read it again, as a restart would.
+  const handleRefreshModels = () => {
+    refreshModels.mutate(undefined, {
+      onSuccess: (fresh) =>
+        toast({
+          title: t_i18n("Models refreshed"),
+          description: t_i18n("{count, plural, one {# model} other {# models}} listed.", {
+            count: fresh.available_models?.length ?? 0,
+          }),
+          variant: "success",
+        }),
+    });
+  };
+
+  // An admin-edited catalog may follow the provider's listing again, edits dropped.
+  const handleFollowListing = async () => {
+    const ok = await confirm({
+      title: t_i18n("Follow the provider's model list?"),
+      description: t_i18n("Your edits to this list are discarded. It then follows the provider's own list, at every restart and refresh."),
+      confirmLabel: t_i18n("Discard my edits"),
+      variant: "warning",
+    });
+    if (!ok) return;
+    refreshModels.mutate(
+      { discardEdits: true },
+      {
+        onSuccess: () =>
+          toast({ title: t_i18n("The model list follows the provider again"), variant: "success" }),
+      },
+    );
+  };
+
   // Sync local state when entering edit mode
   const handleStartEdit = () => {
     setChosen([...models]);
@@ -372,6 +408,7 @@ export function ProviderCard({
 
   return (
     <div className="rounded-sm bg-elevation-default overflow-hidden">
+      {confirmEl}
       {/* Header */}
       <div className="flex items-center justify-between p-3.5">
         <div className="flex items-center gap-3">
@@ -502,6 +539,42 @@ export function ProviderCard({
               <UsersRound className="h-3 w-3" />
               {isEditingAccess ? t_i18n("Close") : t_i18n("Access")}
             </Button>
+          )}
+          {isAdmin && p.models_listed && (
+            <AiDisabledTip>
+              <Tip content={aiOff ? undefined : t_i18n("Read the provider's model list again, as a restart would.")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 content-compact text-default-secondary hover:text-accent"
+                  disabled={aiOff || refreshModels.isPending}
+                  aria-busy={refreshModels.isPending || undefined}
+                  onClick={handleRefreshModels}
+                >
+                  {refreshModels.isPending && <Spinner size="sm" tone="inherit" />}
+                  {!refreshModels.isPending && <RefreshCw className="h-3 w-3" />}
+                  {t_i18n("Refresh models")}
+                </Button>
+              </Tip>
+            </AiDisabledTip>
+          )}
+          {isAdmin && p.models_followable && (
+            <AiDisabledTip>
+              <Tip content={aiOff ? undefined : t_i18n("Discard the edits to this list and follow the provider's own list again.")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 content-compact text-default-secondary hover:text-accent"
+                  disabled={aiOff || refreshModels.isPending}
+                  aria-busy={refreshModels.isPending || undefined}
+                  onClick={handleFollowListing}
+                >
+                  {refreshModels.isPending && <Spinner size="sm" tone="inherit" />}
+                  {!refreshModels.isPending && <RefreshCw className="h-3 w-3" />}
+                  {t_i18n("Follow the provider's list")}
+                </Button>
+              </Tip>
+            </AiDisabledTip>
           )}
           {canCurate && chats && (
             <Button
