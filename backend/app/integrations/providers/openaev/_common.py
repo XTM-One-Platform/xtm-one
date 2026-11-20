@@ -165,7 +165,9 @@ def inject_targets_line(
     Empty when the answer is not an object or carries neither relation key (the
     relations are absent from that answer, not empty: no count, no warning). A
     content that selects targets (``target_selector``) with both relations
-    empty is flagged: the injector would receive no target. Ids asked by the
+    empty is flagged: the injector would receive no target. A ``manual``
+    selector reads ``content.targets`` instead: those are named, and only an
+    empty list is flagged. Ids asked by the
     write (*asked_asset_ids*, *asked_asset_group_ids*) and missing from the
     stored relations are named: OpenAEV drops an unknown id or an id of another
     tenant without an error.
@@ -186,12 +188,39 @@ def inject_targets_line(
     if missing:
         line += f" Not stored: {', '.join(missing)}; unknown id or another tenant."
     content = inject.get("inject_content")
-    if not groups and not assets and isinstance(content, dict) and content.get("target_selector"):
+    if not isinstance(content, dict) or not content.get("target_selector"):
+        return line
+    if content.get("target_selector") == "manual":
+        manual = _manual_content_targets(content)
+        if manual:
+            return line + f" Manual targets (content.targets, read by the injector): {', '.join(manual)}."
+        return line + (
+            " Warning: the content selects manual targets but content.targets is "
+            "empty: the injector receives no target."
+        )
+    if not groups and not assets:
         line += (
             " Warning: the content selects targets but no asset or asset group "
             "is stored: the injector receives no target."
         )
     return line
+
+
+def _manual_content_targets(content: dict[str, Any]) -> list[str]:
+    """The targets a ``target_selector = manual`` content names in ``targets``.
+
+    The injector (Nmap and the like) reads them from the content, never from the
+    inject relations. OpenAEV stores them as one text (comma or line separated)
+    or as a list.
+    """
+    raw = content.get("targets")
+    values = raw if isinstance(raw, list) else [raw]
+    out: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        out.extend(part.strip() for part in re.split(r"[,\n]", value) if part.strip())
+    return out
 
 
 def stored_targets_line(
