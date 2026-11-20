@@ -51,12 +51,33 @@ logger = logging.getLogger(__name__)
 ADAPTER_NAME = "evaluation"
 
 
+def _cut_by_a_stop(execution: OrchestrationExecution) -> bool:
+    """Whether the runs this execution left ``"running"`` were cut by a stop outside the work, not resumed from yet.
+
+    ``evaluation_engine.pending_stop_cut``: a hand-back's marker or a take-back
+    from a worker that said it was stopping, recorded in the payload, which
+    the retries, claims and AI holds in between keep, and consumed by the
+    reclaim that resumed from it - unlike the ``worker_gone`` / ``handed_back``
+    adapter state, which a retry clears and a hold replaces.
+    """
+    from app.services.evaluation_engine import pending_stop_cut
+
+    return pending_stop_cut(getattr(execution, "payload", None)) is not None
+
+
 class EvaluationAdapter(OrchestrationAdapter):
     name = ADAPTER_NAME
     # A replaced evaluation worker must stop judging runs its replacement is
     # already judging, paying twice. Its writes are ownership-checked
     # and an interrupted entry is abandoned whole.
     stop_on_lease_loss = True
+    # A rollout is not the work's fault: taken back the moment its worker is
+    # known gone, first in the queue, the attempt given back when that worker
+    # said it was stopping (or a deploy replaced it). Its runs then resume
+    # from their finished entries (``execute_evaluation(resume_stopped_runs=)``)
+    # instead of being failed as abandoned, and a run of deploys no longer
+    # dead-letters it.
+    resume_when_worker_gone = True
 
     @property
     def cancel_poll_seconds(self) -> float | None:
@@ -181,6 +202,18 @@ class EvaluationAdapter(OrchestrationAdapter):
             return AdapterResult.failed(
                 "Evaluation payload missing evaluation_id", retryable=False
             )
+        from app.services.orchestration_adapters.sub_agent import (
+            HANDED_BACK_STATE,
+            _end_hand_back,
+        )
+
+        # Read before the hand-back's record and adapter state are ended.
+        resume_stopped_runs = _cut_by_a_stop(execution)
+        # A hand-back's deferral record only carried the attempt over to this
+        # claim. It is no AI hold, so it ends here, before the gate is read: a
+        # hold met next starts its own bound instead of counting from the
+        # hand-back.
+        execution = await _end_hand_back(ctx, execution)
         # Evaluation off: a fresh evaluation does not start, its pending
         # runs failed with the reason. A resumed episode above is work in flight.
         # The engine gate (#8257): a Platform Health launch runs whatever the mode.
@@ -235,7 +268,7 @@ class EvaluationAdapter(OrchestrationAdapter):
 
         trigger_reason = execution.payload.get("trigger_reason", "manual")
         try:
-            await execute_evaluation(
+            handed_back = await execute_evaluation(
                 ctx.db,
                 str(evaluation_id),
                 trigger_reason,
@@ -245,6 +278,12 @@ class EvaluationAdapter(OrchestrationAdapter):
                 # pre-dispatch reclaim commits under it rather than merely
                 # checking an event beforehand.
                 worker_id=ctx.worker_id,
+                # From the moment a stop is asked (``draining``, the stop
+                # signal), not when the stop itself comes (``stopping``, past
+                # the shutdown grace): the entry in flight gets the whole grace
+                # to finish before its run pauses.
+                stopping=ctx.draining or ctx.stopping,
+                resume_stopped_runs=resume_stopped_runs,
             )
         except asyncio.CancelledError:
             # The batch was cancelled. If our own cancel event is what fired,
@@ -298,6 +337,26 @@ class EvaluationAdapter(OrchestrationAdapter):
             return AdapterResult.failed(str(exc), retryable=False)
         finally:
             await _flush_langfuse(f"evaluation {evaluation_id}")
+        if handed_back is True:
+            # Every run in flight paused at an entry boundary, ``pending``
+            # again: handed back first in the queue, no attempt spent, for
+            # the incoming release to resume (``_to_incoming_release``).
+            logger.warning(
+                "Evaluation %s: its worker is stopping, handed back with its "
+                "runs paused at an entry boundary",
+                evaluation_id,
+            )
+            from app.services.evaluation_engine import HANDED_BACK_PAYLOAD_KEY
+
+            return AdapterResult.defer(
+                "Its worker is stopping: the runs resume on the next worker",
+                delay_seconds=0,
+                adapter_state=HANDED_BACK_STATE,
+                place="head",
+                # The stop marker the next attempt resumes on, whatever its
+                # claim, a retry or an AI hold does to the adapter state first.
+                payload_update={HANDED_BACK_PAYLOAD_KEY: {"at": datetime.now(UTC).isoformat()}},
+            )
         return AdapterResult.completed()
 
     async def on_dead_letter(

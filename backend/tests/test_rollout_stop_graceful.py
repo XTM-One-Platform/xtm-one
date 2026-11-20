@@ -331,6 +331,6 @@ def test_the_cycle_hands_the_adapters_bounds_to_both_take_backs():
 
     source = inspect.getsource(orchestration_reconciler._run_cycle)
     assert "bound_of = attempt_bound_of(adapters)" in source
-    assert "_reclaim_from_gone_workers(db, worker_id, resumable, batch, bound_of)" in source
+    assert "_reclaim_from_gone_workers(db, worker_id, resumable, batch, bound_of, now=swept_at)" in source
     assert "head_adapters=resumable, bound_of=bound_of" in source
 

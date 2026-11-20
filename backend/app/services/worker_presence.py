@@ -52,6 +52,10 @@ _LAST_KEY = "xtm:orchestration:worker-last:{}"
 PUBLISH_EVERY_SECONDS = 5.0
 #: How long its word lasts: a worker silent this long is gone.
 PRESENCE_TTL_SECONDS = 20
+#: The key a worker's record carries when it stops its executions that stop on a lost lease before it says it
+#: stopped (``orchestration_reconciler._stop_lease_loss_work``): a record without it is of a release that left them
+#: writing after its last word, whose work is not taken back before its lease expires.
+STOPS_LEASE_LOSS_WORK = "stops_lease_loss_work"
 #: How long the last word of a worker is kept: for the next worker to say how it went.
 LAST_WORD_TTL_SECONDS = 3600
 #: A worker whose container used this share of its memory limit at its last word, and then went without one, was
@@ -137,6 +141,7 @@ async def publish(
         "state": state,
         "signal": signal,
         "at": datetime.now(UTC).isoformat(),
+        STOPS_LEASE_LOSS_WORK: True,
         **({"claims": list(claims)} if claims is not None else {}),
     }
     text = json.dumps(record)
