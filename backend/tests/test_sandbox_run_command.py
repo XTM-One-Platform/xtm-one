@@ -1449,6 +1449,32 @@ async def test_a_failed_check_in_a_node_directory_with_no_install_says_to_run_th
     assert again.exit_code == 2 and "No installed dependencies" not in again.text
 
 
+async def test_a_failed_check_of_a_workspace_member_reads_the_install_state_at_the_workspace_root(api):
+    """A member (package.json, no lockfile) keeps its install state at the root: a failure after the root install is not 'no install'."""
+    workspace = _workspace()
+    toml = (
+        f'[check.install]\nargv = ["python", "-c", {json.dumps(_YARN_LIKE_INSTALL)}]\n'
+        '[check.member-types]\nargv = ["python", "-c", "import sys; sys.exit(2)"]\ncwd = "pkg"\ninstall_first = false\n'
+    )
+    await workspace.put_tree(
+        [
+            ("co/.xtm-one/checks.toml", toml.encode()),
+            ("co/yarn.lock", b"# lock\n"),
+            ("co/package.json", b"{}\n"),
+            ("co/pkg/package.json", b"{}\n"),
+        ]
+    )
+    before = await commands.run_command(
+        await _resolve(workspace, check="member-types"), workspace=workspace, sandbox_api=api
+    )
+    assert before.exit_code == 2 and "No installed dependencies in workspace/co/pkg" in before.text
+    await commands.run_command(await _resolve(workspace, check="install"), workspace=workspace, sandbox_api=api)
+    after = await commands.run_command(
+        await _resolve(workspace, check="member-types"), workspace=workspace, sandbox_api=api
+    )
+    assert after.exit_code == 2 and "No installed dependencies" not in after.text
+
+
 async def test_a_yarn_4_failure_that_left_its_install_state_gz_still_says_to_run_the_install_first(api):
     """Yarn 4 writes .yarn/install-state.gz on the failed run itself: that file is not installed dependencies."""
     workspace = _workspace()

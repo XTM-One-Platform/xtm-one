@@ -321,17 +321,33 @@ def uncollected_note(outcome: CommandOutcome) -> str:
     return text
 
 
-#: A line of output saying a file was missing: Python, Node and the shell spell it so.
-_MISSING_LINE = re.compile(r"No such file or directory|ENOENT|FileNotFoundError|Cannot find module")
+#: A line of output saying a file was missing: Python, Node, TypeScript and the shell spell it so.
+_MISSING_LINE = re.compile(r"No such file or directory|ENOENT|FileNotFoundError|Cannot find module|error TS6053")
+#: A TypeScript diagnostic for a relative import it could not resolve: ``src/a.ts(8,30): error TS2307: Cannot
+#: find module './b.ts'``, the importing file relative to the check's directory.
+_TS_RELATIVE_IMPORT = re.compile(
+    r"^(?P<file>[^\s(]+)\(\d+,\d+\): error TS2307: Cannot find module '(?P<module>\.{1,2}/[^']+)'"
+)
 
 
-def missing_paths(output: str, root: str) -> list[str]:
-    """The workspace paths (relative, sorted) under the container's *root* that a missing-file line of *output* names."""
+def missing_paths(output: str, root: str, cwd: str = "") -> list[str]:
+    """The workspace paths (relative, sorted) under the container's *root* that a missing-file line of *output* names.
+
+    A TypeScript ``TS2307`` line naming a relative module is resolved from the importing file under *cwd*
+    (the check's directory, relative to the workspace): ``tsc`` prints it without the absolute path.
+    """
     found = re.compile(re.escape(root.rstrip("/")) + r"/([^\s'\"`:,)\]]+)")
     out: set[str] = set()
     for line in output.splitlines():
-        if _MISSING_LINE.search(line):
-            out.update(found.findall(line))
+        if not _MISSING_LINE.search(line):
+            continue
+        out.update(found.findall(line))
+        relative = _TS_RELATIVE_IMPORT.match(line.strip())
+        if relative and not posixpath.isabs(relative["file"]):
+            base = posixpath.join(cwd.strip("/"), posixpath.dirname(relative["file"]))
+            path = posixpath.normpath(posixpath.join(base, relative["module"]))
+            if not path.startswith("../") and path != "..":
+                out.add(path)
     return sorted(out)
 
 
@@ -551,6 +567,13 @@ def _remote_cwd(command: ResolvedCommand) -> str:
     from app.services.sandbox_workspace.remote import REMOTE_WORKSPACE
 
     return f"{REMOTE_WORKSPACE}/{command.cwd}" if command.cwd else REMOTE_WORKSPACE
+
+
+def _with_cwd(command: ResolvedCommand, cwd: str) -> ResolvedCommand:
+    """*command* moved to directory *cwd* (the workspace root of a member, where its install state is)."""
+    import dataclasses
+
+    return dataclasses.replace(command, cwd=cwd)
 
 
 async def _present(sandbox: Any, command: ResolvedCommand, paths: tuple[str, ...] | list[str]) -> set[str] | None:
@@ -2587,7 +2610,10 @@ async def _wait_and_finish(
             if YARN_NO_INSTALL_MESSAGE in stdout or YARN_NO_INSTALL_MESSAGE in stderr:
                 no_install = True
             else:
-                present = await _present(sandbox, command, NODE_STATE_FILES)
+                # A workspace member's install state is at the workspace root, where its lockfile is (:func:`_needs_install`).
+                lock_dir = node_lock_dir(command, entries)
+                probed = command if lock_dir is None or lock_dir == command.cwd.strip("/") else _with_cwd(command, lock_dir)
+                present = await _present(sandbox, probed, NODE_STATE_FILES)
                 no_install = present is not None and not present
         if not lost and not survivors:
             await _release_to_idle(sandbox, command)
@@ -2673,7 +2699,7 @@ async def _wait_and_finish(
         notes.append("Workspace: " + format_diff(call.diff))
         outcome.written = [*call.diff.added, *call.diff.changed]
         outcome.rewritten = list(call.diff.changed)
-    outcome.missing = missing_paths(f"{stdout}\n{stderr}", REMOTE_WORKSPACE)
+    outcome.missing = missing_paths(f"{stdout}\n{stderr}", REMOTE_WORKSPACE, command.cwd)
     outcome.uncollected = uncollected_files(f"{stdout}\n{stderr}")
     outcome.interrupted = bool(_INTERRUPTED.search(f"{stdout}\n{stderr}"))
     if no_install:
