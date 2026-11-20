@@ -154,6 +154,9 @@ _TOOL_CONFIG = re.compile(
     r"|\.oxfmtrc(\.[\w.]+)?|\.oxlintrc(\.[\w.]+)?|\.eslintrc(\.[\w.]+)?|eslint\.config\.\w+|\.eslintignore"
     r"|tsconfig(\.[\w-]+)*\.json|jsconfig\.json|turbo\.json|nx\.json|lerna\.json|babel\.config\.\w+|\.babelrc"
     r"|\.browserslistrc|\.stylelintrc(\.[\w.]+)?|stylelint\.config\.\w+"
+    # Test runner configurations a unit check of a sub_path loads from its package root (vitest.config.ts,
+    # vitest.config.ci-unit.ts, vite.config.ts, jest.config.js, playwright.config.ts).
+    r"|(vite|vitest|jest|playwright)\.config(\.[\w-]+)*\.(ts|mts|cts|js|mjs|cjs|json)|vitest\.workspace\.\w+"
     # Python formatters and linters that read their own file, not pyproject.toml (isort, pylint, pre-commit).
     r"|\.isort\.cfg|\.?pylintrc|\.pre-commit-config\.ya?ml|\.coveragerc|\.yamllint(\.ya?ml)?"
     r"|\.markdownlint(\.[\w.]+)?|\.markdownlintignore|\.sqlfluffignore"
@@ -341,7 +344,7 @@ def is_companion_name(name: str) -> bool:
 #: tool configuration of a JavaScript or TypeScript project (``tsconfig.json`` ``extends``, the
 #: ``relay.config.json`` ``schema`` the Relay compiler and its ESLint plugin read).
 _REFERENCING_CONFIG = re.compile(
-    r"^((tsconfig[\w.-]*|jsconfig)\.json|(vite|vitest)\.config\.\w+|relay\.config\.(json|js|cjs|mjs|ts))$"
+    r"^((tsconfig[\w.-]*|jsconfig)\.json|(vite|vitest)\.config(\.[\w-]+)*\.\w+|relay\.config\.(json|js|cjs|mjs|ts))$"
 )
 _REFERENCING_FILE = re.compile(r"\.(test|spec)\.(ts|tsx|mts|js|jsx|mjs|cjs)$")
 _PATH_LITERAL = re.compile(r"[\"'`](\.{1,2}/[^\"'`\s$]*)[\"'`]")

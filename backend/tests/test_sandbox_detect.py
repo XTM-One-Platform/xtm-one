@@ -881,6 +881,40 @@ def test_companions_are_the_manifests_above_a_sub_path_the_workflows_and_the_che
     ], "a sibling's manifest, build output and plain files are not companions"
 
 
+def test_a_test_runner_config_above_a_sub_path_is_a_companion():
+    """A checkout of front/src/utils keeps the vitest, vite, jest and playwright configs its unit check loads."""
+    sizes = {
+        "front/package.json": 10,
+        "front/vitest.config.ts": 10,
+        "front/vitest.config.ci-unit.ts": 10,
+        "front/vite.config.mts": 10,
+        "front/jest.config.js": 10,
+        "front/playwright.config.ts": 10,
+        "front/vitest.workspace.ts": 10,
+        "front/src/utils/a.test.ts": 10,
+        "back/vitest.config.ts": 10,
+        "front/vitest.config.ts.bak": 10,
+    }
+    assert detect.companions(sizes, ["front/src/utils"]) == [
+        "front/jest.config.js",
+        "front/package.json",
+        "front/playwright.config.ts",
+        "front/vite.config.mts",
+        "front/vitest.config.ci-unit.ts",
+        "front/vitest.config.ts",
+        "front/vitest.workspace.ts",
+    ], "a sibling package's config and a backup file are not companions"
+    assert detect.is_referencing_config("front/vitest.config.ci-unit.ts")
+    assert detect.is_referencing_config("front/vite.config.mts")
+
+
+def test_the_setup_file_a_vitest_config_above_a_sub_path_names_is_kept():
+    """setupFiles of a config above the sub_path resolve from the config's directory."""
+    sizes = {"front/vitest.config.ci-unit.ts": 10, "front/src/setupTests.ts": 10, "front/src/utils/a.ts": 10}
+    sources = {"front/vitest.config.ci-unit.ts": b"export default { test: { setupFiles: ['./src/setupTests.ts'] } }"}
+    assert detect.referenced_files(sources, sizes, ["front/src/utils"]) == ["front/src/setupTests.ts"]
+
+
 _DECLARED = checks.load_checks(
     '[check.unit]\nargv = ["pytest"]\ncwd = "backend"\n'
     '[check.lint]\nargv = ["ruff"]\ncwd = "backend"\n'
