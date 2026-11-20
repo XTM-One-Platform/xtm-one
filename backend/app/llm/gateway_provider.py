@@ -373,13 +373,13 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
                 self._editing_models.add(m.id)
             else:
                 self._editing_models.discard(m.id)
-            types = _types_of(m)
-            # Absent on an older gateway: no default.
+            # Absent on an older gateway: no default. Only for a type the entry declares, never its id's guess.
             if getattr(m, "default", None) is True:
+                declared = declared_model_types(getattr(m, "types", None), getattr(m, "type", None))
                 for t in _DEFAULT_TYPES:
-                    if t in types:
+                    if t in declared:
                         defaults.setdefault(t, m.id)
-            out.append(GatewayModel(m.id, owner, types))
+            out.append(GatewayModel(m.id, owner, _types_of(m)))
         self._listed_defaults = defaults
         self._listed_defaults_until = time.monotonic() + _DEFAULTS_TTL_SECONDS
         return out

@@ -1639,11 +1639,12 @@ async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(mon
 class TestListedDefaults:
     """The gateway's ``"default": true`` per type (XTM-One-Platform/ai-gateway#376), read for #746."""
 
+    # As XTM-One-Platform/ai-gateway#381 lists them: never on a chat-only or decision model.
     _LISTING = (
-        {"id": "gpt-image-1", "types": ["image"]},
-        {"id": "gpt-image-2", "types": ["image"], "default": True},
-        {"id": "gpt-4o-mini-tts", "types": ["speech"], "default": True},
-        {"id": "gpt-6", "types": ["chat"], "default": True},
+        {"id": "gpt-image-1", "type": "image", "types": ["image"], "image_edit": True},
+        {"id": "gpt-image-2", "type": "image", "types": ["image"], "image_edit": True, "default": True},
+        {"id": "gpt-4o-mini-tts", "type": "speech", "types": ["speech"], "default": True},
+        {"id": "gpt-6", "type": "chat", "types": ["chat"]},
     )
 
     @staticmethod
@@ -1662,8 +1663,18 @@ class TestListedDefaults:
         provider = _listing_provider(*self._LISTING)
         assert await provider.marked_default_model("image") == "gpt-image-2"
         assert await provider.marked_default_model("speech") == "gpt-4o-mini-tts"
-        # Only image and speech carry one.
         assert await provider.marked_default_model("chat") is None
+
+    @pytest.mark.asyncio
+    async def test_a_flagged_model_is_default_for_the_types_it_lists_only(self):
+        provider = _listing_provider(
+            # A chat model that also draws is the image default.
+            {"id": "gemini-3-image", "type": "chat", "types": ["chat", "image"], "default": True},
+            # An entry declaring no type is never taken by its id's look.
+            {"id": "tts-1", "default": True},
+        )
+        assert await provider.marked_default_model("image") == "gemini-3-image"
+        assert await provider.marked_default_model("speech") is None
 
     @pytest.mark.asyncio
     async def test_an_older_gateway_marks_none(self):
