@@ -6457,6 +6457,8 @@ export interface WorkItemAskOption {
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
 interface WorkItemAsk {
   question: string;
+  /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
+  context?: string | null;
   options?: WorkItemAskOption[];
   /** The key of the option the agent recommends. */
   recommendation?: string | null;

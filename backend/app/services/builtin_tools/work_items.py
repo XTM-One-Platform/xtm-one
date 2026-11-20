@@ -608,7 +608,13 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     },
     "ask": {
         "type": "object",
-        "description": "{question, options:[{key,label,effect}], recommendation: option key, deadline}",
+        "description": (
+            "{question, context, options:[{key,label,effect}], recommendation: option key, deadline}. "
+            "A person reads it: question = the decision in their words; context = 2-4 plain lines. "
+            "No timestamp, id, key or 'card sent' (refused; put them in blocked_reason). "
+            "Good: 'Post Legal's comment asking for the 4 missing documents?'. "
+            "Bad: 'CARD SENT 2026-11-20T11:43Z msg 1795175038574: waiting for GO'"
+        ),
     },
 }
 

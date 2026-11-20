@@ -15809,6 +15809,7 @@
   "Or answer in your own words": "Or answer in your own words",
   "Only an administrator can answer a company-managed work item.": "Only an administrator can answer a company-managed work item.",
   "An agent waits for your decision on this work item.": "An agent waits for your decision on this work item.",
+  "Decision needed: {title}": "Decision needed: {title}",
   "Show the full description": "Show the full description",
   "Delete {name}": "Delete {name}",
   "New preset": "New preset",

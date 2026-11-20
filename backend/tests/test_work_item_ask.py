@@ -82,6 +82,67 @@ def test_the_tool_schema_says_the_recommendation_is_an_option_key():
     assert "recommendation: option key" in _BLOCKED_WHY_SCHEMA["ask"]["description"]
 
 
+def test_a_context_keeps_its_lines_and_drops_blank_ones():
+    ask = normalize_ask(
+        {"question": "Post the comment?", "context": "  The review found  4 gaps.\n\nGo posts it.  ", "options": []}
+    )
+    assert ask["context"] == "The review found 4 gaps.\nGo posts it."
+    assert "    context: The review found 4 gaps. / Go posts it." in ask_lines(ask)
+
+
+def test_a_context_given_as_lines_is_joined():
+    assert normalize_ask({"question": "Post it?", "context": ["One.", "Two."]})["context"] == "One.\nTwo."
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("Card sent 2026-11-20T11:43:58Z, answer?", "machine timestamp"),
+        ("Sent at 19:14Z, go?", "machine timestamp"),
+        ("Approve item 16fe84b0-465c-4212-bcdb-3d0c81464b70?", "UUID"),
+        ("Merge head 179dc57b?", "hexadecimal id"),
+        ("Reply to Teams message 1795175038574?", "long run of digits"),
+        ("Fire timer legal:fin-796-card-reminder now?", "correlation or timer key"),
+        ("Resend the msg to the owner?", "delivery bookkeeping"),
+        ("Card sent: go or no?", "delivery bookkeeping"),
+    ],
+)
+def test_a_question_a_person_cannot_read_is_refused_with_how_to_rewrite_it(text, reason):
+    with pytest.raises(ValueError, match=reason) as refused:
+        normalize_ask({"question": text, "options": [{"key": "A"}, {"key": "B"}]})
+    assert "blocked_reason" in str(refused.value)
+    assert "good:" in str(refused.value)
+
+
+def test_an_unreadable_context_or_option_is_refused_too():
+    with pytest.raises(ValueError, match=r"ask\.context"):
+        normalize_ask({"question": "Post it?", "context": "Timer dev:harness-gaps-zero fires at 08:00Z."})
+    with pytest.raises(ValueError, match=r"ask\.options"):
+        normalize_ask(
+            {"question": "Post it?", "options": [{"key": "A", "label": "Go", "effect": "posts msg 1795202088870"}]}
+        )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Post Legal's comment asking the supplier for the 4 missing documents?",
+        "Renew the 2027 contract at 12% off before Monday 24 November, 10:00?",
+        "Merge the fix for OpenCTI 6.9 now, or wait for the release on 1 December?",
+        "Approve Jira approval #2004 as proposed?",
+    ],
+)
+def test_a_clean_question_is_accepted(text):
+    assert normalize_ask({"question": text, "options": [{"key": "A"}, {"key": "B"}]})["question"] == text
+
+
+def test_the_tool_schema_carries_a_good_and_a_bad_example():
+    from app.services.builtin_tools.work_items import _BLOCKED_WHY_SCHEMA
+
+    description = _BLOCKED_WHY_SCHEMA["ask"]["description"]
+    assert "Good:" in description and "Bad:" in description and "context" in description
+
+
 def test_a_naive_deadline_is_read_as_utc():
     assert normalize_ask({"question": "q", "deadline": "2026-11-08T09:00:00"})["deadline"] == (
         "2026-11-08T09:00:00+00:00"

@@ -20,8 +20,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * answer. Answering records the answer on the item, clears "waiting for
  * you" and hands the item back to its owner agent (`POST /answer`).
  *
- * A legacy item (no structured `ask`) shows its `blocked_reason` as the
- * question and takes a free-text answer only.
+ * The card is written for a person (#776): the headline is the ask's
+ * question, never the agent's `blocked_reason`; the ask's `context` lines
+ * follow it; the deadline is shown in the reader's time zone. The
+ * `blocked_reason` (ids, keys, timestamps an agent wrote for itself) is kept
+ * under a collapsed "Technical details". A legacy item (no structured `ask`)
+ * is headed by its title and takes a free-text answer only.
  *
  * Ask the agent (slice 4, `WorkItemAskAgent`) closes the card; the detail
  * dialog shows it on every other unfinished item too (#9879).
@@ -32,6 +36,7 @@ import { Textarea } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DisclosureSummary } from "@/components/ui/disclosure";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { WorkItemAskAgent } from "@/components/work-items/WorkItemAskAgent";
@@ -48,7 +53,15 @@ export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canA
   const textId = useId();
   const textLabel = (item.ask?.options?.length ?? 0) > 0 ? t_i18n("Or answer in your own words") : t_i18n("Your answer");
   const ask = item.ask ?? null;
-  const question = ask?.question?.trim() || item.blocked_reason?.trim() || t_i18n("An agent waits for your decision on this work item.");
+  const title = item.title?.trim();
+  const question =
+    ask?.question?.trim() ||
+    (title ? t_i18n("Decision needed: {title}", { title }) : t_i18n("An agent waits for your decision on this work item."));
+  const context = (ask?.context ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const technical = item.blocked_reason?.trim() ?? "";
   const options = ask?.options ?? [];
   const recommended = ask?.recommendation ?? null;
 
@@ -95,6 +108,15 @@ export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canA
       <p id={`${textId}-question`} className="content-base font-medium text-default-primary">
         {question}
       </p>
+      {context.length > 0 && (
+        <div className="space-y-1" data-testid="work-item-decision-context">
+          {context.map((line, index) => (
+            <p key={index} className="content-compact text-default-secondary">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
 
       {options.length > 0 && (
         <ul className="space-y-2" data-testid="work-item-decision-options">
@@ -147,6 +169,13 @@ export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canA
         <p className="content-compact text-default-secondary">
           {t_i18n("Only an administrator can answer a company-managed work item.")}
         </p>
+      )}
+
+      {technical && (
+        <details data-testid="work-item-decision-technical">
+          <DisclosureSummary>{t_i18n("Technical details")}</DisclosureSummary>
+          <p className="content-compact whitespace-pre-wrap break-words pt-2 text-default-secondary">{technical}</p>
+        </details>
       )}
 
       <WorkItemAskAgent item={item} />
