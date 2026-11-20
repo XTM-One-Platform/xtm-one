@@ -107,6 +107,31 @@ _LOGS_QUERY = (
     " manager_connector_uptime manager_connector_logs } }"
 )
 
+# action='get' reads the state apart, so an OpenCTI without these fields still
+# answers 'get'; a connector state can be a large JSON document, so it is capped.
+_STATE_QUERY = (
+    "query ConnectorState($id: String!) { connector(id: $id) { id connector_state connector_state_timestamp } }"
+)
+_STATE_CAP = 2000
+
+
+def _state_lines(node: dict[str, object] | None, err: str | None) -> list[str]:
+    """The connector_state line of action='get': the value, 'none' when empty."""
+    if err or node is None:
+        return ["  connector_state: unreadable (this OpenCTI did not answer it)"]
+    raw = node.get("connector_state")
+    state = raw.strip() if isinstance(raw, str) else raw
+    if not state:
+        return ["  connector_state: none"]
+    text = str(state)
+    if len(text) > _STATE_CAP:
+        text = f"{text[:_STATE_CAP]}... ({len(text)} characters, cut)"
+    lines = [f"  connector_state: {text}"]
+    if node.get("connector_state_timestamp"):
+        lines.append(f"  connector_state_timestamp: {node['connector_state_timestamp']}")
+    return lines
+
+
 # reset_state: the queue depth is read before the reset, which purges it.
 _RESET_PRECHECK_QUERY = (
     "query ConnectorResetPrecheck($id: String!) { connector(id: $id) {"
@@ -720,6 +745,8 @@ def register(
             )
             if c.get("manager_contract_image"):
                 lines.append(f"  image: {c['manager_contract_image']}")
+            state_data, state_err = await _gql(_STATE_QUERY, {"id": connector_id})
+            lines.extend(_state_lines(None if state_err else state_data.get("connector"), state_err))
             cfg = c.get("manager_contract_configuration") or []
             if cfg:
                 lines.append("  configuration:")
