@@ -65,8 +65,10 @@ MAX_GROUPS = 500
 MAX_JSON_FIELDS = 20
 MAX_JSON_FIELD_CHARS = 200
 #: Files a search opens at most, and bytes it decodes at most, per call (32 MB stopped an
-#: unscoped search of one backend tree after about 1,100 files).
-MAX_GREP_FILES = 4000
+#: unscoped search of one backend tree after about 1,100 files; 4,000 files stopped a whole
+#: xtm-one checkout before frontend/src and licensing, so two readers of a renamed path were
+#: missed). The call's time budget is the bound that stops a larger search first.
+MAX_GREP_FILES = 25_000
 MAX_GREP_BYTES = 128 * 1024 * 1024
 #: A file larger than this is not searched (a CI job log of a few MB is).
 MAX_GREP_FILE_BYTES = 32 * 1024 * 1024

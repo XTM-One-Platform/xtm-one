@@ -824,7 +824,15 @@ def build_sandbox_workspace_tools(
                 return None
             return data
 
-        for batch in reading.plan_grep(sized, result):
+        # A whole checkout is searched to its end within the call's time budget; what the budget did not
+        # reach is named (a stop at a file count missed two readers of a renamed path, #758).
+        deadline = time.monotonic() + commands.wait_budget()
+        batches = reading.plan_grep(sized, result)
+        for index, batch in enumerate(batches):
+            if time.monotonic() >= deadline:
+                result.stopped = "the call's time budget ran out"
+                result.left[:0] = [rel for rest in batches[index:] for rel in rest]
+                break
             # The reads of a batch run at once (bounded by plan_grep), the matches are taken in path order.
             blobs = await asyncio.gather(*(read(rel) for rel in batch))
             for rel, data in zip(batch, blobs, strict=True):
