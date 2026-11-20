@@ -276,6 +276,22 @@ async def test_all_pages_reads_until_the_last(aikido_api):
     assert api.requests[0].url.params["per_page"] == "100"
 
 
+async def test_all_pages_cap_names_the_next_unread_page(aikido_api, monkeypatch):
+    monkeypatch.setattr(_tools, "MAX_PAGES", 2)
+    api = aikido_api(
+        {
+            "/open-issue-groups": [
+                httpx.Response(200, json=[{"id": 1}], headers={"X-Has-Next-Page": "true"}),
+                httpx.Response(200, json=[{"id": 2}], headers={"X-Has-Next-Page": "true"}),
+            ]
+        }
+    )
+    _, executor = _tools_for()
+    answer = await _call(executor, "list_aikido_open_issue_groups", all_pages=True)
+    assert [r.url.params["page"] for r in api.requests] == ["0", "1"]
+    assert "(2 rows; more from page 2)" in answer
+
+
 # --- rate limit ---------------------------------------------------------------
 
 

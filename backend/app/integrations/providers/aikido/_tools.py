@@ -201,7 +201,8 @@ async def _all_pages(client: AikidoClient, op: dict[str, Any], path: str, query:
         if not more or not batch:
             break
         page += 1
-    note = f"; more from page {page + 1}" if more else ""
+    # After a full last iteration `page` already names the next unread page.
+    note = f"; more from page {page}" if more else ""
     return render(f"{PROVIDER}: {op['summary']} ({len(rows)} rows{note})", rows)
 
 
