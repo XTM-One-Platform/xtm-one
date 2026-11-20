@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -44,6 +45,7 @@ _ENTITY_SETTING_APPLIES: dict[str, frozenset[str]] = {
             "platform_hidden_type",
             "enforce_reference",
             "platform_entity_files_ref",
+            "sync_workflow_status_by_name",
             "attributes_configuration",
         }
     ),
@@ -141,6 +143,7 @@ def register(
         platform_hidden_type: bool | None = None,
         enforce_reference: bool | None = None,
         platform_entity_files_ref: bool | None = None,
+        sync_workflow_status_by_name: bool | None = None,
         attributes_configuration: str = "",
         limit: int = 100,
         template_id: str = "",
@@ -158,6 +161,7 @@ def register(
                 "platform_hidden_type": _flag(platform_hidden_type),
                 "enforce_reference": _flag(enforce_reference),
                 "platform_entity_files_ref": _flag(platform_entity_files_ref),
+                "sync_workflow_status_by_name": _flag(sync_workflow_status_by_name),
                 "attributes_configuration": attributes_configuration,
                 "limit": _unless(limit, 100),
                 "template_id": template_id,
@@ -202,13 +206,7 @@ def register(
         if action == "get_by_type":
             if not target_type:
                 return "target_type is required for action 'get_by_type'."
-            query = (
-                "query EntitySetting($t: String!) {"
-                "  entitySettingByType(targetType: $t) { id target_type"
-                "    platform_hidden_type enforce_reference platform_entity_files_ref"
-                "    attributes_configuration mandatoryAttributes availableSettings } }"
-            )
-            data, err = await _gql(query, {"t": target_type})
+            data, err = await _entity_setting_by_type(target_type)
             if err:
                 return err
             es = data.get("entitySettingByType")
@@ -219,6 +217,11 @@ def register(
                 f"  platform_hidden_type: {es.get('platform_hidden_type')}",
                 f"  enforce_reference: {es.get('enforce_reference')}",
                 f"  platform_entity_files_ref: {es.get('platform_entity_files_ref')}",
+                *(
+                    [f"  sync_workflow_status_by_name: {es.get('sync_workflow_status_by_name')}"]
+                    if "sync_workflow_status_by_name" in es
+                    else []
+                ),
                 f"  available settings: {', '.join(es.get('availableSettings') or [])}",
                 f"  mandatory attributes: {', '.join(es.get('mandatoryAttributes') or [])}",
                 f"  attributes_configuration: {es.get('attributes_configuration') or '-'}",
@@ -239,6 +242,14 @@ def register(
                 edits.append(
                     {"key": "platform_entity_files_ref", "value": [platform_entity_files_ref]}
                 )
+            if sync_workflow_status_by_name is not None:
+                # OpenCTI stores this setting from a string, as its own settings screen sends it.
+                edits.append(
+                    {
+                        "key": "sync_workflow_status_by_name",
+                        "value": ["true" if sync_workflow_status_by_name else "false"],
+                    }
+                )
             if attributes_configuration:
                 try:
                     json.loads(attributes_configuration)
@@ -250,18 +261,22 @@ def register(
             if not edits:
                 return (
                     "Provide at least one of platform_hidden_type, enforce_reference, "
-                    "platform_entity_files_ref, or attributes_configuration."
+                    "platform_entity_files_ref, sync_workflow_status_by_name, or attributes_configuration."
                 )
-            id_q = (
-                "query EntitySetting($t: String!) {"
-                "  entitySettingByType(targetType: $t) { id } }"
-            )
+            id_q = "query EntitySetting($t: String!) {  entitySettingByType(targetType: $t) { id availableSettings } }"
             data, err = await _gql(id_q, {"t": target_type})
             if err:
                 return err
             es = data.get("entitySettingByType")
             if not es:
                 return f"No entity setting for type '{target_type}'."
+            if sync_workflow_status_by_name is not None and "sync_workflow_status_by_name" not in (
+                es.get("availableSettings") or []
+            ):
+                return (
+                    f"sync_workflow_status_by_name is not available for '{target_type}' on this OpenCTI "
+                    f"(available settings: {', '.join(es.get('availableSettings') or []) or 'none'}). Nothing was written."
+                )
             query = (
                 "mutation EsPatch($ids: [ID!]!, $input: [EditInput!]!) {"
                 "  entitySettingsFieldPatch(ids: $ids, input: $input) { id target_type } }"
@@ -275,6 +290,21 @@ def register(
             f"Unknown action '{action}'. Valid actions: list, get_by_type, patch, "
             "add_status, update_status, delete_status."
         )
+
+    async def _entity_setting_by_type(target_type: str) -> tuple[dict[str, Any], str | None]:
+        """Read one type's entity setting, with sync_workflow_status_by_name where OpenCTI knows it.
+
+        An OpenCTI older than the setting refuses the field: the read is made again without it.
+        """
+        fields = (
+            "id target_type platform_hidden_type enforce_reference platform_entity_files_ref"
+            " attributes_configuration mandatoryAttributes availableSettings"
+        )
+        query = "query EntitySetting($t: String!) {  entitySettingByType(targetType: $t) { %s } }"
+        data, err = await _gql(query % f"{fields} sync_workflow_status_by_name", {"t": target_type})
+        if err and "sync_workflow_status_by_name" in err:
+            data, err = await _gql(query % fields, {"t": target_type})
+        return data, err
 
     async def _edit_type_status(
         action: str, target_type: str, *, template_id: str, status_id: str, order: int | None, scope: str
@@ -1135,8 +1165,8 @@ def register(
                 "Manage OpenCTI entity-type settings / customization (requires "
                 "SETTINGS_SETCUSTOMIZATION). Actions: 'list', 'get_by_type' "
                 "(target_type, e.g. 'Report'; includes the workflow Status ids), 'patch' (target_type + any of "
-                "platform_hidden_type, enforce_reference, platform_entity_files_ref "
-                "booleans, or attributes_configuration JSON string), 'add_status' (target_type + "
+                "platform_hidden_type, enforce_reference, platform_entity_files_ref, "
+                "sync_workflow_status_by_name booleans, or attributes_configuration JSON string), 'add_status' (target_type + "
                 "template_id + order; the first global status enables the workflow), 'update_status' "
                 "(status_id + order and/or template_id), 'delete_status' (status_id)."
             ),
@@ -1151,6 +1181,10 @@ def register(
                     "platform_hidden_type": {"type": "boolean", "description": "Hide this type from the platform (patch)."},
                     "enforce_reference": {"type": "boolean", "description": "Require external references on update (patch)."},
                     "platform_entity_files_ref": {"type": "boolean", "description": "Enable file references (patch)."},
+                    "sync_workflow_status_by_name": {
+                        "type": "boolean",
+                        "description": "Stream sync name-matches incoming workflow statuses (patch).",
+                    },
                     "attributes_configuration": {"type": "string", "description": "Attributes configuration as a JSON string (patch)."},
                     "limit": {"type": "integer", "default": 100},
                     "template_id": {"type": "string", "description": "Status template id (add_status, update_status)."},
