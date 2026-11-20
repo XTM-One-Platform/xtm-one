@@ -518,3 +518,12 @@ def test_setup_guide_names_fields_as_rendered():
     assert "'API key' field" in steps
     assert "'API Key'" not in steps
     assert "'Webhook signing secret'" not in steps
+
+
+def test_setup_guide_scopes_fit_next_to_their_description():
+    """Each scope chip stays short enough to leave its description visible in the dialog (UX round 2, B2)."""
+    permissions = PROVIDER_CATALOG["aikido"]["setup_guide"]["permissions"]
+    assert permissions
+    for permission in permissions:
+        assert len(permission["scope"]) <= 40, permission["scope"]
+        assert permission["description"]

@@ -4628,12 +4628,28 @@ PROVIDER_CATALOG = {
             ],
             "permissions": [
                 {
-                    "scope": "issues:read, repositories:read, containers:read, clouds:read, domains:read, basics:read",
-                    "description": "Read issues, inventory and workspace",
+                    "scope": "issues:read, repositories:read",
+                    "description": "Read issues and code repositories",
                 },
                 {
-                    "scope": "teams:read, users:read, reports:read, research:read, webhooks:read",
-                    "description": "Read teams, users, reports, research data and webhooks",
+                    "scope": "containers:read, clouds:read",
+                    "description": "Read containers and clouds",
+                },
+                {
+                    "scope": "domains:read, basics:read",
+                    "description": "Read domains and the workspace",
+                },
+                {
+                    "scope": "teams:read, users:read",
+                    "description": "Read teams and users",
+                },
+                {
+                    "scope": "reports:read, research:read",
+                    "description": "Read reports and research data",
+                },
+                {
+                    "scope": "webhooks:read",
+                    "description": "Read webhooks",
                 },
                 {
                     "scope": "issues:write and the other :write scopes",
