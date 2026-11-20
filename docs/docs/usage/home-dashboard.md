@@ -29,6 +29,7 @@ The top of the Dashboard gathers what needs attention, each as a notice you can 
 - `N work items are waiting for you`: work items that wait for your decision, or items of yours that no agent owns and that are past their due date. The notice names the item waiting longest. `Review` opens that item when it is the only one; when several wait, it opens `Operations > Work Items` on the `Waiting for me` view, which lists every item the notice counts, oldest first.
 - Model configuration: `No default model configured` or `No embedding provider configured`, when agents or knowledge bases cannot run yet. Administrators get a `Configure` button.
 - Knowledge base health: a knowledge base that needs attention, indexing stalled, re-indexing in progress or stale embeddings, with a link to the documentation or the settings.
+- Platform Health (administrators): the critical findings open in [Platform Health](health.md), their count and the most recent one, with `Review`.
 - Your own OAuth integrations that share your personal credentials with other people, with `Stop sharing` and `Keep sharing`.
 - On Community Edition, the upgrade path to Enterprise Edition.
 
@@ -38,7 +39,7 @@ When nothing needs attention, no notice is shown.
 
 The command center opens with a greeting, a summary of your exposure posture, and the `Start chatting` button. Next to it you see when the exposure data was last synced; the refresh button next to that time fetches your data again, for you only.
 
-The product pills under the greeting show each module: OpenCTI, OpenAEV and OpenCRQ, then the XTM Hub. A connected module shows its edition, version and health, and opens the platform when you click it. A module that is not connected offers `Connect OpenCTI` (or `Connect OpenAEV`), which explains how to connect it; OpenCRQ shows `Soon` until an OpenCRQ platform connects.
+The product pills under the greeting show each module: OpenCTI, OpenAEV and OpenCRQ, then the XTM Hub. A connected module shows its edition, version and health, and opens the platform when you click it. For an administrator the health dot also reads [Platform Health](health.md): red on an open critical finding, amber on an open warning, with the count when you point at it. A module that is not connected offers `Connect OpenCTI` (or `Connect OpenAEV`), which explains how to connect it; OpenCRQ shows `Soon` until an OpenCRQ platform connects.
 
 The XTM Hub pill follows the platform's [registration with the XTM Hub](../administration/settings.md#xtm-hub-registration): a green dot while the XTM Hub confirms it, a red one when it did not at the last hourly check or when the platform must be registered again. A platform that is not registered shows the XTM Hub integrations you can use instead (a green dot while one is connected), and otherwise reads `Connect XTM Hub`: it opens the registration for an administrator and the integration form for anyone else. The pill opens your XTM Hub. See the [XTM Hub integration](resources/integrations.md#xtm-hub) for what agents can do with it.
 

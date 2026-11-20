@@ -267,16 +267,17 @@ export interface HealthFindingFilters {
   offset?: number;
 }
 
-export function useHealthOverview() {
+export function useHealthOverview(options: { enabled?: boolean } = {}) {
   return useQuery<HealthOverview>({
     queryKey: ["health-overview"],
     queryFn: () => api.get("/health/overview"),
+    enabled: options.enabled ?? true,
     throwOnError: false,
     refetchInterval: REFETCH_INTERVAL_STANDARD,
   });
 }
 
-export function useHealthFindings(filters: HealthFindingFilters) {
+export function useHealthFindings(filters: HealthFindingFilters, options: { enabled?: boolean } = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (Array.isArray(value)) for (const item of value) params.append(key, String(item));
@@ -286,6 +287,7 @@ export function useHealthFindings(filters: HealthFindingFilters) {
   return useQuery<HealthFindingList>({
     queryKey: ["health-findings", filters],
     queryFn: () => api.get(`/health/findings${query ? `?${query}` : ""}`),
+    enabled: options.enabled ?? true,
     // The toolbar and the rows shown stay while a filter's list loads (13bis.10 (2)).
     placeholderData: (previous) => previous,
     throwOnError: false,
