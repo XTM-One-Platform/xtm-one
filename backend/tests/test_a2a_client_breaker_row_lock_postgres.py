@@ -6,8 +6,10 @@ transaction and kept it until the run committed. Every other delegation to
 that partner that re-verified meanwhile claimed the row with ``SKIP LOCKED``,
 gave up after the wait and was refused as ``verification_contended``.
 
-The outcome is now committed in a short session of its own. Same
-scratch-database recipe as ``test_a2a_client_verdict_contention_postgres.py``.
+The outcome is now committed in a short session of its own. A row another
+session holds is written by a detached task once it is free, never by the
+run's session, whose flush would otherwise take the lock for the rest of
+the run. Same scratch-database recipe as ``test_a2a_client_verdict_contention_postgres.py``.
 """
 
 from __future__ import annotations
@@ -85,22 +87,33 @@ class TestBreakerWriteOutsideTheRun:
                 assert row.last_failure_kind == failures.TRANSIENT.kind
 
     @pytest.mark.asyncio
-    async def test_a_row_the_run_already_holds_is_left_to_the_run(self, monkeypatch):
+    async def test_a_held_row_is_written_once_free_and_never_by_the_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(delegation, "_TARGET_OUTCOME_WAIT_SECONDS", 0.2)
+        monkeypatch.setattr(delegation, "_TARGET_OUTCOME_POLL_SECONDS", 0.05)
         async with _temp_database() as sm:
             integration, target_id = await _seed(sm)
             _patch(monkeypatch, sm, [])
-            async with sm() as caller:
+            async with sm() as holder, sm() as caller:
+                # A verifier mid-write holds the row when the send concludes.
+                await holder.execute(select(A2AClientTarget).where(A2AClientTarget.id == target_id).with_for_update())
                 target = (
-                    await caller.execute(
-                        select(A2AClientTarget).where(A2AClientTarget.id == target_id).with_for_update()
-                    )
+                    await caller.execute(select(A2AClientTarget).where(A2AClientTarget.id == target_id))
                 ).scalar_one()
                 await _fail_once(caller, integration, target)
-                # Never waited on, never lost: the run's own commit writes it.
-                assert target in caller.dirty
-                await caller.commit()
+                # Not left to the run: its next flush never waits for the
+                # holder (the holder is still there), and never keeps the
+                # lock for the rest of the run.
+                await caller.flush()
+                assert not caller.dirty
+                assert len(delegation._BACKGROUND_TARGET_WRITES) == 1
+                await holder.rollback()
+                await delegation.drain_background_a2a()
+                assert not delegation._BACKGROUND_TARGET_WRITES
+                assert await _row_is_free(sm, target_id)
+                await caller.rollback()
             async with sm() as reader:
                 row = (
                     await reader.execute(select(A2AClientTarget).where(A2AClientTarget.id == target_id))
                 ).scalar_one()
                 assert row.consecutive_transient_failures == 1
+                assert row.last_failure_kind == failures.TRANSIENT.kind

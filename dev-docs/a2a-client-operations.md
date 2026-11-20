@@ -233,6 +233,18 @@ registration stays usable. Google Agent Engine answers a continuation of a
 cancelled task `400 … is in terminal state: canceled`. A request that names no
 task — a fresh submission — still classifies its 4xx as `request_rejected_by_partner`.
 
+### The breaker write never holds the registration row for the run
+
+What an attempt changes on its registration (breaker counts, usability) is
+committed in a short session of its own (`_commit_target_outcome`), never by the
+calling run's session: flushed there, the UPDATE would keep the row locked until
+the run commits, and every other delegation to that partner re-verifying
+meanwhile would be refused `verification_contended`. When another session holds
+the row (a verifier mid-write, the sweep), the attempt polls for about a second,
+then hands the write to a detached task that waits for the row under a
+`lock_timeout` and commits it; shutdown drains it with the other detached A2A
+work. A write that still cannot land loses those counts, logged.
+
 ### A task that outlasts an attempt is handed back, not failed
 
 An attempt that ends with the partner still working returns a `still_running`
