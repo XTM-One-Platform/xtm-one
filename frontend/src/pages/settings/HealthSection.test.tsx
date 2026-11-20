@@ -59,6 +59,7 @@ const settings = {
     ingestion_lag_minutes: 15,
   },
   openaev: { integration_silent_minutes: 60, agents_offline_max_percent: 50 },
+  alert_emails: { enabled: false, recipients: [], min_severity: "warning", immediate: true, digest: true },
 };
 
 const budget = {
@@ -116,5 +117,13 @@ describe("HealthSection read view", () => {
     const usage = await screen.findByTestId("health.budget-usage");
     expect(usage).toHaveTextContent("Spent in 2026-11: 0 tokens, $4.20.");
     expect(usage).not.toHaveTextContent("USD");
+  });
+
+  it("shows the alert emails block, off by default", async () => {
+    renderSection();
+    const alerts = await screen.findByTestId("settings.health.alert-emails");
+    expect(alerts).toHaveTextContent("Send alert emails");
+    expect(alerts).toHaveTextContent("Off");
+    expect(screen.queryByTestId("health.read.alert-recipients")).toBeNull();
   });
 });

@@ -16197,6 +16197,17 @@ export interface HealthSettings extends HealthTriggerSettings {
   /** The editable thresholds of the OpenCTI and OpenAEV checks (#101 S10b), read on the next pass. */
   opencti: HealthOpenCTIThresholds;
   openaev: HealthOpenAEVThresholds;
+  /** The alert emails (#101 S12), off by default. */
+  alert_emails: HealthAlertEmailSettings;
+}
+
+/** `HealthAlertEmailSettings` of `services/health/settings.py`. */
+export interface HealthAlertEmailSettings {
+  enabled: boolean;
+  recipients: string[];
+  min_severity: "critical" | "warning" | "info";
+  immediate: boolean;
+  digest: boolean;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
