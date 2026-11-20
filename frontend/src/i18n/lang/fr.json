@@ -19691,5 +19691,9 @@
   "Pentest finished": "Pentest terminé",
   "Pentest failed": "Pentest échoué",
   "Pentest cancelled": "Pentest annulé",
-  "Triggers on this Aikido webhook event. Add a webhook for it in Aikido (Settings > Integrations > Webhooks, or the add_aikido_webhook tool) pointing to the webhook URL shown below.": "Se déclenche sur cet événement de webhook Aikido. Ajoutez-lui un webhook dans Aikido (Settings > Integrations > Webhooks, ou l'outil add_aikido_webhook) pointant vers l'URL de webhook affichée ci-dessous."
+  "Triggers on this Aikido webhook event. Add a webhook for it in Aikido (Settings > Integrations > Webhooks, or the add_aikido_webhook tool) pointing to the webhook URL shown below.": "Se déclenche sur cet événement de webhook Aikido. Ajoutez-lui un webhook dans Aikido (Settings > Integrations > Webhooks, ou l'outil add_aikido_webhook) pointant vers l'URL de webhook affichée ci-dessous.",
+  "{count, plural, one {# critical finding is open in Platform Health} other {# critical findings are open in Platform Health}}": "{count, plural, one {# constat critique est ouvert dans Platform Health} other {# constats critiques sont ouverts dans Platform Health}}",
+  "Most recent, {module}: {finding}": "Le plus récent, {module} : {finding}",
+  "{count, plural, one {# critical finding in Platform Health} other {# critical findings in Platform Health}}": "{count, plural, one {# constat critique dans Platform Health} other {# constats critiques dans Platform Health}}",
+  "{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}": "{count, plural, one {# avertissement dans Platform Health} other {# avertissements dans Platform Health}}"
 }
