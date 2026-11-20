@@ -448,6 +448,11 @@ _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
         "head (skipped or neutral pass), whatever the other checks; false with no open PR or no required check. "
         "Also .total, .passed, .failed, .pending, .missing, .*_names[], .base, .last_to_complete"
     ),
+    "enriched.head.parent.unchanged_red": (
+        "CI events: true when every counted red check of the head was already red on its first parent "
+        '(a red the head did not cause); {"ne": true} drops such wakes. Also .sha, .failed_names[], '
+        ".new_failed_names[]"
+    ),
 }
 
 

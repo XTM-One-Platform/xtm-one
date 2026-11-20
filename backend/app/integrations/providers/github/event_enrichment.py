@@ -124,6 +124,17 @@ A filter key under ``enriched.run`` reads the facet :data:`RUN_FACET` on a
 red-check filter adds ``"enriched.run.no_jobs": false`` to leave such a run
 out, and a listener on ``enriched.run.no_jobs`` true with ``attempt`` 1 re-runs
 it once (``manage_github_workflow_run`` action ``rerun``).
+
+A red the head commit did not cause (the same required check already red on its
+parent, a bot commit on a pull request red for days) wakes a red-check filter
+like a new one. A filter key under ``enriched.head.parent`` reads the facet
+:data:`PARENT_FACET`, on a head with a counted red only (two more reads: the
+commit, then its first parent's check runs): ``sha`` (the parent, ``null`` when
+none or not read), ``failed_names`` (the head's counted reds already red on the
+parent), ``new_failed_names`` (the others) and ``unchanged_red`` (at least one
+counted red and none new). A green head, no parent or an unreadable parent reads
+``unchanged_red`` false, so ``{"enriched.head.parent.unchanged_red": {"ne":
+true}}`` never drops a wake blind (xtm-one #752).
 """
 
 from __future__ import annotations
@@ -192,6 +203,10 @@ _REQUIRED_PREFIX = "enriched.head.required."
 RUN_FACET = "run"
 _RUN_KEY = "enriched.run"
 _RUN_PREFIX = "enriched.run."
+#: The facet naming the head's reds against its first parent (``enriched.head.parent``).
+PARENT_FACET = "parent"
+_PARENT_KEY = "enriched.head.parent"
+_PARENT_PREFIX = "enriched.head.parent."
 #: The conclusions of a run whose job count is read: a green run is never ``no_jobs``.
 _NO_JOBS_CONCLUSIONS = frozenset({"failure", "cancelled", "startup_failure", "timed_out"})
 #: Where a completion event names itself: its id and what changes on a re-run.
@@ -252,6 +267,8 @@ def facets(event_key: str, payload: dict, keys: tuple[str, ...]) -> frozenset[st
         parts.add(REQUIRED_FACET)
     if _event_name(event_key) == "workflow_run" and any(key == _RUN_KEY or key.startswith(_RUN_PREFIX) for key in keys):
         parts.add(RUN_FACET)
+    if any(key == _PARENT_KEY or key.startswith(_PARENT_PREFIX) for key in keys):
+        parts.add(PARENT_FACET)
     return frozenset(parts)
 
 
@@ -775,6 +792,50 @@ async def _run_jobs_total(client: Any, repo_base: str, run_id: Any, token: str) 
     return total
 
 
+def parent_facts(head_failed: list[Any], parent_sha: str | None, parent_runs: list[Any] | None) -> dict[str, Any]:
+    """``enriched.head.parent``: the head's counted reds placed against its parent's latest check runs. Pure.
+
+    *parent_runs* ``None`` (no parent, or not read) keeps every red new.
+    """
+    names = [name for name in head_failed if isinstance(name, str)]
+    parent_red: set[str] = set()
+    if parent_runs is not None:
+        runs = gh_checks.latest_check_runs([run for run in parent_runs if isinstance(run, dict)])
+        parent_red = {
+            str(run.get("name"))
+            for run in runs
+            if run.get("status") == "completed" and run.get("conclusion") in FAILED_CONCLUSIONS
+        }
+    unchanged = [name for name in names if name in parent_red]
+    new = [name for name in names if name not in parent_red]
+    return {
+        "sha": parent_sha if parent_runs is not None else None,
+        "failed_names": unchanged,
+        "new_failed_names": new,
+        "unchanged_red": bool(names) and not new,
+    }
+
+
+async def _parent(client: Any, repo_base: str, sha: str, token: str, head_failed: list[Any]) -> dict[str, Any]:
+    """``enriched.head.parent`` read from GitHub; a red-free head reads nothing."""
+    if not head_failed:
+        return parent_facts([], None, None)
+    try:
+        commit = await _get(
+            client, f"{repo_base}/commits/{sha}", "read the parent of a commit", token, {"per_page": "1"}
+        )
+        parents = commit.get("parents") if isinstance(commit, dict) else None
+        first = parents[0] if isinstance(parents, list) and parents and isinstance(parents[0], dict) else {}
+        parent_sha = first.get("sha") if isinstance(first.get("sha"), str) else None
+        if parent_sha is None:
+            return parent_facts(head_failed, None, None)
+        runs = await _check_runs(client, f"{repo_base}/commits/{parent_sha}", token)
+    except EnrichmentError:
+        # An unreadable parent keeps the wake: every red reads new.
+        return parent_facts(head_failed, None, None)
+    return parent_facts(head_failed, parent_sha, runs)
+
+
 def _delivered_check_run_id(event_key: str, payload: dict) -> int | None:
     """The id of the check run a ``check_run`` completion delivers, ``None`` on any other event."""
     if _event_name(event_key) != "check_run" or not is_completion(event_key, payload):
@@ -804,20 +865,22 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
     with_checks = ci_event and (facets is None or CHECKS_FACET in facets)
     with_required = ci_event and facets is not None and REQUIRED_FACET in facets
     with_run = _event_name(event_key) == "workflow_run" and facets is not None and RUN_FACET in facets
+    with_parent = ci_event and facets is not None and PARENT_FACET in facets
     checks: dict[str, Any] | None = None
     required: dict[str, Any] | None = None
     run: dict[str, Any] | None = None
+    parent: dict[str, Any] | None = None
     async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         check_runs: list[Any] = []
         statuses: list[Any] | None = None
-        if with_checks or with_required:
+        if with_checks or with_required or with_parent:
             pulls, check_runs = await asyncio.gather(_pulls(client, base, token), _check_runs(client, base, token))
         else:
             pulls = await _pulls(client, base, token)
         facts = facts_from_pulls(event_key, payload, pulls, sha)
         branch = _base_branch(facts["pull_request"])
         contexts: frozenset[str] | None = None
-        if branch is not None and (with_required or (with_checks and has_red(check_runs))):
+        if branch is not None and (with_required or ((with_checks or with_parent) and has_red(check_runs))):
             # A red is weighed against the base branch's required checks: one read, on a red head only.
             contexts = await gh_checks.read_required_contexts(client, _headers(token), owner, name, branch)
         if with_checks:
@@ -857,6 +920,10 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                 check_runs,
                 _delivered_completion_time(event_key, payload),
             )
+        if with_parent:
+            # Only the head's counted reds are weighed, as in enriched.head.checks.
+            counted = check_facts(check_runs, required=contexts or None)["failed_names"]
+            parent = await _parent(client, repo_base, sha, token, counted)
         if with_run:
             delivered = payload.get("workflow_run")
             jobs_total = None
@@ -875,6 +942,8 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
         facts["head"]["checks"] = checks
     if required is not None:
         facts["head"]["required"] = required
+    if parent is not None:
+        facts["head"]["parent"] = parent
     return facts
 
 
