@@ -22,7 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Edit / Save as the page's other blocks. No model call, nothing metered.
  */
 import { useId } from "react";
-import { Mail } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
@@ -32,6 +32,8 @@ import { useFormatter } from "@/i18n";
 import type { HealthAlertEmailSettings, HealthSettings } from "@/types";
 
 import { BlockTitle, type BlockProps } from "./health-block";
+
+const MailGlyph = ({ className }: { className?: string }) => <Icon name="mail" size={16} className={className} aria-hidden />;
 
 /** The most recipients the server accepts (`MAX_ALERT_RECIPIENTS`). */
 const MAX_ALERT_RECIPIENTS = 20;
@@ -90,7 +92,7 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
   return (
     <div data-testid="settings.health.alert-emails">
       <BlockTitle
-        icon={Mail}
+        icon={MailGlyph}
         title={t_i18n("Alert emails")}
         hint={t_i18n("Emails about what the health checks find: critical findings at once and a daily digest. Off by default; no model call.")}
       />
