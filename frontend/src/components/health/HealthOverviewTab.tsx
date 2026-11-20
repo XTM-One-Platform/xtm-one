@@ -33,7 +33,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { StatCard } from "@/components/ui/stat-card";
-import { Tip } from "@/components/ui/tooltip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
   useDismissHealthFindings,
@@ -549,17 +549,11 @@ export function HealthOverviewTab() {
     ? t_i18n("{count, plural, one {# more finding is not shown: the list keeps the most severe and most recent ones.} other {# more findings are not shown: the list keeps the most severe and most recent ones.}}", { count: hidden })
     : "";
   const truncated = hidden ? (
-    <Tip content={truncatedLabel}>
-      <span
-        role="note"
-        tabIndex={0}
-        aria-label={truncatedLabel}
-        className={`${TOOLBAR_CONTROL_HEIGHT} inline-flex w-8 shrink-0 items-center justify-center rounded-sm text-default-secondary`}
-        data-testid="health-findings-truncated"
-      >
-        <Icon name="info" size={16} aria-hidden />
-      </span>
-    </Tip>
+    // The shared InfoTip (hover colour, help cursor, design-system focus ring), in the 32 px toolbar slot
+    // (UX round 5 B1 on #634).
+    <span className="inline-flex shrink-0" data-testid="health-findings-truncated">
+      <InfoTip label={truncatedLabel} content={truncatedLabel} className={`${TOOLBAR_CONTROL_HEIGHT} w-8 items-center justify-center`} />
+    </span>
   ) : null;
   // The server total of the view goes to the table as totalAll: the chip reads "200 of 205" when the list
   // is cut (UX round 4 B1 on #634).
