@@ -432,6 +432,7 @@ _RETENTION_FIELDS = (
     "overflow_key",
     "overflow_fields",
     "item_key",
+    "keep_fields",
 )
 
 # What a field moved to the overflow key of a retention holds instead (#12177).
@@ -456,7 +457,10 @@ def retention_shape(policy: object) -> dict:
     over it is refused, or, with ``overflow_key``, its longest fields move to
     that key (:func:`spill_items`), keyed by the list and the item's
     ``item_key`` field (default ``id``); ``overflow_fields`` names fields
-    moved from every item whatever its size.
+    moved from every item whatever its size. ``keep_fields`` (#754) lets the
+    open items themselves fit ``max_chars``: after the roll, their longest
+    fields move to ``overflow_key`` (:func:`compact_open_items`); the named
+    fields, the identifying field and the fields ``archive_when`` reads stay.
     """
     if policy is None or policy == {}:
         return {}
@@ -491,6 +495,20 @@ def retention_shape(policy: object) -> dict:
         out["overflow_key"] = normalize_correlation_key(overflow_key)
     elif "overflow_fields" in out:
         raise ValueError("retention overflow_fields needs an overflow_key to move the fields to")
+    keep_fields = policy.get("keep_fields")
+    if keep_fields is not None:
+        if (
+            not isinstance(keep_fields, list)
+            or not keep_fields
+            or not all(isinstance(n, str) and n.strip() for n in keep_fields)
+        ):
+            raise ValueError("retention keep_fields must be a non-empty list of field names")
+        if "overflow_key" not in out or "max_chars" not in out:
+            raise ValueError(
+                "retention keep_fields needs an overflow_key and a max_chars: the other fields of the open "
+                "items move to the overflow key until the value fits max_chars"
+            )
+        out["keep_fields"] = list(dict.fromkeys(n.strip() for n in keep_fields))
     item_key = policy.get("item_key")
     if item_key is not None:
         if not isinstance(item_key, str) or not item_key.strip():
@@ -703,6 +721,67 @@ def spill_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict
                 spilled.setdefault(name, {}).setdefault(str(identity), {}).update(moved)
         if changed:
             value[name] = items
+    return spilled
+
+
+def _archive_rule_fields(archive_when: object) -> set[str]:
+    """The top-level item fields an ``archive_when`` predicate reads (#754)."""
+    matches = archive_when if isinstance(archive_when, list) else [archive_when]
+    return {str(field).split(".", 1)[0] for m in matches if isinstance(m, dict) for field in m}
+
+
+def compact_open_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Move the longest fields of the open items to the overflow key until the value fits (#754).
+
+    Runs after :func:`roll_lists`, only with ``keep_fields``: while the value
+    is over ``max_chars`` (or the hard limit, whichever is lower), the
+    largest field of any item of a governed list moves to ``overflow_key``,
+    leaving an ``overflow://`` pointer, the largest first and only while it
+    saves characters. The identifying field, the ``keep_fields``, the fields
+    ``archive_when`` reads and a field already holding a pointer never move,
+    so filters and the terminal rule still read the item. Answers the moved
+    fields as :func:`spill_items` does, for the caller to write.
+    """
+    keep = policy.get("keep_fields")
+    target = policy.get("overflow_key")
+    if not keep or not target:
+        return {}
+    limits = [c for c in (policy.get("max_chars"), settings.shared_state_value_hard_limit_chars) if c and c > 0]
+    if not limits:
+        return {}
+    excess = value_size(value) - min(limits)
+    if excess <= 0:
+        return {}
+    id_field = policy.get("item_key") or "id"
+    stay = set(keep) | {id_field} | _archive_rule_fields(policy.get("archive_when"))
+    names = [n for n in (policy.get("lists") or list(value)) if isinstance(value.get(n), list)]
+    candidates: list[tuple[int, str, int, str]] = []
+    for name in names:
+        for index, item in enumerate(value[name]):
+            if not isinstance(item, dict):
+                continue
+            identity = item.get(id_field)
+            if isinstance(identity, bool) or not isinstance(identity, (str, int)) or str(identity) == "":
+                continue
+            for field, field_value in item.items():
+                if field in stay or _is_overflow_pointer(field_value):
+                    continue
+                pointer = f"{OVERFLOW_POINTER}{target}/{name}/{identity}#{field}"
+                saving = value_size(field_value) - len(json.dumps(pointer))
+                if saving > 0:
+                    candidates.append((saving, name, index, field))
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    spilled: dict[str, dict[str, dict[str, Any]]] = {}
+    for saving, name, index, field in candidates:
+        if excess <= 0:
+            break
+        items = value[name]
+        item = dict(items[index])
+        identity = str(item[id_field])
+        spilled.setdefault(name, {}).setdefault(identity, {})[field] = item[field]
+        item[field] = f"{OVERFLOW_POINTER}{target}/{name}/{identity}#{field}"
+        items[index] = item
+        excess -= saving
     return spilled
 
 
@@ -2519,6 +2598,15 @@ async def upsert_state(
                 name: (list_changes.get(name) or {}).get("appended", 0) for name in (append or {}) if not path_list_ops
             }
             rolled_out.update(roll_lists(new_value, policy, appended, held_open))
+            compacted = compact_open_items(new_value, policy)
+            if compacted:
+                for list_name, moved_items in compacted.items():
+                    for identity, fields in moved_items.items():
+                        spilled_out.setdefault(list_name, {}).setdefault(identity, {}).update(fields)
+                if value_size(new_value) <= min(
+                    c for c in (policy.get("max_chars"), settings.shared_state_value_hard_limit_chars) if c and c > 0
+                ):
+                    held_open.clear()
         if new_value is not None:
             if archive and append:
                 appended_counts = {name: len(items) for name, items in append.items()}
