@@ -197,7 +197,8 @@ async def test_list_documents_name_filter_walks_pages_and_stays_local(http: Asyn
     assert first == {"folder_id": "f1", "limit": 100}
     assert second == {"folder_id": "f1", "limit": 100, "cursor": "c2"}
     assert "2 of 3 item(s) kept" in answer
-    assert "d1" in answer and "d3" in answer and "d2" not in answer
+    # Quoted ids: the answer's random UNTRUSTED-<8 hex> boundary can hold a bare "d2".
+    assert '"d1"' in answer and '"d3"' in answer and '"d2"' not in answer
 
 
 @pytest.mark.asyncio
@@ -231,7 +232,7 @@ async def test_search_metadata_only_drops_snippets_and_keeps_the_body_clean(http
     assert kwargs["json"] == {"query": "envelope 123"}
     assert "params" not in kwargs
     assert "secret passage" not in answer and '"snippet"' not in answer
-    assert "d1" in answer and "d2" not in answer
+    assert '"d1"' in answer and '"d2"' not in answer
     assert "1 of 2 item(s) kept" in answer
 
 
