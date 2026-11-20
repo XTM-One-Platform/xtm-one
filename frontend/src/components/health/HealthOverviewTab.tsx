@@ -22,24 +22,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useMemo, useState, type ComponentProps } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Icon } from "@filigran/design-system";
+import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CHART_TOOLTIP_PROPS } from "@/components/ui/charts/chart-tooltip";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { StatCard } from "@/components/ui/stat-card";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import {
-  useDismissHealthFinding,
+  useDismissHealthFindings,
   useHealthFindings,
   useHealthHistory,
   useHealthOverview,
+  useRestoreHealthFindings,
 } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { EVALUATION_CHART_COLORS } from "@/lib/constants";
-import { HEALTH_MODULE_LABELS, moduleCardSubtitle } from "@/lib/health-modules";
+import { HEALTH_MODULE_LABELS, categoryLabel, checkTitle, evidenceLabel, moduleCardSubtitle } from "@/lib/health-modules";
 import type { HealthFinding, HealthModule, HealthSeverity } from "@/types";
 
 /** The health glyph, rendered by the library <Icon name> (no direct lucide-react import). */
@@ -59,116 +63,164 @@ const SEVERITY_BADGE: Record<HealthSeverity, "destructive" | "warning" | "second
   info: "secondary",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  open: "Still open",
-  resolved: "Resolved",
-  dismissed: "Set aside",
-};
-
 const HISTORY_WINDOWS = [7, 30, 90] as const;
 type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
 
-/** Column widths in px under the fixed layout: Finding takes what is left. */
-const FINDING_COLUMN_WIDTHS = { severity: 112, module: 120, status: 120, seen: 152 } as const;
+/**
+ * Column widths in px under the fixed layout: Finding takes what is left. Severity holds the
+ * longest badge of the four catalogs ("Avertissement", UX round 1 B3 on #634); every other
+ * cut label is named whole by the design-system tooltip.
+ */
+const FINDING_COLUMN_WIDTHS = { severity: 152, module: 128, category: 152, seen: 176 } as const;
+
+type DismissDays = "7" | "30" | "90" | "resolved";
+const DISMISS_DAYS: DismissDays[] = ["7", "30", "90", "resolved"];
 
 const AXIS_TICK = { fill: "var(--text-default-secondary)", fontSize: 11 };
 const AXIS_STROKE = "var(--border-elevation-subtle)";
 
-/** The finding's title: its check, then the agent it is about when there is one. */
-function findingTitle(finding: HealthFinding): string {
-  return finding.subject_name ? `${finding.check_id} · ${finding.subject_name}` : finding.check_id;
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** The finding's title: its check's translated title, then the agent it is about when there is one. */
+function findingTitle(finding: HealthFinding, t: Translate): string {
+  const title = checkTitle(finding.check_id, t);
+  return finding.subject_name ? `${title} · ${finding.subject_name}` : title;
 }
 
-function evidenceLines(finding: HealthFinding): [string, string][] {
+function evidenceValue(value: unknown, t: Translate): string {
+  if (typeof value === "boolean") return value ? t("Yes") : t("No");
+  if (Array.isArray(value)) return value.map((item) => evidenceValue(item, t)).join(", ");
+  return typeof value === "object" && value !== null ? JSON.stringify(value) : String(value);
+}
+
+/** The evidence as translated label and value pairs. */
+function evidenceLines(finding: HealthFinding, t: Translate): [string, string][] {
   const values = (finding.evidence?.values ?? {}) as Record<string, unknown>;
-  const lines = Object.entries(values).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)] as [string, string]);
+  const lines = Object.entries(values).map(([key, value]) => [evidenceLabel(key, t), evidenceValue(value, t)] as [string, string]);
   const threshold = finding.evidence?.threshold;
-  if (threshold !== undefined && threshold !== null) lines.push(["threshold", String(threshold)]);
+  if (threshold !== undefined && threshold !== null) lines.push([evidenceLabel("threshold", t), evidenceValue(threshold, t)]);
   return lines;
 }
 
-function DismissDialog({ finding, onClose }: { finding: HealthFinding | null; onClose: () => void }) {
+/** A cell's text: one line, ended with an ellipsis when cut and then named whole by the design-system tooltip. */
+function CellText({ text }: { text: string }) {
+  return (
+    <span className="block min-w-0">
+      <TruncatedText text={text} />
+    </span>
+  );
+}
+
+/**
+ * Dismiss one finding (the row's action) or several (Dismiss all), with one reason and one
+ * duration (UX round 1 B4, B5 on #634): the reason is a design-system Textarea under a body-size
+ * label with its required mark and help line, the duration a radio group whose choice shows.
+ */
+function DismissDialog({ findings, onClose }: { findings: HealthFinding[]; onClose: (done: boolean) => void }) {
   const { t_i18n } = useFormatter();
-  const dismiss = useDismissHealthFinding();
+  const dismiss = useDismissHealthFindings();
   const [reason, setReason] = useState("");
-  const [days, setDays] = useState<number | null>(30);
+  const [days, setDays] = useState<DismissDays>("30");
+  const [tried, setTried] = useState(false);
   const busy = dismiss.isPending;
-  const canSubmit = reason.trim().length > 0 && !busy && finding !== null;
-  const close = () => {
+  const open = findings.length > 0;
+  const missing = tried && !reason.trim();
+  const close = (done: boolean) => {
     if (busy) return;
     setReason("");
-    onClose();
+    setTried(false);
+    dismiss.reset();
+    onClose(done);
   };
   const submit = () => {
-    if (!canSubmit || finding === null) return;
-    dismiss.mutate({ id: finding.id, reason: reason.trim(), days }, { onSuccess: close });
+    setTried(true);
+    if (!reason.trim() || busy || !open) return;
+    dismiss.mutate(
+      { ids: findings.map((finding) => finding.id), reason: reason.trim(), days: days === "resolved" ? null : Number(days) },
+      { onSuccess: () => close(true) },
+    );
   };
+  const title =
+    findings.length > 1
+      ? t_i18n("{count, plural, one {Dismiss # finding?} other {Dismiss # findings?}}", { count: findings.length })
+      : t_i18n("Dismiss this finding?");
   return (
-    <Dialog open={finding !== null} onOpenChange={(next) => (!next ? close() : undefined)}>
-      <DialogContent className="max-w-md" data-testid="health-dismiss-dialog">
+    <Dialog open={open} onOpenChange={(next) => (!next ? close(false) : undefined)}>
+      <DialogContent className="max-w-lg" data-testid="health-dismiss-dialog">
         <DialogHeader>
-          <DialogTitle className="text-base">{t_i18n("Dismiss this finding?")}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="content-base leading-relaxed">
-            {t_i18n("It leaves the open list and the score until it lapses or the check passes. The reason is recorded in the audit trail.")}
+            {t_i18n("It leaves the open list and the score until it lapses or the check passes. You can restore it from Dismissed findings.")}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 pt-1">
-          <div className="space-y-2">
-            <label htmlFor="health-dismiss-reason" className="content-compact text-default-secondary">
-              {t_i18n("Reason")}
-            </label>
-            <textarea
+        <DialogBody className="space-y-4">
+          <SettingsField
+            id="health-dismiss-reason"
+            label={t_i18n("Reason")}
+            required
+            helper={t_i18n("Recorded in the audit trail.")}
+            error={missing ? t_i18n("Give a reason.") : undefined}
+          >
+            <Textarea
               id="health-dismiss-reason"
               autoFocus
               rows={3}
               maxLength={500}
               disabled={busy}
               value={reason}
+              aria-required
+              aria-describedby={settingsFieldHintId("health-dismiss-reason")}
               onChange={(e) => setReason(e.target.value)}
               placeholder={t_i18n("Known and accepted, fixed in the next release…")}
-              className="w-full rounded-sm border border-elevation-subtle bg-elevation-default px-3 py-2 content-base text-default-primary placeholder:text-default-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus:border-accent disabled:opacity-50"
             />
-          </div>
-          <fieldset className="space-y-2">
-            <legend className="content-compact text-default-secondary">{t_i18n("For how long")}</legend>
-            <div className="flex flex-wrap gap-2">
-              {([7, 30, 90, null] as const).map((value) => (
-                <Button
-                  key={String(value)}
-                  type="button"
-                  size="sm"
-                  variant={days === value ? "secondary" : "outline"}
-                  aria-pressed={days === value}
-                  disabled={busy}
-                  onClick={() => setDays(value)}
-                >
-                  {value === null ? t_i18n("Until it resolves") : t_i18n("{count, plural, one {# day} other {# days}}", { count: value })}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
+          </SettingsField>
+          <SettingsField id="health-dismiss-days" label={t_i18n("For how long")}>
+            <SegmentedFilter<DismissDays>
+              selection="radio"
+              size="md"
+              ariaLabel={t_i18n("For how long")}
+              testId="health-dismiss-days"
+              value={days}
+              onChange={setDays}
+              options={DISMISS_DAYS.map((key) => ({
+                key,
+                label: key === "resolved" ? t_i18n("Until it resolves") : t_i18n("{count, plural, one {# day} other {# days}}", { count: Number(key) }),
+                disabled: busy,
+              }))}
+            />
+          </SettingsField>
           {dismiss.isError ? (
             <p role="alert" className="content-compact text-feedback-error-primary">
               {t_i18n("The finding could not be dismissed.")}
             </p>
           ) : null}
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" size="sm" onClick={close} disabled={busy}>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => close(false)} disabled={busy}>
             {t_i18n("Cancel")}
           </Button>
-          <Button size="sm" disabled={!canSubmit} onClick={submit} data-testid="health-dismiss-confirm">
+          <Button onClick={submit} disabled={busy} data-testid="health-dismiss-confirm">
             {busy ? t_i18n("Setting aside…") : t_i18n("Dismiss finding")}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function FindingDetail({ finding, onDismiss }: { finding: HealthFinding; onDismiss: (finding: HealthFinding) => void }) {
+function FindingDetail({
+  finding,
+  onDismiss,
+  onRestore,
+  restoring,
+}: {
+  finding: HealthFinding;
+  onDismiss: (finding: HealthFinding) => void;
+  onRestore: (finding: HealthFinding) => void;
+  restoring: boolean;
+}) {
   const { t_i18n } = useFormatter();
-  const lines = evidenceLines(finding);
+  const lines = evidenceLines(finding, t_i18n);
   return (
     <div className="space-y-3 px-1 py-2" data-testid="health-finding-detail">
       {finding.recommendation ? (
@@ -180,18 +232,21 @@ function FindingDetail({ finding, onDismiss }: { finding: HealthFinding; onDismi
       {lines.length ? (
         <div className="space-y-1">
           <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Evidence")}</h4>
-          <dl className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-4 gap-y-1 content-compact">
-            {lines.map(([key, value]) => (
-              <div key={key} className="contents">
-                <dt className="truncate font-mono-plex text-default-secondary" title={key}>
-                  {key}
+          <dl className="grid grid-cols-[minmax(0,14rem)_minmax(0,1fr)] gap-x-4 gap-y-1 content-compact">
+            {lines.map(([label, value]) => (
+              <div key={label} className="contents">
+                <dt className="min-w-0 text-default-secondary">
+                  <TruncatedText text={label} />
                 </dt>
-                <dd className="min-w-0 break-words font-mono-plex text-default-primary">{value}</dd>
+                <dd className="min-w-0 break-words text-default-primary">{value}</dd>
               </div>
             ))}
           </dl>
         </div>
       ) : null}
+      <p className="content-compact text-default-secondary">
+        {t_i18n("Check")}: <span className="font-mono-plex">{finding.check_id}</span>
+      </p>
       {finding.dismissal ? (
         <p className="content-compact text-default-secondary">
           {t_i18n("Set aside by {name}: {reason}", { name: finding.dismissal.by_name || "-", reason: finding.dismissal.reason })}
@@ -208,6 +263,11 @@ function FindingDetail({ finding, onDismiss }: { finding: HealthFinding; onDismi
         {finding.can_dismiss ? (
           <Button variant="outline" size="sm" onClick={() => onDismiss(finding)}>
             {t_i18n("Dismiss finding")}
+          </Button>
+        ) : null}
+        {finding.status === "dismissed" ? (
+          <Button variant="outline" size="sm" disabled={restoring} onClick={() => onRestore(finding)} data-testid="health-restore">
+            {t_i18n("Restore")}
           </Button>
         ) : null}
       </div>
@@ -280,15 +340,45 @@ function ScoreHistory({ modules }: { modules: HealthModule[] }) {
   );
 }
 
+type FindingsView = "open" | "dismissed" | "resolved";
+
 export function HealthOverviewTab() {
   const { t_i18n } = useFormatter();
   const overview = useHealthOverview();
   const findings = useHealthFindings({ status: ["open", "dismissed", "resolved"], limit: 200 });
+  const restore = useRestoreHealthFindings();
+  const [view, setView] = useState<FindingsView>("open");
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [dismissing, setDismissing] = useState<HealthFinding | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [dismissing, setDismissing] = useState<HealthFinding[]>([]);
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
-  const rows = useMemo(() => findings.data?.items ?? [], [findings.data]);
+  const all = useMemo(() => findings.data?.items ?? [], [findings.data]);
+  const counts = useMemo(
+    () => ({
+      open: all.filter((finding) => finding.status === "open").length,
+      dismissed: all.filter((finding) => finding.status === "dismissed").length,
+      resolved: all.filter((finding) => finding.status === "resolved").length,
+    }),
+    [all],
+  );
+  const rows = useMemo(() => all.filter((finding) => finding.status === view), [all, view]);
+  // Bulk acts on what this view holds and the reader may act on: open findings they may dismiss, dismissed ones.
+  const actionable = useMemo(
+    () => rows.filter((finding) => (view === "open" ? finding.can_dismiss : view === "dismissed")),
+    [rows, view],
+  );
+  const picked = useMemo(() => {
+    const keys = new Set(selected);
+    return actionable.filter((finding) => keys.has(finding.id));
+  }, [actionable, selected]);
+  // Selected rows first; none selected, the whole view (UX round 1 B6 on #634: bulk first).
+  const target = picked.length ? picked : actionable;
+
+  const switchView = (next: FindingsView) => {
+    setView(next);
+    setSelected([]);
+  };
 
   const columns = useMemo<DataTableColumn<HealthFinding>[]>(
     () => [
@@ -297,8 +387,8 @@ export function HealthOverviewTab() {
         header: "Severity",
         width: FINDING_COLUMN_WIDTHS.severity,
         cell: (finding) => (
-          <Badge variant={SEVERITY_BADGE[finding.severity]} className="max-w-full whitespace-nowrap">
-            <span className="truncate">{t_i18n(SEVERITY_LABELS[finding.severity])}</span>
+          <Badge variant={SEVERITY_BADGE[finding.severity]} className="whitespace-nowrap">
+            {t_i18n(SEVERITY_LABELS[finding.severity])}
           </Badge>
         ),
         sortValue: (finding) => ["critical", "warning", "info"].indexOf(finding.severity),
@@ -307,37 +397,26 @@ export function HealthOverviewTab() {
       {
         key: "finding",
         header: "Finding",
-        cell: (finding) => (
-          <span className="block min-w-0 truncate" title={findingTitle(finding)}>
-            {findingTitle(finding)}
-          </span>
-        ),
-        sortValue: (finding) => findingTitle(finding),
-        csv: (finding) => findingTitle(finding),
+        cell: (finding) => <CellText text={findingTitle(finding, t_i18n)} />,
+        sortValue: (finding) => findingTitle(finding, t_i18n),
+        csv: (finding) => findingTitle(finding, t_i18n),
       },
       {
         key: "module",
         header: "Module",
         width: FINDING_COLUMN_WIDTHS.module,
-        cell: (finding) => (
-          <span className="block truncate whitespace-nowrap" title={t_i18n(HEALTH_MODULE_LABELS[finding.module])}>
-            {t_i18n(HEALTH_MODULE_LABELS[finding.module])}
-          </span>
-        ),
+        cell: (finding) => <CellText text={t_i18n(HEALTH_MODULE_LABELS[finding.module])} />,
         sortValue: (finding) => t_i18n(HEALTH_MODULE_LABELS[finding.module]),
         csv: (finding) => t_i18n(HEALTH_MODULE_LABELS[finding.module]),
       },
       {
-        key: "status",
-        header: "Status",
+        key: "category",
+        header: "Category",
         hideable: true,
-        width: FINDING_COLUMN_WIDTHS.status,
-        cell: (finding) => (
-          <span className="block truncate whitespace-nowrap" title={t_i18n(STATUS_LABELS[finding.status] ?? finding.status)}>
-            {t_i18n(STATUS_LABELS[finding.status] ?? finding.status)}
-          </span>
-        ),
-        csv: (finding) => t_i18n(STATUS_LABELS[finding.status] ?? finding.status),
+        width: FINDING_COLUMN_WIDTHS.category,
+        cell: (finding) => <CellText text={categoryLabel(finding.category, t_i18n)} />,
+        sortValue: (finding) => categoryLabel(finding.category, t_i18n),
+        csv: (finding) => categoryLabel(finding.category, t_i18n),
       },
       {
         key: "seen",
@@ -370,16 +449,12 @@ export function HealthOverviewTab() {
         key: "category",
         label: "Category",
         values: (finding) => [finding.category],
-        options: [...new Set(rows.map((finding) => finding.category))].sort().map((value) => ({ value, label: value })),
-      },
-      {
-        key: "status",
-        label: "Status",
-        values: (finding) => [finding.status],
-        options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+        options: [...new Set(all.map((finding) => finding.category))]
+          .map((value) => ({ value, label: categoryLabel(value, t_i18n) }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
       },
     ],
-    [t_i18n, modules, rows],
+    [t_i18n, modules, all],
   );
 
   const toggle = (finding: HealthFinding) =>
@@ -389,6 +464,46 @@ export function HealthOverviewTab() {
       else next.add(finding.id);
       return next;
     });
+
+  const restoreFindings = (items: HealthFinding[]) => {
+    if (!items.length) return;
+    restore.mutate({ ids: items.map((finding) => finding.id) }, { onSuccess: () => setSelected([]) });
+  };
+
+  const viewSwitch = (
+    <SegmentedFilter<FindingsView>
+      value={view}
+      onChange={switchView}
+      ariaLabel={t_i18n("Findings shown")}
+      testId="health-findings-view"
+      options={[
+        { key: "open", label: t_i18n("Open findings"), count: counts.open, countPending: findings.isLoading },
+        { key: "dismissed", label: t_i18n("Dismissed findings"), count: counts.dismissed, countPending: findings.isLoading },
+        { key: "resolved", label: t_i18n("Resolved findings"), count: counts.resolved, countPending: findings.isLoading },
+      ]}
+    />
+  );
+
+  const bulk =
+    view === "open" ? (
+      <Button variant="outline" size="sm" disabled={!target.length} onClick={() => setDismissing(target)} data-testid="health-dismiss-all">
+        {picked.length
+          ? t_i18n("{count, plural, one {Dismiss # finding} other {Dismiss # findings}}", { count: picked.length })
+          : t_i18n("Dismiss all")}
+      </Button>
+    ) : view === "dismissed" ? (
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!target.length || restore.isPending}
+        onClick={() => restoreFindings(target)}
+        data-testid="health-restore-all"
+      >
+        {picked.length
+          ? t_i18n("{count, plural, one {Restore # finding} other {Restore # findings}}", { count: picked.length })
+          : t_i18n("Restore all")}
+      </Button>
+    ) : null;
 
   return (
     <div className="space-y-6">
@@ -405,7 +520,7 @@ export function HealthOverviewTab() {
         ))}
       </div>
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
-      {!findings.isLoading && !findings.isError && !rows.length ? (
+      {!findings.isLoading && !findings.isError && !all.length ? (
         <EmptyState
           icon={HealthGlyph}
           title={t_i18n("No finding")}
@@ -417,9 +532,30 @@ export function HealthOverviewTab() {
           columns={columns}
           rowKey={(finding) => finding.id}
           onRowClick={toggle}
-          expandedRow={(finding) => (open.has(finding.id) ? <FindingDetail finding={finding} onDismiss={setDismissing} /> : null)}
+          expandedRow={(finding) =>
+            open.has(finding.id) ? (
+              <FindingDetail
+                finding={finding}
+                onDismiss={(item) => setDismissing([item])}
+                onRestore={(item) => restoreFindings([item])}
+                restoring={restore.isPending}
+              />
+            ) : null
+          }
           layout="fixed"
-          searchFields={(finding) => [findingTitle(finding), finding.recommendation, finding.category]}
+          toolbarLead={viewSwitch}
+          toolbar={bulk}
+          selection={
+            view === "resolved"
+              ? undefined
+              : {
+                  selected,
+                  onChange: setSelected,
+                  disabledReason: (key) =>
+                    actionable.some((finding) => finding.id === key) ? undefined : t_i18n("You may not dismiss this finding."),
+                }
+          }
+          searchFields={(finding) => [findingTitle(finding, t_i18n), finding.check_id, finding.recommendation, categoryLabel(finding.category, t_i18n)]}
           searchPlaceholder={t_i18n("Search...")}
           filters={filters}
           exportName="health-findings"
@@ -429,10 +565,21 @@ export function HealthOverviewTab() {
           isError={findings.isError}
           errorLabel={t_i18n("Platform Health findings could not be loaded.")}
           onRetry={() => void findings.refetch()}
-          emptyLabel={t_i18n("No finding")}
+          emptyLabel={view === "open" ? t_i18n("No open finding") : view === "dismissed" ? t_i18n("No dismissed finding") : t_i18n("No resolved finding")}
         />
       )}
-      <DismissDialog finding={dismissing} onClose={() => setDismissing(null)} />
+      {restore.isError ? (
+        <p role="alert" className="content-compact text-feedback-error-primary">
+          {t_i18n("The findings could not be restored.")}
+        </p>
+      ) : null}
+      <DismissDialog
+        findings={dismissing}
+        onClose={(done) => {
+          setDismissing([]);
+          if (done) setSelected([]);
+        }}
+      />
     </div>
   );
 }

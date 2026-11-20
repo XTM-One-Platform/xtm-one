@@ -20,7 +20,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * own targets' proposals and cycles on the agent and flow pages.
  */
 import { Link } from "react-router-dom";
-import { Activity, Compass, HeartPulse, Lightbulb, Settings2 } from "lucide-react";
+import { Activity, Compass, Lightbulb, Settings2 } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
@@ -34,11 +35,16 @@ import { useFormatter } from "@/i18n";
 
 type Tab = "overview" | "improvements" | "cycles" | "signals";
 
+/** The Overview tab glyph, drawn by the library <Icon name> (UX round 1 B1 on #634: no new lucide name). */
+function OverviewGlyph({ className }: { className?: string }) {
+  return <Icon name="layout-dashboard" size={16} className={className} aria-hidden />;
+}
+
 export default function Health() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<Tab>("overview");
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: "overview", label: "Overview", icon: HeartPulse },
+    { key: "overview", label: "Overview", icon: OverviewGlyph },
     { key: "improvements", label: "Improvements", icon: Lightbulb },
     { key: "cycles", label: "Cycles", icon: Compass },
     { key: "signals", label: "Signals", icon: Activity },

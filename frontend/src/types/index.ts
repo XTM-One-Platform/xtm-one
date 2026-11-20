@@ -16350,6 +16350,12 @@ export interface HealthFindingList {
   total: number;
 }
 
+/** What a Dismiss all or a Restore all changed, and the ids it left as they were. */
+export interface HealthFindingBulkResult {
+  items: HealthFinding[];
+  skipped: string[];
+}
+
 export interface HealthHistoryPoint {
   day: string;
   module: HealthModule;

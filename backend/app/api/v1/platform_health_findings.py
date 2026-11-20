@@ -396,7 +396,9 @@ async def restore_health_finding(
     return _response(row, names, can_dismiss=True)
 
 
-async def _readable_rows(db: AsyncSession, user: User, ids: list[str]) -> tuple[list[HealthCheckFinding], dict[str, str], list[str]]:
+async def _readable_rows(
+    db: AsyncSession, user: User, ids: list[str]
+) -> tuple[list[HealthCheckFinding], dict[str, str], list[str]]:
     """The findings of ``ids`` the reader may act on, their agent names, and the ids skipped (order kept)."""
     # The reader's scope is read once for the whole batch (the rule of _readable_finding).
     managed = await _scope(db, user)

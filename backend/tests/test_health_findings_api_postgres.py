@@ -238,7 +238,11 @@ async def test_a_dismissed_finding_is_restored_one_by_one_and_audited(xtm_one_mo
 
     assert early.status_code == 409
     assert restored.status_code == 200
-    assert (restored.json()["status"], restored.json()["dismissal"], restored.json()["can_dismiss"]) == ("open", None, True)
+    assert (restored.json()["status"], restored.json()["dismissal"], restored.json()["can_dismiss"]) == (
+        "open",
+        None,
+        True,
+    )
     assert listing["total"] == 1
     assert sorted(a.action for a in audits) == ["dismiss", "restore"]
 
@@ -252,10 +256,14 @@ async def test_dismiss_all_and_restore_all_act_on_what_the_reader_may_manage_onl
         ids = [row.id for row in rows]
         mine_id = next(row.id for row in rows if (row.subject or {}).get("agent_id") == str(mine.id))
         async with _client(sessions, owner) as client:
-            owned = (await client.post("/api/v1/health/findings/dismiss", json={"ids": ids, "reason": "Batch", "days": 30})).json()
+            owned = (
+                await client.post("/api/v1/health/findings/dismiss", json={"ids": ids, "reason": "Batch", "days": 30})
+            ).json()
         async with _client(sessions, admin) as client:
             empty = await client.post("/api/v1/health/findings/dismiss", json={"ids": ids, "reason": ""})
-            rest = (await client.post("/api/v1/health/findings/dismiss", json={"ids": [*ids, "nope"], "reason": "Batch"})).json()
+            rest = (
+                await client.post("/api/v1/health/findings/dismiss", json={"ids": [*ids, "nope"], "reason": "Batch"})
+            ).json()
             dismissed = (await client.get("/api/v1/health/findings?status=dismissed")).json()
             back = (await client.post("/api/v1/health/findings/restore", json={"ids": ids})).json()
             still_open = (await client.get("/api/v1/health/findings")).json()

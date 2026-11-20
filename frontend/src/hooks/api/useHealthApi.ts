@@ -30,7 +30,7 @@ import type {
   HealthBudget,
   HealthCycle,
   HealthCycleStart,
-  HealthFinding,
+  HealthFindingBulkResult,
   HealthFindingList,
   HealthFindingStatus,
   HealthHistoryPoint,
@@ -300,15 +300,29 @@ export function useHealthHistory(days: 7 | 30 | 90) {
   });
 }
 
-/** Dismiss an open finding with a reason; the cards and the lists refresh. */
-export function useDismissHealthFinding() {
+function useRefreshHealth() {
   const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ["health-findings"] });
+    void qc.invalidateQueries({ queryKey: ["health-overview"] });
+  };
+}
+
+/** Dismiss open findings with one reason (one id: the row's Dismiss; several: Dismiss all); the cards and the lists refresh. */
+export function useDismissHealthFindings() {
+  const refresh = useRefreshHealth();
   return useMutation({
-    mutationFn: ({ id, reason, days }: { id: string; reason: string; days: number | null }) =>
-      api.post<HealthFinding>(`/health/findings/${encodeURIComponent(id)}/dismiss`, { reason, days }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["health-findings"] });
-      void qc.invalidateQueries({ queryKey: ["health-overview"] });
-    },
+    mutationFn: ({ ids, reason, days }: { ids: string[]; reason: string; days: number | null }) =>
+      api.post<HealthFindingBulkResult>("/health/findings/dismiss", { ids, reason, days }),
+    onSuccess: refresh,
+  });
+}
+
+/** Bring dismissed findings back to the open list (Restore, Restore all). */
+export function useRestoreHealthFindings() {
+  const refresh = useRefreshHealth();
+  return useMutation({
+    mutationFn: ({ ids }: { ids: string[] }) => api.post<HealthFindingBulkResult>("/health/findings/restore", { ids }),
+    onSuccess: refresh,
   });
 }
