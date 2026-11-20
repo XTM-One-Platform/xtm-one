@@ -16304,6 +16304,67 @@ export interface HealthSignal {
   evaluated_at: string;
 }
 
+/** A module of Platform Health (#101 S8); agents and fleets exist in every mode, the others in XTM One modes. */
+export type HealthModule = "agents" | "fleets" | "xtm_one" | "opencti" | "openaev" | "opencrq";
+export type HealthSeverity = "critical" | "warning" | "info";
+export type HealthFindingStatus = "open" | "resolved" | "dismissed";
+
+export interface HealthModuleCard {
+  module: HealthModule;
+  score: number;
+  critical: number;
+  warning: number;
+  info: number;
+  /** The score a week ago; null when no score was written that day. */
+  previous_score: number | null;
+}
+
+export interface HealthOverview {
+  modules: HealthModuleCard[];
+  overall: number;
+  /** "all" for an administrator, "managed" for the findings of the agents the reader manages. */
+  scope: "all" | "managed";
+}
+
+export interface HealthFinding {
+  id: string;
+  check_id: string;
+  module: HealthModule;
+  category: string;
+  severity: HealthSeverity;
+  status: HealthFindingStatus;
+  subject: Record<string, string>;
+  subject_name: string | null;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+  doc_link: string;
+  first_seen: string;
+  last_seen: string;
+  resolved_at: string | null;
+  dismissal: { reason: string; by_name?: string; at?: string; until?: string | null } | null;
+  can_dismiss: boolean;
+}
+
+export interface HealthFindingList {
+  items: HealthFinding[];
+  total: number;
+}
+
+/** What a Dismiss all or a Restore all changed, and the ids it left as they were. */
+export interface HealthFindingBulkResult {
+  items: HealthFinding[];
+  skipped: string[];
+}
+
+export interface HealthHistoryPoint {
+  day: string;
+  module: HealthModule;
+  score: number;
+  critical: number;
+  warning: number;
+  info: number;
+}
+
 export interface HealthScheduleMark {
   schedule: string;
   fired_at: string;
