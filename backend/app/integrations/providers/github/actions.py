@@ -60,6 +60,8 @@ _MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 #: Bounds of an unzipped artifact: members written, and their uncompressed total.
 _MAX_ARTIFACT_MEMBERS = 2_000
 _MAX_ARTIFACT_UNZIPPED_BYTES = 256 * 1024 * 1024
+# An abbreviated commit SHA a dispatch input may carry (#642); 40 characters is already full.
+_SHORT_SHA_RE = re.compile(r"[0-9a-fA-F]{7,39}")
 
 
 def _artifact_members(data: bytes) -> tuple[list[tuple[str, bytes]], list[str], str | None]:
@@ -883,6 +885,47 @@ def register(
             return json.dumps(value)
         return str(value)
 
+    async def _expand_short_sha_inputs(
+        client: Any, owner: str, name: str, inputs: dict[str, str]
+    ) -> tuple[dict[str, str], list[str], str | None]:
+        """Expand an abbreviated commit SHA given to a ref or sha input into the full 40-character SHA.
+
+        A workflow that passes such an input to actions/checkout fetches it as a branch name, so a short
+        SHA fails the fetch and reads as a red run (#642). Only inputs named like a ref or a sha whose
+        value is 7 to 39 hexadecimal characters are read; one GitHub does not resolve refuses the dispatch.
+        """
+        expanded = dict(inputs)
+        notes: list[str] = []
+        for key, value in inputs.items():
+            lowered = key.lower()
+            if not ("ref" in lowered or "sha" in lowered) or not _SHORT_SHA_RE.fullmatch(value):
+                continue
+            resp, err = await _common.safe_request(
+                client,
+                "get",
+                f"{_BASE_URL}/repos/{owner}/{name}/commits/{value}",
+                _PROVIDER,
+                f"resolve commit {value}",
+                headers=headers,
+            )
+            full = ""
+            if not err and resp is not None:
+                try:
+                    full = str((resp.json() or {}).get("sha") or "")
+                except ValueError:
+                    full = ""
+            if len(full) != 40 or not full.startswith(value.lower()):
+                return (
+                    inputs,
+                    notes,
+                    f"Not dispatched: input '{key}' is the abbreviated SHA '{value}', which could not be resolved "
+                    f"to a commit of {owner}/{name}. Pass the full 40-character SHA: a workflow checking out a "
+                    "short SHA fetches it as a branch name and fails.",
+                )
+            expanded[key] = full
+            notes.append(f"input '{key}' expanded from {value} to the full SHA {full}")
+        return expanded, notes, None
+
     async def _inflight_runs(client: Any, owner: str, name: str, wf: str, ref: str) -> list[str] | None:
         """One line per run of the workflow on the ref not yet completed, with its job progress (#11850).
 
@@ -955,6 +998,13 @@ def register(
             payload["inputs"] = {str(k): _dispatch_input_value(v) for k, v in inputs.items()}
         wf = urlquote(workflow_id.strip(), safe="")
         async with egress_client(timeout=30) as client:
+            expansions: list[str] = []
+            if payload.get("inputs"):
+                payload["inputs"], expansions, refused = await _expand_short_sha_inputs(
+                    client, owner, name, payload["inputs"]
+                )
+                if refused:
+                    return refused
             inflight = await _inflight_runs(client, owner, name, wf, ref)
             if inflight and not cancel_in_progress:
                 return (
@@ -978,6 +1028,8 @@ def register(
                 f"Dispatched workflow '{workflow_id}' on {ref} in {owner}/{name}. "
                 "Use list_github_workflow_runs to track the new run."
             )
+            if expansions:
+                answer += "\n" + "; ".join(expansions) + "."
             if inflight:
                 answer += "\nRun(s) the workflow's concurrency group may cancel:\n" + "\n".join(inflight)
             elif inflight is None:
