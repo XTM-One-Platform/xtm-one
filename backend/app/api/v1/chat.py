@@ -8428,6 +8428,9 @@ async def run_chat_connection(
 
         if data.get("supports_tool_approval"):
             _turn_supports_approval["value"] = True
+        # Only a client that offers it gets a reply suggestion: a caller
+        # reading to the end of the stream must not wait on one.
+        _turn_supports_reply_suggestions = bool(data.get("supports_reply_suggestions"))
 
         # Response mode for this turn, read from the send: the client
         # owns the toggle. Anything other than the one recognised value runs
@@ -10708,8 +10711,9 @@ async def run_chat_connection(
 
             # The user's likely next message, once the answer is out
             # (``services/chat_reply_suggestions.py``): a turn that ended on an
-            # answer only - not a stop, not an error.
-            if not _turn_stopped and not _turn_error_out.get("error"):
+            # answer only - not a stop, not an error - and for a client that
+            # offers it (``supports_reply_suggestions``).
+            if _turn_supports_reply_suggestions and not _turn_stopped and not _turn_error_out.get("error"):
                 from app.services.chat_reply_suggestions import (
                     send_suggestion_after_done,
                 )

@@ -59,7 +59,7 @@ curl -N https://<your-xtm-one>/api/v1/web/chat/messages \
   -d '{"conversation_id": "<conversation_id>", "content": "Summarize the last incident report"}'
 ```
 
-Besides `conversation_id` and `content`, the body takes `file_ids` ([uploaded](#open-a-conversation) files), `mentioned_agent_ids` and `referenced_conversation_ids` (below), and `"supports_tool_approval": true` when your client [answers approvals](#approve-a-tool-call).
+Besides `conversation_id` and `content`, the body takes `file_ids` ([uploaded](#open-a-conversation) files), `mentioned_agent_ids` and `referenced_conversation_ids` (below), `"supports_tool_approval": true` when your client [answers approvals](#approve-a-tool-call), and `"supports_reply_suggestions": true` when it offers the user a [suggested next message](#how-a-request-ends).
 
 A send refused before its request starts is answered with an HTTP error, `{"detail": "<why>"}`, instead of a stream:
 
@@ -184,7 +184,7 @@ A request still running when a normal server restart stops waiting for it stores
 
 A request that ended before storing its answer, or whose agent failed, leaves its tool work to the next message of the conversation, streamed or over REST: the tool calls it made and their results reach the agent before that message, so it continues instead of calling the same tools again. This holds for 24 hours.
 
-After a `done`, the stream that ran the request may send one `reply_suggestion` frame before it closes: `{"type": "reply_suggestion", "conversation_id": ..., "message_id": ..., "text": ...}`, the message the user would likely send next, for the answer `message_id` names. It comes only when your administrator enabled reply suggestions and set a routing model, and not for every answer. It is a suggestion to show, never something the platform sends on its own; ignore it if your client has no use for it.
+After a `done`, the stream that ran the request may send one `reply_suggestion` frame before it closes: `{"type": "reply_suggestion", "conversation_id": ..., "message_id": ..., "text": ...}`, the message the user would likely send next, for the answer `message_id` names. It comes only when the message you sent set `"supports_reply_suggestions": true`, your administrator enabled reply suggestions and set a routing model, and not for every answer: without the field, the stream closes at the end of the request, with no suggestion to wait for. It is a suggestion to show, never something the platform sends on its own; ignore it if your client has no use for it.
 
 A stopped request can end with two `cancelled` frames on the stream that runs it: the acknowledgement of the stop, then, once the stop is stored, a second one carrying `message_id`. In the same way, a request whose agent failed can end with an `error` (without `reason`), then, once that reply is stored, a `done` carrying `message_id`. Both frames mean the request is over; the second one says what to read back.
 

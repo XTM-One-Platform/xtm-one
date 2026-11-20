@@ -341,11 +341,29 @@ def test_the_frame_is_live_only():
     assert rs.REPLY_SUGGESTION_FRAME not in chat_turn_stream.RELAYED_FRAME_TYPES
 
 
-def test_both_chat_streams_propose_one_after_done():
+def test_both_chat_streams_propose_one_after_done_for_a_client_that_offers_it():
     """The web chat runs it after ``done`` like the title and holds the stream
-    for it; the embedded chat's stream yields it after its final ``done``."""
+    for it; the embedded chat's stream yields it after its final ``done``.
+    Both only for a send that set ``supports_reply_suggestions``: a script or a
+    one-shot generation call reading to the end of the stream never waits on
+    one, nor pays for it."""
     chat_source = (BACKEND_ROOT / "app" / "api" / "v1" / "chat.py").read_text(encoding="utf-8")
     assert "send_suggestion_after_done(" in chat_source
     assert "_send_title_task, _send_suggestion_task" in chat_source
+    assert 'bool(data.get("supports_reply_suggestions"))' in chat_source
+    assert "if _turn_supports_reply_suggestions and not _turn_stopped" in chat_source
     platform_source = (BACKEND_ROOT / "app" / "api" / "v1" / "platform.py").read_text(encoding="utf-8")
     assert "suggest_after_turn(**_pf_suggestion_turn)" in platform_source
+    assert "if body.supports_reply_suggestions and _pf_answered" in platform_source
+
+
+def test_a_send_offers_no_suggestion_unless_it_says_so():
+    from app.api.v1.chat_web_stream import WebChatSendRequest
+    from app.api.v1.platform import PlatformChatRequest
+
+    web = WebChatSendRequest(content="hi", conversation_id="c1")
+    assert web.supports_reply_suggestions is False
+    assert "supports_reply_suggestions" in WebChatSendRequest(
+        content="hi", conversation_id="c1", supports_reply_suggestions=True
+    ).frame()
+    assert PlatformChatRequest(content="hi").supports_reply_suggestions is False
