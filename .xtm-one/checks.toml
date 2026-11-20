@@ -2092,6 +2092,53 @@ timeout = 300
 image = "nodejs-dev"
 report = "lines"
 
+# The README kit (.github/scripts/readme-kit: the one README template, the banner, frames and
+# walkthrough of the five product READMEs). Its generators read Pillow and fontTools, both in the
+# python-dev image's venv (backend uv.lock), and the fonts under .github/scripts/fonts. One check per
+# script, run from the repository root as the scripts' usage lines say, so an image or a README is
+# produced by a declared check and never by code_interpreter. star_chart.py reads the GitHub API
+# with a token and stays a CI or workstation step.
+[check.readme-kit-check]
+description = "README kit gate: readme.py --check renders each product README and lists forbidden words, badge order and heading count (exit = products failing); args: product keys (all five without args)"
+argv = ["python", ".github/scripts/readme-kit/readme.py", "--check"]
+default_args = ["xtm-one", "opencti", "openaev", "opencrq", "xtm-hub"]
+timeout = 120
+image = "python-dev"
+report = "lines"
+install_first = false
+
+[check.readme-kit-render]
+description = "README kit: render one product README with readme.py; args: KEY --out PATH (e.g. opencti --out .xtm/README.opencti.md), the file written under the checkout"
+argv = ["python", ".github/scripts/readme-kit/readme.py"]
+timeout = 120
+image = "python-dev"
+report = "lines"
+install_first = false
+
+[check.readme-kit-contrast]
+description = "README kit rule H3: WCAG AA contrast of every text and background pair the kit draws, both themes (exit 1 on a pair under 4.5:1, 3:1 large)"
+argv = ["python", ".github/scripts/readme-kit/contrast.py"]
+timeout = 120
+image = "python-dev"
+report = "lines"
+install_first = false
+
+[check.readme-kit-frame]
+description = "README kit: frame a capture in the window frame; args: CAPTURE.png THEME OUT.webp, or --retitle FRAMED.webp THEME [OUT.webp] (paths from the checkout root)"
+argv = ["python", ".github/scripts/readme-kit/frame.py"]
+timeout = 300
+image = "python-dev"
+report = "lines"
+install_first = false
+
+[check.readme-kit-walkthrough]
+description = "README kit: animated walkthrough webp from the framed hero and g1..g6 captures; args: IMG_DIR THEME OUT.webp (paths from the checkout root)"
+argv = ["python", ".github/scripts/readme-kit/walkthrough.py"]
+timeout = 600
+image = "python-dev"
+report = "lines"
+install_first = false
+
 # The CI gates below read git (`git ls-files`, `git rev-parse --show-toplevel`), which a checkout
 # has not: git_repo = true runs each in a throwaway repository of the checkout, removed after.
 # dev-docs/reference/sandbox-workspace.md, "CI parity", lists every CI job of a pull request with

@@ -51,6 +51,7 @@ Signature validation (both endpoints):
   - HubSpot: X-HubSpot-Signature-v3 / v2 / v1 headers
   - OpenCTI: token-based (X-OpenCTI-Token header)
   - Perk: Tk-Signature header (HMAC-SHA256)
+  - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -187,6 +188,9 @@ from app.core.utils import (
     request_client_ip,
     safe_uuid,
 )
+from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
+from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
+from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2140,6 +2144,13 @@ def _extract_event_key(request: Request, payload: dict) -> str:
             return f"linkedin.{action}" if action else "linkedin.social_action"
         return "linkedin.social_action"
 
+    # Aikido Security: the event type is ``event_type``, signed per delivery;
+    # the trigger key is its flat form (issue.open.created -> issue_open_created),
+    # so a selection never runs on a nested sibling such as issue.open.created.sast.
+    aikido_event = payload.get("event_type")
+    if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
+        return aikido_trigger_event(aikido_event)
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2163,6 +2174,12 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
     opencti_event_type = _opencti_event_type(payload)
     if opencti_event_type is not None:
         return opencti_event_type
+    if (
+        isinstance(payload, dict)
+        and request.headers.get(AIKIDO_SIGNATURE_HEADER)
+        and isinstance(payload.get("event_type"), str)
+    ):
+        return aikido_trigger_event(payload["event_type"])
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2499,6 +2516,7 @@ def _verify_signature(
     slack_ts = request.headers.get("X-Slack-Request-Timestamp", "")
     linkedin_sig = request.headers.get("X-LI-Signature", "")
     perk_sig = request.headers.get("Tk-Signature", "")
+    aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2527,6 +2545,12 @@ def _verify_signature(
             raise HTTPException(
                 status_code=401, detail="Invalid Perk webhook signature"
             )
+    elif aikido_sig:
+        # Aikido signs the JSON payload (hex HMAC-SHA256) and stamps it with
+        # dispatched_at, refused past its 30-second replay window.
+        ok, reason = verify_aikido_signature(body, secret, aikido_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Aikido webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):

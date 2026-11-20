@@ -553,11 +553,21 @@ async def test_article_update_omits_published(monkeypatch):
     assert "article_published" not in fake.last_json()
 
 
-async def test_atomic_update_omits_targeting_when_not_provided(monkeypatch):
+async def test_atomic_update_keeps_stored_targeting_when_not_provided(monkeypatch):
     from app.integrations.providers.openaev import testing
 
     executor, _ = _build()
-    fake = _RecordingApi({"inject_id": "i1", "inject_title": "New"})
+    fake = _RecordingApi(
+        {
+            "inject_id": "i1",
+            "inject_title": "Old",
+            "inject_injector_contract": {"injector_contract_id": "c1"},
+            "inject_assets": ["a1"],
+            "inject_asset_groups": [],
+            "inject_teams": [],
+            "inject_tags": [],
+        }
+    )
     monkeypatch.setattr(testing, "_api", fake)
     result = await _run(
         executor,
@@ -565,10 +575,10 @@ async def test_atomic_update_omits_targeting_when_not_provided(monkeypatch):
         {"action": "update", "inject_id": "i1", "title": "New"},
     )
     assert not result.is_error, result.content
+    assert fake.calls[0]["method"] == "get"
     body = fake.last_json()
-    assert "inject_assets" not in body
-    assert "inject_asset_groups" not in body
-    assert "inject_teams" not in body
+    assert body["inject_assets"] == ["a1"]
+    assert body["inject_injector_contract"] == "c1"
     assert body.get("inject_title") == "New"
 
 

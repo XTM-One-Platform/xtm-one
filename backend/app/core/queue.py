@@ -12,8 +12,13 @@ from typing import Any
 from saq import Queue
 
 from app.core.config import settings
+from app.core.redis_key_prefix import prefixed_pattern_pubsub_class
 
 logger = logging.getLogger(__name__)
+
+# SAQ's name prefix of a job's abort key (``saq.job.ABORT_ID_PREFIX``), which
+# the queue puts under ``REDIS_KEY_PREFIX``.
+_SAQ_ABORT_ID_PREFIX = "saq:abort:"
 
 _queue: Queue | None = None
 
@@ -63,11 +68,38 @@ def _teardown_safe_queue_cls() -> type:
         from saq.queue.redis import RedisQueue
 
         class _TeardownSafeRedisQueue(RedisQueue):
-            """RedisQueue with an idempotent, teardown-safe ``disconnect``."""
+            """RedisQueue with an idempotent, teardown-safe ``disconnect``.
 
-            def __init__(self, *args: Any, **kwargs: Any) -> None:
+            Its keys and channels are under *key_prefix* (``REDIS_KEY_PREFIX``):
+            SAQ names them itself and stores job keys as values its scripts
+            read, so its client is never the prefixing one of ``app.core.redis``.
+            """
+
+            def __init__(self, *args: Any, key_prefix: str = "", **kwargs: Any) -> None:
+                # Read by ``namespace()``, which SAQ's ``__init__`` calls.
+                self._key_prefix = key_prefix
                 super().__init__(*args, **kwargs)
                 self._app_disconnected = False
+                if key_prefix:
+                    from saq import job as saq_job
+                    from saq.queue.redis import PubSubMultiplexer
+
+                    # ``Job.abort_id`` reads this module constant on every call.
+                    saq_job.ABORT_ID_PREFIX = f"{key_prefix}{_SAQ_ABORT_ID_PREFIX}"
+                    # Job updates are published on the job ids; SAQ listens to
+                    # them through a pattern, which the ACL allows as
+                    # ``<prefix>*`` only (``prefixed_pattern_pubsub_class``).
+                    pubsub = prefixed_pattern_pubsub_class(key_prefix)(self.redis.connection_pool)
+                    self._pubsub = PubSubMultiplexer(pubsub, prefix=self.job_id("").removesuffix(":"))
+
+            def namespace(self, key: str) -> str:
+                return f"{self._key_prefix}{super().namespace(key)}"
+
+            def job_id(self, job_key: str) -> str:
+                return f"{self._key_prefix}{super().job_id(job_key)}"
+
+            def job_key_from_id(self, job_id: str) -> str:
+                return super().job_key_from_id(job_id.removeprefix(self._key_prefix))
 
             async def connect(self) -> None:
                 # A legitimate reconnect (e.g. SAQ's health-check path does
@@ -240,7 +272,7 @@ def get_queue() -> Queue:
                 socket_timeout=None,
                 **_saq_connection_kwargs(),
             )
-            _queue = queue_cls(client)
+            _queue = queue_cls(client, key_prefix=settings.redis_key_prefix)
         elif settings.redis_mode == "standalone":
             # ``Queue.from_url`` forwards kwargs to ``RedisQueue``, not
             # to the redis client — build the client explicitly so the
@@ -249,7 +281,7 @@ def get_queue() -> Queue:
                 settings.redis_url,
                 **_saq_connection_kwargs(),
             )
-            _queue = queue_cls(client)
+            _queue = queue_cls(client, key_prefix=settings.redis_key_prefix)
         else:
             raise ValueError(f"Unsupported REDIS_MODE for SAQ queue: {settings.redis_mode}")
     return _queue

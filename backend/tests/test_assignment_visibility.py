@@ -311,6 +311,10 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "counts the company-managed fleets a workspace the administrator manages hosts before it turns "
         "personal (#398); lists nothing to a caller"
     ),
+    ("services/fleet_spec.py", "_own_fleet"): (
+        "refuses a fleet spec applied over a company-managed fleet of the spec's slug owned by someone "
+        "else (#657): the flag is a property of the target fleet, the answer a refusal; lists nothing to a caller"
+    ),
     ("services/stix_extraction/knowledge.py", "_configured_source"): (
         "the deployment's ATT&CK source (mirror URL, pinned release) an administrator "
         "configured on a company-managed MITRE ATT&CK integration, read for no acting user; "

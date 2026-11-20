@@ -60,6 +60,9 @@ second portability layer (``dev-docs/rfc/fleets.md`` section 9)::
   caller (an agent they cannot manage, one already home in another fleet, an
   unknown connected agent) is listed and blocks the apply unless
   ``allow_partial``.
+* **Personal fleets only.** A spec applies to the caller's personal fleet:
+  over a company-managed fleet of the same slug it is refused whole (its
+  company-managed members could not be adopted, so the plan would strip it).
 * **No secrets.** The bundles are the ones ``build_agent_export_bundle``
   writes: secret values never travel. Intra-fleet handovers are carried by
   member key, never by the exporting instance's agent ids.
@@ -604,6 +607,28 @@ async def _own_fleet(db: AsyncSession, user: User, slug: str | None, name: str) 
         # applied over it would be reverted at the next boot.
         raise FleetSpecError(
             f"The fleet '{slug}' is built-in and read-only: apply the spec under another slug."
+        )
+    if fleet is None:
+        # Owned by someone else (an administrator applying the export of a
+        # company-managed fleet): the same refusal, never a personal copy whose
+        # members all stay unresolved.
+        fleet = (
+            await db.execute(
+                select(Fleet)
+                .where(Fleet.slug == slug, Fleet.is_company_managed.is_(True), Fleet.is_archived.is_(False))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if fleet is None:
+            return None
+    if fleet.is_company_managed:
+        # A spec fleet is personal and so are the agents it adopts: over a
+        # company-managed fleet every company-managed member would be
+        # unresolved, and the plan would remove them all and leave it with no
+        # orchestrator. Refused whole, before any plan is computed.
+        raise FleetSpecError(
+            f"The fleet '{slug}' is company-managed: a spec applies to a personal fleet only. "
+            "Change it on its fleet page or with the fleet tools, or apply the spec under another slug."
         )
     return fleet
 
