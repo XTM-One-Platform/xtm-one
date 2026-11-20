@@ -15,6 +15,8 @@ import fnmatch
 import re
 from typing import Any
 
+from app.services.sandbox_workspace.manifest import expand_braces
+
 #: GitHub's page size on ``/pulls/{n}/files`` and its cap of 3,000 files.
 PAGE_SIZE = 100
 MAX_PAGES = 30
@@ -34,12 +36,28 @@ def _names(entry: dict[str, Any]) -> list[str]:
 
 
 def path_matches(name: str, path: str) -> bool:
-    """*name* is selected by *path*: a glob, a directory prefix or the file itself."""
+    """*name* is selected by *path*: a glob, a directory prefix or the file itself.
+
+    A ``{a,b}`` group expands as a shell expands it (nested groups included, as
+    the sandbox globs do): *name* is selected when one alternative selects it.
+    """
     wanted = path.strip()
     if wanted.startswith("./"):
         wanted = wanted[2:]
     if not wanted:
         return True
+    alternatives = expand_braces(wanted)
+    if alternatives != [wanted]:
+        return any(_matches_one(name, alternative) for alternative in alternatives)
+    return _matches_one(name, wanted)
+
+
+def _matches_one(name: str, wanted: str) -> bool:
+    """*name* is selected by one brace-free *wanted*: a glob, a directory prefix or the file."""
+    if wanted.startswith("./"):
+        wanted = wanted[2:]
+    if not wanted:
+        return False
     if any(c in _GLOB_CHARS for c in wanted):
         if "/" not in wanted:
             return fnmatch.fnmatchcase(name.rsplit("/", 1)[-1], wanted) or fnmatch.fnmatchcase(name, wanted)
