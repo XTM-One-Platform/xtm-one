@@ -659,3 +659,16 @@ def test_select_tests_ranks_the_always_gates_after_the_changed_tests_and_before_
     )
     assert list(picked) == ["a/changed.test.ts", "z/gate.test.ts", "a/named.test.ts", "b/walk.test.ts"]
     assert affected.select_tests(tests, {"Card"}, always=("z/*.test.ts",)) == {"a/named.test.ts": ["Card"]}
+
+
+def test_a_check_scan_pattern_selects_a_python_tripwire_on_a_source_change_only() -> None:
+    """A guard reading every module through a helper names no changed identifier: #659 went red in the queue."""
+    tests = {
+        "tests/test_guard.py": "from tests import app_sources\n\ndef test_x():\n    app_sources.modules()\n",
+        "tests/test_other.py": "def test_y():\n    assert 1\n",
+    }
+    scans = (r"\bfrom tests import app_sources\b",)
+    picked = affected.select_tests(tests, set(), source_changed=True, scans=scans)
+    assert picked == {"tests/test_guard.py": [affected.SOURCE_SCAN_HIT]}
+    assert affected.select_tests(tests, set(), source_changed=False, scans=scans) == {}
+    assert affected.select_tests(tests, set(), source_changed=True) == {}

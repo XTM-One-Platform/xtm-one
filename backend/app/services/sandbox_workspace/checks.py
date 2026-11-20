@@ -15,7 +15,7 @@
 
 A checkout may declare what can be run on it (``[check.<name>]``: ``argv``,
 ``cwd``, ``timeout``, ``image``, ``report``, ``report_path``, ``env``,
-``affected``, ``affected_globs``, ``install_first``, ``fallback``, ``git_repo``) and how it is
+``affected``, ``affected_globs``, ``affected_always``, ``affected_scan_patterns``, ``install_first``, ``fallback``, ``git_repo``) and how it is
 started as a running service (``[service.<name>]``: ``argv``, ``cwd``,
 ``image``, ``port``, ``ready_path``, ``ready_log``, ``session_log``, ``timeout``,
 ``restart_target``, ``lifetime``, ``env``, ``depends_on``, ``needs``); :func:`load_checks` parses the checks
@@ -123,6 +123,9 @@ class CheckSpec:
     #: With ``tests``: the test files (globs on their path under the check's directory) selected on every source
     #: change, ahead of the named hits, so the argv bound never cuts them (a repository's ratchet gates).
     affected_always: tuple[str, ...] = ()
+    #: With ``tests``: regular expressions a test file's text matches to be a source-scan gate of this check (a
+    #: Python tripwire reading every module through a shared helper names no changed identifier).
+    affected_scan_patterns: tuple[str, ...] = ()
     #: A call without args runs as ``affected=true``, never the whole tree: with ``files`` or ``lines`` the changed
     #: files (a formatter on a repository whose main is not format-clean answers on the change alone), with
     #: ``tests`` the affected test files (a suite whose whole run needs a server never starts by default).
@@ -353,6 +356,24 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             )
         if always and mode != "tests":
             raise ChecksError(f'[check.{name}] affected_always applies to affected = "tests" only.')
+        scans = raw.get("affected_scan_patterns", [])
+        if (
+            not isinstance(scans, list)
+            or not all(isinstance(p, str) and p for p in scans)
+            or len(scans) > MAX_AFFECTED_GLOBS
+        ):
+            raise ChecksError(
+                f"[check.{name}] affected_scan_patterns must be a list of at most {MAX_AFFECTED_GLOBS} non-empty strings."
+            )
+        if scans and mode != "tests":
+            raise ChecksError(f'[check.{name}] affected_scan_patterns applies to affected = "tests" only.')
+        for pattern in scans:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ChecksError(
+                    f"[check.{name}] affected_scan_patterns: {pattern!r} is not a regular expression ({exc})."
+                ) from exc
         by_default = raw.get("affected_by_default", False)
         if not isinstance(by_default, bool):
             raise ChecksError(f"[check.{name}] affected_by_default must be true or false.")
@@ -417,6 +438,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             affected=mode,
             affected_globs=tuple(globs),
             affected_always=tuple(always),
+            affected_scan_patterns=tuple(scans),
             affected_by_default=by_default,
             whole_timeout=min(whole_timeout, timeout_raw, MAX_TIMEOUT),
             affected_narrows_args=narrows,

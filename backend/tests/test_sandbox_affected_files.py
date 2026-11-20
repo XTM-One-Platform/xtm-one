@@ -268,6 +268,26 @@ def test_checks_toml_declares_the_ratchet_gates_a_tests_check_always_runs():
         load_checks('[check.x]\nargv = ["x"]\naffected_always = "a.test.ts"\n')
 
 
+def test_checks_toml_declares_the_source_scan_gate_patterns_of_a_tests_check() -> None:
+    specs = load_checks('[check.unit]\nargv = ["pytest"]\naffected_scan_patterns = ["from tests import app_sources"]\n')
+    assert specs["unit"].affected_scan_patterns == ("from tests import app_sources",)
+    with pytest.raises(ChecksError, match="affected_scan_patterns applies"):
+        load_checks('[check.x]\nargv = ["x"]\naffected = "lines"\naffected_scan_patterns = ["a"]\n')
+    with pytest.raises(ChecksError, match="is not a regular expression"):
+        load_checks('[check.x]\nargv = ["x"]\naffected_scan_patterns = ["("]\n')
+
+
+def test_the_repository_backend_unit_check_selects_the_app_sources_tripwires() -> None:
+    """#659 was dequeued on a flag-tier guard of test_assignment_visibility.py that affected=true never ran."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    spec = load_checks((root / ".xtm-one" / "checks.toml").read_text(encoding="utf-8"))["backend-unit"]
+    guard = (root / "backend" / "tests" / "test_assignment_visibility.py").read_text(encoding="utf-8")
+    assert any(re.search(pattern, guard) for pattern in spec.affected_scan_patterns)
+
+
 def test_the_repository_frontend_unit_check_always_runs_the_form_ratchet_gates():
     from pathlib import Path
 
