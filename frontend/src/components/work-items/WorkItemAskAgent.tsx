@@ -43,7 +43,7 @@ import { waitsForAnswer } from "@/lib/work-item-context";
 import type { WorkItem, WorkItemAgentRef } from "@/types";
 
 /** The agent a chat about the item opens with: its owner, else its creator, when the reader may open it. */
-export function askableAgent(item: WorkItem): WorkItemAgentRef | null {
+function askableAgent(item: WorkItem): WorkItemAgentRef | null {
   const candidates = [item.context?.owner_agent, item.context?.created_by_agent];
   return candidates.find((agent): agent is WorkItemAgentRef => !!agent?.accessible && !!agent.id) ?? null;
 }
@@ -70,7 +70,7 @@ export function askPending(item: Pick<WorkItem, "payload" | "last_activity_at">,
   return Number.isNaN(last) || last <= at + 1000;
 }
 
-export type AskAgentAction = "explain" | "recheck" | "solved" | "do";
+type AskAgentAction = "explain" | "recheck" | "solved" | "do";
 export type SentAskAction = Exclude<AskAgentAction, "explain">;
 
 type Translate = (text: string, values?: Record<string, string>) => string;
@@ -232,6 +232,7 @@ export function WorkItemAskAgent({
                 </label>
                 <Input
                   id={changedId}
+                  aria-label={t_i18n("What changed (optional)")}
                   value={changed}
                   maxLength={500}
                   onChange={(e) => setChanged(e.target.value)}
