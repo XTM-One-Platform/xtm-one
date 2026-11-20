@@ -19735,7 +19735,9 @@
   "The most the analysis may cost in a calendar month, in US dollars, e.g. 31. An analysis that would cross it is refused. Empty: every analysis is refused.": "分析が暦月に使えるコストの上限(米ドル)。例: 31。超える分析は拒否されます。空欄: すべての分析が拒否されます。",
   "Empty: every analysis is refused.": "空欄: すべての分析が拒否されます。",
   "Enter a number of 0 or more.": "0 以上の数値を入力してください。",
+  "Enter a whole number of 0 or more.": "0 以上の整数を入力してください。",
   "Analyse the findings": "検出事項を分析",
   "On: once a day, the routing model explains each module's open findings when they changed, within the ceilings below. Off: no model is called. Needs AI to be on.": "オン: 1 日 1 回、検出事項が変わったモジュールについて、ルーティングモデルが下記の上限内で説明します。オフ: モデルは呼び出されません。AI がオンである必要があります。",
-  "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "ルーティングモデルによる検出事項の任意の説明です。支出は Platform Health としてトレースされ、エージェントのクォータには一切カウントされません。"
+  "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "ルーティングモデルによる検出事項の任意の説明です。支出は Platform Health としてトレースされ、エージェントのクォータには一切カウントされません。",
+  "Runs once a day at most, only for modules whose findings changed.": "1 日に最大 1 回、検出結果が変わったモジュールに対してのみ実行されます。"
 }
