@@ -2513,8 +2513,9 @@ async def refresh_llm_provider_models(
         return config
 
     provider = (await _listed_config()).provider
-    # No transaction held while the provider answers.
-    await db.rollback()
+    # No transaction held while the provider answers. A commit, not a rollback:
+    # a rollback expires the user loaded on this session (MissingGreenlet).
+    await db.commit()
     set_llm_caller(user.id, user.email)
     listed = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
     if listed is None:

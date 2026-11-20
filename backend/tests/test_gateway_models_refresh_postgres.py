@@ -54,8 +54,10 @@ async def _admin(sessions, role: str = "admin") -> User:
 
 async def _refresh(sessions, admin: User, provider_id) -> object:
     async with sessions() as db:
+        # Loaded on the request's session, as get_current_user does.
+        user = await db.get(User, admin.id)
         return await settings_api.refresh_llm_provider_models(
-            provider_id=str(provider_id), request=None, user=admin, db=db, _ai_gate=None
+            provider_id=str(provider_id), request=None, user=user, db=db, _ai_gate=None
         )
 
 
