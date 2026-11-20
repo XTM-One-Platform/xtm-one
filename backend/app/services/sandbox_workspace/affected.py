@@ -74,6 +74,11 @@ control). It is selected whenever a non-test, non-prose file under the
 check's directory changes, ranked after the files a name selected, and
 named ``source-scan gate`` in the answer: a class added to one ``.tsx`` was
 first caught by CI one cycle later because no name selected the gate.
+A check may add its own gate patterns in ``affected_scan_patterns`` (regular
+expressions on the test file's text, ``.xtm-one/checks.toml``): a Python
+tripwire reading every module through a shared helper (``app_sources``)
+names no changed identifier, and a guard on a new company-managed read went
+red only in the merge queue.
 
 A check may name its ratchet gates in ``affected_always`` (globs on the test
 path under its directory, ``.xtm-one/checks.toml``): on a source change they
@@ -238,9 +243,10 @@ def is_prose_file(path: str) -> bool:
     return "." in name and name.rsplit(".", 1)[-1].casefold() in PROSE_EXTENSIONS
 
 
-def is_source_scan(text: str) -> bool:
-    """Whether a test file's *text* walks a directory (``readdirSync``, ``import.meta.glob``...) or carries :data:`SOURCE_SCAN_MARKER`."""
-    return bool(_SOURCE_SCAN.search(text))
+def is_source_scan(text: str, scans: Iterable[re.Pattern[str]] = ()) -> bool:
+    """Whether a test file's *text* walks a directory (``readdirSync``, ``import.meta.glob``...), carries
+    :data:`SOURCE_SCAN_MARKER`, or matches one of the check's own *scans* (``affected_scan_patterns``)."""
+    return bool(_SOURCE_SCAN.search(text)) or any(pattern.search(text) for pattern in scans)
 
 
 def _singular(token: str) -> str:
@@ -490,6 +496,7 @@ def select_tests(
     prose: Iterable[str] = (),
     tokens: set[str] | None = None,
     named: Iterable[str] = (),
+    scans: Iterable[str] = (),
 ) -> dict[str, list[str]]:
     """The test files of *tests* (path -> text) that name an identifier, with the names found; *changed* tests always.
 
@@ -504,8 +511,8 @@ def select_tests(
     given, and a file it alone selected is dropped.
     With *source_changed* (a non-test source file changed under the check's
     directory) every source-scan gate (:func:`is_source_scan`) not already
-    selected is added with the hit :data:`SOURCE_SCAN_HIT`, and every test file
-    an *always* glob matches (:func:`matches_globs`) with :data:`ALWAYS_HIT`.
+    selected is added with the hit :data:`SOURCE_SCAN_HIT` (*scans*: the check's own gate patterns, matched
+    too), and every test file an *always* glob matches (:func:`matches_globs`) with :data:`ALWAYS_HIT`.
     A test file reading a changed *prose* file (repository paths, :func:`reads_prose`)
     is selected with the hit :data:`PROSE_HIT` and the path, ranked with the named hits.
     A test file naming a changed source file of *named* by its file name (:func:`names_file`) is selected
@@ -578,11 +585,12 @@ def select_tests(
     pinned: set[str] = set()
     if source_changed:
         gate_globs = tuple(always)
+        gate_patterns = tuple(re.compile(pattern) for pattern in scans)
         for path, text in tests.items():
             if gate_globs and selected.get(path) != ["changed"] and matches_globs(path, gate_globs):
                 selected[path] = [ALWAYS_HIT]
                 pinned.add(path)
-            elif path not in selected and is_source_scan(text):
+            elif path not in selected and is_source_scan(text, gate_patterns):
                 selected[path] = [SOURCE_SCAN_HIT]
 
     related = tokens or set()
@@ -696,10 +704,12 @@ async def affected_tests(
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
     always: Iterable[str] = (),
+    scans: Iterable[str] = (),
 ) -> Selection:
     """The test files under the check directory *cwd* (workspace path) that the checkout's *changes* affect.
 
-    *always* (the check's ``affected_always`` globs) names the test files selected on every source change.
+    *always* (the check's ``affected_always`` globs) names the test files selected on every source change;
+    *scans* (its ``affected_scan_patterns``) the text of the source-scan gates selected on it.
 
     With *deadline* (a *clock* instant) the test files are read until then only: the
     rest are not searched and the selection's notes say how many.
@@ -882,6 +892,7 @@ async def affected_tests(
         prose=prose,
         tokens=tokens,
         named=[p for p, mark in marked if mark != "D" and not is_test_file(p)],
+        scans=scans,
     )
     if prose:
         out.notes.append(_prose_note(prose, out.tests, searched_all=not skipped))

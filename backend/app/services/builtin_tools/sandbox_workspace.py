@@ -2960,6 +2960,7 @@ def build_sandbox_workspace_tools(
             read_base=read_base,
             deadline=commands.selection_deadline(),
             always=command.affected_always,
+            scans=command.affected_scan_patterns,
         )
         if not selection.tests:
             whole = (

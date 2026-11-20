@@ -1607,6 +1607,11 @@ affected_always = [
   "tests/test_write_routes_commit_before_response.py",
   "tests/test_ai_disabled_read_surface.py",
 ]
+# The tripwires that read every module through tests/app_sources.py (a flag-tier
+# guard, a route inventory) name no changed identifier: affected=true selects
+# them as source-scan gates on any source change, after the named hits.
+# Both import spellings: `from tests import app_sources` and `from tests.app_sources import ...`.
+affected_scan_patterns = ['\bfrom tests(?:\.app_sources\s+import\b|\s+import\s+[^\n]*\bapp_sources\b)']
 
 # The backend tests marked `integration` (pyproject.toml: "requires external
 # services"), offline: .xtm-one/stores.py starts PostgreSQL 16 + pgvector, a

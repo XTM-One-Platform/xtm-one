@@ -207,6 +207,8 @@ class ResolvedCommand:
     affected_globs: tuple[str, ...] = ()
     #: With ``tests``: the globs of the test files selected on every source change, ranked after the changed tests.
     affected_always: tuple[str, ...] = ()
+    #: With ``tests``: the patterns a test file's text matches to be selected as a source-scan gate.
+    affected_scan_patterns: tuple[str, ...] = ()
     #: The check declares ``affected_by_default`` and the call gave no args: it runs as ``affected=true``.
     affected_by_default: bool = False
     #: The check declares ``affected_narrows_args`` and the call gave args without ``--whole``: those args, the
@@ -878,6 +880,7 @@ async def _resolve(
         affected=spec.affected,
         affected_globs=spec.affected_globs,
         affected_always=spec.affected_always,
+        affected_scan_patterns=spec.affected_scan_patterns,
         affected_by_default=spec.affected_by_default and not extra_args(args or []),
         narrow_args=narrow,
         install=install,
