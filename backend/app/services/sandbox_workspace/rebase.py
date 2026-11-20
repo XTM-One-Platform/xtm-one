@@ -337,6 +337,7 @@ def plan(
     theirs: Mapping[str, bytes],
     *,
     in_scope: Callable[[str], bool] | None = None,
+    checked_out: Mapping[str, RecordedFile] | None = None,
 ) -> list[FileStep]:
     """The step of every file of the base, the workspace and the ref, sorted by path.
 
@@ -348,6 +349,15 @@ def plan(
     removed for being absent from the ref's tree. Only the files that need
     something are listed: a KEEP is listed only when the workspace changed
     the file, so the answer can name what stayed the agent's.
+
+    *checked_out* maps each file to what the checkout wrote (the record
+    before :func:`base_files_of` put the merge base in its place). A file the
+    ref holds exactly as it was checked out brought nothing the workspace
+    lacks: the workspace side stays (KEEP), never a merge against the base.
+    That is the squash of the branch the checkout is on (#779): a file the
+    branch added is absent from the merge base, the squash on the ref carries
+    it as the branch had it, and a merge from an empty base would conflict on
+    the whole file the workspace edited since.
     """
     steps: list[FileStep] = []
     for path in sorted(set(record.files) | set(ours) | set(theirs)):
@@ -365,7 +375,10 @@ def plan(
             steps.append(FileStep(path, Step.TAKE if new is not None else Step.REMOVE))
             continue
         # The workspace changed it (modified, added or removed).
-        if new_sha in (base_sha, mine):
+        at_checkout = checked_out.get(path) if checked_out is not None else None
+        if new_sha in (base_sha, mine) or (
+            new_sha is not None and at_checkout is not None and new_sha == at_checkout.sha256
+        ):
             steps.append(FileStep(path, Step.KEEP))
         elif mine is None:
             steps.append(FileStep(path, Step.CONFLICT, "removed in the workspace, changed on the ref"))
@@ -400,6 +413,11 @@ class OnConflict(StrEnum):
     REF_THEN_WORKSPACE = "ref-then-workspace"
     #: The workspace's lines, then the lines the ref added in the hunk, no marker.
     WORKSPACE_THEN_REF = "workspace-then-ref"
+    #: The ref's lines alone, no marker: the workspace's side of the overlapping hunk is dropped; every
+    #: hunk only one side changed is still merged.
+    REF = "ref"
+    #: The workspace's lines alone, no marker; every hunk only one side changed is still merged.
+    WORKSPACE = "workspace"
 
 
 def _keys_note(kind: str, texts: list[str]) -> str:
@@ -426,8 +444,9 @@ def merge_file(
     Text is merged by :func:`merge_text` on its UTF-8 decoding; a binary, or
     a file that does not decode, keeps the workspace bytes and is reported.
     With *on_conflict* other than MARKERS, an overlapping hunk is written as
-    the leading side's lines then the other side's added lines, without
-    markers, and counts as no conflict.
+    the leading side's lines then the other side's added lines (REF and
+    WORKSPACE: that side's lines alone), without markers, and counts as no
+    conflict.
 
     A structured file (:mod:`.structured`: JSON, YAML, TOML by *path*'s
     extension, JSON by content) whose two sides parse is parsed again once
@@ -439,6 +458,10 @@ def merge_file(
     """
     sides = [base or b"", ours, theirs]
     if not all(is_text(data) for data in sides if data):
+        if on_conflict is OnConflict.REF:
+            return FileMerge(theirs)
+        if on_conflict is OnConflict.WORKSPACE:
+            return FileMerge(ours)
         return FileMerge(ours, 1, "binary changed on both sides: the workspace version is kept")
     try:
         texts = [data.decode("utf-8") for data in sides]
@@ -463,6 +486,14 @@ def merge_file(
         # A line merge without an overlap that breaks the file: neither side's lines can be trusted to join.
         why = f"the line merge has no overlap but the merged {kind} file is broken ({defect}){_keys_note(kind, texts)}"
         return FileMerge(ours, 1, f"{why}: the workspace version is kept")
+    if on_conflict in (OnConflict.REF, OnConflict.WORKSPACE):
+        prefer = "theirs" if on_conflict is OnConflict.REF else "ours"
+        kept = merge_text(*texts, prefer=prefer).text
+        kind, defect = judged(kept)
+        if not defect:
+            return FileMerge(kept.encode("utf-8"), validated=kind)
+        detail = f"the {on_conflict.value} merge would break the {kind} file ({defect}){_keys_note(kind, texts)}"
+        return FileMerge(merged.text.encode("utf-8"), merged.conflicts, detail=detail)
     if on_conflict is not OnConflict.MARKERS:
         lead = "theirs" if on_conflict is OnConflict.REF_THEN_WORKSPACE else "ours"
         led = merge_text(*texts, lead=lead).text

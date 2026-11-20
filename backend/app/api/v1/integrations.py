@@ -22,7 +22,7 @@ import re
 import time
 import uuid
 from base64 import b64decode, b64encode
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
@@ -85,6 +85,7 @@ from app.api.v1.integration_catalog import (
     build_dummy_token,
     build_provider_tools,
     integration_owns_oauth_scopes,
+    invalid_extra_fields,
     is_certified_provider,
     is_registration_only_provider,
     missing_required_extra_fields,
@@ -152,6 +153,7 @@ from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
 from app.models.user import User
 from app.services.audit import log_audit
+from app.services.email import is_email_configured
 from app.services.hitl_whitelist import platform_approval_by_provider
 from app.services.integration_bundle_manager import (
     INTEGRATION_BUNDLE_MAX_BYTES,
@@ -936,6 +938,13 @@ async def list_provider_catalog(
         if category and val.get("category") != category:
             continue
 
+        # A provider that sends through the deployment's SMTP is offered only
+        # while SMTP is configured.
+        if val.get("requires_platform_smtp") and not is_email_configured():
+            continue
+        # Only an administrator creates a company-managed-only provider.
+        if val.get("company_managed_only") and not is_admin:
+            continue
         provider_disabled = (key in disabled_providers) or (key in custom_disabled)
 
         # Non-admin users: skip disabled providers unless explicitly requested
@@ -981,11 +990,13 @@ async def list_provider_catalog(
                 # whole outbound feature unreachable from the product.
                 a2a_directions=val.get("a2a_directions"),
                 requires_relay=bool(val.get("requires_relay")),
+                company_managed_only=bool(val.get("company_managed_only")),
                 variant_selector=val.get("variant_selector"),
                 variants=variants,
                 extra_fields=val.get("extra_fields"),
                 extra_field_options=extra_field_options,
                 extra_field_visible_when=val.get("extra_field_visible_when"),
+                extra_field_inputs=val.get("extra_field_inputs"),
                 description=val.get("description"),
                 logo=val.get("logo"),
                 integration_types=val.get("integration_types", []),
@@ -1914,6 +1925,27 @@ async def _forget_oauth_share_dismissal(
 # ---------------------------------------------------------------------------
 
 
+def _require_catalog_creation_rules(
+    catalog: Mapping[str, Any], provider: str, user: User, is_company_managed: bool
+) -> None:
+    """Refuse a creation its catalog entry rules out.
+
+    ``requires_platform_smtp``: the provider sends through the deployment's SMTP,
+    so it exists only while SMTP is configured. ``company_managed_only``: an
+    administrator creates it, company-managed, never as a personal integration.
+    """
+    if catalog.get("requires_platform_smtp") and not is_email_configured():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{provider}' needs the platform's SMTP server, and none is configured (SMTP_HOSTNAME).",
+        )
+    if catalog.get("company_managed_only") and not (user.is_admin and is_company_managed):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Provider '{provider}' is created by an administrator, as a company-managed integration only.",
+        )
+
+
 def _validate_a2a_federation_config(
     provider: str, direction: str | None, extra_config: dict
 ) -> None:
@@ -1994,6 +2026,7 @@ async def create_integration(
             status_code=403,
             detail=f"Provider '{body.provider}' is currently disabled by an admin.",
         )
+    _require_catalog_creation_rules(catalog, body.provider, user, bool(body.is_company_managed))
 
     if body.provider.startswith("custom:"):
         custom_row_result = await db.execute(
@@ -2047,6 +2080,9 @@ async def create_integration(
             status_code=400,
             detail=missing_required_extra_fields_message(body.provider, missing),
         )
+    # Typed values within their rule (a domain list, a bounded number).
+    if body.extra_config and (invalid := invalid_extra_fields(body.provider, body.extra_config)):
+        raise HTTPException(status_code=422, detail=" ".join(invalid))
 
     # Only admins can create company-managed integrations
     require_admin_for_company_managed(
@@ -2820,6 +2856,8 @@ async def update_integration(
     if body.extra_config is not None:
         new_extra = await merged_extra_config(db, integration, body.extra_config)
         _refuse_newly_missing_required_extra(integration, new_extra)
+        if invalid := invalid_extra_fields(integration.provider, body.extra_config):
+            raise HTTPException(status_code=422, detail=" ".join(invalid))
         if integration.provider.startswith("custom:"):
             # The base URL policy, as on create; the session rolls back on
             # the refusal, so nothing assigned above is stored.

@@ -503,7 +503,7 @@ The autonomous scheduler runs as an asyncio background task inside the platform 
 | **Orchestration recovery backstop** | Every tick | Worker-down safety net: reclaims stale orchestration executions if the worker's reconciler is not running |
 | **Scheduled evaluations** | Every tick | Triggers evaluation runs whose schedule is due |
 | **Trace storage maintenance** | Every tick | Retention purge and daily-stats backfill for the native trace store |
-| **Memory maintenance** | Hourly | Runs memory hygiene (dedup, pruning, cap enforcement, fact consolidation) across all agents |
+| **Memory maintenance and retention sweeps** | Hourly (wall clock) | Runs memory hygiene (dedup, pruning, cap enforcement, fact consolidation) across all agents, the file, check file and Video Studio retention sweeps and the purges below. The hourly jobs run on a wall-clock schedule shared by every process (`services/wall_clock_schedule.py`, #768): due when their last completed pass, in Redis, is an hour old, one process at a time under a lock, a pass cut by a deploy retried once its lock expires. A retention sweep stopped at its per-tick cap drains on the next ticks |
 | **Teams private channel monitoring** | Hourly | Renews Microsoft Teams private channel webhook subscriptions before expiry |
 | **Shared state / work-item cleanup** | Hourly | Purges resolved shared state past retention, drops archived shared-state items past `shared_state_archive_retention_days`, and reaps the work-item queue |
 | **Skill auto-refresh** | Hourly | Re-fetches URL-based agent skills whose content is older than 24 hours |

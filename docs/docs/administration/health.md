@@ -71,7 +71,7 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Registration token | Critical | `PLATFORM_REGISTRATION_TOKEN` is the published default value, which authenticates nobody |
 | Licence | Critical | A Filigran licence is installed and refused (no licence installed is Community Edition, not a finding) |
 | Licence expiry | Warning | The validated Filigran licence expires within 30 days |
-| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email |
+| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email (nor can agents, through the Platform email integration) |
 | XTM Hub registration | Info | The platform is not registered with XTM Hub, or its registration lost connectivity or must be done again |
 | Integration broken | Warning | A company-managed integration is in error, must be re-authorized, or failed its last connection test (one finding per integration) |
 | MCP server broken | Warning | An enabled company-managed MCP server could not renew its OAuth token (one finding per server) |
