@@ -51,9 +51,9 @@ DATA = {
         ("Discovery", "See which techniques of the adversaries that target you were never tested.",
          "The CTEM Discovery stage: threat techniques from OpenCTI against the techniques tested in OpenAEV, "
          "with the untested ones counted"),
-        ("Prioritization", "Go from thousands of known vulnerabilities to the few that are exploitable and open.",
-         "The CTEM Prioritization stage: a funnel from known vulnerabilities to relevant, exploitable and open "
-         "remediation cases"),
+        ("Prioritization", "Read which of thousands of known vulnerabilities are exploited and open on the assets that matter.",
+         "The CTEM Prioritization stage: the AI assessment of the open vulnerabilities and the stage metrics, "
+         "known-exploited and critical CVEs"),
         ("Remediation cases", "One case per fix, ranked, with the crown jewels and exploitation it touches.",
          "CTEM remediation cases: one row per fix with its priority, issue count, crown jewels, known "
          "exploitation and state"),

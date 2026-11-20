@@ -73,9 +73,9 @@ Security teams drown in findings and still cannot answer the question that matte
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme/g2-dark.webp">
         <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme/g2-light.webp">
-        <img alt="The CTEM Prioritization stage: a funnel from known vulnerabilities to relevant, exploitable and open remediation cases" src="./.github/img/readme/g2-light.webp" width="100%">
+        <img alt="The CTEM Prioritization stage: the AI assessment of the open vulnerabilities and the stage metrics, known-exploited and critical CVEs" src="./.github/img/readme/g2-light.webp" width="100%">
       </picture>
-      <p><b>Prioritization.</b> Go from thousands of known vulnerabilities to the few that are exploitable and open.</p>
+      <p><b>Prioritization.</b> Read which of thousands of known vulnerabilities are exploited and open on the assets that matter.</p>
     </td>
   </tr>
   <tr>
