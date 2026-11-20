@@ -19695,5 +19695,9 @@
   "{count, plural, one {# critical finding is open in Platform Health} other {# critical findings are open in Platform Health}}": "{count, plural, other {Platform Health で重大な検出事項が # 件未解決です}}",
   "Most recent, {module}: {finding}": "最新、{module}: {finding}",
   "{count, plural, one {# critical finding in Platform Health} other {# critical findings in Platform Health}}": "{count, plural, other {Platform Health の重大な検出事項 # 件}}",
-  "{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}": "{count, plural, other {Platform Health の警告 # 件}}"
+  "{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}": "{count, plural, other {Platform Health の警告 # 件}}",
+  "Refresh models": "モデルを更新",
+  "Models refreshed": "モデルを更新しました",
+  "{count, plural, one {# model} other {# models}} listed.": "{count, plural, other {#件のモデル}}を取得しました。",
+  "Read the provider's model list again, as a restart would.": "再起動時と同じように、プロバイダーのモデル一覧を読み直します。"
 }

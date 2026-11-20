@@ -145,6 +145,9 @@ class LLMProviderResponse(BaseModel):
     # ``default_model`` changes. ``is_from_env`` alone only says the API key
     # is env-managed.
     models_env_locked: bool = False
+    # Env-seeded with no ``LLM_PROVIDER_{P}_MODELS``: its catalog is its own
+    # listing, which ``POST .../refresh-models`` reads again. Set on the listing.
+    models_listed: bool = False
     # Model ids this config advertises that another config advertises too, each
     # with the other configs offering it. Overlap is legitimate — a gateway
     # fronting a vendor beside that vendor's own key — but it is what makes a

@@ -92,6 +92,21 @@ export function useCreateLLMProvider() {
   });
 }
 
+/** Lists an env-seeded provider's models again, as a restart would. */
+export function useRefreshProviderModels(providerId: string) {
+  const qc = useQueryClient();
+  return useMutation<LLMProvider, Error, void>({
+    mutationFn: () => api.post(`/settings/llm-providers/${providerId}/refresh-models`),
+    // Only this provider's catalog moves, and the announcement it records.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llm-providers"] });
+      invalidateModelQueries(qc);
+      qc.invalidateQueries({ queryKey: MODEL_ANNOUNCEMENTS_QUERY_KEY });
+      syncFlowNodeCatalog(qc);
+    },
+  });
+}
+
 export function useUpdateLLMProvider() {
   const qc = useQueryClient();
   return useMutation({

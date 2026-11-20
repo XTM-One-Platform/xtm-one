@@ -561,6 +561,9 @@ export interface LLMProvider {
    * editable mode, where admins curate the list on top of the env baseline.
    */
   models_env_locked: boolean;
+  /** Env-seeded with no `LLM_PROVIDER_{P}_MODELS`: its catalog is its own listing,
+   *  read again by `POST .../refresh-models`. Admins only, on the listing. */
+  models_listed?: boolean;
   /** Model ids this config shares with another, and which configs share them.
    *  Overlap is legitimate, but it is what makes a bare model id ambiguous. */
   model_overlaps?: { model: string; provider_ids: string[] }[];

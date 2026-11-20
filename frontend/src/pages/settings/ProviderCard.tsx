@@ -10,6 +10,7 @@ import {
   Lock,
   Link2,
   Pencil,
+  RefreshCw,
   Trash2,
   Sparkles,
   ScanSearch,
@@ -26,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { VaultSecretsNotice } from "@/components/ui/vault-secrets";
-import { useProviderModels, useScanContextWindows } from "@/hooks/api/useSettingsApi";
+import { useProviderModels, useRefreshProviderModels, useScanContextWindows } from "@/hooks/api/useSettingsApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { cn, pluralize, providerConfigName, toggleArrayItem } from "@/lib/utils";
 import { formatTokenCount, parseTokenCount } from "@/lib/token-count";
@@ -172,6 +173,7 @@ export function ProviderCard({
   );
   const { toast } = useToast();
   const scanContextWindows = useScanContextWindows(p.id);
+  const refreshModels = useRefreshProviderModels(p.id);
   // The scan reads the provider: unavailable, and not run on enabling a model, with AI off.
   const aiOff = useAiActionDisabled();
 
@@ -272,6 +274,20 @@ export function ProviderCard({
         });
       },
     );
+  };
+
+  // Its catalog is its own listing (no `*_MODELS`): read it again, as a restart would.
+  const handleRefreshModels = () => {
+    refreshModels.mutate(undefined, {
+      onSuccess: (fresh) =>
+        toast({
+          title: t_i18n("Models refreshed"),
+          description: t_i18n("{count, plural, one {# model} other {# models}} listed.", {
+            count: fresh.available_models?.length ?? 0,
+          }),
+          variant: "success",
+        }),
+    });
   };
 
   // Sync local state when entering edit mode
@@ -502,6 +518,23 @@ export function ProviderCard({
               <UsersRound className="h-3 w-3" />
               {isEditingAccess ? t_i18n("Close") : t_i18n("Access")}
             </Button>
+          )}
+          {isAdmin && p.models_listed && (
+            <AiDisabledTip>
+              <Tip content={aiOff ? undefined : t_i18n("Read the provider's model list again, as a restart would.")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 content-compact text-default-secondary hover:text-accent"
+                  disabled={aiOff || refreshModels.isPending}
+                  aria-busy={refreshModels.isPending || undefined}
+                  onClick={handleRefreshModels}
+                >
+                  {refreshModels.isPending ? <Spinner size="sm" tone="inherit" /> : <RefreshCw className="h-3 w-3" />}
+                  {t_i18n("Refresh models")}
+                </Button>
+              </Tip>
+            </AiDisabledTip>
           )}
           {canCurate && chats && (
             <Button

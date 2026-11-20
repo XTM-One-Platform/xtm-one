@@ -19695,5 +19695,9 @@
   "{count, plural, one {# critical finding is open in Platform Health} other {# critical findings are open in Platform Health}}": "{count, plural, one {# hallazgo crítico está abierto en Platform Health} other {# hallazgos críticos están abiertos en Platform Health}}",
   "Most recent, {module}: {finding}": "El más reciente, {module}: {finding}",
   "{count, plural, one {# critical finding in Platform Health} other {# critical findings in Platform Health}}": "{count, plural, one {# hallazgo crítico en Platform Health} other {# hallazgos críticos en Platform Health}}",
-  "{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}": "{count, plural, one {# advertencia en Platform Health} other {# advertencias en Platform Health}}"
+  "{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}": "{count, plural, one {# advertencia en Platform Health} other {# advertencias en Platform Health}}",
+  "Refresh models": "Actualizar modelos",
+  "Models refreshed": "Modelos actualizados",
+  "{count, plural, one {# model} other {# models}} listed.": "{count, plural, one {# modelo listado} other {# modelos listados}}.",
+  "Read the provider's model list again, as a restart would.": "Volver a leer la lista de modelos del proveedor, como lo haría un reinicio."
 }
