@@ -19767,7 +19767,7 @@
   "Opens a chat with {agent} and asks where the item stands.": "Ouvre une conversation avec {agent} et demande où en est l'élément.",
   "What changed (optional)": "Ce qui a changé (facultatif)",
   "Already sent, waiting for {agent}.": "Déjà envoyé, en attente de {agent}.",
-  "Re-check, It's solved and Do it are sent to {agent}, which records the outcome on the item.": "Revérifier, C'est réglé et Fais-le sont envoyés à {agent}, qui note le résultat sur l'élément.",
+  "Re-check, It's solved and Do it are sent to {agent}, which records the outcome on the item.": "Revérifier, C'est réglé et Faites-le sont envoyés à {agent}, qui note le résultat sur l'élément.",
   "You cannot open the agent behind this work item, so Explain is not offered.": "Vous ne pouvez pas ouvrir l'agent de cet élément de travail : Expliquer n'est donc pas proposé.",
   "Not a domain name: {entries}": "Pas un nom de domaine : {entries}",
   "Enter a whole number from {min} to {max}.": "Saisissez un nombre entier de {min} à {max}.",

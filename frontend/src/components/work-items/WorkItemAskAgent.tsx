@@ -33,6 +33,7 @@ import { CheckCheck, CircleHelp, RefreshCw, Send, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { useAskWorkItem } from "@/hooks/api/useWorkItemApi";
@@ -225,25 +226,27 @@ export function WorkItemAskAgent({
             ))}
           </div>
           {solving && !disabled && (
-            <div className="flex flex-wrap items-end gap-2" data-testid="work-item-ask-solved-form">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor={changedId} className="content-compact text-default-secondary">
-                  {t_i18n("What changed (optional)")}
-                </label>
-                <Input
-                  id={changedId}
-                  aria-label={t_i18n("What changed (optional)")}
-                  value={changed}
-                  maxLength={500}
-                  onChange={(e) => setChanged(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void send(item, "solved", changed);
-                  }}
-                />
+            <div className="space-y-1.5" data-testid="work-item-ask-solved-form">
+              <Label htmlFor={changedId} className="text-default-secondary">
+                {t_i18n("What changed (optional)")}
+              </Label>
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <Input
+                    id={changedId}
+                    aria-label={t_i18n("What changed (optional)")}
+                    value={changed}
+                    maxLength={500}
+                    onChange={(e) => setChanged(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void send(item, "solved", changed);
+                    }}
+                  />
+                </div>
+                <Button className="gap-1" onClick={() => void send(item, "solved", changed)} data-testid="work-item-ask-solved-send">
+                  <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send")}
+                </Button>
               </div>
-              <Button size="sm" className="gap-1" onClick={() => void send(item, "solved", changed)} data-testid="work-item-ask-solved-send">
-                <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send")}
-              </Button>
             </div>
           )}
           <p className="content-compact text-default-secondary" data-testid="work-item-ask-effect">
