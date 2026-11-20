@@ -1531,6 +1531,44 @@ async def _api(
     return _require_response(resp), None
 
 
+def keep_findings_schema() -> dict[str, Any]:
+    """Schema of the ``keep_findings`` argument of a delete that cascades to findings.
+
+    A fresh dict per tool, so a schema pass on one tool never edits another's.
+    """
+    return {
+        "type": "boolean",
+        "default": True,
+        "description": (
+            "Delete only. True (default) keeps the findings it produced, detached; false deletes them with it."
+        ),
+    }
+
+
+def keep_findings_params(keep_findings: bool) -> dict[str, str]:
+    """The ``keep_findings`` query parameter of an OpenAEV delete.
+
+    Sent on both values: OpenAEV defaults to false (findings deleted), the tools
+    default to true so an agent's clean-up never destroys evidence silently.
+    """
+    return {"keep_findings": "true" if keep_findings else "false"}
+
+
+def findings_fate(keep_findings: bool, owner: str) -> str:
+    """What a delete did to the findings of *owner*, for the tool answer.
+
+    An OpenAEV older than the keep_findings parameter ignores it and deletes the
+    findings anyway, so the answer never claims they were kept for sure.
+    """
+    if not keep_findings:
+        return f"Its findings were deleted with the {owner} (keep_findings=false)."
+    return (
+        f"keep_findings=true was sent: OpenAEV keeps the findings of the {owner}, "
+        "detached from it. An OpenAEV version without this option ignores it and "
+        "deletes them; search_openaev_findings shows which is the case."
+    )
+
+
 async def scoped_safe_request(
     client: httpx.AsyncClient | AutoRefreshClient,
     method: str,
