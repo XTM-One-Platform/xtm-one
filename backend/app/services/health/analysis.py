@@ -330,6 +330,7 @@ async def analyse_module(
         return await _refuse(refusal)
     await db.commit()
 
+    from app.llm.attribution import provider_config_metadata
     from app.llm.base import ChatMessage
     from app.services.langfuse_tracing import end_trace, trace_llm_call
 
@@ -340,7 +341,12 @@ async def analyse_module(
         source=TRACE_SOURCE,
         model=model,
         input_data={"module": module, "findings": len(rows)},
-        metadata={"health_module": module, "trigger": trigger},
+        metadata={
+            "health_module": module,
+            "trigger": trigger,
+            "llm_provider": getattr(llm, "provider_name", None),
+            **provider_config_metadata(llm),
+        },
     )
     usage: dict[str, Any] | None = None
     try:

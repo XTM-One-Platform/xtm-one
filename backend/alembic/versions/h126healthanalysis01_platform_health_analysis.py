@@ -3,8 +3,9 @@
 Slice S9 of issue #101 (design ``dev-docs/platform-health.md`` section 6):
 
 * ``llm_traces.source`` accepts ``platform_health``: the check constraint is
-  dropped and re-added ``NOT VALID`` with the new value (every existing row
-  satisfies the superset; skipping validation avoids scanning a hot table);
+  dropped, re-added ``NOT VALID`` with the new value, then validated in a
+  separate ``VALIDATE CONSTRAINT`` (SHARE UPDATE EXCLUSIVE, blocks neither reads
+  nor writes): no constraint is left unvalidated after an upgrade;
 * ``health_module_analyses``: the latest analysis per module;
 * ``health_analysis_spend``: the analysis ceiling ledger, one row per day and month.
 
@@ -55,18 +56,22 @@ def _has_table(conn: sa.engine.Connection, table: str) -> bool:
     )
 
 
-def _swap_check(conn: sa.engine.Connection, check_sql: str) -> None:
+def _swap_check(conn: sa.engine.Connection, check_sql: str, *, validate: bool) -> None:
     terminate_lock_holders(conn, _TRACES)
     set_lock_timeout(conn)
     # Literal DDL from module constants, never user input (ruff S608).
     op.execute(f"ALTER TABLE {_TRACES} DROP CONSTRAINT IF EXISTS {_CONSTRAINT}")
     op.execute(f"ALTER TABLE {_TRACES} ADD CONSTRAINT {_CONSTRAINT} CHECK ({check_sql}) NOT VALID")
+    if validate:
+        # Every stored row satisfies the superset; the scan runs under SHARE UPDATE
+        # EXCLUSIVE, so reads and writes go on while it validates.
+        op.execute(f"ALTER TABLE {_TRACES} VALIDATE CONSTRAINT {_CONSTRAINT}")
 
 
 def upgrade() -> None:
     conn = op.get_bind()
     if _has_table(conn, _TRACES):
-        _swap_check(conn, _NEW_CHECK)
+        _swap_check(conn, _NEW_CHECK, validate=True)
     set_lock_timeout(conn)
     op.execute(
         f"""
@@ -108,4 +113,4 @@ def downgrade() -> None:
     if _has_table(conn, _TRACES):
         # NOT VALID: the platform_health rows already stored are kept (traces are
         # never deleted by a downgrade); only new rows are checked.
-        _swap_check(conn, _OLD_CHECK)
+        _swap_check(conn, _OLD_CHECK, validate=False)
