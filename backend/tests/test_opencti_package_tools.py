@@ -2155,7 +2155,10 @@ async def test_connector_deploy_and_edit_declare_non_null_input(monkeypatch):
     assert "$input: AddManagedConnectorInput!" in deploy_query, deploy_query
 
     edit_fake = _RecordingGraphQL(
-        {"managedConnectorEdit": {"id": "c1", "name": "AlienVault"}}
+        {
+            "connector": {"id": "c1", "name": "AlienVault", "connector_user_id": "svc"},
+            "managedConnectorEdit": {"id": "c1", "name": "AlienVault"},
+        }
     )
     monkeypatch.setattr(connectors, "_graphql", edit_fake)
     edit_result = await _run(
@@ -2195,6 +2198,8 @@ async def test_connector_config_sends_json_booleans(monkeypatch):
     }
 
     edit_fake = _RecordingGraphQL({"managedConnectorEdit": {"id": "c1", "name": "Fetcher"}})
+    # update_config reads the stored configuration before the edit.
+    edit_fake.response["connector"] = {"id": "c1", "name": "Fetcher", "connector_user_id": "svc"}
     monkeypatch.setattr(connectors, "_graphql", edit_fake)
     edit_result = await _run(
         executor,

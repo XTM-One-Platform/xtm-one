@@ -52,7 +52,7 @@ _CONNECTOR_APPLIES: dict[str, frozenset[str]] = {
     "deploy": frozenset(
         {"name", "manager_contract_image", "catalog_id", "config", "user_id", "automatic_user", "confidence_level"}
     ),
-    "update_config": frozenset({"connector_id", "name", "config", "user_id"}),
+    "update_config": frozenset({"connector_id", "name", "config", "user_id", "replace"}),
     "start": frozenset({"connector_id"}),
     "stop": frozenset({"connector_id"}),
     "delete": frozenset({"connector_id"}),
@@ -233,6 +233,140 @@ def _contract_config_value(value: object) -> str:
 def _contract_configuration(config: dict[str, object]) -> list[dict[str, str]]:
     """Build the ``manager_contract_configuration`` list of key/value pairs."""
     return [{"key": str(k), "value": _contract_config_value(v)} for k, v in config.items()]
+
+
+# Keys OpenCTI adds to the configuration it serves (runtime identity, platform
+# access, proxy settings): never part of the connector's own settings, so an
+# edit never sends them back.
+_RUNTIME_CONFIG_KEYS = frozenset(
+    {
+        "CONNECTOR_ID",
+        "CONNECTOR_NAME",
+        "CONNECTOR_TYPE",
+        "CONNECTOR_RUN_AND_TERMINATE",
+        "OPENCTI_TOKEN",
+        "OPENCTI_URL",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "HTTPS_CA_CERTIFICATES",
+        "HTTPS_PROXY_REJECT_UNAUTHORIZED",
+    }
+)
+# What action='get' prints in place of a hidden value: never a value to send.
+_HIDDEN_VALUE_PLACEHOLDERS = frozenset({"<redacted (secret-like key)>", "<encrypted>"})
+
+_CONNECTOR_CONFIG_QUERY = (
+    "query ConnectorConfig($id: String!) { connector(id: $id) {"
+    " id name connector_user_id manager_contract_definition"
+    " manager_contract_configuration { key value } } }"
+)
+# An OpenCTI older than Connector.manager_contract_definition: no contract
+# schema, secrets are then recognised by their ciphertext shape.
+_CONNECTOR_CONFIG_QUERY_NO_CONTRACT = (
+    "query ConnectorConfig($id: String!) { connector(id: $id) {"
+    " id name connector_user_id manager_contract_configuration { key value } } }"
+)
+
+
+def _contract_schema(definition: object) -> tuple[dict[str, dict[str, object]], frozenset[str]]:
+    """The properties and required keys of a stored contract definition (JSON)."""
+    if not isinstance(definition, str) or not definition.strip():
+        return {}, frozenset()
+    try:
+        contract = json.loads(definition)
+    except (ValueError, TypeError):
+        return {}, frozenset()
+    schema = contract.get("config_schema") if isinstance(contract, dict) else None
+    if not isinstance(schema, dict):
+        return {}, frozenset()
+    props = schema.get("properties")
+    if not isinstance(props, dict):
+        return {}, frozenset()
+    raw_required = schema.get("required")
+    required = raw_required if isinstance(raw_required, list) else []
+    return (
+        {str(k): v for k, v in props.items() if isinstance(v, dict)},
+        frozenset(str(k) for k in required),
+    )
+
+
+def _merge_contract_configuration(
+    stored: object,
+    properties: dict[str, dict[str, object]],
+    provided: dict[str, object],
+    *,
+    replace: bool,
+    required: frozenset[str] = frozenset(),
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """The configuration an edit sends, and what it changes, keeps and preserves.
+
+    OpenCTI rebuilds the whole stored configuration from the contract on every
+    edit: a key it does not receive keeps its stored value only when it is a
+    secret (``format: password``) and is otherwise reset to its default or
+    dropped. So a merge sends every stored non-secret setting with its stored
+    value, overlaid with *provided*; a secret the caller did not pass is never
+    sent (OpenCTI keeps it), nor is anything that looks encrypted. With
+    *replace* only *provided* is sent. The report lists key names, never values:
+    a secret is reported preserved when it is stored or required (OpenCTI serves
+    no encrypted value, so a required secret is the stored one).
+    """
+    secret_keys = {k for k, p in properties.items() if p.get("format") == "password"}
+    secrets = {k for k in secret_keys if k in required}
+    stored_values: dict[str, str] = {}
+    for item in stored if isinstance(stored, list) else []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        value = item.get("value")
+        if key in secret_keys:
+            secrets.add(key)
+            continue
+        if not key or value is None or key in _RUNTIME_CONFIG_KEYS:
+            continue
+        if properties:
+            if key not in properties:
+                continue
+        elif _looks_encrypted(value):
+            # No contract to read: a ciphertext-shaped value is a secret.
+            secrets.add(key)
+            continue
+        stored_values[key] = str(value)
+    sent_provided = {str(k): _contract_config_value(v) for k, v in provided.items()}
+    to_send = {} if replace else dict(stored_values)
+    to_send.update(sent_provided)
+    report = {
+        "changed": [k for k, v in sent_provided.items() if stored_values.get(k) != v],
+        "unchanged": [k for k, v in sent_provided.items() if stored_values.get(k) == v],
+        "kept": [] if replace else [k for k in stored_values if k not in sent_provided],
+        "reset": [k for k in stored_values if k not in sent_provided] if replace else [],
+        "secrets": sorted(k for k in secrets if k not in sent_provided),
+    }
+    return to_send, report
+
+
+def _config_update_report(node: dict[str, object], report: dict[str, list[str]], *, replace: bool) -> str:
+    """The answer of update_config: key names per outcome, never a value."""
+    head = f"connector '{node.get('name')}' (id: {node.get('id')})"
+    if replace:
+        lines = [
+            f"Replaced the configuration of {head}: only the keys sent are set, "
+            "every other setting is back to its contract default (a secret keeps "
+            "its stored value)."
+        ]
+    else:
+        lines = [f"Updated the configuration of {head}, merged with the stored configuration."]
+    labels = (
+        ("changed", "changed"),
+        ("unchanged", "sent with its stored value"),
+        ("kept", "kept as stored"),
+        ("reset", "reset to the contract default"),
+        ("secrets", "secret preserved"),
+    )
+    for field, label in labels:
+        if report.get(field):
+            lines.append(f"  {label}: {', '.join(report[field])}")
+    return "\n".join(lines)
 
 
 def _summarize_contract(contract: dict) -> list[str]:
@@ -463,6 +597,7 @@ def register(
         automatic_user: bool = False,
         confidence_level: int | None = None,
         tail: int | None = None,
+        replace: bool = False,
         **extra: object,
     ) -> str:
         action = (action or "").strip().lower()
@@ -481,6 +616,7 @@ def register(
                 "automatic_user": automatic_user,
                 "confidence_level": confidence_level,
                 "tail": tail,
+                "replace": replace,
             },
             dict(extra),
         )
@@ -762,30 +898,47 @@ def register(
                     "name is required for action 'update_config' (the connector's "
                     "current name/title — get it from action='get')."
                 )
-            contract_config = _contract_configuration(parsed_config)
+            hidden = sorted(
+                str(k)
+                for k, v in parsed_config.items()
+                if isinstance(v, str) and v.strip() in _HIDDEN_VALUE_PLACEHOLDERS
+            )
+            if hidden:
+                return (
+                    f"config carries the placeholder action='get' prints for a hidden "
+                    f"value ({', '.join(hidden)}); nothing was written. Leave a secret "
+                    "out to keep its stored value, or pass its new value."
+                )
+            # OpenCTI rebuilds the whole configuration on every edit, so the
+            # stored one is read first: the merge re-sends every setting the
+            # caller did not change, and connector_user_id (required by
+            # EditManagedConnectorInput) defaults to the connector's own user.
+            cur, cerr = await _gql(_CONNECTOR_CONFIG_QUERY, {"id": connector_id})
+            if cerr and "manager_contract_definition" in cerr:
+                cur, cerr = await _gql(_CONNECTOR_CONFIG_QUERY_NO_CONTRACT, {"id": connector_id})
+            if cerr:
+                return cerr
+            current = cur.get("connector")
+            if not current:
+                return f"Connector {connector_id} not found; nothing was written."
+            effective_user = user_id or current.get("connector_user_id")
+            if not effective_user:
+                return "user_id is required for action 'update_config' (the connector's data-creation user)."
+            properties, required = _contract_schema(current.get("manager_contract_definition"))
+            to_send, report = _merge_contract_configuration(
+                current.get("manager_contract_configuration"),
+                properties,
+                parsed_config,
+                replace=bool(replace),
+                required=required,
+            )
             inp = {
                 "id": connector_id,
                 "name": name.strip(),
                 "title": name.strip(),
-                "connector_user_id": user_id or "",
-                "manager_contract_configuration": contract_config,
+                "connector_user_id": effective_user,
+                "manager_contract_configuration": [{"key": k, "value": v} for k, v in to_send.items()],
             }
-            if not user_id:
-                # connector_user_id is required by EditManagedConnectorInput; fall
-                # back to the connector's existing user when the caller omits it.
-                cur, cerr = await _gql(
-                    "query C($id: String!) { connector(id: $id) { connector_user_id } }",
-                    {"id": connector_id},
-                )
-                if cerr:
-                    return cerr
-                existing = (cur.get("connector") or {}).get("connector_user_id")
-                if not existing:
-                    return (
-                        "user_id is required for action 'update_config' (the "
-                        "connector's data-creation user)."
-                    )
-                inp["connector_user_id"] = existing
             query = (
                 "mutation EditConnector($input: EditManagedConnectorInput!) {"
                 "  managedConnectorEdit(input: $input) { id name } }"
@@ -794,7 +947,7 @@ def register(
             if err:
                 return err
             node = data.get("managedConnectorEdit") or {}
-            return f"Updated configuration for connector '{node.get('name')}' (id: {node.get('id')})."
+            return _config_update_report(node, report, replace=bool(replace))
 
         if action in ("start", "stop"):
             if not connector_id:
@@ -879,7 +1032,10 @@ def register(
                 "catalog_id from the catalog + config JSON of the connector's "
                 "parameters + user_id, or automatic_user=true with a service-account "
                 "name as user_id), "
-                "'update_config' (connector_id + name + config), 'start'/'stop' "
+                "'update_config' (connector_id + name + config: merged with the "
+                "stored configuration, omitted settings and secrets kept, an empty "
+                "value resets a setting to its default; replace=true sends config "
+                "alone), 'start'/'stop' "
                 "(connector_id), 'delete' (connector_id). Requires Enterprise "
                 "Edition with a running connector manager (XTM Composer); secret "
                 "values are encrypted server-side. Always confirm required "
@@ -963,6 +1119,14 @@ def register(
                         "maximum": _LOG_TAIL_MAX,
                         "default": _LOG_TAIL_DEFAULT,
                         "description": "Log lines to return, newest kept (logs).",
+                    },
+                    "replace": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "update_config: send config alone; every omitted "
+                            "setting goes back to its default (secrets kept)."
+                        ),
                     },
                 },
                 "required": ["action"],
