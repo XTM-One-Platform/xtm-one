@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1962 tools across 114 providers; 52 held back by hand.
+# 1963 tools across 114 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1926,12 +1926,13 @@ xtm_hub:list_xtm_hub_competitors
 xtm_hub:list_xtm_hub_content_translation_drafts
 xtm_hub:list_xtm_hub_content_translations
 xtm_hub:list_xtm_hub_deployment_queue
-xtm_hub:list_xtm_hub_deployment_requests
 xtm_hub:list_xtm_hub_epics
 xtm_hub:list_xtm_hub_featured_resources
 xtm_hub:list_xtm_hub_libraries
+xtm_hub:list_xtm_hub_my_api_tokens
 xtm_hub:list_xtm_hub_my_organizations
 xtm_hub:list_xtm_hub_news_feed
+xtm_hub:list_xtm_hub_organization_api_tokens
 xtm_hub:list_xtm_hub_organization_contacts
 xtm_hub:list_xtm_hub_organizations
 xtm_hub:list_xtm_hub_pending_users
