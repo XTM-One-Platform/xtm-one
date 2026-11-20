@@ -2007,6 +2007,7 @@
   "Connect {name}": "Connect {name}",
   "Connect {product} to {platform}": "Connect {product} to {platform}",
   "Connected": "Connected",
+  "Connected platform upgraded": "Connected platform upgraded",
   "Connected MCP Servers": "Connected MCP Servers",
   "Connecting integrations…": "Connecting integrations…",
   "Connecting to server...": "Connecting to server...",

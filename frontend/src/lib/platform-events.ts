@@ -69,6 +69,7 @@ const PLATFORM_EVENT_LABELS = {
   "video.music.failed": "AI music failed",
   "agent_account.owner_sent": "Mailbox owner sent an email",
   "platform.release.deployed": "New release deployed",
+  "integration.version.changed": "Connected platform upgraded",
   "platform.default_model_route.changed": "Default model route changed",
   "timer.due": "Timer due",
 } as const;

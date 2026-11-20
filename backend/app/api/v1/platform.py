@@ -2268,6 +2268,9 @@ async def register_platform(
     )
     reg = result.scalar_one_or_none()
     previous_platform_url = reg.platform_url if reg else None
+    # Read under the registration lock: the version the previous heartbeat
+    # committed, compared after this one's commit (integration.version.changed).
+    previous_platform_version = reg.platform_version if reg else None
     await _refuse_published_default_change(request, reg, body.platform_url)
     platform_title = _registered_platform_title(reg, body.platform_title)
     business_vertical = _registered_business_vertical(reg, body.business_vertical)
@@ -2467,6 +2470,19 @@ async def register_platform(
     from app.services.registered_platform_origins import refresh_for_registration
 
     await refresh_for_registration(reg.platform_url, previous_url=previous_platform_url)
+    # A known platform reporting another version: an upgrade an assignment can
+    # wait for instead of polling. Never on the published default token: its
+    # caller authenticates nobody, so the version it sends proves nothing.
+    if registration_token_state() != "published_default":
+        from app.services.integration_versions import publish_version_change
+
+        await publish_version_change(
+            provider=provider_key,
+            platform_identifier=reg.platform_identifier,
+            integration_id=str(company_integ.id),
+            previous_version=previous_platform_version,
+            version=reg.platform_version,
+        )
 
     logger.info(
         "Platform '%s' registered: contract=%s, company-managed integration=%s",
