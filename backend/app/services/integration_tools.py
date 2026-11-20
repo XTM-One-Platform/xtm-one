@@ -1105,6 +1105,7 @@ CHANNEL_BOT_TOOLS = {
 # file_id in the run's FileContext.
 _PERSIST_FILE_PROVIDERS = frozenset(
     {
+        "aikido",
         "anyrun",
         "ashby",
         "bluesky",

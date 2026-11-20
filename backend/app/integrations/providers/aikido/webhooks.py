@@ -18,6 +18,8 @@ import json
 import time
 from typing import Any
 
+from app.core.security import timing_safe_str_eq
+
 SIGNATURE_HEADER = "X-Aikido-Webhook-Signature"
 #: Oldest ``dispatched_at`` accepted, in seconds (Aikido's replay window).
 MAX_AGE_SECONDS = 30
@@ -72,7 +74,7 @@ def verify_signature(body: bytes, secret: str, signature: str, *, now: float | N
     signature = (signature or "").strip().lower()
     if not signature:
         return False, f"missing {SIGNATURE_HEADER}"
-    if not any(hmac.compare_digest(signature, digest) for digest in _digests(body, secret)):
+    if not any(timing_safe_str_eq(signature, digest) for digest in _digests(body, secret)):
         return False, "signature mismatch"
     try:
         payload = json.loads(body)
@@ -87,6 +89,22 @@ def verify_signature(body: bytes, secret: str, signature: str, *, now: float | N
     if dispatched - current > MAX_FUTURE_SKEW_SECONDS:
         return False, "dispatched_at is in the future"
     return True, ""
+
+
+def trigger_event(aikido_event: str) -> str:
+    """The trigger event key of an Aikido event type: its dots become underscores.
+
+    Aikido names nest (``issue.open.created`` and ``issue.open.created.sast``,
+    ``zen.attack`` and ``zen.attack_wave`` are separate subscriptions), and a
+    trigger selection matches every key below it across a ``.``: kept dotted,
+    an assignment on ``issue.open.created`` would also run on every SAST and
+    open-source delivery. The flat key selects exactly one Aikido event.
+    """
+    return aikido_event.replace(".", "_")
+
+
+#: The trigger event key of each subscribable Aikido event type.
+TRIGGER_EVENTS: dict[str, str] = {event: trigger_event(event) for event in EVENT_TYPES}
 
 
 def event_type(payload: Any) -> str:

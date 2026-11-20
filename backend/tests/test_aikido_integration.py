@@ -20,7 +20,8 @@ from app.integrations.providers.aikido._client import (
     parse_aikido_token,
     token_from_config,
 )
-from app.integrations.providers.aikido.webhooks import EVENT_TYPES, verify_signature
+from app.integrations.providers.aikido.webhooks import EVENT_TYPES, TRIGGER_EVENTS, verify_signature
+from app.services import integration_tools
 from app.services.integration_read_only import integration_tool_access, withhold_write_tools
 from app.services.integration_tools import PROVIDER_TOOLS
 from app.tools.base import CallableToolExecutor
@@ -421,9 +422,21 @@ def test_every_subscribable_event_is_a_trigger_with_filter_keys():
     documented = set(add["body"]["schema"]["properties"]["event_type"]["enum"])
     assert documented == set(EVENT_TYPES)
     events = PROVIDER_CATALOG["aikido"]["available_events"]
-    assert {e["event"] for e in events} == documented
+    assert {e["event"] for e in events} == {TRIGGER_EVENTS[event] for event in documented}
     assert all(e["mechanism"] == "webhook" for e in events)
     assert all({"event_type", "payload.severity"} <= set(e["filter_keys"]) for e in events)
+
+
+def test_a_trigger_key_selects_one_aikido_event_never_a_nested_sibling():
+    # issue.open.created and issue.open.created.sast are separate subscriptions:
+    # the flat key keeps an assignment on the first off the second.
+    assert TRIGGER_EVENTS["issue.open.created"] == "issue_open_created"
+    assert TRIGGER_EVENTS["zen.attack_wave"] == "zen_attack_wave"
+    keys = list(TRIGGER_EVENTS.values())
+    assert len(set(keys)) == len(keys)
+    for selected in keys:
+        assert not any(other.startswith(f"{selected}.") for other in keys if other != selected)
+    assert "aikido" in integration_tools._PERSIST_FILE_PROVIDERS
 
 
 # --- registry, coverage and read-only ---------------------------------------

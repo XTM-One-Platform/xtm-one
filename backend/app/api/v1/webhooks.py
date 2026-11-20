@@ -189,6 +189,7 @@ from app.core.utils import (
     safe_uuid,
 )
 from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
+from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
 from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
 from app.models.agent import Agent
 from app.models.assignment import (
@@ -2143,10 +2144,12 @@ def _extract_event_key(request: Request, payload: dict) -> str:
             return f"linkedin.{action}" if action else "linkedin.social_action"
         return "linkedin.social_action"
 
-    # Aikido Security: the event type is ``event_type``, signed per delivery
+    # Aikido Security: the event type is ``event_type``, signed per delivery;
+    # the trigger key is its flat form (issue.open.created -> issue_open_created),
+    # so a selection never runs on a nested sibling such as issue.open.created.sast.
     aikido_event = payload.get("event_type")
     if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
-        return aikido_event
+        return aikido_trigger_event(aikido_event)
 
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
@@ -2176,7 +2179,7 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         and request.headers.get(AIKIDO_SIGNATURE_HEADER)
         and isinstance(payload.get("event_type"), str)
     ):
-        return payload["event_type"]
+        return aikido_trigger_event(payload["event_type"])
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action

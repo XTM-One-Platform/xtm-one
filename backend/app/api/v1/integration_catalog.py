@@ -26,6 +26,7 @@ import logging
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
+from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.services.tool_classification import infer_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -4584,10 +4585,12 @@ PROVIDER_CATALOG = {
         "supports_assignment_webhooks": True,
         "available_events": [
             {
-                "event": event,
+                "event": AIKIDO_TRIGGER_EVENTS[event],
                 "label": label,
+                # One description for every event (the label names it), so the
+                # trigger picker reads it in the viewer's language.
                 "description": (
-                    f"Triggers on the Aikido '{event}' webhook. Add a webhook for this event in Aikido "
+                    "Triggers on this Aikido webhook event. Add a webhook for it in Aikido "
                     "(Settings > Integrations > Webhooks, or the add_aikido_webhook tool) pointing to the "
                     "webhook URL shown below."
                 ),
