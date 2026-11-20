@@ -36,6 +36,7 @@ import re
 import time
 import uuid
 from collections.abc import Generator
+from dataclasses import replace
 from typing import Any, NamedTuple
 from urllib.parse import quote
 
@@ -47,6 +48,7 @@ from app.core.xtm_auth import _normalize_url, issue_xtm_jwt
 from app.llm.anthropic_provider import build_cache_control
 from app.llm.base import ChatMessage
 from app.llm.decisions import DECISIONS_OPENAI
+from app.llm.elevenlabs_provider import PHONEME_MODELS, VOICES_TTL_SECONDS, account_voice, own_voices_first
 from app.llm.identity import LLMCallerIdentity, resolve_llm_caller
 from app.llm.model_capabilities import is_claude_model, is_gemini_model
 from app.llm.music import (
@@ -65,7 +67,14 @@ from app.llm.openai_compat import (
     gateway_upstream_refusal,
     marked_not_retryable,
 )
-from app.llm.speech import _speaks_openai_voices
+from app.llm.speech import (
+    PronunciationSupport,
+    SpeechRequest,
+    SpeechResult,
+    Voice,
+    _speaks_openai_voices,
+    pick_voice,
+)
 from app.llm.system_prompt_split import split_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -280,6 +289,9 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._refused_dimensions: set[tuple[str, int]] = set()
         # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358).
         self._editing_models: set[str] = set()
+        # The ElevenLabs account's voices (``GET /v1/audio/voices``), read at most every VOICES_TTL_SECONDS.
+        self._account_voices: list[Voice] = []
+        self._account_voices_read_at = float("-inf")
 
     def refusal_endpoint(self) -> Endpoint | None:
         # The client's api_key is a placeholder: the row's token and target route it.
@@ -412,16 +424,71 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
     async def _speech_headers(self, model: str) -> dict[str, str]:
         return await self._target_headers(model)
 
-    async def list_voices(self, model: str | None = None) -> list:
-        """A Gemini model speaks Gemini's prebuilt voices, which the gateway passes through by name.
+    def _elevenlabs_speaks(self, model: str | None) -> bool:
+        """Whether ElevenLabs speaks *model*: its ``eleven_`` id, the pinned target, or the owner listed."""
+        if not model or _speaks_openai_voices(model):
+            return False
+        if self._target:
+            # Every request goes there, whatever the model is called.
+            return self._target == "elevenlabs"
+        upstream = (self._owner_cache.get(model) or "").lower()
+        return model.lower().rsplit("/", 1)[-1].startswith("eleven_") or upstream == "elevenlabs"
 
-        Its library and the project's own voices need a gateway voices route, which does not exist.
+    async def _elevenlabs_speaks_listed(self, model: str | None) -> bool:
+        """As :meth:`_elevenlabs_speaks`, the gateway's listing read first for a model not seen yet."""
+        if model and not self._elevenlabs_speaks(model) and not _speaks_openai_voices(model):
+            await self._upstream_of(model)
+        return self._elevenlabs_speaks(model)
+
+    async def list_voices(self, model: str | None = None) -> list[Voice]:
+        """A Gemini model speaks Gemini's prebuilt voices, passed through by name; an ElevenLabs one the account's.
+
+        Gemini's library and project voices need a gateway route that does not exist. ElevenLabs' come from
+        ``GET /v1/audio/voices``, own first, reused for :data:`VOICES_TTL_SECONDS` as the direct provider does.
         """
         if model and not _speaks_openai_voices(model) and await self._upstream_of(model) == "gemini":
             from app.llm.gemini_provider import GeminiProvider
 
             return GeminiProvider.prebuilt_voices()
-        return await super().list_voices(model)
+        if not await self._elevenlabs_speaks_listed(model):
+            return await super().list_voices(model)
+        if time.monotonic() - self._account_voices_read_at < VOICES_TTL_SECONDS:
+            return list(self._account_voices)
+        try:
+            response = await self.client.get(
+                "/audio/voices",
+                cast_to=httpx.Response,
+                options={"params": {"model": model}, "headers": {"X-Target-Provider": "elevenlabs"}, "timeout": 15},
+            )
+            data = response.json().get("data")
+        except Exception as e:
+            raise RuntimeError(
+                f"ElevenLabs voices not read from the gateway: {redact_token(format_exception_message(e), self._token)}"
+            ) from None
+        voices = own_voices_first([v for item in data or [] if (v := account_voice(item))])
+        self._account_voices, self._account_voices_read_at = voices, time.monotonic()
+        return list(voices)
+
+    async def synthesize_speech(self, request: SpeechRequest) -> SpeechResult:
+        if not await self._elevenlabs_speaks_listed(request.model):
+            return await super().synthesize_speech(request)
+        # The gateway refuses ElevenLabs speech without a voice id: a name, or a voice
+        # the account lacks, is resolved as the direct provider resolves it.
+        notes: list[str] = []
+        voice = pick_voice(await self.list_voices(request.model), request.voice, None, notes)
+        result = await super().synthesize_speech(replace(request, voice=voice))
+        result.notes[:0] = notes
+        return result
+
+    def speech_takes_style(self, model: str) -> bool | None:
+        """ElevenLabs takes no written delivery instruction: the gateway drops it."""
+        return False if self._elevenlabs_speaks(model) else super().speech_takes_style(model)
+
+    def speech_pronunciation(self, model: str) -> PronunciationSupport:
+        """Inline IPA phonemes reach the ElevenLabs models that honour them; the gateway keeps no dictionary."""
+        if self._elevenlabs_speaks(model) and model.lower().rsplit("/", 1)[-1] in PHONEME_MODELS:
+            return PronunciationSupport(ssml="inline", phoneme=True)
+        return super().speech_pronunciation(model)
 
     async def list_music_models(self) -> list[str]:
         """The models whose types include ``music``: its operator declares them, never their id."""

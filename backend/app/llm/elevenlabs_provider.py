@@ -21,7 +21,7 @@ them, never pinned on their own (no ``default_video_model``).
 
 A pronunciation lexicon reaches it two ways: inline
 ``<phoneme alphabet="ipa">`` tags on the models that honour them
-(:data:`_PHONEME_MODELS`), and a pronunciation dictionary of alias rules
+(:data:`PHONEME_MODELS`), and a pronunciation dictionary of alias rules
 (``POST /v1/pronunciation-dictionaries/add-from-rules``) every model reads,
 referred to per request by ``pronunciation_dictionary_locators``.
 
@@ -39,6 +39,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -75,7 +76,7 @@ from app.llm.video import status_error as video_status_error
 from app.tools.base import ToolDefinition
 
 #: How long the voice library read is reused: a voice cloned meanwhile shows within minutes.
-_VOICES_TTL_SECONDS = 300
+VOICES_TTL_SECONDS = 300
 #: The pages of the voice library read, 100 voices each.
 _VOICE_PAGES = 10
 #: The account's own voices come first: they are why ElevenLabs is configured.
@@ -98,7 +99,7 @@ _CONDITIONING_MAX_MS = 30_000
 #: A plan chunk's styles: phrases of the prompt, at most this many.
 _PLAN_STYLES = 50
 #: The speech models that honour ``<phoneme>`` tags; the others skip the word, and read alias rules only.
-_PHONEME_MODELS = frozenset({"eleven_flash_v2", "eleven_turbo_v2", "eleven_monolingual_v1"})
+PHONEME_MODELS = frozenset({"eleven_flash_v2", "eleven_turbo_v2", "eleven_monolingual_v1"})
 #: The pronunciation dictionaries one request may refer to.
 _MAX_DICTIONARIES = 3
 
@@ -200,7 +201,7 @@ class ElevenLabsProvider(BaseLLMProvider):
     async def list_voices(self, model: str | None = None) -> list[Voice]:
         """The account's voice library, its own voices (cloned, professional, generated) first."""
         del model
-        if self._voices and time.monotonic() - self._voices_read_at < _VOICES_TTL_SECONDS:
+        if self._voices and time.monotonic() - self._voices_read_at < VOICES_TTL_SECONDS:
             return list(self._voices)
         voices: list[Voice] = []
         token: str | None = None
@@ -212,11 +213,11 @@ class ElevenLabsProvider(BaseLLMProvider):
                 response = await http.get("/v2/voices", params=params)
                 _raise_for(response)
                 data = response.json() or {}
-                voices.extend(_voice(v) for v in data.get("voices") or [] if isinstance(v, dict) and v.get("voice_id"))
+                voices.extend(v for item in data.get("voices") or [] if (v := account_voice(item)))
                 token = data.get("next_page_token")
                 if not data.get("has_more") or not token:
                     break
-        voices.sort(key=lambda v: _CATEGORY_ORDER.get(v.category, len(_CATEGORY_ORDER)))
+        voices = own_voices_first(voices)
         self._voices, self._voices_read_at = voices, time.monotonic()
         return list(voices)
 
@@ -226,7 +227,7 @@ class ElevenLabsProvider(BaseLLMProvider):
 
     def speech_pronunciation(self, model: str) -> PronunciationSupport:
         """Inline IPA phonemes on the models that honour them; a pronunciation dictionary on every model."""
-        if model in _PHONEME_MODELS:
+        if model in PHONEME_MODELS:
             return PronunciationSupport(ssml="inline", phoneme=True, lexicon=True)
         return PronunciationSupport(lexicon=True)
 
@@ -512,15 +513,24 @@ class ElevenLabsProvider(BaseLLMProvider):
         return data
 
 
-def _voice(item: dict) -> Voice:
+def account_voice(item: Any) -> Voice | None:
+    """A voice of the account's library: ``voice_id`` as ElevenLabs names it, ``id`` as the gateway's listing does."""
+    voice_id = (item.get("voice_id") or item.get("id")) if isinstance(item, dict) else None
+    if not voice_id:
+        return None
     labels = item.get("labels") if isinstance(item.get("labels"), dict) else {}
     traits = [str(labels[k]) for k in ("accent", "gender", "age", "descriptive", "use_case") if labels.get(k)]
     return Voice(
-        str(item["voice_id"]),
-        str(item.get("name") or item["voice_id"]),
+        str(voice_id),
+        str(item.get("name") or voice_id),
         str(item.get("category") or ""),
         ", ".join(traits) or str(item.get("description") or ""),
     )
+
+
+def own_voices_first(voices: list[Voice]) -> list[Voice]:
+    """The account's own voices (cloned, professional, generated) first, each group in the listed order."""
+    return sorted(voices, key=lambda v: _CATEGORY_ORDER.get(v.category, len(_CATEGORY_ORDER)))
 
 
 def _styles(text: str | None) -> list[str]:

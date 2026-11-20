@@ -1690,3 +1690,141 @@ class TestSpeechVoices:
         assert [v.id for v in await provider.list_voices("gpt-4o-mini-tts")] == list(OPENAI_VOICES)
         assert asked == []  # an OpenAI model's voices are known without listing the gateway
         assert await provider.list_voices("acme-voice-1") == []
+
+
+class TestElevenLabsVoices:
+    """An ElevenLabs speech model through the gateway speaks the account's voices (#713)."""
+
+    _LISTING = (
+        {"id": "eleven_multilingual_v2", "owned_by": "elevenlabs", "types": ["speech"]},
+        {"id": "narrator", "owned_by": "elevenlabs", "types": ["speech"]},
+        {"id": "gpt-4o-mini-tts", "owned_by": "openai", "types": ["speech"]},
+    )
+    _VOICES = (
+        {"id": "v-rachel", "name": "Rachel", "category": "premade", "description": "calm",
+         "labels": {"accent": "american", "gender": "female"}, "preview_url": "https://x/1.mp3"},
+        {"id": "v-clone", "name": "My clone", "category": "cloned"},
+    )
+
+    @staticmethod
+    def _gateway(
+        seen: list[httpx.Request], voices_status: int = 200, voices: tuple = _VOICES
+    ) -> FiligranGatewayProvider:
+        """*seen* collects every request: speech calls and listings."""
+        models = [{"object": "model", **e} for e in TestElevenLabsVoices._LISTING]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path.endswith("/audio/speech"):
+                return httpx.Response(200, content=b"ID3", headers={"content-type": "audio/mpeg"})
+            if request.url.path.endswith("/audio/voices"):
+                if voices_status != 200:
+                    return httpx.Response(voices_status, json={"error": {"message": "no voices"}})
+                return httpx.Response(200, json={"object": "list", "data": list(voices)})
+            return httpx.Response(200, json={"object": "list", "data": models})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @staticmethod
+    def _voice_reads(seen: list[httpx.Request]) -> list[httpx.Request]:
+        return [r for r in seen if r.url.path.endswith("/audio/voices")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model", ["eleven_multilingual_v2", "narrator"])
+    async def test_an_elevenlabs_model_lists_the_account_voices_its_own_first(self, model):
+        seen: list[httpx.Request] = []
+        voices = await self._gateway(seen).list_voices(model)
+        assert [(v.id, v.name, v.category) for v in voices] == [
+            ("v-clone", "My clone", "cloned"),
+            ("v-rachel", "Rachel", "premade"),
+        ]
+        assert voices[1].description == "american, female"
+        (read,) = self._voice_reads(seen)
+        assert read.headers["X-Target-Provider"] == "elevenlabs"
+        assert read.url.params["model"] == model
+
+    @pytest.mark.asyncio
+    async def test_the_voices_are_read_once_then_reused(self):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        first = await provider.list_voices("eleven_multilingual_v2")
+        assert await provider.list_voices("narrator") == first
+        assert len(self._voice_reads(seen)) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_refused_listing_raises_and_is_not_cached(self):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices_status=403)
+        for _ in range(2):
+            with pytest.raises(RuntimeError, match="voices"):
+                await provider.list_voices("eleven_multilingual_v2")
+        assert len(self._voice_reads(seen)) == 2
+
+    @pytest.mark.asyncio
+    async def test_speech_always_names_a_voice_id(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        unnamed = await provider.synthesize_speech(SpeechRequest(model="eleven_multilingual_v2", text="Hi"))
+        by_name = await provider.synthesize_speech(SpeechRequest(model="narrator", text="Hi", voice="rachel"))
+        unknown = await provider.synthesize_speech(SpeechRequest(model="narrator", text="Hi", voice="Bob"))
+        speech = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert [json.loads(r.content)["voice"] for r in speech] == ["v-clone", "v-rachel", "v-clone"]
+        assert speech[1].headers["X-Target-Provider"] == "elevenlabs"
+        assert (unnamed.voice, by_name.voice, unknown.voice) == ("v-clone", "v-rachel", "v-clone")
+        assert unknown.notes == ['Voice "Bob" is not offered by this model: spoken with My clone.']
+
+    @pytest.mark.asyncio
+    async def test_no_delivery_instruction_is_sent(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        assert provider.speech_takes_style("eleven_multilingual_v2") is False
+        result = await provider.synthesize_speech(
+            SpeechRequest(model="eleven_multilingual_v2", text="Hi", voice="v-rachel", style="warm")
+        )
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert "instructions" not in json.loads(speech.content)
+        assert result.notes and "delivery instruction" in result.notes[0]
+
+    def test_inline_phonemes_reach_the_models_that_honour_them(self):
+        from app.llm.speech import PronunciationSupport
+
+        provider = self._gateway([])
+        assert provider.speech_pronunciation("eleven_flash_v2") == PronunciationSupport(ssml="inline", phoneme=True)
+        assert provider.speech_pronunciation("eleven_multilingual_v2") == PronunciationSupport()
+
+    @pytest.mark.asyncio
+    async def test_an_openai_model_keeps_its_voices_without_a_voice_read(self):
+        from app.llm.speech import OPENAI_VOICES
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        assert [v.id for v in await provider.list_voices("gpt-4o-mini-tts")] == list(OPENAI_VOICES)
+        assert self._voice_reads(seen) == []
+
+    @pytest.mark.asyncio
+    async def test_an_empty_library_is_reused_too(self):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices=())
+        assert await provider.list_voices("eleven_multilingual_v2") == []
+        assert await provider.list_voices("eleven_multilingual_v2") == []
+        assert len(self._voice_reads(seen)) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_target_pinned_elsewhere_is_not_elevenlabs_whatever_the_id(self):
+        seen: list[httpx.Request] = []
+        set_llm_caller(USER_ID, EMAIL)
+        provider = FiligranGatewayProvider(
+            api_key=f"{GATEWAY_URL}||openai",
+            http_client=httpx.AsyncClient(
+                auth=XtmJwtAuth(AUD, "openai"),
+                transport=httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(404)),
+            ),
+        )
+        assert await provider.list_voices("eleven_v3") == []
+        assert provider.speech_takes_style("eleven_v3") is None
+        assert seen == []

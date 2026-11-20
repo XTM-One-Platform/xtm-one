@@ -291,7 +291,7 @@ class OpenAISpeechMixin:
             what for what, given in (("the style", request.style), ("the IPA of its terms", guide)) if given
         )
         if request.style or guide:
-            if _takes_instructions(request.model):
+            if self.speech_takes_style(request.model) is not False and _takes_instructions(request.model):
                 kwargs["instructions"] = "\n\n".join(part for part in (request.style, guide) if part)
             else:
                 notes.append(f"{request.model} takes no delivery instruction: spoken without {dropped}.")
