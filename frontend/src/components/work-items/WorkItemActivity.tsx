@@ -102,7 +102,7 @@ function NoteEntry({
               className="inline-flex items-center gap-1 font-mono-plex text-accent hover:underline"
               aria-label={t_i18n("Open the run")}
             >
-              <Icon name="history" size={12} className="shrink-0" aria-hidden />
+              <Icon name="history" size={16} className="shrink-0" aria-hidden />
               {note.runId.slice(0, 8)}
             </Link>
           ) : (
