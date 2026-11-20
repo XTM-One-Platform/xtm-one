@@ -104,7 +104,7 @@ In XTM One mode, AI switched off included, every registered OpenCTI is checked e
 | Search engine disk | Warning | The search engine disk is over 85 % used (E) |
 | Ingestion lag | Warning | Ingestion lags by over 15 minutes (E) |
 
-The figures marked (E) are defaults. An administrator changes them with the Platform Health settings API (`PUT /api/v1/health/settings`, keys `opencti.connector_stale_minutes`, `opencti.connector_errors_max`, `opencti.queue_depth_max`, `opencti.search_disk_max_percent`, `opencti.ingestion_lag_minutes`); the next pass, within 5 minutes, reads them.
+The figures marked (E) are defaults. An administrator changes them in **Settings > Agents and automations > Platform Health > Module thresholds** (XTM One modes only; Edit, then Save), or with the Platform Health settings API (`PUT /api/v1/health/settings`, keys `opencti.connector_stale_minutes`, `opencti.connector_errors_max`, `opencti.queue_depth_max`, `opencti.search_disk_max_percent`, `opencti.ingestion_lag_minutes`); the next pass, within 5 minutes, reads them.
 
 ## OpenAEV checks
 
@@ -117,7 +117,7 @@ In XTM One mode, AI switched off included, every registered OpenAEV is checked e
 | Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) (E) |
 | Agents offline | Warning | Over half of the agents are offline (E) |
 
-The figures marked (E) are defaults, changed like the OpenCTI ones (keys `openaev.integration_silent_minutes` and `openaev.agents_offline_max_percent`).
+The figures marked (E) are defaults, changed like the OpenCTI ones, in the same **Module thresholds** block (keys `openaev.integration_silent_minutes` and `openaev.agents_offline_max_percent`).
 
 ## OpenCRQ checks
 

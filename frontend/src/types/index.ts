@@ -16189,6 +16189,24 @@ export interface HealthSettings extends HealthTriggerSettings {
   scope_agent_ids: string[];
   scope_flow_ids: string[];
   budget: HealthBudgetCaps;
+  /** The editable thresholds of the OpenCTI and OpenAEV checks (#101 S10b), read on the next pass. */
+  opencti: HealthOpenCTIThresholds;
+  openaev: HealthOpenAEVThresholds;
+}
+
+/** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
+export interface HealthOpenCTIThresholds {
+  connector_stale_minutes: number;
+  connector_errors_max: number;
+  queue_depth_max: number;
+  search_disk_max_percent: number;
+  ingestion_lag_minutes: number;
+}
+
+/** `HealthOpenAEVThresholds` of `services/health/settings.py`. */
+export interface HealthOpenAEVThresholds {
+  integration_silent_minutes: number;
+  agents_offline_max_percent: number;
 }
 
 /** A pet of the Health companion's library (#8261). */
