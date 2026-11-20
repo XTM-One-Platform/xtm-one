@@ -55,8 +55,12 @@ class _AtomicApi:
             return _Resp(
                 {
                     "inject_id": "i1",
+                    "inject_title": "Nmap",
+                    "inject_injector_contract": {"injector_contract_id": "c1"},
                     "inject_assets": [{"asset_id": a} for a in self.stored_assets or []],
                     "inject_asset_groups": [],
+                    "inject_teams": [],
+                    "inject_tags": [],
                     "inject_content": {"target_selector": "assets"},
                 }
             ), None
