@@ -556,7 +556,11 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         return OpenAIProvider._GPT_IMAGE_REFERENCES if (model or self.default_model) in self._editing_models else 0
 
     def image_takes_mask(self, model: str | None) -> bool:
-        return self.image_reference_limit(model) > 0
+        # Gemini takes no mask, direct or through the gateway (which refuses one).
+        # As _upstream_of, an alias is Gemini by its pinned target or listed owner.
+        m = model or self.default_model
+        upstream = (self._target or self._owner_cache.get(m) or "").lower()
+        return self.image_reference_limit(m) > 0 and not is_gemini_model(m) and upstream != "gemini"
 
     async def edit_image(
         self,
