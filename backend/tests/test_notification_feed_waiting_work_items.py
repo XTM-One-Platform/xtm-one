@@ -28,10 +28,38 @@ def test_a_waiting_item_is_an_urgent_bell_entry_that_opens_the_item():
     assert item.kind == "work_item_waiting"
     assert item.id == f"work_item:{ITEM_ID}"
     assert item.route == f"/operations/work-items?item={ITEM_ID}"
-    assert item.title == "Pick a vendor"
-    assert item.summary == "A or B?"
+    assert item.title == "A or B?"
+    assert item.subtitle == "Waiting for your decision"
+    assert item.summary is None
     assert "work_item_waiting" in feed.URGENT_KINDS
     assert "work_item_waiting" in feed.NOTIFICATION_KINDS
+
+
+def test_the_bell_says_the_question_and_the_deadline_only():
+    """#776: the entry carries what the card says; never the agents' blocked_reason."""
+    item = feed.present_waiting_work_item(
+        _waiting(deadline="2026-11-21T10:00:00+01:00", blocked_reason="CARD SENT 2026-11-20T11:43Z msg 1795")
+    )
+    assert item is not None
+    assert item.title == "A or B?"
+    assert item.summary == "Answer by Sat 21 Nov, 09:00 UTC"
+    assert "CARD SENT" not in str(item.as_dict())
+
+
+def test_a_legacy_item_without_a_question_reads_decision_needed_and_its_title():
+    item = feed.present_waiting_work_item(_waiting(question=None))
+    assert item is not None
+    assert item.title == "Decision needed: Pick a vendor"
+    assert item.summary is None
+
+
+@pytest.mark.parametrize("deadline", [None, "", "next week", 12])
+def test_an_unreadable_deadline_is_left_out(deadline):
+    assert feed.waiting_deadline_text(deadline) is None
+
+
+def test_a_naive_deadline_reads_as_utc():
+    assert feed.waiting_deadline_text("2026-11-20T08:05:00") == "Answer by Fri 20 Nov, 08:05 UTC"
 
 
 def test_a_row_without_a_valid_id_is_not_shown():
