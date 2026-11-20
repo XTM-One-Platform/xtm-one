@@ -1132,6 +1132,8 @@ def validate_schedule_trigger_config(trigger_type: object, trigger_config: objec
     if not isinstance(trigger_config, dict):
         raise ValueError("trigger_config must be an object for schedule triggers.")
     validate_cron_expression(trigger_config.get("cron"))
+    if "run_on_create" in trigger_config and not isinstance(trigger_config["run_on_create"], bool):
+        raise ValueError("trigger_config.run_on_create must be true or false.")
 
 
 def schedule_trigger_error(trigger_type: object, trigger_config: object) -> str | None:
@@ -1300,9 +1302,12 @@ def schedule_base(assignment: object) -> datetime | None:
     ``schedule_resumed_at`` (the last time it was enabled again), so enabling
     a schedule never makes it due at once: the next fire is the first cron
     occurrence after the resume, with no catch-up of the occurrences missed
-    while it was off or never ran. ``None`` when neither is set (an assignment
-    created enabled that never ran: due at the first tick, the creation
-    auto-run). Read with ``getattr`` so lightweight doubles still answer.
+    while it was off or never ran. When neither is set (an assignment created
+    enabled that never ran): ``None``, due at the first tick (the creation
+    auto-run), unless its ``trigger_config`` says ``run_on_create: false``,
+    whose anchor is ``created_at`` so its first fire is the first cron
+    occurrence after creation. Read with ``getattr`` so lightweight doubles
+    still answer.
 
     >>> from types import SimpleNamespace as N
     >>> t1 = datetime(2026, 11, 1, tzinfo=UTC); t2 = datetime(2026, 11, 5, tzinfo=UTC)
@@ -1311,6 +1316,8 @@ def schedule_base(assignment: object) -> datetime | None:
     >>> schedule_base(N(last_triggered_at=t2, schedule_resumed_at=None)) == t2
     True
     >>> schedule_base(N()) is None
+    True
+    >>> schedule_base(N(trigger_config={"run_on_create": False}, created_at=t1)) == t1
     True
     """
     stamps = [
@@ -1321,7 +1328,13 @@ def schedule_base(assignment: object) -> datetime | None:
         )
         if isinstance(value, datetime)
     ]
-    return max(stamps) if stamps else None
+    if stamps:
+        return max(stamps)
+    config = getattr(assignment, "trigger_config", None)
+    created_at = getattr(assignment, "created_at", None)
+    if isinstance(config, dict) and config.get("run_on_create") is False and isinstance(created_at, datetime):
+        return created_at
+    return None
 
 
 def describe_schedule_next_run(
