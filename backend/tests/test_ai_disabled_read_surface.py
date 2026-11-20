@@ -413,6 +413,13 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # Settings > Agents and automations > Platform Health (#8254): enable, scope and budget caps; stored
     # configuration reaching no model, and switching it off must stay possible.
     "put_health_settings",
+    # Platform Health findings triage (#101, S8): dismissing or restoring a stored
+    # finding writes its status and an audit row, runs no check and reaches no
+    # model; the Health page works with AI switched off, so triage must too.
+    "dismiss_health_finding",
+    "dismiss_health_findings",
+    "restore_health_finding",
+    "restore_health_findings",
     # Platform Health companion's pet library (#8261): adding or removing a pet
     # is a stored image reaching no model, managed by administrators.
     "upload_pet",
