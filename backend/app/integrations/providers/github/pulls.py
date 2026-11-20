@@ -1915,7 +1915,10 @@ def register(
                 "properties": {
                     "repo": _repo,
                     "number": {"type": "integer", "description": "Pull request number"},
-                    "path": {"type": "string", "description": "Glob, directory or file the files must match"},
+                    "path": {
+                        "type": "string",
+                        "description": "Glob ({a,b} groups expand), directory or file the files must match",
+                    },
                     "pattern": {
                         "type": "string",
                         "description": "Regular expression: only the hunks whose lines match",

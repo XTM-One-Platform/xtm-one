@@ -139,3 +139,25 @@ async def test_every_page_is_read_and_a_large_pr_stays_bounded() -> None:
 def test_hunks_split_on_the_hunk_headers() -> None:
     assert pr_files.hunks(_TWO_HUNKS)[1].startswith("@@ -40,3 +40,4 @@")
     assert len(pr_files.hunks(_TWO_HUNKS)) == 2
+
+
+def test_a_brace_glob_selects_every_alternative() -> None:
+    names = [
+        "frontend/src/components/A.tsx",
+        "frontend/src/pages/B.tsx",
+        "frontend/src/hooks/c.ts",
+        "backend/app/x.py",
+        "backend/tests/test_x.py",
+        "docs/readme.md",
+    ]
+
+    def picked(path: str) -> list[str]:
+        return [n for n in names if pr_files.path_matches(n, path)]
+
+    assert picked("frontend/src/{components,pages}/**") == names[:2]
+    assert picked("{backend/app,docs}") == ["backend/app/x.py", "docs/readme.md"]
+    assert picked("*.{ts,tsx}") == names[:3]
+    assert picked("backend/{app,tests/{test_x,none}.py}") == ["backend/app/x.py", "backend/tests/test_x.py"]
+    # No complete group: matched as written, as before.
+    assert picked("frontend/src/{components") == []
+    assert picked("backend") == names[3:5]
