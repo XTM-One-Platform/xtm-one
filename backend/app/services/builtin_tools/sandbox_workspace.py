@@ -652,6 +652,29 @@ def build_sandbox_workspace_tools(
             lines.append(f"Run first: {call}; then repeat this call.")
         return ToolResult(tool_call_id="", content="\n".join(lines))
 
+    async def _outside_record_note(written: list[str]) -> str:
+        """The warning naming the written files a checkout's record does not cover, or ``""`` (best effort).
+
+        Each file is matched to the deepest checkout holding it; a file outside every checkout says nothing.
+        """
+        try:
+            entries = await session.entries(refresh=True)
+            roots = eviction.checkout_roots(entries)
+            by_root: dict[str, list[str]] = {}
+            for rel in written:
+                holders = [r for r in roots if rel.startswith(f"{r}/")]
+                if holders:
+                    by_root.setdefault(max(holders, key=len), []).append(rel)
+            notes: list[str] = []
+            for root, paths in sorted(by_root.items()):
+                _entry, data = await session.get_bytes(f"{root}/{RECORD_NAME}")
+                record = checkouts.CheckoutRecord.from_json(data, path=root)
+                notes.append(checkouts.outside_record_note(record, paths))
+            return "".join(notes)
+        except Exception:
+            logger.debug("outside-record check of %s not resolved", written, exc_info=True)
+            return ""
+
     async def _install_call(rel: str) -> str:
         """``sandbox_run_command(checkout=..., check=...)`` installing the tree *rel* lies in, or ``""``.
 
@@ -957,6 +980,7 @@ def build_sandbox_workspace_tools(
             metrics.operation("edit", "failed")
             return _error(f"the edited file could not be written to the workspace ({format_exception_message(exc)}).")
         added, removed = editing.summarize(before, applied.text)
+        outside_note = await _outside_record_note([new_entry.path])
         metrics.operation("edit", "ok")
         await audit.record(
             "workspace_edit",
@@ -974,7 +998,7 @@ def build_sandbox_workspace_tools(
         return (
             f"Edited {display(new_entry.path)}: {len(parsed)} edit(s), {sum(applied.replacements)} replacement(s), "
             f"+{added} -{removed} lines; now {format_size(new_entry.size)}, sha256 {new_entry.sha256}. "
-            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}.\n\n"
+            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}.{outside_note}\n\n"
             + editing.unified_diff(
                 new_entry.path,
                 before,
@@ -1131,9 +1155,10 @@ def build_sandbox_workspace_tools(
             summary=f"Replaced {planned.replacements} match(es) in {len(planned.changes)} file(s) of the sandbox workspace",
             details={"paths": [c.path for c in planned.changes], "replacements": planned.replacements},
         )
+        outside_note = await _outside_record_note([c.path for c in planned.changes])
         return (
             f"Replaced: {head}, in one write. Workspace {format_size(plan.size_bytes)} of "
-            f"{format_size(session.limits.quota_bytes)}.{notes}\n{stats}\n\n{diffs}"
+            f"{format_size(session.limits.quota_bytes)}.{outside_note}{notes}\n{stats}\n\n{diffs}"
         )
 
     async def sandbox_codemod(
@@ -1491,9 +1516,10 @@ def build_sandbox_workspace_tools(
             details={"path": entry.path, "size": entry.size, "sha256": entry.sha256, "overwrite": existing is not None},
         )
         lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+        outside_note = await _outside_record_note([entry.path])
         return (
             f"{verb} {display(entry.path)}: {lines} line(s), {format_size(entry.size)}, sha256 {entry.sha256}. "
-            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}."
+            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}.{outside_note}"
         )
 
     async def sandbox_json_keys(
