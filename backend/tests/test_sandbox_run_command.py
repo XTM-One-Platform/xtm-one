@@ -1084,6 +1084,25 @@ async def test_the_replayed_check_after_a_container_restart_starts_it_anew(api, 
     assert replay.exit_code == 0 and replay.run_id != first.run_id and "done" in replay.text
 
 
+async def test_the_same_check_asked_after_an_edit_of_its_checkout_runs_on_the_new_tree(api, monkeypatch):
+    """A resumed turn edits a file, then asks the held check again: a new run on the edited tree, never the stale one."""
+    workspace = _workspace()
+    script = "import os, time; time.sleep(2); print('fixed' if os.path.exists('fix.txt') else 'stale')"
+    await workspace.put_tree(
+        [("co/.xtm-one/checks.toml", f'[check.lint]\nargv = ["python", "-c", {json.dumps(script)}]\n'.encode())]
+    )
+    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 0.3)
+    first = await commands.run_command(await _resolve(workspace, check="lint"), workspace=workspace, sandbox_api=api)
+    assert first.running and first.run_id
+    monkeypatch.setattr(commands.jobs, "CLOCK_SLACK", 0.0)
+    await asyncio.sleep(0.05)
+    await workspace.put_tree([("co/fix.txt", b"1")])
+    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 30.0)
+    again = await commands.run_command(await _resolve(workspace, check="lint"), workspace=workspace, sandbox_api=api)
+    assert not again.refused and not again.busy and again.exit_code == 0, again.text
+    assert again.run_id != first.run_id and "fixed" in again.text, again.text
+
+
 def test_the_in_flight_lines_skip_a_run_past_its_timeout_and_are_bounded():
     now = time.time()
     run = lambda rid, started, timeout=600: {  # noqa: E731

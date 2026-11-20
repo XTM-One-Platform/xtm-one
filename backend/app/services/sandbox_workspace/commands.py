@@ -1713,7 +1713,10 @@ async def _run_claimed(
             await sandbox.close()
         # Every way out of here waits on the held run or calls again (which claims again): free the container.
         claim.release()
-        if not _same_command(held_run, command) and (held_ended or not background):
+        # The same check asked again is that run only for the tree it was staged with: a file of its checkout
+        # edited since it started (a fix written after a resumed turn's replay) makes it another run.
+        same = _same_command(held_run, command) and not await _edited_since_start(workspace, held_run, command.cwd)
+        if not same and (held_ended or not background):
             # Its process exited: collect its result (saved under .xtm/runs, the container released), then start.
             # Still running (another check of this checkout, an install-first of a sibling call): this call queues
             # behind it within its own budget instead of racing it or answering busy at once.
@@ -1753,7 +1756,7 @@ async def _run_claimed(
                     )
                 )
                 return outcome
-        if _same_command(held_run, command):
+        if same:
             # The same check asked again (a resumed turn that did not know its run_id): that run, waited for.
             polled = await poll_run(
                 str(held_run.get("run_id")),
@@ -2343,6 +2346,29 @@ def _same_command(run: dict[str, Any], command: ResolvedCommand) -> bool:
         and (held.get("cwd") or "") == command.cwd
         and held.get("image") == command.image
     )
+
+
+async def _edited_since_start(workspace: WorkspaceSession, run: dict[str, Any], cwd: str) -> bool:
+    """Whether a file of the checkout *cwd* runs from changed after the held *run* was staged.
+
+    Its result would answer for a tree that is gone. The run's own outputs are written back at its collection,
+    after this read, and ``.xtm/`` holds run records only. ``False`` when the start time or the manifest cannot
+    be read (the run is reattached, as before).
+    """
+    try:
+        started = float(run.get("started_at") or 0.0)
+        entries = await workspace.entries(refresh=True)
+    except Exception:
+        return False
+    if not started:
+        return False
+    staged, root = staged_entries(entries, cwd)
+    for path, entry in staged.items():
+        if path.startswith(".xtm/") or (root and not is_under(path, root)):
+            continue
+        if float(getattr(entry, "mtime", 0.0) or 0.0) > started + jobs.CLOCK_SLACK:
+            return True
+    return False
 
 
 #: Commands a resume note names at most.
