@@ -146,6 +146,27 @@ class HealthSignalSettings(BaseModel):
     model_change_enabled: bool = True
 
 
+class HealthOpenCTIThresholds(BaseModel):
+    """The editable (E) thresholds of the OpenCTI checks (#101 S10b, dev-docs section 4.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    connector_stale_minutes: int = Field(default=30, ge=5, le=10_080)
+    connector_errors_max: int = Field(default=10, ge=0, le=1_000_000)
+    queue_depth_max: int = Field(default=100_000, ge=0, le=1_000_000_000)
+    search_disk_max_percent: float = Field(default=85, gt=0, lt=100)
+    ingestion_lag_minutes: int = Field(default=15, ge=1, le=10_080)
+
+
+class HealthOpenAEVThresholds(BaseModel):
+    """The editable (E) thresholds of the OpenAEV checks (#101 S10b, dev-docs section 4.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    integration_silent_minutes: int = Field(default=60, ge=5, le=10_080)
+    agents_offline_max_percent: float = Field(default=50, ge=0, lt=100)
+
+
 #: The longest name Platform Health may be given.
 MAX_NAME_LENGTH = 40
 
@@ -195,6 +216,9 @@ class HealthSettings(BaseModel):
     flow_shadow_min_pairs: int = Field(default=5, ge=1, le=1_000)
     #: The analysis layer and its ceiling (#101 S9).
     analysis: HealthAnalysisSettings = Field(default_factory=HealthAnalysisSettings)
+    #: The editable check thresholds per module (#101 S10b), read on the next pass.
+    opencti: HealthOpenCTIThresholds = Field(default_factory=HealthOpenCTIThresholds)
+    openaev: HealthOpenAEVThresholds = Field(default_factory=HealthOpenAEVThresholds)
 
     @field_validator("name")
     @classmethod
