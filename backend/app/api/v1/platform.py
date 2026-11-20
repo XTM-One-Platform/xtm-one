@@ -3486,6 +3486,11 @@ class PlatformChatRequest(BaseModel):
     # to the XTM One viewer and none is streamed
     # (``services/platform_chat_artifacts``).
     supports_artifacts: bool = False
+    # Will this client offer the user's likely next message
+    # (``reply_suggestion``, ``services/chat_reply_suggestions.py``)? Absent,
+    # none is generated: a one-shot generation call ("Generate with AI") reads
+    # to the end of the stream and must neither wait on one nor pay for it.
+    supports_reply_suggestions: bool = False
 
 
 class PlatformChatSessionRequest(BaseModel):
@@ -6418,7 +6423,7 @@ async def send_platform_chat_message(
                 yield f"data: {json.dumps(redact_known_secrets_for_display(done_payload))}\n\n"
 
             if _is_final:
-                if _pf_answered and _msg_id and not _client_gone:
+                if body.supports_reply_suggestions and _pf_answered and _msg_id and not _client_gone:
                     _pf_suggestion_turn = {
                         "conversation_id": conv_id,
                         "message_id": _msg_id,

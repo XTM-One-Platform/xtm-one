@@ -113,6 +113,7 @@ Taken when v1 was built (2026-11-19):
 - The digest has the agent's name and description, not its tool list: a large tool list would cost more than the suggestion is worth.
 - The answer is `{ "suggestion": string }`, an empty string being the silence (`null` is not portable across providers' native structured output).
 - The suggestion is not kept for a reload: it lives in the composer until it is used or dismissed, and a reload or another message drops it.
+- A send opts in with `supports_reply_suggestions` (the chat panel sets it, like `supports_artifacts`): the same streams serve scripts and one-shot generation calls ("Generate with AI" in OpenCTI / OpenAEV), which read to the end of the stream and must neither wait on a suggestion nor pay for one.
 - No `from_suggestion` flag on the sent message yet: acceptance metrics need the composer to report it.
 
 ## 6. Sources not verified
