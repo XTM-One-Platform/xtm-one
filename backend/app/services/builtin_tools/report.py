@@ -82,6 +82,27 @@ if TYPE_CHECKING:
 _SPEC_READBACK_BUDGET = 20000
 
 
+async def _resolve_report_id(db: AsyncSession, value: str, user_uuid: uuid.UUID) -> tuple[uuid.UUID | None, str | None]:
+    """*value*, an id prefix (8+ hexadecimal characters), as the id of the one
+    report of *user_uuid* it starts (``builtin_tools/id_prefix.py``).
+
+    ``(None, refusal)`` when it starts several of the user's reports, with the
+    candidates named; ``(None, None)`` when it starts none, so the tool answers
+    its usual "not found". Only the caller's own reports are looked up, the
+    rule :func:`app.services.reports.load_owned_report` applies.
+    """
+    from app.models.report import Report
+
+    from .id_prefix import resolve_id_prefix
+
+    full, refusal = await resolve_id_prefix(
+        db, Report, value, [Report.user_id == user_uuid], noun="reports", label=Report.title
+    )
+    if refusal:
+        return None, refusal
+    return safe_uuid(str(full).strip()), None
+
+
 def _summarize(spec: dict) -> str:
     """One line per block: index, type and heading — the agent's edit map.
 
@@ -162,10 +183,15 @@ def build_report_tools(
                 is_error=True,
             )
 
+        from .id_prefix import id_prefix
+
         target_id = None
+        target_prefix = None
         if report_id:
             target_id = safe_uuid(str(report_id).strip())
             if target_id is None:
+                target_prefix = id_prefix(str(report_id))
+            if target_id is None and target_prefix is None:
                 return ToolResult(
                     tool_call_id="",
                     content=(
@@ -199,6 +225,18 @@ def build_report_tools(
         try:
             async with async_session() as own_db:
                 existing = None
+                if target_prefix is not None:
+                    target_id, refusal = await _resolve_report_id(own_db, target_prefix, user_uuid)
+                    if refusal:
+                        return ToolResult(tool_call_id="", content=refusal, is_error=True)
+                    if target_id is None:
+                        return ToolResult(
+                            tool_call_id="",
+                            content=(
+                                f"No report `{report_id}` of yours was found. Omit report_id to create a new report."
+                            ),
+                            is_error=True,
+                        )
                 if target_id is not None:
                     existing = await load_owned_report(
                         own_db, target_id, user_id=user_uuid
@@ -261,15 +299,27 @@ def build_report_tools(
         from app.core.database import async_session
         from app.services.reports import load_owned_report
 
+        from .id_prefix import id_prefix
+
         doc_id = safe_uuid((report_id or "").strip())
+        prefix = id_prefix(report_id) if doc_id is None else None
         user_uuid = safe_uuid(user_id)
-        if doc_id is None:
-            return "Error: report_id must be a valid UUID."
+        if doc_id is None and prefix is None:
+            return (
+                "Error: report_id must be a valid UUID, or the first 8 or more "
+                "characters of the id of one of your reports."
+            )
         if user_uuid is None:
             return "Error: reports are only available to signed-in users."
 
         try:
             async with async_session() as own_db:
+                if prefix is not None:
+                    doc_id, refusal = await _resolve_report_id(own_db, prefix, user_uuid)
+                    if refusal:
+                        return refusal
+                    if doc_id is None:
+                        return f"No report `{report_id}` of yours was found."
                 report = await load_owned_report(own_db, doc_id, user_id=user_uuid)
                 if report is None:
                     return f"No report `{report_id}` of yours was found."
@@ -301,11 +351,20 @@ def build_report_tools(
         from app.services.reports import load_owned_report, resolve_report_export_stamp
 
         from ._shared import _persist_generated_file
+        from .id_prefix import id_prefix
 
         doc_id = safe_uuid((report_id or "").strip())
+        prefix = id_prefix(report_id) if doc_id is None else None
         user_uuid = safe_uuid(user_id)
-        if doc_id is None:
-            return ToolResult(tool_call_id="", content="report_id must be a valid UUID.", is_error=True)
+        if doc_id is None and prefix is None:
+            return ToolResult(
+                tool_call_id="",
+                content=(
+                    "report_id must be a valid UUID, or the first 8 or more "
+                    "characters of the id of one of your reports."
+                ),
+                is_error=True,
+            )
         if user_uuid is None:
             return ToolResult(
                 tool_call_id="", content="Reports are only available to signed-in users.", is_error=True
@@ -315,6 +374,16 @@ def build_report_tools(
             async with async_session() as own_db:
                 # The reports an agent reads are its user's own, as for
                 # get_report: an agent tool takes no admin bypass.
+                if prefix is not None:
+                    doc_id, refusal = await _resolve_report_id(own_db, prefix, user_uuid)
+                    if refusal:
+                        return ToolResult(tool_call_id="", content=refusal, is_error=True)
+                    if doc_id is None:
+                        return ToolResult(
+                            tool_call_id="",
+                            content=f"No report `{report_id}` of yours was found.",
+                            is_error=True,
+                        )
                 report = await load_owned_report(own_db, doc_id, user_id=user_uuid)
                 if report is None:
                     return ToolResult(
