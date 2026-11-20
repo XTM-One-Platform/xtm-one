@@ -2580,7 +2580,7 @@ def build_sandbox_workspace_tools(
             ours[repo_path] = hashlib.sha256(data).hexdigest()
         for repo_path in dropped:
             ours.pop(repo_path, None)
-        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers)
+        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers, checked_out=record.files)
         summary = rebasing.RebaseSummary(pulled=sorted(extra))
         # The branch's files brought in are written as they are unless a step below replaces them.
         writes: dict[str, bytes] = dict(pulled)

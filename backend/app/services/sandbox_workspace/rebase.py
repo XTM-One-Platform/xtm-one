@@ -337,6 +337,7 @@ def plan(
     theirs: Mapping[str, bytes],
     *,
     in_scope: Callable[[str], bool] | None = None,
+    checked_out: Mapping[str, RecordedFile] | None = None,
 ) -> list[FileStep]:
     """The step of every file of the base, the workspace and the ref, sorted by path.
 
@@ -348,6 +349,15 @@ def plan(
     removed for being absent from the ref's tree. Only the files that need
     something are listed: a KEEP is listed only when the workspace changed
     the file, so the answer can name what stayed the agent's.
+
+    *checked_out* maps each file to what the checkout wrote (the record
+    before :func:`base_files_of` put the merge base in its place). A file the
+    ref holds exactly as it was checked out brought nothing the workspace
+    lacks: the workspace side stays (KEEP), never a merge against the base.
+    That is the squash of the branch the checkout is on (#779): a file the
+    branch added is absent from the merge base, the squash on the ref carries
+    it as the branch had it, and a merge from an empty base would conflict on
+    the whole file the workspace edited since.
     """
     steps: list[FileStep] = []
     for path in sorted(set(record.files) | set(ours) | set(theirs)):
@@ -365,7 +375,10 @@ def plan(
             steps.append(FileStep(path, Step.TAKE if new is not None else Step.REMOVE))
             continue
         # The workspace changed it (modified, added or removed).
-        if new_sha in (base_sha, mine):
+        at_checkout = checked_out.get(path) if checked_out is not None else None
+        if new_sha in (base_sha, mine) or (
+            new_sha is not None and at_checkout is not None and new_sha == at_checkout.sha256
+        ):
             steps.append(FileStep(path, Step.KEEP))
         elif mine is None:
             steps.append(FileStep(path, Step.CONFLICT, "removed in the workspace, changed on the ref"))
