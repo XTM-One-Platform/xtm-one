@@ -1027,6 +1027,23 @@ async def test_grep_past_its_byte_budget_names_what_it_did_not_reach(store, monk
     ) in grep.content
 
 
+async def test_grep_past_its_time_budget_names_what_it_did_not_reach(store, monkeypatch):
+    """The workspace search stops at the call's time budget, not at a file count (#758), and names the rest."""
+    from app.services.sandbox_workspace import commands, reading
+
+    composite, _ = _composite(uuid.uuid4(), uuid.uuid4())
+    for i in range(3):
+        await _put(composite, f"src/f{i}.py", b"needle = 1\n")
+    assert reading.MAX_GREP_FILES >= 20_000  # a whole checkout is not cut by a file count
+    monkeypatch.setattr(commands, "wait_budget", lambda *a, **k: 0.0)
+    grep = await composite.execute_tool(
+        ToolCall(id="g", name="sandbox_grep", arguments={"pattern": "needle", "path_prefix": "src"})
+    )
+    assert not grep.is_error, grep.content
+    assert "search stopped early: the call's time budget ran out; 3 file(s) not searched" in grep.content
+    assert "the first is workspace/src/f0.py" in grep.content
+
+
 def test_plan_grep_batches_by_count_and_bytes_and_keeps_path_order():
     from app.services.sandbox_workspace import reading
 
