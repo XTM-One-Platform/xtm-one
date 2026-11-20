@@ -40,6 +40,7 @@ import { useToast } from "@/components/ui/toast";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { defaultHealthName } from "@/lib/health";
 import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
@@ -329,8 +330,8 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
 
 /** The analysis layer (#101 S9c): its switch and its four hard ceilings, read by the analysis only. */
 function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
-  const { t_i18n, intl } = useFormatter();
-  const n = (value: number) => intl.formatNumber(value);
+  const { t_i18n } = useFormatter();
+  const { count: n } = useNumberFormat();
   const fieldId = useId();
   const analysis = draft.analysis;
   const setAnalysis = (next: Partial<HealthAnalysisSettings>) => onChange({ ...draft, analysis: { ...analysis, ...next } });

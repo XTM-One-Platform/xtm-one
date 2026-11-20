@@ -52,7 +52,7 @@ describe("HealthAnalysisPanel", () => {
     serve();
     render();
     expect(await screen.findByTestId("health-analysis")).toBeTruthy();
-    expect(screen.getByText("Tokens: 4,763 of 100,000")).toBeTruthy();
+    expect(screen.getByText("Tokens: 4.8K of 100K")).toBeTruthy();
     expect(screen.getByText("Two agents exceed their quota.")).toBeTruthy();
     expect(screen.getByTestId("health-analysis-opencti").textContent).toContain("Ceiling reached");
     expect(screen.getByTestId("health-analysis-openaev").textContent).toContain("Not analysed yet");
@@ -84,7 +84,7 @@ describe("HealthAnalysisPanel", () => {
     serve({ ceilings_set: false, ceilings: { ...CEILINGS, day_tokens: null } });
     render();
     expect(await screen.findByTestId("health-analysis-no-ceiling")).toBeTruthy();
-    expect(screen.getByText("Tokens: 4,763, no ceiling")).toBeTruthy();
+    expect(screen.getByText("Tokens: 4.8K, no ceiling")).toBeTruthy();
     expect(screen.getByTestId("health-analysis-run-xtm_one").hasAttribute("disabled")).toBe(true);
   });
 });

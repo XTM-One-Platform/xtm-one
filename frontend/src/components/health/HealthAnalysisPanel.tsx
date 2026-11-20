@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { useHealthAnalysis, useRunHealthAnalysis } from "@/hooks/api/useHealthApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { HEALTH_MODULE_LABELS } from "@/lib/health-modules";
 import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
@@ -75,9 +76,8 @@ function SpendLine({
   tokens: number | null;
   cost: string | null;
 }) {
-  const { t_i18n, intl } = useFormatter();
-  const n = (value: number) => intl.formatNumber(value);
-  const usd = (value: number) => intl.formatNumber(value, { style: "currency", currency: "USD", maximumFractionDigits: 4 });
+  const { t_i18n } = useFormatter();
+  const { count: n, money: usd } = useNumberFormat("USD");
   return (
     <div className="min-w-0 space-y-0.5">
       <p className="content-compact text-default-secondary">{label}</p>
