@@ -50,7 +50,8 @@ from .merge_resolution import (
 
 _SOURCE = "integration:github"
 
-#: Paths named in a conflict refusal; the rest are counted.
+#: Paths named per informational list of a conflict refusal; the rest are counted. The paths that need a
+#: resolution are all named (a compare lists at most 300 files), so one answer is enough to resolve them.
 _MAX_LISTED_PATHS = 40
 
 
@@ -106,10 +107,11 @@ def _changed_paths(compared: dict[str, Any]) -> dict[str, str]:
     return paths
 
 
-def _listed_paths(paths: list[str]) -> list[str]:
-    lines = [f"- {path}" for path in paths[:_MAX_LISTED_PATHS]]
-    if len(paths) > _MAX_LISTED_PATHS:
-        lines.append(f"- and {len(paths) - _MAX_LISTED_PATHS} more")
+def _listed_paths(paths: list[str], limit: int | None = _MAX_LISTED_PATHS) -> list[str]:
+    shown = paths if limit is None else paths[:limit]
+    lines = [f"- {path}" for path in shown]
+    if len(paths) > len(shown):
+        lines.append(f"- and {len(paths) - len(shown)} more")
     return lines
 
 
@@ -354,7 +356,8 @@ async def conflict_answer(
             )
         else:
             lines.append(f"Changed on both sides since the merge base ({len(both)}):")
-            lines += _listed_paths(both)
+            # Every path that needs a resolution is named: a cut list costs a second call to learn the rest.
+            lines += _listed_paths(both, limit=None)
     if same:
         lines.append(f"Changed the same way on both sides, no resolution needed ({len(same)}):")
         lines += _listed_paths(same)

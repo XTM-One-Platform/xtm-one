@@ -121,6 +121,19 @@ async def test_a_conflict_merges_nothing_and_names_the_paths_changed_on_both_sid
 
 
 @pytest.mark.asyncio
+async def test_a_conflict_names_every_path_to_resolve_past_forty():
+    merge, _ = _merge_tool()
+    files = [{"filename": f"src/m{n:02d}.py"} for n in range(61)]
+    fake = FakeGitHub(merge_status=409, theirs=files, ours=files)
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await merge(repo="acme/app", branch="feat/x")
+
+    assert "Changed on both sides since the merge base (61):" in result
+    assert all(f"- src/m{n:02d}.py" in result for n in range(61))
+    assert "more\n" not in result and not result.endswith("more")
+
+
+@pytest.mark.asyncio
 async def test_a_path_changed_the_same_way_on_both_sides_is_not_a_conflict():
     merge, _ = _merge_tool()
     fake = FakeGitHub(
