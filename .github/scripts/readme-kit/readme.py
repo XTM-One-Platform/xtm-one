@@ -4,6 +4,7 @@ headings, same order, same blocks). A product fills a data module
 
 Usage:
     python .github/scripts/readme-kit/readme.py KEY > README.md
+    python .github/scripts/readme-kit/readme.py KEY --out PATH       # the same, into a file
     python .github/scripts/readme-kit/readme.py --check KEY ...   # forbidden words + counts
 
 Images (all <picture> pairs, dark then light, under .github/img/readme/):
@@ -257,4 +258,11 @@ if __name__ == "__main__":
             print(k, "OK" if not e else e)
             bad += bool(e)
         sys.exit(bad)
-    sys.stdout.write(render(importlib.import_module(f"readme_data.{args[0].replace('-', '_')}").DATA))
+    text = render(importlib.import_module(f"readme_data.{args[0].replace('-', '_')}").DATA)
+    if len(args) == 3 and args[1] == "--out":
+        os.makedirs(os.path.dirname(args[2]) or ".", exist_ok=True)
+        with open(args[2], "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"{args[0]}: {len(text)} characters written to {args[2]}")
+    else:
+        sys.stdout.write(text)
