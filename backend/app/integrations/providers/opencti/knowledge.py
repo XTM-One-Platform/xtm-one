@@ -1629,8 +1629,10 @@ def register_knowledge(
     ) -> str | ToolResult:
         """List STIX domain objects, optionally filtered by type and search.
 
-        The listed objects also come back structured (id and type each,
-        ``[]`` when none) for an assignment's gate check.
+        The listed objects also come back structured (each record as OpenCTI
+        answered it, id, type and name always present, ``[]`` when none) for
+        an assignment's gate check and for a ``to_workset`` JSON split, one
+        workset item per object.
         """
         if (routed := await _label_type_route(types, search, limit)) is not None:
             return routed
@@ -1691,7 +1693,7 @@ def register_knowledge(
         if status_note:
             text = f"{status_note}\n{text}"
         listed = [
-            {"id": node.get("id"), "entity_type": node.get("entity_type"), "name": node.get("name")}
+            {**node, "id": node.get("id"), "entity_type": node.get("entity_type"), "name": node.get("name")}
             for node in nodes
         ]
         return ToolResult(tool_call_id="", content=text, structured=listed)
@@ -2672,8 +2674,14 @@ def register_knowledge(
     async def get_opencti_container_full(
         container_id: str,
         limit: int = 200,
-    ) -> str:
-        """Fetch a container and resolve all entities and relationships."""
+    ) -> str | ToolResult:
+        """Fetch a container and resolve all entities and relationships.
+
+        The container also comes back structured: its own scalar fields, the
+        object count, ``entities`` and ``relationships`` (each record as
+        OpenCTI answered it), so a ``to_workset`` JSON split on either list
+        stores one workset item per object.
+        """
         # Compact from/to resolution for relationship endpoints
         ft = (
             "... on BasicObject { id entity_type } "
@@ -2969,7 +2977,17 @@ def register_knowledge(
             )
         else:
             lines.append(f"\nTotal objects: {total}")
-        return "\n".join(lines)
+        structured = {
+            "id": sdo_id,
+            "entity_type": etype,
+            "name": cname,
+            "standard_id": sdo.get("standard_id"),
+            "total_objects": total,
+            "shown_objects": len(nodes),
+            "entities": ent_list,
+            "relationships": rel_list,
+        }
+        return ToolResult(tool_call_id="", content="\n".join(lines), structured=structured)
 
     # ── 19. Create STIX indicator ────────────────────────────────────
 

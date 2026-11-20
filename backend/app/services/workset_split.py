@@ -295,8 +295,14 @@ def _fenced_json(text: str) -> tuple[Any, str] | None:
     return data, outside
 
 
-def split_result(content: str, spec: SplitSpec) -> SplitResult:
-    """Cut *content* into items as *spec* says; raises :class:`SplitError` on any doubt."""
+def split_result(content: str, spec: SplitSpec, structured: Any = None) -> SplitResult:
+    """Cut *content* into items as *spec* says; raises :class:`SplitError` on any doubt.
+
+    *structured* is the JSON value the tool returned beside its text
+    (``ToolResult.structured``): a JSON split of a text result splits that
+    value instead, so a tool that writes text for the model and records for
+    a reader is split one item per record, never stored whole.
+    """
     if len(content) > MAX_RESULT_CHARS:
         raise SplitError(f"The result is {len(content):,} characters, over the {MAX_RESULT_CHARS:,} a split accepts.")
     budget = _Budget()
@@ -315,6 +321,8 @@ def split_result(content: str, spec: SplitSpec) -> SplitResult:
             as_json, parsed = None, False
         if not parsed and (fenced := _fenced_json(stripped)) is not None:
             (as_json, outside), parsed = fenced, True
+        if not parsed and isinstance(structured, (dict, list)):
+            as_json, parsed = structured, True
         if not parsed:
             result.fallback = (
                 "a JSON split was asked for but the result is not JSON (it is text): "
