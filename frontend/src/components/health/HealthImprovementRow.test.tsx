@@ -30,7 +30,34 @@ describe("the Platform Health row of an agent", () => {
     expect(await screen.findByText("2 proposals await approval")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith("/health/improvements?agent_id=a-1&status=pending_approval&limit=1&offset=0");
     fireEvent.click(screen.getByRole("switch", { name: "Opt in to improvement" }));
+    // Off to on asks first, with the consent notice, and saves nothing before the confirm.
+    expect(await screen.findByTestId("health.consent-notice")).toBeTruthy();
+    expect(api.put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/agents/a-1/opt-in", { opt_in: true }));
+  });
+
+  it("saves nothing when the consent confirm is cancelled", async () => {
+    answer({ opt_in: false, can_manage: true, eligible: true }, 0);
+    renderWithProviders(<HealthImprovementRow agentId="a-4" canManage />);
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Opt in to improvement" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByTestId("health.consent-notice")).toBeNull());
+    expect(api.put).not.toHaveBeenCalled();
+    // Off with nothing pending: no count badge.
+    expect(screen.queryByText("No proposal awaits approval")).toBeNull();
+  });
+
+  it("turns off at once, without a confirm", async () => {
+    answer({ opt_in: true, can_manage: true, eligible: true }, 0);
+    vi.mocked(api.put).mockResolvedValue({ opt_in: false, can_manage: true });
+    renderWithProviders(<HealthImprovementRow agentId="a-5" canManage />);
+
+    expect(await screen.findByText("No proposal awaits approval")).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "Opt in to improvement" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/health/agents/a-5/opt-in", { opt_in: false }));
+    expect(screen.queryByTestId("health.consent-notice")).toBeNull();
   });
 
   it("is read only, without count or details, for a viewer who cannot manage the agent", async () => {
@@ -40,7 +67,7 @@ describe("the Platform Health row of an agent", () => {
     const toggle = await screen.findByRole("switch", { name: "Opt in to improvement" });
     expect(toggle.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("Only the agent's managers can change this.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Proposals and cycles" })).toBeNull();
     expect(screen.queryByText(/await approval/)).toBeNull();
   });
 

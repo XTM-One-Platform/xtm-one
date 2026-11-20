@@ -19,6 +19,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * opt-in switch, the count of proposals awaiting approval, and "Details", a dialog
  * holding what the former opt-in card and Improvements card showed (consent notice,
  * "Improve with", proposals, cycles). Read-only for a viewer who cannot manage it.
+ * Turning it on asks first, the consent notice in the confirm, so a manager reads what
+ * Platform Health will read before the switch saves (PRD B16, UX round 1 of #733).
  */
 import { useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
@@ -30,6 +32,7 @@ import { ImproveWithHealthButton } from "@/components/health/ImproveWithHealthBu
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
@@ -56,6 +59,7 @@ function Row({
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const save = useSetHealthOptIn("agent", agentId);
   // Only the count: limit 1 reads the total, never a page of proposals.
   const pending = useImprovements(
@@ -63,7 +67,7 @@ function Row({
     { enabled: canManage },
   ).data?.total;
 
-  const onChange = (next: boolean) =>
+  const apply = (next: boolean) =>
     save.mutate(next, {
       onSuccess: () =>
         toast({
@@ -77,18 +81,23 @@ function Row({
           variant: "error",
         }),
     });
+  // Off to on waits for the consent confirm; on to off stops the reads at once.
+  const onChange = (next: boolean) => (next ? setConfirming(true) : apply(false));
 
   return (
     <Card data-testid="agent.health-row">
-      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
+      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
         <Icon name="compass" size={16} className="shrink-0 text-accent" />
         <div className="min-w-0 flex-1">
           <p className="content-base font-medium">{t_i18n("Improvement by Platform Health")}</p>
           <p className="content-compact text-default-secondary">
-            {canSwitch ? t_i18n("Off by default. Turning it off stops every read at once.") : t_i18n("Only the agent's managers can change this.")}
+            {canSwitch
+              ? t_i18n("Reads its memories and conversations to propose improvements. Off by default.")
+              : t_i18n("Only the agent's managers can change this.")}
           </p>
         </div>
-        {canManage && pending !== undefined && (
+        {/* Off, no proposal can be pending: the count shows only when there is one, or once on. */}
+        {canManage && pending !== undefined && (optIn || pending > 0) && (
           <Badge variant="outline" className="shrink-0">
             {pending > 0
               ? t_i18n("{count, plural, one {# proposal awaits approval} other {# proposals await approval}}", { count: pending })
@@ -105,11 +114,23 @@ function Row({
           />
           {canManage && (
             <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-              {t_i18n("Details")}
+              {t_i18n("Proposals and cycles")}
             </Button>
           )}
         </div>
       </CardContent>
+      {canSwitch && (
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          variant="default"
+          title="Let Platform Health improve this agent?"
+          confirmLabel="Turn on"
+          onConfirm={() => apply(true)}
+        >
+          <HealthConsentNotice targetType="agent" />
+        </ConfirmDialog>
+      )}
       {canManage && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-4xl" data-testid="agent.health-details">

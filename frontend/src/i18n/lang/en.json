@@ -19741,5 +19741,8 @@
   "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.",
   "Runs once a day at most, only for modules whose findings changed.": "Runs once a day at most, only for modules whose findings changed.",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}",
-  "No proposal awaits approval": "No proposal awaits approval"
+  "No proposal awaits approval": "No proposal awaits approval",
+  "Proposals and cycles": "Proposals and cycles",
+  "Let Platform Health improve this agent?": "Let Platform Health improve this agent?",
+  "Reads its memories and conversations to propose improvements. Off by default.": "Reads its memories and conversations to propose improvements. Off by default."
 }
