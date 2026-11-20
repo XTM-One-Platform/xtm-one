@@ -51,6 +51,7 @@ const PLATFORM_EVENT_LABELS = {
   "work_item.released": "Work item released",
   "work_item.release_exhausted": "Work item no longer dispatched",
   "work_item.needs_human": "Work item waits for a person",
+  "work_item.wait_cycle": "Work items wait on each other",
   "run.completed": "Run completed",
   "run.failed": "Run failed",
   "run.orphaned": "Run ended unfinished",

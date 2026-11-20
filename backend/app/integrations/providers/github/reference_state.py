@@ -688,4 +688,65 @@ async def read_reference_state(repo: str, kind: str, number: int, token: str) ->
         data = resp.json()
     except ValueError:
         return None
-    return closing_event(repo.lower(), kind, number, data)
+    closing = closing_event(repo.lower(), kind, number, data)
+    if closing is None and kind == "pull_request" and isinstance(data, dict) and data.get("state") == "open":
+        # Open: a merge queue removal sends no closing, and its webhook may never come (#606).
+        return await _merge_queue_removal(owner, name, number, token)
+    return closing
+
+
+_REMOVED_FROM_QUEUE_QUERY = (
+    "query($owner: String!, $name: String!, $number: Int!) {"
+    " repository(owner: $owner, name: $name) { pullRequest(number: $number) {"
+    " state isInMergeQueue url headRefName headRefOid"
+    " timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {"
+    " nodes { ... on RemovedFromMergeQueueEvent { createdAt reason } } } } } }"
+)
+
+
+def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEvent | None:
+    """The ``dequeued`` event of an open pull request out of its merge queue, ``None`` otherwise. Pure.
+
+    The latest removal of its timeline counts only while the pull request is open
+    and not back in the queue; its time stamps the event, so one removal wakes once.
+    """
+    repo_data = data.get("repository") if isinstance(data, dict) else None
+    pull = repo_data.get("pullRequest") if isinstance(repo_data, dict) else None
+    if not isinstance(pull, dict) or pull.get("state") != "OPEN" or pull.get("isInMergeQueue") is True:
+        return None
+    raw_timeline = pull.get("timelineItems")
+    timeline: dict[str, Any] = raw_timeline if isinstance(raw_timeline, dict) else {}
+    raw_nodes = timeline.get("nodes")
+    nodes: list[Any] = raw_nodes if isinstance(raw_nodes, list) else []
+    removal = nodes[-1] if nodes and isinstance(nodes[-1], dict) else None
+    if removal is None:
+        return None
+    when = _text(removal.get("createdAt"))
+    if not when:
+        return None
+    reason = (_text(removal.get("reason")) or "unknown").lower()
+    return PullRequestEvent(
+        kind="dequeued",
+        repo=repo.lower(),
+        pr_numbers=(number,),
+        head_branch=_text(pull.get("headRefName")),
+        head_sha=_text(pull.get("headRefOid")),
+        conclusion=reason,
+        url=_text(pull.get("url")),
+        closed_at=when,
+    )
+
+
+async def _merge_queue_removal(owner: str, name: str, number: int, token: str) -> PullRequestEvent | None:
+    """The latest merge queue removal of open pull request *number*, ``None`` when none or unreadable."""
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        data, err = await _common.gh_graphql(
+            client,
+            _headers(token),
+            _REMOVED_FROM_QUEUE_QUERY,
+            {"owner": owner, "name": name, "number": number},
+            action=f"read the merge queue removals of {owner}/{name}#{number}",
+        )
+    if err or not isinstance(data, dict):
+        return None
+    return dequeued_from_timeline(f"{owner}/{name}", number, data)
