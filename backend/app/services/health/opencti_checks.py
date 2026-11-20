@@ -81,8 +81,10 @@ def _result(
     )
 
 
-async def _registrations(db: AsyncSession, now: datetime) -> list[tuple[Any, dict[str, Any] | None]]:
-    """Each registered OpenCTI with its snapshot, ``None`` when it has none or it is stale."""
+async def _registrations(
+    db: AsyncSession, now: datetime, platform_identifier: str = PLATFORM_IDENTIFIER
+) -> list[tuple[Any, dict[str, Any] | None]]:
+    """Each registered platform of that kind with its snapshot, ``None`` when it has none or it is stale."""
     from app.models.platform_health_snapshot import PlatformHealthSnapshot
     from app.models.platform_registration import PlatformRegistration
 
@@ -90,7 +92,7 @@ async def _registrations(db: AsyncSession, now: datetime) -> list[tuple[Any, dic
         await db.execute(
             select(PlatformRegistration, PlatformHealthSnapshot)
             .outerjoin(PlatformHealthSnapshot, PlatformHealthSnapshot.registration_id == PlatformRegistration.id)
-            .where(PlatformRegistration.platform_identifier == PLATFORM_IDENTIFIER)
+            .where(PlatformRegistration.platform_identifier == platform_identifier)
         )
     ).all()
     out: list[tuple[Any, dict[str, Any] | None]] = []

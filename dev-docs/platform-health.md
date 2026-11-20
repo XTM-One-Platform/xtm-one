@@ -390,6 +390,19 @@ the OpenCTI push PR), and the version and licence row (read from the registratio
 | Security platform collectors silent (E) | snapshot | > 24 h warning |
 | Coverage gaps | scenarios vs organization context | info |
 
+Built in S6 (`services/health/openaev_checks.py`, one result per registered OpenAEV,
+subject `{registration_id}`, healthchecks `{registration_id, type}`, integrations
+`{registration_id, integration_id}`, the snapshot read by the OpenCTI helper `_registrations`):
+`openaev.heartbeat` (critical, `is_healthy`, 15 min), `openaev.healthcheck` (one per type
+OpenAEV reports, ERROR critical, WARNING warning), `openaev.integration_silent` (warning,
+injector, collector or executor silent 60 min), `openaev.agents_offline` (warning, over half
+of the agents offline). Snapshot keys added to format 1 (`snapshots.py`): `healthchecks`
+(type, status ERROR or WARNING, count; 100 rows at most), `integrations` (id, name, kind
+injector, collector or executor, updated_at; 500 at most), `agents` (total, offline). Owed:
+version behind, simulations failing and expectations stuck, coverage (their snapshot keys come
+with a later OpenAEV PR), and the version and licence row. Acceptance (c) of section 1.4 is
+pinned by `tests/test_health_openaev_checks_postgres.py`.
+
 ### 4.5 OpenCRQ (XTM One mode, automatic)
 
 Read live on OpenCRQ-Platform/opencrq main, 18 Nov 2026: OpenCRQ exposes process states
