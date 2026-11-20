@@ -214,6 +214,35 @@ async def test_grep_on_node_modules_answers_lines_from_the_container(store, cont
     assert await session.entries(refresh=True) == {}
 
 
+def test_an_installed_search_reads_large_batches() -> None:
+    from app.services.sandbox_workspace import reading
+
+    sized = [(f"co/node_modules/p/f{i:04d}.js", 100) for i in range(1000)]
+    workspace_batches = reading.plan_grep(sized, reading.GrepResult())
+    installed_batches = reading.plan_grep(sized, reading.GrepResult(), batch_files=reading.INSTALLED_READ_FILES)
+    assert len(workspace_batches) == 125
+    assert [len(b) for b in installed_batches] == [400, 400, 200]
+
+
+async def test_grep_on_node_modules_stops_at_the_time_budget_naming_what_is_left(
+    store: MemoryWorkspaceStore, container: _Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.sandbox_workspace import commands
+
+    monkeypatch.setattr(commands, "wait_budget", lambda *a, **k: 0.0)
+    composite, _session = await _tools()
+    grep = await composite.execute_tool(
+        ToolCall(
+            id="g",
+            name="sandbox_grep",
+            arguments={"pattern": "needle", "path_prefix": "co/frontend/node_modules/lib/dist"},
+        )
+    )
+    assert not grep.is_error, grep.content
+    assert "search stopped early: the call's time budget ran out" in grep.content
+    assert "index.d.ts" in grep.content
+
+
 async def test_grep_on_one_installed_file_answers_its_lines(store, container):
     composite, session = await _tools()
     grep = await composite.execute_tool(
