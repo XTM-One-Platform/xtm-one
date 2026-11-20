@@ -109,17 +109,32 @@ def pytest_ignore_collect(collection_path, config):
 
 @pytest.hookimpl(tryfirst=True, specname="pytest_collection_modifyitems")
 def pytest_collection_modifyitems_group_source_readers(config, items):
-    """Run every test of a file that reads ``tests/app_sources.py`` on one xdist worker.
+    """Run the tests of the files that read ``tests/app_sources.py`` on ``app_sources.XDIST_GROUPS`` xdist workers.
 
-    Its parse cache holds about 1.5 GB per process; two workers each building
-    one got the CI runner killed (#10437). First, so xdist's ``--dist
+    Its parse cache holds about 1.5 GB per process: one copy per group, not one
+    per worker (#10437). Each file goes to one group, dealt longest first by the
+    shard weights (``app_sources.xdist_groups``). First, so xdist's ``--dist
     loadgroup`` sees the group; a test already in a group keeps its own.
     """
     from tests import app_sources
+    from tests.sharding import durations_path, load_durations
 
-    for item in items:
-        if item.get_closest_marker("xdist_group") is None and app_sources.reads_sources(item.path):
-            item.add_marker(pytest.mark.xdist_group(app_sources.XDIST_GROUP))
+    readers = [
+        item
+        for item in items
+        if item.get_closest_marker("xdist_group") is None and app_sources.reads_sources(item.path)
+    ]
+    if not readers:
+        return
+    root = config.rootpath
+    names = {
+        item: item.path.relative_to(root).as_posix() if item.path.is_relative_to(root) else str(item.path)
+        for item in readers
+    }
+    durations = load_durations(durations_path(os.environ.get("PYTEST_SHARD_DURATIONS")))
+    groups = app_sources.xdist_groups(names.values(), durations)
+    for item in readers:
+        item.add_marker(pytest.mark.xdist_group(groups[names[item]]))
 
 
 # Neither first nor last: a deeper conftest's hook has added its markers by

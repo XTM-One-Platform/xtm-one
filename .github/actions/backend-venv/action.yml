@@ -5,6 +5,15 @@ description: >-
   pip took over a minute. Only main saves the wheel cache: an entry another
   ref saves is readable by that ref alone, and the repository's cache quota is
   shared by every workflow (the runner builds need most of it).
+inputs:
+  compile-bytecode:
+    description: >-
+      "true" compiles the bytecode of the app, its tests and the venv once,
+      on every CPU, before the test step: otherwise each pytest worker
+      compiles the modules it imports on its own, the same files four times
+      over, while it collects. Built in the job from its own checkout and
+      venv, never restored from a cache.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -22,3 +31,16 @@ runs:
     - uses: ./.github/actions/uv-sync
       with:
         directory: backend
+
+    - name: Compile the bytecode
+      if: inputs.compile-bytecode == 'true'
+      shell: bash
+      working-directory: backend
+      run: |
+        start=$(date +%s)
+        venv=$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+        # A file that does not compile (a vendored Python 2 example in a
+        # wheel) is left to the import that would fail on it anyway: this
+        # step only saves the workers time, it decides nothing.
+        .venv/bin/python -m compileall -q -j 0 app tests scripts "$venv" > /dev/null || true
+        echo "Bytecode compiled in $(( $(date +%s) - start )) s"
