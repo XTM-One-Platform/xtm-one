@@ -20,6 +20,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * chip with the kind's icon, its kind, the title cut to fit and a link that
  * opens it. The full card is for a marker on its own line.
  */
+import { workItemPath } from "@/lib/task-routes";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
@@ -145,7 +146,7 @@ function WorkItemChip({ id }: { id: string }) {
       icon="calendar"
       kindLabel={t_i18n("Work item")}
       title={data?.title}
-      href={data ? `/operations/work-items?item=${data.id}` : null}
+      href={data ? workItemPath(data.id) : null}
       loading={isLoading}
     />
   );

@@ -177,7 +177,7 @@ def present_run(run: Any) -> NotificationItem | None:
 
 def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
     """A work item waiting for the person as a bell entry: its question, the
-    item open in Operations (where the decision card answers it)."""
+    item open in Tasks > Work Items (where the decision card answers it)."""
     item_id = item.get("id")
     if not _is_uuid(item_id):
         return None
@@ -185,7 +185,7 @@ def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
         id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
         kind="work_item_waiting",
         created_at=str(item.get("since") or ""),
-        route=f"/operations/work-items?item={item_id}",
+        route=f"/tasks/work-items/{item_id}",
         title=str(item.get("title") or "Work item"),
         subtitle="Work item",
         summary=summary_preview(item.get("question")) or None,

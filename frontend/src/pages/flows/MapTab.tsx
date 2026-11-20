@@ -43,6 +43,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * that only editable agents can be edge sources.
  */
 
+import { workItemsPath } from "@/lib/task-routes";
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { isKnownMapView, legacyMapLocation, mapViewPath, readMapView, type MapView } from "@/lib/map-view";
@@ -631,7 +632,7 @@ export default function MapTab() {
           ? agentIconMap.get(w.created_by_agent_id)
           : undefined,
         timestamp: w.last_activity_at ?? w.updated_at ?? w.created_at,
-        href: "/operations/work-items",
+        href: workItemsPath(),
       });
     }
 

@@ -27,7 +27,7 @@ def test_a_waiting_item_is_an_urgent_bell_entry_that_opens_the_item():
     assert item is not None
     assert item.kind == "work_item_waiting"
     assert item.id == f"work_item:{ITEM_ID}"
-    assert item.route == f"/operations/work-items?item={ITEM_ID}"
+    assert item.route == f"/tasks/work-items/{ITEM_ID}"
     assert item.title == "Pick a vendor"
     assert item.summary == "A or B?"
     assert "work_item_waiting" in feed.URGENT_KINDS

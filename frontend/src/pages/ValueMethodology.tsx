@@ -21,6 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * opened from "Read the methodology" in every "How this is computed"
  * popover. Static text only: reading it never starts a run nor calls a model.
  */
+import { valuePath } from "@/lib/task-routes";
 import { Link } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
@@ -145,7 +146,7 @@ export default function ValueMethodology() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <BackButton to="/value" label="Back to Value" className="mb-2 -ml-2" />
+        <BackButton to={valuePath()} label="Back to Value" className="mb-2 -ml-2" />
         <h1 className="flex items-center gap-2 text-3xl font-bold">
           <BookOpen className="h-7 w-7 text-accent" aria-hidden /> {t_i18n("How value is computed")}
         </h1>

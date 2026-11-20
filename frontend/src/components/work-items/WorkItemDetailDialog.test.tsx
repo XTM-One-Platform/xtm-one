@@ -451,7 +451,7 @@ describe("the work item detail", () => {
     const blockers = screen.getByTestId("work-item-blockers");
     const link = blockers.querySelector("a");
     expect(link?.textContent).toContain("Ship the migration");
-    expect(link?.getAttribute("href")).toBe(`/operations/work-items?item=${blockerId}`);
+    expect(link?.getAttribute("href")).toBe(`/tasks/work-items/${blockerId}`);
     expect(blockers.textContent).toContain("a work item you cannot open");
     expect(waitsForSomeone("blocked_on_items")).toBe(false);
   });

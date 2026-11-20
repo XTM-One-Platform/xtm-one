@@ -31,6 +31,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Its rows are `schedule-row.tsx`: two lines of one height each.
  */
 
+import { workItemPath } from "@/lib/task-routes";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -221,7 +222,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
   if (isLoading || oneOffsLoading) return <PageSkeleton cards={2} />;
 
   const clearAgent = () => onClearAgent?.();
-  const openOneOff = (item: ScheduledWorkItem) => navigate(`/operations/work-items?item=${item.id}`);
+  const openOneOff = (item: ScheduledWorkItem) => navigate(workItemPath(item.id));
 
   if (schedules.length === 0 && oneOffs.length === 0) {
     return (

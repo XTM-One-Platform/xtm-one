@@ -13283,6 +13283,7 @@
   "Remove {name} from the fleet?": "Remove {name} from the fleet?",
   "Agent from another fleet": "Agent from another fleet",
   "Tasks": "Tasks",
+  "Tasks page": "Tasks",
   "Delegates": "Delegates",
   "Inbound A2A partner": "Inbound A2A partner",
   "Outbound A2A partner": "Outbound A2A partner",
@@ -19761,5 +19762,10 @@
   "Integration silent after": "Integration silent after",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.",
   "Agents offline above": "Agents offline above",
-  "More agents offline than this share raises a warning, e.g. 50.": "More agents offline than this share raises a warning, e.g. 50."
+  "More agents offline than this share raises a warning, e.g. 50.": "More agents offline than this share raises a warning, e.g. 50.",
+  "About tasks": "About tasks",
+  "What to do and follow: work items, value, workspaces.": "What to do and follow: work items, value, workspaces.",
+  "Open tasks": "Open tasks",
+  "What your agents are running and have run: executions, background delegations, the shared state they coordinate through, and the corpora they build to reason over more material than fits in a context.": "What your agents are running and have run: executions, background delegations, the shared state they coordinate through, and the corpora they build to reason over more material than fits in a context.",
+  "Every assignment run and background task: what your agents did and are doing.": "Every assignment run and background task: what your agents did and are doing."
 }

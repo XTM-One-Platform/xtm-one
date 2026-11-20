@@ -37,7 +37,7 @@ test.describe.serial('Workspace knowledge — project page and drawer', () => {
   });
 
   test('the project page shows the instructions and the sources', async ({ page }) => {
-    await page.goto(`/workspaces/${workspaceId}`);
+    await page.goto(`/tasks/workspaces/${workspaceId}`);
     await expect(page.getByRole('heading', { name: NAME })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('textbox', { name: 'Instructions' })).toHaveValue(INSTRUCTIONS);
 
@@ -48,7 +48,7 @@ test.describe.serial('Workspace knowledge — project page and drawer', () => {
   });
 
   test('a conversation started there opens the workspace knowledge beside it', async ({ page }) => {
-    await page.goto(`/workspaces/${workspaceId}`);
+    await page.goto(`/tasks/workspaces/${workspaceId}`);
     await page.getByRole('button', { name: 'New conversation' }).click();
     await expect(page).toHaveURL(/\/chat\?c=/, { timeout: 15_000 });
 
