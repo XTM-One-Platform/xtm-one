@@ -627,14 +627,18 @@ async def test_a_resumed_run_keeps_the_settings_it_started_with(monkeypatch):
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("stamped", "status"),
+    ("stamped", "settings_written", "status"),
     [
         # Edited while the run was paused: its next entries would run another flow under the same label.
-        pytest.param(3, "failed", id="flow-edited"),
-        pytest.param(4, "completed", id="flow-unchanged"),
+        pytest.param(3, True, "failed", id="flow-edited"),
+        pytest.param(4, True, "completed", id="flow-unchanged"),
+        # Cut in its setup, before entry 1: the launch's stamp is not a version its entries ran.
+        pytest.param(3, False, "completed", id="flow-edited-before-the-setup"),
     ],
 )
-async def test_a_resumed_flow_run_runs_only_the_flow_version_it_started_on(monkeypatch, stamped, status):
+async def test_a_resumed_flow_run_runs_only_the_flow_version_it_started_on(
+    monkeypatch, stamped, settings_written, status
+):
     from app.models.flow import Flow
     from app.services import evaluation_engine as ee
     from app.services.evaluation.flow_subject import FlowEntryOutcome
@@ -651,7 +655,8 @@ async def test_a_resumed_flow_run_runs_only_the_flow_version_it_started_on(monke
         run = await session.get(EvaluationRun, run_id)
         run.agent_id, run.flow_id = None, flow.id
         # Paused by a stop on version *stamped*, its settings written.
-        run.started_at, run.flow_version_number, run.execution_mode = datetime.now(UTC), stamped, ee.FLOW_EXECUTION_MODE
+        run.started_at, run.flow_version_number = datetime.now(UTC), stamped
+        run.execution_mode = ee.FLOW_EXECUTION_MODE if settings_written else None
         await session.commit()
 
     stored, _results = await run_on_postgres(
@@ -662,6 +667,8 @@ async def test_a_resumed_flow_run_runs_only_the_flow_version_it_started_on(monke
     if status == "failed":
         assert stored.error.startswith("The flow changed while the run was paused (v3 → v4)")
         assert stored.flow_version_number == 3, "the label stays the version its entries ran"
+    else:
+        assert stored.flow_version_number == 4, "labelled with the version its entries ran"
 
 
 @pytest.mark.integration
@@ -713,8 +720,10 @@ async def test_a_resume_keeps_the_closed_callback_episodes_that_store_no_result(
         await cleanup()
 
 
-async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes, *, worked_seconds):
+async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes, *, worked_seconds, taken_back_after=0):
     """The stop cut *run_id* in an entry it had run *worked_seconds*: record *stop_resumes*, run the next reclaim.
+
+    The worker said its last word *taken_back_after* seconds before the take-back (at ``_AT``).
 
     Returns the run, the execution's payload and the cut entry's episode (``None`` once deleted for a redo).
     """
@@ -722,6 +731,7 @@ async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes, *, 
     from app.services.evaluation_engine import STOP_RESUMES_PAYLOAD_KEY, execute_evaluation
 
     (entry,) = await _entries(sm, 1)
+    said = datetime.fromisoformat(_AT) - timedelta(seconds=taken_back_after)
     async with sm() as s:
         await s.execute(EvaluationRun.__table__.update().where(EvaluationRun.id == run_id).values(status="running"))
         s.add(
@@ -730,11 +740,14 @@ async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes, *, 
                 entry_id=entry,
                 correlation_id=f"eval:{run_id}:{entry}",
                 status="running",
-                created_at=datetime.fromisoformat(_AT) - timedelta(seconds=worked_seconds),
+                created_at=said - timedelta(seconds=worked_seconds),
             )
         )
         row = await s.get(OrchestrationExecution, execution)
-        row.payload = {"lease_expired": _TAKEN_BACK("stopped"), STOP_RESUMES_PAYLOAD_KEY: stop_resumes}
+        row.payload = {
+            "lease_expired": _TAKEN_BACK("stopped", at=said.isoformat()),
+            STOP_RESUMES_PAYLOAD_KEY: stop_resumes,
+        }
         await s.commit()
     async with sm() as s:
         await execute_evaluation(s, str(eval_id), "manual", execution, worker_id=NO_LEASE, resume_stopped_runs=True)
@@ -797,6 +810,20 @@ async def test_resumes_of_a_run_with_no_entry_finished_in_between_are_bounded(mo
         # Consumed: an attempt cut otherwise after it is not resumed on this stop.
         assert payload[STOP_RESUMES_PAYLOAD_KEY]["consumed"] == _AT
 
+        # Four minutes of work, taken back 90 s after its worker's last word (a restart, a lease wait): the
+        # wait is not work, so not a stall.
+        run, payload, _episode = await _resume_after_a_stop(
+            sm,
+            eval_id,
+            execution,
+            cut,
+            {"runs": {str(cut): {"results": 0, "stalled": last_allowed}}},
+            worked_seconds=STOP_RESUME_MIN_WORK_SECONDS - 60,
+            taken_back_after=90,
+        )
+        assert run.status == "pending"
+        assert payload[STOP_RESUMES_PAYLOAD_KEY]["runs"][str(cut)]["stalled"] == last_allowed
+
         # Minutes of work on the entry and still no result: one stall too many, failed with the reason.
         run, payload, episode = await _resume_after_a_stop(
             sm,
@@ -816,6 +843,30 @@ async def test_resumes_of_a_run_with_no_entry_finished_in_between_are_bounded(mo
             assert (await s.get(EvaluationRun, sibling)).status == "completed"
     finally:
         await cleanup()
+
+
+@pytest.mark.parametrize("results", [pytest.param(0, id="no-result-yet"), pytest.param(2, id="results-before")])
+def test_a_run_is_refused_on_the_cut_its_error_names_with_or_without_results(results):
+    """Progress is counted between two resumes: the first is the baseline, whatever the run had finished."""
+    from app.services.evaluation_engine import (
+        MAX_STOP_RESUMES_WITHOUT_PROGRESS,
+        STOP_RESUME_MIN_WORK_SECONDS,
+        _stalled_resumes,
+    )
+
+    run_id = uuid.uuid4()
+    record: dict = {}
+    refused_on = None
+    for cut_number in range(1, MAX_STOP_RESUMES_WITHOUT_PROGRESS + 2):
+        record, refused = _stalled_resumes(
+            record, [run_id], {run_id: results}, {run_id: STOP_RESUME_MIN_WORK_SECONDS + 60}
+        )
+        if refused:
+            refused_on = cut_number
+            break
+
+    # ``STALLED_RUN_ERROR``: "Cut by 4 worker stops in a row".
+    assert refused_on == MAX_STOP_RESUMES_WITHOUT_PROGRESS + 1
 
 
 @pytest.mark.integration

@@ -3157,6 +3157,22 @@ async def _pause_for_the_stop(
 _SETTLED_EPISODE_STATUSES = (*TERMINAL_EPISODE_STATUSES, *PARKED_EPISODE_STATUSES)
 
 
+def _has_parked_episode() -> ColumnElement[bool]:
+    """Whether the ``EvaluationRun`` row in the query has a parked callback episode: its callbacks drive it.
+
+    The one test the stop hand-back, the resume and the abandoned-run repair share, so they agree on which runs
+    a worker stop leaves alone.
+    """
+    return (
+        select(EvaluationEpisode.id)
+        .where(
+            EvaluationEpisode.run_id == EvaluationRun.id,
+            EvaluationEpisode.status.in_(PARKED_EPISODE_STATUSES),
+        )
+        .exists()
+    )
+
+
 async def _settled_entries(db: AsyncSession, run_uuid: uuid.UUID) -> set[uuid.UUID]:
     """The entries of a run that a resume skips: closed, parked on a callback, or with a result.
 
@@ -3289,7 +3305,10 @@ async def execute_evaluation_run(
             await db.commit()
             return
         if flow is not None:
-            stamped_version = run.flow_version_number if resumed else None
+            # Written with the run's settings (``stamped`` below), before
+            # entry 1: the launch's stamp of a run cut in its setup is not
+            # one its entries ran.
+            stamped_version = run.flow_version_number if resumed and run.execution_mode is not None else None
             if stamped_version is not None and stamped_version != flow.version_number:
                 # Edited while the run was paused: its next entries would run
                 # another flow than the ones it finished, under one label.
@@ -5900,14 +5919,7 @@ async def _runs_left_unfinished(db: AsyncSession, run_ids: list[str]) -> bool:
     yes: handed back, the next attempt finds what each run is, whereas a
     raise here would fail the evaluation and every run it paused.
     """
-    parked = (
-        select(EvaluationEpisode.id)
-        .where(
-            EvaluationEpisode.run_id == EvaluationRun.id,
-            EvaluationEpisode.status.in_(PARKED_EPISODE_STATUSES),
-        )
-        .exists()
-    )
+    parked = _has_parked_episode()
     try:
         left = await db.execute(
             select(EvaluationRun.id)
@@ -6239,6 +6251,23 @@ def pending_stop_cut(payload: Mapping[str, Any] | None) -> datetime | None:
     return None if consumed is not None and consumed >= latest else latest
 
 
+def _work_stopped_at(payload: Mapping[str, Any], marker: datetime) -> datetime:
+    """When the stop at *marker* (:func:`pending_stop_cut`) ended the work of the entry it cut.
+
+    A hand-back is written by the stopping worker, at the stop. A take-back is written later, by the worker that
+    took the row back, after the restart or the lease wait: the work ended at the gone worker's last word.
+    """
+    from app.services.orchestration_engine import LEASE_EXPIRY_PAYLOAD_KEY
+
+    record = payload.get(LEASE_EXPIRY_PAYLOAD_KEY)
+    if isinstance(record, dict) and _parsed_time(record.get("at")) == marker:
+        owner = record.get("owner_record")
+        said = _parsed_time(owner.get("at")) if isinstance(owner, dict) else None
+        if said is not None:
+            return min(said, marker)
+    return marker
+
+
 def _abandoned_values(error: str, now: datetime) -> dict[str, Any]:
     """What a run failed by the pre-dispatch reclaim is written with: *error*, ended *now*, its duration."""
     return {
@@ -6263,18 +6292,23 @@ def _stalled_resumes(
 ) -> tuple[dict[str, Any], list[uuid.UUID]]:
     """The runs' resume records after one more resume of *cut*, and the runs past the no-progress bound.
 
-    Per run: a new result since its last resume resets its count; none, with
-    the entry the stop cut *worked* on for at least
-    :data:`STOP_RESUME_MIN_WORK_SECONDS`, adds one; none in less (a hop
-    within one rolling restart) leaves it. A run past the bound is dropped
-    from the records, so a later resume of it starts afresh.
+    Per run: its first resume is the baseline, counted as none; then a new
+    result since its last resume resets its count; none, with the entry the
+    stop cut *worked* on for at least :data:`STOP_RESUME_MIN_WORK_SECONDS`,
+    adds one; none in less (a hop within one rolling restart) leaves it. A
+    run past the bound is dropped from the records, so a later resume of it
+    starts afresh. Progress is measured between two resumes, so a run with
+    results before its first stop and one with none are refused on the same
+    cut.
     """
     runs = dict(record) if isinstance(record, Mapping) else {}
     refused: list[uuid.UUID] = []
     for run_id in cut:
         previous = runs.get(str(run_id))
-        previous = previous if isinstance(previous, dict) else {}
         count = results.get(run_id, 0)
+        if not isinstance(previous, dict):
+            runs[str(run_id)] = {"results": count, "stalled": 0}
+            continue
         before, stalled = previous.get("results"), previous.get("stalled")
         before = before if isinstance(before, int) else 0
         stalled = stalled if isinstance(stalled, int) else 0
@@ -6343,8 +6377,9 @@ async def _resume_runs_cut_by_a_stop(
             .tuples()
             .all()
         )
-        # How long the entry each stop cut had run: from its open episode's start to the stop.
-        stopped_at = marker or now
+        # How long the entry each stop cut had run: from its open episode's start to the stop, never the
+        # restart or lease wait before the take-back.
+        stopped_at = _work_stopped_at(payload, marker) if marker is not None else now
         started = dict(
             (
                 await db.execute(
@@ -6567,14 +6602,7 @@ async def execute_evaluation(
     # repair finds nothing, and ``_reconcile_run_status`` stays short of
     # ``total_entries`` forever. Closing it needs entry-level reconciliation
     # or durable episode creation on the per-entry hot path.
-    parked = (
-        select(EvaluationEpisode.id)
-        .where(
-            EvaluationEpisode.run_id == EvaluationRun.id,
-            EvaluationEpisode.status.in_(PARKED_EPISODE_STATUSES),
-        )
-        .exists()
-    )
+    parked = _has_parked_episode()
     abandoned_now = datetime.now(UTC)
     # The WHOLE reclaim, query and repair sit inside the retryable boundary:
     # outside it, a transient fault takes the generic non-retryable
