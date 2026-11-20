@@ -134,7 +134,7 @@ export default function NewIntegration() {
     setExtraFields(defaults);
     setShowSecrets(false);
     setUseOwnCreds(false);
-    setIsCompanyManaged(false);
+    setIsCompanyManaged(Boolean(item.company_managed_only));
     setSelectedAuthType(item.supported_auth_types ? item.auth_type : null);
     setOpenapiDraft(null);
   }, []);
@@ -768,7 +768,7 @@ export default function NewIntegration() {
                     </p>
                   </div>
                 </div>
-                <Switch aria-label={t_i18n("Company-managed integration")} checked={isCompanyManaged} onCheckedChange={setIsCompanyManaged} />
+                <Switch aria-label={t_i18n("Company-managed integration")} checked={isCompanyManaged} onCheckedChange={setIsCompanyManaged} disabled={Boolean(selected.company_managed_only)} />
               </div>
             )}
 

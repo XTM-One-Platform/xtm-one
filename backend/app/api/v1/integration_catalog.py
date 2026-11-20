@@ -8629,6 +8629,47 @@ PROVIDER_CATALOG = {
             ),
         },
     },
+    "platform_email": {
+        "name": "Platform email (SMTP)",
+        "description": (
+            "Let agents send email from the platform's own address through the SMTP "
+            "server this deployment configures, to the recipient domains you allow"
+        ),
+        "logo": "/logos/platform_email.svg",
+        "category": "integration",
+        "integration_category": "communication",
+        "integration_types": ["email"],
+        # No credential: it sends through the deployment's SMTP settings. Offered
+        # only while SMTP is configured, created by an administrator only, as a
+        # company-managed integration (integrations.py reads both flags).
+        "auth_type": "none",
+        "supported_auth_types": ["none"],
+        "requires_platform_smtp": True,
+        "company_managed_only": True,
+        "fields": [],
+        "extra_fields": {
+            "allowed_domains": "Allowed recipient domains (one per line; none = every send refused)",
+            "daily_limit": "Emails per agent per day (UTC, default 50)",
+        },
+        "setup_guide": {
+            "title": "Platform email (SMTP) setup",
+            "steps": [
+                "The deployment's SMTP settings (SMTP_HOSTNAME and the other SMTP_* variables) are the server and the sender: nothing to enter here.",
+                "List the recipient domains agents may write to, one per line. An address outside them is refused.",
+                "Set the daily limit per agent (default 50), then bind the integration to the agents that may send.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Send",
+                    "description": "Send email from the platform sender to the allowed domains; every send asks for approval and is written to the audit log.",
+                },
+            ],
+            "notes": (
+                "Test Connection says whether SMTP is configured and which domains are allowed. "
+                "Bcc recipients each receive their own copy, never named in a header."
+            ),
+        },
+    },
     "rss": {
         "name": "RSS / Atom Feeds",
         "description": "Read news from any RSS or Atom feed — curated sources for any topic",

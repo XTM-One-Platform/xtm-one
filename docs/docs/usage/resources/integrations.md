@@ -266,6 +266,17 @@ An assistant who works for someone answers threads that exist only in that perso
 - **Which forwards are trusted.** The quoted header is text any sender can write in an email. The agent reads the original participants from it only when the forward was sent from the mailbox's own domain. A message with a forward subject from any other sender is answered to that sender, the agent is told the header was not trusted, and with `send` set the reply stays a draft unless `to` names the recipients the user confirmed. Such a reply never joins the thread the forward's headers name: it threads on the message the mailbox holds.
 - **Draft or sent.** The reply is a draft by default, which the agent sends later with `send_microsoft_draft` or which the person sends from Outlook; sent that way, it threads on the forwarded copy, and the agent is told so. With `send` set, the agent sends it at once, once the user has given the go. A reply sent this way joins the original thread for its correspondents (its `In-Reply-To` and `References` name the original message, not the forwarded copy); the copy is kept in Sent Items. A reply to a message forwarded by another tool than `forward_microsoft_email` joins the thread when the forward kept its references, and the agent is told when it cannot.
 
+### Platform email (SMTP)
+
+The **Platform email (SMTP)** integration lets agents send email from the platform's own address, through the SMTP server the deployment configures (`SMTP_HOSTNAME` and the other `SMTP_*` variables), in the layout of the platform's own emails. It has no credential of its own.
+
+- **Who creates it.** The catalog offers it only while SMTP is configured, and only to an administrator, who creates it company-managed (the switch is on and locked). The server refuses any other creation.
+- **Allowed recipient domains.** One per line. Every address (to, cc, bcc, reply-to) must belong to one of them exactly; a subdomain is a different domain. With no domain listed, every send is refused.
+- **Daily limit.** The emails one agent may send in a UTC day (default 50, at most 1000); the next send is refused until 00:00 UTC.
+- **`send_email`.** `to`, `cc`, `bcc` (comma-separated), one `reply_to`, a one-line `subject`, a Markdown `body` sent as HTML, and `attachment_file_ids` (20 MB together). Every call asks for approval, the same message to the same recipients twice is refused, and each bcc recipient gets their own copy so no header names them.
+- **Audit.** Every send, delivered or refused by the SMTP server, writes one audit log entry (entity `platform_email`, action `send`) with the agent, the recipients, the subject and the outcome. The daily limit is counted from these entries.
+- **Test Connection** says whether SMTP is configured, which domains are allowed and the daily limit.
+
 ### Email signatures (Letsignit)
 
 An email an agent writes with an email integration (Microsoft 365 Outlook, Gmail, Amazon SES) can carry the person's signature, as an email that person writes does. The signature is read from a **signature integration** (Letsignit), by the sending address: the person's current signature and banner as Letsignit composes them now, and its reply variant for a reply when Letsignit defines one. The agent never writes a signature itself: the tools add it, and their descriptions tell the agent not to put one in the body.

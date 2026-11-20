@@ -165,6 +165,10 @@ class ProviderCatalogItem(BaseModel):
     # the customer's network, LM Studio): creating or saving one without a
     # group is a 422, and the form offers no "Direct" route.
     requires_relay: bool = False
+    # Created by an administrator, as a company-managed integration only (the
+    # platform email): the form sets and locks the company-managed switch, and
+    # the server refuses any other creation.
+    company_managed_only: bool = False
     # Entries whose shape depends on one operator choice: ``variant_selector``
     # names the fact (``a2a_direction`` for A2A) and ``variants`` maps each of
     # its values to the facets that differ. The base entry is the default.

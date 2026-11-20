@@ -1538,6 +1538,8 @@ export interface ProviderCatalogItem {
   a2a_directions?: ("inbound" | "outbound")[];
   /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
+  /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
+  company_managed_only?: boolean;
   /** Which operator choice reshapes this entry (`a2a_direction` for A2A), and
    * the facets each of its values changes. The base entry is the default. */
   variant_selector?: string | null;
