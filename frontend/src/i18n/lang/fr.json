@@ -19762,5 +19762,9 @@
   "Integration silent after": "Intégration silencieuse après",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "Un injecteur, collecteur ou exécuteur qui ne s'est pas manifesté depuis cette durée lève un avertissement, par ex. 60.",
   "Agents offline above": "Agents hors ligne au-delà de",
-  "More agents offline than this share raises a warning, e.g. 50.": "Une part d'agents hors ligne supérieure à cette valeur lève un avertissement, par ex. 50."
+  "More agents offline than this share raises a warning, e.g. 50.": "Une part d'agents hors ligne supérieure à cette valeur lève un avertissement, par ex. 50.",
+  "Brief": "Consigne",
+  "An agent run": "Une exécution d’agent",
+  "The platform": "La plateforme",
+  "Copy {value}": "Copier {value}"
 }

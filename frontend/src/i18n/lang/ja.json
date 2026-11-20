@@ -19762,5 +19762,9 @@
   "Integration silent after": "インテグレーションの無応答とみなす時間",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "インジェクター、コレクター、エグゼキューターがこの時間報告しないと警告になります（例: 60）。",
   "Agents offline above": "オフラインのエージェントの上限",
-  "More agents offline than this share raises a warning, e.g. 50.": "オフラインのエージェントの割合がこの値を超えると警告になります（例: 50）。"
+  "More agents offline than this share raises a warning, e.g. 50.": "オフラインのエージェントの割合がこの値を超えると警告になります（例: 50）。",
+  "Brief": "依頼内容",
+  "An agent run": "エージェントの実行",
+  "The platform": "プラットフォーム",
+  "Copy {value}": "{value} をコピー"
 }
