@@ -536,7 +536,7 @@ def refuse_blocked_without_why(status: str | None, **fields: object) -> None:
     if status != "blocked":
         return
     fields.pop("blocked_reason", None)
-    defects = blocked_defects(**fields)  # type: ignore[arg-type]
+    defects = blocked_defects(**fields)
     if defects:
         raise ValueError(f"{WHY_FIELDS_MESSAGE} (missing: {'; '.join(defects)}); nothing was written")
 

@@ -16,6 +16,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -42,12 +43,12 @@ PR = [{"repo": "XTM-One-Platform/xtm-one", "kind": "pull_request", "number": 762
 
 
 @asynccontextmanager
-async def _database() -> AsyncIterator:
+async def _database() -> AsyncIterator[Any]:
     async with scratch_database("blackwhite", tables=ALL_TABLES, extensions=("vector",)) as db:
         yield db.sessions
 
 
-async def _world(sessions) -> tuple[User, Agent, Fleet]:
+async def _world(sessions: Any) -> tuple[User, Agent, Fleet]:
     async with sessions() as db:
         user = User(
             id=uuid.uuid4(),
@@ -71,11 +72,11 @@ async def _world(sessions) -> tuple[User, Agent, Fleet]:
         return user, agent, fleet
 
 
-async def _create(user: User, **kwargs) -> dict:
+async def _create(user: User, **kwargs: Any) -> dict[str, Any]:
     return await wi_service.create_work_item(user_id=str(user.id), title="Backfill the rows", writer=WRITER, **kwargs)
 
 
-async def test_a_blocked_create_needs_an_owner_and_a_real_blocker_or_a_decision():
+async def test_a_blocked_create_needs_an_owner_and_a_real_blocker_or_a_decision() -> None:
     async with _database() as sessions:
         user, agent, _fleet = await _world(sessions)
         owner = str(agent.id)
@@ -107,7 +108,7 @@ async def test_a_blocked_create_needs_an_owner_and_a_real_blocker_or_a_decision(
         assert decision["status"] == "blocked" and decision["ask"]["recommendation"] == "A"
 
 
-async def test_not_before_alone_is_a_deferral_never_a_blocker():
+async def test_not_before_alone_is_a_deferral_never_a_blocker() -> None:
     async with _database() as sessions:
         user, agent, _fleet = await _world(sessions)
         later = datetime.now(UTC) + timedelta(hours=2)
@@ -117,7 +118,7 @@ async def test_not_before_alone_is_a_deferral_never_a_blocker():
         assert deferred["status"] == "open"
 
 
-async def test_an_update_to_blocked_is_checked_on_the_item_as_it_would_land():
+async def test_an_update_to_blocked_is_checked_on_the_item_as_it_would_land() -> None:
     async with _database() as sessions:
         user, agent, _fleet = await _world(sessions)
         item = await _create(user, owner_agent_id=str(agent.id))
@@ -128,25 +129,26 @@ async def test_an_update_to_blocked_is_checked_on_the_item_as_it_would_land():
             )
         with pytest.raises(ValueError, match="needs_human needs an ask card"):
             await wi_service.update_work_item(item["id"], user_id=str(user.id), needs_human=True, writer=WRITER)
-        assert (await wi_service.get_work_item(item["id"], user_id=str(user.id)))["status"] == "open"
+        still = await wi_service.get_work_item(item["id"], user_id=str(user.id))
+        assert still is not None and still["status"] == "open"
 
         parked = await wi_service.update_work_item(
             item["id"], user_id=str(user.id), needs_human=True, ask=ASK, writer=WRITER
         )
-        assert parked["status"] == "blocked"
+        assert parked is not None and parked["status"] == "blocked"
         # Clearing the owner of a blocked item is refused: nobody would resume it.
         with pytest.raises(ValueError, match="no owner_agent_id"):
             await wi_service.update_work_item(item["id"], user_id=str(user.id), owner_agent_id="", writer=WRITER)
 
 
-async def test_a_legacy_item_is_left_as_it_is_and_reported_by_fleet_health():
+async def test_a_legacy_item_is_left_as_it_is_and_reported_by_fleet_health() -> None:
     from app.services.fleet_health_signals import _work_item_findings
 
     async with _database() as sessions:
         user, agent, fleet = await _world(sessions)
         now = datetime.now(UTC)
 
-        def _row(**kw) -> WorkItem:
+        def _row(**kw: Any) -> WorkItem:
             base = dict(
                 id=uuid.uuid4(),
                 user_id=user.id,
@@ -186,9 +188,9 @@ async def test_a_legacy_item_is_left_as_it_is_and_reported_by_fleet_health():
         # Left as they are: no migration changed a status.
         for row in rows.values():
             stored = await wi_service.get_work_item(str(row.id), user_id=str(user.id))
-            assert stored["status"] == "blocked"
+            assert stored is not None and stored["status"] == "blocked"
         # A note on a legacy item still lands: only a write to its blocking fields is checked.
         noted = await wi_service.update_work_item(
             str(rows["free_text"].id), user_id=str(user.id), note="looked at", writer=WRITER
         )
-        assert noted["status"] == "blocked"
+        assert noted is not None and noted["status"] == "blocked"

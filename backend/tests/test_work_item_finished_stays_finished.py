@@ -11,6 +11,7 @@ person's write still go through.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 
@@ -18,14 +19,19 @@ import app.services.work_item as wi_service
 from tests.test_work_item_completion_live_holder import AGENT, _item, world  # noqa: F401
 
 
-async def _no_cycle(*_a, **_kw):
+async def _no_cycle(*_a: object, **_kw: object) -> None:
     return None
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("finished", ["done", "cancelled"])
 @pytest.mark.parametrize("status", ["in_progress", "claimed", "blocked"])
-async def test_an_agent_run_cannot_put_a_finished_item_back_to_work(world, monkeypatch, finished, status):  # noqa: F811
+async def test_an_agent_run_cannot_put_a_finished_item_back_to_work(
+    world: Any,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    finished: str,
+    status: str,
+) -> None:
     item = _item(status=finished, result="merged", claimed_by_run_id=None)
     session = world(item, None)
     monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _no_cycle)

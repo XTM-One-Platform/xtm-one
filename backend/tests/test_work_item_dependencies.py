@@ -28,11 +28,13 @@ def test_the_dependency_note_unblocks_only_when_every_blocker_is_done():
     assert note["unblocked"] is True and note["text"] == f"unblocked: {A}, {B} done"
     # Cancelled or gone, nothing left running: surfaced to its owner with the reason (#762).
     note = wi_service._dependency_note([A, B], {A: "cancelled"}, NOW)
+    assert note is not None
     assert note["unblocked"] is False and note["surfaced"] is True
     assert f"{A} cancelled" in note["text"] and f"{B} no longer exists" in note["text"]
     assert note["text"].startswith("surfaced: ")
     # One done, one cancelled: surfaced too, nothing would release the cancelled one.
-    assert wi_service._dependency_note([A, B], {A: "done", B: "cancelled"}, NOW)["surfaced"] is True
+    mixed = wi_service._dependency_note([A, B], {A: "done", B: "cancelled"}, NOW)
+    assert mixed is not None and mixed["surfaced"] is True
     # One still running: wait, say nothing yet.
     assert wi_service._dependency_note([A, B], {A: "cancelled", B: "open"}, NOW) is None
 

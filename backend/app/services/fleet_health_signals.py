@@ -53,7 +53,7 @@ out of ``findings`` and of ``healthy`` and listed under ``dismissed``.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -189,7 +189,7 @@ def blocked_without_blocker(
     needs_human: bool | None,
     owner_agent_id: object = None,
     ask: object = None,
-    cancelled_blockers: object = None,
+    cancelled_blockers: Iterable[str] | None = None,
 ) -> bool:
     """Whether a blocked item is not black or white (#762).
 
@@ -209,7 +209,7 @@ def blocked_without_blocker(
     ):
         return True
     lost = set(cancelled_blockers or ())
-    waits = [str(b) for b in blocked_on or []] if isinstance(blocked_on, list) else []
+    waits = [str(b) for b in blocked_on] if isinstance(blocked_on, list) else []
     return bool(waits) and set(waits) <= lost and not (blocked_on_refs or needs_human)
 
 
@@ -425,9 +425,7 @@ async def _work_item_findings(
         {
             str(i)
             for i in (
-                await db.execute(
-                    select(WorkItem.id).where(WorkItem.id.in_(waited), WorkItem.status != "cancelled")
-                )
+                await db.execute(select(WorkItem.id).where(WorkItem.id.in_(waited), WorkItem.status != "cancelled"))
             )
             .scalars()
             .all()

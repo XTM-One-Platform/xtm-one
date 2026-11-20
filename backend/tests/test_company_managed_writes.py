@@ -598,12 +598,12 @@ async def test_a_company_managed_agent_claims_and_completes_a_company_managed_it
     assert session.committed is True
 
 
-async def _no_cycle(*_a, **_kw):
+async def _no_cycle(*_a: object, **_kw: object) -> None:
     return None
 
 
 @pytest.mark.asyncio
-async def test_private_items_are_never_gated(monkeypatch):
+async def test_private_items_are_never_gated(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _item(is_company_managed=False)
     _use_session(monkeypatch, row)
     monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _no_cycle)

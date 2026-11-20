@@ -222,6 +222,7 @@ async def test_a_blocked_status_needs_a_why_and_leaving_blocked_clears_it():
             blocked_on_refs=[{"repo": REPO, "kind": "pull_request", "number": 7, "release_on": "merged"}],
             writer=WRITER,
         )
+        assert blocked is not None
         why = blocked["blocked_why"]
         assert why["missing"] is False and why["text"].startswith("Waits for: ")
         assert why["text"].endswith("; the UX verdict, released by the UX Director")

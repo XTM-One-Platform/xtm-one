@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -91,7 +92,7 @@ _ASK = {
 }
 
 
-def test_a_blocked_status_with_no_why_is_refused_naming_the_three_options():
+def test_a_blocked_status_with_no_why_is_refused_naming_the_three_options() -> None:
     with pytest.raises(ValueError) as exc:
         refuse_blocked_without_why("blocked")
     for field in ("owner_agent_id", "blocked_on", "blocked_on_refs", "needs_human", "ask", "not_before"):
@@ -108,7 +109,7 @@ def test_a_blocked_status_with_no_why_is_refused_naming_the_three_options():
         {"needs_human": True, "ask": _ASK},
     ],
 )
-def test_an_owner_and_one_real_blocker_is_enough(fields):
+def test_an_owner_and_one_real_blocker_is_enough(fields: dict[str, Any]) -> None:
     refuse_blocked_without_why("blocked", owner_agent_id=_OWNER, **fields)
 
 
@@ -128,7 +129,7 @@ def test_an_owner_and_one_real_blocker_is_enough(fields):
         ),
     ],
 )
-def test_blocked_is_black_or_white(fields, missing):
+def test_blocked_is_black_or_white(fields: dict[str, Any], missing: str) -> None:
     with pytest.raises(ValueError, match=missing):
         refuse_blocked_without_why("blocked", **fields)
 
@@ -138,13 +139,15 @@ def test_only_a_blocked_status_needs_a_why():
     refuse_blocked_without_why("open", blocked_reason="deferred")
 
 
-def test_needs_human_needs_its_ask_card():
+def test_needs_human_needs_its_ask_card() -> None:
     refuse_needs_human_without_ask(None, None)
     refuse_needs_human_without_ask(True, _ASK)
     with pytest.raises(ValueError, match="needs_human needs an ask card"):
         refuse_needs_human_without_ask(True, None)
     with pytest.raises(ValueError, match="at least 2"):
-        refuse_needs_human_without_ask(True, {"question": "Merge it?", "options": [{"key": "A"}], "recommendation": "A"})
+        refuse_needs_human_without_ask(
+            True, {"question": "Merge it?", "options": [{"key": "A"}], "recommendation": "A"}
+        )
 
 
 def test_the_views_show_what_a_blocked_item_waits_for():

@@ -2339,9 +2339,10 @@ async def update_work_item(
         if needs_human or (ask is not None and human):
             # A person's decision carries its card (#762): written now, or kept.
             refuse_needs_human_without_ask(human, landing_ask)
-        why_written = any(
-            v is not None for v in (status, blockers, refs, blocked_reason, needs_human, ask)
-        ) or owner_agent_id == ""  # re-routing a blocked item stays free; clearing its owner does not
+        why_written = (
+            any(v is not None for v in (status, blockers, refs, blocked_reason, needs_human, ask))
+            or owner_agent_id == ""
+        )  # re-routing a blocked item stays free; clearing its owner does not
         if landing == "blocked" and why_written:
             # Black or white, checked on the item as it would land (#762); a write
             # that touches none of these fields leaves a legacy item as it is.

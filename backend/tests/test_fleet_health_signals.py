@@ -6,6 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -78,7 +79,11 @@ def test_a_large_first_day_with_no_baseline_is_a_spike():
 
 
 _OWNER = uuid.uuid4()
-_ASK = {"question": "Merge it?", "options": [{"key": "A", "label": "yes"}, {"key": "B", "label": "no"}], "recommendation": "A"}
+_ASK = {
+    "question": "Merge it?",
+    "options": [{"key": "A", "label": "yes"}, {"key": "B", "label": "no"}],
+    "recommendation": "A",
+}
 
 
 @pytest.mark.parametrize(
@@ -91,7 +96,7 @@ _ASK = {"question": "Merge it?", "options": [{"key": "A", "label": "yes"}, {"key
         {"blocked_on": ["x", "y"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"y"}},
     ],
 )
-def test_a_black_or_white_blocked_item_is_fine(fields):
+def test_a_black_or_white_blocked_item_is_fine(fields: dict[str, Any]) -> None:
     assert not signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
 
 
@@ -108,11 +113,11 @@ def test_a_black_or_white_blocked_item_is_fine(fields):
         {"blocked_on": ["x"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"x"}},
     ],
 )
-def test_a_blocked_item_that_is_not_black_or_white_is_reported(fields):
+def test_a_blocked_item_that_is_not_black_or_white_is_reported(fields: dict[str, Any]) -> None:
     assert signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
 
 
-def test_an_ownerless_blocked_item_is_reported_whatever_it_waits_for():
+def test_an_ownerless_blocked_item_is_reported_whatever_it_waits_for() -> None:
     assert signals.blocked_without_blocker(blocked_on=["x"], blocked_on_refs=None, needs_human=None)
 
 

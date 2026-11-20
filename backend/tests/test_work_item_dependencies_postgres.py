@@ -103,7 +103,7 @@ async def test_a_blocked_item_reopens_once_its_blocker_is_done():
         assert await wi_service.release_satisfied_dependencies() == 0
 
 
-async def test_a_cancelled_blocker_hands_the_item_back_to_its_owner_once():
+async def test_a_cancelled_blocker_hands_the_item_back_to_its_owner_once() -> None:
     """Nothing would ever release it: back to its owner's queue, never blocked forever (#762)."""
     async with _database() as sessions:
         user = await _member(sessions)
@@ -114,6 +114,7 @@ async def test_a_cancelled_blocker_hands_the_item_back_to_its_owner_once():
 
         assert await wi_service.release_satisfied_dependencies() == 0
         back = await wi_service.get_work_item(b["id"], user_id=str(user.id))
+        assert back is not None
         assert back["status"] == "open" and back["blocked_on"] == []
         notes = [note["text"] for note in back["claim_notes"]]
         assert notes == [f"surfaced: {a['id']} cancelled; re-point blocked_on or complete it"]
