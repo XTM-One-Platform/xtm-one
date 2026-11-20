@@ -9,11 +9,14 @@ with the reason, and nothing is written.
 
 from __future__ import annotations
 
+import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import app.services.work_item as wi_service
+from app.models.work_item import WorkItem
 from app.services.company_managed_writes import person_writer
 from tests.test_work_item_waiting_for_person_postgres import _row
 from tests.test_work_item_workspace_scope_postgres import (
@@ -79,6 +82,57 @@ async def test_an_ask_reaches_the_owner_agent_once_and_is_noted() -> None:
     assert kwargs["extra_metadata"]["work_item_id"] == item_id
     # Another person cannot reach the item: not found, nothing sent.
     assert other is None
+
+
+@pytest.mark.asyncio
+async def test_an_ask_on_an_item_a_live_run_holds_keeps_the_claim_and_steers_the_holder() -> None:
+    """Do it on an in_progress item whose holder is alive: no unclaim, no second run (#782 review)."""
+    writer = person_writer(is_admin=False)
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            person = await _make_user(session, email="holder@example.com")
+            owner = await _make_agent(session, name="Busy desk")
+            run_id = uuid.uuid4()
+            item = _row(
+                person,
+                title="held",
+                owner_agent_id=owner.id,
+                status="in_progress",
+                description="brief",
+                claimed_by_agent_id=owner.id,
+                claimed_by_run_id=run_id,
+            )
+            session.add(item)
+            await session.commit()
+            item_id = str(item.id)
+
+        async with _pointed_at_db(sessions):
+            uid = str(person.id)
+            spawn = AsyncMock(return_value=object())
+            steer = AsyncMock(return_value=True)
+            inbox = SimpleNamespace(owner_agent_id=str(owner.id))
+            alive = {run_id: wi_service.HoldingRun(status="running", ended_at=None, kind="run")}
+            with (
+                patch("app.services.sub_agent.create_sub_agent_task", spawn),
+                patch("app.services.work_item_note_steering.offer", steer),
+                patch.object(wi_service, "load_assignment_inboxes", AsyncMock(return_value=[inbox])),
+                patch.object(wi_service, "holding_runs", AsyncMock(return_value=alive)),
+            ):
+                sent = await wi_service.ask_work_item(item_id, user_id=uid, action="do", writer=writer)
+        async with sessions() as session:
+            row = await session.get(WorkItem, uuid.UUID(item_id))
+            assert row is not None
+            status, claimed_by = row.status, row.claimed_by_run_id
+
+    assert sent is not None
+    assert sent["via"] == "holder"
+    # The live holder keeps the item: still in progress, still its claim.
+    assert status == "in_progress"
+    assert claimed_by == run_id
+    assert spawn.await_count == 0
+    assert steer.await_count == 1
+    assert steer.await_args is not None
+    assert steer.await_args.args[1] == run_id
 
 
 def test_the_run_prompt_quotes_the_person_as_data() -> None:

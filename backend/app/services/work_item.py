@@ -4541,7 +4541,9 @@ async def ask_work_item(
     ask on the item, then the agent takes the item now: its ``work_item``
     inbox when it has one (the item back to ``open``, unclaimed, the dispatch
     nudged), else a run of the agent as the person on fixed platform text
-    naming the item (:func:`ask_run_prompt`). Returns ``{"item", "agent",
+    naming the item (:func:`ask_run_prompt`). An item a live run holds keeps
+    its claim: the note is relayed to that run as a steer (``via`` "holder"),
+    nothing is unclaimed and no run is started. Returns ``{"item", "agent",
     "via"}``, ``None`` when the item is not found or not writable. Raises
     :class:`WorkItemAskRefusedError` with the reason in words.
     """
@@ -4577,7 +4579,18 @@ async def ask_work_item(
             raise WorkItemAskRefusedError(f"{agent.name} is disabled: enable it, or reassign the work item")
         if ask_pending(item, now):
             raise WorkItemAskRefusedError(f"already sent, waiting for {agent.name}")
-        if item.owner_agent_id == agent.id:
+        # A live run already holds the item: it keeps its claim and reads the
+        # ask as a steer; unclaiming it or starting a run would work the item
+        # twice (the claim model, #12040). The claim is released only by its
+        # holder's end (release_ended_run_claims).
+        holder_run_id = item.claimed_by_run_id if item.status in CLAIM_HELD_STATUSES else None
+        if holder_run_id is not None:
+            holder = (await holding_runs(db, [holder_run_id])).get(holder_run_id)
+            if holder is not None and holder.alive:
+                via = "holder"
+            else:
+                holder_run_id = None
+        if via == "run" and item.owner_agent_id == agent.id:
             inboxes = await load_assignment_inboxes(db)
             if any(inbox.owner_agent_id == str(agent.id) for inbox in inboxes):
                 via = "inbox"
@@ -4608,8 +4621,13 @@ async def ask_work_item(
         item.payload = payload
         item.last_activity_at = now
         agent_ref = {"id": str(agent.id), "name": agent.name}
+        item_title = item.title
         await db.commit()
     await publish_transition(wid, previous_status=previous_status, note=note)
+    if via == "holder":
+        from app.services import work_item_note_steering
+
+        await work_item_note_steering.offer(str(wid), holder_run_id, note, title=item_title)
     if via == "run" and uid is not None:
         from app.services.sub_agent import RUN_ONCE_TRIGGER_TYPE, create_sub_agent_task
 
