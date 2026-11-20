@@ -19766,5 +19766,8 @@
   "Integration silent after": "インテグレーションの無応答とみなす時間",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "インジェクター、コレクター、エグゼキューターがこの時間報告しないと警告になります（例: 60）。",
   "Agents offline above": "オフラインのエージェントの上限",
-  "More agents offline than this share raises a warning, e.g. 50.": "オフラインのエージェントの割合がこの値を超えると警告になります（例: 50）。"
+  "More agents offline than this share raises a warning, e.g. 50.": "オフラインのエージェントの割合がこの値を超えると警告になります（例: 50）。",
+  "Hourly maintenance stalled": "毎時メンテナンスが停止中",
+  "Overdue since": "遅延開始",
+  "Read the web process logs for the scheduler tick errors; the hourly retention sweeps and purges wait until it completes again.": "スケジューラのティックのエラーについて Web プロセスのログを確認してください。毎時の保持スイープとパージは、メンテナンスが再び完了するまで待機します。"
 }
