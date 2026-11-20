@@ -90,6 +90,7 @@ from app.services.work_item_blocked_refs import (
     refuse_blocked_on_red_pull_request,
     refuse_blocked_without_why,
     refuse_foreign_pull_request_ref,
+    refuse_needs_human_without_ask,
     refuse_unbound_reference_reason,
     refuse_unobserved_deployment_refs,
 )
@@ -1894,8 +1895,16 @@ async def create_work_item(
         # A decision parked for a person waits for the answer: an open item
         # would be claimed by its owner's inbox before anyone answered (#497).
         status = "blocked"
+    # Blocked is black or white (#762): an owner and a blocker the platform
+    # releases, or a person's decision with its ask card.
+    refuse_needs_human_without_ask(needs_human, structured_ask)
     refuse_blocked_without_why(
-        status, blocked_on=blockers, blocked_on_refs=refs, blocked_reason=reason, needs_human=needs_human
+        status,
+        owner_agent_id=owner_agent_id,
+        blocked_on=blockers,
+        blocked_on_refs=refs,
+        needs_human=needs_human,
+        ask=structured_ask,
     )
     refuse_blocked_on_red_pull_request(status, blocked_on_refs=refs, payload=payload, blocked_on=blockers)
     refuse_foreign_pull_request_ref(status, correlation_key=correlation_key, title=title, blocked_on_refs=refs)
@@ -2270,15 +2279,28 @@ async def update_work_item(
             landing = "blocked"
         if blockers is not None and writer_run_ids is not None and not drop_open_blockers:
             await _refuse_dropping_open_blockers(db, item, blockers, landing=landing, writer_run_ids=writer_run_ids)
-        why_written = any(v is not None for v in (status, blockers, refs, blocked_reason, needs_human))
+        landing_ask = getattr(item, "ask", None) if ask is None else new_ask
+        if needs_human or (ask is not None and human):
+            # A person's decision carries its card (#762): written now, or kept.
+            refuse_needs_human_without_ask(human, landing_ask)
+        why_written = any(
+            v is not None for v in (status, blockers, refs, blocked_reason, needs_human, ask)
+        ) or owner_agent_id == ""  # re-routing a blocked item stays free; clearing its owner does not
         if landing == "blocked" and why_written:
-            # A blocked item says why: checked on the item as it would land.
+            # Black or white, checked on the item as it would land (#762); a write
+            # that touches none of these fields leaves a legacy item as it is.
+            landing_owner = (
+                (safe_uuid(owner_agent_id) if owner_agent_id else None)
+                if owner_agent_id is not None
+                else getattr(item, "owner_agent_id", None)
+            )
             refuse_blocked_without_why(
                 landing,
+                owner_agent_id=landing_owner,
                 blocked_on=getattr(item, "blocked_on", None) if blockers is None else blockers,
                 blocked_on_refs=getattr(item, "blocked_on_refs", None) if refs is None else refs,
-                blocked_reason=reason,
                 needs_human=human,
+                ask=landing_ask,
             )
         if landing == "blocked" and (refs is not None or status is not None):
             # Never parked on the merge of its own red pull request: nothing would wake it.
@@ -6079,6 +6101,16 @@ def _dependency_note(
         for b in blockers
         if passed_only and statuses.get(b) == "done" and verdicts.get(b) != "PASS"
     ]
+    if (cancelled or gone) and not reasons:
+        # A blocker that will never be done can never release it: back to its
+        # owner, who re-points it or completes it (#762), never blocked forever.
+        lost = [f"{b} cancelled" for b in cancelled] + [f"{b} no longer exists" for b in gone]
+        return {
+            "at": now.isoformat(),
+            "text": f"surfaced: {', '.join(lost)}; re-point blocked_on or complete it",
+            "unblocked": False,
+            "surfaced": True,
+        }
     reasons += [f"{b} cancelled" for b in cancelled] + [f"{b} no longer exists" for b in gone]
     return {
         "at": now.isoformat(),
@@ -6226,6 +6258,10 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
             if note is None:
                 continue
             unblocked = note.pop("unblocked")
+            if note.pop("surfaced", False):
+                # Treated as a release of the dependency: the rest of its wait
+                # (references, a person's decision) still holds it below.
+                unblocked = True
             followers = _pending_verdict_comments(str(item_id), blockers, reviews, verdict_items) if unblocked else []
             if followers:
                 # The review is decided, its verdict is not on the pull request

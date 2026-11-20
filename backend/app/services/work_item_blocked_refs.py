@@ -159,7 +159,8 @@ POLL_MAX_READS = 50
 RELEASE_GRACE_SECONDS = 45
 
 WHY_FIELDS_MESSAGE = (
-    "a blocked work item must say why: give blocked_on (the work items it waits for), "
+    "a blocked work item is black or white: it needs owner_agent_id (the agent that resumes it) and a "
+    "blocker the platform releases by itself: blocked_on (the work items it waits for), "
     "blocked_on_refs (the pull requests or issues it waits for: "
     '[{"repo": "owner/name", "kind": "pull_request" | "issue", "number": N, '
     '"release_on": "merged" | "closed" | "merged_or_closed"}], or the deployment of a change: '
@@ -167,8 +168,18 @@ WHY_FIELDS_MESSAGE = (
     '"release_on": "deployed"}, or the first successful run of a workflow after a time: '
     '{"repo": "owner/name", "kind": "workflow_run", "workflow": "release.yml", '
     '"after": "2026-11-06T00:40:00Z", "branch": "main"}), '
-    "blocked_reason (what it waits for, who releases it, since when) or needs_human: true"
+    "or a person's decision: needs_human: true with an ask {question, options: [{key, label}], "
+    "recommendation: an option key}. blocked_reason is context, never the blocker; a deferral is an "
+    "open item with not_before"
 )
+
+ASK_REQUIRED_MESSAGE = (
+    "needs_human needs an ask card: ask {question, options: [{key, label, effect?}] (at least 2), "
+    "recommendation: the key of one option}; the person decides from it and the answer reopens the item"
+)
+
+#: The fewest options an ask card offers: a decision is a choice.
+MIN_ASK_OPTIONS = 2
 
 
 class BlockedRefError(ValueError):
@@ -478,10 +489,62 @@ def has_why(
     )
 
 
+def ask_is_complete(ask: object) -> bool:
+    """Whether *ask* is a decision card a person can answer: a question, options, a recommendation. Pure."""
+    if not isinstance(ask, dict):
+        return False
+    options = ask.get("options")
+    return (
+        bool(str(ask.get("question") or "").strip())
+        and isinstance(options, list)
+        and len(options) >= MIN_ASK_OPTIONS
+        and bool(str(ask.get("recommendation") or "").strip())
+    )
+
+
+def blocked_defects(
+    *,
+    owner_agent_id: object = None,
+    blocked_on: object = None,
+    blocked_on_refs: object = None,
+    needs_human: object = None,
+    ask: object = None,
+) -> list[str]:
+    """What keeps a blocked item with these fields from being black or white, ``[]`` when nothing. Pure.
+
+    Blocked is either a real blocker the platform releases by itself
+    (``blocked_on``, ``blocked_on_refs``) or a person's decision (``needs_human``
+    with a complete :func:`ask_is_complete` card), and always an owner that
+    resumes it. ``blocked_reason`` and ``not_before`` are never a blocker.
+    """
+    out: list[str] = []
+    if not owner_agent_id:
+        out.append("no owner_agent_id")
+    if needs_human and not ask_is_complete(ask):
+        out.append("needs_human without an ask card")
+    elif not (blocked_on or blocked_on_refs or needs_human):
+        out.append("no blocker the platform releases (free text or nothing)")
+    return out
+
+
 def refuse_blocked_without_why(status: str | None, **fields: object) -> None:
-    """Raise ``ValueError`` naming the fields when *status* is ``blocked`` with no why."""
-    if status == "blocked" and not has_why(**fields):
-        raise ValueError(WHY_FIELDS_MESSAGE)
+    """Raise ``ValueError`` naming the three options when *status* is ``blocked`` and not black or white.
+
+    *fields* are those of :func:`blocked_defects`; ``blocked_reason`` is
+    accepted and ignored (context, never the blocker).
+    """
+    if status != "blocked":
+        return
+    fields.pop("blocked_reason", None)
+    defects = blocked_defects(**fields)  # type: ignore[arg-type]
+    if defects:
+        raise ValueError(f"{WHY_FIELDS_MESSAGE} (missing: {'; '.join(defects)}); nothing was written")
+
+
+def refuse_needs_human_without_ask(needs_human: object, ask: object) -> None:
+    """Raise ``ValueError`` when an item waits for a person with no decision card to answer."""
+    if needs_human and not ask_is_complete(ask):
+        raise ValueError(f"{ASK_REQUIRED_MESSAGE}; nothing was written")
 
 
 #: An item blocked on its own red pull request is released after this long.

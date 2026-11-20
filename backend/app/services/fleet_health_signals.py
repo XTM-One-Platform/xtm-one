@@ -104,7 +104,10 @@ FINDING_ADVICE: dict[str, str] = {
     "assignment_silent": "Check the schedule and its gate; delete the assignment if its work is over.",
     "orphaned_claim": "Released by the platform's claim sweep: the item goes back to its owner's inbox.",
     "past_due": "Move the due date or hand the item to someone who can finish it.",
-    "blocked_without_blocker": "Name what the item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+    "blocked_without_blocker": (
+        "Give it an owner and a blocker the platform releases (blocked_on, blocked_on_refs), or park it for a "
+        "person with needs_human and an ask card; else reopen it (a deferral is open with not_before)."
+    ),
     "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
     "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
@@ -179,10 +182,35 @@ def is_cost_spike(*, today_tokens: int, week_tokens: int, week_days: int = 7) ->
 
 
 def blocked_without_blocker(
-    *, blocked_on: object, blocked_on_refs: object, blocked_reason: str | None, needs_human: bool | None
+    *,
+    blocked_on: object,
+    blocked_on_refs: object,
+    blocked_reason: str | None = None,
+    needs_human: bool | None,
+    owner_agent_id: object = None,
+    ask: object = None,
+    cancelled_blockers: object = None,
 ) -> bool:
-    """Whether a blocked item names nothing it waits for."""
-    return not (blocked_on or blocked_on_refs or (blocked_reason or "").strip() or needs_human)
+    """Whether a blocked item is not black or white (#762).
+
+    No owner, no blocker the platform releases (``blocked_reason`` alone is
+    free text), ``needs_human`` without an ask card, or every ``blocked_on``
+    entry cancelled or gone (*cancelled_blockers*: those ids) with nothing
+    else to release it.
+    """
+    from app.services.work_item_blocked_refs import blocked_defects
+
+    if blocked_defects(
+        owner_agent_id=owner_agent_id,
+        blocked_on=blocked_on,
+        blocked_on_refs=blocked_on_refs,
+        needs_human=needs_human,
+        ask=ask,
+    ):
+        return True
+    lost = set(cancelled_blockers or ())
+    waits = [str(b) for b in blocked_on or []] if isinstance(blocked_on, list) else []
+    return bool(waits) and set(waits) <= lost and not (blocked_on_refs or needs_human)
 
 
 # ── The read ─────────────────────────────────────────────────────────────────
@@ -387,16 +415,48 @@ async def _work_item_findings(
                 WorkItem.blocked_on_refs,
                 WorkItem.blocked_reason,
                 WorkItem.needs_human,
+                WorkItem.owner_agent_id,
+                WorkItem.ask,
             ).where(scope, WorkItem.status == "blocked")
         )
     ).all()
+    waited = {safe_uuid(str(b)) for row in blocked for b in (row[1] or [])} - {None}
+    live = (
+        {
+            str(i)
+            for i in (
+                await db.execute(
+                    select(WorkItem.id).where(WorkItem.id.in_(waited), WorkItem.status != "cancelled")
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if waited
+        else set()
+    )
     bare = [
         wid
-        for wid, on, refs, reason, human in blocked
-        if blocked_without_blocker(blocked_on=on, blocked_on_refs=refs, blocked_reason=reason, needs_human=human)
+        for wid, on, refs, reason, human, owner, ask in blocked
+        if blocked_without_blocker(
+            blocked_on=on,
+            blocked_on_refs=refs,
+            blocked_reason=reason,
+            needs_human=human,
+            owner_agent_id=owner,
+            ask=ask,
+            cancelled_blockers={str(b) for b in on or []} - live,
+        )
     ]
     if bare:
-        out.append(_finding("blocked_without_blocker", f"{len(bare)} blocked item(s) name no blocker", bare))
+        out.append(
+            _finding(
+                "blocked_without_blocker",
+                f"{len(bare)} blocked item(s) not black or white: no owner, no real blocker, "
+                "or a person's decision without its ask card",
+                bare,
+            )
+        )
     out += await _wait_graph_findings(db, scope, now)
     return out
 
