@@ -1529,6 +1529,13 @@ def test_a_tool_line_with_no_install_before_it_is_kept_as_written():
         "flake8",
         "--ignore=E,W",
     )
+    # A version-pinned or extras install names the tool by its package name; the pin stays in --with.
+    pinned = bare.replace("uv pip install flake8", 'pip install "flake8>=6" black[jupyter]==24.1.0')
+    found = _detect({".github/workflows/ci-lint.yml": pinned}, images={*IMAGES, "toolchain-python"})
+    assert found.checks["python-lint"].argv[:3] == ("uv", "run", "--no-project")
+    assert "flake8>=6" in found.checks["python-lint"].argv
+    assert detect._requirement_name("Black[jupyter]==24.1.0") == "black"
+    assert detect._requirement_name("pip>=24") == "pip"
     # A bare tool the job did not install, a pip self-upgrade, a types line and a launcher are kept.
     other = LINT_WORKFLOW.replace("uv run flake8", "pylint").replace(
         "uv pip install flake8", "pip3 install -U pip certifi"

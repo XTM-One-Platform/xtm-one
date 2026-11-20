@@ -1865,7 +1865,7 @@ def _with_job_tools(stack: str, kind: str, argv: list[str], tokens: list[str], t
             return argv
         # A bare tool the job did not name in an install (`pip install -U certifi`, or a project's own
         # `-r requirements.txt` the install check already installs) is kept as written.
-        named = {tools[i + 1].lower() for i in range(0, len(tools) - 1, 2) if tools[i] == "--with"}
+        named = {_requirement_name(tools[i + 1]) for i in range(0, len(tools) - 1, 2) if tools[i] == "--with"}
         if _tool_name(tokens) not in named:
             return argv
     return ["uv", "run", "--no-project", *_relative_tools(tools, cwd), *_tool_words(tokens)]
@@ -1909,10 +1909,23 @@ def _installed(tokens: list[str], cwd: str, dirs: frozenset[str]) -> list[str]:
             not word.startswith(("-", ".", "/"))
             and "/" not in word
             and "$" not in word
-            and word.lower() not in _PIP_SELF
+            and _requirement_name(word) not in _PIP_SELF
         ):
             out += ["--with", word]
     return out
+
+
+#: Where a requirement's name ends: its extras (``black[jupyter]``), a version specifier or a marker.
+_REQUIREMENT_NAME_END = re.compile(r"[\[=<>~!;@\s]")
+
+
+def _requirement_name(requirement: str) -> str:
+    """The package name of a pip requirement, lower case: ``black==24.1.0`` and ``flake8>=6`` give ``black``, ``flake8``.
+
+    A version-pinned install (``pip install black==24.1.0``) keeps its pin in ``--with``, which uv reads as a
+    requirement, but the tool a line runs is matched by name alone.
+    """
+    return _REQUIREMENT_NAME_END.split(requirement, maxsplit=1)[0].lower()
 
 
 def _relative_tools(tools: list[str], cwd: str) -> list[str]:
