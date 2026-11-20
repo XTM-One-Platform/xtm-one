@@ -1644,6 +1644,25 @@ image = "python-dev"
 report = "junit"
 report_path = ".xtm/tripwires.xml"
 
+# The backend unit tests the merge queue runs for the change, before the push: a pull
+# request's CI runs the static checks only, the suites run in the queue on what
+# tests/selection.py selects for the merge group. affected = "files" hands
+# scripts/queue_tests.py the changed files under backend/ (a checkout has no git);
+# it prints the selection with each file's reason and runs the files the queue's
+# unit job runs. args ["--list"] with no file: the selection of the change, nothing run.
+# A change the queue runs whole for (a conftest.py, the dependencies) is named, not run.
+[check.backend-queue-tests]
+description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only) or changed paths from backend/"
+argv = ["python", "-m", "scripts.queue_tests"]
+cwd = "backend"
+timeout = 1800
+image = "python-dev"
+report = "lines"
+env = { SECRET_KEY = "ci-test-secret-key-not-for-production" }
+affected = "files"
+affected_by_default = true
+affected_narrows_args = true
+
 # The formatter, advisory: CI does not gate it and main is not format-clean.
 # Run it with affected=true: affected = "lines" hands scripts/format_changed.py
 # the Python files the checkout changed, a modified one as PATH:A-B,C-D (the
