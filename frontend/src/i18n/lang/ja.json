@@ -19741,5 +19741,8 @@
   "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "ルーティングモデルによる検出事項の任意の説明です。支出は Platform Health としてトレースされ、エージェントのクォータには一切カウントされません。",
   "Runs once a day at most, only for modules whose findings changed.": "1 日に最大 1 回、検出結果が変わったモジュールに対してのみ実行されます。",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, other {承認待ちの提案 # 件}}",
-  "No proposal awaits approval": "承認待ちの提案はありません"
+  "No proposal awaits approval": "承認待ちの提案はありません",
+  "Proposals and cycles": "提案とサイクル",
+  "Let Platform Health improve this agent?": "Platform Health にこのエージェントの改善を許可しますか?",
+  "Reads its memories and conversations to propose improvements. Off by default.": "メモリと会話を読み取り、改善を提案します。既定ではオフです。"
 }
