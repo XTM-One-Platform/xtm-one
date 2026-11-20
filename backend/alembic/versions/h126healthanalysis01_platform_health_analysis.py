@@ -3,16 +3,21 @@
 Slice S9 of issue #101 (design ``dev-docs/platform-health.md`` section 6):
 
 * ``llm_traces.source`` accepts ``platform_health``: the check constraint is
-  dropped, re-added ``NOT VALID`` with the new value, then validated in a
-  separate ``VALIDATE CONSTRAINT`` (SHARE UPDATE EXCLUSIVE, blocks neither reads
-  nor writes): no constraint is left unvalidated after an upgrade;
+  dropped and re-added ``NOT VALID`` with the new value in the migration
+  transaction, then validated by ``VALIDATE CONSTRAINT`` in its own transaction
+  (``autocommit_block``, after the swap has committed and released its lock), so
+  the table scan runs under SHARE UPDATE EXCLUSIVE alone and blocks neither
+  reads nor writes: no constraint is left unvalidated after an upgrade;
 * ``health_module_analyses``: the latest analysis per module;
 * ``health_analysis_spend``: the analysis ceiling ledger, one row per day and month.
 
 Nothing is backfilled. Lock profile: the constraint swap takes an ACCESS
-EXCLUSIVE lock on ``llm_traces`` for the catalog change only, under
-``set_lock_timeout`` after ``terminate_lock_holders``; the two new tables carry
-no foreign key. The column sets mirror ``app/models/health_analysis.py``, so a
+EXCLUSIVE lock on ``llm_traces`` under ``set_lock_timeout`` after
+``terminate_lock_holders``, held only until the migration transaction commits
+(catalog changes and two empty tables, no scan); the validation scan runs after
+that commit. The two new tables carry no foreign key. Re-running the body after
+an interruption is safe: the swap is guarded, and ``VALIDATE CONSTRAINT`` on a
+validated constraint is a no-op. The column sets mirror ``app/models/health_analysis.py``, so a
 fresh install's ``create_all`` and this body agree.
 
 Revision ID: h126healthanalysis01
@@ -56,22 +61,32 @@ def _has_table(conn: sa.engine.Connection, table: str) -> bool:
     )
 
 
-def _swap_check(conn: sa.engine.Connection, check_sql: str, *, validate: bool) -> None:
+def _swap_check(conn: sa.engine.Connection, check_sql: str) -> None:
+    """Drop and re-add the check ``NOT VALID``: catalog only, no table scan."""
     terminate_lock_holders(conn, _TRACES)
     set_lock_timeout(conn)
     # Literal DDL from module constants, never user input (ruff S608).
     op.execute(f"ALTER TABLE {_TRACES} DROP CONSTRAINT IF EXISTS {_CONSTRAINT}")
     op.execute(f"ALTER TABLE {_TRACES} ADD CONSTRAINT {_CONSTRAINT} CHECK ({check_sql}) NOT VALID")
-    if validate:
-        # Every stored row satisfies the superset; the scan runs under SHARE UPDATE
-        # EXCLUSIVE, so reads and writes go on while it validates.
+
+
+def _validate_check() -> None:
+    """Validate the check in its own transaction, after the swap committed.
+
+    ``autocommit_block`` commits the migration transaction first, which releases
+    the ACCESS EXCLUSIVE lock the swap took; the scan then holds SHARE UPDATE
+    EXCLUSIVE alone, so trace reads and writes of the serving replicas go on
+    while it runs. Bounded by the Alembic connection's statement timeout.
+    """
+    with op.get_context().autocommit_block():
         op.execute(f"ALTER TABLE {_TRACES} VALIDATE CONSTRAINT {_CONSTRAINT}")
 
 
 def upgrade() -> None:
     conn = op.get_bind()
-    if _has_table(conn, _TRACES):
-        _swap_check(conn, _NEW_CHECK, validate=True)
+    has_traces = _has_table(conn, _TRACES)
+    if has_traces:
+        _swap_check(conn, _NEW_CHECK)
     set_lock_timeout(conn)
     op.execute(
         f"""
@@ -103,6 +118,10 @@ def upgrade() -> None:
         )
         """
     )
+    if has_traces:
+        # Last: every stored row satisfies the superset; validated outside the
+        # transaction that holds the swap's lock.
+        _validate_check()
 
 
 def downgrade() -> None:
@@ -113,4 +132,4 @@ def downgrade() -> None:
     if _has_table(conn, _TRACES):
         # NOT VALID: the platform_health rows already stored are kept (traces are
         # never deleted by a downgrade); only new rows are checked.
-        _swap_check(conn, _OLD_CHECK, validate=False)
+        _swap_check(conn, _OLD_CHECK)
