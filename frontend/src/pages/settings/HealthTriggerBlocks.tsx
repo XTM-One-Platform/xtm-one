@@ -208,14 +208,15 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
       <div className="overflow-x-auto">
         <table className="w-full table-fixed content-compact" data-testid="settings.health.schedule.table">
           {/* Fixed widths sized to the all-valid layout: a row flipping to "Not a valid cron expression" while typing never moves a column.
-              Status fits its longest value in en, fr, es and ja ("Desactivado", about 68 px) at 1080. */}
+              Status fits its longest value in en, fr, es and ja ("Desactivado", about 68 px) at 1080; Last run and Next run fit
+              "Dernière exécution" / "Prochaine exécution" (about 108 / 116 px plus padding) at 1080 and wrap rather than overflow below it. */}
           <colgroup>
             <col className="w-[19%]" />
             <col className="w-[11%]" />
             <col className="w-[23%]" />
-            <col className="w-[21%]" />
-            <col className="w-[12%]" />
-            <col className="w-[14%]" />
+            <col className="w-[15%]" />
+            <col className="w-[16%]" />
+            <col className="w-[16%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-elevation-subtle-soft text-left text-default-secondary">
@@ -223,8 +224,8 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
               <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Status")}</th>
               <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Cron expression")}</th>
               <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("When")}</th>
-              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Last run")}</th>
-              <th className="whitespace-nowrap py-1.5 font-medium">{t_i18n("Next run")}</th>
+              <th className="py-1.5 pr-3 font-medium">{t_i18n("Last run")}</th>
+              <th className="py-1.5 font-medium">{t_i18n("Next run")}</th>
             </tr>
           </thead>
           <tbody>
