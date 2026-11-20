@@ -19,7 +19,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * is shown as itself, never as a known one.
  */
 
-import type { HealthTargetType } from "@/types";
+import type { HealthScheduleMark, HealthTargetType } from "@/types";
+
+/**
+ * Whether a schedule mark is a real firing (#735). The scheduler writes a mark
+ * with `now` the first time it sees a schedule, so the cycle first fires at its
+ * next occurrence and never at boot; that mark carries neither a cycle nor a
+ * refusal and is not a firing (the Schedule table shows "Never").
+ */
+export function isScheduleFiring(mark: HealthScheduleMark | undefined): mark is HealthScheduleMark {
+  return !!mark && (mark.cycle_id !== null || mark.refusal !== null);
+}
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "destructive" | "cyan";
 

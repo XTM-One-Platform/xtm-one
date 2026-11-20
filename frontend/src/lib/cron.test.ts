@@ -3,7 +3,32 @@
 
 import { describe, expect, it } from "vitest";
 
-import { humanizeCron } from "@/lib/cron";
+import { humanizeCron, nextCronRun } from "@/lib/cron";
+
+describe("nextCronRun", () => {
+  const friday = new Date("2026-11-20T09:21:00Z");
+
+  it("reads a weekly cron to its next Monday, in UTC by default", () => {
+    expect(nextCronRun("0 3 * * 1", undefined, friday)?.toISOString()).toBe("2026-11-23T03:00:00.000Z");
+  });
+
+  it("reads the cron in the timezone given", () => {
+    // 02:00 in Paris (UTC+1 in November) is 01:00 UTC.
+    expect(nextCronRun("0 2 * * *", "Europe/Paris", friday)?.toISOString()).toBe("2026-11-21T01:00:00.000Z");
+  });
+
+  it("answers null for an empty or invalid expression", () => {
+    expect(nextCronRun("", "UTC", friday)).toBeNull();
+    expect(nextCronRun("not a cron", "UTC", friday)).toBeNull();
+    expect(nextCronRun("99 3 * * *", "UTC", friday)).toBeNull();
+  });
+
+  it("answers null for a 4-field or a 6-field expression the server refuses", () => {
+    expect(nextCronRun("0 2 * *", "UTC", friday)).toBeNull();
+    expect(nextCronRun("0 0 2 * * *", "UTC", friday)).toBeNull();
+    expect(nextCronRun("  0 2 * * *  ", "UTC", friday)?.toISOString()).toBe("2026-11-21T02:00:00.000Z");
+  });
+});
 
 describe("humanizeCron", () => {
   it("reads a daily time in Japanese as 毎日 HH:MM", () => {
