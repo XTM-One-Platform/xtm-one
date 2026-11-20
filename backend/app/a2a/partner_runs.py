@@ -19,6 +19,9 @@ scoped by the partner principal (exposure and OAuth client) and never by the
 run-as identity's reach: the runs the partner's own A2A tasks started, and the
 runs those spawned (consults, delegations) through ``parent_run_id``.
 
+The same tree scopes ``list_work_items`` there (``partner_work_items_clause``):
+the tickets the partner's tasks filed, so one call reads all their statuses.
+
 Each row names the partner task it answers. The result is shown only for the
 run a task maps to, which is the text the partner already received; a spawned
 run shows its status and times, never its result, prompt or tool calls. A run
@@ -31,7 +34,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CTE, func, select
+from sqlalchemy import CTE, ColumnElement, func, select
 
 from app.a2a.partner_scope import PartnerPrincipal
 
@@ -65,6 +68,19 @@ def _partner_run_tree(partner: PartnerPrincipal) -> CTE:
     # UNION, not UNION ALL: a run reached twice is listed once, and the walk ends.
     # Recursive CTE: the roots, then every run whose parent is in the tree.
     return roots.union(children)
+
+
+def partner_work_items_clause(partner: PartnerPrincipal) -> ColumnElement[bool]:
+    """The work items the partner's own tasks filed: created by a run of its run tree.
+
+    ``list_work_items`` inside a partner task reads this clause on top of its
+    scope, so a partner lists the status of every ticket it filed in one call
+    and never an item another partner, or the run-as identity, filed.
+    """
+    from app.models.work_item import WorkItem
+
+    tree = _partner_run_tree(partner)
+    return WorkItem.origin_run_id.in_(select(tree.c.run_id))
 
 
 def _trigger(run: AssignmentRun, answered_task: bool) -> str:
