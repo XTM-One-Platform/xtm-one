@@ -10,6 +10,17 @@ When [Platform Health](../administration/health.md) is on, it looks for ways to 
 
 These appear only to the people who may manage the agent or flow: its owner, a person or group it is shared with at the **config** level, and administrators for a company-managed one. Read-only sharing does not show them.
 
+## The Overview tab
+
+The **Overview** tab of the Platform Health page opens first. Every figure on it comes from checks that run on a schedule without any model call, so reading it consumes no agentic quota.
+
+- **Module cards**: one card per module, with its score out of 100, its open findings by severity and the change over the last 7 days. Agents and fleets appear in every deployment; XTM One, OpenCTI, OpenAEV and OpenCRQ appear in XTM One deployments.
+- **Score history**: each module's daily score over 7, 30 or 90 days (administrators).
+- **Findings**: what the checks found, most severe first, with search and filters by severity, module, category and status. Open a row to read its evidence, its recommendation and a link to the documentation.
+- **Dismiss finding**: sets an open finding aside for 7, 30 or 90 days or until it resolves, with a reason. A dismissed finding leaves the score; the reason is recorded in the audit trail. It comes back if it is still failing when the dismissal lapses.
+
+Administrators see every module. Anyone else sees the findings of the agents they manage (owner, or shared at the **config** level), without the module cards of the platforms.
+
 ## Reading a proposal
 
 Each proposal shows:

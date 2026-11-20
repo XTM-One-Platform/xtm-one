@@ -30,10 +30,17 @@ import type {
   HealthBudget,
   HealthCycle,
   HealthCycleStart,
+  HealthFinding,
+  HealthFindingList,
+  HealthFindingStatus,
+  HealthHistoryPoint,
+  HealthModule,
   HealthName,
+  HealthOverview,
   HealthOptIn,
   HealthScheduleMark,
   HealthSettings,
+  HealthSeverity,
   HealthSignal,
   HealthTargetType,
   ImprovementEvidenceLink,
@@ -245,6 +252,63 @@ export function useDecideImprovementProposal() {
       void qc.invalidateQueries({ queryKey: ["improvements"] });
       void qc.invalidateQueries({ queryKey: ["improvement-proposal", id] });
       void qc.invalidateQueries({ queryKey: ["agent"] });
+    },
+  });
+}
+
+// ── Health page (#101 S8): module cards, findings, history ─────────────────
+
+export interface HealthFindingFilters {
+  module?: HealthModule[];
+  severity?: HealthSeverity[];
+  category?: string[];
+  status?: HealthFindingStatus[];
+  limit?: number;
+  offset?: number;
+}
+
+export function useHealthOverview() {
+  return useQuery<HealthOverview>({
+    queryKey: ["health-overview"],
+    queryFn: () => api.get("/health/overview"),
+    throwOnError: false,
+    refetchInterval: REFETCH_INTERVAL_STANDARD,
+  });
+}
+
+export function useHealthFindings(filters: HealthFindingFilters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (Array.isArray(value)) for (const item of value) params.append(key, String(item));
+    else if (value !== undefined) params.set(key, String(value));
+  }
+  const query = params.toString();
+  return useQuery<HealthFindingList>({
+    queryKey: ["health-findings", filters],
+    queryFn: () => api.get(`/health/findings${query ? `?${query}` : ""}`),
+    // The toolbar and the rows shown stay while a filter's list loads (13bis.10 (2)).
+    placeholderData: (previous) => previous,
+    throwOnError: false,
+  });
+}
+
+export function useHealthHistory(days: 7 | 30 | 90) {
+  return useQuery<HealthHistoryPoint[]>({
+    queryKey: ["health-history", days],
+    queryFn: () => api.get(`/health/history?days=${days}`),
+    throwOnError: false,
+  });
+}
+
+/** Dismiss an open finding with a reason; the cards and the lists refresh. */
+export function useDismissHealthFinding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason, days }: { id: string; reason: string; days: number | null }) =>
+      api.post<HealthFinding>(`/health/findings/${encodeURIComponent(id)}/dismiss`, { reason, days }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["health-findings"] });
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
     },
   });
 }

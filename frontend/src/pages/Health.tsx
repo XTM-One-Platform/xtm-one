@@ -14,29 +14,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Platform Health page for administrators (#8261, PRD 6.11; renamed #101 S1): every improvement
- * proposal (search, type and status filters, sort), every cycle with its digest, and the
- * signals currently crossed. Built in since #101 (S1); managers find their
+ * The Platform Health page for administrators (#8261, PRD 6.11; renamed #101 S1): the overview
+ * of module cards, score history and findings (#101 S8), every improvement proposal (search,
+ * type and status filters, sort), every cycle with its digest, and the signals currently crossed. Built in since #101 (S1); managers find their
  * own targets' proposals and cycles on the agent and flow pages.
  */
 import { Link } from "react-router-dom";
-import { Activity, Compass, Lightbulb, Settings2 } from "lucide-react";
+import { Activity, Compass, HeartPulse, Lightbulb, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
 import { HealthCyclesList } from "@/components/health/HealthCyclesList";
+import { HealthOverviewTab } from "@/components/health/HealthOverviewTab";
 import { HealthSignalsList } from "@/components/health/HealthSignalsList";
 import { ImprovementsInbox } from "@/components/health/ImprovementsInbox";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
 
-type Tab = "improvements" | "cycles" | "signals";
+type Tab = "overview" | "improvements" | "cycles" | "signals";
 
 export default function Health() {
   const { t_i18n } = useFormatter();
-  const [tab] = useTabParam<Tab>("improvements");
+  const [tab] = useTabParam<Tab>("overview");
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
+    { key: "overview", label: "Overview", icon: HeartPulse },
     { key: "improvements", label: "Improvements", icon: Lightbulb },
     { key: "cycles", label: "Cycles", icon: Compass },
     { key: "signals", label: "Signals", icon: Activity },
@@ -49,7 +51,7 @@ export default function Health() {
       <ListPageHeader
         title={t_i18n("Platform Health")}
         infoLabel={t_i18n("About Platform Health")}
-        info={t_i18n("What Platform Health found, tried and proposes, cycle by cycle, and the signals it watches.")}
+        info={t_i18n("The health of each module and what its checks found, what Platform Health tried and proposes, cycle by cycle, and the signals it watches.")}
         actions={
           <Button variant="outline" className="gap-1.5" asChild>
             <Link to={HEALTH_SETTINGS_PATH}>
@@ -59,6 +61,7 @@ export default function Health() {
         }
       />
       <DetailTabs tabs={tabs} active={tab} />
+      {tab === "overview" && <HealthOverviewTab />}
       {tab === "improvements" && <ImprovementsInbox />}
       {tab === "cycles" && <HealthCyclesList />}
       {tab === "signals" && <HealthSignalsList />}
