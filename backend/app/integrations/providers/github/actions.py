@@ -255,11 +255,15 @@ _MAX_ANNOTATIONS = 50
 
 
 def _log_is_missing(err: str | None) -> bool:
-    """True when the logs endpoint said the log does not exist (a 404 or the storage's ``BlobNotFound``)."""
+    """True when the logs endpoint said the log does not exist (a 404 or the storage's ``BlobNotFound``).
+
+    ``format_http_error`` writes a 404 as "resource not found while trying to ...":
+    matching only "(404)" left the check-run and unpublished-log answers unreachable (#639).
+    """
     if not err:
         return False
     low = err.lower()
-    return "blobnotfound" in low or "(404)" in low
+    return "blobnotfound" in low or "(404)" in low or "resource not found" in low
 
 
 def _unpublished_log_answer(job_id: int, repo: str, job: dict[str, Any], annotations: list[Any] | None) -> str:
