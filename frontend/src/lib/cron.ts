@@ -72,6 +72,21 @@ export function humanizeCron(cron: string | null | undefined, locale?: string): 
 }
 
 /**
+ * The next occurrence of `cron` after `from`, read in `timeZone` (an IANA
+ * zone such as `Europe/Paris`; UTC when absent), or null when the expression
+ * does not parse. The Platform Health schedule table reads it for its "Next
+ * run" column; the server's own `next_cron_run` decides when a cycle starts.
+ */
+export function nextCronRun(cron: string | null | undefined, timeZone?: string, from: Date = new Date()): Date | null {
+  if (!cron || !cron.trim()) return null;
+  try {
+    return CronExpressionParser.parse(cron.trim(), { currentDate: from, tz: timeZone || "UTC" }).next().toDate();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Project the fire times of `cron` within `(now, to]`, seeded from the
  * authoritative `firstIso` occurrence. Returns at most `max` dates.
  */
