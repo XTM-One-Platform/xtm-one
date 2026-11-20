@@ -2514,7 +2514,13 @@ async def refresh_llm_provider_models(
     discard_edits = bool(body and body.discard_edits)
 
     async def _listed_config() -> LLMProviderConfig:
-        configs = list((await db.execute(select(LLMProviderConfig))).scalars().all())
+        # Fresh rows even for objects the session still holds: the read before
+        # the provider call ends with a commit, which expires nothing.
+        configs = list(
+            (await db.execute(select(LLMProviderConfig).execution_options(populate_existing=True)))
+            .scalars()
+            .all()
+        )
         config = next((c for c in configs if c.id == config_id), None)
         if config is None:
             raise HTTPException(status_code=404, detail="Provider config not found")

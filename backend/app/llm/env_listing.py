@@ -85,12 +85,20 @@ def catalogs_to_list(providers: list[tuple[str, str]], rows: Iterable[Any], mode
 
 def catalogs_to_follow(providers: list[tuple[str, str]], rows: Iterable[Any], models_editable: bool) -> set[str]:
     """The listed providers whose catalog an admin owns (editable mode only) and
-    may hand back to the listing; pinned, the environment decides alone."""
+    may hand back to the listing; pinned, the environment decides alone.
+
+    Only a catalog that exists: the seed never writes one for a provider it
+    keeps unlisted, and the boot drops the snapshot of an edited one, so a
+    catalog, not ``env_models``, is what says an admin or a listing set it.
+    """
     if not models_editable:
         return set()
-    rows = list(rows)
     eligible = {n for n, _ in providers if n in SEED_LISTED_PROVIDERS and env_models_for(n) is None}
-    return eligible - catalogs_to_list(providers, rows, models_editable)
+    if not eligible:
+        return set()
+    rows = list(rows)
+    has_catalog = {r.provider for r in rows if r.user_id is None and r.available_models is not None}
+    return (eligible & has_catalog) - catalogs_to_list(providers, rows, models_editable)
 
 
 async def list_models_for_seed(provider_name: str, api_key: str) -> list[str] | None:

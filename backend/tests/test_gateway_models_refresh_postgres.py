@@ -16,6 +16,7 @@ from app.api.v1 import settings as settings_api
 from app.api.v1.platform_settings_helpers import get_platform_settings
 from app.api.v1.schemas.settings import RefreshModelsRequest
 from app.core.config import settings
+from app.llm.gateway_provider import FiligranGatewayProvider
 from app.models.audit_log import AuditLog
 from app.models.llm_config import LLMProviderConfig
 from app.models.model_catalog_announcement import ModelCatalogAnnouncement
@@ -457,3 +458,69 @@ async def test_a_models_list_in_the_environment_cannot_be_followed_away(monkeypa
 
         assert refused.value.status_code == 409
         assert gateway.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_an_editable_gateway_kept_unlisted_beside_a_chat_provider_is_not_followable(monkeypatch):
+    """Nobody edited it: boot keeps it out of the chat catalog, and so does follow."""
+    async with _database() as sessions:
+        _env(
+            monkeypatch,
+            editable=True,
+            extra={"LLM_PROVIDER_OPENAI_API_KEY": "sk-openai", "LLM_PROVIDER_OPENAI_MODELS": "gpt-5.4"},
+        )
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        assert not (await _gateway_response(sessions, admin)).models_followable
+
+        with pytest.raises(HTTPException) as refused:
+            await _refresh(sessions, admin, row.id, discard_edits=True)
+
+        assert refused.value.status_code == 409
+        assert gateway.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_an_edited_catalog_stays_followable_after_a_restart(monkeypatch):
+    """The boot drops the snapshot of an edited catalog; follow must not hang on it."""
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True)
+        _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        await _edit_catalog(sessions, ["gpt-5.4"])
+
+        await _boot()
+
+        assert (await _gateway_row(sessions)).env_models is None
+        assert (await _gateway_response(sessions, admin)).models_followable
+
+
+@pytest.mark.asyncio
+async def test_an_edit_saved_while_the_gateway_answers_is_not_overwritten(monkeypatch):
+    """The re-check under the lock reads the row afresh, even one the session still holds."""
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True)
+        _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+
+        async def _listing_while_an_admin_edits(provider) -> list[str]:
+            await _edit_catalog(sessions, ["gpt-5.4"])
+            return sorted(LISTED)
+
+        monkeypatch.setattr(FiligranGatewayProvider, "list_models", _listing_while_an_admin_edits)
+        async with sessions() as db:
+            user = await db.get(User, admin.id)
+            held = await db.get(LLMProviderConfig, row.id)  # kept in the identity map
+            with pytest.raises(HTTPException) as refused:
+                await settings_api.refresh_llm_provider_models(
+                    provider_id=str(row.id), request=None, body=None, user=user, db=db, _ai_gate=None
+                )
+            assert held is not None
+
+        assert refused.value.status_code == 409
+        assert (await _gateway_row(sessions)).available_models == ["gpt-5.4"]
