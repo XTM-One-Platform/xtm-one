@@ -22,7 +22,8 @@ and what their clean-up freed, the sandbox pods per image key) and the platform 
 deployed build, the feature flags on, trace retention, the freshness of the
 daily aggregation) are what the settings pages show. Outside the administrator
 scope every count is of the caller's own objects, and the people and groups of
-the platform are left out.
+the platform are left out. The instance identity (Instance ID, display name, URL)
+is answered to every caller: GET /platform/config already serves it.
 """
 
 from __future__ import annotations
@@ -131,6 +132,7 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
     from app.api.v1.admin_objects import active_entity_arms, objects_union
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.core.feature_flags import resolve_enabled_feature_flags
+    from app.services.branding import get_cached_branding
 
     now = datetime.now(UTC)
     own = None if scope.platform else scope.user.id
@@ -187,6 +189,14 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
     result: dict[str, Any] = {
         **scope.header(),
         "as_of": now.isoformat(),
+        # Who this platform is: the Instance ID of Settings > Parameters (PLATFORM_ID when forced),
+        # the resolved display name and the public URL, so an agent can name its own instance.
+        # The id and the name are already public on GET /platform/config.
+        "instance": {
+            "instance_id": str(platform_settings.id),
+            "platform_name": get_cached_branding().name,
+            "url": settings.frontend_url,
+        },
         "objects_by_type": objects,
         "agents_by_state": await _grouped(db, agent_state, Agent.is_sandbox.is_(False), *owned(Agent)),
         "assignments_by_trigger_type": await _grouped(db, Assignment.trigger_type, *owned(Assignment)),
