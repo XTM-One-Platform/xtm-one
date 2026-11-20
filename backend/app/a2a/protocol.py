@@ -425,10 +425,14 @@ def outbound_message(
     dialect: str,
     message_id: str,
     task_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One caller-side ``Message``, spelled for *dialect*.
 
-    Carries ONLY the composed text (FR-032). ``messageId`` is required by v0.3
+    Carries ONLY the composed text (FR-032), plus ``metadata`` when the
+    operator opted the integration in to sending this instance's identity
+    (#708; ``Message.metadata`` exists in v0.3 and v1.0 alike, so it is spelled
+    the same in every dialect). ``messageId`` is required by v0.3
     and is the receiving surface's dedup key. ``task_id`` rides on the MESSAGE,
     which is where every version puts it - no send-parameters type has a task
     id of its own.
@@ -451,7 +455,23 @@ def outbound_message(
     message["messageId"] = message_id
     if task_id:
         message["taskId"] = task_id
+    if metadata:
+        message["metadata"] = dict(metadata)
     return message
+
+
+#: The key of the instance identity in an outbound ``Message.metadata`` (#708).
+#: Namespaced so it never collides with a partner's own metadata keys.
+INSTANCE_METADATA_KEY: Final = "xtmOneInstance"
+
+
+def instance_metadata(instance_id: str, platform_name: str) -> dict[str, Any]:
+    """The metadata an opted-in integration sends: who is calling, nothing else.
+
+    Two public values (both already served on ``GET /platform/config``): the
+    Instance ID and the display name. Never a URL, a user, a run or a token.
+    """
+    return {INSTANCE_METADATA_KEY: {"instanceId": instance_id, "platformName": platform_name}}
 
 
 def outbound_configuration(dialect: str) -> dict[str, Any] | None:

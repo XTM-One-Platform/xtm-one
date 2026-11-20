@@ -254,6 +254,18 @@ def registration_editable_extra_fields(provider: str) -> frozenset[str]:
     return frozenset(entry.get("registration_editable_extra_fields") or ())
 
 
+# The outbound opt-in of #708, shared by the three A2A providers: whether
+# every message sent to the partner carries this instance's identity (Instance
+# ID and display name) in its metadata. Off by default, first option.
+_A2A_SEND_INSTANCE_IDENTITY_LABEL = (
+    "Send this instance's identity (Instance ID and platform name) in the metadata of every message to the partner"
+)
+_A2A_SEND_INSTANCE_IDENTITY_OPTIONS = [
+    {"value": "off", "label": "Off: the message text only (default)"},
+    {"value": "on", "label": "On: tell the partner which instance is calling"},
+]
+
+
 # The complete set of JSON-RPC methods a federated partner may invoke on an
 # exposed agent's task surface — the protocol's whole vocabulary, since
 # everything else is refused (see ``app.a2a.protocol``). Shared by BOTH A2A
@@ -6346,6 +6358,7 @@ PROVIDER_CATALOG = {
                         "constraints/iam.disableServiceAccountKeyCreation, which "
                         "is Google's own recommended baseline (required)"
                     ),
+                    "send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_LABEL,
                 },
                 "setup_guide": {
                     "title": "Google Agent Platform A2A Setup",
@@ -6375,6 +6388,7 @@ PROVIDER_CATALOG = {
                 },
                 {"value": "key", "label": "Service account key JSON"},
             ],
+            "send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_OPTIONS,
         },
         # Which fields belong to which choice. Read by the creation form and
         # the configuration editor, which hide a field whose condition is not
@@ -6466,6 +6480,7 @@ PROVIDER_CATALOG = {
                     "tenant_id": "Your Entra tenant (directory) ID (required)",
                     "client_id": "Your Entra application (client) ID (required)",
                     "client_secret": "Your Entra client secret (required)",
+                    "send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_LABEL,
                 },
                 "setup_guide": {
                     "title": "Foundry A2A Setup",
@@ -6487,6 +6502,7 @@ PROVIDER_CATALOG = {
                 },
             },
         },
+        "extra_field_options": {"send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_OPTIONS},
         "available_tools": _A2A_OPERATIONS,
         "a2a_inbound_agent_tools": _A2A_INBOUND_AGENT_TOOLS,
         "a2a_outbound_exposed": _A2A_OUTBOUND_EXPOSED,
@@ -6582,6 +6598,7 @@ PROVIDER_CATALOG = {
                     ),
                     "client_id": "Client ID the partner issued you (required)",
                     "client_secret": "Client secret the partner issued you (required)",
+                    "send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_LABEL,
                 },
                 "setup_guide": {
                     "title": "OAuth A2A Setup",
@@ -6604,6 +6621,7 @@ PROVIDER_CATALOG = {
                 },
             },
         },
+        "extra_field_options": {"send_instance_identity": _A2A_SEND_INSTANCE_IDENTITY_OPTIONS},
         "available_tools": _A2A_OPERATIONS,
         "a2a_inbound_agent_tools": _A2A_INBOUND_AGENT_TOOLS,
         "a2a_outbound_exposed": _A2A_OUTBOUND_EXPOSED,

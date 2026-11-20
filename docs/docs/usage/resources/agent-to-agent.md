@@ -94,6 +94,8 @@ Each partner agent that passes verification becomes one delegation tool for the 
 
 A delegation sends only the message the agent writes for it — not your conversation, nor any credential of yours. The partner's answer comes back as a quote from an outside party, not as instructions. When the partner runs XTM One, the agents your credential reaches appear on their own, without anyone typing their URLs.
 
+To tell the partner which instance is calling, set `Send this instance's identity` to `On` on the outbound integration. Every message it sends then carries, in its metadata under `xtmOneInstance`, this platform's Instance ID (`Settings` > `Parameters`) and its name; nothing else is added. It is `Off` by default, and each integration is set on its own.
+
 !!! warning "Card URLs must be HTTPS"
     A card URL that is not HTTPS, or that points at a private or loopback address, is refused.
 

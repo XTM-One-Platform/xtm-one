@@ -159,6 +159,28 @@ def configured_card_urls(integration) -> list[str]:
     return out
 
 
+#: The outbound extra-config choice that opts an integration in to sending
+#: this instance's identity in every message's metadata (#708). Off by
+#: default: an integration without it, or with any other value, sends the
+#: composed text alone (FR-032).
+SEND_INSTANCE_IDENTITY_FIELD = "send_instance_identity"
+SEND_INSTANCE_IDENTITY_ON = "on"
+SEND_INSTANCE_IDENTITY_OFF = "off"
+
+
+def sends_instance_identity(integration: Any) -> bool:
+    """Whether the operator opted this integration in to the instance identity.
+
+    Read from the stored extra config like the card URLs: a choice, never a
+    credential. Anything but exactly ``on`` is off, so an unreadable or
+    hand-edited value can only withhold the identity, never send it.
+    """
+    if not getattr(integration, "extra_config_enc", None):
+        return False
+    value = _stored_config(integration).get(SEND_INSTANCE_IDENTITY_FIELD)
+    return isinstance(value, str) and value.strip().lower() == SEND_INSTANCE_IDENTITY_ON
+
+
 def _secret(enc: str | None) -> str | None:
     if not enc:
         return None
