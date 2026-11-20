@@ -187,7 +187,15 @@ export function CtemPageHeader({
               ) : (
                 eyebrow
               )}
-              {crumbExtras && <span className="flex min-w-0 shrink items-center gap-2 overflow-hidden">{crumbExtras}</span>}
+              {/* The extras wrap onto a second caption line when the line is short
+                  of room, never shrink an item to nothing (#604: the owner link and
+                  the context confirmation were 0 px wide at 1080 next to a badge).
+                  An item wider than the whole line still truncates on its own. */}
+              {crumbExtras && (
+                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5" data-testid="ctem-page-header-crumb-extras">
+                  {crumbExtras}
+                </span>
+              )}
             </nav>
           )}
           <div className="flex min-w-0 items-center gap-2">

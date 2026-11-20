@@ -122,6 +122,27 @@ describe("CtemPageHeader", () => {
     expect(screen.getByText("Stage 2 of 5").textContent).toBe("Stage 2 of 5");
   });
 
+  // #604: at 1080 the owner link and the context confirmation shrank to 0 px
+  // next to a badge on a nowrap, clipping wrapper. The extras wrap whole items
+  // onto a second caption line instead, and never clip them.
+  it("wraps the breadcrumb extras instead of shrinking or clipping them", () => {
+    draw({
+      back: { to: "/", label: "Back to Command Center" },
+      crumb: "Stage 2 of 5",
+      crumbExtras: (
+        <>
+          <span>Not enough data to score</span>
+          <span>Owner agent</span>
+        </>
+      ),
+    });
+    const extras = screen.getByTestId("ctem-page-header-crumb-extras");
+    expect(extras.className).toContain("flex-wrap");
+    expect(extras.className).toContain("min-w-0");
+    expect(extras.className).not.toContain("overflow-hidden");
+    expect(extras.textContent).toBe("Not enough data to scoreOwner agent");
+  });
+
   it("draws the actions and the chips when given", () => {
     draw({ actions: <button type="button">Export</button>, chips: <span>OpenCTI</span> });
     expect(screen.getByTestId("ctem-page-header-actions").textContent).toContain("Export");
