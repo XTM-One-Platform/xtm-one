@@ -1113,6 +1113,61 @@ async def test_connector_kind_reads_one_related_ids_endpoint(monkeypatch):
     assert fake.calls[0]["path"] == "/api/executors/e1/related-ids"
 
 
+async def test_instance_get_shows_image_and_container_runtime(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+                "connector_image": "openaev/injector-nmap:rolling",
+                "connector_instance_started_at": "2026-11-20T10:00:00Z",
+                "connector_instance_restart_count": 2,
+                "connector_instance_is_in_reboot_loop": False,
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  image: openaev/injector-nmap:rolling" in result.content
+    assert "  started at: 2026-11-20T10:00:00Z" in result.content
+    assert "  restart count: 2" in result.content
+    assert "  in reboot loop: no" in result.content
+    assert "not reported" not in result.content
+
+
+async def test_instance_get_says_when_start_time_is_not_reported(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  started at: not reported by this OpenAEV" in result.content
+    assert "  image:" not in result.content
+    assert "restart count" not in result.content
+
+
 async def test_connector_without_an_instance_says_it_is_not_managed(monkeypatch):
     from app.integrations.providers.openaev import platform
 
