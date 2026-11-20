@@ -73,6 +73,28 @@ def test_per_run_counts_a_completed_text_run_and_nothing_else():
     assert units_of_run(d, status="failed", result_summary=None) == 0
 
 
+def test_per_run_counts_nothing_for_a_run_a_gate_skipped() -> None:
+    """A gate-skipped run is ``completed`` with nothing done: 0 units, backfill included."""
+    d = ResolvedDeclaration(unit="email_triaged", count_mode=COUNT_PER_RUN, units_per_count=2)
+    for summary in (
+        "Skipped: gate check list_work_items returned empty",
+        "Skipped: gate checks: none of 2 passed (a; b)",
+        "Skipped: activation check returned 'NO'",
+    ):
+        assert units_of_run(d, status="completed", result_summary=summary) == 0
+    assert units_of_run(d, status="completed", result_summary="Skipped the newsletter, triaged 3") == 2
+
+
+def test_the_gate_skip_prefixes_match_the_engine_summaries() -> None:
+    from app.services import assignment_engine
+    from app.services.assignment_activation_check import SKIP_SUMMARY_PREFIX
+
+    assert set(roi_records.GATE_SKIP_SUMMARY_PREFIXES) == {
+        SKIP_SUMMARY_PREFIX,
+        assignment_engine._ACTIVATION_SKIP_SUMMARY_PREFIX,
+    }
+
+
 def test_per_output_item_matches_the_legacy_count():
     d = ResolvedDeclaration(unit="cve_assessed", count_mode=COUNT_PER_OUTPUT_ITEM, count_path="cves")
     out = json.dumps({"cves": [1, 2, 3]})

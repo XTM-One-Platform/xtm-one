@@ -125,7 +125,7 @@ Counting:
 
 | Mode | Units of a completed run | Works for |
 |---|---|---|
-| `per_run` | `units_per_count` when the run completed successfully, 0 otherwise | text-output agents |
+| `per_run` | `units_per_count` when the run completed successfully, 0 otherwise (a run its tool check or activation prompt skipped counts 0, in the live hook and the backfill) | text-output agents |
 | `per_output_item` | `count_units(path, structured output)` (today) | JSON-output agents |
 | `per_work_item` | recorded when a work item owned by the agent reaches `done` (not `cancelled`), one record per item | agents working a queue |
 

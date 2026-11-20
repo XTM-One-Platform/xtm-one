@@ -263,16 +263,31 @@ def units_of_work_item(declaration: ResolvedDeclaration, *, payload: Any, result
     return 0
 
 
+#: Summaries a run ends with when a gate skipped it: it ran no agent and
+#: produced nothing (``assignment_activation_check.SKIP_SUMMARY_PREFIX`` and
+#: ``assignment_engine._ACTIVATION_SKIP_SUMMARY_PREFIX``, pinned by a test).
+GATE_SKIP_SUMMARY_PREFIXES: tuple[str, ...] = ("Skipped: gate check", "Skipped: activation check returned")
+
+
+def gate_skipped(result_summary: str | None) -> bool:
+    """Whether a completed run was ended by its tool check or its LLM gate."""
+    return result_summary is not None and result_summary.startswith(GATE_SKIP_SUMMARY_PREFIXES)
+
+
 def units_of_run(declaration: ResolvedDeclaration, *, status: str | None, result_summary: str | None) -> int | None:
     """Units a finished run produced under *declaration*; ``None`` when runs do not count.
 
-    ``per_run``: ``units_per_count`` for a completed run, 0 otherwise.
+    ``per_run``: ``units_per_count`` for a completed run, 0 otherwise; a run a
+    gate skipped (tool check or activation prompt) completed with nothing done
+    and counts 0, in the live hook and in the backfill alike.
     ``per_output_item``: the count at the declared path of the structured
     output (today's rule). ``per_work_item``: counted at the work item's
     completion, never at the run's.
     """
     if declaration.count_mode == COUNT_PER_RUN:
-        return declaration.units_per_count if status == "completed" else 0
+        if status != "completed" or gate_skipped(result_summary):
+            return 0
+        return declaration.units_per_count
     if declaration.count_mode == COUNT_PER_OUTPUT_ITEM:
         if not declaration.count_path:
             return 0
