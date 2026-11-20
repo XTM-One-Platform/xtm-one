@@ -53,6 +53,16 @@ describe("ModuleThresholdsBlock", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ opencti: expect.objectContaining({ connector_stale_minutes: 45, queue_depth_max: 100000 }) }));
   });
 
+  it("marks an out-of-bounds value invalid at the field, with its bounds as the error", () => {
+    const outOfBounds = { ...draft, opencti: { ...draft.opencti, connector_stale_minutes: 2 } } as HealthSettings;
+    renderWithProviders(<ModuleThresholdsBlock draft={outOfBounds} editing onChange={() => {}} />);
+    const field = screen.getByRole("spinbutton", { name: "Connector silent after" });
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription("From 5 to 10080 minutes.");
+    expect(screen.getByRole("alert")).toHaveTextContent("From 5 to 10080 minutes.");
+    expect(screen.getByRole("spinbutton", { name: "Connector errors above" })).toHaveAttribute("aria-invalid", "false");
+  });
+
   it("is absent in Copilot mode", () => {
     mode.xtmOne = false;
     renderWithProviders(<ModuleThresholdsBlock draft={draft} editing={false} onChange={() => {}} />);

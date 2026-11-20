@@ -90,13 +90,18 @@ export function NumberField({
   const id = useId();
   // At rest (#10855): the number and its unit as text, never a disabled input.
   if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${display(value)} ${unit}` : ""} />;
+  // Out of bounds (or empty): the bound line turns into the field's inline error
+  // and the input is marked aria-invalid, so the reason Save is off sits at the field.
+  const invalid = !Number.isFinite(value) || value < min || value > max;
+  const bounds = t_i18n("From {min} to {max} {unit}.", { min, max, unit });
   return (
-    <SettingsField id={id} label={label} info={info} helper={t_i18n("From {min} to {max} {unit}.", { min, max, unit })}>
+    <SettingsField id={id} label={label} info={info} helper={invalid ? undefined : bounds} error={invalid ? bounds : undefined}>
       <div className="flex items-center gap-2">
         <Input
           id={id}
           aria-labelledby={settingsFieldLabelId(id)}
           aria-describedby={settingsFieldHintId(id)}
+          aria-invalid={invalid}
           type="number"
           inputMode="decimal"
           min={min}
