@@ -2692,7 +2692,8 @@ _CTEM_F2_TRIAGE_PROMPT = (
     "Triage Analyst, close it not applicable with the reason when nothing the "
     "organization runs is affected, else record the ranked finding in "
     "ctem:f2:state and propose the validation (work item "
-    "`ctem:f2:validate:` followed by the CVE id, needs_human). {priority}"
+    "`ctem:f2:validate:` followed by the CVE id, needs_human with an ask card: "
+    "the question, approve and reject options, your recommendation). {priority}"
 )
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
@@ -2838,7 +2839,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {"correlation_prefix": "ctem:f1:retest:"},
         "prompt": (
             "A re-test is due for the case in the work item below. Propose the "
-            "re-run of its validated scenario as a needs_human work item, read "
+            "re-run of its validated scenario as a needs_human work item with an "
+            "ask card (approve or reject, your recommendation), read "
             "the result once it ran, ask the Risk Quantifier for the loss "
             "after, update ctem:f1:state and close the case with the delta."
         ),

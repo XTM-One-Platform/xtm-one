@@ -1417,23 +1417,32 @@ def _origin_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
 
 
 async def _check_blockers(db, user_id: str | None, blockers: Sequence[str]) -> None:
-    """Refuse a ``blocked_on`` naming an item the caller cannot see."""
+    """Refuse a ``blocked_on`` naming an item the caller cannot see, or a cancelled one.
+
+    A cancelled item never completes: waiting on it would be surfaced back to
+    the owner at the next tick, again and again (#762).
+    """
     uid = safe_uuid(user_id) if user_id else None
     readable, _ = await _workspace_tiers(db, user_id)
     ids = [safe_uuid(b) for b in blockers]
-    found = {
-        str(row)
-        for row in (
-            await db.execute(
-                select(WorkItem.id).where(WorkItem.id.in_(ids), _visible_clause(uid, readable))
-            )
-        ).scalars().all()
-    }
+    rows = (
+        await db.execute(
+            select(WorkItem.id, WorkItem.status).where(WorkItem.id.in_(ids), _visible_clause(uid, readable))
+        )
+    ).all()
+    found = {str(row[0]): row[1] for row in rows}
     missing = [b for b in blockers if b not in found]
     if missing:
         raise ValueError(
             "blocked_on names work item(s) that do not exist or that you cannot see: "
             + ", ".join(missing)
+        )
+    cancelled = [b for b in blockers if found.get(b) == "cancelled"]
+    if cancelled:
+        raise ValueError(
+            "blocked_on names cancelled work item(s), which can never release this item: "
+            + ", ".join(cancelled)
+            + "; nothing was written"
         )
 
 
@@ -1900,11 +1909,12 @@ async def create_work_item(
     refuse_needs_human_without_ask(needs_human, structured_ask)
     refuse_blocked_without_why(
         status,
-        owner_agent_id=owner_agent_id,
+        owner_agent_id=owner_uuid,
         blocked_on=blockers,
         blocked_on_refs=refs,
         needs_human=needs_human,
         ask=structured_ask,
+        payload=payload,
     )
     refuse_blocked_on_red_pull_request(status, blocked_on_refs=refs, payload=payload, blocked_on=blockers)
     refuse_foreign_pull_request_ref(status, correlation_key=correlation_key, title=title, blocked_on_refs=refs)
@@ -2335,14 +2345,18 @@ async def update_work_item(
             )
         if writer_run_ids is not None:
             _refuse_work_on_finished_item(item, status)
-        landing_ask = getattr(item, "ask", None) if ask is None else new_ask
+        # The stored card stands only for the decision it was written for: a
+        # new park for a person brings its own (#762, never a stale question).
+        landing_ask = (
+            (getattr(item, "ask", None) if getattr(item, "needs_human", None) else None) if ask is None else new_ask
+        )
         if needs_human or (ask is not None and human):
             # A person's decision carries its card (#762): written now, or kept.
             refuse_needs_human_without_ask(human, landing_ask)
         why_written = (
-            any(v is not None for v in (status, blockers, refs, blocked_reason, needs_human, ask))
-            or owner_agent_id == ""
-        )  # re-routing a blocked item stays free; clearing its owner does not
+            any(v is not None for v in (status, blockers, refs, needs_human, ask)) or owner_agent_id == ""
+        )  # re-routing a blocked item or refreshing its reason (context, never the blocker) stays free;
+        # clearing its owner does not
         if landing == "blocked" and why_written:
             # Black or white, checked on the item as it would land (#762); a write
             # that touches none of these fields leaves a legacy item as it is.
@@ -2358,6 +2372,8 @@ async def update_work_item(
                 blocked_on_refs=getattr(item, "blocked_on_refs", None) if refs is None else refs,
                 needs_human=human,
                 ask=landing_ask,
+                # An open pull request bound in the payload releases it by its CI completion.
+                payload=getattr(item, "payload", None) if payload is None else payload,
             )
         # Cancelled or done by another writer while a live run holds it: the run is told (#11554).
         finished_note = await _finished_under_live_holder(db, item, status, writer, writer_run_ids, now)
@@ -2486,6 +2502,9 @@ async def update_work_item(
             item.blocked_reason = reason
         if needs_human is not None:
             item.needs_human = human
+            if not human and ask is None:
+                # The card goes with the decision it asked for (#762).
+                item.ask = None
             if human and item.status == "open":
                 # Parked for a person: out of the owner's queue until the answer (#497).
                 item.status = "blocked"
@@ -4381,6 +4400,7 @@ async def requeue_work_item(
             item.blocked_on_refs = None
             item.blocked_reason = None
             item.needs_human = None
+            item.ask = None  # a later park asks its own question, never this one again (#762)
             item.last_activity_at = datetime.now(UTC)
             await db.commit()
     if previous_status is not None:
@@ -6198,7 +6218,12 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
         rows = (
             await db.execute(
                 select(
-                    WorkItem.id, WorkItem.blocked_on, WorkItem.claim_notes, WorkItem.blocked_on_refs, WorkItem.payload
+                    WorkItem.id,
+                    WorkItem.blocked_on,
+                    WorkItem.claim_notes,
+                    WorkItem.blocked_on_refs,
+                    WorkItem.payload,
+                    WorkItem.needs_human,
                 )
                 .where(
                     WorkItem.status == "blocked",
@@ -6212,7 +6237,7 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
         ).all()
         if not rows:
             return 0
-        wanted = {safe_uuid(str(b)) for _id, blockers, _notes, _refs, _payload in rows for b in blockers or []}
+        wanted = {safe_uuid(str(b)) for _id, blockers, _notes, _refs, _payload, _human in rows for b in blockers or []}
         wanted.discard(None)
         statuses: dict[str, str] = {}
         verdicts: dict[str, str | None] = {}
@@ -6248,7 +6273,7 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
                     )
                 ).all()
             ]
-        for item_id, blockers, notes, refs, payload in rows:
+        for item_id, blockers, notes, refs, payload, waits_for_person in rows:
             blockers = [str(b) for b in blockers or []]
             release_on = (payload or {}).get(RELEASE_ON_KEY) if isinstance(payload, dict) else None
             note = (
@@ -6264,11 +6289,9 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
                 # Treated as a release of the dependency (#762): the rest of its
                 # wait (references) still holds it below, else back to its owner.
                 unblocked = True
-            followers = (
-                _pending_verdict_comments(str(item_id), blockers, reviews, verdict_items)
-                if unblocked and not surfaced
-                else []
-            )
+            # A decided UX review among its blockers still waits for its verdict
+            # comment, whether the other blockers finished or were cancelled.
+            followers = _pending_verdict_comments(str(item_id), blockers, reviews, verdict_items) if unblocked else []
             if followers:
                 # The review is decided, its verdict is not on the pull request
                 # yet: wait for the item that posts it, released at its completion.
@@ -6282,9 +6305,10 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
                     .values(blocked_on=followers, claim_notes=_with_note(notes, wait_note), updated_at=now)
                 )
                 continue
-            if unblocked and refs and not all_refs_satisfied(refs):
-                # Its items are done, its pull requests or issues are not:
-                # their delivery releases it; only the dependency goes now.
+            if unblocked and ((refs and not all_refs_satisfied(refs)) or waits_for_person):
+                # Its items are done (or cancelled), its pull requests or issues
+                # are not, or a person's decision is still owed: their delivery or
+                # the answer releases it; only the dependency goes now (#762).
                 values_kept: dict[str, Any] = {"blocked_on": None, "claim_notes": _with_note(notes, note)}
                 if release_on:
                     values_kept["payload"] = with_release_on(payload, None)
@@ -6306,6 +6330,7 @@ async def release_satisfied_dependencies(*, limit: int = _RELEASE_BATCH, blocker
                     "blocked_on_refs": None,
                     "blocked_reason": None,
                     "needs_human": None,
+                    "ask": None,
                     "claimed_by_agent_id": None,
                     "claimed_by_run_id": None,
                     "claimed_at": None,

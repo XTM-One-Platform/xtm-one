@@ -3587,6 +3587,14 @@ class FlowWalker:
                     return _NodeResult(
                         error=f"The status must be one of: {', '.join(WORK_ITEM_STATUSES)}."
                     )
+                if status == "blocked":
+                    # Blocked is black or white (#762): a text cannot be the blocker.
+                    return _NodeResult(
+                        error=(
+                            "A flow cannot set a work item blocked: leave it open with a later "
+                            "not_before, or create the wait with blocked_on. Nothing was written."
+                        )
+                    )
                 # Ending an item is completing it: its holder is released and
                 # its end is reported like any other completion.
                 item = (
@@ -3598,8 +3606,6 @@ class FlowWalker:
                         work_item_id,
                         user_id=user_id,
                         status=status,
-                        # A blocked item says why: the node's text is the reason.
-                        blocked_reason=(text.text.strip() or None) if status == "blocked" else None,
                         writer=writer,
                     )
                 )

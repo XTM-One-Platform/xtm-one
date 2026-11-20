@@ -117,6 +117,15 @@ def test_a_blocked_item_that_is_not_black_or_white_is_reported(fields: dict[str,
     assert signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
 
 
+def test_a_wait_on_its_own_open_pull_request_is_not_reported() -> None:
+    # Written by the inbox finalizer for a draft, released by its CI completion.
+    bound = {"pull_requests": [{"repo": "o/r", "number": 12, "state": "open", "draft": True}]}
+    fields = {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "WAITS FOR: o/r#12", "needs_human": None}
+    assert not signals.blocked_without_blocker(owner_agent_id=_OWNER, payload=bound, **fields)
+    closed = {"pull_requests": [{"repo": "o/r", "number": 12, "state": "closed"}]}
+    assert signals.blocked_without_blocker(owner_agent_id=_OWNER, payload=closed, **fields)
+
+
 def test_an_ownerless_blocked_item_is_reported_whatever_it_waits_for() -> None:
     assert signals.blocked_without_blocker(blocked_on=["x"], blocked_on_refs=None, needs_human=None)
 
