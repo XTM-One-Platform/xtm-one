@@ -218,6 +218,33 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
     return ask
 
 
+def person_ask_missing(ask: object) -> list[str]:
+    """What a decision card for a person still lacks in *ask* (#776).
+
+    An agent that parks an item for a person (``needs_human``) writes the card
+    the person reads: a question, the context and at least two options.
+    Empty when the ask is complete.
+    """
+    if not isinstance(ask, dict) or not str(ask.get("question") or "").strip():
+        return ["ask.question", "ask.context", "ask.options (at least 2)"]
+    missing: list[str] = []
+    if not str(ask.get("context") or "").strip():
+        missing.append("ask.context")
+    if len(ask.get("options") or []) < 2:
+        missing.append("ask.options (at least 2)")
+    return missing
+
+
+def refuse_incomplete_person_ask(ask: object) -> None:
+    """``ValueError`` naming what an agent's needs_human write must add to its ask."""
+    missing = person_ask_missing(ask)
+    if missing:
+        raise ValueError(
+            f"needs_human parks the item for a person, who reads its ask as a decision card: add "
+            f"{', '.join(missing)} in the same call ({READABLE_ASK_EXAMPLE})"
+        )
+
+
 def ask_lines(ask: object) -> list[str]:
     """What a tool result says of an item's ask (nothing when it has none)."""
     if not isinstance(ask, dict) or not ask.get("question"):
