@@ -1,3 +1,16 @@
+# Copyright (c) 2025-2026 Filigran SAS
+#
+# This file is part of the XTM One Enterprise Edition ("EE") and is
+# licensed under the XTM One Enterprise Edition License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
 """Platform Health editable thresholds (#101 S10b, dev-docs/platform-health.md sections 4.3, 4.4 and 7):
 the OpenCTI and OpenAEV (E) thresholds live in the Platform Health settings, default to the values the
 checks shipped with, refuse values out of bounds, and are what the checks compare against."""
@@ -56,7 +69,13 @@ def test_a_threshold_out_of_bounds_is_refused(model: type, field: str, value: fl
 def test_the_opencti_checks_compare_against_the_thresholds_given() -> None:
     snapshot = {
         "connectors": [
-            {"id": "c1", "name": "C1", "active": True, "updated_at": (NOW - timedelta(minutes=20)).isoformat(), "works_in_error": 5}
+            {
+                "id": "c1",
+                "name": "C1",
+                "active": True,
+                "updated_at": (NOW - timedelta(minutes=20)).isoformat(),
+                "works_in_error": 5,
+            }
         ],
         "rabbitmq": {"queue_messages": 5_000, "consumers": 2},
         "search_engine": {"status": "green", "disk_used_percent": 70},
@@ -84,7 +103,9 @@ def test_the_opencti_checks_compare_against_the_thresholds_given() -> None:
 
 def test_the_openaev_checks_compare_against_the_thresholds_given() -> None:
     snapshot = {
-        "integrations": [{"id": "i1", "name": "I1", "kind": "injector", "updated_at": (NOW - timedelta(minutes=30)).isoformat()}],
+        "integrations": [
+            {"id": "i1", "name": "I1", "kind": "injector", "updated_at": (NOW - timedelta(minutes=30)).isoformat()}
+        ],
         "agents": {"total": 10, "offline": 3},
     }
     tight = HealthOpenAEVThresholds(integration_silent_minutes=15, agents_offline_max_percent=20)
