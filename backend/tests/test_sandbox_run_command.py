@@ -153,6 +153,21 @@ def test_extra_args_are_bounded():
         checks.extra_args(["a\x00b"])
 
 
+def test_a_call_arg_carries_an_inline_text_past_the_declared_argv_bound():
+    """An inline SQL or JSON a call passes outgrows the 512 characters of a declared argv item (#788)."""
+    sql = "SELECT " + "x" * (checks.MAX_ARG_CHARS + 100)
+    assert checks.extra_args(["--sql", sql]) == ["--sql", sql]
+    too_long = "x" * (checks.CALL_MAX_ARG_CHARS + 1)
+    with pytest.raises(checks.ChecksError) as refused:
+        checks.extra_args(["--sql", too_long])
+    text = str(refused.value)
+    assert f"items of {checks.CALL_MAX_ARG_CHARS} characters" in text
+    assert f"the longest {checks.CALL_MAX_ARG_CHARS + 1} characters" in text and "file of the checkout" in text
+    # A declared check argv keeps its own bound.
+    with pytest.raises(checks.ChecksError, match=f"items of {checks.MAX_ARG_CHARS} characters"):
+        checks.load_checks(f'[check.a]\nargv = ["{"x" * (checks.MAX_ARG_CHARS + 1)}"]\n')
+
+
 # -- the reports ---------------------------------------------------------------
 
 JUNIT = """<testsuites><testsuite name="pytest" tests="4">

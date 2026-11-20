@@ -63,8 +63,14 @@ OPERATIONS: dict[str, tuple[str, str]] = {
     # ── Me and settings ──
     "settings": (
         "get_xtm_hub_settings",
-        "Read the Hub's public settings: feature flags, login providers, front URL, environment.",
+        "Read the Hub's public settings: capabilities, feature flags, login providers, front URL, environment.",
     ),
+    "apiTokens": ("list_xtm_hub_my_api_tokens", "List the token user's API tokens, revoked and expired ones included."),
+    "organizationApiTokens": (
+        "list_xtm_hub_organization_api_tokens",
+        "List every API token of the token's organization (its administrators).",
+    ),
+    "revokeApiToken": ("revoke_xtm_hub_api_token", "Revoke one API token at once; it stops working."),
     "userOrganizations": ("list_xtm_hub_my_organizations", "List the organizations the token's user belongs to."),
     "userServiceCapabilities": (
         "get_xtm_hub_my_service_capabilities",
@@ -173,19 +179,7 @@ OPERATIONS: dict[str, tuple[str, str]] = {
     ),
     "newsFeedItems": ("list_xtm_hub_news_feed", "List the news feed items."),
     "deleteNewsFeedItem": ("delete_xtm_hub_news_feed_item", "Delete one news feed item permanently."),
-    "consumeProvisionedNewsFeedItems": (
-        "consume_xtm_hub_provisioned_news",
-        "Publish the provisioned news feed items into the feed.",
-    ),
-    "ingestManifestFragments": (
-        "ingest_xtm_hub_manifest_fragments",
-        "Ingest connector manifest fragments into the integrations library.",
-    ),
     "generateManifest": ("generate_xtm_hub_manifest", "Generate the connectors manifest of a product version."),
-    "updateOpenCTIManifest": (
-        "update_xtm_hub_opencti_manifest",
-        "Refresh the OpenCTI connectors manifest from a release tag.",
-    ),
     "competitors": ("list_xtm_hub_competitors", "List the competitors referenced by the Hub."),
     "createCompetitor": ("create_xtm_hub_competitor", "Create a competitor."),
     "updateCompetitor": ("update_xtm_hub_competitor", "Update a competitor."),
@@ -311,7 +305,6 @@ OPERATIONS: dict[str, tuple[str, str]] = {
         "get_xtm_hub_platform_bundle",
         "Read the token organization's XTM Platform bundle deployment.",
     ),
-    "deploymentRequests": ("list_xtm_hub_deployment_requests", "List the token organization's deployment requests."),
     "deploymentRequestsAvailable": (
         "list_xtm_hub_available_deployments",
         "List which products and regions can be requested now, and the quota left.",
@@ -321,10 +314,6 @@ OPERATIONS: dict[str, tuple[str, str]] = {
         "List every deployment request with its queue order (Hub administrators).",
     ),
     "createDeploymentRequest": ("create_xtm_hub_deployment_request", "Request a trial or bundle deployment."),
-    "updateDeploymentRequest": (
-        "update_xtm_hub_deployment_request",
-        "Update a deployment request: state, dates, status (Hub administrators).",
-    ),
     "reorderDeploymentRequestInQueue": (
         "reorder_xtm_hub_deployment_request",
         "Move a deployment request in the queue (Hub administrators).",
@@ -377,6 +366,7 @@ OPERATIONS: dict[str, tuple[str, str]] = {
 #: Hub operations a curated tool of ``xtm_hub.py`` already answers.
 COVERED: dict[str, str] = {
     "me": "get_xtm_hub_myself",
+    "currentApiToken": "get_xtm_hub_myself",
     "seoServiceInstances": "list_xtm_hub_catalogs",
     "publicDocuments": "search_xtm_hub_resources",
     "publicDocumentBySlug": "get_xtm_hub_resource",
@@ -388,6 +378,7 @@ COVERED: dict[str, str] = {
 }
 
 _SIGN_IN_RESET_REASON = "a person's own sign-in secret, never an agent's to set"
+_SYSTEM_CREDENTIAL_REASON = "the Hub's system credential only (@system_token); a personal API token is refused"
 
 #: Hub operations never offered as a tool, with the reason.
 NOT_EXPOSED: dict[str, str] = {
@@ -407,9 +398,18 @@ NOT_EXPOSED: dict[str, str] = {
     "refreshPlatformRegistrationConnectivityStatusSingleTenant": "a platform tenant's heartbeat, sent with its own credential",
     "refreshPlatformRegistrationConnectivityStatusAllTenants": "a platform's tenants heartbeat, sent with its own credential",
     "openCTIPlatformRegistrationStatus": "deprecated by the Hub; a platform's own check, with its credential",
+    # The Hub answers these to its system or platform credential only, never to
+    # a personal API token: a tool would always be refused.
+    "deploymentRequests": _SYSTEM_CREDENTIAL_REASON,
+    "updateDeploymentRequest": _SYSTEM_CREDENTIAL_REASON,
+    "ingestManifestFragments": _SYSTEM_CREDENTIAL_REASON,
+    "updateOpenCTIManifest": _SYSTEM_CREDENTIAL_REASON,
+    "consumeProvisionedNewsFeedItems": "a registered platform's own call, with the platform credential",
+    "createApiToken": "the Hub refuses it to an API token (NOT_ALLOWED_WITH_API_TOKEN); a person creates tokens",
 }
 
-#: The one query that changes something: its tool is a write.
+#: Queries that change something: a tool of one is a write (none is offered today:
+#: ``updateOpenCTIManifest`` is the Hub system credential's).
 WRITE_QUERIES = frozenset({"updateOpenCTIManifest"})
 
 #: Input fields a tool narrows to: bulk tools act on explicit ids only.

@@ -167,6 +167,48 @@ class HealthOpenAEVThresholds(BaseModel):
     agents_offline_max_percent: float = Field(default=50, ge=0, lt=100)
 
 
+#: The most recipients the alert emails may list.
+MAX_ALERT_RECIPIENTS = 20
+
+
+def _valid_recipient(value: str) -> str:
+    """A trimmed, lower-cased address: one ``@``, a dotted domain, no space or control character."""
+    value = value.strip().lower()
+    local, at, domain = value.partition("@")
+    if (
+        not at
+        or not local
+        or "@" in domain
+        or "." not in domain.strip(".")
+        or len(value) > 254
+        or any(char.isspace() or unicodedata.category(char) in _REFUSED_NAME_CATEGORIES for char in value)
+    ):
+        raise ValueError("not an email address")
+    return value
+
+
+class HealthAlertEmailSettings(BaseModel):
+    """The alert emails (#101 S12, dev-docs section 7): off by default.
+
+    On, with recipients and SMTP configured: one email per new critical finding
+    (``immediate``) and one daily digest of the open findings at or above
+    ``min_severity`` (``digest``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    recipients: list[str] = Field(default_factory=list, max_length=MAX_ALERT_RECIPIENTS)
+    min_severity: Literal["critical", "warning", "info"] = "warning"
+    immediate: bool = True
+    digest: bool = True
+
+    @field_validator("recipients")
+    @classmethod
+    def _recipients(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(_valid_recipient(value) for value in values))
+
+
 #: The longest name Platform Health may be given.
 MAX_NAME_LENGTH = 40
 
@@ -219,6 +261,8 @@ class HealthSettings(BaseModel):
     #: The editable check thresholds per module (#101 S10b), read on the next pass.
     opencti: HealthOpenCTIThresholds = Field(default_factory=HealthOpenCTIThresholds)
     openaev: HealthOpenAEVThresholds = Field(default_factory=HealthOpenAEVThresholds)
+    #: The alert emails (#101 S12), off by default.
+    alert_emails: HealthAlertEmailSettings = Field(default_factory=HealthAlertEmailSettings)
 
     @field_validator("name")
     @classmethod
