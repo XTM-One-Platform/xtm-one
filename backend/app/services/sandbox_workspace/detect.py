@@ -720,16 +720,22 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
     member alone keeps the sibling's manifest but not its source, and the
     check fails on a missing module. *manifests* maps every ``package.json``
     of the repository (outside ``node_modules``) to its content. A member
-    under a sub_path that depends on a ``workspace:`` package adds the
-    directory of the manifest whose ``name`` it is, then that member's own
-    ``workspace:`` dependencies, transitively. The root, the sub_paths, what
-    lies under them and the directories a build or an install writes add
+    under a sub_path, or the member a sub_path lies in (the nearest
+    ``package.json`` above it, never the repository root: a checkout of
+    ``openaev-front/src/utils`` lints with ``openaev-front``'s config), that
+    depends on a ``workspace:`` package adds the directory of the manifest
+    whose ``name`` it is, then that member's own ``workspace:`` dependencies,
+    transitively. The root, the sub_paths, what lies under them, a directory
+    holding a sub_path and the directories a build or an install writes add
     nothing; :data:`MAX_DEPENDENCY_DIRS` at most, sorted.
     """
     wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
 
     def kept(path: str) -> bool:
         return any(path == s or path.startswith(s + "/") for s in wanted)
+
+    def holds_sub_path(directory: str) -> bool:
+        return any(s.startswith(directory + "/") for s in wanted)
 
     docs = {path: _json(data) for path, data in manifests.items() if posixpath.basename(path) == "package.json"}
     by_name: dict[str, str] = {}
@@ -739,7 +745,16 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
         if isinstance(name, str) and directory and not _skipped(path) and name not in by_name:
             by_name[name] = directory
     found: set[str] = set()
-    queue = sorted(path for path in docs if kept(path))
+    owners: set[str] = set()
+    for sub_path in wanted:
+        directory = posixpath.dirname(sub_path)
+        while directory:
+            manifest = directory + "/package.json"
+            if manifest in docs and not _skipped(manifest):
+                owners.add(manifest)
+                break
+            directory = posixpath.dirname(directory)
+    queue = sorted({*(path for path in docs if kept(path)), *owners})
     seen: set[str] = set()
     while queue and len(found) < MAX_DEPENDENCY_DIRS:
         path = queue.pop(0)
@@ -753,7 +768,7 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
                 if not (isinstance(value, str) and value.strip().startswith("workspace:")):
                     continue
                 directory = by_name.get(name)
-                if not directory or kept(directory) or directory in found:
+                if not directory or kept(directory) or holds_sub_path(directory) or directory in found:
                     continue
                 found.add(directory)
                 queue.append(directory + "/package.json")
