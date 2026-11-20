@@ -1980,6 +1980,46 @@ async def test_a_files_change_set_over_the_cap_lands_as_consecutive_signed_commi
 
 
 @pytest.mark.asyncio
+async def test_a_split_files_commit_of_a_checkout_file_moves_its_record_to_the_last_part():
+    # #766 review: a workspace_path file of a checkout committed through the split path
+    # moves its record as the single-commit path does, so a later from_checkout sees no overlap.
+    commit, _ = _commit_tool()
+    sink = _FilesAdvanceSink({"src/ja.json": b"j" * 8})
+    fake = _CountingGitHub()
+    files = [
+        {"path": "src/app.py", "content": "new\n"},
+        {"path": "src/en.json", "content": "e" * 5},
+        {"path": "src/ja.json", "file_id": "w1"},
+    ]
+    with (
+        patch(_SAFE_REQUEST, new=fake),
+        patch.object(contents, "current_workspace", return_value=sink),
+        patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10),
+    ):
+        result = await commit(
+            repo="acme/app",
+            message="feat(app): x (#1)",
+            files=files,
+            branch="feat/x",
+            file_context=_workspace_file_context("w1", "app/src/ja.json", b"j" * 8),
+        )
+
+    assert isinstance(result, str) and result.startswith("Committed the change set to branch 'feat/x'"), result
+    assert len(fake.commits) == 2
+    assert f"Checkout record moved to {'2' * 8} by files." in result
+    [moved] = sink.files_advanced
+    assert (moved["repository"], moved["branch"], moved["parent"], moved["commit"]) == (
+        "acme/app",
+        "feat/x",
+        TIP,
+        "2" * 40,
+    )
+    assert moved["written"] == {"app/src/ja.json": ("src/ja.json", b"j" * 8)}
+    assert moved["committed"] == ["src/app.py", "src/en.json", "src/ja.json"]
+    assert sink.advanced == []
+
+
+@pytest.mark.asyncio
 async def test_a_files_change_set_over_the_cap_with_a_single_file_too_large_is_refused():
     commit, _ = _commit_tool()
     fake = _CountingGitHub()

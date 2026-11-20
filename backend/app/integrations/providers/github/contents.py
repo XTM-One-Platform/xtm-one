@@ -2127,7 +2127,15 @@ def register(
             # Over the cap of one signed commit: the from_checkout split path (#764),
             # consecutive signed commits on a scratch branch and one branch move.
             return await _commit_checkout_in_batches(
-                repo, message, split, list(deletes), branch, files_drift_note, None
+                repo,
+                message,
+                split,
+                list(deletes),
+                branch,
+                files_drift_note,
+                None,
+                workspace_written=workspace_written,
+                merged_on=merged_on,
             )
         repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
         async with egress_client(timeout=60) as client:
@@ -2686,6 +2694,8 @@ def register(
         rewrites: dict[str, bytes] | None = None,
         *,
         keep_record_commit: bool = False,
+        workspace_written: dict[str, tuple[str, bytes]] | None = None,
+        merged_on: str = "",
     ) -> str:
         """A ``from_checkout`` change set over a cap of one commit: several signed commits, one branch move.
 
@@ -2699,6 +2709,11 @@ def register(
         an intermediate commit (CI never starts on a half-applied change set),
         and a batch that fails leaves it unchanged: the change set lands whole
         or not at all.
+
+        *workspace_written* are the checkout files a ``files[]`` set read
+        through ``workspace_path`` (#764): their record moves to the last part,
+        as the single-commit path does. *merged_on* is the tip those files were
+        merged with; a target at another tip is refused before any part.
         """
         owner, name, _ = parse_repo(repo)
         repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
@@ -2719,6 +2734,9 @@ def register(
             tip = _coerce_str(ref_object.get("sha")) if isinstance(ref_object, dict) else ""
             if not _GIT_OBJECT_ID_RE.fullmatch(tip):
                 return f"Error: could not read the tip of branch '{target}' of {repo}; nothing was committed."
+            if merged_on and tip != merged_on:
+                # The checkout files were merged with another tip: on this one they could revert a commit.
+                return _moved_tip_refusal(target, repo, tip)
             now = time.time()
             await _sweep_stale_scratch_branches(client, headers, repo_url, repo, now)
             scratch = _scratch_branch_name(tip, now)
@@ -2829,6 +2847,12 @@ def register(
         )
         if moved:
             lines.append(moved)
+        if workspace_written and checkout_record is None:
+            moved = await _advance_checkout_files(
+                repo, target, tip, last_commit, workspace_written, sorted(landed_paths) + list(removed)
+            )
+            if moved:
+                lines.append(moved)
         named = await name_pushed_pull_request(repo, owner, name, target, last_commit)
         if named:
             lines.append(named)
