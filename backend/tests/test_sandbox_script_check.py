@@ -172,6 +172,49 @@ async def test_without_a_check_of_its_stack_the_script_runs_on_the_stack_image()
         await _resolve(workspace, check="script", args=["x.py"], known_images={"nodejs"})
 
 
+async def test_cwd_runs_a_module_script_from_its_package_directory():
+    # openaev-front/scripts/i18n-untranslated.js reads scripts/i18n-glossary.json relative to openaev-front:
+    # run from the checkout root it failed with ENOENT, and argv with cwd is refused on the platform.
+    workspace = await _declared()
+    command = await _resolve(
+        workspace, check="script", args=["frontend/read.mjs", "--x"], cwd="frontend", known_images=IMAGES
+    )
+    assert command.cwd == "co/frontend" and command.argv == ("node", "read.mjs", "--x")
+    assert command.image == "nodejs-dev"
+    outside = await _resolve(workspace, check="script", args=["backend/repro.py"], cwd="frontend", known_images=IMAGES)
+    assert outside.cwd == "co/frontend" and outside.argv == ("python", "../backend/repro.py")
+    assert outside.image == "python-dev" and outside.install is not None
+    root = await _resolve(workspace, check="script", args=["backend/repro.py"], cwd="/", known_images=IMAGES)
+    assert root.cwd == "co" and root.argv == ("python", "backend/repro.py")
+
+
+@pytest.mark.parametrize("cwd", ["../x", "/etc", "backend/../../x"])
+async def test_a_script_cwd_outside_the_checkout_is_refused(cwd):
+    workspace = await _declared()
+    with pytest.raises(checks.ChecksError, match="check 'script'"):
+        await _resolve(workspace, check="script", args=["backend/repro.py"], cwd=cwd, known_images=IMAGES)
+
+
+async def test_a_script_cwd_that_holds_no_file_is_refused():
+    workspace = await _declared()
+    with pytest.raises(checks.ChecksError, match="is not a directory of the checkout"):
+        await _resolve(workspace, check="script", args=["backend/repro.py"], cwd="absent", known_images=IMAGES)
+
+
+async def test_a_uv_with_requirements_path_follows_the_script_cwd():
+    declared = (
+        b'[check.plugin-lint]\nargv = ["uv", "run", "--with-requirements", "reqs.txt", "ruff", "check"]\n'
+        b'cwd = "plugin"\nimage = "python"\n'
+    )
+    workspace = _workspace()
+    await workspace.put_tree([("co/.xtm-one/checks.toml", declared), ("co/plugin/scripts/lint.py", b"print(1)\n")])
+    command = await _resolve(
+        workspace, check="script", args=["plugin/scripts/lint.py"], cwd="plugin", known_images={"python"}
+    )
+    assert command.cwd == "co/plugin"
+    assert command.argv == ("uv", "run", "--with-requirements", "reqs.txt", "python", "scripts/lint.py")
+
+
 async def test_the_listing_names_the_built_in_script_check():
     workspace = await _declared()
     listing = await commands.list_checks(workspace, checkout="co", known_images=IMAGES)

@@ -115,7 +115,8 @@ _PROJECT_RUNNERS = (("uv", "run"), ("poetry", "run"))
 SCRIPT_LISTING = (
     f"Built in: {SCRIPT_CHECK}: args = one workspace file ({', '.join(SCRIPT_RUNNERS)}; relative to the checkout "
     "or workspace/...) then its own args; run with python or node on the image of the nearest check of its "
-    "directory (its install bound, the `uv run --with` deps of its checks added), the checkout root as cwd."
+    "directory (its install bound, the `uv run --with` deps of its checks added), the checkout root as cwd "
+    "unless cwd names a directory of the checkout."
 )
 #: What a command builds in the container and the workspace never records
 #: (``fnmatch`` over the workspace path; a directory as ``dir/``): the
@@ -830,7 +831,7 @@ async def _resolve(
     found = await checkout_checks(session, root, images=known_images)
     if check == SCRIPT_CHECK and SCRIPT_CHECK not in found.specs:
         return await _script_command(
-            session, root, found.specs, args=args, max_timeout=max_timeout, known_images=known_images
+            session, root, found.specs, args=args, cwd=cwd, max_timeout=max_timeout, known_images=known_images
         )
     if not found.specs:
         raise ChecksError(_nothing(root, has_checks_file=found.has_checks_file))
@@ -895,6 +896,7 @@ async def _script_command(
     specs: dict[str, CheckSpec],
     *,
     args: object,
+    cwd: str = "",
     max_timeout: int,
     known_images: set[str] | frozenset[str],
 ) -> ResolvedCommand:
@@ -904,7 +906,9 @@ async def _script_command(
     ``..`` path is refused). It runs on the image of the deepest check of its stack whose directory holds
     the file (a non-install first among equals), with that check's env and the install of its directory bound,
     so a repro reads the dependencies the checkout's checks installed; else on the stack's first configured
-    image. The cwd is the checkout root.
+    image. The cwd is the checkout root, or *cwd*, a directory of the checkout, when given: a module script
+    that reads files relative to its package (``openaev-front/scripts/*.js``) runs from there. The program
+    stays the one the extension names, so *cwd* opens no arbitrary argv.
     """
     given = extra_args(args or [])
     if not given:
@@ -919,6 +923,7 @@ async def _script_command(
             f"check {SCRIPT_CHECK!r} runs a {', '.join(SCRIPT_RUNNERS)} file; {display(script)} is none of them."
         )
     stack, program = runner
+    where = _script_cwd(cwd, root, await session.entries())
     prefix = f"{root}/" if root else ""
     inside = not root or is_under(script, root)
     directory = posixpath.dirname(script[len(prefix) :]) if inside else ""
@@ -941,7 +946,9 @@ async def _script_command(
         if stack == "python" and runners:
             # The project's environment lives in the runner's venv, not in the image's python; the `uv run --with`
             # dependencies the directory's checks add (`uv run --with pyyaml pytest`) are the script's too.
-            withs = _uv_with_args(specs, anchor.cwd) if runners[0] == ("uv", "run") else ()
+            withs = (
+                _uv_with_args(specs, anchor.cwd, run_from=_under(where, root)) if runners[0] == ("uv", "run") else ()
+            )
             program = (*runners[0], *withs, *program)
         elif stack == "python":
             # The install of a project pinned to another interpreter (``python3.12 -m pip install``)
@@ -959,8 +966,8 @@ async def _script_command(
     )
     resolved = ResolvedCommand(
         check=SCRIPT_CHECK,
-        argv=(*program, posixpath.relpath(script, root or "."), *given[1:]),
-        cwd=root,
+        argv=(*program, posixpath.relpath(script, where or "."), *given[1:]),
+        cwd=where,
         timeout=min(DEFAULT_TIMEOUT, max_timeout),
         image=image,
         env=env,
@@ -973,12 +980,12 @@ async def _script_command(
 _UV_WITH_OPTIONS = {"--with": False, "--with-requirements": True, "--with-editable": True}
 
 
-def _uv_with_args(specs: dict[str, CheckSpec], cwd: str) -> tuple[str, ...]:
+def _uv_with_args(specs: dict[str, CheckSpec], cwd: str, *, run_from: str = "") -> tuple[str, ...]:
     """The ``--with`` options the ``uv run`` checks of directory *cwd* pass before their command, each once.
 
     Read in check-name order; a path value (``--with-requirements requirements.txt``) is rewritten relative
-    to the checkout root, where :data:`SCRIPT_CHECK` runs. Reading stops at the first word that is not an
-    option, so the command's own arguments are never taken.
+    to *run_from*, the checkout directory :data:`SCRIPT_CHECK` runs from (its root by default). Reading stops
+    at the first word that is not an option, so the command's own arguments are never taken.
     """
     out: list[str] = []
     seen: set[tuple[str, str]] = set()
@@ -995,8 +1002,8 @@ def _uv_with_args(specs: dict[str, CheckSpec], cwd: str) -> tuple[str, ...]:
             value = inline or (words.pop(0) if words else "")
             if not value:
                 break
-            if _UV_WITH_OPTIONS[option] and directory and not posixpath.isabs(value):
-                value = posixpath.normpath(posixpath.join(directory, value))
+            if _UV_WITH_OPTIONS[option] and (directory or run_from) and not posixpath.isabs(value):
+                value = posixpath.relpath(posixpath.join(directory or ".", value), run_from or ".")
             if (option, value) not in seen:
                 seen.add((option, value))
                 out += [option, value]
@@ -1019,6 +1026,34 @@ def _pinned_python(anchor: CheckSpec, specs: dict[str, CheckSpec], env: tuple[tu
             return spec.argv[0]
     version = dict(env).get("UV_PYTHON", "")
     return f"python{version}" if re.fullmatch(r"3\.\d+", version) else ""
+
+
+def _under(path: str, root: str) -> str:
+    """*path* relative to the checkout *root* (``""`` for the root itself). Pure."""
+    if not root:
+        return path
+    return "" if path == root else path[len(root) + 1 :]
+
+
+def _script_cwd(raw: str, root: str, entries: dict[str, Any]) -> str:
+    """The workspace directory :data:`SCRIPT_CHECK` runs from: the checkout root, or *raw* under it.
+
+    *raw* is relative to the checkout and must hold at least one file of the workspace; an absolute or
+    ``..`` path is refused, so the script never runs outside the checkout.
+    """
+    if not str(raw or "").strip():
+        return root
+    try:
+        relative = normalize(str(raw).strip().strip("/") or ".", allow_root=True)
+    except WorkspacePathError as exc:
+        raise ChecksError(f"check {SCRIPT_CHECK!r}: cwd {raw!r}: {exc}") from exc
+    where = _join(root, relative) if relative not in ("", ".") else root
+    if where != root and not any(is_under(str(path), where) for path in entries):
+        raise ChecksError(
+            f"check {SCRIPT_CHECK!r}: cwd {raw!r} is not a directory of the checkout (nothing under "
+            f"{display(where)}); give a directory relative to the checkout root."
+        )
+    return where
 
 
 def _script_path(raw: str, root: str, entries: dict[str, Any]) -> str:
