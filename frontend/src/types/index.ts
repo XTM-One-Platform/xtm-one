@@ -6462,6 +6462,8 @@ export interface WorkItemAskOption {
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
 interface WorkItemAsk {
   question: string;
+  /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
+  context?: string | null;
   options?: WorkItemAskOption[];
   /** The key of the option the agent recommends. */
   recommendation?: string | null;
@@ -6529,6 +6531,14 @@ export interface WorkItem {
   roi?: RoiReviewBlock | null;
   /** The files the item carries, by name (detail only, #12092). */
   attachments?: WorkItemAttachments;
+  /** The agent behind each run its stamped notes name (detail only, #776). */
+  note_runs?: Record<string, WorkItemNoteRun>;
+}
+
+/** The run a stamped note names: its agent as the reader may see it, and whether the reader may open it. */
+export interface WorkItemNoteRun {
+  agent: { id: string; name: string } | null;
+  accessible: boolean;
 }
 
 /** One file a work item carries, as its dialog lists it. */
