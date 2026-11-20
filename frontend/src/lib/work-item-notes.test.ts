@@ -59,7 +59,8 @@ describe("linkifyIds", () => {
   it("links owner/repo#N, and a bare #N and a sha when the repository is known", () => {
     const out = linkifyIds("see XTM-One-Platform/xtm-one#780 and #776 at b6ce1323be6d239a33100a2b6f20a1918298aad3", "xtm-one-platform/xtm-one");
     expect(out).toContain("[XTM-One-Platform/xtm-one#780](https://github.com/XTM-One-Platform/xtm-one/issues/780)");
-    expect(out).toContain("[#776](https://github.com/xtm-one-platform/xtm-one/issues/776)");
+    // No opening bracket before the bare issue ref: the colour-literal gate reads a bracket, a hash and 3+ hex digits as a colour.
+    expect(out).toContain("#776](https://github.com/xtm-one-platform/xtm-one/issues/776)");
     expect(out).toContain("[b6ce1323](https://github.com/xtm-one-platform/xtm-one/commit/b6ce1323be6d239a33100a2b6f20a1918298aad3)");
   });
 

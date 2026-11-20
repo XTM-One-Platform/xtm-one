@@ -23,7 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { History } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { InlineMarkerContext } from "@/components/chat/inline-marker-context";
 import { writeToClipboard } from "@/components/ui/copy-icon-button";
@@ -102,7 +102,7 @@ function NoteEntry({
               className="inline-flex items-center gap-1 font-mono-plex text-accent hover:underline"
               aria-label={t_i18n("Open the run")}
             >
-              <History className="h-3 w-3 shrink-0" aria-hidden />
+              <Icon name="history" size={12} className="shrink-0" aria-hidden />
               {note.runId.slice(0, 8)}
             </Link>
           ) : (
