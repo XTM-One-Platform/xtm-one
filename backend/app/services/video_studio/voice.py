@@ -125,10 +125,31 @@ async def resolve(db, user_id: object, voiceover: Any):
         raise VoiceUnavailableError(f"{exc} The narration is shown as captions.") from None
     if not (getattr(voiceover, "style", None) or "").strip() or names_its_own(voiceover):
         return target
+    if load := getattr(target.provider, "load_speech_capabilities", None):
+        await load(target.model)
     if target.provider.speech_takes_style(target.model) is not False:
         return target
     styled = await _styled_model(target.provider)
-    return target if styled is None else replace(target, model=styled)
+    if styled is None:
+        return target
+    if own := getattr(voiceover, "voice", None):
+        # The video's own voice outranks its style: a model without it would refuse it.
+        return replace(target, model=styled) if await _offers(target.provider, styled, own) else target
+    # The platform's voice was chosen for its model: another vendor's model may not have it.
+    return replace(target, model=styled, voice=target.voice if await _offers(target.provider, styled, target.voice) else None)
+
+
+async def _offers(provider: Any, model: str, voice: str | None) -> bool:
+    """Whether *model* lists *voice* by id or name; a listing that fails keeps it."""
+    if not voice:
+        return False
+    try:
+        voices = await provider.list_voices(model)
+    except Exception as exc:
+        logger.debug("Voices of %s not listed: %s", model, format_exception_message(exc))
+        return True
+    wanted = voice.strip().casefold()
+    return any(wanted in (v.id.casefold(), v.name.casefold()) for v in voices)
 
 
 async def _styled_model(provider: Any) -> str | None:

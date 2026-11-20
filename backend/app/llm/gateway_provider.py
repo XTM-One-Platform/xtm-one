@@ -36,6 +36,7 @@ import re
 import time
 import uuid
 from collections.abc import Generator
+from dataclasses import replace
 from typing import Any, NamedTuple
 from urllib.parse import quote
 
@@ -47,6 +48,7 @@ from app.core.xtm_auth import _normalize_url, issue_xtm_jwt
 from app.llm.anthropic_provider import build_cache_control
 from app.llm.base import ChatMessage
 from app.llm.decisions import DECISIONS_OPENAI
+from app.llm.elevenlabs_provider import PHONEME_MODELS, VOICES_TTL_SECONDS, account_voice, own_voices_first
 from app.llm.identity import LLMCallerIdentity, resolve_llm_caller
 from app.llm.model_capabilities import is_claude_model, is_gemini_model
 from app.llm.music import (
@@ -65,7 +67,14 @@ from app.llm.openai_compat import (
     gateway_upstream_refusal,
     marked_not_retryable,
 )
-from app.llm.speech import _speaks_openai_voices
+from app.llm.speech import (
+    PronunciationSupport,
+    SpeechRequest,
+    SpeechResult,
+    Voice,
+    _speaks_openai_voices,
+    pick_voice,
+)
 from app.llm.system_prompt_split import split_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -75,6 +84,8 @@ _OWNER_MISS_TTL_SECONDS = 30.0
 
 # An owner lookup on the chat path never waits out the SDK's retries or read timeout.
 _OWNER_LISTING_TIMEOUT = httpx.Timeout(5.0)
+# A voices read answers within the 20 s the speech settings wait for it.
+_VOICES_TIMEOUT = httpx.Timeout(15.0)
 
 # One composition is one request. The read outlasts the gateway's own 10 minute
 # upstream wait, so its answer (a refusal included) arrives before the client
@@ -280,6 +291,10 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._refused_dimensions: set[tuple[str, int]] = set()
         # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358).
         self._editing_models: set[str] = set()
+        # Per model: the ElevenLabs account's voices (``GET /v1/audio/voices``) and when they were read,
+        # and a failed read's message until it is tried again.
+        self._account_voices: dict[str, tuple[float, list[Voice]]] = {}
+        self._account_voice_misses: dict[str, tuple[float, str]] = {}
 
     def refusal_endpoint(self) -> Endpoint | None:
         # The client's api_key is a placeholder: the row's token and target route it.
@@ -410,18 +425,90 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         return sorted(m.id for m in await self._models_with_meta() if "speech" in m.types or is_speech_model(m.id))
 
     async def _speech_headers(self, model: str) -> dict[str, str]:
+        # As its voices read: an ``eleven_`` id the listing omits has no owner to pin.
+        if self._elevenlabs_speaks(model):
+            return {"X-Target-Provider": "elevenlabs"}
         return await self._target_headers(model)
 
-    async def list_voices(self, model: str | None = None) -> list:
-        """A Gemini model speaks Gemini's prebuilt voices, which the gateway passes through by name.
+    def _elevenlabs_speaks(self, model: str | None) -> bool:
+        """Whether ElevenLabs speaks *model*: its ``eleven_`` id, the pinned target, or the owner listed
+        (read by :meth:`load_speech_capabilities`)."""
+        if not model or _speaks_openai_voices(model):
+            return False
+        if self._target:
+            # Every request goes there, whatever the model is called.
+            return self._target == "elevenlabs"
+        upstream = (self._owner_cache.get(model) or "").lower()
+        return model.lower().rsplit("/", 1)[-1].startswith("eleven_") or upstream == "elevenlabs"
 
-        Its library and the project's own voices need a gateway voices route, which does not exist.
+    async def load_speech_capabilities(self, model: str | None) -> None:
+        """Read *model*'s upstream before the sync checks: an alias is known by its listed owner only."""
+        if model and not _speaks_openai_voices(model):
+            await self._upstream_of(model)
+
+    async def list_voices(self, model: str | None = None) -> list[Voice]:
+        """A Gemini model speaks Gemini's prebuilt voices, passed through by name; an ElevenLabs one the account's.
+
+        Gemini's library and project voices need a gateway route that does not exist. ElevenLabs' come from
+        ``GET /v1/audio/voices``, own first, reused per model for :data:`VOICES_TTL_SECONDS` as direct.
         """
-        if model and not _speaks_openai_voices(model) and await self._upstream_of(model) == "gemini":
+        upstream = await self._upstream_of(model) if model and not _speaks_openai_voices(model) else None
+        if upstream == "gemini":
             from app.llm.gemini_provider import GeminiProvider
 
             return GeminiProvider.prebuilt_voices()
-        return await super().list_voices(model)
+        if not model or not self._elevenlabs_speaks(model):
+            return await super().list_voices(model)
+        now = time.monotonic()
+        read_at, voices = self._account_voices.get(model, (float("-inf"), []))
+        if now - read_at < VOICES_TTL_SECONDS:
+            return list(voices)
+        until, failure = self._account_voice_misses.get(model, (0.0, ""))
+        if until > now:
+            raise RuntimeError(failure)
+        try:
+            # Sent once and briefly, as the owner listing: every scene of a video may ask.
+            response = await self.client.with_options(max_retries=0, timeout=_VOICES_TIMEOUT).get(
+                "/audio/voices",
+                cast_to=httpx.Response,
+                options={"params": {"model": model}, "headers": {"X-Target-Provider": "elevenlabs"}},
+            )
+            data = response.json().get("data")
+        except Exception as e:
+            failure = f"ElevenLabs voices not read from the gateway: {redact_token(format_exception_message(e), self._token)}"
+            self._account_voice_misses[model] = (time.monotonic() + _OWNER_MISS_TTL_SECONDS, failure)
+            raise RuntimeError(failure) from None
+        voices = own_voices_first([v for item in data or [] if (v := account_voice(item))])
+        self._account_voices[model] = (time.monotonic(), voices)
+        return list(voices)
+
+    async def synthesize_speech(self, request: SpeechRequest) -> SpeechResult:
+        await self.load_speech_capabilities(request.model)
+        if not self._elevenlabs_speaks(request.model):
+            return await super().synthesize_speech(request)
+        # The gateway refuses ElevenLabs speech without a voice id: a name, or a voice the account
+        # lacks, is resolved as direct. A voice asked is sent as is when the voices cannot be read.
+        try:
+            voices = await self.list_voices(request.model)
+        except RuntimeError:
+            if not request.voice:
+                raise
+            voices = []
+        notes: list[str] = []
+        voice = pick_voice(voices, request.voice, None, notes)
+        result = await super().synthesize_speech(replace(request, voice=voice))
+        result.notes[:0] = notes
+        return result
+
+    def speech_takes_style(self, model: str) -> bool | None:
+        """ElevenLabs takes no written delivery instruction: the gateway drops it."""
+        return False if self._elevenlabs_speaks(model) else super().speech_takes_style(model)
+
+    def speech_pronunciation(self, model: str) -> PronunciationSupport:
+        """Inline IPA phonemes reach the ElevenLabs models that honour them; the gateway keeps no dictionary."""
+        if self._elevenlabs_speaks(model) and model.lower().rsplit("/", 1)[-1] in PHONEME_MODELS:
+            return PronunciationSupport(ssml="inline", phoneme=True)
+        return super().speech_pronunciation(model)
 
     async def list_music_models(self) -> list[str]:
         """The models whose types include ``music``: its operator declares them, never their id."""
