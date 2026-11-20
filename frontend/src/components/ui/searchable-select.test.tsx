@@ -3,7 +3,13 @@ import { useState } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SearchableSelect, SEARCH_THRESHOLD, TWO_LINE_LIST_CLASS, type SelectOption } from "@/components/ui/searchable-select";
+import {
+  SearchableSelect,
+  SEARCH_THRESHOLD,
+  SHRINKING_TRIGGER_STYLE,
+  TWO_LINE_LIST_CLASS,
+  type SelectOption,
+} from "@/components/ui/searchable-select";
 import { renderWithProviders } from "@/testing/providers";
 
 /**
@@ -276,6 +282,17 @@ describe("SearchableSelect", () => {
     renderWithProviders(<Harness options={options} searchable="auto" initial="long" />);
     const trigger = screen.getByRole("combobox", { name: "Provider" });
     expect(trigger.tagName).toBe("BUTTON");
+    expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
+  });
+
+  it("lets the plain select shrink under a long one-word label instead of overflowing its cell (#611)", () => {
+    const name = "production-dmz-frankfurt";
+    renderWithProviders(<Harness options={[...PROVIDERS, { value: "long", label: name }]} searchable="auto" initial="long" />);
+    const trigger = screen.getByRole("combobox", { name: "Provider" });
+    expect(trigger.tagName).toBe("BUTTON");
+    expect(SHRINKING_TRIGGER_STYLE).toEqual({ minWidth: 0 });
+    // The inline style the trigger carries (happy-dom has no layout: the lab render proves the width).
+    expect(trigger.style.minWidth).toMatch(/^0(px)?$/);
     expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
   });
 
