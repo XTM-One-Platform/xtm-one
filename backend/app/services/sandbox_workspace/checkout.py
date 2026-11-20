@@ -284,6 +284,25 @@ def outside_baseline(
     return out
 
 
+def outside_record_note(record: CheckoutRecord, workspace_paths: Iterable[str], *, limit: int = 12) -> str:
+    """The sentence warning that a write landed outside the checkout's record and sub_paths, or ``""``.
+
+    Such a file is never a change of the checkout (:meth:`CheckoutRecord.tracks`): status says clean and
+    ``from_checkout`` leaves it out, so the editing tool says it at once instead of letting the edit go
+    unseen until the commit.
+    """
+    out = [p for p in record.outside(workspace_paths) if not is_generated(p)]
+    if not out:
+        return ""
+    return (
+        f" Warning: {len(out)} written file(s) lie outside the checkout record of {record.path}/ "
+        f"(sub_paths {', '.join(record.sub_paths) or 'none'}): {_shown(out, limit)}. Status, diff and "
+        f'create_github_commit(from_checkout="{record.path}") do not count them: grow the checkout with '
+        f'materialize_repository(path="{record.path}", add_paths=[...]), or name them in the commit\'s paths '
+        "together with the checkout's sub_paths, else the edit is not committed."
+    )
+
+
 def build_record(
     *,
     provider: str,
