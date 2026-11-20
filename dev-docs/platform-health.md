@@ -413,6 +413,17 @@ client found by code search). Checks: registration heartbeat, version, licence o
 registers; process states and failing jobs once the snapshot carries them. Missing on the
 OpenCRQ side: the registration itself and a snapshot of those two states.
 
+Re-read 20 Nov 2026: OpenCRQ now registers (`back/src/features/xtm-one/xtm-one-registration.ts`,
+every 5 minutes, `platform_identifier` `opencrq`), so its heartbeat is read like the others.
+Built in S7 (`services/health/opencrq_checks.py`, one result per registered OpenCRQ, subject
+`{registration_id}`, jobs `{registration_id, job}`): `opencrq.heartbeat` (critical,
+`is_healthy`, 15 min) and `opencrq.job_failing` (warning, one per job kind whose last run
+reached the dead-letter queue, the `failing` health of `deriveJobHealth`). Snapshot key added
+to format 1 (`snapshots.py`): `jobs` (kind, health running, queued, never_ran, healthy or
+failing; 200 at most). The process states stay owed: they reach the parent process only and
+are not a registration-time read. The OpenCRQ push PR adds `health` to
+`buildRegistrationBody`. Owed: version and licence row.
+
 ## 5. Data acquisition
 
 | Option | For | Against |
