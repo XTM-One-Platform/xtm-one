@@ -530,7 +530,8 @@ export function ProviderCard({
                   aria-busy={refreshModels.isPending || undefined}
                   onClick={handleRefreshModels}
                 >
-                  {refreshModels.isPending ? <Spinner size="sm" tone="inherit" /> : <RefreshCw className="h-3 w-3" />}
+                  {refreshModels.isPending && <Spinner size="sm" tone="inherit" />}
+                  {!refreshModels.isPending && <RefreshCw className="h-3 w-3" />}
                   {t_i18n("Refresh models")}
                 </Button>
               </Tip>
