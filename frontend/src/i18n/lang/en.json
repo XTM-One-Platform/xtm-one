@@ -14860,7 +14860,7 @@
   "No matching flows": "No matching flows",
   "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.": "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.",
   "No cap": "No cap",
-  "Spent in {month}: {tokens} tokens, {cost} USD.": "Spent in {month}: {tokens} tokens, {cost} USD.",
+  "Spent in {month}: {tokens} tokens, {cost}.": "Spent in {month}: {tokens} tokens, {cost}.",
   "Platform Health settings saved": "Platform Health settings saved",
   "Platform Health settings were not saved": "Platform Health settings were not saved",
   "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.": "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.",

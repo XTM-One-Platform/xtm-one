@@ -14860,7 +14860,7 @@
   "No matching flows": "Ningún flujo coincide",
   "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.": "La línea propia de Platform Health, además de la licencia y las cuotas de la plataforma. Cuando se alcanza un límite, no inicia ningún trabajo nuevo y lo indica en su resumen. Deje un límite vacío para no fijar ninguno.",
   "No cap": "Sin límite",
-  "Spent in {month}: {tokens} tokens, {cost} USD.": "Gastado en {month}: {tokens} tokens, {cost} USD.",
+  "Spent in {month}: {tokens} tokens, {cost}.": "Gastado en {month}: {tokens} tokens, {cost}.",
   "Platform Health settings saved": "Configuración de Platform Health guardada",
   "Platform Health settings were not saved": "La configuración de Platform Health no se ha guardado",
   "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.": "Platform Health consolida memorias, diagnostica agentes y flujos, experimenta con copias aisladas y propone mejoras que sus gestores aprueban.",

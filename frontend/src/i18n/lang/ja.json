@@ -14860,7 +14860,7 @@
   "No matching flows": "一致するフローがありません",
   "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.": "プラットフォームのライセンスとクォータに加えた、Platform Health 専用の枠です。上限に達すると新しい作業を開始せず、ダイジェストでその旨を伝えます。上限を設けない場合は空欄にしてください。",
   "No cap": "上限なし",
-  "Spent in {month}: {tokens} tokens, {cost} USD.": "{month} の使用量: {tokens} トークン、{cost} USD。",
+  "Spent in {month}: {tokens} tokens, {cost}.": "{month} の使用量: {tokens} トークン、{cost}。",
   "Platform Health settings saved": "Platform Health の設定を保存しました",
   "Platform Health settings were not saved": "Platform Health の設定は保存されませんでした",
   "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.": "Platform Health はメモリを統合し、エージェントとフローを診断し、サンドボックスのコピーで実験し、管理者が承認する改善を提案します。",

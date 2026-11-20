@@ -14860,7 +14860,7 @@
   "No matching flows": "Aucun flow correspondant",
   "Platform Health's own line, on top of the platform's licence and quotas. Once a cap is reached it starts no new work and says so in its digest. Leave a cap empty for none.": "La ligne propre à Platform Health, en plus de la licence et des quotas de la plateforme. Une fois un plafond atteint, il ne lance plus de nouveau travail et l'indique dans son résumé. Laissez un plafond vide pour n'en fixer aucun.",
   "No cap": "Aucun plafond",
-  "Spent in {month}: {tokens} tokens, {cost} USD.": "Dépensé en {month} : {tokens} tokens, {cost} USD.",
+  "Spent in {month}: {tokens} tokens, {cost}.": "Dépensé en {month} : {tokens} tokens, {cost}.",
   "Platform Health settings saved": "Paramètres de Platform Health enregistrés",
   "Platform Health settings were not saved": "Les paramètres de Platform Health n'ont pas été enregistrés",
   "Platform Health consolidates memories, diagnoses agents and flows, experiments on sandbox copies and proposes improvements their managers approve.": "Platform Health consolide les mémoires, diagnostique les agents et les flows, expérimente sur des copies isolées et propose des améliorations que leurs gestionnaires approuvent.",
