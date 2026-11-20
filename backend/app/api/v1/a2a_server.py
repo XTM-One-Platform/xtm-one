@@ -1460,14 +1460,24 @@ def _spawn_task_run(task_id) -> None:
 
     Kept referenced: asyncio holds only weak references, so a bare
     ``create_task`` can be collected mid-run.
+
+    Counted as a background turn for the shutdown drain: outside any request,
+    uvicorn's drain never cancels it, so a deployment killed the process
+    under it with no write. Its supervisor died with it, the lease went stale,
+    and the partner read "abandoned, execution lease expired" a full lease
+    later. Cancelled by the drain, the executor's ``CancelledError`` branch
+    fails the task at once with the platform-restart reason the partner can
+    act on (``platform_interruption``).
     """
     import asyncio
 
     from app.a2a import tasks as task_svc
+    from app.core.shutdown_finalizers import track_background_turn
 
     _bg = asyncio.create_task(task_svc.execute_task_run(task_id))
     _BACKGROUND_RUNS.add(_bg)
     _bg.add_done_callback(_BACKGROUND_RUNS.discard)
+    track_background_turn(_bg)
 
 
 def _spawn_announce(task_id) -> None:
