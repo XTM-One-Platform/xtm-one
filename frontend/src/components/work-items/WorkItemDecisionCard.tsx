@@ -24,7 +24,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * question and takes a free-text answer only.
  *
  * Ask the agent (slice 4, `WorkItemAskAgent`) closes the card; the detail
- * dialog shows it on every other unfinished item too (#9879).
+ * dialog shows it on every other unfinished item too (#9879). A sent answer
+ * or ask closes the dialog (*onAnswered*, #774).
  */
 import { useId, useState } from "react";
 import { CalendarClock, MessageSquareReply, Send, Sparkles } from "lucide-react";
@@ -40,7 +41,16 @@ import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import type { WorkItem, WorkItemAskOption } from "@/types";
 
-export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canAnswer: boolean }) {
+export function WorkItemDecisionCard({
+  item,
+  canAnswer,
+  onAnswered,
+}: {
+  item: WorkItem;
+  canAnswer: boolean;
+  /** Runs once the answer or an ask left: the detail dialog closes. */
+  onAnswered?: () => void;
+}) {
   const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const answer = useAnswerWorkItem();
@@ -63,6 +73,7 @@ export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canA
         description: t_i18n("The work item is back with its agent, with your answer."),
         variant: "success",
       });
+      onAnswered?.();
     } catch (e) {
       // The backend detail is untranslated: log it, show a translated hint.
       console.error("work item answer failed", e);
@@ -149,7 +160,7 @@ export function WorkItemDecisionCard({ item, canAnswer }: { item: WorkItem; canA
         </p>
       )}
 
-      <WorkItemAskAgent item={item} />
+      <WorkItemAskAgent item={item} onDone={onAnswered} />
     </section>
   );
 }
