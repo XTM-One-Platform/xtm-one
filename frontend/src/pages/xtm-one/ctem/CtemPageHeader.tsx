@@ -163,7 +163,11 @@ export function CtemPageHeader({
       >
         <div className="flex min-w-0 flex-col gap-0.5 [grid-area:title]" data-testid="ctem-page-header-title">
           {(back || eyebrow || crumbExtras) && (
-            <nav aria-label={t_i18n("Breadcrumb")} className="flex min-w-0 items-center gap-1.5 whitespace-nowrap content-caption text-default-secondary">
+            <nav
+              aria-label={t_i18n("Breadcrumb")}
+              style={BREADCRUMB_STYLE}
+              className="flex min-w-0 items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap content-caption text-default-secondary"
+            >
               {back ? (
                 <>
                   <Link
@@ -187,12 +191,14 @@ export function CtemPageHeader({
               ) : (
                 eyebrow
               )}
-              {/* The extras wrap onto a second caption line when the line is short
-                  of room, never shrink an item to nothing (#604: the owner link and
-                  the context confirmation were 0 px wide at 1080 next to a badge).
-                  An item wider than the whole line still truncates on its own. */}
+              {/* The extras are items of the breadcrumb line itself (the wrapper
+                  draws no box): the back link and the current page stay on line 1,
+                  an extra that does not fit goes whole to the next caption line,
+                  which starts at the left edge of the title column, never in a
+                  column beside the crumb (#604, UX round 1 on #605). An item wider
+                  than the whole line still truncates on its own. */}
               {crumbExtras && (
-                <span style={CRUMB_EXTRAS_STYLE} className="flex min-w-0 flex-1 items-center gap-x-2 gap-y-0.5" data-testid="ctem-page-header-crumb-extras">
+                <span style={CRUMB_EXTRAS_STYLE} data-testid="ctem-page-header-crumb-extras">
                   {crumbExtras}
                 </span>
               )}
@@ -259,8 +265,11 @@ export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderSt
 /** Wrap, never clip: the rule the no-overflow test pins. */
 export const STAT_ROW_STYLE = { flexWrap: "wrap", overflow: "visible" } as const;
 
-/** The breadcrumb extras wrap whole items, never clip them (#604); read by the test. */
-export const CRUMB_EXTRAS_STYLE = { flexWrap: "wrap", overflow: "visible", minWidth: 0 } as const;
+/** The breadcrumb line wraps whole items onto a second caption line, never clips them (#604); read by the test. */
+export const BREADCRUMB_STYLE = { flexWrap: "wrap", minWidth: 0 } as const;
+
+/** The extras wrapper draws no box: its items flow on the breadcrumb line (#604, UX round 1 on #605); read by the test. */
+export const CRUMB_EXTRAS_STYLE = { display: "contents" } as const;
 
 function StatCell({ stat, stacked }: { stat: CtemHeaderStat; stacked: boolean }) {
   const body = (
