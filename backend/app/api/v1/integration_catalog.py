@@ -22,6 +22,7 @@ Each tool's read / write ``tool_type`` comes from ``services/tool_classification
 from __future__ import annotations
 
 import logging
+import re
 
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
@@ -229,6 +230,46 @@ def missing_required_extra_fields_message(provider: str, missing: list[str]) -> 
         f"The {provider} integration needs {keys} in extra_config for its current "
         "settings; nothing was saved. Set the key, or change the setting that requires it."
     )
+
+
+_DOMAIN_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+
+
+def invalid_extra_fields(provider: str, extra: dict | None) -> list[str]:
+    """The problems of *extra*'s typed values for *provider*, one sentence each.
+
+    Read from the catalog's ``extra_field_inputs``: a ``domains`` field holds
+    domain names only (a leading ``@`` and a trailing dot are tolerated, as the
+    provider reads them), an ``integer`` field a whole number within its
+    ``minimum`` and ``maximum``. A blank value is not judged: the default
+    applies. The create and update routes answer 422 with these sentences.
+    """
+    entry = PROVIDER_CATALOG.get(provider) or {}
+    specs = entry.get("extra_field_inputs") or {}
+    values = extra if isinstance(extra, dict) else {}
+    problems: list[str] = []
+    for key, spec in specs.items():
+        raw = values.get(key)
+        text = "" if raw is None else str(raw).strip()
+        if not text:
+            continue
+        if spec.get("kind") == "domains":
+            bad = [
+                item
+                for item in re.split(r"[\s,;]+", text)
+                if item and not _DOMAIN_NAME.match(item.lower().lstrip("@").rstrip("."))
+            ]
+            if bad:
+                problems.append(f"'{key}' holds values that are not domain names: {', '.join(bad[:5])}.")
+        elif spec.get("kind") == "integer":
+            low, high = spec.get("minimum"), spec.get("maximum")
+            try:
+                number: int | None = int(text)
+            except ValueError:
+                number = None
+            if number is None or (low is not None and number < low) or (high is not None and number > high):
+                problems.append(f"'{key}' is a whole number from {low} to {high}.")
+    return problems
 
 
 def newly_missing_required_extra_fields(
@@ -8626,6 +8667,63 @@ PROVIDER_CATALOG = {
                 "the platform's own embedding and LLM providers. Without it "
                 "the built-in keyword/regex tier still runs. Test Connection "
                 "reports which tiers are live, and how many rules are loaded."
+            ),
+        },
+    },
+    "platform_email": {
+        "name": "Platform email",
+        "description": (
+            "Let agents send email from the platform's own address through the SMTP "
+            "server this deployment configures, to the recipient domains you allow"
+        ),
+        "logo": "/logos/platform_email.svg",
+        "category": "integration",
+        "integration_category": "communication",
+        "integration_types": ["email"],
+        # No credential: it sends through the deployment's SMTP settings. Offered
+        # only while SMTP is configured, created by an administrator only, as a
+        # company-managed integration (integrations.py reads both flags).
+        "auth_type": "none",
+        "supported_auth_types": ["none"],
+        "requires_platform_smtp": True,
+        "company_managed_only": True,
+        "fields": [],
+        "extra_fields": {
+            "allowed_domains": "Allowed recipient domains",
+            "daily_limit": "Emails per agent per day",
+        },
+        # The control and the rule of each field: the form draws a domain list as
+        # tags and the limit as a bounded number, and the create and update
+        # routes refuse a value outside the rule (invalid_extra_fields).
+        "extra_field_inputs": {
+            "allowed_domains": {
+                "kind": "domains",
+                "help": "Type a domain such as example.com, then press Enter. Agents can only write to these domains; with none, every send is refused.",
+            },
+            "daily_limit": {
+                "kind": "integer",
+                "minimum": 0,
+                "maximum": 1000,
+                "default": "50",
+                "help": "Emails one agent may send per UTC day, from 0 to 1000. 0 stops every send.",
+            },
+        },
+        "setup_guide": {
+            "title": "Platform email setup",
+            "steps": [
+                "The deployment's SMTP settings (SMTP_HOSTNAME and the other SMTP_* variables) are the server and the sender: nothing to enter here.",
+                "Add the recipient domains agents may write to, one at a time (type a domain, then press Enter). An address outside them is refused.",
+                "Set the daily limit per agent (default 50), then bind the integration to the agents that may send.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Send",
+                    "description": "Send email from the platform sender to the allowed domains; every send asks for approval and is written to the audit log.",
+                },
+            ],
+            "notes": (
+                "Test Connection says whether SMTP is configured and which domains are allowed. "
+                "Bcc recipients each receive their own copy, never named in a header."
             ),
         },
     },

@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
+import { TagInput } from "@/components/ui/tag-input";
 import {
   EXTRA_CONFIG_MASK,
   deriveControllingValue,
+  domainList,
+  extraFieldProblem,
   isExtraFieldVisible,
   isSecretExtraKey,
+  type ExtraFieldInputSpec,
   type ExtraFieldOption,
   type VisibleWhen,
 } from "@/lib/extra-fields";
@@ -26,6 +31,13 @@ import { useFormatter } from "@/i18n";
  * Labels are the design-system `Label` (14 px) and inputs keep the 36 px
  * field height in both modes, so these fields match their siblings.
  *
+ * A field the catalog types (`inputs`, its `extra_field_inputs`) gets its own
+ * control: a `domains` list is a tag input (stored one entry per line) whose
+ * entries that are not domain names are marked, an `integer` a number field
+ * within its bounds; either shows its inline error under the field, tied by
+ * `aria-describedby` and `aria-invalid`, and the caller refuses the save
+ * (`hasInvalidExtraField`). Its `help` is the help line.
+ *
  * `mode="edit"` adds a switch for a schema-declared boolean,
  * and an EMPTY input where the API returned its mask for a stored secret: the
  * mask is not a value anyone can reveal, so the placeholder says one is stored
@@ -42,6 +54,7 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
   omitKeys,
   schemaTypeByKey,
   helpFor,
+  inputs,
 }: {
   /** Field key -> label, as the catalog declares it. */
   fields: Record<string, string>;
@@ -57,8 +70,11 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
   schemaTypeByKey?: ReadonlyMap<string, string>;
   /** The help line under a field (where its value comes from); none when it answers nothing. */
   helpFor?: (key: string) => string | undefined;
+  /** The typed controls the catalog declares (`extra_field_inputs`). */
+  inputs?: Record<string, ExtraFieldInputSpec> | null;
 }) {
   const { t_i18n } = useFormatter();
+  const idBase = useId();
   const editing = mode === "edit";
   const omitted = new Set(omitKeys ?? []);
   const set = (key: string, value: unknown) => onChange({ ...values, [key]: value } as T);
@@ -82,7 +98,55 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
           const choices = options?.[key];
           const current = values[key];
           const storedIsMasked = editing && current === EXTRA_CONFIG_MASK;
-          const help = helpFor?.(key);
+          const spec = inputs?.[key];
+          // The catalog's own words, like the field labels (served in English).
+          const help = spec?.help ?? helpFor?.(key);
+          if (spec && (spec.kind === "domains" || spec.kind === "integer")) {
+            const problem = extraFieldProblem(current, spec);
+            const fieldId = `${idBase}-${key}`;
+            const helpId = `${fieldId}-help`;
+            const errorId = `${fieldId}-error`;
+            const describedBy = [problem ? errorId : null, help ? helpId : null].filter(Boolean).join(" ") || undefined;
+            const message = !problem
+              ? null
+              : "badDomains" in problem
+                ? t_i18n("Not a domain name: {entries}", { entries: problem.badDomains.join(", ") })
+                : t_i18n("Enter a whole number from {min} to {max}.", { min: spec.minimum ?? 0, max: spec.maximum ?? 0 });
+            return (
+              <div key={key} className="space-y-1">
+                <Label htmlFor={fieldId} className="block text-default-primary">{desc}</Label>
+                {spec.kind === "domains" ? (
+                  <TagInput
+                    id={fieldId}
+                    aria-label={desc}
+                    aria-describedby={describedBy}
+                    aria-invalid={Boolean(problem)}
+                    invalidTags={problem && "badDomains" in problem ? problem.badDomains : undefined}
+                    suggestFromPlatformTags={false}
+                    placeholder="example.com"
+                    value={domainList(current)}
+                    onChange={(next) => set(key, next.join("\n"))}
+                  />
+                ) : (
+                  <Input
+                    id={fieldId}
+                    aria-label={desc}
+                    aria-describedby={describedBy}
+                    aria-invalid={Boolean(problem)}
+                    type="number"
+                    inputMode="numeric"
+                    min={spec.minimum ?? undefined}
+                    max={spec.maximum ?? undefined}
+                    step={1}
+                    value={typeof current === "string" || typeof current === "number" ? String(current) : ""}
+                    onChange={(e) => set(key, e.target.value)}
+                  />
+                )}
+                {message && <p id={errorId} className="content-compact text-feedback-error-primary">{message}</p>}
+                {help && <p id={helpId} className="content-compact text-default-secondary">{help}</p>}
+              </div>
+            );
+          }
           return (
             <div key={key} className="space-y-1">
               <Label className="block text-default-primary">{desc}</Label>

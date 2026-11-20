@@ -32,6 +32,10 @@ read too (``GET /repos/{repo}/commits/{sha}/status``, on a candidate green head
 only): a pending status counts as a pending check and a red one as a failed
 check (``status:<context>``), weighed against the base's required contexts
 when they were read, so a status still running never wakes a green filter.
+A head whose newest status changed under ``STATUS_SETTLE_SECONDS`` (60 s) ago
+is held pending (``status:settling``): a status app creates the statuses of a
+later stage only after the earlier one ended, and the head watch reads the
+head again before it wakes green.
 
 The red side has its own facts, because a workflow run completes only when its
 last job ends (a slow or hung shard holds a failed one back for up to its
@@ -593,6 +597,12 @@ def workflows_not_created(
 
 #: A pending stand-in for the workflow runs of a push GitHub has not created yet.
 NOT_CREATED_WORKFLOWS = {"id": "not-created", "name": "not-created", "status": "queued"}
+#: How long after a head's newest commit status changed its statuses may still grow
+#: (a status app's next stage): CircleCI created the build-* statuses of
+#: OpenAEV-Platform/collectors #690 16 s after its last test-* status passed.
+STATUS_SETTLE_SECONDS = 60
+#: A pending stand-in for the commit statuses a status app has not created yet.
+STATUSES_SETTLING = {"name": "status:settling", "status": "pending", "conclusion": None}
 
 
 def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]) -> dict[str, Any]:
@@ -615,7 +625,10 @@ def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]
 
 
 def with_commit_statuses(
-    checks: dict[str, Any], statuses: list[Any], required: frozenset[str] | None = None
+    checks: dict[str, Any],
+    statuses: list[Any],
+    required: frozenset[str] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """*checks* with the head's commit statuses weighed: a pending or red status holds a green head. Pure.
 
@@ -626,20 +639,35 @@ def with_commit_statuses(
     *required* names it or names nothing (a red outside the base's required
     contexts is ``failed_not_required``, as for a check run). A status named in
     ``stale_optional`` was already left out by :func:`with_stale_optional`.
+
+    A status app creates the statuses of a later stage only once the earlier
+    stage ended (CircleCI: the ``build-*`` jobs about 15 s after the last
+    ``test-*`` one), so a head whose statuses all passed is held as pending
+    (``status:settling``) while its newest status changed less than
+    :data:`STATUS_SETTLE_SECONDS` before *now*: the head watch reads it again,
+    and it wakes green only once no new status appeared in that window.
     """
     left_out = {s.get("name") for s in checks.get("stale_optional") or [] if isinstance(s, dict)}
     pending: list[dict[str, Any]] = []
     red: list[str] = []
     red_optional: list[str] = []
+    changed: list[datetime] = []
     for status in statuses:
         if not isinstance(status, dict):
             continue
         context = str(status.get("context") or "?")
         state = status.get("state") or "pending"
+        moment = _parse_time(status.get("updated_at"))
+        if moment is not None:
+            changed.append(moment)
         if state == "pending" and context not in left_out:
             pending.append({"name": f"status:{context}", "status": "pending", "conclusion": None})
         elif state in ("error", "failure"):
             (red if not required or context in required else red_optional).append(f"status:{context}")
+    if not pending and not red and changed:
+        age = ((now or _now()) - max(changed)).total_seconds()
+        if age < STATUS_SETTLE_SECONDS:
+            pending.append(dict(STATUSES_SETTLING))
     if not pending and not red and not red_optional:
         return checks
     held = bool(pending or red)
