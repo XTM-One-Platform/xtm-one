@@ -66,6 +66,7 @@ from app.a2a.client.registration import (
 )
 from app.a2a.protocol import (
     DIALECT_PROTO_V10,
+    TASK_NOT_FOUND,
     TERMINAL_STATES,
     TRANSPORT_JSONRPC,
     TRANSPORT_REST,
@@ -571,6 +572,18 @@ class PartnerRpcError(Exception):
         self.code = code
         self.message = message
         super().__init__(f"Partner reported JSON-RPC error {code}: {message}")
+
+    @property
+    def is_task_not_found(self) -> bool:
+        """Whether the partner answered A2A ``TaskNotFoundError`` (-32001).
+
+        The code may arrive as an int or as its decimal text; anything else
+        is not that error.
+        """
+        try:
+            return int(str(self.code).strip()) == TASK_NOT_FOUND
+        except ValueError:
+            return False
 
 
 class _PartnerHttpError(Exception):
@@ -2432,10 +2445,21 @@ async def delegate(
         except PartnerRpcError as exc:
             # Not counted against the breaker: a considered answer from a
             # reachable partner, and retrying an invalid request cannot succeed.
+            # TaskNotFoundError on a request naming a task is the JSON-RPC twin
+            # of the HTTP 404/410 branch below: the task ended or was purged,
+            # which says nothing about the partner; the agent must not retry
+            # the collect, it sends the work again.
+            rpc_detail = (
+                "Partner no longer knows this task (A2A TaskNotFoundError): it "
+                "has ended or was purged on the remote side. Do not collect it "
+                "again; send the work as a new delegation."
+                if task_id and exc.is_task_not_found
+                else "Partner rejected the request with a JSON-RPC error."
+            )
             result = DelegationResult(
                 outcome=OUTCOME_PARTNER_FAILED,
                 partner_reason=f"{exc.code}: {exc.message}",
-                detail="Partner rejected the request with a JSON-RPC error.",
+                detail=rpc_detail,
                 partner_task_id=task_id,
                 protocol_version=version,
                 signature_state=signature_state,
