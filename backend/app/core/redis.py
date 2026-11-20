@@ -21,6 +21,9 @@ holding connections open.
 For **pub/sub** (which holds a dedicated connection for the lifetime of the
 subscription), use ``redis_pubsub_client()`` — it returns a *new* lightweight
 client that the caller **must** close with ``close_pubsub()`` when done.
+
+With ``REDIS_KEY_PREFIX`` set, every client built here puts its keys and
+channels under the prefix (``app.core.redis_key_prefix``).
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ import redis.asyncio.sentinel as redis_sentinel
 
 from app.core.cancellation import run_to_completion
 from app.core.config import settings
+from app.core.redis_key_prefix import prefixed_client_class
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +106,22 @@ def _data_plane_auth() -> dict[str, Any]:
     return kwargs
 
 
+def _client_class() -> type[redis_asyncio.Redis]:
+    """The client class: keys and channels under ``REDIS_KEY_PREFIX`` when set."""
+    if settings.redis_key_prefix:
+        return prefixed_client_class(settings.redis_key_prefix)
+    return redis_asyncio.Redis
+
+
+def unprefixed_key(name: str) -> str:
+    """A key name as Redis holds it, as the platform names it: without the prefix.
+
+    For a name Redis hands back as a value - a Lua script that stored one of its
+    ``KEYS`` - which the client does not recognise as a key.
+    """
+    return name.removeprefix(settings.redis_key_prefix)
+
+
 # Module-level state populated by ``_build_client()``.
 _pool: redis_asyncio.ConnectionPool | None = None
 _sentinel: redis_sentinel.Sentinel | None = None
@@ -113,7 +133,7 @@ def _build_standalone() -> tuple[redis_asyncio.Redis, redis_asyncio.ConnectionPo
         settings.redis_url,
         **_common_kwargs(),
     )
-    return redis_asyncio.Redis(connection_pool=pool), pool
+    return _client_class()(connection_pool=pool), pool
 
 
 def _build_sentinel() -> tuple[redis_asyncio.Redis, redis_sentinel.Sentinel]:
@@ -142,7 +162,7 @@ def _build_sentinel() -> tuple[redis_asyncio.Redis, redis_sentinel.Sentinel]:
     )
     client = sentinel.master_for(
         settings.redis_sentinel_service,
-        redis_class=redis_asyncio.Redis,
+        redis_class=_client_class(),
     )
     logger.info(
         "Redis: sentinel mode (service=%s, hosts=%d)",
@@ -190,11 +210,11 @@ async def redis_pubsub_client() -> redis_asyncio.Redis:
         # current master at subscribe time.
         return _sentinel.master_for(
             settings.redis_sentinel_service,
-            redis_class=redis_asyncio.Redis,
+            redis_class=_client_class(),
         )
     if _pool is None:
         raise RuntimeError("Redis connection pool is not initialized.")
-    return redis_asyncio.Redis(connection_pool=_pool)
+    return _client_class()(connection_pool=_pool)
 
 
 #: How long closing a subscription may take in all: a Redis that stopped
