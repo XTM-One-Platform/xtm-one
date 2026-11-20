@@ -258,6 +258,8 @@ OpenCTI-Platform/connectors:
 | CI job (workflow) | Sandbox check | Not detected, or CI-only reason |
 | --- | --- | --- |
 | Ensure Formatting (ci-lint-format.yml) | `python-format` (isort) | black not detected (`uv run --with-requirements ci-requirements.txt black --check --diff .`) |
+
+A lint or format line that runs its tool bare (`black --check .`, `flake8 .`) after its job installed that tool by name (`pip install black isort --user`, `pip install flake8`, `uv pip install ...`; a `pip`, `setuptools` or `wheel` self-upgrade is not a tool) runs in the same ephemeral environment a `uv run` line of the job gets: `uv run --no-project --with black --with isort black --check .`, on a workflow and on a CircleCI job alike (`detect._with_job_tools`, #714); a CircleCI job image named after its tool (`alpine/flake8`) counts as its install. The toolchain image carries no black, isort or flake8, so the line as written exited 127. A tool the job did not name in an install (a project's own requirements file the install check installs), a types line (the type checker reads the project's packages), a launcher line (`poetry run`, `tox`, `pre-commit`, `make`) and a shell line are kept as written. The `-apply` write sibling keeps the prefix (`_write_argv` skips the `--with` values).
 | Base Linter flake8, STIX ID Linter (ci-lint-format.yml) | `python-lint`, `shared/pylint_plugins/check_stix_plugin:python-lint` | |
 | Connector linter (ci-connector-verified-linter.yml) | `python-install` | not detected: the linter on the changed connector |
 | Connector tests (ci-tests-connectors.yml) | | not detected: `pytest` in the changed connector's `tests/` after its requirements |

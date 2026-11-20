@@ -25,14 +25,16 @@ def test_a_python_formatter_check_gets_a_write_sibling_on_the_changed_files() ->
     found = _detect({".github/workflows/ci.yml": WORKFLOW, "pyproject.toml": "[project]\nname = 'x'\n"})
     isort = found.checks["python-format-apply"]
     black = found.checks["python-format-black-apply"]
-    assert checks.command_argv(isort) == ("isort", ".")
-    assert checks.command_argv(black) == ("black", ".")
-    assert checks.command_argv(black, ["a.py"]) == ("black", "a.py")
+    # The job installed both tools: they run in the ephemeral environment that holds them (#714).
+    tools = ("uv", "run", "--no-project", "--with", "black", "--with", "isort")
+    assert checks.command_argv(isort) == (*tools, "isort", ".")
+    assert checks.command_argv(black) == (*tools, "black", ".")
+    assert checks.command_argv(black, ["a.py"]) == (*tools, "black", "a.py")
     for spec in (isort, black):
         assert spec.affected == "files" and spec.affected_by_default
         assert spec.affected_globs == PYTHON_FORMAT_GLOBS
     # The check itself is unchanged: CI's gate stays the gate.
-    assert found.checks["python-format-black"].argv == ("black", "--check")
+    assert found.checks["python-format-black"].argv == (*tools, "black", "--check")
 
 
 def test_write_argv_by_tool() -> None:

@@ -1660,15 +1660,17 @@ def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[In
                         continue
                     parsed = _command(line, cwd, dirs)
                     found = classify(parsed[2]) if parsed else None
+                    if parsed and not found:
+                        # `pip install black isort --user` is no check (a user install), but installs the tools.
+                        tools.extend(_installed(parsed[2], parsed[0], dirs))
                     if parsed and found:
                         stack, kind = found
                         runs_on = collector.stack_of(parsed[0]) if stack == "make" else ""
                         argv = parsed[1]
                         if stack == "python" and kind == "install":
                             tools.extend(_installed(parsed[2], parsed[0], dirs))
-                        elif stack == "python" and kind in _TOOL_KINDS and tools and parsed[2][:2] == ["uv", "run"] and argv[:2] != ["sh", "-c"]:
-                            # The tool runs where the job's earlier steps installed it: an ephemeral uv environment.
-                            argv = ["uv", "run", "--no-project", *_relative_tools(tools, parsed[0]), *_tool_words(parsed[2])]
+                        else:
+                            argv = _with_job_tools(stack, kind, argv, parsed[2], tools, parsed[0])
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
                         if collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env) and job_python:
@@ -1743,6 +1745,9 @@ def _circleci(collector: _Collector, files: Mapping[str, bytes], infra: list[Inf
             job_python = _minor(pinned.group(1)) if pinned else ""
             if job_python and job_python not in collector.workflow_pythons:
                 collector.workflow_pythons.append(job_python)
+            # A job image named after its tool (alpine/flake8) carries it; the toolchain image does not.
+            image_tool = re.sub(r"[:@].*$", "", str(images[0].get("image") or "")).rsplit("/", 1)[-1] if images else ""
+            tools: list[str] = ["--with", image_tool] if image_tool in _IMAGE_TOOLS else []
             home = str(job.get("working_directory") or _CIRCLECI_HOME).rstrip("/")
             if not home.startswith(("~", "/")):
                 home = f"~/{home}"  # a relative job directory is below the home directory
@@ -1777,13 +1782,21 @@ def _circleci(collector: _Collector, files: Mapping[str, bytes], infra: list[Inf
                         )
                     parsed = _command(line, cwd, dirs)
                     found = classify(parsed[2]) if parsed else None
+                    if parsed and not found:
+                        # `pip install black isort --user` is no check (a user install), but installs the tools.
+                        tools.extend(_installed(parsed[2], parsed[0], dirs))
                     if parsed and found:
                         stack, kind = found
                         runs_on = collector.stack_of(parsed[0]) if stack == "make" else ""
+                        argv = parsed[1]
+                        if stack == "python" and kind == "install":
+                            tools.extend(_installed(parsed[2], parsed[0], dirs))
+                        else:
+                            argv = _with_job_tools(stack, kind, argv, parsed[2], tools, parsed[0])
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
                         if (
-                            collector.add(parsed[0], stack, kind, parsed[1], source, runs_on=runs_on, env=step_env)
+                            collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env)
                             and job_python
                         ):
                             collector.pythons[(parsed[0], stack, kind)] = job_python
@@ -1834,6 +1847,42 @@ def _minor(version: str) -> str:
     return f"{match.group(1)}.{match.group(2)}" if match else ""
 
 
+def _with_job_tools(stack: str, kind: str, argv: list[str], tokens: list[str], tools: list[str], cwd: str) -> list[str]:
+    """*argv*, run in an ephemeral uv environment holding the *tools* its job installed before it.
+
+    A lint, format or types line runs where the job's earlier steps installed its tool: ``pip install
+    black isort --user`` then ``black --check .`` (OpenAEV-Platform/injectors on CircleCI) gives
+    ``uv run --no-project --with black --with isort black --check .``, since the toolchain image carries
+    no black (gap sandbox-toolchain-python-missing-formatters). A ``uv run`` line drops its own prefix;
+    a ``poetry run`` line, a shell line or a line with no install before it is kept as written. A bare
+    types line is kept too: a type checker reads the project's own packages, which ``--no-project``
+    leaves out.
+    """
+    if stack != "python" or kind not in _TOOL_KINDS or not tools or argv[:2] == ["sh", "-c"] or not tokens:
+        return argv
+    if tokens[:2] != ["uv", "run"]:
+        if kind not in _BARE_TOOL_KINDS or posixpath.basename(tokens[0]) in _RUNNERS:
+            return argv
+        # A bare tool the job did not name in an install (`pip install -U certifi`, or a project's own
+        # `-r requirements.txt` the install check already installs) is kept as written.
+        named = {tools[i + 1].lower() for i in range(0, len(tools) - 1, 2) if tools[i] == "--with"}
+        if _tool_name(tokens) not in named:
+            return argv
+    return ["uv", "run", "--no-project", *_relative_tools(tools, cwd), *_tool_words(tokens)]
+
+
+#: The check kinds whose bare tool line (``black --check .``) runs with the tools its job installed.
+_BARE_TOOL_KINDS = ("lint", "format")
+#: Launchers a bare line names first: their own environment, never wrapped in another one.
+_RUNNERS = frozenset({"uv", "uvx", "poetry", "pipx", "tox", "nox", "pre-commit", "make"})
+#: Python tools a CircleCI job image is named after (``alpine/flake8``): the job runs them bare, installed by the image.
+_IMAGE_TOOLS = frozenset({"flake8", "black", "isort", "pylint", "ruff"})
+#: The ``uv run`` options whose value is a package or a requirements file, never the command.
+_UV_WITH_OPTIONS = frozenset({"--with", "--with-requirements", "--with-editable"})
+#: What a job's ``pip install`` upgrades for itself, never a tool a check runs (``pip3 install -U pip certifi``).
+_PIP_SELF = frozenset({"pip", "setuptools", "wheel"})
+
+
 def _installed(tokens: list[str], cwd: str, dirs: frozenset[str]) -> list[str]:
     """The ``uv run --with`` arguments of a ``pip install`` / ``uv pip install`` of named tools.
 
@@ -1856,7 +1905,12 @@ def _installed(tokens: list[str], cwd: str, dirs: frozenset[str]) -> list[str]:
                 out += ["--with-requirements", target]
         elif word in ("-e", "--editable") or word in _PIP_VALUE_OPTIONS:
             next(rest, None)
-        elif not word.startswith(("-", ".", "/")) and "/" not in word and "$" not in word:
+        elif (
+            not word.startswith(("-", ".", "/"))
+            and "/" not in word
+            and "$" not in word
+            and word.lower() not in _PIP_SELF
+        ):
             out += ["--with", word]
     return out
 
@@ -2626,6 +2680,8 @@ def _write_argv(argv: tuple[str, ...]) -> tuple[tuple[str, ...], str]:
     check option, ``prettier --check`` gets ``--write``, ``spotless:check`` becomes ``spotless:apply``.
     """
     for index, token in enumerate(argv):
+        if index and argv[index - 1] in _UV_WITH_OPTIONS:
+            continue  # `uv run --with black --with isort isort --check-only`: a package, not the tool run
         if token in _JVM_APPLY_GOALS:
             return (*argv[:index], _JVM_APPLY_GOALS[token], *argv[index + 1 :]), "spotless"
         tool = posixpath.basename(token)
