@@ -541,6 +541,38 @@ def get_integration_public_url(
     return safe or None
 
 
+async def _delegate_in_own_session(
+    delegate: Callable[..., Awaitable[Any]], integration: Any, target: Any, **kwargs: Any
+) -> Any:
+    """Run one A2A delegation in a database session of its own, committed at its end.
+
+    Not on the run's session: the tool calls of one model round run together
+    and share it, so a delegation's reads and record writes would interleave
+    with its siblings', and one database error that aborts the transaction
+    (a statement timeout, a constraint) would fail every later send, collect
+    and record of the run on ``InFailedSQLTransaction``. In a session of its
+    own, a delegation commits its record when it ends, rolls back alone when
+    its session breaks, and never poisons the run's session or a sibling's.
+
+    ``delegate`` never raises by contract; a failure of the commit itself is
+    logged and the outcome still returned, since the partner's answer is
+    real whatever happened to the bookkeeping.
+    """
+    from app.core.database import async_session
+
+    async with async_session() as own_db:
+        result = await delegate(own_db, integration, target, **kwargs)
+        try:
+            await own_db.commit()
+        except Exception:
+            logger.warning(
+                "a2a: could not commit the record of a delegation to integration %s",
+                getattr(integration, "id", None),
+                exc_info=True,
+            )
+            with contextlib.suppress(Exception):
+                await own_db.rollback()
+    return result
 
 
 async def _build_a2a_delegation_tool(
@@ -695,8 +727,8 @@ async def _build_a2a_delegation_tool(
                 # so a partner still working hands back in seconds instead of
                 # holding the tool call for the whole delegation ceiling.
                 collecting = bool(continue_task_id) and not (message or "").strip()
-                result = await delegate(
-                    db,
+                result = await _delegate_in_own_session(
+                    delegate,
                     integration,
                     _target,
                     message=message,
