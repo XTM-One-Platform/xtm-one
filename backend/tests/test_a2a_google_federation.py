@@ -310,6 +310,8 @@ class TestCatalogEntry:
             "credential_mode",
             "service_account_json",
             "impersonate_service_account",
+            # The #708 opt-in, shared by every outbound A2A provider.
+            "send_instance_identity",
         }
         assert [o["value"] for o in entry["extra_field_options"]["credential_mode"]] == [
             "impersonation",

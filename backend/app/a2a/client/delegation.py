@@ -45,7 +45,12 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from app.a2a.client import breaker, credential_state
-from app.a2a.client.credentials import CredentialError, forget_token, outbound_headers
+from app.a2a.client.credentials import (
+    CredentialError,
+    forget_token,
+    outbound_headers,
+    sends_instance_identity,
+)
 from app.a2a.client.destinations import (
     DestinationRefusedError,
     assert_same_origin,
@@ -72,6 +77,7 @@ from app.a2a.protocol import (
     TRANSPORT_REST,
     A2AState,
     dialect_for,
+    instance_metadata,
     method_for,
     normalise_transport,
     outbound_configuration,
@@ -712,7 +718,12 @@ class _Wire:
             dialect=dialect_for(self.transport, self.version),
             message_id=submission_id,
             task_id=task_id or None,
+            metadata=self.metadata,
         )
+
+    #: Set only when the integration opted in to sending this instance's
+    #: identity (#708); ``None`` keeps the message to the composed text alone.
+    metadata: dict[str, Any] | None = None
 
     #: Set when this delegation registers a callback, so the partner is asked
     #: for one in the same request that submits the work — a second round trip
@@ -1960,6 +1971,24 @@ async def mark_cancel_owed(
     return int(result.rowcount or 0)
 
 
+async def _instance_identity(db: Any) -> dict[str, Any] | None:
+    """This instance's identity as outbound metadata, or ``None`` if unreadable.
+
+    The Instance ID of Settings > Parameters (``PLATFORM_ID`` when forced) and
+    the resolved display name: the two public values ``GET /platform/config``
+    serves. A read that fails sends nothing rather than failing the delegation.
+    """
+    try:
+        from app.api.v1.platform_settings_helpers import get_platform_settings
+        from app.services.branding import get_cached_branding
+
+        settings_row = await get_platform_settings(db)
+        return instance_metadata(str(settings_row.id), get_cached_branding().name)
+    except Exception:
+        logger.warning("a2a.client: instance identity unreadable, sent without it")
+        return None
+
+
 async def _target_for(db, target_id):
     """The registration an outstanding delegation was sent under, or ``None``."""
     if target_id is None:
@@ -2304,6 +2333,10 @@ async def delegate(
 
             # The binding recorded at verification, never one chosen now.
             wire = wire_for(target, endpoint=endpoint, version=version or "", headers=headers)
+            # Who is calling, only where the operator opted this integration
+            # in (#708). Off by default: the message stays the text alone.
+            if sends_instance_identity(integration):
+                wire.metadata = await _instance_identity(db)
 
             # Ask to be told, where the partner offers it and this deployment
             # can be reached. Registering discloses this deployment's address,
