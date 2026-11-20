@@ -315,6 +315,33 @@ async def test_list_ediscovery_cases_formats_and_paginates(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_audit_queries_windows_an_answer_graph_did_not_bound(monkeypatch):
+    """Graph beta ignores $top on auditLog/queries: the tool shows `top` queries, newest first, and pages by offset."""
+    queries = [
+        {
+            "id": f"q{i}",
+            "displayName": f"search {i:03d}",
+            "status": "succeeded",
+            "createdDateTime": f"2026-11-{1 + i // 40:02d}T{i % 24:02d}:00:00Z",
+        }
+        for i in range(300)
+    ]
+    newest = sorted(queries, key=lambda q: q["createdDateTime"], reverse=True)
+    calls = _patch_graph(monkeypatch, resp=_FakeResp(200, {"value": queries}))
+    handler = _handlers()["list_purview_audit_queries"]
+
+    first = await handler(top=5)
+    assert calls[0]["params"]["$top"] == 5
+    assert first.count("| status:") == 5
+    assert newest[0]["displayName"] in first and newest[5]["displayName"] not in first
+    assert "offset=5" in first and "of 300" in first
+
+    last = await handler(top=500, offset=250)
+    assert calls[1]["params"]["$top"] == 100
+    assert last.count("| status:") == 50 and "offset=" not in last
+
+
+@pytest.mark.asyncio
 async def test_search_audit_log_posts_to_beta_endpoint(monkeypatch):
     calls = _patch_graph(
         monkeypatch, resp=_FakeResp(201, {"id": "q-1", "displayName": "search"})

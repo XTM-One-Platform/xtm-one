@@ -401,8 +401,10 @@ def register(
         )
         return head + "\n" + body
 
-    async def list_purview_audit_queries(top: int = 25, skiptoken: str = "") -> str:
-        params: dict[str, Any] = {"$top": min(top, 100)}
+    async def list_purview_audit_queries(top: int = 25, skiptoken: str = "", offset: int = 0) -> str:
+        top = max(1, min(int(top or 25), 100))
+        offset = max(0, int(offset or 0))
+        params: dict[str, Any] = {"$top": top}
         if skiptoken:
             params["$skiptoken"] = skiptoken
         data, err = await client.graph_get_json(
@@ -410,13 +412,25 @@ def register(
         )
         if err:
             return err
-        return fmt_list(
-            (data or {}).get("value", []) or [],
+        queries = list((data or {}).get("value", []) or [])
+        # Graph beta ignores $top on this collection (hundreds of queries in one answer): windowed here,
+        # newest first, so the answer holds `top` queries at most whatever the service returns.
+        queries.sort(key=lambda q: str(q.get("createdDateTime") or ""), reverse=True)
+        window = queries[offset : offset + top]
+        body = fmt_list(
+            window,
             _fmt_query,
             noun="audit query",
-            skiptoken=next_skiptoken(data or {}),
+            total=len(queries),
+            skiptoken=next_skiptoken(data or {}) if offset + len(window) >= len(queries) else "",
             empty_msg="No audit log queries found.",
         )
+        if offset + len(window) < len(queries):
+            body += (
+                f"\nShowing {offset + 1}-{offset + len(window)} of {len(queries)} (newest first); "
+                f"call again with offset={offset + len(window)} for more."
+            )
+        return body
 
     handlers = {
         "search_purview_audit_log": search_purview_audit_log,
@@ -554,8 +568,9 @@ def register(
             input_schema={
                 "type": "object",
                 "properties": {
-                    "top": {"type": "integer", "default": 25},
+                    "top": {"type": "integer", "default": 25, "description": "Queries to show, 100 at most."},
                     "skiptoken": {"type": "string"},
+                    "offset": {"type": "integer", "default": 0, "description": "Start of the window, newest first."},
                 },
             },
             source=SRC,
