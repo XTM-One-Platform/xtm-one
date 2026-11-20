@@ -135,6 +135,29 @@ class DismissRequest(BaseModel):
     days: int | None = Field(default=None, ge=1, le=365)
 
 
+#: The most findings one bulk call dismisses or restores.
+MAX_BULK = 200
+
+
+class BulkDismissRequest(DismissRequest):
+    """Dismiss all: one reason and one duration for every open finding named."""
+
+    ids: list[str] = Field(min_length=1, max_length=MAX_BULK)
+
+
+class BulkRestoreRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[str] = Field(min_length=1, max_length=MAX_BULK)
+
+
+class BulkResponse(BaseModel):
+    #: The findings changed, in the order asked.
+    items: list[FindingResponse]
+    #: The ids asked that were not changed: unknown, not readable, or not in the right status.
+    skipped: list[str]
+
+
 async def _managed_agents(db: AsyncSession, user: User) -> dict[str, str]:
     """The agents of the findings the reader may manage, by id, with their names (non-admins)."""
     from app.services.health.cycle_access import resolve_target
@@ -316,8 +339,6 @@ async def dismiss_health_finding(
     db: AsyncSession = Depends(get_db),
 ):
     """Dismiss an open finding with a reason, for ``days`` or until it resolves (audited)."""
-    from app.services.audit import log_audit
-
     row, names = await _readable_finding(db, user, finding_id)
     if row.status != STATUS_OPEN:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an open finding can be dismissed.")
@@ -334,18 +355,115 @@ async def dismiss_health_finding(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    await _audit(db, user, "dismiss", row, body.days)
+    await db.commit()
+    return _response(row, names, can_dismiss=True)
+
+
+async def _audit(db: AsyncSession, user: User, action: str, row: HealthCheckFinding, days: int | None = None) -> None:
+    from app.services.audit import log_audit
+
+    verb = "Dismissed" if action == "dismiss" else "Restored"
+    details: dict[str, Any] = {"finding_id": row.id, "module": row.module}
+    if action == "dismiss":
+        details["days"] = days
     await log_audit(
         db,
         user=user,
-        action="dismiss",
+        action=action,
         entity_type="health_finding",
         entity_name=row.check_id,
-        summary=f"Dismissed Platform Health finding {row.check_id}",
+        summary=f"{verb} Platform Health finding {row.check_id}",
         # The finding id is a sha256 key, not a UUID: it travels in the details.
-        details={"finding_id": row.id, "module": row.module, "days": body.days},
+        details=details,
     )
+
+
+@router.post("/findings/{finding_id}/restore", response_model=FindingResponse)
+async def restore_health_finding(
+    finding_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bring a dismissed finding back to the open list (audited)."""
+    row, names = await _readable_finding(db, user, finding_id)
+    try:
+        row = await engine.restore_finding(db, row.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+    await _audit(db, user, "restore", row)
     await db.commit()
     return _response(row, names, can_dismiss=True)
+
+
+async def _readable_rows(db: AsyncSession, user: User, ids: list[str]) -> tuple[list[HealthCheckFinding], dict[str, str], list[str]]:
+    """The findings of ``ids`` the reader may act on, their agent names, and the ids skipped (order kept)."""
+    # The reader's scope is read once for the whole batch (the rule of _readable_finding).
+    managed = await _scope(db, user)
+    rows: list[HealthCheckFinding] = []
+    skipped: list[str] = []
+    for finding_id in dict.fromkeys(ids):
+        row = await db.get(HealthCheckFinding, finding_id[:64])
+        if row is None or row.module not in present_modules():
+            skipped.append(finding_id)
+            continue
+        agent_id = str((row.subject or {}).get("agent_id") or "")
+        if managed is not None and (row.module not in GENERIC_MODULES or agent_id not in managed):
+            skipped.append(finding_id)
+            continue
+        rows.append(row)
+    if managed is not None:
+        return rows, managed, skipped
+    agent_ids = {str((row.subject or {}).get("agent_id")) for row in rows if (row.subject or {}).get("agent_id")}
+    return rows, await _agent_names(db, agent_ids), skipped
+
+
+@router.post("/findings/dismiss", response_model=BulkResponse)
+async def dismiss_health_findings(
+    body: BulkDismissRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss all: every open finding named, with one reason and one duration (one audit row each)."""
+    rows, names, skipped = await _readable_rows(db, user, body.ids)
+    now = datetime.now(UTC)
+    until = now + timedelta(days=body.days) if body.days else None
+    done: list[FindingResponse] = []
+    for row in rows:
+        if row.status != STATUS_OPEN:
+            skipped.append(row.id)
+            continue
+        try:
+            row = await engine.dismiss_finding(
+                db, row.id, reason=body.reason, by=str(user.id), by_name=user.full_name or "", now=now, until=until
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+        await _audit(db, user, "dismiss", row, body.days)
+        done.append(_response(row, names, can_dismiss=True))
+    await db.commit()
+    return BulkResponse(items=done, skipped=skipped)
+
+
+@router.post("/findings/restore", response_model=BulkResponse)
+async def restore_health_findings(
+    body: BulkRestoreRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore all: every dismissed finding named goes back to the open list (one audit row each)."""
+    rows, names, skipped = await _readable_rows(db, user, body.ids)
+    done: list[FindingResponse] = []
+    for row in rows:
+        try:
+            row = await engine.restore_finding(db, row.id)
+        except ValueError:
+            skipped.append(row.id)
+            continue
+        await _audit(db, user, "restore", row)
+        done.append(_response(row, names, can_dismiss=True))
+    await db.commit()
+    return BulkResponse(items=done, skipped=skipped)
 
 
 @router.get("/history", response_model=list[HistoryPoint])

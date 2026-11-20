@@ -248,6 +248,19 @@ async def dismiss_finding(
     return row
 
 
+async def restore_finding(db: AsyncSession, finding_id: str) -> HealthCheckFinding:
+    """Bring a dismissed finding back to the open list (its dismissal cleared); the next pass resolves it if it passes."""
+    row = await db.get(HealthCheckFinding, finding_id)
+    if row is None:
+        raise LookupError("Health finding not found")
+    if row.status != STATUS_DISMISSED:
+        raise ValueError("Only a dismissed finding can be restored.")
+    row.status = STATUS_OPEN
+    row.dismissal = None
+    await db.flush()
+    return row
+
+
 def score_from_counts(critical: int, warning: int, info: int) -> int:
     penalty = (
         SEVERITY_WEIGHTS["critical"] * critical

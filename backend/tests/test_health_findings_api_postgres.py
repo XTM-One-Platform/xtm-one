@@ -216,6 +216,66 @@ async def test_a_stranger_cannot_read_or_dismiss_a_finding_of_an_agent_they_do_n
 
 
 @pytest.mark.asyncio
+async def test_a_dismissed_finding_is_restored_one_by_one_and_audited(xtm_one_mode):
+    """UX round 1 B6 on #634: a dismissal holds and is undone, never a dead end."""
+    async with _scratch("hf_restore") as sessions:
+        _admin, owner, mine = await _seed(sessions)
+        async with sessions() as db:
+            row = (
+                await db.execute(
+                    select(HealthCheckFinding).where(HealthCheckFinding.subject["agent_id"].astext == str(mine.id))
+                )
+            ).scalar_one()
+        async with _client(sessions, owner) as client:
+            early = await client.post(f"/api/v1/health/findings/{row.id}/restore")
+            await client.post(f"/api/v1/health/findings/{row.id}/dismiss", json={"reason": "Known"})
+            restored = await client.post(f"/api/v1/health/findings/{row.id}/restore")
+            listing = (await client.get("/api/v1/health/findings")).json()
+        async with sessions() as db:
+            audits = (
+                (await db.execute(select(AuditLog).where(AuditLog.entity_type == "health_finding"))).scalars().all()
+            )
+
+    assert early.status_code == 409
+    assert restored.status_code == 200
+    assert (restored.json()["status"], restored.json()["dismissal"], restored.json()["can_dismiss"]) == ("open", None, True)
+    assert listing["total"] == 1
+    assert sorted(a.action for a in audits) == ["dismiss", "restore"]
+
+
+@pytest.mark.asyncio
+async def test_dismiss_all_and_restore_all_act_on_what_the_reader_may_manage_only(xtm_one_mode):
+    async with _scratch("hf_bulk") as sessions:
+        admin, owner, mine = await _seed(sessions)
+        async with sessions() as db:
+            rows = (await db.execute(select(HealthCheckFinding))).scalars().all()
+        ids = [row.id for row in rows]
+        mine_id = next(row.id for row in rows if (row.subject or {}).get("agent_id") == str(mine.id))
+        async with _client(sessions, owner) as client:
+            owned = (await client.post("/api/v1/health/findings/dismiss", json={"ids": ids, "reason": "Batch", "days": 30})).json()
+        async with _client(sessions, admin) as client:
+            empty = await client.post("/api/v1/health/findings/dismiss", json={"ids": ids, "reason": ""})
+            rest = (await client.post("/api/v1/health/findings/dismiss", json={"ids": [*ids, "nope"], "reason": "Batch"})).json()
+            dismissed = (await client.get("/api/v1/health/findings?status=dismissed")).json()
+            back = (await client.post("/api/v1/health/findings/restore", json={"ids": ids})).json()
+            still_open = (await client.get("/api/v1/health/findings")).json()
+        async with sessions() as db:
+            audits = (
+                (await db.execute(select(AuditLog).where(AuditLog.entity_type == "health_finding"))).scalars().all()
+            )
+
+    assert [item["id"] for item in owned["items"]] == [mine_id]
+    assert sorted(owned["skipped"]) == sorted(i for i in ids if i != mine_id)
+    assert empty.status_code == 422
+    assert len(rest["items"]) == 2
+    assert sorted(rest["skipped"]) == sorted([mine_id, "nope"])
+    assert dismissed["total"] == 3
+    assert (len(back["items"]), back["skipped"]) == (3, [])
+    assert still_open["total"] == 3
+    assert sorted(a.action for a in audits) == ["dismiss"] * 3 + ["restore"] * 3
+
+
+@pytest.mark.asyncio
 async def test_the_history_answers_the_three_windows_only(xtm_one_mode):
     async with _scratch("hf_history") as sessions:
         admin, _owner, _mine = await _seed(sessions)
