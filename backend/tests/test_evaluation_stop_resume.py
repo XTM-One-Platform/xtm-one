@@ -197,7 +197,7 @@ def test_a_stopping_worker_says_draining_stops_its_work_then_says_stopped(monkey
     async def _publish(_worker_id, *, state, **_kw):
         said.append(state)
 
-    async def _stop_work():
+    async def _stop_work(**_kw):
         said.append("stop-work")
 
     async def _cycle(_worker_id):
@@ -220,6 +220,101 @@ def test_a_stopping_worker_says_draining_stops_its_work_then_says_stopped(monkey
     asyncio.run(rec.reconciler_loop())
 
     assert said == [worker_presence.STATE_DRAINING, "stop-work", worker_presence.STATE_STOPPED]
+
+
+def test_a_shutdown_waits_once_in_all_for_the_work_it_stopped(monkeypatch):
+    """One deadline for both waits: the same tasks are not waited on twice past the shutdown headroom."""
+    import time
+
+    from app.services import orchestration_reconciler as rec
+    from app.services import worker_presence
+
+    async def _publish(_worker_id, **_kw):
+        return None
+
+    async def _cycle(_worker_id):
+        return None
+
+    async def _sleep(_pubsub):
+        rec.stop_reconciler()
+
+    async def _no_pubsub():
+        return None, None
+
+    async def _stop_work(*, timeout):
+        # Spends the whole budget on a task that never ends.
+        await asyncio.sleep(timeout)
+
+    monkeypatch.setattr(rec, "LEASE_LOSS_STOP_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(rec, "register_builtin_adapters", lambda: None)
+    monkeypatch.setattr(rec, "_subscribe_wake", _no_pubsub)
+    monkeypatch.setattr(rec, "_run_cycle", _cycle)
+    monkeypatch.setattr(rec, "_sleep_or_wake", _sleep)
+    monkeypatch.setattr(rec, "_write_heartbeat", lambda: None)
+    monkeypatch.setattr(rec, "_stop_lease_loss_work", _stop_work)
+    monkeypatch.setattr(worker_presence, "publish", _publish)
+
+    async def _loop_with_a_stuck_task():
+        stuck = asyncio.ensure_future(asyncio.Event().wait())
+        rec._execution_tasks.add(stuck)
+        try:
+            started = time.monotonic()
+            await rec.reconciler_loop()
+            return time.monotonic() - started
+        finally:
+            rec._execution_tasks.discard(stuck)
+            stuck.cancel()
+
+    assert asyncio.run(_loop_with_a_stuck_task()) < 0.5
+
+
+@pytest.mark.asyncio
+async def test_both_lease_sweeps_of_a_cycle_read_one_clock(monkeypatch):
+    """A lease the gone-worker sweep leaves to run out is not taken by the expired sweep without its holder's word."""
+    from app.services import orchestration_engine as engine
+    from app.services import orchestration_reconciler as rec
+    from app.services import worker_presence
+    from tests.test_orchestration_reconciler import _FakeDb, _FakeSessionCtx
+
+    clocks: dict[str, datetime] = {}
+
+    async def _gone_sweep(_db, _worker_id, _resumable, _batch, _bound_of=None, now=None):
+        clocks["gone"] = now
+        return []
+
+    async def _expired_sweep(_db, *, now=None, **_kw):
+        clocks["expired"] = now
+        return []
+
+    async def _empty(*_a, **_k):
+        return []
+
+    async def _publish(*_a, **_k):
+        return None
+
+    async def _noop(*_a, **_k):
+        return None
+
+    class _Resumable:
+        name = "evaluation"
+        resume_when_worker_gone = True
+
+        async def periodic(self, _ctx):
+            return None
+
+    monkeypatch.setattr(rec, "async_session", lambda: _FakeSessionCtx(_FakeDb()))
+    monkeypatch.setattr(rec, "registered_adapters", lambda: [_Resumable()])
+    monkeypatch.setattr(rec, "_reclaim_from_gone_workers", _gone_sweep)
+    monkeypatch.setattr(rec, "_drive_outbox", _noop)
+    monkeypatch.setattr(engine, "reclaim_expired_leases", _expired_sweep)
+    monkeypatch.setattr(engine, "sweep_deadlines", _empty)
+    monkeypatch.setattr(engine, "claim_due", _empty)
+    monkeypatch.setattr(worker_presence, "publish", _publish)
+
+    await rec._run_cycle("w1")
+
+    assert clocks["gone"] is not None
+    assert clocks["gone"] == clocks["expired"]
 
 
 @pytest.mark.parametrize(
@@ -331,15 +426,37 @@ async def test_a_take_back_after_a_stop_resumes_the_runs_it_left_running(monkeyp
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_stopping_worker_hands_back_with_nothing_written_at_batch_end(monkeypatch):
-    """A run paused by the stop (left pending) hands the whole execution back."""
+@pytest.mark.parametrize(
+    ("left", "handed"),
+    [
+        pytest.param("pending", True, id="paused"),
+        # Its pause could not be written (a database blip): still the next worker's to resume.
+        pytest.param("running", True, id="pause-failed"),
+        # A callback run is never paused: its callbacks drive it, and the batch ends here.
+        pytest.param("parked", False, id="callback-parked"),
+    ],
+)
+async def test_a_stopping_worker_hands_back_with_nothing_written_at_batch_end(monkeypatch, left, handed):
+    """A run the stop left unfinished hands the whole execution back."""
     from app.services import evaluation_engine as ee
 
     execution = uuid.uuid4()
     headlines: list = []
 
-    async def _paused_run(db, run_id, *, stopping=None):
+    async def _paused_run(db, run_id, *, stopping=None, **_kw):
         assert stopping is not None and stopping.is_set()
+        if left == "pending":
+            return
+        run = await db.get(EvaluationRun, uuid.UUID(run_id))
+        run.status = "running"
+        if left == "parked":
+            (entry,) = await _entries(sm, 1)
+            db.add(
+                EvaluationEpisode(
+                    run_id=run.id, entry_id=entry, correlation_id=f"eval:{run.id}:{entry}", status="waiting_callback"
+                )
+            )
+        await db.commit()
 
     async def _headlines(*args, **kwargs):
         headlines.append(args)
@@ -357,10 +474,10 @@ async def test_a_stopping_worker_hands_back_with_nothing_written_at_batch_end(mo
                 s, str(eval_id), "manual", execution, worker_id=NO_LEASE, stopping=stopping
             )
 
-        assert handed_back is True
-        assert headlines == []
+        assert handed_back is handed
+        assert (headlines == []) is handed, "nothing written at batch end when handed back"
         async with sm() as s:
-            assert (await s.get(EvaluationRun, run_id)).status == "pending"
+            assert (await s.get(EvaluationRun, run_id)).status == ("pending" if left == "pending" else "running")
     finally:
         await cleanup()
 
@@ -390,6 +507,12 @@ async def test_a_run_paused_by_a_stop_resumes_from_its_finished_entries(monkeypa
         }
 
     paused: dict = {}
+    probed: list[str] = []
+    probe = ee._stop_if_the_user_cancelled
+
+    async def _counted_probe(db, run_uuid, run_id, where):
+        probed.append(where)
+        return await probe(db, run_uuid, run_id, where)
 
     async def _then(session, run_id):
         run = await session.get(EvaluationRun, run_id)
@@ -398,6 +521,7 @@ async def test_a_run_paused_by_a_stop_resumes_from_its_finished_entries(monkeypa
         paused["judged"] = len(judged)
         await session.commit()
         # The next worker, with no stop: the run resumes from its finished entry.
+        monkeypatch.setattr(ee, "_stop_if_the_user_cancelled", _counted_probe)
         await ee.execute_evaluation_run(session, str(run_id))
 
     stored, results = await run_on_postgres(
@@ -415,6 +539,9 @@ async def test_a_run_paused_by_a_stop_resumes_from_its_finished_entries(monkeypa
     assert stored.completed_entries == 3
     assert stored.started_at == paused["started_at"], "a resumed run keeps its first start"
     assert len(judged) == 3, "no entry judged twice"
+    assert probed == ["at entry 2 of 3", "at entry 3 of 3", "before finalising"], (
+        "the finished entry is skipped before any per-entry query"
+    )
     assert len(results) == 3
     assert len({r.entry_id for r in results}) == 3
 
@@ -499,6 +626,46 @@ async def test_a_resumed_run_keeps_the_settings_it_started_with(monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stamped", "status"),
+    [
+        # Edited while the run was paused: its next entries would run another flow under the same label.
+        pytest.param(3, "failed", id="flow-edited"),
+        pytest.param(4, "completed", id="flow-unchanged"),
+    ],
+)
+async def test_a_resumed_flow_run_runs_only_the_flow_version_it_started_on(monkeypatch, stamped, status):
+    from app.models.flow import Flow
+    from app.services import evaluation_engine as ee
+    from app.services.evaluation.flow_subject import FlowEntryOutcome
+
+    async def _flow_answers(*_args, **_kwargs):
+        return FlowEntryOutcome(output="a", flow_run_id=None, status="completed", wall_clock_ms=10)
+
+    monkeypatch.setattr(ee, "run_flow_for_entry", _flow_answers)
+
+    async def _paused_flow_run(session, run_id):
+        flow = Flow(name="Flow", graph={"nodes": [{"id": "start", "kind": "trigger.manual", "config": {}}]}, version_number=4)
+        session.add(flow)
+        await session.flush()
+        run = await session.get(EvaluationRun, run_id)
+        run.agent_id, run.flow_id = None, flow.id
+        # Paused by a stop on version *stamped*, its settings written.
+        run.started_at, run.flow_version_number, run.execution_mode = datetime.now(UTC), stamped, ee.FLOW_EXECUTION_MODE
+        await session.commit()
+
+    stored, _results = await run_on_postgres(
+        monkeypatch, scorer_selection=None, answers=["a"], before_run=_paused_flow_run
+    )
+
+    assert stored.status == status
+    if status == "failed":
+        assert stored.error.startswith("The flow changed while the run was paused (v3 → v4)")
+        assert stored.flow_version_number == 3, "the label stays the version its entries ran"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_a_resume_keeps_the_closed_callback_episodes_that_store_no_result(monkeypatch):
     """A callback entry that failed or timed out stays as it is; only the cut entry is redone."""
     from app.services.evaluation_engine import execute_evaluation
@@ -546,26 +713,51 @@ async def test_a_resume_keeps_the_closed_callback_episodes_that_store_no_result(
         await cleanup()
 
 
-async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes):
-    """Put *run_id* back ``running`` (the stop cut it), record *stop_resumes*, run the next attempt's reclaim."""
+async def _resume_after_a_stop(sm, eval_id, execution, run_id, stop_resumes, *, worked_seconds):
+    """The stop cut *run_id* in an entry it had run *worked_seconds*: record *stop_resumes*, run the next reclaim.
+
+    Returns the run, the execution's payload and the cut entry's episode (``None`` once deleted for a redo).
+    """
     from app.models.orchestration import OrchestrationExecution
     from app.services.evaluation_engine import STOP_RESUMES_PAYLOAD_KEY, execute_evaluation
 
+    (entry,) = await _entries(sm, 1)
     async with sm() as s:
         await s.execute(EvaluationRun.__table__.update().where(EvaluationRun.id == run_id).values(status="running"))
+        s.add(
+            EvaluationEpisode(
+                run_id=run_id,
+                entry_id=entry,
+                correlation_id=f"eval:{run_id}:{entry}",
+                status="running",
+                created_at=datetime.fromisoformat(_AT) - timedelta(seconds=worked_seconds),
+            )
+        )
         row = await s.get(OrchestrationExecution, execution)
         row.payload = {"lease_expired": _TAKEN_BACK("stopped"), STOP_RESUMES_PAYLOAD_KEY: stop_resumes}
         await s.commit()
     async with sm() as s:
         await execute_evaluation(s, str(eval_id), "manual", execution, worker_id=NO_LEASE, resume_stopped_runs=True)
     async with sm() as s:
-        return await s.get(EvaluationRun, run_id), (await s.get(OrchestrationExecution, execution)).payload
+        episode = (
+            await s.execute(
+                select(EvaluationEpisode).where(EvaluationEpisode.run_id == run_id, EvaluationEpisode.entry_id == entry)
+            )
+        ).scalar_one_or_none()
+        return (
+            await s.get(EvaluationRun, run_id),
+            (await s.get(OrchestrationExecution, execution)).payload,
+            episode,
+        )
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_resumes_of_a_run_with_no_entry_finished_in_between_are_bounded(monkeypatch):
-    """An entry longer than the time between rollouts is not redone, and paid, forever; hops are not stalls."""
+    """An entry longer than the time between rollouts is not redone, and paid, forever; hops are not stalls.
+
+    Work is the cut entry's own time, from its episode's start to the stop: never the time the run queued.
+    """
     from app.models.orchestration import OrchestrationExecution
     from app.services.evaluation_engine import (
         MAX_STOP_RESUMES_WITHOUT_PROGRESS,
@@ -578,8 +770,6 @@ async def test_resumes_of_a_run_with_no_entry_finished_in_between_are_bounded(mo
         return None
 
     monkeypatch.setattr("app.services.evaluation_engine.execute_evaluation_run", _fake_execute_run)
-    worked = (datetime.now(UTC) - timedelta(seconds=STOP_RESUME_MIN_WORK_SECONDS + 60)).isoformat()
-    hopped = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
     last_allowed = MAX_STOP_RESUMES_WITHOUT_PROGRESS - 1
 
     sm, cleanup = await _make_db_full()
@@ -597,21 +787,29 @@ async def test_resumes_of_a_run_with_no_entry_finished_in_between_are_bounded(mo
             ],
         )
 
-        # A hop within one rolling restart, seconds after the last resume: not a stall.
-        run, payload = await _resume_after_a_stop(
-            sm, eval_id, execution, cut, {"runs": {str(cut): {"results": 0, "stalled": last_allowed, "at": hopped}}}
+        # A hop within one rolling restart, its entry seconds old when the stop cut it: not a stall.
+        run, payload, episode = await _resume_after_a_stop(
+            sm, eval_id, execution, cut, {"runs": {str(cut): {"results": 0, "stalled": last_allowed}}}, worked_seconds=10
         )
         assert run.status == "pending"
+        assert episode is None, "the cut entry is redone"
         assert payload[STOP_RESUMES_PAYLOAD_KEY]["runs"][str(cut)]["stalled"] == last_allowed
         # Consumed: an attempt cut otherwise after it is not resumed on this stop.
         assert payload[STOP_RESUMES_PAYLOAD_KEY]["consumed"] == _AT
 
-        # Minutes of work and still no result: one stall too many, failed with the reason.
-        run, payload = await _resume_after_a_stop(
-            sm, eval_id, execution, cut, {"runs": {str(cut): {"results": 0, "stalled": last_allowed, "at": worked}}}
+        # Minutes of work on the entry and still no result: one stall too many, failed with the reason.
+        run, payload, episode = await _resume_after_a_stop(
+            sm,
+            eval_id,
+            execution,
+            cut,
+            {"runs": {str(cut): {"results": 0, "stalled": last_allowed}}},
+            worked_seconds=STOP_RESUME_MIN_WORK_SECONDS + 60,
         )
         assert run.status == "failed"
         assert run.error == STALLED_RUN_ERROR
+        # Its cut entry says what the run says, not a crash.
+        assert (episode.status, episode.error) == ("failed", STALLED_RUN_ERROR)
         # Its count is dropped: a later resume of it starts afresh.
         assert str(cut) not in payload[STOP_RESUMES_PAYLOAD_KEY]["runs"]
         async with sm() as s:
@@ -657,24 +855,54 @@ async def test_a_resume_with_no_run_left_pending_still_writes_the_batch_end(monk
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("holder", "writes"),
+    ("holder", "moved_mid_run", "status"),
     [
-        pytest.param("this-worker", True, id="lease-ours"),
-        # Taken back (its stop said, or its presence lapsed in a stall): another worker resumes it.
-        pytest.param("another-worker", False, id="lease-moved"),
+        pytest.param("this-worker", False, "completed", id="lease-ours"),
+        # Taken back before the run started (its stop said, or its presence lapsed in a stall): not even
+        # started, so the worker that resumes it finds it pending.
+        pytest.param("another-worker", False, "pending", id="lease-moved"),
+        # Taken back during its first entry: that entry's write is fenced, and no other entry starts.
+        pytest.param("this-worker", True, "running", id="lease-moved-mid-run"),
     ],
 )
-async def test_a_run_writes_its_entries_only_while_the_lease_is_its_workers(monkeypatch, holder, writes):
+async def test_a_run_writes_its_entries_only_while_the_lease_is_its_workers(monkeypatch, holder, moved_mid_run, status):
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.orchestration import OrchestrationExecution
+    from app.services import evaluation_engine as ee
+
+    bind = {}
+
+    async def _remember_bind(session, _run_id):
+        bind["engine"] = session.bind
+
+    async def _judge_while_taken_back(*_args, **_kwargs):
+        async with AsyncSession(bind["engine"]) as s:
+            await s.execute(update(OrchestrationExecution).values(lease_owner="another-worker"))
+            await s.commit()
+        return {
+            "score": 80.0,
+            "sub_scores": {k: 80 for k in ee.SUB_SCORE_WEIGHTS},
+            "evaluator_reasoning": "ok",
+            "is_judge_failure": False,
+        }
+
     stored, results = await run_on_postgres(
-        monkeypatch, scorer_selection=None, answers=["a", "a"], lease_holder=holder, lease_worker="this-worker"
+        monkeypatch,
+        scorer_selection=None,
+        answers=["a", "a"],
+        lease_holder=holder,
+        lease_worker="this-worker",
+        before_run=_remember_bind,
+        judge=_judge_while_taken_back if moved_mid_run else None,
     )
 
-    if writes:
-        assert stored.status == "completed"
+    assert stored.status == status, "its status is the new worker's to write"
+    if status == "completed":
         assert len(results) == 2
     else:
         assert results == [], "nothing written beside the worker that resumes it"
-        assert stored.status == "running", "its status is the new worker's to write"
 
 
 @pytest.mark.integration

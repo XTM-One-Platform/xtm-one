@@ -1819,9 +1819,12 @@ async def reclaim_expired_leases(
     adapter: str | None = None,
     head_adapters: Iterable[str] = (),
     bound_of: Callable[[str, int], int] | None = None,
+    now: datetime | None = None,
 ) -> list[OrchestrationExecution]:
     """Recover ``running`` rows whose lease expired: a worker that died, or one
-    that stopped renewing it. *bound_of*: as :func:`_take_back`.
+    that stopped renewing it. *bound_of*: as :func:`_take_back`. *now*: the
+    cycle's, shared with :func:`reclaim_from_gone_owners` so a lease that
+    expires between the two sweeps is not taken here without its holder's word.
 
     Rows with attempts remaining go back to ``pending`` (re-runnable now - first
     in the queue for the adapters of *head_adapters*, which resume what a
@@ -1832,7 +1835,7 @@ async def reclaim_expired_leases(
     deadline sweep. Each row records the expiry (``lease_expiry``) and says in
     ``last_error`` when its holder was last heard from.
     """
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     conditions = [
         OrchestrationExecution.state == "running",
         OrchestrationExecution.lease_expires_at.isnot(None),
@@ -1951,6 +1954,7 @@ async def reclaim_from_gone_owners(
     bound_of: Callable[[str, int], int] | None = None,
     silent_loss_given_back: Callable[[str, dict], str | bool | None] | None = None,
     waits_for_lease: Callable[[str, dict], bool] | None = None,
+    now: datetime | None = None,
 ) -> list[OrchestrationExecution]:
     """Take back at once the ``running`` executions of *adapters* leased by a worker that is gone.
 
@@ -1971,7 +1975,7 @@ async def reclaim_from_gone_owners(
     wanted = list(adapters)
     if not gone or not wanted:
         return []
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     stmt = (
         select(OrchestrationExecution)
         .where(

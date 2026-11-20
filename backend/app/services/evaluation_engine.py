@@ -32,7 +32,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any, Final, Protocol, Self, cast
 
-from sqlalchemy import ColumnElement, Numeric, case, delete, func, select, text, tuple_, update
+from sqlalchemy import ColumnElement, Numeric, and_, case, delete, func, or_, select, text, tuple_, update
 from sqlalchemy import cast as sql_cast  # ``cast`` is taken by typing.cast above
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -3047,7 +3047,7 @@ async def _lock_run_before_episode_writes(
 
 async def _lease_still_ours(db: AsyncSession, lease: RunLease | None) -> bool:
     """Whether the execution's lease is still this worker's: read, not locked, before an entry starts."""
-    if lease is None or lease[1] == NO_LEASE:
+    if lease is None:
         return True
     from app.models.orchestration import OrchestrationExecution
 
@@ -3124,7 +3124,7 @@ async def _pause_for_the_stop(
     nothing of the run left unflushed.
     """
     try:
-        if lease is not None and lease[1] != NO_LEASE:
+        if lease is not None:
             await _fence_on_lease(db, lease[0], lease[1], f"evaluation run {run_id}: pause")
         paused = (
             await db.execute(
@@ -3208,6 +3208,17 @@ async def execute_evaluation_run(
     from app.services.orchestration_engine import LeaseLostError
 
     run_uuid = uuid.UUID(run_id)
+    if lease is not None:
+        # The start is a write too: a worker whose evaluation was taken back
+        # (before its heartbeat noticed) must not flip a queued run to
+        # ``running``, which its new worker would then skip. Execution
+        # before run, the lock order; held to the commit of the transition.
+        try:
+            await _fence_on_lease(db, lease[0], lease[1], f"evaluation run {run_id}: start")
+        except LeaseLostError:
+            await db.rollback()
+            logger.warning("Evaluation run %s not started: its evaluation was taken back", run_id)
+            return
     result = await db.execute(
         # LOCKED, so the ``status != "pending"`` guard and the transition after
         # it are one decision. Unlocked, a cancel committing between
@@ -3278,6 +3289,18 @@ async def execute_evaluation_run(
             await db.commit()
             return
         if flow is not None:
+            stamped_version = run.flow_version_number if resumed else None
+            if stamped_version is not None and stamped_version != flow.version_number:
+                # Edited while the run was paused: its next entries would run
+                # another flow than the ones it finished, under one label.
+                run.status = "failed"
+                run.error = (
+                    f"The flow changed while the run was paused (v{stamped_version} → "
+                    f"v{flow.version_number}) — re-run to retry"
+                )
+                run.completed_at = datetime.now(UTC)
+                await db.commit()
+                return
             # The version this run executes, which the reuse fingerprint reads:
             # a run reads the flow as it is when it starts, not at launch.
             run.flow_version_number = flow.version_number
@@ -3639,6 +3662,11 @@ async def execute_evaluation_run(
         # A flow subject's runs share the evaluation's timeout (#8257).
         flow_deadline = time.monotonic() + float(evaluation.timeout_seconds or 3600)
         for entry_idx, _entry in enumerate(entries, 1):
+            entry_record = entry_records[entry_idx - 1]
+            entry_id = entry_record["id"]
+            # Finished before the stop: skipped first, with no query.
+            if entry_id in settled_entries:
+                continue
             # COOPERATIVE CANCELLATION, per run. ``cancel_run`` cancels
             # the execution only when this run is its only one; for a shared
             # execution the stop arrives here (see
@@ -3674,10 +3702,6 @@ async def execute_evaluation_run(
                 )
                 return
 
-            entry_record = entry_records[entry_idx - 1]
-            entry_id = entry_record["id"]
-            if entry_id in settled_entries:
-                continue
             input_prompt = entry_record["input_prompt"]
             file_ids = entry_record["file_ids"]
             expected_answer = entry_record["expected_answer"]
@@ -5868,19 +5892,35 @@ async def _execute_run_with_own_session(
         await execute_evaluation_run(session, run_id, stopping=stopping, lease=lease)
 
 
-async def _runs_left_pending(db: AsyncSession, run_ids: list[str]) -> bool:
-    """Whether any of *run_ids* is still ``pending``: paused by a stop, or never started.
+async def _runs_left_unfinished(db: AsyncSession, run_ids: list[str]) -> bool:
+    """Whether any of *run_ids* is left for the next worker: ``pending`` (paused by a stop, or never
+    started), or ``running`` with no parked callback (its pause could not be written).
 
     Asked only of a stopping worker. Unreadable (a database blip) reads as
     yes: handed back, the next attempt finds what each run is, whereas a
     raise here would fail the evaluation and every run it paused.
     """
+    parked = (
+        select(EvaluationEpisode.id)
+        .where(
+            EvaluationEpisode.run_id == EvaluationRun.id,
+            EvaluationEpisode.status.in_(PARKED_EPISODE_STATUSES),
+        )
+        .exists()
+    )
     try:
         left = await db.execute(
             select(EvaluationRun.id)
             .where(
                 EvaluationRun.id.in_([uuid.UUID(r) for r in run_ids]),
-                EvaluationRun.status == "pending",
+                or_(
+                    EvaluationRun.status == "pending",
+                    and_(
+                        EvaluationRun.status == "running",
+                        EvaluationRun.completed_at.is_(None),
+                        ~parked,
+                    ),
+                ),
             )
             .limit(1)
         )
@@ -5891,7 +5931,7 @@ async def _runs_left_pending(db: AsyncSession, run_ids: list[str]) -> bool:
         with contextlib.suppress(Exception):
             await db.rollback()
         logger.warning(
-            "Evaluation runs left pending not read while stopping, handed back: %s",
+            "Evaluation runs left unfinished not read while stopping, handed back: %s",
             format_exception_message(exc),
         )
         return True
@@ -6145,15 +6185,19 @@ ABANDONED_RUN_ERROR = "Abandoned by a worker that did not survive its attempt �
 #: How many resumes of one run after a worker stop in a row may find it with no new result before it is failed
 #: instead: an entry longer than the time between two rollouts is cut and redone at each one, paid each time.
 MAX_STOP_RESUMES_WITHOUT_PROGRESS = 3
-#: A resume counts as one without progress only when the run had this long to work since the one before: a run
-#: taken from worker to worker within one rolling restart, a few seconds on each, did not stall.
+#: A cut counts as one without progress only when the entry it cut had run this long: a run taken from worker to
+#: worker within one rolling restart, a few seconds on each, did not stall. Work time, never queue or hold time.
 STOP_RESUME_MIN_WORK_SECONDS = 300
-#: The execution payload key recording the resumes after a stop: ``{"runs": {run_id: {results, stalled, at}},
+#: The execution payload key recording the resumes after a stop: ``{"runs": {run_id: {results, stalled}},
 #: "consumed": <the stop marker last resumed from>}``.
 STOP_RESUMES_PAYLOAD_KEY = "stop_resumes"
 #: The execution payload key the evaluation adapter's hand-back writes, ``{"at": <ISO time>}``: a stop marker that
 #: survives the claims, retries and AI holds before the reclaim resumes from it.
 HANDED_BACK_PAYLOAD_KEY = "evaluation_handed_back"
+
+
+def _aware_time(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _parsed_time(value: object) -> datetime | None:
@@ -6163,21 +6207,15 @@ def _parsed_time(value: object) -> datetime | None:
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return _aware_time(parsed)
 
 
 def pending_stop_cut(payload: Mapping[str, Any] | None) -> datetime | None:
-    """When the last stop outside the work this execution has not resumed from yet happened, else ``None``.
+    """When the last stop this execution has not resumed from happened (a hand-back, or a take-back on the
+    worker's word), else ``None``.
 
-    A stop outside the work: its stopping worker handed it back
-    (:data:`HANDED_BACK_PAYLOAD_KEY`), or it was taken back from a worker that
-    said it was stopping or that a deploy replaced (the ``lease_expired``
-    record, ``orchestration_engine.stopped_on_its_word``). Every take-back
-    rewrites that record, so a crash or a lost lease after the stop reads as
-    what it is. Consumed by the reclaim that resumed from it
-    (:func:`_resume_runs_cut_by_a_stop`), in its own transaction: an attempt
-    that ends before, a retry or an AI hold, leaves it to the next one, and
-    one after is not resumed on it again.
+    Kept in the payload, not the attempt's state, so a retry or an AI hold before the resume does not lose it;
+    marked consumed by the reclaim that resumes from it, so a later crash is not taken for a stop.
     """
     from app.services.orchestration_engine import LEASE_EXPIRY_PAYLOAD_KEY, stopped_on_its_word
 
@@ -6218,14 +6256,18 @@ def _abandoned_values(error: str, now: datetime) -> dict[str, Any]:
 
 
 def _stalled_resumes(
-    record: Mapping[str, Any], cut: list[uuid.UUID], results: Mapping[uuid.UUID, int], now: datetime
+    record: Mapping[str, Any],
+    cut: list[uuid.UUID],
+    results: Mapping[uuid.UUID, int],
+    worked: Mapping[uuid.UUID, float],
 ) -> tuple[dict[str, Any], list[uuid.UUID]]:
     """The runs' resume records after one more resume of *cut*, and the runs past the no-progress bound.
 
-    Per run: a new result since its last resume resets its count; none, after
-    at least :data:`STOP_RESUME_MIN_WORK_SECONDS` of work, adds one; none in
-    less (a hop within one rolling restart) leaves it. A run past the bound
-    is dropped from the records, so a later resume of it starts afresh.
+    Per run: a new result since its last resume resets its count; none, with
+    the entry the stop cut *worked* on for at least
+    :data:`STOP_RESUME_MIN_WORK_SECONDS`, adds one; none in less (a hop
+    within one rolling restart) leaves it. A run past the bound is dropped
+    from the records, so a later resume of it starts afresh.
     """
     runs = dict(record) if isinstance(record, Mapping) else {}
     refused: list[uuid.UUID] = []
@@ -6233,17 +6275,18 @@ def _stalled_resumes(
         previous = runs.get(str(run_id))
         previous = previous if isinstance(previous, dict) else {}
         count = results.get(run_id, 0)
-        before, stalled, at = previous.get("results"), previous.get("stalled"), _parsed_time(previous.get("at"))
+        before, stalled = previous.get("results"), previous.get("stalled")
+        before = before if isinstance(before, int) else 0
         stalled = stalled if isinstance(stalled, int) else 0
-        if isinstance(before, int) and count > before:
+        if count > before:
             stalled = 0
-        elif isinstance(before, int) and at is not None and (now - at).total_seconds() >= STOP_RESUME_MIN_WORK_SECONDS:
+        elif worked.get(run_id, 0.0) >= STOP_RESUME_MIN_WORK_SECONDS:
             stalled += 1
         if stalled >= MAX_STOP_RESUMES_WITHOUT_PROGRESS:
             refused.append(run_id)
             runs.pop(str(run_id), None)
             continue
-        runs[str(run_id)] = {"results": count, "stalled": stalled, "at": now.isoformat()}
+        runs[str(run_id)] = {"results": count, "stalled": stalled}
     return runs, refused
 
 
@@ -6254,23 +6297,12 @@ async def _resume_runs_cut_by_a_stop(
     parked: ColumnElement[bool],
     evaluation_id: str,
 ) -> list[uuid.UUID]:
-    """Put the runs a stopping worker left ``"running"`` back to ``pending``; return the ones it refuses.
+    """Put the runs a stopping worker left ``"running"`` back to ``pending``; return the ones past the stall bound.
 
-    Called inside the pre-dispatch reclaim's transaction, under its lease
-    fence, which holds the execution row: its stop marker is consumed
-    (:func:`pending_stop_cut`) and its resume records written in the same
-    commit as the runs. What a run finished stays: each closed episode (a
-    callback entry's failure or timeout included, which stores no result)
-    is an entry the resumed run skips (:func:`_settled_entries`). The entry
-    the stop cut is the only one redone: its episode, still ``running`` or
-    ``pending``, is deleted, so the resume neither keeps its partial steps
-    nor trips the one-episode-per-entry constraint. A run with a parked
-    (callback) episode is left to the failing UPDATE's ``~parked`` rule, as
-    before.
-
-    Returns the runs past :data:`MAX_STOP_RESUMES_WITHOUT_PROGRESS`, left
-    ``running`` for the caller to fail with the reason. An execution with no
-    row (a caller that holds no lease) consumes nothing and is not bounded.
+    Inside the reclaim's transaction, under its fence (execution, then runs, then episodes): the marker is
+    consumed in the same commit as the runs. Only the cut entry's open episode is deleted, so it is redone
+    while every finished one is skipped. Runs with a parked callback episode are left alone: their callbacks
+    still drive them.
     """
     from app.models.orchestration import OrchestrationExecution
 
@@ -6311,7 +6343,26 @@ async def _resume_runs_cut_by_a_stop(
             .tuples()
             .all()
         )
-        record["runs"], refused = _stalled_resumes(record.get("runs") or {}, cut, counts, now)
+        # How long the entry each stop cut had run: from its open episode's start to the stop.
+        stopped_at = marker or now
+        started = dict(
+            (
+                await db.execute(
+                    select(EvaluationEpisode.run_id, func.min(EvaluationEpisode.created_at))
+                    .where(
+                        EvaluationEpisode.run_id.in_(cut),
+                        EvaluationEpisode.status.notin_(_SETTLED_EPISODE_STATUSES),
+                    )
+                    .group_by(EvaluationEpisode.run_id)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        worked = {
+            run_id: max(0.0, (stopped_at - _aware_time(at)).total_seconds()) for run_id, at in started.items()
+        }
+        record["runs"], refused = _stalled_resumes(record.get("runs") or {}, cut, counts, worked)
     if execution is not None and (cut or marker is not None):
         if marker is not None:
             record["consumed"] = marker.isoformat()
@@ -6636,13 +6687,24 @@ async def execute_evaluation(
             )
         ).scalars().all()
         if still_active or abandoned or stalled:
-            repaired = await fail_orphaned_episodes(
-                db,
-                owned_run_ids=list(still_active),
-                reclaimed_run_ids=[*stalled, *abandoned],
-                execution_id=execution_id,
-                error=ABANDONED_RUN_ERROR,
-            )
+            repaired = 0
+            if stalled:
+                # The entry a stall cut says what its run says, not a crash.
+                repaired += await fail_orphaned_episodes(
+                    db,
+                    owned_run_ids=[],
+                    reclaimed_run_ids=stalled,
+                    execution_id=execution_id,
+                    error=STALLED_RUN_ERROR,
+                )
+            if still_active or abandoned:
+                repaired += await fail_orphaned_episodes(
+                    db,
+                    owned_run_ids=list(still_active),
+                    reclaimed_run_ids=list(abandoned),
+                    execution_id=execution_id,
+                    error=ABANDONED_RUN_ERROR,
+                )
             # One commit for reclaim and repair, under the fence taken at the
             # TOP of this transaction: it cannot land after the lease moved and
             # fail runs the replacement is running.
@@ -6785,10 +6847,11 @@ async def execute_evaluation(
     _stop_if_no_longer_ours(cancel_event, f"execute_evaluation: evaluation {eid}")
 
     # Its worker is stopping and a run paused at an entry boundary (or never
-    # started): handed back whole, nothing written at batch end. The headlines
+    # started, or its pause failed and left it ``running``): handed back
+    # whole, nothing written at batch end, so the next attempt resumes it. The headlines
     # and the placebo settlement are the batch's, computed once its runs
     # finish on the next worker.
-    if run_ids and stopping is not None and stopping.is_set() and await _runs_left_pending(db, run_ids):
+    if run_ids and stopping is not None and stopping.is_set() and await _runs_left_unfinished(db, run_ids):
         logger.warning(
             "execute_evaluation: evaluation %s handed back by its stopping worker "
             "after %ss, its unfinished runs paused at an entry boundary",

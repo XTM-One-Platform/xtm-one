@@ -71,7 +71,8 @@ _execution_tasks: set[asyncio.Task] = set()
 #: The executions running here whose adapter stops on a lost lease (``stop_on_lease_loss``), by execution: their
 #: cancel event and their task, fired and awaited by :func:`_stop_lease_loss_work` before this worker says it stopped.
 _lease_loss_events: dict[uuid.UUID, tuple[asyncio.Event, asyncio.Task | None]] = {}
-#: How long a stopping worker waits for the executions it told to stop before it says it stopped.
+#: How long a stopping worker waits, in all, for the executions it told to stop and those still committing
+#: before it says it stopped: one deadline for both waits, inside the shutdown headroom.
 LEASE_LOSS_STOP_WAIT_SECONDS = 5.0
 _semaphore: asyncio.Semaphore | None = None
 # Dedicated per-adapter semaphores for adapters that declare a positive
@@ -621,26 +622,28 @@ async def reconciler_loop(draining: asyncio.Event | None = None) -> None:
             )
         )
         # Before its last word: a worker that hears it takes the work back at once, so
-        # nothing of this worker may still write to it then.
-        await _stop_lease_loss_work()
+        # nothing of this worker may still write to it then. One deadline for both waits, so
+        # the same tasks are not waited on twice past the shutdown headroom.
+        stop_by = time.monotonic() + LEASE_LOSS_STOP_WAIT_SECONDS
+        await _stop_lease_loss_work(timeout=LEASE_LOSS_STOP_WAIT_SECONDS)
         # Let in-flight execution tasks finish their commit on shutdown.
         if _execution_tasks:
             with contextlib.suppress(Exception):
-                await asyncio.wait(_execution_tasks, timeout=5)
+                await asyncio.wait(_execution_tasks, timeout=max(0.0, stop_by - time.monotonic()))
         # Its last word: stopped, and by what - the next worker says it of what it resumes.
         await run_to_completion(
             worker_presence.publish(worker_id, state=worker_presence.STATE_STOPPED, signal=stop_signal())
         )
 
 
-async def _stop_lease_loss_work() -> None:
+async def _stop_lease_loss_work(timeout: float = LEASE_LOSS_STOP_WAIT_SECONDS) -> None:
     """Stop the executions still running here whose adapter stops on a lost lease, before the worker says it stopped.
 
     The worker's last word (``STATE_STOPPED``) makes it gone (``worker_presence.is_gone``): a running worker
     takes its executions back within a cycle, and a resumable adapter's next attempt redoes the work in
     flight. An execution still writing here then would write beside it - an evaluation entry stored twice,
     a run flipped back under its new worker. Each is told it lost its lease (its cancel event, the stop its
-    adapter already honours, writing nothing) and given :data:`LEASE_LOSS_STOP_WAIT_SECONDS` to unwind.
+    adapter already honours, writing nothing) and given up to *timeout* seconds to unwind.
     """
     running = list(_lease_loss_events.values())
     if not running:
@@ -655,13 +658,13 @@ async def _stop_lease_loss_work() -> None:
     if not told:
         return
     with contextlib.suppress(Exception):
-        _done, still = await asyncio.wait(told, timeout=LEASE_LOSS_STOP_WAIT_SECONDS)
+        _done, still = await asyncio.wait(told, timeout=max(0.0, timeout))
         if still:
             # Their writes are fenced on the lease (an evaluation's entries), but the window is worth seeing.
             logger.warning(
                 "Worker stopping: %d execution(s) told to stop still running after %.0f s",
                 len(still),
-                LEASE_LOSS_STOP_WAIT_SECONDS,
+                timeout,
             )
 
 
@@ -837,7 +840,12 @@ def waits_for_lease_of(adapters: list | None = None) -> Callable[[str, dict], bo
 
 
 async def _reclaim_from_gone_workers(
-    db, worker_id: str, resumable: list[str], batch: int, bound_of: Callable[[str, int], int] | None = None
+    db,
+    worker_id: str,
+    resumable: list[str],
+    batch: int,
+    bound_of: Callable[[str, int], int] | None = None,
+    now: datetime | None = None,
 ) -> list[OrchestrationExecution]:
     """Take back the executions of *resumable* adapters a worker that is gone still leases; the dead-lettered.
 
@@ -860,6 +868,7 @@ async def _reclaim_from_gone_workers(
         bound_of=bound_of,
         silent_loss_given_back=silent_loss_given_back_of(),
         waits_for_lease=waits_for_lease_of(),
+        now=now,
     )
 
 
@@ -1060,12 +1069,19 @@ async def _run_cycle(worker_id: str) -> None:
     dead_lettered: list[OrchestrationExecution] = []
     # A row queued under an older bound of its adapter is taken back under the new one.
     bound_of = attempt_bound_of(adapters)
+    # One clock for both lease sweeps: a lease the gone-worker sweep left to run out (its holder may still
+    # write) must not expire in between and be taken by the expired sweep without its holder's word.
+    swept_at = datetime.now(UTC)
     async with async_session() as db:
         if resumable:
-            dead_lettered.extend(await _reclaim_from_gone_workers(db, worker_id, resumable, batch, bound_of))
+            dead_lettered.extend(
+                await _reclaim_from_gone_workers(db, worker_id, resumable, batch, bound_of, now=swept_at)
+            )
         dead_lettered.extend(await engine.sweep_deadlines(db, limit=batch))
         dead_lettered.extend(
-            await engine.reclaim_expired_leases(db, limit=batch, head_adapters=resumable, bound_of=bound_of)
+            await engine.reclaim_expired_leases(
+                db, limit=batch, head_adapters=resumable, bound_of=bound_of, now=swept_at
+            )
         )
         await db.commit()
     for execution in dead_lettered:
