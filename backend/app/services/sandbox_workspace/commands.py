@@ -54,7 +54,7 @@ import re
 import shlex
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -158,6 +158,10 @@ SAFE_ENV = {
 HARD_TIMEOUT_MARGIN = 30
 #: Characters of stdout and of stderr the run directory keeps.
 MAX_SAVED_OUTPUT = 2 * 1024 * 1024
+#: Run directories (``.xtm/runs/<id>/``) a workspace keeps: saving one more drops the oldest beyond it in the
+#: same change set, so saved results never fill the workspace's file limit (gap workspace-file-limit-drops-check-writes:
+#: 924 run directories, 2,868 files, left a check's own writes refused at the 20,000 file limit).
+MAX_KEPT_RUNS = 100
 #: Seconds a call waits for its command when no agent-loop deadline bounds the call.
 COMMAND_WAIT_SECONDS = 240
 #: Seconds kept before the call's deadline for the read-back, the save and the answer.
@@ -2837,7 +2841,11 @@ async def _save_run(
     if failures:
         files.append((f"{run_dir}/{FAILURES_FILE}", failures.encode("utf-8")))
     try:
-        await workspace.put_tree(files, operation="run_command")
+        stale = _stale_run_files(await workspace.entries(refresh=True), run_dir)
+    except Exception:
+        stale = []
+    try:
+        await workspace.put_tree(files, remove=stale, operation="run_command")
     except (WorkspaceQuotaError, WorkspaceUnavailableError) as exc:
         logger.info("Run directory %s not written: %s", run_dir, exc)
         return ""
@@ -2845,6 +2853,28 @@ async def _save_run(
         logger.warning("Run directory %s not written: %s", run_dir, format_exception_message(exc))
         return ""
     return display(run_dir)
+
+
+def _stale_run_files(entries: Mapping[str, Any], run_dir: str, keep: int | None = None) -> list[str]:
+    """The files of the run directories older than the newest *keep* - 1 (the one being saved, *run_dir*, counts).
+
+    A run directory's age is its newest file's mtime; ``.xtm/runs/prepush/`` (the pre-push guard's records) is
+    never a run directory and is kept.
+    """
+    prefix = f"{RUNS_DIR}/"
+    newest: dict[str, float] = {}
+    files: dict[str, list[str]] = {}
+    for path, entry in entries.items():
+        if not path.startswith(prefix):
+            continue
+        run_id, sep, _rest = path[len(prefix) :].partition("/")
+        if not sep or run_id == "prepush" or f"{prefix}{run_id}" == run_dir:
+            continue
+        newest[run_id] = max(newest.get(run_id, 0.0), float(getattr(entry, "mtime", 0.0) or 0.0))
+        files.setdefault(run_id, []).append(path)
+    kept = max(0, (MAX_KEPT_RUNS if keep is None else keep) - 1)
+    old = sorted(newest, key=lambda run_id: newest[run_id], reverse=True)[kept:]
+    return [path for run_id in old for path in files[run_id]]
 
 
 async def audit_run(
