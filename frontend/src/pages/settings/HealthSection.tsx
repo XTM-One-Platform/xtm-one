@@ -331,7 +331,7 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
 /** The analysis layer (#101 S9c): its switch and its four hard ceilings, read by the analysis only. */
 function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
   const { t_i18n } = useFormatter();
-  const { count: n } = useNumberFormat();
+  const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const analysis = draft.analysis;
   const setAnalysis = (next: Partial<HealthAnalysisSettings>) => onChange({ ...draft, analysis: { ...analysis, ...next } });
@@ -394,7 +394,11 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
                   />
                 ) : (
                   <p className="content-base font-medium tabular-nums">
-                    {analysis[key] === null ? t_i18n("Not set") : n(Number(analysis[key]))}
+                    {analysis[key] === null
+                      ? t_i18n("Not set")
+                      : TOKEN_CEILINGS.has(key)
+                        ? n(Number(analysis[key]))
+                        : usd(Number(analysis[key]))}
                   </p>
                 )}
               </SettingsField>
