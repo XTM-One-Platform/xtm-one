@@ -19768,7 +19768,7 @@
   "What changed (optional)": "変更点 (任意)",
   "Already sent, waiting for {agent}.": "送信済み。{agent} を待っています。",
   "Re-check, It's solved and Do it are sent to {agent}, which records the outcome on the item.": "「再確認」「解決済み」「対応する」は {agent} に送信され、結果が項目に記録されます。",
-  "You cannot open the agent behind this work item, so Explain is not offered.": "この作業項目のエージェントを開けないため、説明は表示されません。",
+  "You cannot open the agent behind this work item, so Explain is not offered.": "この作業項目のエージェントを開けないため、「説明する」は表示されません。",
   "Not a domain name: {entries}": "ドメイン名ではありません: {entries}",
   "Enter a whole number from {min} to {max}.": "{min} から {max} までの整数を入力してください。",
   "Always company-managed: it sends from the platform's own address, so only admins create and edit it, for every user.": "常に会社管理: プラットフォーム自身のアドレスから送信するため、管理者のみが全ユーザー向けに作成・編集します。"

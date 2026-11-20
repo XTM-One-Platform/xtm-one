@@ -144,7 +144,6 @@ export function WorkItemDecisionCard({
           <Textarea id={textId} aria-label={textLabel} value={text} rows={2} onChange={(e) => setText(e.target.value)} />
           <div className="flex justify-end">
             <Button
-              size="sm"
               variant={options.length > 0 ? "outline" : "default"}
               className="gap-1"
               disabled={!text.trim() || answer.isPending}
