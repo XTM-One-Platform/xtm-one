@@ -59,6 +59,7 @@ from ._common import (
     inject_targets_line,
     mirror_content_targets,
     scoped_safe_request,
+    stored_targets_line,
 )
 
 logger = logging.getLogger(__name__)
@@ -1129,12 +1130,32 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
+        if not isinstance(data, dict):
+            data = {}
         aid = data.get("inject_id", "unknown")
         lines = [
             f"Atomic test created: [{title}] (ID: {aid})",
             f"URL: {base_url}/admin/atomic_testings/{aid}",
         ]
-        lines += [t for t in (targets_note, inject_targets_line(data)) if t]
+        # The atomic-testing answer (InjectResultOverviewOutput) carries no
+        # relations: read them from the inject itself (a read, never a write).
+        stored: Any = None
+        if data.get("inject_id"):
+            read, read_err = await _api(
+                base_url,
+                hdrs,
+                "get",
+                f"/api/injects/{data['inject_id']}",
+                "read the stored targets of the atomic test",
+                retry_transient=True,
+            )
+            if not read_err and read is not None:
+                try:
+                    stored = read.json()
+                except ValueError:
+                    stored = None
+        targets = stored_targets_line(data, stored, body["inject_assets"], body["inject_asset_groups"])
+        lines += [t for t in (targets_note, targets) if t]
         return "\n".join(lines)
 
     # ── 22. Search findings ───────────────────────────────────────────

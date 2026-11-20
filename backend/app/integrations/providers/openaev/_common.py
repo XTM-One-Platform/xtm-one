@@ -145,14 +145,32 @@ def _relation_ids(raw: Any, id_key: str) -> list[str]:
     return out
 
 
-def inject_targets_line(inject: Any) -> str:
+def inject_carries_relations(inject: Any) -> bool:
+    """True when an inject answer carries its target relations at all.
+
+    OpenAEV answers the atomic-testing routes with ``InjectResultOverviewOutput``,
+    which has no ``inject_assets`` / ``inject_asset_groups``: their absence
+    means "not in this answer", never "empty".
+    """
+    return isinstance(inject, dict) and ("inject_assets" in inject or "inject_asset_groups" in inject)
+
+
+def inject_targets_line(
+    inject: Any,
+    asked_asset_ids: list[str] | None = None,
+    asked_asset_group_ids: list[str] | None = None,
+) -> str:
     """One line naming the targets an inject answer stores on its relations.
 
-    Empty when the answer is not an object. A content that selects targets
-    (``target_selector``) with both relations empty is flagged: the injector
-    would receive no target.
+    Empty when the answer is not an object or carries neither relation key (the
+    relations are absent from that answer, not empty: no count, no warning). A
+    content that selects targets (``target_selector``) with both relations
+    empty is flagged: the injector would receive no target. Ids asked by the
+    write (*asked_asset_ids*, *asked_asset_group_ids*) and missing from the
+    stored relations are named: OpenAEV drops an unknown id or an id of another
+    tenant without an error.
     """
-    if not isinstance(inject, dict):
+    if not inject_carries_relations(inject):
         return ""
     groups = _relation_ids(inject.get("inject_asset_groups"), "asset_group_id")
     assets = _relation_ids(inject.get("inject_assets"), "asset_id")
@@ -163,6 +181,10 @@ def inject_targets_line(inject: Any) -> str:
         + (f" [{', '.join(assets)}]" if assets else "")
         + "."
     )
+    missing = [a for a in asked_asset_ids or [] if a not in assets]
+    missing += [g for g in asked_asset_group_ids or [] if g not in groups]
+    if missing:
+        line += f" Not stored: {', '.join(missing)}; unknown id or another tenant."
     content = inject.get("inject_content")
     if not groups and not assets and isinstance(content, dict) and content.get("target_selector"):
         line += (
@@ -170,6 +192,28 @@ def inject_targets_line(inject: Any) -> str:
             "is stored: the injector receives no target."
         )
     return line
+
+
+def stored_targets_line(
+    answer: Any,
+    stored: Any,
+    asked_asset_ids: list[str] | None = None,
+    asked_asset_group_ids: list[str] | None = None,
+) -> str:
+    """The targets line of an atomic-test write or read.
+
+    *stored* is the follow-up ``GET /api/injects/{id}`` answer (None when it
+    failed), read first; then the write's own *answer*. When neither carries the
+    relations the line says the stored targets are unknown instead of claiming
+    zero.
+    """
+    for source in (stored, answer):
+        if inject_carries_relations(source):
+            return inject_targets_line(source, asked_asset_ids, asked_asset_group_ids)
+    return (
+        "Targets stored: not readable (OpenAEV's answer carries no relations and "
+        "the inject read failed); read the inject again to check them."
+    )
 
 
 #: Inject keys moved to the end of an inject read's JSON: the bulky ones
@@ -2867,9 +2911,11 @@ __all__ = [
     "expectation_label",
     "expectation_result_type",
     "fmt_asset_group_members",
+    "inject_carries_relations",
     "inject_targets_line",
     "json_answer",
     "logger",
     "mirror_content_targets",
     "scoped_safe_request",
+    "stored_targets_line",
 ]
