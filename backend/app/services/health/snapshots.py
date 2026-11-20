@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -59,10 +60,19 @@ _MAX_TEXT = 200
 _SEARCH_STATUSES = ("green", "yellow", "red")
 
 
-def _count(value: Any) -> int | None:
+def _finite(value: Any) -> float | int | None:
+    """A number that reads (``NaN`` and the infinities, which ``json.loads`` accepts, do not)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return max(0, int(value))
+    if isinstance(value, int):
+        return value
+    number: float = value
+    return number if math.isfinite(number) else None
+
+
+def _count(value: Any) -> int | None:
+    number = _finite(value)
+    return None if number is None else max(0, int(number))
 
 
 def _text(value: Any) -> str | None:
@@ -124,9 +134,9 @@ def read_snapshot(raw: Any) -> dict[str, Any] | None:
         engine: dict[str, Any] = {}
         if search.get("status") in _SEARCH_STATUSES:
             engine["status"] = search["status"]
-        disk = search.get("disk_used_percent")
-        if isinstance(disk, (int, float)) and not isinstance(disk, bool):
-            engine["disk_used_percent"] = min(100.0, max(0.0, float(disk)))
+        disk = _finite(search.get("disk_used_percent"))
+        if disk is not None:
+            engine["disk_used_percent"] = float(min(100, max(0, disk)))
         if engine:
             kept["search_engine"] = engine
     lag = _count(raw.get("ingestion_lag_seconds"))
