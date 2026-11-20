@@ -269,8 +269,9 @@ function ScopePickers({ draft, onChange }: Pick<BlockProps, "draft" | "onChange"
 }
 
 function BudgetBlock({ draft, editing, onChange }: BlockProps) {
-  const { t_i18n, intl } = useFormatter();
-  const n = (value: number) => intl.formatNumber(value);
+  const { t_i18n } = useFormatter();
+  // Same formats as the Analysis block below it (#730 UX round 1, B1): tokens compact, costs in dollars.
+  const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const { data: budget } = useHealthBudget();
   const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
@@ -306,7 +307,11 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
                   />
                 ) : (
                   <p className="content-base font-medium tabular-nums">
-                    {draft.budget[key] === null ? t_i18n("No cap") : n(Number(draft.budget[key]))}
+                    {draft.budget[key] === null
+                      ? t_i18n("No cap")
+                      : TOKEN_CAPS.has(key)
+                        ? n(Number(draft.budget[key]))
+                        : usd(Number(draft.budget[key]))}
                   </p>
                 )}
               </SettingsField>
@@ -315,10 +320,10 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
         </SettingsFieldGrid>
         {budget && (
           <div className="mt-2 border-t border-elevation-subtle-soft pt-2 content-compact text-default-secondary" data-testid="health.budget-usage">
-            {t_i18n("Spent in {month}: {tokens} tokens, {cost} USD.", {
+            {t_i18n("Spent in {month}: {tokens} tokens, {cost}.", {
               month: budget.month,
               tokens: n(budget.used.tokens),
-              cost: n(Number(budget.used.cost_usd)),
+              cost: usd(Number(budget.used.cost_usd)),
             })}
             {budget.refusal_message && <span className="ml-1 text-feedback-warning-primary">{budget.refusal_message}</span>}
           </div>
