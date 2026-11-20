@@ -2004,6 +2004,7 @@
   "Connect {name}": "{name}を接続",
   "Connect {product} to {platform}": "{product}を{platform}に接続",
   "Connected": "接続済み",
+  "Connected platform upgraded": "接続プラットフォームがアップグレードされました",
   "Connected MCP Servers": "接続済み MCP サーバー",
   "Connecting integrations…": "インテグレーションに接続中…",
   "Connecting to server...": "サーバーに接続中...",
