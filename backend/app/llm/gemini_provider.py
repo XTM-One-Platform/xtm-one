@@ -1565,11 +1565,16 @@ class GeminiProvider(BaseLLMProvider):
         """The Gemini text-to-speech models listed for the key."""
         return await self._capability_listing("speech", lambda m: "tts" in m, self._FALLBACK_SPEECH_MODELS)
 
-    async def list_voices(self, model: str | None = None) -> list:
-        """The studio voices first (Kore, the default), then the project's own voices and the extended library."""
+    @classmethod
+    def prebuilt_voices(cls) -> list:
+        """The studio voices, Kore (the default) first."""
         from app.llm.speech import Voice
 
-        prebuilt = [Voice(name, name, "prebuilt", trait) for name, trait in self._PREBUILT_VOICES]
+        return [Voice(name, name, "prebuilt", trait) for name, trait in cls._PREBUILT_VOICES]
+
+    async def list_voices(self, model: str | None = None) -> list:
+        """The studio voices first (Kore, the default), then the project's own voices and the extended library."""
+        prebuilt = self.prebuilt_voices()
         if model and self._preview_tts(model):
             return prebuilt
         try:

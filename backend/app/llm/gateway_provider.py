@@ -65,6 +65,7 @@ from app.llm.openai_compat import (
     gateway_upstream_refusal,
     marked_not_retryable,
 )
+from app.llm.speech import _speaks_openai_voices
 from app.llm.system_prompt_split import split_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -410,6 +411,17 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
 
     async def _speech_headers(self, model: str) -> dict[str, str]:
         return await self._target_headers(model)
+
+    async def list_voices(self, model: str | None = None) -> list:
+        """A Gemini model speaks Gemini's prebuilt voices, which the gateway passes through by name.
+
+        Its library and the project's own voices need a gateway voices route, which does not exist.
+        """
+        if model and not _speaks_openai_voices(model) and await self._upstream_of(model) == "gemini":
+            from app.llm.gemini_provider import GeminiProvider
+
+            return GeminiProvider.prebuilt_voices()
+        return await super().list_voices(model)
 
     async def list_music_models(self) -> list[str]:
         """The models whose types include ``music``: its operator declares them, never their id."""

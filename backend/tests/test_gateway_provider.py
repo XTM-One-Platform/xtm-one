@@ -1634,3 +1634,59 @@ async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(mon
     (definition,), _executor = await media.build_image_generation_tool(None, str(USER_ID))
     properties = definition.input_schema["properties"]
     assert properties["reference_file_ids"]["maxItems"] == 3 and "mask_file_id" in properties
+
+
+class TestSpeechVoices:
+    """A Gemini speech model through the gateway offers Gemini's prebuilt voices (#703)."""
+
+    _LISTING = (
+        {"id": "gemini-3.8-flash-tts", "owned_by": "gemini", "types": ["speech"]},
+        {"id": "house-voice", "owned_by": "gemini", "types": ["speech"]},
+        {"id": "gpt-4o-mini-tts", "owned_by": "openai", "types": ["speech"]},
+        {"id": "acme-voice-1", "types": ["speech"]},
+    )
+
+    @staticmethod
+    def _gateway(spoken: list[httpx.Request]) -> FiligranGatewayProvider:
+        """*spoken* collects every request: speech calls and listings."""
+        data = [{"object": "model", "owned_by": "acme", **e} for e in TestSpeechVoices._LISTING]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            spoken.append(request)
+            if request.url.path.endswith("/audio/speech"):
+                return httpx.Response(200, content=b"ID3", headers={"content-type": "audio/mpeg"})
+            return httpx.Response(200, json={"object": "list", "data": data})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model", ["gemini-3.8-flash-tts", "house-voice"])
+    async def test_a_gemini_model_lists_the_prebuilt_voices_default_first(self, model):
+        from app.llm.gemini_provider import GeminiProvider
+
+        voices = await self._gateway([]).list_voices(model)
+        assert [v.id for v in voices] == [name for name, _trait in GeminiProvider._PREBUILT_VOICES]
+        assert voices[0].id == "Kore"
+
+    @pytest.mark.asyncio
+    async def test_a_gemini_model_speaks_with_the_default_voice_unless_named(self):
+        from app.llm.speech import SpeechRequest
+
+        spoken: list[httpx.Request] = []
+        provider = self._gateway(spoken)
+        await provider.synthesize_speech(SpeechRequest(model="house-voice", text="Hi"))
+        await provider.synthesize_speech(SpeechRequest(model="house-voice", text="Hi", voice="Puck"))
+        speech = [r for r in spoken if r.url.path.endswith("/audio/speech")]
+        assert [json.loads(r.content)["voice"] for r in speech] == ["Kore", "Puck"]
+        assert speech[0].headers["X-Target-Provider"] == "gemini"
+
+    @pytest.mark.asyncio
+    async def test_other_vendors_keep_their_voices(self):
+        from app.llm.speech import OPENAI_VOICES
+
+        asked: list[httpx.Request] = []
+        provider = self._gateway(asked)
+        assert [v.id for v in await provider.list_voices("gpt-4o-mini-tts")] == list(OPENAI_VOICES)
+        assert asked == []  # an OpenAI model's voices are known without listing the gateway
+        assert await provider.list_voices("acme-voice-1") == []
