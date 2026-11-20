@@ -20,9 +20,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * findings list with each finding's evidence, recommendation and dismissal. Every figure is
  * read from the engine's store: no model call, nothing metered.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { HeartPulse } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CHART_TOOLTIP_PROPS } from "@/components/ui/charts/chart-tooltip";
@@ -41,6 +41,11 @@ import { useFormatter } from "@/i18n";
 import { EVALUATION_CHART_COLORS } from "@/lib/constants";
 import { HEALTH_MODULE_LABELS, moduleCardSubtitle } from "@/lib/health-modules";
 import type { HealthFinding, HealthModule, HealthSeverity } from "@/types";
+
+/** The health glyph, rendered by the library <Icon name> (no direct lucide-react import). */
+const HealthGlyph = (({ className }: { className?: string }) => (
+  <Icon name="activity" size={16} className={className} aria-hidden />
+)) as unknown as ComponentProps<typeof StatCard>["icon"];
 
 const SEVERITY_LABELS: Record<HealthSeverity, string> = {
   critical: "Critical",
@@ -391,7 +396,7 @@ export function HealthOverviewTab() {
         {cards.map((card) => (
           <StatCard
             key={card.module}
-            icon={HeartPulse}
+            icon={HealthGlyph}
             label={t_i18n(HEALTH_MODULE_LABELS[card.module])}
             value={String(card.score)}
             subtitle={moduleCardSubtitle(card, t_i18n)}
@@ -402,7 +407,7 @@ export function HealthOverviewTab() {
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
       {!findings.isLoading && !findings.isError && !rows.length ? (
         <EmptyState
-          icon={HeartPulse}
+          icon={HealthGlyph}
           title={t_i18n("No finding")}
           description={t_i18n("Checks run on a schedule without any model call; what they find shows here.")}
         />
