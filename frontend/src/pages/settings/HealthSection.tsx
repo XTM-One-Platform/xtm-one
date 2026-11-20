@@ -352,6 +352,7 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
           <SettingsSwitchField
             id={`${fieldId}-enabled`}
             label={t_i18n("Analyse the findings")}
+            helper={t_i18n("Runs once a day at most, only for modules whose findings changed.")}
             info={info}
             checked={analysis.enabled}
             onCheckedChange={(enabled) => setAnalysis({ enabled })}
@@ -370,7 +371,13 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
                 label={t_i18n(CEILING_LABELS[key])}
                 info={t_i18n(CEILING_INFO[key])}
                 helper={t_i18n("Empty: every analysis is refused.")}
-                error={editing && !valid ? t_i18n("Enter a number of 0 or more.") : undefined}
+                error={
+                  editing && !valid
+                    ? TOKEN_CEILINGS.has(key)
+                      ? t_i18n("Enter a whole number of 0 or more.")
+                      : t_i18n("Enter a number of 0 or more.")
+                    : undefined
+                }
               >
                 {editing ? (
                   <Input

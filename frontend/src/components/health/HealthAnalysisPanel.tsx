@@ -155,8 +155,8 @@ export function HealthAnalysisPanel() {
       aria-labelledby="health-analysis-title"
       data-testid="health-analysis"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex flex-nowrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <h3 id="health-analysis-title" className="content-base font-medium text-default-primary">
             {t_i18n("Analysis")}
           </h3>
@@ -164,7 +164,7 @@ export function HealthAnalysisPanel() {
             {t_i18n("A short explanation of each module's open findings by the routing model, within hard daily and monthly ceilings. Never counted in agentic quotas.")}
           </p>
         </div>
-        <Button variant="ghost" size="sm" asChild>
+        <Button variant="ghost" size="sm" className="shrink-0" asChild>
           <Link to={HEALTH_SETTINGS_PATH}>{t_i18n("Analysis settings")}</Link>
         </Button>
       </div>
