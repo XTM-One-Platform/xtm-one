@@ -3,7 +3,14 @@ import { useState } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SearchableSelect, SEARCH_THRESHOLD, TWO_LINE_LIST_CLASS, type SelectOption } from "@/components/ui/searchable-select";
+import {
+  SearchableSelect,
+  SEARCH_THRESHOLD,
+  SHRINKING_WRAPPER_CLASS,
+  FILLING_WRAPPER_CLASS,
+  TWO_LINE_LIST_CLASS,
+  type SelectOption,
+} from "@/components/ui/searchable-select";
 import { renderWithProviders } from "@/testing/providers";
 
 /**
@@ -277,6 +284,29 @@ describe("SearchableSelect", () => {
     const trigger = screen.getByRole("combobox", { name: "Provider" });
     expect(trigger.tagName).toBe("BUTTON");
     expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
+  });
+
+  it("lets the plain select shrink under a long one-word label instead of overflowing its cell (#611)", () => {
+    const name = "production-dmz-frankfurt";
+    renderWithProviders(<Harness options={[...PROVIDERS, { value: "long", label: name }]} searchable="auto" initial="long" />);
+    const trigger = screen.getByRole("combobox", { name: "Provider" });
+    expect(trigger.tagName).toBe("BUTTON");
+    // happy-dom has no layout and the class-name gate forbids pinning `min-w-0`: the lab render
+    // proves the width. Asserted here: the plain select keeps the whole label on hover.
+    expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
+  });
+
+  it("reaches the DS wrapper, the flex item of a cell, so it shrinks and fills (UX r1 B1 and A1, #611)", () => {
+    // The DS SelectTrigger wraps the trigger in a span with no prop: a display-contents box carries
+    // the rules that reach it. Asserted on the exported rules and the rendered nesting (no layout in happy-dom).
+    expect(SHRINKING_WRAPPER_CLASS.split(" ")).toEqual(["contents", "[&>span]:min-w-0", "[&>span]:max-w-full"]);
+    expect(FILLING_WRAPPER_CLASS).toBe("[&>span]:flex-1");
+    const { container } = renderWithProviders(<Harness options={PROVIDERS} searchable="auto" initial={PROVIDERS[0].value} />);
+    const trigger = screen.getByRole("combobox", { name: "Provider" });
+    const dsWrapper = trigger.parentElement;
+    expect(dsWrapper?.tagName).toBe("SPAN");
+    expect(dsWrapper?.parentElement?.matches("span.contents")).toBe(true);
+    expect(container.contains(dsWrapper)).toBe(true);
   });
 
   it("puts no title on an empty search field", () => {
