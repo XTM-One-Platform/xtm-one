@@ -222,6 +222,8 @@ export default function Workspaces() {
         rowActions={(w) => <WorkspaceActionsMenu workspace={w} className="size-7" />}
         rowActionsWidth={64}
         view={{ value: viewMode, onChange: setViewMode }}
+        // One scrollbar in grid view too: the rows scroll inside, the pager stays in the list (UX r1 on #785, B1).
+        fitGrid
         renderGrid={
           viewMode === "grid"
             ? (rows) => (

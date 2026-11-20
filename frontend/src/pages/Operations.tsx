@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { ClipboardList } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { useLocation } from "react-router-dom";
 import { useFormatter } from "@/i18n";
 import { DetailTabs } from "@/components/ui/detail-tabs";
@@ -40,7 +40,7 @@ export default function Operations() {
       <ListPageHeader
         title={
           <span className="flex items-center gap-2">
-            <ClipboardList className="h-7 w-7 text-accent" /> {t_i18n("Operations")}
+            <Icon name="clipboard-list" size={24} className="text-accent" aria-hidden /> {t_i18n("Operations")}
           </span>
         }
         infoLabel={t_i18n("About operations")}
