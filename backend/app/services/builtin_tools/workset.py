@@ -802,7 +802,9 @@ def build_workset_tools(
 
         try:
             parsed = SplitSpec.from_argument(spec)
-            split = await asyncio.to_thread(split_result, str(result.content or ""), parsed)
+            split = await asyncio.to_thread(
+                split_result, str(result.content or ""), parsed, getattr(result, "structured", None)
+            )
         except SplitError as exc:
             # About the agent's own spec: said to it as it is.
             return _refused(str(exc))
