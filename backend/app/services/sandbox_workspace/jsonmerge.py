@@ -26,6 +26,12 @@ touches the other's, and every rebase or merge still stops on markers.
 - a key removed on one side and unchanged on the other is removed;
 - an object changed on both sides is merged the same way, recursively.
 
+``prefer`` (``"ours"`` or ``"theirs"``) settles a key the two sides changed
+differently by taking that side's value (or its removal), every other key of
+both sides still merged: the ``keep: branch|ref`` resolution of a JSON file,
+whose line merge would take one side's whole tail hunk and drop the keys the
+other side appended there.
+
 It answers ``None``, and the caller keeps the line merge's answer, when the
 merge is not certain: a side that is not a JSON object, a duplicate key, a
 key changed differently on both sides (or removed on one and changed on the
@@ -97,8 +103,11 @@ def _same(left: Any, right: Any) -> bool:
 _ABSENT = object()
 
 
-def _value(base: Any, ours: Any, theirs: Any) -> Any:
-    """The merged value of one key (``_ABSENT``: the key is dropped); raises :class:`_KeyConflictError`."""
+def _value(base: Any, ours: Any, theirs: Any, prefer: str | None = None) -> Any:
+    """The merged value of one key (``_ABSENT``: the key is dropped).
+
+    A key the sides changed differently raises :class:`_KeyConflictError`, or takes the *prefer* side's value.
+    """
     if ours is _ABSENT and theirs is _ABSENT:
         return _ABSENT
     if ours is not _ABSENT and theirs is not _ABSENT:
@@ -110,20 +119,31 @@ def _value(base: Any, ours: Any, theirs: Any) -> Any:
             return ours
         inner = {} if base is _ABSENT else base
         if isinstance(inner, dict) and isinstance(ours, dict) and isinstance(theirs, dict):
-            return _merge(inner, ours, theirs)
-        raise _KeyConflictError
+            return _merge(inner, ours, theirs, prefer)
+        return _preferred(ours, theirs, prefer)
     kept = ours if theirs is _ABSENT else theirs
     if base is _ABSENT:
         return kept
     if _same(base, kept):
         return _ABSENT
+    return _preferred(ours, theirs, prefer)
+
+
+def _preferred(ours: Any, theirs: Any, prefer: str | None) -> Any:
+    """The *prefer* side of a key changed differently on both sides; raises :class:`_KeyConflictError` without one."""
+    if prefer == "ours":
+        return ours
+    if prefer == "theirs":
+        return theirs
     raise _KeyConflictError
 
 
-def _merge(base: dict[str, Any], ours: dict[str, Any], theirs: dict[str, Any]) -> dict[str, Any]:
+def _merge(
+    base: dict[str, Any], ours: dict[str, Any], theirs: dict[str, Any], prefer: str | None = None
+) -> dict[str, Any]:
     values: dict[str, Any] = {}
     for key in (*ours, *(k for k in theirs if k not in ours), *(k for k in base if k not in ours and k not in theirs)):
-        value = _value(base.get(key, _ABSENT), ours.get(key, _ABSENT), theirs.get(key, _ABSENT))
+        value = _value(base.get(key, _ABSENT), ours.get(key, _ABSENT), theirs.get(key, _ABSENT), prefer)
         if value is not _ABSENT:
             values[key] = value
     order = [key for key in ours if key in values]
@@ -180,10 +200,11 @@ def conflicting_keys(base: str, ours: str, theirs: str) -> list[str]:
     return out
 
 
-def merge_json_objects(base: str, ours: str, theirs: str) -> str | None:
+def merge_json_objects(base: str, ours: str, theirs: str, prefer: str | None = None) -> str | None:
     """*ours* and *theirs* merged from *base* key by key, written in their layout; ``None`` when not certain.
 
-    *base* empty is a file added on both sides (an empty object as base).
+    *base* empty is a file added on both sides (an empty object as base). *prefer* (``"ours"`` or ``"theirs"``)
+    takes that side's value for a key changed differently on both sides instead of answering ``None``.
     """
     texts = (base, ours, theirs)
     if any(len(text) > MAX_JSON_MERGE_BYTES for text in texts):
@@ -203,7 +224,7 @@ def merge_json_objects(base: str, ours: str, theirs: str) -> str | None:
     if base.strip() and _layout(base, base_obj) != layout:
         return None
     try:
-        merged = _merge(base_obj, ours_obj, theirs_obj)
+        merged = _merge(base_obj, ours_obj, theirs_obj, prefer)
     except _KeyConflictError:
         return None
     return _dump(merged, layout)

@@ -110,6 +110,36 @@ def test_server_line_merge_resolves_a_catalog_without_hunks():
     assert json.loads(merge.merged or "") == json.loads(merge_json_objects(BASE, OURS, THEIRS) or "")
 
 
+def test_a_prefer_settles_a_key_both_sides_changed_and_keeps_every_appended_key() -> None:
+    ours = _cat(Hello="Salut", Bye="Au revoir", Save="Enregistrer", Edit="Modifier")
+    theirs = _cat(Hello="Coucou", Bye="Au revoir", Open="Ouvrir")
+    assert merge_json_objects(BASE, ours, theirs) is None
+    merged = merge_json_objects(BASE, ours, theirs, prefer="theirs")
+    assert merged == _cat(Hello="Coucou", Bye="Au revoir", Save="Enregistrer", Edit="Modifier", Open="Ouvrir")
+    kept_ours = json.loads(merge_json_objects(BASE, ours, theirs, prefer="ours") or "")
+    assert kept_ours["Hello"] == "Salut" and {"Save", "Edit", "Open"} <= set(kept_ours)
+
+
+@pytest.mark.parametrize(("keep", "hello"), [("keep_theirs", "Coucou"), ("keep_ours", "Salut")])
+def test_a_keep_on_a_catalog_keeps_the_keys_the_other_side_appended_at_the_tail(keep: str, hello: str) -> None:
+    # A keep 'ref' on a catalog took the ref's whole tail hunk and dropped the keys the branch appended there
+    # (openaev #9444: 3 keys in 9 catalogs); the keep now settles the changed key only, by key.
+    ours = _cat(Hello="Salut", Bye="Au revoir", Save="Enregistrer", Edit="Modifier", Copy="Copier")
+    theirs = _cat(Hello="Coucou", Bye="Au revoir", Open="Ouvrir")
+    merge = merge_path("frontend/src/i18n/lang/fr.json", BASE.encode(), ours.encode(), theirs.encode())
+    assert not merge.clean
+    kept = json.loads(getattr(merge, keep) or "")
+    assert kept["Hello"] == hello
+    assert {"Save", "Edit", "Copy", "Open", "Bye"} <= set(kept)
+    assert merge.defect(getattr(merge, keep) or "") == ""
+
+
+def test_a_keep_on_a_plain_text_file_still_takes_the_line_merge() -> None:
+    base, ours, theirs = "a\nb\n", "a\nours\n", "a\ntheirs\n"
+    merge = merge_path("notes.txt", base.encode(), ours.encode(), theirs.encode())
+    assert merge.keep_theirs == theirs and merge.keep_ours == ours
+
+
 _CATALOG = Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n" / "lang" / "en.json"
 
 

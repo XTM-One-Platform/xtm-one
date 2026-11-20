@@ -189,8 +189,14 @@ def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes 
             **checks,
         )
     union = merge_text(base_text, ours_text, theirs_text, both=True).text
-    keep_ours = merge_text(base_text, ours_text, theirs_text, prefer="ours").text
-    keep_theirs = merge_text(base_text, ours_text, theirs_text, prefer="theirs").text
+    # A JSON object file (an i18n catalog) settles a keep by key: the line merge's preferred hunk would take one
+    # side's whole tail and drop the keys the other side appended there; the key merge keeps them.
+    keep_ours = merge_json_objects(base_text, ours_text, theirs_text, prefer="ours")
+    if keep_ours is None:
+        keep_ours = merge_text(base_text, ours_text, theirs_text, prefer="ours").text
+    keep_theirs = merge_json_objects(base_text, ours_text, theirs_text, prefer="theirs")
+    if keep_theirs is None:
+        keep_theirs = merge_text(base_text, ours_text, theirs_text, prefer="theirs").text
     return PathMerge(
         path,
         reason="added on both sides" if base is None else "",
