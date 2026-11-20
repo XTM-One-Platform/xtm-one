@@ -134,7 +134,7 @@ async def test_a_published_token_no_smtp_and_no_hub_open_their_findings() -> Non
             mp.setattr(registration_token, "registration_token_state", lambda: "published_default")
             mp.setattr(email, "is_email_configured", lambda: False)
             totals = await _pass(db, T0)
-        assert totals["checks"] == 18
+        assert totals["checks"] == 19
         found = await _open(db)
         assert set(found) == {"xtm_one.registration_token", "xtm_one.smtp", "xtm_one.hub_registration"}
         assert found["xtm_one.registration_token"].severity == "critical"

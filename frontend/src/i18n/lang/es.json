@@ -19766,5 +19766,8 @@
   "Integration silent after": "Integración en silencio tras",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "Un inyector, colector o ejecutor que no ha informado durante este tiempo genera una advertencia, p. ej. 60.",
   "Agents offline above": "Agentes sin conexión por encima de",
-  "More agents offline than this share raises a warning, e.g. 50.": "Una proporción de agentes sin conexión superior a este valor genera una advertencia, p. ej. 50."
+  "More agents offline than this share raises a warning, e.g. 50.": "Una proporción de agentes sin conexión superior a este valor genera una advertencia, p. ej. 50.",
+  "Hourly maintenance stalled": "Mantenimiento horario detenido",
+  "Overdue since": "Atrasado desde",
+  "Read the web process logs for the scheduler tick errors; the hourly retention sweeps and purges wait until it completes again.": "Lea los registros del proceso web para ver los errores del ciclo del planificador; los barridos de retención y las purgas horarias esperan hasta que vuelva a completarse."
 }
