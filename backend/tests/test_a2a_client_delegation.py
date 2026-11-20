@@ -527,6 +527,46 @@ class TestAPartnerErrorIsReportedAsItself:
         # NOT the old symptom.
         assert "unrecognised task state" not in (result.detail or "").lower()
 
+    async def test_task_not_found_on_a_collect_says_the_task_ended(self, monkeypatch):
+        # A2A TaskNotFoundError (-32001) answered to a request naming a task:
+        # the task ended or was purged remotely. The agent must read that, not
+        # a generic rejection it may retry or report as a partner incident.
+        def handler(_request):
+            return httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": "1", "error": {"code": -32001, "message": "Not found"}},
+            )
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        result = await delegation.delegate(
+            RecordingDb(), integration_row(), settings_row(), message="x", continue_task_id="t-old"
+        )
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.partner_reason == "-32001: Not found"
+        assert "no longer knows this task" in (result.detail or "")
+        assert "new delegation" in (result.detail or "")
+        assert result.partner_task_id == "t-old"
+
+    async def test_task_not_found_without_a_named_task_stays_a_rejection(self, monkeypatch):
+        # A fresh submission names no task, so -32001 cannot mean "this task
+        # ended"; it is reported as the partner's rejection, unchanged.
+        def handler(_request):
+            return httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": "1", "error": {"code": "-32001", "message": "Not found"}},
+            )
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        result = await delegation.delegate(RecordingDb(), integration_row(), settings_row(), message="go")
+        assert result.outcome == OUTCOME_PARTNER_FAILED
+        assert result.detail == "Partner rejected the request with a JSON-RPC error."
+
+    def test_the_task_not_found_code_is_read_as_int_or_text(self):
+        assert delegation.PartnerRpcError(-32001, "x").is_task_not_found
+        assert delegation.PartnerRpcError("-32001", "x").is_task_not_found
+        assert not delegation.PartnerRpcError(-32602, "x").is_task_not_found
+        assert not delegation.PartnerRpcError("unknown", "x").is_task_not_found
+
     async def test_an_rpc_error_does_not_open_the_circuit(self, monkeypatch):
         # The partner is plainly reachable and has rejected the request on its
         # merits; retrying an invalid request cannot succeed. The breaker is

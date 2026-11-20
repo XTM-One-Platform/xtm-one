@@ -13,11 +13,22 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from app.integrations.http import format_http_error
 from app.integrations.providers.github import build_tools
 from app.integrations.providers.github.actions import _MAX_CHECK_OUTPUT_CHARS, _app_check_run_answer
 
 _SAFE_REQUEST = "app.integrations.providers.github._common.safe_request"
-_LOGS_404 = "Error: GitHub get logs for job 7 in o/r failed (404): Not Found"
+
+
+def _not_found(action: str) -> str:
+    """A 404 in the words the real client writes (``format_http_error``), never a made-up wording (#639)."""
+    resp = httpx.Response(
+        404, json={"message": "Not Found"}, request=httpx.Request("GET", "https://api.github.com/repos/o/r")
+    )
+    return format_http_error(resp, "GitHub", action)
+
+
+_LOGS_404 = _not_found("get logs for job 7 in o/r")
 
 
 def _job_logs_tool() -> Any:
@@ -43,13 +54,13 @@ class _GitHub:
         if url.endswith("/logs"):
             return None, _LOGS_404
         if "/actions/jobs/" in url:
-            return None, "Error: GitHub get job 7 failed (404): Not Found"
+            return None, _not_found("get job 7 in o/r")
         if url.endswith("/annotations"):
             if self.annotations is None:
                 return None, "Error: GitHub get annotations failed (500)"
             return httpx.Response(200, json=self.annotations), None
         if self.check is None:
-            return None, "Error: GitHub get check run 7 failed (404): Not Found"
+            return None, _not_found("get check run 7 in o/r")
         return httpx.Response(200, json=self.check), None
 
 

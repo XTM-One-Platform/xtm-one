@@ -2645,7 +2645,9 @@ async def upsert_state(
             out["retention_held_open"] = dict(held_open)
         if rolled_out and policy.get("archive_when") is None:
             out["retention_rolled_by_age"] = True
-        unmatched = unmatched_archive_rule(state.value, policy)
+        # A rule that rolled items in this very write matched: what is left
+        # over the cap is open items, which retention_held_open says.
+        unmatched = None if rolled_out else unmatched_archive_rule(state.value, policy)
         if unmatched is not None:
             out["retention_unmatched"] = unmatched
         out["size_caps"] = size_caps(state.value)

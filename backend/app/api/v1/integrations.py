@@ -3900,6 +3900,30 @@ async def _test_integration(
         )
         return {"status": "ok" if ok else "error", "message": message}
 
+    # Aikido Security mints a bearer from an API client (client credentials)
+    # on the workspace's regional host: the secret is in api_key_enc, the
+    # region and client id in extra_config. Validate by reading the workspace.
+    if integration.provider == "aikido":
+        from app.integrations.providers.aikido import (
+            token_from_config as aikido_token_from_config,
+        )
+        from app.integrations.providers.aikido import (
+            validate_connection as aikido_validate,
+        )
+
+        aikido_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                aikido_extra = decrypted if isinstance(decrypted, dict) else {}
+        aikido_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await aikido_validate(aikido_token_from_config(aikido_secret, aikido_extra))
+        except Exception:
+            logger.debug("Aikido connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
     # OVHcloud signs each request (application key mode) or mints an OAuth2
     # bearer (service account mode): the secret is in api_key_enc, the rest of
     # the credential in extra_config. Validate with the provider's own read of

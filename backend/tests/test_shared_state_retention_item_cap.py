@@ -208,6 +208,26 @@ async def test_a_write_whose_archive_when_matches_nothing_over_the_cap_warns(mon
     assert out.get("rolled") is None
 
 
+@pytest.mark.asyncio
+async def test_a_write_that_rolls_items_never_says_its_archive_when_matches_nothing(monkeypatch, limits):
+    # The rule rolled the merged items of this write: the open items left over
+    # the cap are said by retention_held_open, never by "matches no item".
+    items = [{"id": i, "status": "merged" if i < 2 else "parked", "text": "x" * 40} for i in range(10)]
+    source = _state({"gaps": items})
+    source.retention = {"max_chars": 200, "archive_when": {"status": "merged"}}
+    _sessions(monkeypatch, _Session(source))
+    out = await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="harness-gaps",
+        append={"gaps": [{"id": 99, "status": "parked"}]},
+        writer=COMPANY_AGENT,
+        is_company_managed=True,
+    )
+    assert out["rolled"] == {"gaps": 2}
+    assert "retention_unmatched" not in out
+    assert out["retention_held_open"]["gaps"] > 0
+
+
 # ── an update append on a field moved to the overflow key (#12301) ─────────
 
 

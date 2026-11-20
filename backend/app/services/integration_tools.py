@@ -47,6 +47,7 @@ from app.core.security import decrypt_json, decrypt_value, encrypt_value
 from app.integrations.http import format_http_error, format_network_error
 from app.integrations.providers.abusech import build_tools as abusech_tools
 from app.integrations.providers.abuseipdb import build_tools as abuseipdb_tools
+from app.integrations.providers.aikido import build_tools as aikido_tools
 from app.integrations.providers.anomali import build_tools as anomali_tools
 from app.integrations.providers.anthropic import build_tools as anthropic_tools
 from app.integrations.providers.anyrun import build_tools as anyrun_tools
@@ -1038,6 +1039,7 @@ PROVIDER_TOOLS = {
     "letsignit": letsignit_tools,
     "aws_security": aws_security_tools,
     "ovhcloud": ovhcloud_tools,
+    "aikido": aikido_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1103,6 +1105,7 @@ CHANNEL_BOT_TOOLS = {
 # file_id in the run's FileContext.
 _PERSIST_FILE_PROVIDERS = frozenset(
     {
+        "aikido",
         "anyrun",
         "ashby",
         "bluesky",
@@ -2899,6 +2902,28 @@ async def _get_token(
                 )
         secret = (await reveal_field(integ, "api_key_enc")) or ""
         return token_from_config(secret, extra)
+
+    # --- Aikido Security (OAuth2 client credentials on a regional host) ---
+    # The client secret is the API key column; the region and the client id
+    # live in extra_config. The provider gets ``region||client_id||secret``
+    # (partial when a part is missing, so a call names what to fix).
+    if provider == "aikido":
+        from app.integrations.providers.aikido import (
+            token_from_config as aikido_token_from_config,
+        )
+
+        aikido_extra = {}
+        if integ.extra_config_enc:
+            try:
+                aikido_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (aikido): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        aikido_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return aikido_token_from_config(aikido_secret, aikido_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API

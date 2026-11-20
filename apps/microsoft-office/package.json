@@ -14,8 +14,8 @@
     "sideload:stop": "npx office-addin-debugging stop manifest/manifest.xml"
   },
   "dependencies": {
-    "@filigran/chatbot": "3.36.0",
-    "@filigran/design-system": "1.5.3",
+    "@filigran/chatbot": "5.0.0",
+    "@filigran/design-system": "1.7.0",
     "lucide-react": "0.577.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
