@@ -665,10 +665,14 @@ def test_a_check_scan_pattern_selects_a_python_tripwire_on_a_source_change_only(
     """A guard reading every module through a helper names no changed identifier: #659 went red in the queue."""
     tests = {
         "tests/test_guard.py": "from tests import app_sources\n\ndef test_x():\n    app_sources.modules()\n",
+        "tests/test_walk.py": "from tests.app_sources import modules, walk\n\ndef test_z():\n    walk(modules())\n",
         "tests/test_other.py": "def test_y():\n    assert 1\n",
     }
-    scans = (r"\bfrom tests import app_sources\b",)
+    scans = (r"\bfrom tests(?:\.app_sources\s+import\b|\s+import\s+[^\n]*\bapp_sources\b)",)
     picked = affected.select_tests(tests, set(), source_changed=True, scans=scans)
-    assert picked == {"tests/test_guard.py": [affected.SOURCE_SCAN_HIT]}
+    assert picked == {
+        "tests/test_guard.py": [affected.SOURCE_SCAN_HIT],
+        "tests/test_walk.py": [affected.SOURCE_SCAN_HIT],
+    }
     assert affected.select_tests(tests, set(), source_changed=False, scans=scans) == {}
     assert affected.select_tests(tests, set(), source_changed=True) == {}
