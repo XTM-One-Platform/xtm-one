@@ -16,8 +16,10 @@ default, recipients validated, one email per new critical finding (deduplicated)
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -28,7 +30,7 @@ from app.services.health.settings import HealthAlertEmailSettings, HealthSetting
 NOW = datetime(2026, 11, 21, 8, 0, tzinfo=UTC)
 
 
-def _finding(fid: str, severity: str = "critical", module: str = "opencti") -> SimpleNamespace:
+def _finding(fid: str, severity: str = "critical", module: str = "opencti") -> Any:
     return SimpleNamespace(
         id=fid,
         check_id=f"{module}.connector_stale",
@@ -41,24 +43,25 @@ def _finding(fid: str, severity: str = "critical", module: str = "opencti") -> S
 
 
 class _Rows:
-    def __init__(self, rows: list) -> None:
+    def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
-    def scalars(self) -> list:
+    def scalars(self) -> list[Any]:
         return list(self._rows)
 
 
 class _Db:
-    def __init__(self, rows: list, mark=None) -> None:
-        self.rows, self.mark, self.added, self.commits = rows, mark, [], 0
+    def __init__(self, rows: list[Any], mark: Any = None) -> None:
+        self.rows, self.mark, self.commits = rows, mark, 0
+        self.added: list[Any] = []
 
-    async def execute(self, _stmt) -> _Rows:
+    async def execute(self, _stmt: Any) -> _Rows:
         return _Rows(self.rows)
 
-    async def get(self, _model, _key):
+    async def get(self, _model: Any, _key: Any) -> Any:
         return self.mark
 
-    def add(self, obj) -> None:
+    def add(self, obj: Any) -> None:
         self.added.append(obj)
         self.mark = obj
 
@@ -66,11 +69,16 @@ class _Db:
         self.commits += 1
 
 
-@pytest.fixture
-def sent(monkeypatch) -> list[dict]:
-    outbox: list[dict] = []
+def _db(rows: list[Any], mark: Any = None) -> Any:
+    """A session double answering *rows* to every select (typed Any: it stands for an AsyncSession)."""
+    return _Db(rows, mark)
 
-    async def fake_deliver(**kwargs) -> None:
+
+@pytest.fixture
+def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    outbox: list[dict[str, Any]] = []
+
+    async def fake_deliver(**kwargs: Any) -> None:
         outbox.append(kwargs)
 
     monkeypatch.setattr("app.services.email.deliver_email", fake_deliver)
@@ -102,7 +110,7 @@ def test_at_or_above_orders_the_severities() -> None:
 
 
 @pytest.mark.asyncio
-async def test_one_email_per_new_critical_finding_and_never_twice(sent) -> None:
+async def test_one_email_per_new_critical_finding_and_never_twice(sent: list[dict[str, Any]]) -> None:
     claimed: set[str] = set()
 
     async def claim(key: str) -> bool:
@@ -112,7 +120,7 @@ async def test_one_email_per_new_critical_finding_and_never_twice(sent) -> None:
         return True
 
     config = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com", "soc@example.com"])
-    db = _Db([_finding("f1")])
+    db = _db([_finding("f1")])
     assert await alerts.send_immediate_alerts(db, ["f1"], config, claim=claim) == 1
     assert [mail["to"] for mail in sent] == ["ops@example.com", "soc@example.com"]
     assert "critical finding" in sent[0]["subject"]
@@ -122,21 +130,21 @@ async def test_one_email_per_new_critical_finding_and_never_twice(sent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_immediate_email_when_nothing_opened_or_immediate_is_off(sent) -> None:
+async def test_no_immediate_email_when_nothing_opened_or_immediate_is_off(sent: list[dict[str, Any]]) -> None:
     async def claim(_key: str) -> bool:
         return True
 
     on = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"])
-    assert await alerts.send_immediate_alerts(_Db([_finding("f1")]), [], on, claim=claim) == 0
+    assert await alerts.send_immediate_alerts(_db([_finding("f1")]), [], on, claim=claim) == 0
     off = on.model_copy(update={"immediate": False})
-    assert await alerts.send_immediate_alerts(_Db([_finding("f1")]), ["f1"], off, claim=claim) == 0
+    assert await alerts.send_immediate_alerts(_db([_finding("f1")]), ["f1"], off, claim=claim) == 0
     assert sent == []
 
 
 @pytest.mark.asyncio
-async def test_one_digest_a_day_listing_the_findings_at_or_above_the_minimum(sent) -> None:
+async def test_one_digest_a_day_listing_the_findings_at_or_above_the_minimum(sent: list[dict[str, Any]]) -> None:
     config = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"], min_severity="warning")
-    db = _Db([_finding("f1"), _finding("f2", "warning", "openaev"), _finding("f3", "info")])
+    db = _db([_finding("f1"), _finding("f2", "warning", "openaev"), _finding("f3", "info")])
     assert await alerts.send_daily_digest(db, config, now=NOW) is True
     assert len(sent) == 1
     assert sent[0]["subject"] == "Platform Health: 2 open findings on 2026-11-21"
@@ -148,18 +156,23 @@ async def test_one_digest_a_day_listing_the_findings_at_or_above_the_minimum(sen
 
 
 @pytest.mark.asyncio
-async def test_no_digest_when_nothing_is_open_at_the_minimum(sent) -> None:
+async def test_no_digest_when_nothing_is_open_at_the_minimum(sent: list[dict[str, Any]]) -> None:
     config = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"], min_severity="critical")
-    db = _Db([_finding("f3", "info")])
+    db = _db([_finding("f3", "info")])
     assert await alerts.send_daily_digest(db, config, now=NOW) is False
     assert sent == []
     assert db.commits == 1
 
 
 @pytest.mark.asyncio
-async def test_send_alerts_sends_nothing_when_off_without_recipients_or_without_smtp(monkeypatch, sent) -> None:
-    async def settings_with(config: HealthAlertEmailSettings):
-        return HealthSettings(alert_emails=config)
+async def test_send_alerts_sends_nothing_when_off_without_recipients_or_without_smtp(
+    monkeypatch: pytest.MonkeyPatch, sent: list[dict[str, Any]]
+) -> None:
+    def loader(config: HealthAlertEmailSettings) -> Callable[[Any], Awaitable[HealthSettings]]:
+        async def load(_db: Any) -> HealthSettings:
+            return HealthSettings(alert_emails=config)
+
+        return load
 
     on = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"])
     cases = [
@@ -168,13 +181,9 @@ async def test_send_alerts_sends_nothing_when_off_without_recipients_or_without_
         (on, False),
     ]
     for config, smtp in cases:
-
-        async def load(_db, config=config):
-            return await settings_with(config)
-
-        monkeypatch.setattr(alerts, "load_health_settings", load)
+        monkeypatch.setattr(alerts, "load_health_settings", loader(config))
         monkeypatch.setattr("app.services.email.is_email_configured", lambda smtp=smtp: smtp)
-        assert await alerts.send_alerts(_Db([_finding("f1")]), ["f1"], now=NOW) == {"immediate": 0, "digest": 0}
+        assert await alerts.send_alerts(_db([_finding("f1")]), ["f1"], now=NOW) == {"immediate": 0, "digest": 0}
     assert sent == []
 
 
