@@ -136,6 +136,8 @@ def world(monkeypatch):
         monkeypatch.setattr(wi_service, "_record_roi_on_done", _none)
         monkeypatch.setattr("app.services.work_item_fleet_impact.note_impact_routed", _none)
         monkeypatch.setattr("app.services.work_item_note_steering.offer", _offer)
+        # A blocked write names a real blocker (#762); its wait-cycle read is not under test here.
+        monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _none)
         return session, offers
 
     return _make
@@ -261,7 +263,7 @@ def _write(item, status, *, take_over=False, runs=(RETEST_RUN,)):
         status=status,
         writer=AGENT,
         writer_run_ids=runs,
-        blocked_reason="waits for the retest" if status == "blocked" else None,
+        blocked_on_refs=[{"repo": "o/r", "kind": "pull_request", "number": 7}] if status == "blocked" else None,
         take_over=take_over,
     )
 

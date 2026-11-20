@@ -77,21 +77,43 @@ def test_a_large_first_day_with_no_baseline_is_a_spike():
 # ── blocked_without_blocker ─────────────────────────────────────────────────
 
 
+_OWNER = uuid.uuid4()
+_ASK = {"question": "Merge it?", "options": [{"key": "A", "label": "yes"}, {"key": "B", "label": "no"}], "recommendation": "A"}
+
+
 @pytest.mark.parametrize(
     "fields",
     [
-        {"blocked_on": ["x"], "blocked_on_refs": None, "blocked_reason": None, "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": [{"kind": "issue"}], "blocked_reason": None, "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "waits for X", "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": None, "needs_human": True},
+        {"blocked_on": ["x"], "blocked_on_refs": None, "needs_human": None},
+        {"blocked_on": None, "blocked_on_refs": [{"kind": "issue"}], "needs_human": None},
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True, "ask": _ASK},
+        # One live blocker of two is enough.
+        {"blocked_on": ["x", "y"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"y"}},
     ],
 )
-def test_a_blocked_item_naming_any_blocker_is_fine(fields):
-    assert not signals.blocked_without_blocker(**fields)
+def test_a_black_or_white_blocked_item_is_fine(fields):
+    assert not signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
 
 
-def test_a_blocked_item_naming_nothing_is_reported():
-    assert signals.blocked_without_blocker(blocked_on=[], blocked_on_refs=[], blocked_reason="  ", needs_human=False)
+@pytest.mark.parametrize(
+    "fields",
+    [
+        # Free text alone is no blocker (#762).
+        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "waits for X", "needs_human": None},
+        {"blocked_on": [], "blocked_on_refs": [], "blocked_reason": "  ", "needs_human": False},
+        # A person's decision without its card.
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True},
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True, "ask": {"question": "Merge it?"}},
+        # Every item it waits for was cancelled: nothing will release it.
+        {"blocked_on": ["x"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"x"}},
+    ],
+)
+def test_a_blocked_item_that_is_not_black_or_white_is_reported(fields):
+    assert signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
+
+
+def test_an_ownerless_blocked_item_is_reported_whatever_it_waits_for():
+    assert signals.blocked_without_blocker(blocked_on=["x"], blocked_on_refs=None, needs_human=None)
 
 
 # ── The report ──────────────────────────────────────────────────────────────

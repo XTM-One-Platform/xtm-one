@@ -28,6 +28,7 @@ from app.services.work_item_blocked_refs import (
     normalize_blocked_on_refs,
     record_closing_on_payload,
     refuse_blocked_without_why,
+    refuse_needs_human_without_ask,
     release_not_before,
     release_note,
     still_waiting_note,
@@ -82,12 +83,21 @@ def test_a_reference_the_platform_cannot_match_is_refused(entry):
 # -- the refusal and the views ------------------------------------------------------
 
 
-def test_a_blocked_status_with_no_why_is_refused_naming_every_field():
+_OWNER = "9c1142f6-d1e1-434a-9099-1c63e3286156"
+_ASK = {
+    "question": "Merge it?",
+    "options": [{"key": "A", "label": "merge"}, {"key": "B", "label": "wait"}],
+    "recommendation": "A",
+}
+
+
+def test_a_blocked_status_with_no_why_is_refused_naming_the_three_options():
     with pytest.raises(ValueError) as exc:
         refuse_blocked_without_why("blocked")
-    for field in ("blocked_on", "blocked_on_refs", "blocked_reason", "needs_human"):
+    for field in ("owner_agent_id", "blocked_on", "blocked_on_refs", "needs_human", "ask", "not_before"):
         assert field in str(exc.value)
-    assert str(exc.value) == WHY_FIELDS_MESSAGE
+    assert str(exc.value).startswith(WHY_FIELDS_MESSAGE)
+    assert "no owner_agent_id" in str(exc.value) and "nothing was written" in str(exc.value)
 
 
 @pytest.mark.parametrize(
@@ -95,19 +105,46 @@ def test_a_blocked_status_with_no_why_is_refused_naming_every_field():
     [
         {"blocked_on": ["a"]},
         {"blocked_on_refs": [{"repo": REPO, "number": 1}]},
-        {"blocked_reason": "waits for the UX verdict, released by the UX Director"},
-        {"needs_human": True},
+        {"needs_human": True, "ask": _ASK},
     ],
 )
-def test_any_one_why_is_enough(fields):
-    refuse_blocked_without_why("blocked", **fields)
+def test_an_owner_and_one_real_blocker_is_enough(fields):
+    refuse_blocked_without_why("blocked", owner_agent_id=_OWNER, **fields)
+
+
+@pytest.mark.parametrize(
+    ("fields", "missing"),
+    [
+        # Free text is context, never the blocker (#762).
+        ({"owner_agent_id": _OWNER, "blocked_reason": "waits for the partner retest"}, "no blocker"),
+        # Never ownerless, whatever it waits for.
+        ({"blocked_on": ["a"]}, "no owner_agent_id"),
+        # A person's decision carries its card: a question, two options, a recommendation.
+        ({"owner_agent_id": _OWNER, "needs_human": True}, "without an ask card"),
+        ({"owner_agent_id": _OWNER, "needs_human": True, "ask": {"question": "Merge it?"}}, "without an ask card"),
+        (
+            {"owner_agent_id": _OWNER, "needs_human": True, "ask": {**_ASK, "recommendation": None}},
+            "without an ask card",
+        ),
+    ],
+)
+def test_blocked_is_black_or_white(fields, missing):
+    with pytest.raises(ValueError, match=missing):
+        refuse_blocked_without_why("blocked", **fields)
 
 
 def test_only_a_blocked_status_needs_a_why():
     refuse_blocked_without_why("in_progress")
-    # Blank text is no reason.
-    with pytest.raises(ValueError):
-        refuse_blocked_without_why("blocked", blocked_reason="   ")
+    refuse_blocked_without_why("open", blocked_reason="deferred")
+
+
+def test_needs_human_needs_its_ask_card():
+    refuse_needs_human_without_ask(None, None)
+    refuse_needs_human_without_ask(True, _ASK)
+    with pytest.raises(ValueError, match="needs_human needs an ask card"):
+        refuse_needs_human_without_ask(True, None)
+    with pytest.raises(ValueError, match="at least 2"):
+        refuse_needs_human_without_ask(True, {"question": "Merge it?", "options": [{"key": "A"}], "recommendation": "A"})
 
 
 def test_the_views_show_what_a_blocked_item_waits_for():

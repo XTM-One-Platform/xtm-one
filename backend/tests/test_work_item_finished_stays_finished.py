@@ -18,17 +18,22 @@ import app.services.work_item as wi_service
 from tests.test_work_item_completion_live_holder import AGENT, _item, world  # noqa: F401
 
 
+async def _no_cycle(*_a, **_kw):
+    return None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("finished", ["done", "cancelled"])
 @pytest.mark.parametrize("status", ["in_progress", "claimed", "blocked"])
-async def test_an_agent_run_cannot_put_a_finished_item_back_to_work(world, finished, status):  # noqa: F811
+async def test_an_agent_run_cannot_put_a_finished_item_back_to_work(world, monkeypatch, finished, status):  # noqa: F811
     item = _item(status=finished, result="merged", claimed_by_run_id=None)
     session = world(item, None)
+    monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _no_cycle)
 
     with pytest.raises(ValueError, match=f"already {finished}"):
         await wi_service.update_work_item(
             str(item.id), user_id=str(item.user_id), status=status,
-            blocked_reason="waits" if status == "blocked" else None,
+            blocked_on_refs=[{"repo": "o/r", "kind": "pull_request", "number": 7}] if status == "blocked" else None,
             writer=AGENT, writer_run_ids=(uuid.uuid4(),),
         )
     assert item.status == finished and item.result == "merged"
