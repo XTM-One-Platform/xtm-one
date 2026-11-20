@@ -2170,6 +2170,47 @@ async def test_inspect_my_traces_forwards_the_window_and_filters(monkeypatch):
     assert set(arguments) | {"started_to", "min_generations"} <= set(schema)
 
 
+@pytest.mark.asyncio
+async def test_inspect_agent_traces_forwards_the_window_inside_the_supervision_scope(monkeypatch):
+    """A supervisor reads another agent's runs of a given hour and pages past the newest (#740)."""
+    target = str(uuid.uuid4())
+    captured: dict = {}
+
+    async def _user_context(_db, _uid):
+        return SimpleNamespace(id=uuid.uuid4(), email="me@example.com", is_admin=False), []
+
+    async def _fetch(_db, **kwargs):
+        captured.update(kwargs)
+        return '{"count": 0, "traces": []}'
+
+    async def _no_audit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(traces_module, "async_session", _fake_async_session_factory(_FakeDBSession()))
+    monkeypatch.setattr(traces_module, "_load_user_context", _user_context)
+    monkeypatch.setattr(traces_module, "_fetch_traces", _fetch)
+    monkeypatch.setattr(traces_module, "_audit_trace_read", _no_audit)
+    definitions, executor = traces_module.build_trace_tools(
+        object(),
+        str(uuid.uuid4()),
+        str(uuid.uuid4()),
+        supervision_target_agent_ids=[target],
+        allow_cross_agent=True,
+    )
+    window = {"started_from": "2026-11-06T11:00:00Z", "started_to": "2026-11-06T14:00:00Z", "offset": 25}
+
+    result = await executor.execute_tool(
+        ToolCall(id="c2", name="inspect_agent_traces", arguments={"target_agent_id": target, **window})
+    )
+
+    assert result.is_error is False
+    assert {key: captured[key] for key in window} == window
+    # The window narrows the time, never the agents read.
+    assert captured["agent_ids"] == [target]
+    schema = next(d for d in definitions if d.name == "inspect_agent_traces").input_schema["properties"]
+    assert set(window) <= set(schema)
+
+
 class _OneTraceStore:
     """A trace store answering one trace's spans."""
 
