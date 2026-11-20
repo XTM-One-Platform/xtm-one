@@ -25,6 +25,7 @@ import logging
 
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
+from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.services.tool_classification import infer_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -39,6 +40,19 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "task_id": "The task the event names",
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
+}
+#: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
+_AIKIDO_FILTER_KEYS: dict[str, str] = {
+    "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
+    "workspace_id": "The Aikido workspace that sent the event",
+    "payload.severity": "The issue severity: critical, high, medium or low (issue events)",
+    "payload.severity_score": "The issue severity score, 1 to 100 (issue events)",
+    "payload.type": "The issue type: open_source, leaked_secret, cloud, iac, sast, surface_monitoring, malware",
+    "payload.status": "The issue status the event carries",
+    "payload.issue_id": "The issue the event names",
+    "payload.code_repo_id": "The code repository the event names, when it carries one",
+    "payload.code_repo_name": "The code repository name, when the event carries one",
+    "payload.team_id": "The responsible team, when the event carries one",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -4550,6 +4564,79 @@ PROVIDER_CATALOG = {
                 "(roughly 100 requests/min for alert operations). All "
                 "credentials are stored encrypted here."
             ),
+        },
+    },
+    "aikido": {
+        "name": "Aikido Security",
+        "description": (
+            "Aikido Security application security, the whole public API: issues and issue groups "
+            "(export, detail, counts, reachability, exploitability, severity, snooze, ignore, solve, "
+            "notes), code repositories, pull request checks, containers and registries, clouds, "
+            "domains and DAST, virtual machines, SBOM and license exports, compliance reports "
+            "(SOC 2, ISO 27001, NIS2, DORA, PCI, CIS, FedRAMP), Autofix, Zen runtime protection, "
+            "pentests, custom SAST rules, endpoint protection, code quality and coverage, teams, "
+            "users, task tracking and webhooks, plus webhook triggers"
+        ),
+        "logo": "/logos/aikido.svg",
+        "category": "integration",
+        "integration_category": "exposure_management",
+        "integration_types": ["vulnerability_management", "application_security"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": (
+                    f"Triggers on the Aikido '{event}' webhook. Add a webhook for this event in Aikido "
+                    "(Settings > Integrations > Webhooks, or the add_aikido_webhook tool) pointing to the "
+                    "webhook URL shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _AIKIDO_FILTER_KEYS,
+            }
+            for event, label in AIKIDO_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "region": "Data region of the Aikido workspace",
+            "client_id": "API client ID",
+            "webhook_secret": "Webhook HMAC signing secret (X-Aikido-Webhook-Signature)",
+        },
+        "extra_field_options": {
+            "region": [
+                {"value": "eu", "label": "Europe - app.aikido.dev"},
+                {"value": "us", "label": "United States - app.us.aikido.dev"},
+                {"value": "au", "label": "Australia - app.au.aikido.dev"},
+                {"value": "me", "label": "Middle East - app.me.aikido.dev"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Aikido API client",
+            "url": "https://apidocs.aikido.dev/reference/authorization",
+            "steps": [
+                "In Aikido, as a workspace admin, open Settings > Integrations > API and create a REST API client.",
+                "Grant the scopes the agents need: the read scopes for a read-only binding, the write scopes for triage and configuration tools.",
+                "Pick the data region of the workspace, paste the client ID in its field and the client secret in the 'API Key' field.",
+                "Optional, for webhook triggers: in Settings > Integrations > Webhooks, click 'Add secret', paste the HMAC signing secret in 'Webhook signing secret', then add a webhook per event pointing to the webhook URL shown below.",
+                "Click 'Test Connection': it mints a token and reads the workspace.",
+            ],
+            "permissions": [
+                {
+                    "scope": "issues:read, repositories:read, containers:read, clouds:read, domains:read, basics:read",
+                    "description": "Read issues, inventory and workspace",
+                },
+                {
+                    "scope": "teams:read, users:read, reports:read, research:read, webhooks:read",
+                    "description": "Read teams, users, reports, research data and webhooks",
+                },
+                {
+                    "scope": "issues:write and the other :write scopes",
+                    "description": "Optional: triage, configuration and the destructive tools (each asks a person)",
+                },
+            ],
         },
     },
     "wiz": {
@@ -9364,6 +9451,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "zendesk": "acme||agent@example.com||__dummy__",
     "tenable": "https://dummy.example.com||__dummy__||__dummy__",
     "intel471": "__dummy__||__dummy__",
+    # Aikido's token is region||client_id||client_secret.
+    "aikido": "eu||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
