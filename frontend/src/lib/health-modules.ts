@@ -91,11 +91,16 @@ const HEALTH_EVIDENCE_LABELS = {
   days_left: "Days left",
   disk_used_percent: "Disk used (%)",
   documents: "Documents",
+  error: "Error",
+  ERROR: "Errors",
   expires: "Expires",
+  expires_at: "Expires",
   failed: "Failed",
   failed_runs: "Failed runs",
   failure_rate_pct: "Failure rate (%)",
+  consumers: "Queue consumers",
   health: "Health",
+  in_scope: "In scope",
   ingestion_lag_seconds: "Ingestion lag (seconds)",
   installed: "Installed version",
   items: "Items",
@@ -105,6 +110,7 @@ const HEALTH_EVIDENCE_LABELS = {
   last_error: "Last error",
   last_heartbeat_at: "Last heartbeat",
   last_triggered_at: "Last triggered",
+  limit: "Run limit",
   model: "Model",
   name: "Name",
   new_models: "New models",
@@ -112,6 +118,7 @@ const HEALTH_EVIDENCE_LABELS = {
   oauth_status: "OAuth status",
   offline: "Offline",
   owner_active: "Owner active",
+  period: "Period",
   platform_model: "Platform model",
   previous_cost_per_run: "Previous cost per run (USD)",
   previous_models: "Previous models",
@@ -129,12 +136,15 @@ const HEALTH_EVIDENCE_LABELS = {
   status: "Status",
   threshold: "Threshold",
   tokens_last_day: "Tokens in the last day",
+  tokens_previous_7_days: "Tokens in the previous week",
   total: "Total",
   traces: "Traces",
   type: "Type",
   updated_at: "Updated",
+  used: "Runs used",
   validated: "Validated",
   waiting: "Waiting",
+  WARNING: "Warnings",
   window_hours: "Window (hours)",
   works_in_error: "Works in error",
 } as const;
@@ -153,6 +163,72 @@ export const HEALTH_CATEGORY_LABELS = {
   security: "Security",
 } as const;
 
+/**
+ * What to do about a finding, by check id (UX round 2 B2 on #634: the backend writes it in
+ * English; a person reads it in their language). health-modules.test.ts pins one entry per check.
+ * @i18n-keys
+ */
+export const HEALTH_CHECK_RECOMMENDATIONS = {
+  "agents.assignment_failing": "Read the last failed run of the assignment; fix it or pause the assignment.",
+  "agents.blocked_without_blocker": "Name what each item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+  "agents.cost_drift": "Compare a recent run with an older one for a larger read, a longer loop or a model change.",
+  "agents.cost_spike": "Read the agent's runs of the day for a loop or an oversized read.",
+  "agents.failure_spike": "Read the failed runs of the assignment for a common cause; fix it or pause the assignment.",
+  "agents.feedback_drop": "Read the low-rated answers of the window; adjust the persona, skill or tools they share.",
+  "agents.integration_broken": "Open the integration, test it, and reconnect or re-authorize it.",
+  "agents.model_change": "Compare the agent's runs before and after the change; pin the model if the change was not intended.",
+  "agents.orphaned_claims": "Released by the platform's claim sweep; if it persists, read the item's last run.",
+  "agents.owner_disabled": "Hand the agent to an active owner or disable it.",
+  "agents.schedule_silent": "Check the schedule and its gate; delete the assignment if its work is over.",
+  "openaev.agents_offline": "Check the endpoints and the agent service: simulations cannot run on offline agents.",
+  "openaev.healthcheck": "Open the scenarios and simulations OpenAEV flags for this check and fix the service, agent, collector or content it names.",
+  "openaev.heartbeat": "Check that OpenAEV is running and reaches XTM One (the XTM One URL and token on the OpenAEV side, PLATFORM_REGISTRATION_TOKEN here).",
+  "openaev.integration_silent": "Restart the injector, collector or executor, or check its logs; it has stopped reporting.",
+  "opencrq.heartbeat": "Check that OpenCRQ is running and reaches XTM One (XTM_ONE__URL and XTM_ONE__TOKEN on the OpenCRQ side, PLATFORM_REGISTRATION_TOKEN here).",
+  "opencrq.job_failing": "Open the job in OpenCRQ, read the error of its last run and retry it once the cause is fixed.",
+  "opencti.connector_errors": "Open the connector's works in OpenCTI and fix the cause of the errors.",
+  "opencti.connector_stale": "Restart the connector or check its logs; it has stopped reporting to OpenCTI.",
+  "opencti.heartbeat": "Check that OpenCTI is running and reaches XTM One (XTM_ONE_URL and XTM_ONE_TOKEN on the OpenCTI side, PLATFORM_REGISTRATION_TOKEN here).",
+  "opencti.ingestion_lag": "Add OpenCTI workers or check the broker: ingestion is falling behind.",
+  "opencti.queue_consumers": "Start the OpenCTI workers: messages wait in the broker and nothing reads them.",
+  "opencti.queue_depth": "Add OpenCTI workers or slow the connectors that fill the queue.",
+  "opencti.search_disk": "Free or add disk on the search engine nodes, or set retention rules in OpenCTI.",
+  "opencti.search_engine": "Check the Elasticsearch or OpenSearch cluster health: unassigned shards or a lost node.",
+  "xtm_one.certificate_expiry": "Renew the TLS certificate of the public URL, or fix its chain and host name.",
+  "xtm_one.default_model": "Choose a default model in Settings > Platform.",
+  "xtm_one.dependency_unreachable": "Check that the dependency is up and reachable from the backend and the worker.",
+  "xtm_one.embedding_model": "Choose an embedding model in Settings > Platform.",
+  "xtm_one.hub_registration": "Register this platform with XTM Hub from Settings, or register it again.",
+  "xtm_one.integration_broken": "Re-authorize the integration or fix its credentials, then test its connection.",
+  "xtm_one.kb_indexing_stalled": "Check that the background worker runs, then reprocess the stalled documents.",
+  "xtm_one.kb_stale_embeddings": "Re-embed the knowledge base with the platform's embedding model.",
+  "xtm_one.licence": "Install a valid Filigran licence in Settings > Platform, or contact Filigran.",
+  "xtm_one.licence_expiry": "Renew the Filigran licence before it expires.",
+  "xtm_one.mcp_server_broken": "Connect the MCP server again so its OAuth token is renewed.",
+  "xtm_one.provider_error_rate": "Check the provider's status and the model's credentials, or switch the agents to another model.",
+  "xtm_one.quota_near_ceiling": "Agentic runs stop for everyone once the ceiling is reached: raise it with Filigran or reduce the scheduled and event-driven runs.",
+  "xtm_one.registration_token": "Set PLATFORM_REGISTRATION_TOKEN to a random secret here and on every connected OpenCTI, OpenAEV or OpenCRQ platform, then restart them.",
+  "xtm_one.smtp": "Set SMTP_HOSTNAME and its credentials so the platform can send email.",
+  "xtm_one.trace_backlog": "Check the trace store: traces are queued until it accepts them again.",
+  "xtm_one.version_behind": "Upgrade XTM One to the latest release; its release notes list what changed.",
+  "xtm_one.worker_absent": "Start the worker deployment, or read its logs for why it stopped.",
+} as const;
+
+/**
+ * The period of a quota ceiling, as the evidence records it (UX round 2 B2 on #634: never "month" raw).
+ * @i18n-keys
+ */
+const HEALTH_PERIOD_LABELS = {
+  day: "Daily",
+  daily: "Daily",
+  week: "Weekly",
+  weekly: "Weekly",
+  month: "Monthly",
+  monthly: "Monthly",
+  year: "Yearly",
+  yearly: "Yearly",
+} as const;
+
 /** A key no table names yet (a check newer than this build): its words, never its snake case. */
 function humanize(key: string): string {
   const words = key.replace(/^[a-z_]+\./, "").replace(/_/g, " ").trim();
@@ -167,6 +243,14 @@ function labelOf(table: Record<string, string>, key: string, t: (key: string) =>
 export const checkTitle = (checkId: string, t: (key: string) => string) => labelOf(HEALTH_CHECK_TITLES, checkId, t);
 /** The translated label of an evidence value. */
 export const evidenceLabel = (key: string, t: (key: string) => string) => labelOf(HEALTH_EVIDENCE_LABELS, key, t);
+/** The translated label of a quota period; an unknown period as it is. */
+export const periodLabel = (period: string, t: (key: string) => string) =>
+  Object.prototype.hasOwnProperty.call(HEALTH_PERIOD_LABELS, period) ? t(HEALTH_PERIOD_LABELS[period as keyof typeof HEALTH_PERIOD_LABELS]) : period;
+/** The translated recommendation of a check; a check newer than this build keeps the backend's text. */
+export const checkRecommendation = (checkId: string, fallback: string, t: (key: string) => string) =>
+  Object.prototype.hasOwnProperty.call(HEALTH_CHECK_RECOMMENDATIONS, checkId)
+    ? t(HEALTH_CHECK_RECOMMENDATIONS[checkId as keyof typeof HEALTH_CHECK_RECOMMENDATIONS])
+    : fallback;
 /** The translated label of a category. */
 export const categoryLabel = (category: string, t: (key: string) => string) => labelOf(HEALTH_CATEGORY_LABELS, category, t);
 

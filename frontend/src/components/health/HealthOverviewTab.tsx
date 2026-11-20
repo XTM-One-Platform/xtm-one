@@ -26,12 +26,12 @@ import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CHART_TOOLTIP_PROPS } from "@/components/ui/charts/chart-tooltip";
-import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
-import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
+import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { StatCard } from "@/components/ui/stat-card";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
@@ -43,7 +43,15 @@ import {
 } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { EVALUATION_CHART_COLORS } from "@/lib/constants";
-import { HEALTH_MODULE_LABELS, categoryLabel, checkTitle, evidenceLabel, moduleCardSubtitle } from "@/lib/health-modules";
+import {
+  HEALTH_MODULE_LABELS,
+  categoryLabel,
+  checkRecommendation,
+  checkTitle,
+  evidenceLabel,
+  moduleCardSubtitle,
+  periodLabel,
+} from "@/lib/health-modules";
 import type { HealthFinding, HealthModule, HealthSeverity } from "@/types";
 
 /** The health glyph, rendered by the library <Icon name> (no direct lucide-react import). */
@@ -96,7 +104,10 @@ function evidenceValue(value: unknown, t: Translate): string {
 /** The evidence as translated label and value pairs. */
 function evidenceLines(finding: HealthFinding, t: Translate): [string, string][] {
   const values = (finding.evidence?.values ?? {}) as Record<string, unknown>;
-  const lines = Object.entries(values).map(([key, value]) => [evidenceLabel(key, t), evidenceValue(value, t)] as [string, string]);
+  // A quota period is a word to translate (UX round 2 B2 on #634: never "month" raw).
+  const lines = Object.entries(values).map(
+    ([key, value]) => [evidenceLabel(key, t), key === "period" && typeof value === "string" ? periodLabel(value, t) : evidenceValue(value, t)] as [string, string],
+  );
   const threshold = finding.evidence?.threshold;
   if (threshold !== undefined && threshold !== null) lines.push([evidenceLabel("threshold", t), evidenceValue(threshold, t)]);
   return lines;
@@ -154,22 +165,25 @@ function DismissDialog({ findings, onClose }: { findings: HealthFinding[]; onClo
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">
+          {/* The design-system Textarea draws the missing-reason error itself: error border, aria-invalid
+              and the message in its helper row (UX round 2 B3 on #634); the field's helper steps aside. */}
           <SettingsField
             id="health-dismiss-reason"
             label={t_i18n("Reason")}
             required
-            helper={t_i18n("Recorded in the audit trail.")}
-            error={missing ? t_i18n("Give a reason.") : undefined}
+            helper={missing ? undefined : t_i18n("Recorded in the audit trail.")}
           >
             <Textarea
               id="health-dismiss-reason"
+              error={missing ? t_i18n("Give a reason.") : undefined}
               autoFocus
               rows={3}
               maxLength={500}
               disabled={busy}
               value={reason}
               aria-required
-              aria-describedby={settingsFieldHintId("health-dismiss-reason")}
+              aria-labelledby={settingsFieldLabelId("health-dismiss-reason")}
+              aria-describedby={missing ? undefined : settingsFieldHintId("health-dismiss-reason")}
               onChange={(e) => setReason(e.target.value)}
               placeholder={t_i18n("Known and accepted, fixed in the next release…")}
             />
@@ -226,7 +240,7 @@ function FindingDetail({
       {finding.recommendation ? (
         <div className="space-y-1">
           <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Recommendation")}</h4>
-          <p className="content-base text-default-primary">{finding.recommendation}</p>
+          <p className="content-base text-default-primary">{checkRecommendation(finding.check_id, finding.recommendation, t_i18n)}</p>
         </div>
       ) : null}
       {lines.length ? (
@@ -245,7 +259,7 @@ function FindingDetail({
         </div>
       ) : null}
       <p className="content-compact text-default-secondary">
-        {t_i18n("Check")}: <span className="font-mono-plex">{finding.check_id}</span>
+        {t_i18n("Check: (health check id)")} <span className="font-mono-plex">{finding.check_id}</span>
       </p>
       {finding.dismissal ? (
         <p className="content-compact text-default-secondary">
@@ -486,15 +500,23 @@ export function HealthOverviewTab() {
 
   const bulk =
     view === "open" ? (
-      <Button variant="outline" size="sm" disabled={!target.length} onClick={() => setDismissing(target)} data-testid="health-dismiss-all">
+      <Button
+        variant="outline"
+        size="sm"
+        className={TOOLBAR_CONTROL_HEIGHT}
+        disabled={!target.length}
+        onClick={() => setDismissing(target)}
+        data-testid="health-dismiss-all"
+      >
         {picked.length
           ? t_i18n("{count, plural, one {Dismiss # finding} other {Dismiss # findings}}", { count: picked.length })
-          : t_i18n("Dismiss all")}
+          : t_i18n("Dismiss all (health findings)")}
       </Button>
     ) : view === "dismissed" ? (
       <Button
         variant="outline"
         size="sm"
+        className={TOOLBAR_CONTROL_HEIGHT}
         disabled={!target.length || restore.isPending}
         onClick={() => restoreFindings(target)}
         data-testid="health-restore-all"
