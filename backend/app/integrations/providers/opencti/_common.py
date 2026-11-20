@@ -27,6 +27,7 @@ import httpx
 
 from app.core.egress import egress_client
 from app.integrations.http import (
+    TRANSIENT_RETRY_STATUSES,
     AutoRefreshClient,
     bearer_seconds_remaining,
     clip_text,
@@ -679,6 +680,22 @@ _GRAPHQL_ROOT_FIELD_RE = re.compile(r"\{\s*([A-Za-z_][A-Za-z0-9_]*)")
 
 _UNNAMED_OPERATION = "unnamed operation"
 
+# A document that may write: ``mutation`` (and ``subscription``, never sent
+# here) anywhere in it. Deliberately broad: a read that merely mentions the
+# word loses the transient retry, a write is never replayed.
+_GRAPHQL_WRITE_RE = re.compile(r"\b(?:mutation|subscription)\b")
+
+
+def _is_read_document(query: str) -> bool:
+    """True when *query* is a read (``query`` or anonymous ``{ ... }``).
+
+    Only a read opts into the 502/503/504 retry of ``safe_request``: a proxy
+    error in front of OpenCTI may hide a mutation that was applied, and
+    replaying it would apply it twice.
+    """
+    return _GRAPHQL_WRITE_RE.search(query) is None
+
+
 # OpenCTI's exact wording / error code for a capability refusal — the opposite
 # remediation from ``_AUTH_ERROR_MARKERS`` above (which means "this token is
 # not valid", and is what ``_is_auth_error`` re-mints on).  Kept to exact
@@ -1245,6 +1262,9 @@ async def _graphql(
     body: dict[str, Any] = {"query": query}
     if variables:
         body["variables"] = variables
+    # A proxy 502/503/504 in front of OpenCTI is usually gone in seconds: a
+    # read retries it with backoff, a mutation never does.
+    retry_statuses = TRANSIENT_RETRY_STATUSES if _is_read_document(query) else None
 
     async def _attempt() -> tuple[dict, str | None, list[Any] | None, int | None]:
         """Returns ``(data, error, errors_payload, http_status)``.
@@ -1264,6 +1284,7 @@ async def _graphql(
             headers=sent_headers,
             json=body,
             expected_statuses=_CONTEXT_FAILURE_STATUSES,
+            retry_statuses=retry_statuses,
         )
         if err:
             # ``expected_statuses`` hands back the response of ANY failed
