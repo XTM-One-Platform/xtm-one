@@ -3,6 +3,7 @@
 /** Shared TypeScript types for XTM One frontend. */
 
 import type { ChatChartBlock } from "@/components/chat/chat-chart";
+import type { ExtraFieldInputSpec } from "@/lib/extra-fields";
 
 // Auth
 
@@ -1538,6 +1539,8 @@ export interface ProviderCatalogItem {
   a2a_directions?: ("inbound" | "outbound")[];
   /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
+  /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
+  company_managed_only?: boolean;
   /** Which operator choice reshapes this entry (`a2a_direction` for A2A), and
    * the facets each of its values changes. The base entry is the default. */
   variant_selector?: string | null;
@@ -1547,6 +1550,8 @@ export interface ProviderCatalogItem {
   /** Which extra fields belong to which answer: {field: {control: [values]}}.
    *  A field whose condition is unmet is hidden and omitted when saving. */
   extra_field_visible_when?: Record<string, Record<string, string[]>> | null;
+  /** The typed control of an extra field (a domain list as tags, a bounded number); absent, a text input. */
+  extra_field_inputs?: Record<string, ExtraFieldInputSpec> | null;
   description: string | null;
   logo: string | null;
   integration_types: string[];
