@@ -4755,7 +4755,7 @@ async def _assert_channel_override_additions(
 # Providers that support per-assignment webhook URLs (dedicated URL per assignment).
 # These providers allow configuring as many webhooks as needed on their side,
 # so each Copilot assignment can have its own dedicated endpoint.
-_PROVIDERS_WITH_ASSIGNMENT_WEBHOOKS: set[str] = {"opencti", "perk", "github", "hubspot"}
+_PROVIDERS_WITH_ASSIGNMENT_WEBHOOKS: set[str] = {"opencti", "perk", "github", "hubspot", "aikido"}
 
 
 async def _owner_paused(db: AsyncSession, assignment: Assignment, user: User) -> bool:
