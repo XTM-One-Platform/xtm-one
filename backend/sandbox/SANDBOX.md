@@ -397,7 +397,10 @@ and `.xtm-one/stores.py`, whose pins python-dev bakes under `/opt/stores`). A
 change to them needs a new `dev.version` and its hash; the merge dispatches the
 build, then the `python-dev` and `nodejs-dev` Pools of the deployments move to
 it. The locks the images install (`backend/uv.lock`, `frontend/yarn.lock`) are
-not inputs: a dependency bump does not need a new image. The
+not inputs: a dependency bump does not need a new image. python-dev also
+carries tiktoken's `cl100k_base` encoding under `/opt/tiktoken`
+(`TIKTOKEN_CACHE_DIR`), fetched at build time, so the unit tests that count
+tokens run with no network. The
 `backend-integration` check needs the `postgres`, `redis` and `s3` artefacts of
 `stores.py` at their pins (`stores.CHECK_ARTEFACTS`); the `postgres-contrib`
 archive the product labs need is optional for it, so an image baked before a

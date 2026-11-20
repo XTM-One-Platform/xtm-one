@@ -12,9 +12,9 @@
     }
   },
   "dev": {
-    "version": "0.9",
+    "version": "0.10",
     "inputs": {
-      "sandbox-dev": "e697a25d26861c72ee12dc4ca1bd31b5d16311c925fda907d2332addef6fb85c"
+      "sandbox-dev": "faad5fc60848e31c24e02da0f7e74305516c811948c230a42626a60383a5da90"
     }
   }
 }
