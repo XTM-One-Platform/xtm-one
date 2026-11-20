@@ -12,7 +12,7 @@ import en from "@/i18n/lang/en.json";
 import es from "@/i18n/lang/es.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
-import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
+import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CRUMB_ROW_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
 
 const CATALOGS: Record<string, Record<string, string>> = { en, fr, es, ja };
 /** The widest stat row of the CTEM pages (the command center's five cells). */
@@ -79,6 +79,9 @@ describe("CtemPageHeader", () => {
     expect(headerGrid("medium", { stats: true, chips: false }).areas).toBe("'title stats acts'");
     expect(headerGrid("medium", { stats: true, chips: true }).areas).toBe("'title stats acts' 'chips chips chips'");
     expect(headerGrid("narrow", { stats: false, chips: false }).areas).toBe("'title acts'");
+    // UX round 2 on #605: the breadcrumb takes a full row above title | actions.
+    expect(headerGrid("narrow", { stats: true, chips: false, crumb: true }).areas).toBe("'crumb crumb' 'title acts' 'stats stats'");
+    expect(headerGrid("medium", { stats: true, chips: false, crumb: true }).areas).toBe("'title stats acts'");
   });
 
   // UX round 1 on #11677, B3: the height reported is the band's own, not the
@@ -142,6 +145,12 @@ describe("CtemPageHeader", () => {
     expect(extras.style.display).toBe(CRUMB_EXTRAS_STYLE.display);
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(nav.style.flexWrap).toBe(BREADCRUMB_STYLE.flexWrap);
+    // UX round 2 on #605: on a narrow band (jsdom measures none) the breadcrumb
+    // is its own full-width grid row, outside the title column, so it wraps on
+    // the band's width and the actions stay on the h1 line.
+    expect(screen.getByTestId("ctem-page-header").getAttribute("data-layout")).toBe("narrow");
+    expect(nav.style.gridArea).toBe(CRUMB_ROW_STYLE.gridArea);
+    expect(screen.getByTestId("ctem-page-header-title").contains(nav)).toBe(false);
     expect(nav.style.overflow).not.toBe("hidden");
     expect(nav.style.minWidth).toBe("0");
     // The back link and the current page come before every extra on line 1.
