@@ -29,6 +29,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { SettingsReadField } from "@/components/ui/settings-read-view";
 import { Switch } from "@/components/ui/switch";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useHealthScheduleMarks } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { useHealthName } from "@/hooks/api/useHealthApi";
@@ -206,23 +207,24 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full table-fixed content-compact" data-testid="settings.health.schedule.table">
-          {/* Fixed widths sized to the all-valid layout: a row flipping to "Not a valid cron expression" while typing never moves a column. */}
+          {/* Fixed widths sized to the all-valid layout: a row flipping to "Not a valid cron expression" while typing never moves a column.
+              Status fits its longest value in en, fr, es and ja ("Desactivado", about 68 px) at 1080. */}
           <colgroup>
             <col className="w-[19%]" />
-            <col className="w-[6%]" />
+            <col className="w-[11%]" />
             <col className="w-[23%]" />
-            <col className="w-[24%]" />
-            <col className="w-[14%]" />
+            <col className="w-[21%]" />
+            <col className="w-[12%]" />
             <col className="w-[14%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-elevation-subtle-soft text-left text-default-secondary">
-              <th className="py-1.5 pr-3 font-medium">{t_i18n("Name")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t_i18n("Status")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t_i18n("Cron expression")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t_i18n("When")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t_i18n("Last run")}</th>
-              <th className="py-1.5 font-medium">{t_i18n("Next run")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Name")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Status")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Cron expression")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("When")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Last run")}</th>
+              <th className="whitespace-nowrap py-1.5 font-medium">{t_i18n("Next run")}</th>
             </tr>
           </thead>
           <tbody>
@@ -239,8 +241,8 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                 <tr key={key} className="border-b border-elevation-subtle-soft last:border-b-0" data-testid={`settings.health.schedule.row.${key}`}>
                   <td className="py-1.5 pr-3">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span id={`${switchId}-label`} className="truncate content-base font-medium" title={label}>
-                        {label}
+                      <span id={`${switchId}-label`} className="min-w-0">
+                        <TruncatedText text={label} className="content-base font-medium" />
                       </span>
                       <InfoTip
                         label={t_i18n("About this field")}
@@ -262,7 +264,7 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                         onCheckedChange={(on) => set({ [`${key}_enabled`]: on } as Partial<HealthSchedules>)}
                       />
                     ) : (
-                      <span className={enabled ? "text-default-primary" : "text-default-secondary"}>{enabled ? t_i18n("On") : t_i18n("Off")}</span>
+                      <span className={cn("whitespace-nowrap", enabled ? "text-default-primary" : "text-default-secondary")}>{enabled ? t_i18n("On") : t_i18n("Off")}</span>
                     )}
                   </td>
                   <td className="py-1.5 pr-3">
@@ -288,14 +290,14 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                     const upcoming = enabled && next ? when(next.toISOString()) : t_i18n("Not scheduled");
                     return (
                       <>
-                        <td className={cn("truncate py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")} title={reading}>
-                          {reading}
+                        <td className={cn("py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")}>
+                          <TruncatedText text={reading} />
                         </td>
-                        <td className="truncate py-1.5 pr-3 text-default-secondary" title={last} data-testid={`settings.health.schedule.last.${key}`}>
-                          {last}
+                        <td className="py-1.5 pr-3 text-default-secondary" data-testid={`settings.health.schedule.last.${key}`}>
+                          <TruncatedText text={last} />
                         </td>
-                        <td className="truncate py-1.5 text-default-secondary" title={upcoming} data-testid={`settings.health.schedule.next.${key}`}>
-                          {upcoming}
+                        <td className="py-1.5 text-default-secondary" data-testid={`settings.health.schedule.next.${key}`}>
+                          <TruncatedText text={upcoming} />
                         </td>
                       </>
                     );
