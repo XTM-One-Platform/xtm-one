@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
     _api,
     _normalize_output_parsers,
+    _relation_ids,
     _search_body,
     inject_targets_line,
     json_answer,
@@ -83,6 +85,98 @@ def recurrence_answer(inject_id: str, recurrence: str, start: str, end: str) -> 
     )
 
 
+#: The relations of a stored inject an atomic-test update carries over, as
+#: (AtomicTestingInput key, id key of an element when it is an object).
+_ATOMIC_RELATIONS: tuple[tuple[str, str], ...] = (
+    ("inject_assets", "asset_id"),
+    ("inject_asset_groups", "asset_group_id"),
+    ("inject_teams", "team_id"),
+    ("inject_tags", "tag_id"),
+)
+
+#: Relations newer OpenAEV versions carry: kept when the stored inject names
+#: them, left out when the answer has no such key (a version whose input
+#: has no such field either).
+_ATOMIC_OPTIONAL_RELATIONS: tuple[tuple[str, str], ...] = (("inject_secret_references", "secret_reference_id"),)
+
+
+def _contract_id(raw: Any) -> str:
+    if isinstance(raw, dict):
+        return str(raw.get("injector_contract_id") or "")
+    return raw if isinstance(raw, str) else ""
+
+
+def _stored_documents(raw: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc in raw if isinstance(raw, list) else []:
+        if isinstance(doc, dict) and doc.get("document_id"):
+            out.append(
+                {
+                    "document_id": str(doc["document_id"]),
+                    "document_attached": bool(doc.get("document_attached", True)),
+                }
+            )
+    return out
+
+
+def stored_atomic_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The full AtomicTestingInput of an update: the stored inject, ``changes`` laid over it.
+
+    OpenAEV's PUT /api/atomic-testings/{id} replaces every field: a title left
+    out is refused, a contract left out fails its lookup, a list left out is
+    stored empty. Every field the caller did not change is therefore read
+    back from the stored inject (GET /api/injects/{id}). Returns
+    ``(body, refusal)``; a refusal names what the stored answer lacks so the
+    update never wipes it. Nothing is written when it is not empty.
+    """
+    if not isinstance(stored, dict):
+        return {}, (
+            "Refused: the stored atomic test could not be read as an object, so "
+            "an update would wipe its fields. Nothing was written."
+        )
+    body: dict[str, Any] = {
+        "inject_title": stored.get("inject_title") or "",
+        "inject_description": stored.get("inject_description"),
+        "inject_injector_contract": _contract_id(stored.get("inject_injector_contract")),
+        "inject_content": stored.get("inject_content"),
+        "inject_all_teams": bool(stored.get("inject_all_teams", False)),
+    }
+    # The stored injector belongs to the stored contract: a new contract lets
+    # OpenAEV resolve the injector from it.
+    injector = stored.get("inject_injector")
+    if isinstance(injector, str) and injector and "inject_injector_contract" not in changes:
+        body["inject_injector"] = injector
+    missing: list[str] = []
+    for key, id_key in _ATOMIC_RELATIONS:
+        if key in changes:
+            continue
+        if key not in stored:
+            missing.append(key)
+            continue
+        body[key] = _relation_ids(stored.get(key), id_key)
+    for key, id_key in _ATOMIC_OPTIONAL_RELATIONS:
+        if key in stored:
+            body[key] = _relation_ids(stored.get(key), id_key)
+    if "inject_documents" in stored:
+        raw_documents = stored.get("inject_documents")
+        documents = _stored_documents(raw_documents)
+        if isinstance(raw_documents, list) and len(documents) < len(raw_documents):
+            missing.append("the document ids of inject_documents")
+        body["inject_documents"] = documents
+    body.update(changes)
+    if not body["inject_title"]:
+        missing.append("inject_title (pass title)")
+    if not body["inject_injector_contract"]:
+        missing.append("inject_injector_contract (pass injector_contract_id)")
+    if missing:
+        return {}, (
+            "Refused: OpenAEV replaces every field of an atomic test on update, "
+            "and the stored atomic test as read lacks "
+            + ", ".join(missing)
+            + ", so the update would wipe it. Nothing was written."
+        )
+    return body, ""
+
 
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
@@ -105,10 +199,10 @@ def register(
         action = (action or "").strip().lower()
 
         def _atomic_body(for_create: bool) -> dict:
-            # Only send fields the caller provided so an 'update' that changes
-            # one attribute cannot wipe the title / targeting. On 'create' send
-            # the full atomic-test shape the API expects (atomic tests have no
-            # teams).
+            # The fields the caller provided. On 'create' the full atomic-test
+            # shape the API expects is filled in (atomic tests have no teams);
+            # on 'update' these fields are laid over the stored inject by
+            # stored_atomic_input, since OpenAEV's PUT replaces every field.
             body: dict = {}
             if title:
                 body["inject_title"] = title
@@ -185,6 +279,24 @@ def register(
                     "Provide at least one field to update (title, description, "
                     "injector_contract_id, asset_ids, asset_group_ids, or content)."
                 )
+            if action == "update":
+                # OpenAEV's PUT /api/atomic-testings/{id} replaces every field
+                # (AtomicTestingInput: a blank title is refused, an omitted list
+                # is stored empty), so the stored inject is read first and the
+                # caller's fields are laid over it. GET /api/injects/{id} carries
+                # the relations; the atomic-testing read does not.
+                stored, err = await _api(
+                    base_url,
+                    headers,
+                    "get",
+                    f"/api/injects/{inject_id}",
+                    "read the stored atomic test before the update",
+                )
+                if err:
+                    return err
+                body, refusal = stored_atomic_input(stored.json() if stored is not None else None, body)
+                if refusal:
+                    return refusal
             if action == "create":
                 resp, err = await _api(
                     base_url, headers, "post", "/api/atomic-testings",
@@ -440,7 +552,9 @@ def register(
                 "Manage OpenAEV atomic tests (one-off inject executions). Actions: "
                 "'list' (search), 'get' (inject_id), 'create' (title + "
                 "injector_contract_id, optional description/asset_ids/asset_group_ids/"
-                "content JSON), 'update' (inject_id + fields), 'delete' (inject_id), "
+                "content JSON), 'update' (inject_id + the fields to change; every "
+                "field left out keeps its stored value, asset_ids=[] clears the "
+                "assets), 'delete' (inject_id), "
                 "'launch' / 'relaunch' (inject_id - EXECUTES the test against the "
                 "targeted assets), 'duplicate' (inject_id), 'recurrence' "
                 "(inject_id + recurrence, recurrence_start, recurrence_end: send "
