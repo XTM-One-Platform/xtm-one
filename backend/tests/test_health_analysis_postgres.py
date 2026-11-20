@@ -135,7 +135,7 @@ async def test_unset_ceilings_refuse_without_a_model_call(wired):
     async with _temp_database("ha_unset") as sessions, sessions() as db:
         await _findings(db)
         outcome = await analysis.analyse_module(
-            db, "agents", HealthAnalysisSettings(enabled=True), now=T0, llm_factory=factory
+            db, "agents", HealthAnalysisSettings(enabled=True, day_tokens=None), now=T0, llm_factory=factory
         )
         assert (outcome.status, outcome.reason, llm.calls) == ("refused", "ceiling_not_set", 0)
 

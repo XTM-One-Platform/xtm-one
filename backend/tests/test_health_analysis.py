@@ -50,14 +50,19 @@ def test_the_prompt_is_capped():
     assert analysis.build_prompt("agents", rows).count('"check"') == analysis.MAX_FINDINGS
 
 
-def test_analysis_is_off_with_no_ceiling_by_default():
+def test_analysis_is_off_by_default_with_the_measured_ceilings() -> None:
     settings = HealthSettings().analysis
     assert settings.enabled is False
-    assert settings.ceilings_set() is False
-    full = HealthAnalysisSettings(
-        enabled=True, day_tokens=1, day_cost_usd=Decimal("1"), month_tokens=1, month_cost_usd=Decimal("1")
-    )
-    assert full.ceilings_set() is True
+    assert settings.ceilings_set() is True
+    assert (settings.day_tokens, settings.month_tokens) == (100_000, 3_100_000)
+    assert (settings.day_cost_usd, settings.month_cost_usd) == (Decimal("1"), Decimal("31"))
+    cleared = HealthAnalysisSettings(enabled=True, day_tokens=None)
+    assert cleared.ceilings_set() is False
+
+
+def test_the_reservation_covers_the_measured_prompt() -> None:
+    # Lab measurement (dev-docs section 6): 33 findings, 8,709 prompt characters, 3,963 input tokens billed.
+    assert analysis.estimate_input_tokens("x" * 8_709) >= 3_963
 
 
 def test_periods_are_utc_day_and_month():
@@ -74,7 +79,7 @@ def test_the_tracing_sink_keeps_the_platform_health_source():
 
 @pytest.mark.asyncio
 async def test_unset_ceilings_refuse_before_any_lock():
-    settings = HealthAnalysisSettings(enabled=True)
+    settings = HealthAnalysisSettings(enabled=True, month_cost_usd=None)
     db: Any = None  # never reached: unset ceilings refuse before any lock
     now = datetime(2026, 11, 20, tzinfo=UTC)
     assert await analysis.reserve(db, settings, now=now, tokens=1, cost=Decimal(0)) == "ceiling_not_set"

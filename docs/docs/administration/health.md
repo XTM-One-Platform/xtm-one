@@ -131,7 +131,8 @@ The checks above are deterministic and never call a model. The **analysis** is a
 - A module is analysed only when its open findings changed, at most once a day, or when an administrator asks for it. A failed or refused analysis counts as that day's attempt: the schedule tries again the next day, and an administrator can run it at once.
 - A failed model call counts its full reserved cost against the ceilings, since a provider may bill a call that timed out.
 - It has a **hard ceiling** in tokens and in dollars, per day and per month. Before each call, the platform reserves the call's worst case on today and on this month; a call that would cross any ceiling is refused and the module shows *Ceiling reached*. After the call, the reservation is replaced by what the call really cost.
-- Until the four ceilings are set, every analysis is refused (*Ceiling not set*).
+- The default ceilings are **100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month**. They come from a measured run: one analysis of a module with 33 open findings cost 4,763 tokens; the most an analysis reads (60 findings) stays under 8,000 tokens, so the daily default covers two analyses of six modules.
+- A ceiling cleared to no value refuses every analysis (*Ceiling not set*).
 - Analysis calls are traced under their own source, **Platform Health**, visible in LLM analytics. They are not counted in any agentic quota or agentic execution count.
 
 The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.

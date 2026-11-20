@@ -60,18 +60,23 @@ class HealthAnalysisSettings(BaseModel):
     """The analysis layer (#101 S9, ``dev-docs/platform-health.md`` section 6): off by default.
 
     The ceilings are hard: an analysis reserves its worst case on the day and the
-    month before the model call and is refused over any of them. A ceiling left
-    ``None`` refuses every analysis (``ceiling_not_set``): no default figure is
-    shipped before the lab measurement sets one.
+    month before the model call and is refused over any of them. A ceiling an
+    administrator clears (``None``) refuses every analysis (``ceiling_not_set``).
+
+    The defaults come from the lab measurement of dev-docs section 6: one analysis of a
+    module at the most findings it reads costs at most 8,000 tokens; 6 modules
+    twice a day is 96,000 tokens, rounded to 100,000 a day and 31 days of it a
+    month. The dollar ceilings price that at the measured blended rate of a
+    top-tier model (about 7 USD per million tokens), rounded up.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    day_tokens: int | None = Field(default=None, ge=0, le=MAX_TOKENS)
-    day_cost_usd: Decimal | None = Field(default=None, ge=0, le=MAX_COST_USD, decimal_places=6)
-    month_tokens: int | None = Field(default=None, ge=0, le=MAX_TOKENS)
-    month_cost_usd: Decimal | None = Field(default=None, ge=0, le=MAX_COST_USD, decimal_places=6)
+    day_tokens: int | None = Field(default=100_000, ge=0, le=MAX_TOKENS)
+    day_cost_usd: Decimal | None = Field(default=Decimal("1"), ge=0, le=MAX_COST_USD, decimal_places=6)
+    month_tokens: int | None = Field(default=3_100_000, ge=0, le=MAX_TOKENS)
+    month_cost_usd: Decimal | None = Field(default=Decimal("31"), ge=0, le=MAX_COST_USD, decimal_places=6)
 
     def ceilings_set(self) -> bool:
         return None not in (self.day_tokens, self.day_cost_usd, self.month_tokens, self.month_cost_usd)
