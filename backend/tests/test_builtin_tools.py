@@ -183,6 +183,45 @@ async def test_generate_image_s3_fallback_uses_chat_image_url_without_flushing(m
     assert chat_image.id is not None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("image_bytes", "content_type", "extension"),
+    [
+        (b"\xff\xd8\xff\xe0\x00\x10JFIF\x00", "image/jpeg", ".jpg"),
+        (b"\x89PNG\r\n\x1a\n\x00\x00", "image/png", ".png"),
+        (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp", ".webp"),
+        (b"not-an-image", "image/png", ".png"),
+        (b'<svg xmlns="http://www.w3.org/2000/svg"/>', "image/png", ".png"),
+    ],
+)
+async def test_generate_image_stores_the_type_of_its_bytes(monkeypatch, image_bytes, content_type, extension):
+    """Gemini answers JPEG: the S3 object, the attachment and the ChatImage carry the bytes' type (#747)."""
+    provider = SimpleNamespace(generate_image=AsyncMock(return_value=image_bytes))
+
+    async def _fake_get_image_provider(_db: Any) -> tuple[Any, str]:
+        return provider, "gemini-3-pro-image-preview"
+
+    upload_mock = AsyncMock(return_value="generated/test-key")
+    monkeypatch.setattr("app.llm.router.get_image_provider", _fake_get_image_provider)
+    monkeypatch.setattr("app.services.file_storage.file_storage.upload", upload_mock)
+    added: list[Any] = []
+    monkeypatch.setattr("app.services.builtin_tools.media._own_session", lambda: _FakeOwnSession(added))
+
+    _, executor = await build_image_generation_tool(_ImageToolDB(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="generate_image", arguments={"prompt": "a desk"})
+    )
+
+    assert not result.is_error
+    upload = upload_mock.await_args.kwargs
+    assert upload["content_type"] == content_type and upload["filename"].endswith(extension)
+    file_attachment = next(obj for obj in added if obj.__class__.__name__ == "FileAttachment")
+    assert file_attachment.content_type == content_type
+    assert file_attachment.filename == upload["filename"]
+    chat_image = next(obj for obj in added if obj.__class__.__name__ == "ChatImage")
+    assert chat_image.content_type == content_type
+
+
 class _ProviderError(Exception):
     """An OpenAI-shaped SDK error: its HTTP status, its JSON body, its response headers."""
 
