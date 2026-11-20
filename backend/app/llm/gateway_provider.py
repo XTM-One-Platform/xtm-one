@@ -293,8 +293,9 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         self._owner_misses: dict[str, float] = {}
         # (model, dimension) pairs the upstream refused: embedded at native size from then on.
         self._refused_dimensions: set[tuple[str, int]] = set()
-        # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358).
-        self._editing_models: set[str] = set()
+        # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358),
+        # to whether it lists them taking a mask (``image_mask``, XTM-One-Platform/ai-gateway#369); None when unsaid.
+        self._image_edit_masks: dict[str, bool | None] = {}
         # Per type, the model the listing marks default, and until when that listing holds.
         self._listed_defaults: dict[str, str] = {}
         self._listed_defaults_until = 0.0
@@ -365,14 +366,14 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             ) from None
         out: list[GatewayModel] = []
         defaults: dict[str, str] = {}
+        edit_masks: dict[str, bool | None] = {}
         for m in response.data:
             owner = getattr(m, "owned_by", None) or "gateway"
             self._owner_cache[m.id] = owner
             # Absent on an older gateway: no edits.
             if getattr(m, "image_edit", None) is True:
-                self._editing_models.add(m.id)
-            else:
-                self._editing_models.discard(m.id)
+                mask = getattr(m, "image_mask", None)
+                edit_masks[m.id] = mask if isinstance(mask, bool) else None
             # Absent on an older gateway: no default. Only for a type the entry declares, never its id's guess.
             if getattr(m, "default", None) is True:
                 declared = declared_model_types(getattr(m, "types", None), getattr(m, "type", None))
@@ -381,6 +382,7 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
                         defaults.setdefault(t, m.id)
             out.append(GatewayModel(m.id, owner, _types_of(m)))
         self._listed_defaults = defaults
+        self._image_edit_masks = edit_masks
         self._listed_defaults_until = time.monotonic() + _DEFAULTS_TTL_SECONDS
         return out
 
@@ -682,14 +684,16 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         """As OpenAI direct, for a model the gateway declares it edits with (:meth:`load_image_capabilities`)."""
         from app.llm.openai_provider import OpenAIProvider
 
-        return OpenAIProvider._GPT_IMAGE_REFERENCES if (model or self.default_model) in self._editing_models else 0
+        return OpenAIProvider._GPT_IMAGE_REFERENCES if (model or self.default_model) in self._image_edit_masks else 0
 
     def image_takes_mask(self, model: str | None) -> bool:
-        # Gemini takes no mask, direct or through the gateway (which refuses one).
-        # As _upstream_of, an alias is Gemini by its pinned target or listed owner.
         m = model or self.default_model
+        if (listed := self._image_edit_masks.get(m, False)) is not None:
+            return listed
+        # A gateway before 1.261120.0 lists no ``image_mask`` (drop this once none is supported):
+        # Gemini takes none, so an alias is Gemini by its pinned target or listed owner, as in _upstream_of.
         upstream = (self._target or self._owner_cache.get(m) or "").lower()
-        return self.image_reference_limit(m) > 0 and not is_gemini_model(m) and upstream != "gemini"
+        return not is_gemini_model(m) and upstream != "gemini"
 
     async def edit_image(
         self,
