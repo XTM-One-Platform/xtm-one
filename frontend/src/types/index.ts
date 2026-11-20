@@ -3,6 +3,7 @@
 /** Shared TypeScript types for XTM One frontend. */
 
 import type { ChatChartBlock } from "@/components/chat/chat-chart";
+import type { ExtraFieldInputSpec } from "@/lib/extra-fields";
 
 // Auth
 
@@ -1549,6 +1550,8 @@ export interface ProviderCatalogItem {
   /** Which extra fields belong to which answer: {field: {control: [values]}}.
    *  A field whose condition is unmet is hidden and omitted when saving. */
   extra_field_visible_when?: Record<string, Record<string, string[]>> | null;
+  /** The typed control of an extra field (a domain list as tags, a bounded number); absent, a text input. */
+  extra_field_inputs?: Record<string, ExtraFieldInputSpec> | null;
   description: string | null;
   logo: string | null;
   integration_types: string[];

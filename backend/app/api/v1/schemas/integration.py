@@ -132,6 +132,21 @@ class ExtraFieldOption(BaseModel):
     label: str
 
 
+class ExtraFieldInput(BaseModel):
+    """The control and rule of one extra field (catalog ``extra_field_inputs``).
+
+    ``domains``: a list of domain names, drawn as tags; ``integer``: a whole
+    number within ``minimum`` and ``maximum``, prefilled with ``default``. The
+    create and update routes refuse a value outside the rule (422).
+    """
+
+    kind: str
+    minimum: int | None = None
+    maximum: int | None = None
+    default: str | None = None
+    help: str | None = None
+
+
 class ProviderCatalogVariant(BaseModel):
     """The facets of a catalog entry that one selector value changes."""
 
@@ -185,6 +200,9 @@ class ProviderCatalogItem(BaseModel):
     # missing from this model is dropped by Pydantic with every backend test
     # still passing.
     extra_field_visible_when: dict[str, dict[str, list[str]]] | None = None
+    # The typed control of an extra field (a domain list, a bounded number);
+    # absent, the field is a text input. Dropped by Pydantic if missing here.
+    extra_field_inputs: dict[str, ExtraFieldInput] | None = None
     description: str | None = None
     logo: str | None = None
     integration_types: list[str] = []

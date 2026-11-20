@@ -26,7 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAuthConfig } from "@/hooks/api/useAuthApi";
 import { useProviderCatalog, useCreateIntegration } from "@/hooks/api/useIntegrationApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
-import { withoutHiddenExtraFields } from "@/lib/extra-fields";
+import { extraFieldDefaults, hasInvalidExtraField, withoutHiddenExtraFields } from "@/lib/extra-fields";
 import { resolveVariant, variantValue } from "@/lib/catalog-variants";
 import { offersSlackEventsUrl } from "@/lib/slack-events";
 import { ExtraFieldInputs } from "@/components/ui/extra-field-inputs";
@@ -125,7 +125,7 @@ export default function NewIntegration() {
         : {}),
     });
     // Pre-populate extra fields with default values from extra_field_options
-    const defaults: Record<string, string> = {};
+    const defaults: Record<string, string> = extraFieldDefaults(item.extra_field_inputs);
     if (item.extra_field_options) {
       for (const [key, options] of Object.entries(item.extra_field_options)) {
         if (options.length > 0) defaults[key] = options[0].value;
@@ -553,6 +553,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -600,6 +601,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -622,6 +624,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -665,6 +668,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                       helpFor={extraFieldHelp}
                     />
@@ -763,12 +767,21 @@ export default function NewIntegration() {
                   <Building2 className="h-4 w-4 text-accent" />
                   <div>
                     <p className="content-base font-medium">{t_i18n("Company-managed integration")}</p>
-                    <p className="content-compact text-default-secondary">
-                      {t_i18n("Shared with all users. Only admins can edit.")}
+                    <p id="company-managed-help" className="content-compact text-default-secondary">
+                      {selected.company_managed_only
+                        ? t_i18n("Always company-managed: it sends from the platform's own address, so only admins create and edit it, for every user.")
+                        : t_i18n("Shared with all users. Only admins can edit.")}
                     </p>
                   </div>
                 </div>
-                <Switch aria-label={t_i18n("Company-managed integration")} checked={isCompanyManaged} onCheckedChange={setIsCompanyManaged} disabled={Boolean(selected.company_managed_only)} />
+                <Switch
+                  aria-label={t_i18n("Company-managed integration")}
+                  aria-describedby="company-managed-help"
+                  checked={isCompanyManaged}
+                  onCheckedChange={setIsCompanyManaged}
+                  disabled={Boolean(selected.company_managed_only)}
+                  className="disabled:cursor-not-allowed"
+                />
               </div>
             )}
 
@@ -779,7 +792,7 @@ export default function NewIntegration() {
               <Button variant="ghost" onClick={() => navigate("/integrations")}>{t_i18n("Cancel")}</Button>
               <Button
                 onClick={handleCreate}
-                disabled={!form.name.trim() || create.isPending || (isOpenAPI && !openapiDraft?.ready) || (!!selected.requires_relay && !form.relay_group_id)}
+                disabled={!form.name.trim() || create.isPending || (isOpenAPI && !openapiDraft?.ready) || (!!selected.requires_relay && !form.relay_group_id) || hasInvalidExtraField(extraFields, selected.extra_field_inputs)}
               >
                 {create.isPending ? t_i18n("Creating...") : t_i18n("Create integration")}
               </Button>

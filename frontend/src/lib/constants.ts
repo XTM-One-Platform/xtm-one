@@ -402,7 +402,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   newsapi: "NewsAPI",
   feedly: "Feedly",
   rss: "RSS",
-  platform_email: "Platform email (SMTP)",
+  platform_email: "Platform email",
   perk: "Perk",
   google_search: "Google Search",
   brave_search: "Brave Search",

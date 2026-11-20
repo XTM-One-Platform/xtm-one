@@ -85,6 +85,7 @@ from app.api.v1.integration_catalog import (
     build_dummy_token,
     build_provider_tools,
     integration_owns_oauth_scopes,
+    invalid_extra_fields,
     is_certified_provider,
     is_registration_only_provider,
     missing_required_extra_fields,
@@ -995,6 +996,7 @@ async def list_provider_catalog(
                 extra_fields=val.get("extra_fields"),
                 extra_field_options=extra_field_options,
                 extra_field_visible_when=val.get("extra_field_visible_when"),
+                extra_field_inputs=val.get("extra_field_inputs"),
                 description=val.get("description"),
                 logo=val.get("logo"),
                 integration_types=val.get("integration_types", []),
@@ -2078,6 +2080,9 @@ async def create_integration(
             status_code=400,
             detail=missing_required_extra_fields_message(body.provider, missing),
         )
+    # Typed values within their rule (a domain list, a bounded number).
+    if body.extra_config and (invalid := invalid_extra_fields(body.provider, body.extra_config)):
+        raise HTTPException(status_code=422, detail=" ".join(invalid))
 
     # Only admins can create company-managed integrations
     require_admin_for_company_managed(
@@ -2851,6 +2856,8 @@ async def update_integration(
     if body.extra_config is not None:
         new_extra = await merged_extra_config(db, integration, body.extra_config)
         _refuse_newly_missing_required_extra(integration, new_extra)
+        if invalid := invalid_extra_fields(integration.provider, body.extra_config):
+            raise HTTPException(status_code=422, detail=" ".join(invalid))
         if integration.provider.startswith("custom:"):
             # The base URL policy, as on create; the session rolls back on
             # the refusal, so nothing assigned above is stored.

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""The Platform email (SMTP) integration: catalog rules, guards, audit, probe (S11 of the Platform Health plan)."""
+"""The Platform email integration: catalog rules, guards, audit, probe (S11 of the Platform Health plan)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.integration_catalog import PROVIDER_CATALOG
+from app.api.v1.integration_catalog import PROVIDER_CATALOG, invalid_extra_fields
 from app.api.v1.integrations import _require_catalog_creation_rules
 from app.integrations.connectivity import ProbeContext
 from app.integrations.providers import platform_email
@@ -64,6 +64,33 @@ def test_the_catalog_entry_is_admin_company_managed_and_smtp_bound():
     assert entry["requires_platform_smtp"] is True
     assert entry["company_managed_only"] is True
     assert set(entry["extra_fields"]) == {"allowed_domains", "daily_limit"}
+
+
+@pytest.mark.parametrize(
+    ("extra", "problems"),
+    [
+        ({"allowed_domains": "example.com\n@test.org.", "daily_limit": "1000"}, 0),
+        ({"allowed_domains": "", "daily_limit": ""}, 0),
+        ({"daily_limit": "5000"}, 1),
+        ({"daily_limit": "-1"}, 1),
+        ({"daily_limit": "fifty"}, 1),
+        ({"allowed_domains": "bob@example.com"}, 1),
+        ({"allowed_domains": "not a domain", "daily_limit": "5000"}, 2),
+    ],
+)
+def test_typed_extra_fields_are_refused_outside_their_rule(extra, problems):
+    assert len(invalid_extra_fields("platform_email", extra)) == problems
+
+
+def test_providers_without_typed_fields_are_not_judged():
+    assert invalid_extra_fields("rss", {"feed_urls": "not a url"}) == []
+
+
+def test_the_catalog_types_its_fields_for_the_form():
+    inputs = PROVIDER_CATALOG["platform_email"]["extra_field_inputs"]
+    assert inputs["allowed_domains"]["kind"] == "domains"
+    assert (inputs["daily_limit"]["minimum"], inputs["daily_limit"]["maximum"]) == (0, platform_email.MAX_DAILY_LIMIT)
+    assert inputs["daily_limit"]["default"] == str(platform_email.DEFAULT_DAILY_LIMIT)
 
 
 def test_creation_is_refused_without_smtp(monkeypatch):
