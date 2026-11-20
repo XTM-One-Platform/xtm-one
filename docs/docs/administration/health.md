@@ -88,6 +88,21 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
+## OpenCTI checks
+
+In XTM One mode, AI switched off included, every registered OpenCTI is checked every 5 minutes, with no enrolment. The heartbeat check reads the registration; the others read the health snapshot OpenCTI sends with its registration, as long as it is under 15 minutes old. An OpenCTI release that sends no snapshot is only checked for its heartbeat. Nothing is stored while `PLATFORM_REGISTRATION_TOKEN` is the published default value.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Heartbeat | Critical | OpenCTI has not registered for 15 minutes |
+| Connector silent | Warning | An active connector has not reported for 30 minutes (one finding per connector) |
+| Connector errors | Warning | A connector has over 10 works in error (one finding per connector) |
+| Queue depth | Warning | Over 100,000 messages wait in the broker |
+| No queue consumer | Critical | Messages wait in the broker and no worker reads them |
+| Search engine | Warning, Critical | The Elasticsearch or OpenSearch cluster is yellow (warning) or red (critical) |
+| Search engine disk | Warning | The search engine disk is over 85 % used |
+| Ingestion lag | Warning | Ingestion lags by over 15 minutes |
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:

@@ -802,6 +802,10 @@ class RegisterRequest(BaseModel):
     # only on the one that answers ``procedure_manifest_wanted``.
     procedure_manifest_fingerprint: Any = None
     procedure_manifest: Any = None
+    # The platform's health snapshot (Platform Health, ``services/health/snapshots``):
+    # versioned and bounded there, typed ``Any`` for the same reason as the
+    # manifest: a value that does not read is ignored and logged, never a 422.
+    health: Any = None
     # The platform's OpenID Connect callbacks, on its own origin. Sent:
     # XTM One keeps a sign-in client for it and answers its ``sign_in_client_id``.
     # ``[]``: the client is removed. Not sent: nothing changes. Unregistering or
@@ -2442,6 +2446,9 @@ async def register_platform(
     reg.integration_id = company_integ.id
     reg.business_vertical = business_vertical
     manifest_wanted = await _record_procedure_manifest(db, reg, body)
+    from app.services.health.snapshots import record_snapshot
+
+    await record_snapshot(db, reg, body.health, published_default=registration_token_state() == "published_default")
     sign_in_client_id = await _sync_sign_in_client(db, body, platform_title)
 
     await db.commit()
