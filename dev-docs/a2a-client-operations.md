@@ -284,9 +284,14 @@ resumed, so for that path:
 - a later run of the SAME agent for the SAME user may collect the task with
   `continue_task_id` and no message (`_scoped_to_caller`: the run that started
   it, a run of that agent in a terminal status, or, #448, a run of that agent
-  in the SAME conversation, since every chat turn is its own run); another
-  agent, another user, or another conversation's run still going stays refused
-  `continuation_not_owned` (FR-046);
+  in the SAME conversation, since every chat turn is its own run, or, #600, a
+  run of that agent dispatched by the inbox for the SAME work item, since a
+  run wound down by the iteration backstop releases its item before its own
+  end is written); another agent, another user, or another conversation's or
+  work item's run still going stays refused `continuation_not_owned`
+  (FR-046). The refusal never says to resend: when a still-running run of the
+  same agent and user holds the task, it names that run and says to collect
+  again once it ends or from the `a2a.delegation.completed` run;
 - a collect (no message) of a task whose rows for this caller all concluded
   answers the newest row from the record, nothing sent, when that row ended
   with an outcome the partner itself decided (`partner_failed`;
