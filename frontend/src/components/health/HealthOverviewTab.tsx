@@ -356,10 +356,17 @@ function ScoreHistory({ modules }: { modules: HealthModule[] }) {
 
 type FindingsView = "open" | "dismissed" | "resolved";
 
+/** Rows read per status: the endpoint's page cap (``MAX_PAGE`` in platform_health_findings.py). */
+const FINDINGS_PAGE = 200;
+
 export function HealthOverviewTab() {
   const { t_i18n } = useFormatter();
   const overview = useHealthOverview();
-  const findings = useHealthFindings({ status: ["open", "dismissed", "resolved"], limit: 200 });
+  // One list per status, each with its own page and its own server total (#634 review P2): a shared page of
+  // the three statuses let resolved and dismissed rows push open ones off it once they accumulate.
+  const openFindings = useHealthFindings({ status: ["open"], limit: FINDINGS_PAGE });
+  const dismissedFindings = useHealthFindings({ status: ["dismissed"], limit: FINDINGS_PAGE });
+  const resolvedFindings = useHealthFindings({ status: ["resolved"], limit: FINDINGS_PAGE });
   const restore = useRestoreHealthFindings();
   const [view, setView] = useState<FindingsView>("open");
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -367,16 +374,25 @@ export function HealthOverviewTab() {
   const [dismissing, setDismissing] = useState<HealthFinding[]>([]);
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
-  const all = useMemo(() => findings.data?.items ?? [], [findings.data]);
-  const counts = useMemo(
-    () => ({
-      open: all.filter((finding) => finding.status === "open").length,
-      dismissed: all.filter((finding) => finding.status === "dismissed").length,
-      resolved: all.filter((finding) => finding.status === "resolved").length,
-    }),
-    [all],
-  );
-  const rows = useMemo(() => all.filter((finding) => finding.status === view), [all, view]);
+  const lists = { open: openFindings, dismissed: dismissedFindings, resolved: resolvedFindings };
+  const findings = lists[view];
+  // Tab counts come from each list's server total, never from the rows of a page.
+  const counts = {
+    open: openFindings.data?.total ?? 0,
+    dismissed: dismissedFindings.data?.total ?? 0,
+    resolved: resolvedFindings.data?.total ?? 0,
+  };
+  const rows = useMemo(() => findings.data?.items ?? [], [findings.data]);
+  const hidden = Math.max(0, (findings.data?.total ?? 0) - rows.length);
+  const listsLoading = openFindings.isLoading || dismissedFindings.isLoading || resolvedFindings.isLoading;
+  const nothingFound =
+    !listsLoading &&
+    !openFindings.isError &&
+    !dismissedFindings.isError &&
+    !resolvedFindings.isError &&
+    !counts.open &&
+    !counts.dismissed &&
+    !counts.resolved;
   // Bulk acts on what this view holds and the reader may act on: open findings they may dismiss, dismissed ones.
   const actionable = useMemo(
     () => rows.filter((finding) => (view === "open" ? finding.can_dismiss : view === "dismissed")),
@@ -463,12 +479,12 @@ export function HealthOverviewTab() {
         key: "category",
         label: "Category",
         values: (finding) => [finding.category],
-        options: [...new Set(all.map((finding) => finding.category))]
+        options: [...new Set(rows.map((finding) => finding.category))]
           .map((value) => ({ value, label: categoryLabel(value, t_i18n) }))
           .sort((a, b) => a.label.localeCompare(b.label)),
       },
     ],
-    [t_i18n, modules, all],
+    [t_i18n, modules, rows],
   );
 
   const toggle = (finding: HealthFinding) =>
@@ -491,9 +507,9 @@ export function HealthOverviewTab() {
       ariaLabel={t_i18n("Findings shown")}
       testId="health-findings-view"
       options={[
-        { key: "open", label: t_i18n("Open findings"), count: counts.open, countPending: findings.isLoading },
-        { key: "dismissed", label: t_i18n("Dismissed findings"), count: counts.dismissed, countPending: findings.isLoading },
-        { key: "resolved", label: t_i18n("Resolved findings"), count: counts.resolved, countPending: findings.isLoading },
+        { key: "open", label: t_i18n("Open findings"), count: counts.open, countPending: openFindings.isLoading },
+        { key: "dismissed", label: t_i18n("Dismissed findings"), count: counts.dismissed, countPending: dismissedFindings.isLoading },
+        { key: "resolved", label: t_i18n("Resolved findings"), count: counts.resolved, countPending: resolvedFindings.isLoading },
       ]}
     />
   );
@@ -542,7 +558,7 @@ export function HealthOverviewTab() {
         ))}
       </div>
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
-      {!findings.isLoading && !findings.isError && !all.length ? (
+      {nothingFound ? (
         <EmptyState
           icon={HealthGlyph}
           title={t_i18n("No finding")}
@@ -590,6 +606,11 @@ export function HealthOverviewTab() {
           emptyLabel={view === "open" ? t_i18n("No open finding") : view === "dismissed" ? t_i18n("No dismissed finding") : t_i18n("No resolved finding")}
         />
       )}
+      {hidden ? (
+        <p className="content-compact text-muted-foreground" data-testid="health-findings-truncated">
+          {t_i18n("{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}", { count: hidden })}
+        </p>
+      ) : null}
       {restore.isError ? (
         <p role="alert" className="content-compact text-feedback-error-primary">
           {t_i18n("The findings could not be restored.")}

@@ -17327,6 +17327,7 @@
   "One line, kept with the dismissal": "Una línea, guardada con el descarte",
   "Back to suggestions": "Volver a las sugerencias",
   "Restore all": "Restaurar todo",
+  "{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}": "{count, plural, one {No se muestra # hallazgo más: acota la lista con los filtros.} other {No se muestran # hallazgos más: acota la lista con los filtros.}}",
   "This suggestion could not be restored. Try again in a moment.": "No se pudo restaurar esta sugerencia. Inténtelo de nuevo en un momento.",
   "No dismissed suggestion.": "Ninguna sugerencia descartada.",
   "Dismissed by {name} on {date}": "Descartada por {name} el {date}",

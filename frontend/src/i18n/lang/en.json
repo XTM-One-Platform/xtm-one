@@ -17327,6 +17327,7 @@
   "One line, kept with the dismissal": "One line, kept with the dismissal",
   "Back to suggestions": "Back to suggestions",
   "Restore all": "Restore all",
+  "{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}": "{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}",
   "This suggestion could not be restored. Try again in a moment.": "This suggestion could not be restored. Try again in a moment.",
   "No dismissed suggestion.": "No dismissed suggestion.",
   "Dismissed by {name} on {date}": "Dismissed by {name} on {date}",
