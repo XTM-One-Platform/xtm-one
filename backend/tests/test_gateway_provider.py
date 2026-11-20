@@ -1504,6 +1504,23 @@ class TestImageEdits:
         assert provider.image_reference_limit("gpt-image-azure") == 0 and not provider.image_takes_mask("gpt-image-azure")
 
     @pytest.mark.asyncio
+    async def test_a_gemini_image_model_takes_pictures_but_no_mask(self):
+        # As Gemini direct: the gateway refuses a mask for it (XTM-One-Platform/ai-gateway#366).
+        provider = _listing_provider(
+            {"id": "gemini-2.5-flash-image", "owned_by": "gemini", "types": ["image"], "image_edit": True},
+            # An alias names no family: its listed owner does.
+            {"id": "house-image", "owned_by": "Gemini", "types": ["image"], "image_edit": True},
+        )
+        await provider.load_image_capabilities("gemini-2.5-flash-image")
+        for model in ("gemini-2.5-flash-image", "house-image"):
+            assert provider.image_reference_limit(model) == 3 and not provider.image_takes_mask(model)
+
+    def test_a_credential_pinned_to_gemini_takes_no_mask(self):
+        provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||gemini")
+        provider._editing_models.add("house-image")
+        assert provider.image_reference_limit("house-image") == 3 and not provider.image_takes_mask("house-image")
+
+    @pytest.mark.asyncio
     async def test_a_pinned_credential_lists_with_its_target(self):
         # The gateway flags ``image_edit`` by the provider ``X-Target-Provider`` names.
         asked: list[httpx.Request] = []
