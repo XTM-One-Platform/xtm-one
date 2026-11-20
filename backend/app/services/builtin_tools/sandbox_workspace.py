@@ -4157,7 +4157,8 @@ def build_sandbox_workspace_tools(
                         "description": (
                             "A hunk both sides changed: markers (default), or written without markers as the "
                             "ref's lines then the lines the workspace added there (ref-then-workspace: a line added "
-                            "next to a line the ref rewrote), or the workspace's then the ref's added lines."
+                            "next to a line the ref rewrote), or the workspace's then the ref's added lines; ref or "
+                            "workspace keeps that side's lines alone."
                         ),
                     },
                     "background": {
