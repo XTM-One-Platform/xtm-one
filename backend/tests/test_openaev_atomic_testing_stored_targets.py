@@ -156,3 +156,23 @@ def test_absent_relations_are_not_empty_relations() -> None:
     assert "not readable" in stored_targets_line(overview, None)
     stored = {"inject_assets": [], "inject_asset_groups": [], "inject_content": {"target_selector": "assets"}}
     assert "the injector receives no target" in stored_targets_line(overview, stored)
+
+
+def test_manual_selector_reads_the_content_targets() -> None:
+    """target_selector manual: the injector reads content.targets, not the relations (xtm-one #697)."""
+    stored = {
+        "inject_assets": [],
+        "inject_asset_groups": [],
+        "inject_content": {"target_selector": "manual", "targets": "51.161.172.239, 10.0.0.1"},
+    }
+    line = inject_targets_line(stored)
+    assert "Warning" not in line
+    assert "Manual targets (content.targets, read by the injector): 51.161.172.239, 10.0.0.1." in line
+    listed = dict(stored, inject_content={"target_selector": "manual", "targets": ["51.161.172.239"]})
+    assert "Manual targets (content.targets, read by the injector): 51.161.172.239." in inject_targets_line(listed)
+
+
+def test_manual_selector_with_no_target_is_flagged() -> None:
+    empty = {"inject_assets": [], "inject_content": {"target_selector": "manual", "targets": "  "}}
+    line = inject_targets_line(empty)
+    assert "content.targets is empty: the injector receives no target" in line
