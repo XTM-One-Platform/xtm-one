@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1856 tools across 112 providers; 52 held back by hand.
+# 1858 tools across 112 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1114,6 +1114,7 @@ opencrq:get_opencrq_job
 opencrq:get_opencrq_loss_driver
 opencrq:get_opencrq_mitre_technique
 opencrq:get_opencrq_platform_rbac
+opencrq:get_opencrq_platform_version
 opencrq:get_opencrq_risk_dashboard
 opencrq:get_opencrq_risk_scenario
 opencrq:get_opencrq_role
@@ -1171,6 +1172,7 @@ opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
 opencti:list_opencti_capabilities

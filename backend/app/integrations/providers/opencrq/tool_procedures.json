@@ -185,6 +185,9 @@
     "platformRoles.getPlatformRoles",
     "tenants.getTenants"
   ],
+  "get_opencrq_platform_version": [
+    "health"
+  ],
   "get_opencrq_risk_dashboard": [
     "dashboard.getMostActiveThreats",
     "dashboard.getScenarioSummaries",

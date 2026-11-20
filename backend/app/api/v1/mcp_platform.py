@@ -135,6 +135,7 @@ OPENCTI_MCP_TOOLS: frozenset[str] = frozenset(
     {
         # Read / search
         "search_opencti",
+        "get_opencti_platform_version",
         "get_opencti_entity",
         "get_opencti_relationship",
         "list_opencti_entities",
@@ -253,6 +254,7 @@ OPENCRQ_MCP_TOOLS: frozenset[str] = frozenset(
     {
         # Tenancy / catalog (read)
         "list_opencrq_tenants",
+        "get_opencrq_platform_version",
         "list_opencrq_organizations",
         "list_opencrq_frameworks",
         "get_opencrq_framework",
@@ -367,6 +369,7 @@ MCP_TOOL_ALLOW_LISTS: dict[str, frozenset[str]] = {
 OPENCTI_MCP_READ_TOOLS: frozenset[str] = frozenset(
     {
         "search_opencti",
+        "get_opencti_platform_version",
         "get_opencti_entity",
         "get_opencti_relationship",
         "list_opencti_entities",
@@ -414,6 +417,7 @@ OPENAEV_MCP_READ_TOOLS: frozenset[str] = frozenset(
 OPENCRQ_MCP_READ_TOOLS: frozenset[str] = frozenset(
     {
         "list_opencrq_tenants",
+        "get_opencrq_platform_version",
         "list_opencrq_organizations",
         "list_opencrq_frameworks",
         "get_opencrq_framework",
