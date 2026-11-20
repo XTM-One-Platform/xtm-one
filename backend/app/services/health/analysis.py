@@ -22,7 +22,9 @@ writes a short explanation and an order of fixes. It runs:
 * only when the administrator switched it on and set every ceiling
   (``HealthAnalysisSettings``): an unset ceiling refuses (``ceiling_not_set``);
 * only when the module's open finding set changed (:func:`finding_set_hash`),
-  at most once a UTC day per module on the schedule, or on demand;
+  at most once a UTC day per module on the schedule, or on demand; a failed or
+  refused attempt counts as that day's attempt, so the schedule retries it the
+  next UTC day, never on every pass;
 * on the platform routing model, with a static instruction first (prompt
   caching) and no conversation content: findings carry check ids, severities,
   categories, subject ids and measured values only.
@@ -32,7 +34,9 @@ plus the output cap, priced with the model's price row) is reserved on the day
 and the month rows of ``health_analysis_spend`` under a row lock; over any
 ceiling the call is refused (``ceiling_reached``) and the page says so. After
 the call, the reservation is replaced by the real usage priced by
-``price_usage``, the one pricing rule.
+``price_usage``, the one pricing rule. A call that fails books its reserved
+worst case as spent: a provider may bill a timed-out or partly served call,
+and an unknown cost is never booked as zero.
 
 **Not the agentic quota.** The call is traced under its own source
 (``platform_health``), holds no ``RunContext`` and imports nothing from
@@ -285,7 +289,9 @@ async def analyse_module(
     if trigger == "schedule" and previous is not None:
         if previous.finding_hash == digest and previous.status == "completed":
             return AnalysisOutcome(module, "skipped", UNCHANGED)
-        if previous.analysed_at.astimezone(UTC).date() == now.astimezone(UTC).date() and previous.status == "completed":
+        # Any attempt today (completed, failed or refused) is today's attempt: a provider
+        # outage or a refusal is retried the next UTC day or on demand, never every pass.
+        if previous.analysed_at.astimezone(UTC).date() == now.astimezone(UTC).date():
             return AnalysisOutcome(module, "skipped", ALREADY_TODAY)
     if not rows:
         await _store(db, module, finding_hash=digest, status="completed", reason=None, trigger=trigger, now=now)
@@ -349,13 +355,18 @@ async def analyse_module(
     except Exception as exc:
         end_trace(trace, error=str(exc)[:500], usage=usage, model=model)
         logger.warning("Platform Health analysis of %s failed: %s", module, exc)
+        # The provider may have billed the call: book the reported usage, else the reserved
+        # worst case, never zero, so the ceiling stays hard.
+        failed_priced = price_usage(usage, price) if usage else None
+        failed_tokens = _usage_tokens(usage or {}) or reserved_tokens
+        failed_cost = failed_priced.total_cost if failed_priced is not None else reserved_cost
         await book(
             db,
             now=now,
             reserved_tokens=reserved_tokens,
             reserved_cost=reserved_cost,
-            spent_tokens=0,
-            spent_cost=Decimal(0),
+            spent_tokens=failed_tokens,
+            spent_cost=failed_cost,
         )
         await _store(
             db,
@@ -366,6 +377,8 @@ async def analyse_module(
             trigger=trigger,
             now=now,
             model=model,
+            tokens=failed_tokens,
+            cost=failed_cost,
         )
         await db.commit()
         return AnalysisOutcome(module, "failed", "model_error")

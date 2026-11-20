@@ -185,6 +185,72 @@ async def test_a_completed_analysis_books_its_real_cost_and_is_not_repeated(wire
     assert before == after == 0
 
 
+class _FailingLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, messages, model=None, temperature=0.7, max_tokens=4096, **kwargs):
+        self.calls += 1
+        raise TimeoutError("provider timeout")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_analysis_books_its_worst_case_and_waits_for_the_next_day(wired):
+    """A model error is today's attempt: not retried on the next pass, and its reserved worst
+    case is booked as spent (a provider may bill a timed-out call), never zero."""
+    llm = _FailingLLM()
+
+    async def factory(db):
+        return llm, "routing-model"
+
+    async with _temp_database("ha_failed") as sessions, sessions() as db:
+        await _findings(db)
+        outcome = await analysis.analyse_module(db, "agents", _settings(), now=T0, llm_factory=factory)
+        assert (outcome.status, outcome.reason) == ("failed", "model_error")
+        day = await db.get(HealthAnalysisSpend, analysis.day_period(T0))
+        await db.refresh(day)
+        assert day.reserved_tokens == 0
+        assert day.spent_tokens > analysis.MAX_OUTPUT_TOKENS
+        assert Decimal(day.spent_cost_usd) > 0
+        row = await db.get(HealthModuleAnalysis, "agents")
+        assert (row.status, row.tokens) == ("failed", day.spent_tokens)
+
+        again = await analysis.analyse_module(
+            db, "agents", _settings(), now=T0 + timedelta(minutes=15), llm_factory=factory
+        )
+        assert (again.status, again.reason) == ("skipped", "already_today")
+        assert llm.calls == 1
+        next_day = await analysis.analyse_module(
+            db, "agents", _settings(), now=T0 + timedelta(days=1), llm_factory=factory
+        )
+        assert next_day.status == "failed"
+        assert llm.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_a_refused_analysis_is_not_retried_on_the_same_day(wired):
+    llm = _LLM()
+
+    async def factory(db):
+        return llm, "routing-model"
+
+    async with _temp_database("ha_refused") as sessions, sessions() as db:
+        await _findings(db)
+        first = await analysis.analyse_module(
+            db, "agents", _settings(day_cost_usd=Decimal("0.0001")), now=T0, llm_factory=factory
+        )
+        assert (first.status, first.reason) == ("refused", "ceiling_reached")
+        again = await analysis.analyse_module(
+            db, "agents", _settings(day_cost_usd=Decimal("0.0001")), now=T0 + timedelta(minutes=15), llm_factory=factory
+        )
+        assert (again.status, again.reason) == ("skipped", "already_today")
+        on_demand = await analysis.analyse_module(
+            db, "agents", _settings(), now=T0 + timedelta(minutes=20), trigger="on_demand", llm_factory=factory
+        )
+        assert on_demand.status == "completed"
+        assert llm.calls == 1
+
+
 @pytest.mark.asyncio
 async def test_the_tick_does_nothing_with_ai_off():
     assert await analysis.analysis_tick(ai_on=False) == []
