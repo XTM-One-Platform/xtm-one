@@ -365,6 +365,19 @@ first (a later slice).
 | Retention rules | snapshot | none on a large instance info |
 | Coverage gaps | organization context tech stack vs connectors present | missing connector for a listed product info |
 
+Built in S5 (`services/health/opencti_checks.py`, one result per registered OpenCTI,
+subject `{registration_id}`, connectors `{registration_id, connector_id}`):
+`opencti.heartbeat` (critical, `is_healthy`, 15 min), `opencti.connector_stale` (warning,
+active connector silent 30 min), `opencti.connector_errors` (warning, > 10 works in error),
+`opencti.queue_depth` (warning, > 100,000), `opencti.queue_consumers` (critical, messages
+waiting with no consumer), `opencti.search_engine` (yellow warning, red critical),
+`opencti.search_disk` (warning, > 85 %), `opencti.ingestion_lag` (warning, > 15 min). Every
+check but the heartbeat reads the latest snapshot only while it is fresh (15 min), and a key
+the snapshot does not carry records nothing; each check closes out the subjects it no longer
+reads. Thresholds are constants until the settings slice (S10) makes them editable. Owed:
+connector version, feeds, playbooks, retention and coverage (their snapshot keys come with
+the OpenCTI push PR), and the version and licence row (read from the registration).
+
 ### 4.4 OpenAEV (XTM One mode, automatic)
 
 | Check | Source | Default |
@@ -402,6 +415,14 @@ next snapshot at once. `RegisterRequest` gains an optional bounded `health` obje
 (schema versioned, size capped at 256 KB, unknown keys ignored); the latest snapshot is
 stored per registration (`platform_health_snapshots`, one row, replaced). Module PRs on
 OpenCTI, OpenAEV and OpenCRQ are opened on team approval (skill section 16).
+
+Built in S5 (`services/health/snapshots.py`): format version 1 reads `connectors` (id,
+name, active, updated_at, works_in_error, queue_messages; 500 at most), `rabbitmq`
+(queue_messages, consumers), `search_engine` (status green/yellow/red, disk_used_percent)
+and `ingestion_lag_seconds`; other keys are dropped, numbers clamped, strings cut. A
+snapshot of another version, over 256 KB or that does not read is ignored and logged, never
+a 422 (it rides on the heartbeat), and nothing is stored under the published default
+registration token. The `health_refresh_requested` answer comes with the Health page (S8).
 
 ## 6. Analysis layer and cost control
 

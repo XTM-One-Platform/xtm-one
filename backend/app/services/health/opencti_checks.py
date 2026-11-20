@@ -1,0 +1,314 @@
+# Copyright (c) 2025-2026 Filigran SAS
+#
+# This file is part of the XTM One Enterprise Edition ("EE") and is
+# licensed under the XTM One Enterprise Edition License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+"""Platform Health OpenCTI checks (#101 S5, ``dev-docs/platform-health.md`` section 4.3).
+
+Registered on the engine when this module is imported, one result per registered
+OpenCTI (subject ``{"registration_id": ...}``), connectors one per connector:
+
+==================================  ==========  ============  ==============================================
+Check                               Severity    Category      Fails when
+==================================  ==========  ============  ==============================================
+``opencti.heartbeat``               critical    availability  no registration heartbeat for 15 minutes
+``opencti.connector_stale``         warning     availability  an active connector has not reported for 30 minutes
+``opencti.connector_errors``        warning     availability  a connector has over 10 works in error
+``opencti.queue_depth``             warning     capacity      over 100,000 messages wait in the broker
+``opencti.queue_consumers``         critical    availability  messages wait in the broker and no consumer reads them
+``opencti.search_engine``           warn/crit   availability  the search engine is yellow (warning) or red (critical)
+``opencti.search_disk``             warning     capacity      the search engine disk is over 85 % used
+``opencti.ingestion_lag``           warning     performance   ingestion lags by over 15 minutes
+==================================  ==========  ============  ==============================================
+
+The heartbeat reads ``PlatformRegistration.is_healthy``. Every other check reads
+the latest snapshot the platform pushed with its registration
+(:mod:`app.services.health.snapshots`), and only while that snapshot is fresh
+(:data:`SNAPSHOT_FRESH_FOR`): a platform that stopped sending, or a release that
+sends none, records nothing beyond the heartbeat. A key the snapshot does not
+carry records nothing for its check.
+
+Same gate as the XTM One platform checks: XTM One modes only, AI switched off
+included, no model call, never metered, no network.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.health.engine import Check, CheckResult, close_out, register_check
+from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
+
+MODULE = "opencti"
+PLATFORM_IDENTIFIER = "opencti"
+#: A snapshot older than this is not read (three missed heartbeats).
+SNAPSHOT_FRESH_FOR = timedelta(minutes=15)
+CONNECTOR_STALE_AFTER = timedelta(minutes=30)
+CONNECTOR_ERRORS_MAX = 10
+QUEUE_DEPTH_MAX = 100_000
+SEARCH_DISK_MAX_PERCENT = 85.0
+INGESTION_LAG_MAX = timedelta(minutes=15)
+DOC_LINK = "/docs/administration/health#opencti-checks"
+
+Read = Callable[[Any, dict[str, Any] | None, datetime], list[CheckResult]]
+
+
+def _result(
+    check_id: str, severity: str, category: str, failing: bool, subject: dict[str, str], **kw: Any
+) -> CheckResult:
+    return CheckResult(
+        check_id=check_id,
+        module=MODULE,
+        category=category,
+        severity=severity,
+        failing=failing,
+        subject=subject,
+        doc_link=DOC_LINK,
+        **kw,
+    )
+
+
+async def _registrations(db: AsyncSession, now: datetime) -> list[tuple[Any, dict[str, Any] | None]]:
+    """Each registered OpenCTI with its snapshot, ``None`` when it has none or it is stale."""
+    from app.models.platform_health_snapshot import PlatformHealthSnapshot
+    from app.models.platform_registration import PlatformRegistration
+
+    rows = (
+        await db.execute(
+            select(PlatformRegistration, PlatformHealthSnapshot)
+            .outerjoin(PlatformHealthSnapshot, PlatformHealthSnapshot.registration_id == PlatformRegistration.id)
+            .where(PlatformRegistration.platform_identifier == PLATFORM_IDENTIFIER)
+        )
+    ).all()
+    out: list[tuple[Any, dict[str, Any] | None]] = []
+    for registration, snapshot in rows:
+        fresh = snapshot is not None and now - snapshot.received_at <= SNAPSHOT_FRESH_FOR
+        out.append((registration, snapshot.snapshot if fresh else None))
+    return out
+
+
+def _subject(registration: Any) -> dict[str, str]:
+    return {"registration_id": str(registration.id)}
+
+
+def heartbeat(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    last = registration.last_heartbeat_at
+    return [
+        _result(
+            "opencti.heartbeat",
+            "critical",
+            "availability",
+            not registration.is_healthy(now),
+            _subject(registration),
+            evidence={
+                "values": {"status": registration.status, "last_heartbeat_at": last.isoformat() if last else None},
+                "threshold": "15 minutes",
+                "source": "platform registration",
+            },
+            recommendation=(
+                "Check that OpenCTI is running and reaches XTM One (XTM_ONE_URL and XTM_ONE_TOKEN on the "
+                "OpenCTI side, PLATFORM_REGISTRATION_TOKEN here)."
+            ),
+        )
+    ]
+
+
+def _connectors(snapshot: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    if snapshot is None or "connectors" not in snapshot:
+        return None
+    connectors: list[dict[str, Any]] = snapshot["connectors"]
+    return connectors
+
+
+def connector_stale(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    connectors = _connectors(snapshot)
+    if connectors is None:
+        return []
+    results = []
+    for connector in connectors:
+        if connector.get("active") is not True or "updated_at" not in connector:
+            continue
+        updated = datetime.fromisoformat(connector["updated_at"])
+        results.append(
+            _result(
+                "opencti.connector_stale",
+                "warning",
+                "availability",
+                now - updated > CONNECTOR_STALE_AFTER,
+                {**_subject(registration), "connector_id": connector["id"]},
+                evidence={
+                    "values": {"name": connector["name"], "updated_at": connector["updated_at"]},
+                    "threshold": "30 minutes",
+                    "source": "OpenCTI health snapshot",
+                },
+                recommendation="Restart the connector or check its logs; it has stopped reporting to OpenCTI.",
+            )
+        )
+    return results
+
+
+def connector_errors(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    connectors = _connectors(snapshot)
+    if connectors is None:
+        return []
+    return [
+        _result(
+            "opencti.connector_errors",
+            "warning",
+            "availability",
+            connector["works_in_error"] > CONNECTOR_ERRORS_MAX,
+            {**_subject(registration), "connector_id": connector["id"]},
+            evidence={
+                "values": {"name": connector["name"], "works_in_error": connector["works_in_error"]},
+                "threshold": CONNECTOR_ERRORS_MAX,
+                "source": "OpenCTI health snapshot",
+            },
+            recommendation="Open the connector's works in OpenCTI and fix the cause of the errors.",
+        )
+        for connector in connectors
+        if "works_in_error" in connector
+    ]
+
+
+def queue_depth(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    queue = (snapshot or {}).get("rabbitmq") or {}
+    if "queue_messages" not in queue:
+        return []
+    return [
+        _result(
+            "opencti.queue_depth",
+            "warning",
+            "capacity",
+            queue["queue_messages"] > QUEUE_DEPTH_MAX,
+            _subject(registration),
+            evidence={
+                "values": {"queue_messages": queue["queue_messages"]},
+                "threshold": QUEUE_DEPTH_MAX,
+                "source": "OpenCTI health snapshot",
+            },
+            recommendation="Add OpenCTI workers or slow the connectors that fill the queue.",
+        )
+    ]
+
+
+def queue_consumers(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    queue = (snapshot or {}).get("rabbitmq") or {}
+    if "consumers" not in queue or "queue_messages" not in queue:
+        return []
+    return [
+        _result(
+            "opencti.queue_consumers",
+            "critical",
+            "availability",
+            queue["consumers"] == 0 and queue["queue_messages"] > 0,
+            _subject(registration),
+            evidence={"values": dict(queue), "source": "OpenCTI health snapshot"},
+            recommendation="Start the OpenCTI workers: messages wait in the broker and nothing reads them.",
+        )
+    ]
+
+
+def search_engine(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    status = ((snapshot or {}).get("search_engine") or {}).get("status")
+    if status is None:
+        return []
+    return [
+        _result(
+            "opencti.search_engine",
+            "critical" if status == "red" else "warning",
+            "availability",
+            status != "green",
+            _subject(registration),
+            evidence={"values": {"status": status}, "source": "OpenCTI health snapshot"},
+            recommendation="Check the Elasticsearch or OpenSearch cluster health: unassigned shards or a lost node.",
+        )
+    ]
+
+
+def search_disk(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    used = ((snapshot or {}).get("search_engine") or {}).get("disk_used_percent")
+    if used is None:
+        return []
+    return [
+        _result(
+            "opencti.search_disk",
+            "warning",
+            "capacity",
+            used > SEARCH_DISK_MAX_PERCENT,
+            _subject(registration),
+            evidence={
+                "values": {"disk_used_percent": used},
+                "threshold": SEARCH_DISK_MAX_PERCENT,
+                "source": "OpenCTI health snapshot",
+            },
+            recommendation="Free or add disk on the search engine nodes, or set retention rules in OpenCTI.",
+        )
+    ]
+
+
+def ingestion_lag(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+    lag = (snapshot or {}).get("ingestion_lag_seconds")
+    if lag is None:
+        return []
+    return [
+        _result(
+            "opencti.ingestion_lag",
+            "warning",
+            "performance",
+            lag > INGESTION_LAG_MAX.total_seconds(),
+            _subject(registration),
+            evidence={
+                "values": {"ingestion_lag_seconds": lag},
+                "threshold": int(INGESTION_LAG_MAX.total_seconds()),
+                "source": "OpenCTI health snapshot",
+            },
+            recommendation="Add OpenCTI workers or check the broker: ingestion is falling behind.",
+        )
+    ]
+
+
+def _check(check_id: str, read: Read) -> Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]:
+    """``read`` over every registered OpenCTI; a registration or subject gone is closed out."""
+
+    async def run(db: AsyncSession, now: datetime) -> list[CheckResult]:
+        results: list[CheckResult] = []
+        for registration, snapshot in await _registrations(db, now):
+            results.extend(read(registration, snapshot, now))
+        return results + await close_out(db, check_id, results)
+
+    run.__name__ = read.__name__
+    run.__doc__ = read.__doc__
+    return run
+
+
+for _check_id, _read in (
+    ("opencti.heartbeat", heartbeat),
+    ("opencti.connector_stale", connector_stale),
+    ("opencti.connector_errors", connector_errors),
+    ("opencti.queue_depth", queue_depth),
+    ("opencti.queue_consumers", queue_consumers),
+    ("opencti.search_engine", search_engine),
+    ("opencti.search_disk", search_disk),
+    ("opencti.ingestion_lag", ingestion_lag),
+):
+    register_check(
+        Check(
+            check_id=_check_id,
+            module=MODULE,
+            interval=PLATFORM_CHECK_INTERVAL,
+            run=_platform_check(_check(_check_id, _read)),
+        )
+    )
