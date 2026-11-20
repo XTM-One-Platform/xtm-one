@@ -81,6 +81,8 @@ const CONTENT = [
   "pages/settings/OrganizationImportDialog.tsx",
   // The fixed retention categories (#396, six rows read from the policy) with their figures: a settings grid, not a list of records (UX r2 on #405, s.3 n/a).
   "pages/settings/FileRetentionSection.tsx",
+  // The fixed Platform Health schedules (#735, four specialists read from the settings) with their cron, next and last run: a settings grid, not a list of records.
+  "pages/settings/HealthTriggerBlocks.tsx",
   "pages/xtm-one/ctem/CoverageMatrixCard.tsx",
   // The two readings of ONE CTEM score in a hover card (#11689): Measured x In your context, not a list of records.
   "pages/xtm-one/ctem/CtemScoreTip.tsx",

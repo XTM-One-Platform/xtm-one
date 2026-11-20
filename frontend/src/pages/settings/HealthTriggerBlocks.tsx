@@ -265,7 +265,7 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                           aria-invalid={next === null || undefined}
                           value={cron}
                           onChange={(event) => set({ [key]: event.target.value } as Partial<HealthSchedules>)}
-                          className="w-36 font-mono-plex"
+                          className="w-36 [&_input]:font-mono-plex"
                         />
                         <InfoTip content={<div className="max-w-xs content-compact">{t_i18n(CRON_INFO)}</div>} label={t_i18n("About this field")} />
                       </span>
