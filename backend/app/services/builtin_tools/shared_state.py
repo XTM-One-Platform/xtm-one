@@ -1846,7 +1846,7 @@ def build_shared_state_tools(
                     "update_json": {"type": "string", "description": "Patch matched list items in place: {\"gaps\": {\"match\": {\"slug\": \"x\"}, \"set\": {}, \"increment\": {\"count\": 1}, \"append\": {\"runs\": []}, \"unset\": [\"f\"]}}; match may be a list (any matches; one matching nothing refuses all). Applied after the removals, before the appends"},
                     "fold_json": {"type": "string", "description": "List keys to identity field(s) or {by, sum}: duplicates merge in the first"},
                     "archive_key": {"type": "string", "description": "Key that first receives what remove_json / keep_last_json / an unset drop"},
-                    "retention_json": {"type": "string", "description": "List policy per write, object of keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key; {} clears"},
+                    "retention_json": {"type": "string", "description": "List policy per write, object of keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields; {} clears"},
                     "unset_keys": {"type": "array", "items": {"type": "string"}, "description": "Top-level keys to remove from the value"},
                     "hold": {"type": "string", "enum": ["take", "release"], "description": "Hold the entry as a lease (a branch lock): 'take' records this run as its holder (a live other holder answers held, not an error), taking it over once that run ended; 'release' frees it. The platform frees the hold of an ended run. Omit to keep the holder"},
                     "lease": {"type": "boolean", "description": "Resolved at hold release (default: created by take)"},
