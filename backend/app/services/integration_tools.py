@@ -137,6 +137,7 @@ from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
+from app.integrations.providers.platform_email import build_tools as platform_email_tools
 from app.integrations.providers.proofpoint import build_tools as proofpoint_tools
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
@@ -985,6 +986,7 @@ PROVIDER_TOOLS = {
     "newsapi": newsapi_tools,
     "feedly": feedly_tools,
     "rss": rss_tools,
+    "platform_email": platform_email_tools,
     "google_search": google_search_tools,
     "brave_search": brave_search_tools,
     "giphy": giphy_tools,
@@ -3638,6 +3640,22 @@ async def _get_token(
                 integ.name,
                 format_exception_message(exc),
             )
+
+    # Platform email: no credential, it sends through the deployment's SMTP;
+    # the "token" carries its guards (allowed domains, daily limit).
+    if not token and provider == "platform_email":
+        from app.integrations.providers.platform_email import platform_email_token
+
+        try:
+            extra = await _reveal_extra(integ) if integ.extra_config_enc else {}
+        except Exception as exc:
+            logger.warning(
+                "Failed to read the guards of '%s' (platform_email): %s",
+                integ.name,
+                format_exception_message(exc),
+            )
+            extra = {}
+        token = platform_email_token(extra)
 
     # MITRE ATLAS: no credentials — the "token" is the data source URL
     # (optional extra_config.source_url override for mirrors / air-gapped
@@ -6513,6 +6531,11 @@ async def _build_integration_tools_inner(
                 # tools return.
                 if provider in ("notion", "microsoft", "whatsapp"):
                     _builder_kwargs["integration_id"] = str(integration_id)
+                # Platform email: the agent the daily limit counts and the
+                # person its audit entry is anchored on.
+                if provider == "platform_email":
+                    _builder_kwargs["agent_id"] = str(context.get("agent_id") or "")
+                    _builder_kwargs["user_id"] = str(context.get("user_id") or "")
                 # Microsoft: the agent the run acts for scopes the mail send
                 # guard (one answer per conversation across its runs).
                 if provider == "microsoft" and context.get("agent_id"):
