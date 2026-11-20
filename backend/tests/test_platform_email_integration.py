@@ -160,6 +160,8 @@ def test_a_send_to_an_allowed_domain_is_delivered_and_audited(monkeypatch):
     assert [c["to"] for c in sent.calls] == ["a@example.com", "c@example.com"]
     assert all("Bcc" not in (c["headers"] or {}) for c in sent.calls)
     assert sent.calls[0]["headers"]["Cc"] == "b@example.com"
+    # The Bcc envelope carries no Cc header: Cc recipients get one copy only.
+    assert "Cc" not in (sent.calls[1]["headers"] or {})
     assert "<strong>Hi</strong>" in sent.calls[0]["html"]
     (record,) = sent.records
     assert record["agent_id"] == "agent-1" and record["user_id"] == "user-1" and record["error"] is None

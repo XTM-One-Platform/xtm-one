@@ -269,9 +269,12 @@ def build_tools(
             await email_service.deliver_email(
                 to=", ".join(to_list), subject=subject, html=html, text=body, headers=headers, attachments=files
             )
+            # The SMTP envelope is read from To and Cc: a Bcc envelope carrying the Cc header
+            # would send the Cc recipients one more copy per Bcc address.
+            bcc_headers = {name: value for name, value in headers.items() if name != "Cc"}
             for address in bcc_list:
                 await email_service.deliver_email(
-                    to=address, subject=subject, html=html, text=body, headers=headers, attachments=files
+                    to=address, subject=subject, html=html, text=body, headers=bcc_headers, attachments=files
                 )
         except email_service.EmailDeliveryError as exc:
             error = str(exc) or "the SMTP server refused the email"
