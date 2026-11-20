@@ -315,7 +315,7 @@ function NavGroupBlock({
  * The wordmark files are OpenCTI's and OpenAEV's own (the library declares its
  * product wordmarks without exporting them, F09), in the variant of the theme.
  * OpenCRQ has no wordmark yet: its glyph, with its name beside it so its row
- * reads like the others. The icon registry ships `custom/opengrc` only.
+ * reads like the others.
  */
 const SUITE_WORDMARKS: Record<Exclude<SuiteProduct, "opencrq">, { dark: string; light: string }> = {
   opencti: { dark: openctiWordmark, light: openctiWordmarkLight },
@@ -327,7 +327,7 @@ function suiteLogo(product: SuiteProduct, mode: "light" | "dark") {
   if (product === "opencrq") {
     return (
       <span className="inline-flex items-center gap-2">
-        <Icon name="custom/opengrc" size={20} />
+        <Icon name="custom/opencrq" size={20} />
         <span className="content-base font-medium">{SUITE_PRODUCT_NAMES.opencrq}</span>
       </span>
     );
