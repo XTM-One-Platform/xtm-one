@@ -1266,7 +1266,14 @@ def test_a_workspace_protocol_dependency_adds_the_sibling_member_transitively():
         "platform/shared",
     ]
     assert detect.workspace_dependency_dirs(manifests, ["platform/graphql"]) == []
-    assert detect.workspace_dependency_dirs(manifests, ["platform/front/src"]) == [], "no manifest under the sub_path"
+    assert detect.workspace_dependency_dirs(manifests, ["platform/front/src/utils"]) == [
+        "platform/eslint-plugin-custom-rules",
+        "platform/shared",
+    ], "the member the sub_path lies in links them"
+    assert detect.workspace_dependency_dirs(manifests, ["platform/eslint-plugin-custom-rules/lib"]) == [
+        "platform/shared"
+    ], "the member holding the sub_path is never added"
+    assert detect.workspace_dependency_dirs(manifests, ["docs/guide"]) == [], "the root manifest is not an owner"
     assert detect.workspace_dependency_dirs(manifests, ["platform"]) == [], "a member under a sub_path adds nothing"
     broken = {"platform/front/package.json": b"not json", "platform/x/package.json": _pkg("x", y="workspace:*")}
     assert detect.workspace_dependency_dirs(broken, ["platform/front", "platform/x"]) == []
