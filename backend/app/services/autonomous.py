@@ -2607,6 +2607,15 @@ async def _run_autonomous_tick_inner() -> int:
             await health_pass_tick()
         except Exception as e:
             logger.error("Platform Health pass error: %s", format_exception_message(e), exc_info=True)
+        # --- 9c ter. Platform Health analysis (#101 S9, dev-docs/platform-health.md 6) ---
+        # One model call per module whose findings changed, at most once a day,
+        # within the analysis ceiling; nothing with AI off or analysis off.
+        try:
+            from app.services.health.analysis import analysis_tick
+
+            await analysis_tick(ai_on=_ai_on)
+        except Exception as e:
+            logger.error("Platform Health analysis error: %s", format_exception_message(e), exc_info=True)
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new

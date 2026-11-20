@@ -56,6 +56,27 @@ class HealthBudgetCaps(BaseModel):
     month_cost_usd: Decimal | None = Field(default=Decimal("100"), ge=0, le=MAX_COST_USD, decimal_places=6)
 
 
+class HealthAnalysisSettings(BaseModel):
+    """The analysis layer (#101 S9, ``dev-docs/platform-health.md`` section 6): off by default.
+
+    The ceilings are hard: an analysis reserves its worst case on the day and the
+    month before the model call and is refused over any of them. A ceiling left
+    ``None`` refuses every analysis (``ceiling_not_set``): no default figure is
+    shipped before the lab measurement sets one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    day_tokens: int | None = Field(default=None, ge=0, le=MAX_TOKENS)
+    day_cost_usd: Decimal | None = Field(default=None, ge=0, le=MAX_COST_USD, decimal_places=6)
+    month_tokens: int | None = Field(default=None, ge=0, le=MAX_TOKENS)
+    month_cost_usd: Decimal | None = Field(default=None, ge=0, le=MAX_COST_USD, decimal_places=6)
+
+    def ceilings_set(self) -> bool:
+        return None not in (self.day_tokens, self.day_cost_usd, self.month_tokens, self.month_cost_usd)
+
+
 #: The longest any Platform Health duration (watch, shadow, signal window) may be set to.
 MAX_DURATION_DAYS = 90
 
@@ -167,6 +188,8 @@ class HealthSettings(BaseModel):
     flow_shadow_days: int = Field(default=3, ge=1, le=MAX_DURATION_DAYS)
     flow_watch_days: int = Field(default=7, ge=1, le=MAX_DURATION_DAYS)
     flow_shadow_min_pairs: int = Field(default=5, ge=1, le=1_000)
+    #: The analysis layer and its ceiling (#101 S9).
+    analysis: HealthAnalysisSettings = Field(default_factory=HealthAnalysisSettings)
 
     @field_validator("name")
     @classmethod

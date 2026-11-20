@@ -34,6 +34,9 @@ LLM_TRACE_SOURCES: tuple[str, ...] = (
     "memory",
     "evaluation",
     "proxy",
+    # Platform Health's analysis layer (#101 S9): its own source, so the spend
+    # stays visible in observability and never counts as an agentic execution.
+    "platform_health",
 )
 
 

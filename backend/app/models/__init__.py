@@ -64,6 +64,7 @@ import app.models.flow_shadow
 import app.models.general_assistant_config
 import app.models.group
 import app.models.health
+import app.models.health_analysis
 import app.models.health_check
 import app.models.health_cycle
 import app.models.health_dataset

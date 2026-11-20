@@ -462,6 +462,11 @@ registration token. The `health_refresh_requested` answer comes with the Health 
 - Traces carry their own source (`platform_health`), excluded from customer quota and
   from agentic execution counts, visible in observability; the spend is shown on the
   Health page.
+- As built (S9a): `services/health/analysis.py`, tables `health_module_analyses` and
+  `health_analysis_spend` (periods `D:YYYY-MM-DD`, `M:YYYY-MM`, row-locked month then day),
+  `HealthSettings.analysis` (off, four ceilings, any unset refuses `ceiling_not_set`), a
+  call without a price row refused `no_price`, routes `GET /health/analysis` and
+  `POST /health/analysis/{module}/run` (`require_ai_enabled`), tick after `health_pass_tick`.
 - **Default ceiling: not set in this spec.** It is set in slice S9 from a measured lab run
   (tokens and dollars of one full analysis pass per module on the lab with OpenCTI and
   OpenAEV registered), the measurement written here then. No guessed figure.

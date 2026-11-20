@@ -123,6 +123,19 @@ In XTM One mode, AI switched off included, every registered OpenCRQ is checked e
 | Heartbeat | Critical | OpenCRQ has not registered for 15 minutes |
 | Job failing | Warning | The last run of a background job ended in the dead-letter queue (one finding per job) |
 
+## Analysis
+
+The checks above are deterministic and never call a model. The **analysis** is an optional layer on top of them: one call to the platform routing model per module, which reads that module's open findings (check ids, severities, categories, subject ids and measured values; no conversation content) and writes a short explanation and the order in which to apply the fixes.
+
+- It is **off by default**, and runs only where AI runs (licensed, switched on).
+- A module is analysed only when its open findings changed, at most once a day, or when an administrator asks for it. A failed or refused analysis counts as that day's attempt: the schedule tries again the next day, and an administrator can run it at once.
+- A failed model call counts its full reserved cost against the ceilings, since a provider may bill a call that timed out.
+- It has a **hard ceiling** in tokens and in dollars, per day and per month. Before each call, the platform reserves the call's worst case on today and on this month; a call that would cross any ceiling is refused and the module shows *Ceiling reached*. After the call, the reservation is replaced by what the call really cost.
+- Until the four ceilings are set, every analysis is refused (*Ceiling not set*).
+- Analysis calls are traced under their own source, **Platform Health**, visible in LLM analytics. They are not counted in any agentic quota or agentic execution count.
+
+The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:

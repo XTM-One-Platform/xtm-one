@@ -359,6 +359,8 @@ def test_no_ai_execution_endpoint_relies_on_the_ui_alone():
             "trigger_evaluation",
             "trigger_evaluation_from_runs",
         },
+        # Platform Health's on-demand analysis (#101 S9): one model call.
+        "app/api/v1/platform_health_analysis.py": {"run_health_analysis"},
     }
 
     for rel, funcs in expected.items():
