@@ -72,7 +72,7 @@ MAX_OUTPUT_TOKENS = 800
 MAX_FINDINGS = 60
 #: Characters per token used to estimate the prompt before the call (a high estimate):
 #: the findings JSON (ids, keys, numbers) measured at 2.2 characters per token in the
-#: lab (section 6.3), so 3 under-reserved by a third.
+#: lab (dev-docs section 6), so 3 under-reserved by a third.
 _CHARS_PER_TOKEN = 2
 
 REFUSED_DISABLED = "disabled"

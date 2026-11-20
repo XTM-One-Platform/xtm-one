@@ -63,7 +63,7 @@ class HealthAnalysisSettings(BaseModel):
     month before the model call and is refused over any of them. A ceiling an
     administrator clears (``None``) refuses every analysis (``ceiling_not_set``).
 
-    The defaults come from the lab measurement of section 6.3: one analysis of a
+    The defaults come from the lab measurement of dev-docs section 6: one analysis of a
     module at the most findings it reads costs at most 8,000 tokens; 6 modules
     twice a day is 96,000 tokens, rounded to 100,000 a day and 31 days of it a
     month. The dollar ceilings price that at the measured blended rate of a

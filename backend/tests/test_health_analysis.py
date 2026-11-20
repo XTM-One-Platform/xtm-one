@@ -61,7 +61,7 @@ def test_analysis_is_off_by_default_with_the_measured_ceilings() -> None:
 
 
 def test_the_reservation_covers_the_measured_prompt() -> None:
-    # Lab measurement (section 6.3): 33 findings, 8,709 prompt characters, 3,963 input tokens billed.
+    # Lab measurement (dev-docs section 6): 33 findings, 8,709 prompt characters, 3,963 input tokens billed.
     assert analysis.estimate_input_tokens("x" * 8_709) >= 3_963
 
 
