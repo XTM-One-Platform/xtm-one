@@ -2363,7 +2363,7 @@ async def test_connector_get_selects_only_fields_the_schema_has(monkeypatch):
         {"action": "get", "connector_id": "conn1"},
     )
     assert not result.is_error, result.content
-    query, variables = gql.calls[-1]
+    query, variables = gql.calls[0]
     assert variables == {"id": "conn1"}
     selection = re.search(r"manager_contract_configuration \{([^}]*)\}", query)
     assert selection is not None, query
@@ -2414,6 +2414,80 @@ async def test_connector_get_redacts_secret_values(monkeypatch):
     assert "<encrypted>" in result.content
     # Non-secret value is still shown.
     assert "White" in result.content
+
+
+async def test_connector_get_reads_connector_state(monkeypatch):
+    # 'get' asks OpenCTI for Connector.connector_state and its timestamp, so an
+    # agent sees where a connector stands (after reset_state, for one).
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+    gql = _RecordingGraphQL(
+        {
+            "connector": {
+                "id": "conn1",
+                "name": "AlienVault",
+                "connector_state": '{"last_run": 1763640000}',
+                "connector_state_timestamp": "2026-11-20T12:00:00Z",
+            }
+        }
+    )
+    monkeypatch.setattr(connectors, "_graphql", gql)
+    result = await _run(executor, "manage_opencti_connector", {"action": "get", "connector_id": "conn1"})
+    assert not result.is_error, result.content
+    assert any("connector_state connector_state_timestamp" in q for q, _ in gql.calls)
+    assert '  connector_state: {"last_run": 1763640000}' in result.content
+    assert "  connector_state_timestamp: 2026-11-20T12:00:00Z" in result.content
+
+
+@pytest.mark.parametrize("state", [None, "", "   "])
+async def test_connector_get_prints_none_for_an_empty_state(monkeypatch, state):
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+    monkeypatch.setattr(
+        connectors,
+        "_graphql",
+        _RecordingGraphQL({"connector": {"id": "conn1", "name": "AlienVault", "connector_state": state}}),
+    )
+    result = await _run(executor, "manage_opencti_connector", {"action": "get", "connector_id": "conn1"})
+    assert not result.is_error, result.content
+    assert "  connector_state: none" in result.content
+    assert "connector_state_timestamp" not in result.content
+
+
+async def test_connector_get_caps_a_large_state(monkeypatch):
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+    big = "x" * 5000
+    monkeypatch.setattr(
+        connectors,
+        "_graphql",
+        _RecordingGraphQL({"connector": {"id": "conn1", "name": "AlienVault", "connector_state": big}}),
+    )
+    result = await _run(executor, "manage_opencti_connector", {"action": "get", "connector_id": "conn1"})
+    assert not result.is_error, result.content
+    assert big not in result.content
+    assert "(5000 characters, cut)" in result.content
+
+
+async def test_connector_get_answers_when_the_state_cannot_be_read(monkeypatch):
+    # An OpenCTI without the state fields still answers 'get'.
+    from app.integrations.providers.opencti import connectors
+
+    executor, _ = _build()
+
+    async def no_state(client, base_url, headers, query, variables=None):
+        if "connector_state" in query:
+            return {}, 'OpenCTI GraphQL error: Cannot query field "connector_state"'
+        return {"connector": {"id": "conn1", "name": "AlienVault"}}, None
+
+    monkeypatch.setattr(connectors, "_graphql", no_state)
+    result = await _run(executor, "manage_opencti_connector", {"action": "get", "connector_id": "conn1"})
+    assert not result.is_error, result.content
+    assert "Connector 'AlienVault'" in result.content
+    assert "connector_state: unreadable" in result.content
 
 
 # ── Entity history selects fields that exist on ContextData ──────
