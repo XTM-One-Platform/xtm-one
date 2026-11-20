@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /** Platform Health modules on the Health page (#101 S8): names and card copy. */
-import type { HealthModule, HealthModuleCard } from "@/types";
+import type { HealthModule, HealthModuleCard, HealthOverview } from "@/types";
 
 /** Display names of the modules (catalog keys). */
 export const HEALTH_MODULE_LABELS: Record<HealthModule, string> = {
@@ -253,6 +253,45 @@ export const checkRecommendation = (checkId: string, fallback: string, t: (key: 
     : fallback;
 /** The translated label of a category. */
 export const categoryLabel = (category: string, t: (key: string) => string) => labelOf(HEALTH_CATEGORY_LABELS, category, t);
+
+/** The command center pill of each product reads the engine's module of the same name (#101 S8b). */
+const HEALTH_PRODUCT_MODULES: Partial<Record<string, HealthModule>> = {
+  opencti: "opencti",
+  openaev: "openaev",
+  opencrq: "opencrq",
+};
+
+/**
+ * Checks a dedicated dashboard notice already says (it names the fix and carries its action), so
+ * the Platform Health notice does not say them twice: the model configuration and knowledge base
+ * notices, which a plain user sees too and which read the live setting, not the last pass.
+ */
+export const HEALTH_NOTICE_COVERED_CHECKS: ReadonlySet<string> = new Set([
+  "xtm_one.default_model",
+  "xtm_one.embedding_model",
+  "xtm_one.kb_indexing_stalled",
+  "xtm_one.kb_stale_embeddings",
+]);
+
+/** What a product pill shows from the engine: its open critical and warning findings. */
+export interface ProductHealth {
+  critical: number;
+  warning: number;
+}
+
+/** The engine's open findings of a product, or undefined when its module has no card (not an administrator, Copilot mode). */
+export function productHealth(product: string, overview: HealthOverview | undefined): ProductHealth | undefined {
+  const module = HEALTH_PRODUCT_MODULES[product];
+  const card = module ? overview?.modules.find((m) => m.module === module) : undefined;
+  return card ? { critical: card.critical, warning: card.warning } : undefined;
+}
+
+/** The pill's tone: unreachable or a critical finding is an error, a warning finding a warning, else healthy. */
+export function productPillTone(healthy: boolean | undefined, health: ProductHealth | undefined): "error" | "warning" | "success" {
+  if (!healthy || (health?.critical ?? 0) > 0) return "error";
+  if ((health?.warning ?? 0) > 0) return "warning";
+  return "success";
+}
 
 /** The card's subtitle: open counts by severity, then the week's change when known. */
 export function moduleCardSubtitle(

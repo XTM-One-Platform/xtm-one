@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { Icon } from "@filigran/design-system";
 import { ListTodo, ShieldOff } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,10 +8,12 @@ import { useNavigate } from "react-router-dom";
 import { DashboardNotice, NoticeAction } from "@/components/ui/dashboard-notice";
 import { EnterpriseUpsellNotice } from "@/components/ui/enterprise-upsell";
 import { useUpdateProfile } from "@/hooks/api/useAuthApi";
+import { useHealthFindings } from "@/hooks/api/useHealthApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { useWorkItemsWaitingForMe } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
+import { HEALTH_MODULE_LABELS, HEALTH_NOTICE_COVERED_CHECKS, checkTitle } from "@/lib/health-modules";
 import { exactCount, formatCount, isCompacted } from "@/lib/number-format";
 import { isSharedOauthIntegration } from "@/lib/utils";
 import type { Integration } from "@/types";
@@ -65,6 +68,43 @@ function WorkItemsWaitingForMeAlert() {
       {since
         ? t_i18n("Waiting for you since {date}: {reason}", { date: since, reason })
         : t_i18n("Waiting for you: {reason}", { reason })}
+    </DashboardNotice>
+  );
+}
+
+/**
+ * Dashboard alert for the critical findings Platform Health holds open (#101 S8b): the notice
+ * reads the engine's findings, never a second implementation of a check. Administrators only (the
+ * Health page is theirs). The checks a dedicated notice already says (model configuration,
+ * knowledge base health: `HEALTH_NOTICE_COVERED_CHECKS`) are left to that notice. Names the most
+ * recent one; Review opens the Overview tab of Platform Health. Renders nothing when none is open.
+ */
+function HealthCriticalFindingsAlert() {
+  const { t_i18n } = useFormatter();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const { data } = useHealthFindings({ severity: ["critical"], status: ["open"], limit: 200 }, { enabled: isAdmin });
+  if (!isAdmin) return null;
+  const findings = (data?.items ?? []).filter((f) => !HEALTH_NOTICE_COVERED_CHECKS.has(f.check_id));
+  if (findings.length === 0) return null;
+  const latest = findings.reduce((a, b) => (b.last_seen > a.last_seen ? b : a));
+  const open = () => navigate("/health?tab=overview");
+  const where = t_i18n(HEALTH_MODULE_LABELS[latest.module] ?? latest.module);
+  const what = latest.subject_name
+    ? `${checkTitle(latest.check_id, t_i18n)} (${latest.subject_name})`
+    : checkTitle(latest.check_id, t_i18n);
+  return (
+    <DashboardNotice
+      variant="error"
+      title={t_i18n("{count, plural, one {# critical finding is open in Platform Health} other {# critical findings are open in Platform Health}}", { count: findings.length })}
+      onClick={open}
+      actions={
+        <NoticeAction variant="error" onClick={open}>
+          <Icon name="compass" size={16} aria-hidden /> {t_i18n("Review")}
+        </NoticeAction>
+      }
+    >
+      {t_i18n("Most recent, {module}: {finding}", { module: where, finding: what })}
     </DashboardNotice>
   );
 }
@@ -158,6 +198,7 @@ export function DashboardNotices() {
       <EnterpriseUpsellNotice />
       <ModelConfigWarnings />
       <KBHealthWarnings />
+      <HealthCriticalFindingsAlert />
       <WorkItemsWaitingForMeAlert />
       <SharedOauthCredentialsAlert />
     </div>

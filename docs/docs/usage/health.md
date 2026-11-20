@@ -22,6 +22,13 @@ The **Overview** tab of the Platform Health page opens first. Every figure on it
 
 Administrators see every module. Anyone else sees the findings of the agents they manage (owner, or shared at the **config** level), without the module cards of the platforms.
 
+### On the home dashboard
+
+The home dashboard reads the same findings, for administrators:
+
+- **Product pills**: the dot of the OpenCTI, OpenAEV and OpenCRQ pill turns red when the platform is unreachable or its module holds an open critical finding, and amber on an open warning. Point at the pill to read the count.
+- **Critical findings notice**: when critical findings are open, a notice at the top of the dashboard gives their count and the most recent one; **Review** opens this tab. Model configuration and knowledge base findings keep their own notices, which every user sees.
+
 ## Reading a proposal
 
 Each proposal shows:

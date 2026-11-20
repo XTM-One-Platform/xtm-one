@@ -29,6 +29,8 @@ import {
   CTEM_STAGE_KEYS, CTEM_STAGE_CONFIG, CTEM_PRODUCT_INFO, CTEM_PRIORITY_CONFIG, CTEM_BAND_CONFIG, ICON_MAP, PROVIDER_LOGOS, ctemBestDeepLink, ctemDeepLink, ctemExpectationLabel, type CtemStageKey,
 } from "@/lib/constants";
 import { XTM_HUB_PROVIDER, xtmHubPill } from "@/lib/xtm-hub";
+import { productHealth, productPillTone, type ProductHealth } from "@/lib/health-modules";
+import { useHealthOverview } from "@/hooks/api/useHealthApi";
 import type { PlatformRegistration } from "@/hooks/api/usePlatformApi";
 import type { CtemStage, CtemVertical, CtemWidgetId, DigestItem } from "@/types";
 import { MetricInfo } from "@/components/ui/metric-info";
@@ -263,12 +265,15 @@ function KpiCard({
 
 // ── Product status pill ─────────────────────────────────────────────────────
 function ProductPill({
-  product, present, edition, healthy, version, url, comingSoon, onConnect, label, logo, compact = false,
+  product, present, edition, healthy, health, version, url, comingSoon, onConnect, label, logo, compact = false,
 }: {
   product: string;
   present: boolean;
   edition?: "EE" | "CE";
   healthy?: boolean;
+  /** The product's open findings in Platform Health (#101 S8b): the dot turns amber on a warning,
+   *  red on a critical, and the tooltip says the counts. Undefined when the reader has no module card. */
+  health?: ProductHealth;
   version?: string | null;
   url?: string | null;
   comingSoon?: boolean;
@@ -345,7 +350,14 @@ function ProductPill({
     compact ? "px-1.5" : "px-2.5",
   );
   // What the compact pill no longer writes out.
-  const summary = `${name}${version ? ` v${version}` : ""} - ${healthy ? t_i18n("Healthy") : t_i18n("Unreachable")}`;
+  const tone = productPillTone(healthy, health);
+  const findings = health && (health.critical > 0 || health.warning > 0)
+    ? health.critical > 0
+      ? t_i18n("{count, plural, one {# critical finding in Platform Health} other {# critical findings in Platform Health}}", { count: health.critical })
+      : t_i18n("{count, plural, one {# warning in Platform Health} other {# warnings in Platform Health}}", { count: health.warning })
+    : null;
+  const state = healthy ? (findings ?? t_i18n("Healthy")) : t_i18n("Unreachable");
+  const summary = `${name}${version ? ` v${version}` : ""} - ${state}`;
   const inner = (
     <>
       {logoSrc
@@ -360,25 +372,34 @@ function ProductPill({
           {edition}
         </Badge>
       )}
-      <span className={cn("h-1.5 w-1.5 rounded-full", healthy ? "bg-feedback-success-primary" : "bg-feedback-error-primary")} />
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          tone === "success" && "bg-feedback-success-primary",
+          tone === "warning" && "bg-feedback-warning-primary",
+          tone === "error" && "bg-feedback-error-primary",
+        )}
+      />
       {!compact && version && <span className="text-default-secondary">v{version}</span>}
       {!compact && href && <ExternalLink className="h-2.5 w-2.5 text-default-disabled" />}
     </>
   );
+  // A finding is worth a tooltip on the full pill too: its line only writes the name and version.
+  const tipped = compact || findings !== null;
   const pill = !href ? (
-    <span className={base} aria-label={compact ? summary : undefined}>{inner}</span>
+    <span className={base} aria-label={tipped ? summary : undefined}>{inner}</span>
   ) : (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={compact ? summary : undefined}
+      aria-label={tipped ? summary : undefined}
       className={cn(base, "hover:border-accent/30 transition-colors")}
     >
       {inner}
     </a>
   );
-  return compact ? <Tip content={summary}>{pill}</Tip> : pill;
+  return tipped ? <Tip content={summary}>{pill}</Tip> : pill;
 }
 
 /** A greyed sample row of the Live activity card: the card's one row layout
@@ -559,6 +580,8 @@ export default function CtemCommandCenter({
   // with it decides first, then the XTM Hub integrations the user can see.
   const { data: hubRegistration } = useXtmHubRegistrationStatus();
   const hubPill = useMemo(() => xtmHubPill(integrations, hubRegistration), [integrations, hubRegistration]);
+  // The product pills read the Platform Health engine (#101 S8b): an administrator's module cards.
+  const { data: healthOverview } = useHealthOverview({ enabled: isAdmin });
 
   const connectedLogos = useMemo(() => {
     if (!integrations) return [];
@@ -994,6 +1017,8 @@ export default function CtemCommandCenter({
             // Live connectivity from the registration (refetched every 30s),
             // not the cached posture snapshot.
             healthy={reg ? reg.healthy : posture?.products[p]?.healthy}
+            // The open findings of the product's module in Platform Health (#101 S8b).
+            health={reg ? productHealth(p, healthOverview) : undefined}
             version={reg?.platform_version ?? posture?.products[p]?.version}
             // The quick "open the platform" jump; ProductPill validates the URL.
             url={reg?.platform_url ?? posture?.products[p]?.url}

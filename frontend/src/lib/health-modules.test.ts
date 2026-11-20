@@ -12,8 +12,10 @@ import {
   evidenceLabel,
   moduleCardSubtitle,
   periodLabel,
+  productHealth,
+  productPillTone,
 } from "@/lib/health-modules";
-import type { HealthModuleCard } from "@/types";
+import type { HealthModuleCard, HealthOverview } from "@/types";
 
 const t = (key: string, values?: Record<string, string | number>) =>
   key.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? `{${name}}`));
@@ -104,6 +106,22 @@ describe("Platform Health labels (UX round 1 B2 on #634)", () => {
   it("gives every category a label", () => {
     expect(categories.size).toBeGreaterThan(3);
     expect([...categories].filter((category) => !Object.prototype.hasOwnProperty.call(HEALTH_CATEGORY_LABELS, category))).toEqual([]);
+  });
+
+  it("feeds a product pill from its module card, and nothing without one (#101 S8b)", () => {
+    const overview: HealthOverview = { modules: [card({ module: "opencti", critical: 2, warning: 1 })], overall: 42, scope: "all" };
+    expect(productHealth("opencti", overview)).toEqual({ critical: 2, warning: 1 });
+    expect(productHealth("openaev", overview)).toBeUndefined();
+    expect(productHealth("xtm-hub", overview)).toBeUndefined();
+    expect(productHealth("opencti", undefined)).toBeUndefined();
+  });
+
+  it("tones a pill red when unreachable or critical, amber on a warning, green otherwise", () => {
+    expect(productPillTone(false, undefined)).toBe("error");
+    expect(productPillTone(true, { critical: 1, warning: 0 })).toBe("error");
+    expect(productPillTone(true, { critical: 0, warning: 3 })).toBe("warning");
+    expect(productPillTone(true, { critical: 0, warning: 0 })).toBe("success");
+    expect(productPillTone(true, undefined)).toBe("success");
   });
 
   it("never shows a raw key, even for a check newer than this build", () => {
