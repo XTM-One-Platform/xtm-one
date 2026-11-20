@@ -12,6 +12,7 @@ import { useId, useState } from "react";
 import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
+import { CompactFigure } from "@/components/ui/compact-figure";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SettingsCard, SettingsSaveBar } from "@/components/ui/settings-form";
@@ -248,15 +249,27 @@ export function FileRetentionSection({ isAdmin }: { isAdmin: boolean }) {
                   )}
                 </td>
                 <td className="py-2 pr-3 text-right tabular-nums">
-                  {numbers.exactCount(c.files)}
+                  <CompactFigure exact={numbers.exactCount(c.files)} testId={`settings.file-retention.files.${c.category}`}>
+                    {numbers.count(c.files)}
+                  </CompactFigure>
                   {c.deleted > 0 && (
                     <div className="content-compact text-default-secondary">
-                      {t_i18n("{count, plural, one {# deleted} other {# deleted}}", { count: c.deleted })}
+                      <CompactFigure exact={t_i18n("{count, plural, one {# deleted} other {# deleted}}", { count: c.deleted })}>
+                        {t_i18n("{count, plural, one {{shown} deleted} other {{shown} deleted}}", { count: c.deleted, shown: numbers.count(c.deleted) })}
+                      </CompactFigure>
                     </div>
                   )}
                 </td>
                 <td className="py-2 pr-3 text-right tabular-nums">{formatFileSize(c.bytes) || "0 B"}</td>
-                <td className="py-2 text-right tabular-nums text-default-secondary">{swept != null ? fileCount(swept) : "-"}</td>
+                <td className="py-2 text-right tabular-nums text-default-secondary">
+                  {swept != null ? (
+                    <CompactFigure exact={fileCount(swept)} testId={`settings.file-retention.swept.${c.category}`}>
+                      {t_i18n("{count, plural, one {{shown} file} other {{shown} files}}", { count: swept, shown: numbers.count(swept) })}
+                    </CompactFigure>
+                  ) : (
+                    "-"
+                  )}
+                </td>
               </tr>
             );
           })}
