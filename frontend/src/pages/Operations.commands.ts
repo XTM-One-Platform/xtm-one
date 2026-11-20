@@ -14,12 +14,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Operations and Tasks (#775). One parent each, its tabs as sub-entries,
- * every target built by lib/task-routes.ts.
+ * Operations and Tasks (#775). One parent each, its tabs as sub-entries.
+ * The targets are literals (validate:commands reads them statically); they
+ * are the URIs lib/task-routes.ts builds, pinned by task-routes.test.ts.
  */
 import { ClipboardList, ListChecks } from "lucide-react";
 import { defineCommands } from "@/lib/commands/types";
-import { WORKSPACES_PATH, operationsPath, valuePath, workItemsPath } from "@/lib/task-routes";
 
 export default defineCommands([
   {
@@ -29,10 +29,10 @@ export default defineCommands([
     keywords: ["runs", "queue", "history"],
     icon: ClipboardList,
     children: [
-      { id: "operations.executions", category: "Operations", title: "Executions", navigate: operationsPath("executions") },
-      { id: "operations.backgroundTasks", category: "Operations", title: "Background Tasks", navigate: operationsPath("background-tasks") },
-      { id: "operations.sharedState", category: "Operations", title: "Shared State", navigate: operationsPath("shared-state") },
-      { id: "operations.worksets", category: "Operations", title: "Worksets", navigate: operationsPath("worksets") },
+      { id: "operations.executions", category: "Operations", title: "Executions", navigate: "/operations/executions" },
+      { id: "operations.backgroundTasks", category: "Operations", title: "Background Tasks", navigate: "/operations/background-tasks" },
+      { id: "operations.sharedState", category: "Operations", title: "Shared State", navigate: "/operations/shared-state" },
+      { id: "operations.worksets", category: "Operations", title: "Worksets", navigate: "/operations/worksets" },
     ],
   },
   {
@@ -42,9 +42,9 @@ export default defineCommands([
     keywords: ["work items", "to do", "value", "workspaces"],
     icon: ListChecks,
     children: [
-      { id: "tasks.workItems", category: "Tasks", title: "Work Items", navigate: workItemsPath() },
-      { id: "tasks.value", category: "Tasks", title: "Value", navigate: valuePath() },
-      { id: "tasks.workspaces", category: "Tasks", title: "Workspaces", navigate: WORKSPACES_PATH },
+      { id: "tasks.workItems", category: "Tasks", title: "Work Items", navigate: "/tasks/work-items" },
+      { id: "tasks.value", category: "Tasks", title: "Value", navigate: "/tasks/value" },
+      { id: "tasks.workspaces", category: "Tasks", title: "Workspaces", navigate: "/tasks/workspaces" },
     ],
   },
 ]);

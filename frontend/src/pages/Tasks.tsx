@@ -41,7 +41,7 @@ export default function Tasks() {
       <ListPageHeader
         title={
           <span className="flex items-center gap-2">
-            <Icon name="list-checks" size={28} className="text-accent" aria-hidden /> {t_i18n("Tasks page")}
+            <Icon name="list-checks" size={24} className="text-accent" aria-hidden /> {t_i18n("Tasks page")}
           </span>
         }
         infoLabel={t_i18n("About tasks")}
