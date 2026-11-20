@@ -51,6 +51,14 @@ const settings = {
   flow_watch_days: 7,
   flow_shadow_min_pairs: 5,
   dry_run: false,
+  opencti: {
+    connector_stale_minutes: 30,
+    connector_errors_max: 10,
+    queue_depth_max: 100000,
+    search_disk_max_percent: 85,
+    ingestion_lag_minutes: 15,
+  },
+  openaev: { integration_silent_minutes: 60, agents_offline_max_percent: 50 },
 };
 
 const budget = {

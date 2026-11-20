@@ -62,7 +62,8 @@ const SCHEDULE_INFO = {
   digest: "On: Platform Health writes a summary of the cycles closed since the last one, on the cron expression below. Off: no digest is written.",
 } as const;
 
-function NumberField({
+/** A bounded number with its unit; `display` writes the value at rest (a count with its thousands separator). */
+export function NumberField({
   label,
   info,
   unit,
@@ -72,6 +73,7 @@ function NumberField({
   step = 1,
   editing,
   onChange,
+  display = String,
 }: {
   label: string;
   info: string;
@@ -82,18 +84,24 @@ function NumberField({
   step?: number;
   editing: boolean;
   onChange: (value: number) => void;
+  display?: (value: number) => string;
 }) {
   const { t_i18n } = useFormatter();
   const id = useId();
   // At rest (#10855): the number and its unit as text, never a disabled input.
-  if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${value} ${unit}` : ""} />;
+  if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${display(value)} ${unit}` : ""} />;
+  // Out of bounds (or empty): the bound line turns into the field's inline error
+  // and the input is marked aria-invalid, so the reason Save is off sits at the field.
+  const invalid = !Number.isFinite(value) || value < min || value > max;
+  const bounds = t_i18n("From {min} to {max} {unit}.", { min, max, unit });
   return (
-    <SettingsField id={id} label={label} info={info} helper={t_i18n("From {min} to {max} {unit}.", { min, max, unit })}>
+    <SettingsField id={id} label={label} info={info} helper={invalid ? undefined : bounds} error={invalid ? bounds : undefined}>
       <div className="flex items-center gap-2">
         <Input
           id={id}
           aria-labelledby={settingsFieldLabelId(id)}
           aria-describedby={settingsFieldHintId(id)}
+          aria-invalid={invalid}
           type="number"
           inputMode="decimal"
           min={min}

@@ -46,6 +46,7 @@ import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
 
 import { BlockTitle, type BlockProps } from "./health-block";
+import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
 import { Spinner } from "@filigran/design-system";
@@ -416,7 +417,7 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
 }
 
 /** The blocks of the page, in order. Later levels append theirs here. */
-const BLOCKS: ((props: BlockProps) => React.JSX.Element)[] = [
+const BLOCKS: ((props: BlockProps) => React.JSX.Element | null)[] = [
   EnableBlock,
   ScopeBlock,
   BudgetBlock,
@@ -424,6 +425,8 @@ const BLOCKS: ((props: BlockProps) => React.JSX.Element)[] = [
   // Level 8 (#8261): schedule, signal thresholds, durations, dry-run.
   ScheduleBlock,
   SignalsBlock,
+  // #101 S10c: the OpenCTI and OpenAEV check thresholds (XTM One modes only).
+  ModuleThresholdsBlock,
   DurationsBlock,
   DryRunBlock,
 ];
@@ -440,7 +443,8 @@ export function HealthSection() {
   const valid =
     !!draft &&
     CAP_KEYS.every((key) => capValid(key, draft.budget[key])) &&
-    CEILING_KEYS.every((key) => ceilingValid(key, draft.analysis[key]));
+    CEILING_KEYS.every((key) => ceilingValid(key, draft.analysis[key])) &&
+    moduleThresholdsValid(draft);
 
   const submit = () => {
     if (!draft) return;
