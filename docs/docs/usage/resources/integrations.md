@@ -451,6 +451,10 @@ A GitLab integration lets an agent turn an exposure into a ticket the developmen
 
 For a connector OpenCTI deployed through its connector manager (XTM Composer), `manage_opencti_connector` with `action="logs"` and a `connector_id` returns the latest lines the manager reported, the ones the connector page of OpenCTI shows: `tail` lines (50 by default, at most 500), oldest first, under a line naming the connector, its status and its uptime. Long lines are cut, the answer stays under 30,000 characters (the oldest lines go first) and credential-shaped values are masked. `action="get"` also shows the last 5 lines. A connector OpenCTI does not manage has no logs there, and an OpenCTI version without managed connector logs is named as such.
 
+### OpenCTI: resetting a connector's state
+
+`manage_opencti_connector` with `action="reset_state"` and a `connector_id` does what the Reset state button of the connector page does: OpenCTI clears the connector's stored state and purges its queues, so it ingests again from the beginning. The answer names the messages that were waiting before the reset and what happens next: a running connector starts over on its next run, a stopped managed connector needs `action="start"`. It needs the `MODULES_MODMANAGE` capability, and on a binding without live writes it asks for approval like every other change.
+
 ### PagerDuty: paging on-call responders
 
 A PagerDuty integration lets an agent page the people on call when an exposure cannot wait, and follow the incident to its resolution.

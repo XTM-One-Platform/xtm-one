@@ -12,14 +12,15 @@ API key) interactively.
 * ``manage_opencti_connector`` - deploy a connector from the catalog
   (``managedConnectorAdd``), list deployed connectors, start/stop them
   (``updateConnectorRequestedStatus``), update configuration
-  (``managedConnectorEdit``), and delete them (``deleteConnector``).
+  (``managedConnectorEdit``), delete them (``deleteConnector``) and reset
+  their state and queues (``resetStateConnector``).
 
 Prerequisites (enforced server-side, surfaced as friendly errors here):
   * OpenCTI Enterprise Edition with a registered **connector manager**
     (XTM Composer). Without it, ``managedConnectorAdd`` fails with
     "There is no connector manager configured".
   * The API token's user needs ``CONNECTORAPI`` (deploy/edit) and
-    ``MODULES_MODMANAGE`` (start/stop/delete) capabilities.
+    ``MODULES_MODMANAGE`` (start/stop/delete/reset_state) capabilities.
 
 Secret configuration values (``format: "password"``) are RSA-encrypted
 **server-side** by OpenCTI using the connector manager's public key, so this
@@ -56,6 +57,7 @@ _CONNECTOR_APPLIES: dict[str, frozenset[str]] = {
     "start": frozenset({"connector_id"}),
     "stop": frozenset({"connector_id"}),
     "delete": frozenset({"connector_id"}),
+    "reset_state": frozenset({"connector_id"}),
 }
 
 # Substrings that mark a configuration key as sensitive. OpenCTI encrypts
@@ -104,6 +106,38 @@ _LOGS_QUERY = (
     " id name is_managed manager_current_status manager_requested_status"
     " manager_connector_uptime manager_connector_logs } }"
 )
+
+# reset_state: the queue depth is read before the reset, which purges it.
+_RESET_PRECHECK_QUERY = (
+    "query ConnectorResetPrecheck($id: String!) { connector(id: $id) {"
+    " id name active is_managed manager_current_status"
+    " connector_queue_details { messages_number } } }"
+)
+_RESET_STATE_MUTATION = "mutation ResetStateConnector($id: ID!) { resetStateConnector(id: $id) { id name } }"
+
+
+def _reset_state_report(node: dict, before: dict | None, connector_id: str) -> str:
+    """The answer of action 'reset_state': what was cleared and what happens next."""
+    label = f"Connector '{node.get('name') or connector_id}' (id: {node.get('id') or connector_id})"
+    queue = (before or {}).get("connector_queue_details") or {}
+    purged = queue.get("messages_number")
+    if isinstance(purged, (int, float)) and not isinstance(purged, bool):
+        purged_text = f"its queues purged ({int(purged)} message(s) waiting before the reset)"
+    else:
+        purged_text = "its queues purged (the queue depth could not be read before the reset)"
+    lines = [f"{label}: state cleared, {purged_text}."]
+    if before is None:
+        lines.append("Its status could not be read: check it with action='get'.")
+    elif before.get("is_managed") and before.get("manager_current_status") != "started":
+        lines.append(
+            f"It is {before.get('manager_current_status') or 'not started'}: "
+            "action='start' makes it ingest again from the beginning."
+        )
+    elif not before.get("active"):
+        lines.append("It is not running: it ingests from the beginning when it starts again.")
+    else:
+        lines.append("It ingests again from the beginning on its next run.")
+    return "\n".join(lines)
 
 
 def _coerce_tail(raw: object) -> int | None:
@@ -976,9 +1010,24 @@ def register(
                 return err
             return f"Deleted connector {connector_id}."
 
+        if action == "reset_state":
+            if not connector_id:
+                return "connector_id is required for action 'reset_state'."
+            # The queue depth is read first (best effort): resetStateConnector
+            # purges the queues, so afterwards the count would read 0.
+            before, before_err = await _gql(_RESET_PRECHECK_QUERY, {"id": connector_id})
+            current = None if before_err else before.get("connector")
+            if not before_err and not current:
+                return f"Connector {connector_id} not found."
+            data, err = await _gql(_RESET_STATE_MUTATION, {"id": connector_id})
+            if err:
+                return err
+            node = data.get("resetStateConnector") or current or {}
+            return _reset_state_report(node, current, connector_id)
+
         return (
             f"Unknown action '{action}'. Valid actions: list, get, logs, deploy, "
-            "update_config, start, stop, delete."
+            "update_config, start, stop, delete, reset_state."
         )
 
     executor.register("query_opencti_catalog", query_opencti_catalog)
@@ -1036,7 +1085,8 @@ def register(
                 "stored configuration, omitted settings and secrets kept, an empty "
                 "value resets a setting to its default; replace=true sends config "
                 "alone), 'start'/'stop' "
-                "(connector_id), 'delete' (connector_id). Requires Enterprise "
+                "(connector_id), 'delete' (connector_id), 'reset_state' "
+                "(connector_id: clears its state, purges its queues). Requires Enterprise "
                 "Edition with a running connector manager (XTM Composer); secret "
                 "values are encrypted server-side. Always confirm required "
                 "parameters with query_opencti_catalog get before deploying, and "
@@ -1059,6 +1109,7 @@ def register(
                             "start",
                             "stop",
                             "delete",
+                            "reset_state",
                         ],
                     },
                     "connector_id": {"type": "string"},
