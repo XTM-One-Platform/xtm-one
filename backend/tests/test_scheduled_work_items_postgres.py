@@ -307,6 +307,43 @@ async def test_a_cancelled_item_creates_no_run_and_leaves_the_upcoming_view(allo
         )
 
 
+@pytest.mark.asyncio
+async def test_the_cancel_tool_takes_an_id_prefix_of_the_persons_scheduled_item(allowed: object) -> None:
+    from app.services.builtin_tools import build_scheduling_tools
+    from app.tools.base import ToolCall
+
+    async with scratch_database("swi", tables=ALL_TABLES, extensions=("vector",)) as scratch:
+        user, agent, _conversation = await _seed(scratch.sessions)  # type: ignore[no-untyped-call]
+        due = swi.parse_due_at((datetime.now(UTC) + timedelta(hours=2)).isoformat())
+        item = await swi.create_scheduled_work_item(
+            user_id=str(user.id),
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            title="To cancel by prefix",
+            due=due,
+            action=swi.build_action("instruction", prompt="Nothing"),
+        )
+        _definitions, executor = build_scheduling_tools(
+            user_id=str(user.id), agent_id=str(agent.id), agent_name=agent.name
+        )
+        _stranger_definitions, stranger = build_scheduling_tools(
+            user_id=str(uuid.uuid4()), agent_id=str(agent.id), agent_name=agent.name
+        )
+        # Another person's prefix finds nothing: the usual refusal, nothing changed.
+        refused = await stranger.execute_tool(
+            ToolCall(id="c0", name="cancel_scheduled_work_item", arguments={"work_item_id": item["id"][:8]})
+        )
+        assert refused.content.startswith("Error:")
+        answer = await executor.execute_tool(
+            ToolCall(id="c1", name="cancel_scheduled_work_item", arguments={"work_item_id": item["id"][:8]})
+        )
+        assert answer.content.startswith("Cancelled"), answer.content
+        assert item["id"] in answer.content
+        async with scratch.sessions() as db:
+            stored = (await db.execute(select(WorkItem).where(WorkItem.id == uuid.UUID(item["id"])))).scalar_one()
+            assert stored.status == "cancelled"
+
+
 async def _block_as_interrupted(sessions, item_id: str) -> None:
     """A platform restart cut the item's run: it is left blocked."""
     async with sessions() as db:
