@@ -317,8 +317,6 @@ jobs:
           fi
 
       - uses: ./.github/actions/backend-venv
-        with:
-          compile-bytecode: "true"
 
       # The presentation editor's schema tripwires (tests/test_presentation_editor.py)
       # run the frontend catalog through Node (`scripts/dump-presentation-schema.mts`,
@@ -442,8 +440,6 @@ jobs:
           path: ${{ runner.temp }}/selection
 
       - uses: ./.github/actions/backend-venv
-        with:
-          compile-bytecode: "true"
 
       # The Ubuntu mirror of the runners is throttled at times (50 kB/s: over
       # ten minutes for the browser's system libraries and ffmpeg), so the
@@ -802,8 +798,6 @@ jobs:
           fi
 
       - uses: ./.github/actions/backend-venv
-        with:
-          compile-bytecode: "true"
 
       - name: Enable pgvector extension
         run: |
