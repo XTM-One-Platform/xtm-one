@@ -19738,7 +19738,7 @@
   "Runs once a day at most, only for modules whose findings changed.": "1 日に最大 1 回、検出結果が変わったモジュールに対してのみ実行されます。",
   "Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone of this section. The scheduler reads it at each tick.": "5 つのフィールド: 分、時、日、月、曜日。例: 0 3 * * * でこのセクションのタイムゾーンの毎日 03:00。スケジューラーが毎回読みます。",
   "The timezone the cron expressions of this section are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.": "このセクションの cron 式を解釈するタイムゾーン。例: Europe/Paris。Platform Health のすべてのスケジュールが使います。未選択の場合は UTC。",
-  "Not a valid cron expression": "無効な cron 式",
+  "Invalid cron": "無効な cron 式",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, other {承認待ちの提案 # 件}}",
   "No proposal awaits approval": "承認待ちの提案はありません",
   "Proposals and cycles": "提案とサイクル",
