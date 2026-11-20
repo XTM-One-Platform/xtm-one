@@ -13066,7 +13066,7 @@
   "Delayed run at {when}": "遅延実行 {when}",
   "Next run in the trigger's time zone, then in UTC": "次回実行 (トリガーのタイムゾーン、続いて UTC)",
   "Blocked on other items": "他の項目待ちでブロック中",
-  "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.": "下記の項目を待っており、すべて完了すると自動的にキューに戻ります。いずれかがキャンセルされた場合はブロックされたままです。",
+  "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.": "下記の項目を待っており、すべて完了するか、いずれかがキャンセルされると自動的にキューに戻ります。",
   "Blocked on {count, plural, one {# item} other {# items}}": "{count} 件の項目待ちでブロック中",
   "Waits for {count, plural, one {# item} other {# items}}": "{count, plural, other {# 件の項目を待機中}}",
   "a work item you cannot open": "開けないワークアイテム",
