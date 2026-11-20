@@ -111,6 +111,39 @@ _CATALOG_ID_IS_NOT_AN_INSTANCE = (
     "shows each connector_instance_id) or connector_instance_id."
 )
 
+#: Runtime fields of a connector instance get, in the order they are shown. An
+#: OpenAEV that does not send one leaves it out of the answer (older builds send
+#: only the id and the two statuses). The keys are the ones OpenAEV already uses
+#: for the instance (ConnectorInstancePersisted) and for the composer
+#: (XtmComposerInstanceOutput.connector_image).
+_INSTANCE_RUNTIME_FIELDS = (
+    ("connector_image", "image"),
+    ("connector_instance_started_at", "started at"),
+    ("connector_instance_restart_count", "restart count"),
+    ("connector_instance_is_in_reboot_loop", "in reboot loop"),
+)
+
+
+def _instance_runtime_lines(data: dict[str, object]) -> list[str]:
+    """The image and container lines of action='get', each only when OpenAEV sends it.
+
+    When OpenAEV reports no start time, the answer says so, so a reader never
+    takes a missing line for a confirmed rolling-image restart.
+    """
+    lines: list[str] = []
+    for key, label in _INSTANCE_RUNTIME_FIELDS:
+        value = data.get(key)
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        lines.append(f"  {label}: {value}")
+    if not data.get("connector_instance_started_at"):
+        lines.append(
+            "  started at: not reported by this OpenAEV (whether a new image was pulled cannot be read from here)"
+        )
+    return lines
+
 
 def register(
     base_url: str,
@@ -421,6 +454,7 @@ def register(
             lines.append(
                 f"  requested status: {data.get('connector_instance_requested_status')}"
             )
+            lines.extend(_instance_runtime_lines(data))
             return "\n".join(lines)
 
         if action == "update_config":
