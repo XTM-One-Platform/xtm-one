@@ -35,7 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.redis import decr_if_positive, redis_client
+from app.core.redis import decr_if_positive, redis_client, unprefixed_key
 from app.core.utils import format_exception_message
 from app.models.group import Group, GroupMember
 from app.models.platform_settings import PlatformSettings
@@ -3794,7 +3794,8 @@ async def _restore_clear_stash(redis: Redis, token: str) -> int:
     restored = 0
     batch: list[str] = []
     async for field, _held in redis.hscan_iter(stash, count=_CLEAR_STASH_BATCH):
-        batch.append(_as_text(field))
+        # The script stored the counter's name as Redis holds it.
+        batch.append(unprefixed_key(_as_text(field)))
         if len(batch) >= _CLEAR_STASH_BATCH:
             restored += int(
                 await redis.eval(_RESTORE_STASHED_LUA, 1 + len(batch), stash, *batch)

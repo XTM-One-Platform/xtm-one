@@ -93,6 +93,7 @@ The audit trail records the address each action came from, and reads it through 
 | `REDIS_SENTINEL_PASSWORD` | No | — | Password of the Sentinel nodes, separate from the Redis password. |
 | `REDIS_USERNAME` | No | — | Redis ACL user. In standalone mode it can also be part of `REDIS_URL`. |
 | `REDIS_DB` | No | `0` | Redis database number. |
+| `REDIS_KEY_PREFIX` | No | — | Prefix of every key, job queue and pub/sub channel the platform and the workers use, such as `xtm-one-prod:`, to share a Redis with other platforms or applications. A Redis user limited to the prefix is then enough: `ACL SETUSER xtm-one on >password ~xtm-one-prod:* &xtm-one-prod:* +@all`. No spaces and none of `* ? [ ] \`. Give the platform and the workers the same prefix. Changing it starts from an empty Redis: queued jobs and the other keys stay under the former prefix. |
 | `REDIS_SSL` | No | `false` | TLS to Redis in Sentinel mode. In standalone mode use a `rediss://` URL instead. |
 | `REDIS_SSL_CA_CERTS` | No | — | Path of the CA bundle that verifies the Redis certificate. |
 | `REDIS_SSL_CERT_REQS` | No | `required` | Certificate check: `required`, `optional` or `none`. |

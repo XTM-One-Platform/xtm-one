@@ -7,6 +7,7 @@ Infrastructure environment variables read by `backend/app/core/config.py`. A new
 All config is in `app/core/config.py`. Key vars:
 - `DATABASE_URL` – PostgreSQL async connection string
 - `REDIS_URL` – Redis connection string
+- `REDIS_KEY_PREFIX` – prefix of every Redis key, SAQ queue key and pub/sub channel (empty: none), so that a Redis user limited to `~<prefix>* &<prefix>*` is enough. Applied by the clients of `app/core/redis.py` (`app/core/redis_key_prefix.py`) and by the SAQ queue's own naming (`app/core/queue.py`); application code keeps the unprefixed names.
 - `SECRET_KEY` – Used for JWT + Fernet key derivation (MUST be strong in production)
 - `BASE_URL` – Backend URL for OAuth callbacks
 - `FRONTEND_URL` – Frontend URL for redirects

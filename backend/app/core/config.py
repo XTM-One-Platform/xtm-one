@@ -538,6 +538,11 @@ class Settings(BaseSettings):
     redis_socket_timeout: int = 5  # Seconds to wait for response
     redis_health_check_interval: int = 15  # Seconds between liveness pings
     redis_retry_on_timeout: bool = True  # Auto-retry on socket timeout
+    # Prefix of every key, worker queue and pub/sub channel the platform and
+    # the worker use, to share a Redis: a user whose ACL allows
+    # ``~<prefix>* &<prefix>*`` is enough. Empty = the names at the root.
+    # See ``app/core/redis_key_prefix.py``.
+    redis_key_prefix: str = ""
 
     # --- Redis HA mode (Sentinel) ---
     # "standalone" (default) → use REDIS_URL (single endpoint or proxy).
@@ -4189,6 +4194,13 @@ class Settings(BaseSettings):
         self.redis_mode = mode
         if mode == "sentinel" and not self.redis_sentinel_hosts.strip():
             raise ValueError('REDIS_MODE=sentinel requires REDIS_SENTINEL_HOSTS (comma-separated "host:port" list).')
+        # The prefix starts the glob patterns of SCAN, KEYS and pattern
+        # subscriptions, and the operator's ACL rules: no glob character,
+        # no space.
+        if any(c in "*?[]\\" or c.isspace() or not c.isprintable() for c in self.redis_key_prefix):
+            raise ValueError(
+                f"REDIS_KEY_PREFIX must not contain spaces or the characters * ? [ ] \\ (got {self.redis_key_prefix!r})"
+            )
 
         # Clamp KB-sync timeout to the documented ``[1, 86_400]`` window
         # at settings-load time. The runtime helper in

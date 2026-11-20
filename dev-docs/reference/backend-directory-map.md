@@ -50,6 +50,7 @@ backend/
 │   │   ├── rate_limit.py    ← Fixed-window rate limiting backed by Redis
 │   │   ├── redaction.py     ← Shared credential redaction
 │   │   ├── redis.py         ← Redis connection layer (standalone or Sentinel)
+│   │   ├── redis_key_prefix.py ← REDIS_KEY_PREFIX: the client classes that prefix keys and channels
 │   │   ├── registration_token.py ← The platform registration token: the one place it is read and compared
 │   │   ├── schema_readiness.py ← Holds the SAQ worker until the database schema has caught up with its code
 │   │   ├── scopes.py        ← The three scope vocabularies a flow node can offer

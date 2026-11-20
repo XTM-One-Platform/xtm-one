@@ -46,6 +46,7 @@ def _restore_redis_settings():
         "redis_ssl": s.redis_ssl,
         "redis_ssl_ca_certs": s.redis_ssl_ca_certs,
         "redis_ssl_cert_reqs": s.redis_ssl_cert_reqs,
+        "redis_key_prefix": s.redis_key_prefix,
     }
     yield
     s = _settings()
@@ -277,3 +278,54 @@ async def test_close_pool_sentinel():
 
     await redis_module.close_pool()
     mock_client.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_standalone_mode_without_a_prefix_builds_plain_clients():
+    """No ``REDIS_KEY_PREFIX``: the clients are redis-py's own, unchanged."""
+    import redis.asyncio as redis_asyncio
+
+    s = _settings()
+    s.redis_mode = "standalone"
+    s.redis_url = "redis://localhost:6379"
+    s.redis_key_prefix = ""
+    redis_module = _load_redis_module()
+
+    assert type(await redis_module.redis_client()) is redis_asyncio.Redis
+    assert type(await redis_module.redis_pubsub_client()) is redis_asyncio.Redis
+
+
+@pytest.mark.asyncio
+async def test_standalone_mode_with_a_prefix_builds_prefixed_clients():
+    from app.core.redis_key_prefix import prefixed_client_class
+
+    s = _settings()
+    s.redis_mode = "standalone"
+    s.redis_url = "redis://localhost:6379"
+    s.redis_key_prefix = "dev-xtmone1:"
+    redis_module = _load_redis_module()
+
+    prefixed = prefixed_client_class("dev-xtmone1:")
+    assert isinstance(await redis_module.redis_client(), prefixed)
+    assert isinstance(await redis_module.redis_pubsub_client(), prefixed)
+
+
+@pytest.mark.asyncio
+async def test_sentinel_mode_with_a_prefix_resolves_prefixed_clients():
+    from app.core.redis_key_prefix import prefixed_client_class
+
+    s = _settings()
+    s.redis_mode = "sentinel"
+    s.redis_sentinel_hosts = "s1:26379"
+    s.redis_sentinel_service = "mymaster"
+    s.redis_key_prefix = "dev-xtmone1:"
+
+    with patch("redis.asyncio.sentinel.Sentinel") as mock_sentinel_cls:
+        instance = MagicMock()
+        instance.master_for.return_value = MagicMock(name="master_client")
+        mock_sentinel_cls.return_value = instance
+        redis_module = _load_redis_module()
+        await redis_module.redis_pubsub_client()
+
+    prefixed = prefixed_client_class("dev-xtmone1:")
+    assert [c.kwargs["redis_class"] for c in instance.master_for.call_args_list] == [prefixed, prefixed]
