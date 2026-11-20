@@ -17,6 +17,70 @@
 
 export type ExtraFieldOption = { value: string; label: string };
 export type VisibleWhen = Record<string, Record<string, string[]>>;
+/** The typed control of an extra field, as the catalog declares it (`extra_field_inputs`). */
+export type ExtraFieldInputSpec = {
+  kind: string;
+  minimum?: number | null;
+  maximum?: number | null;
+  default?: string | null;
+  help?: string | null;
+};
+
+const DOMAIN_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
+/** The entries of a stored domain list (one per line, or split by spaces, commas or semicolons). */
+export function domainList(value: unknown): string[] {
+  return typeof value === "string" ? value.split(/[\s,;]+/).filter(Boolean) : [];
+}
+
+/** Whether an entry is a domain name, read as the server reads it (a leading `@` and a trailing dot tolerated). */
+function isDomainName(entry: string): boolean {
+  return DOMAIN_NAME.test(entry.toLowerCase().replace(/^@/, "").replace(/\.$/, ""));
+}
+
+/**
+ * What is wrong with a typed field's value: the domain entries that are not
+ * domain names, or an integer outside its bounds. Blank is never wrong (the
+ * default applies). Mirrors the backend's `invalid_extra_fields`.
+ */
+export function extraFieldProblem(
+  value: unknown,
+  spec: ExtraFieldInputSpec | undefined,
+): { badDomains: string[] } | { outOfRange: true } | null {
+  if (!spec) return null;
+  if (spec.kind === "domains") {
+    const badDomains = domainList(value).filter((entry) => !isDomainName(entry));
+    return badDomains.length > 0 ? { badDomains } : null;
+  }
+  if (spec.kind === "integer") {
+    const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value);
+    if (!text) return null;
+    const number = Number(text);
+    const low = spec.minimum ?? Number.NEGATIVE_INFINITY;
+    const high = spec.maximum ?? Number.POSITIVE_INFINITY;
+    return Number.isInteger(number) && number >= low && number <= high ? null : { outOfRange: true };
+  }
+  return null;
+}
+
+/** Whether any typed field of `values` breaks its rule, so the form refuses to save. */
+export function hasInvalidExtraField(
+  values: Record<string, unknown>,
+  specs: Record<string, ExtraFieldInputSpec> | null | undefined,
+): boolean {
+  return Object.entries(specs ?? {}).some(([key, spec]) => extraFieldProblem(values[key], spec) !== null);
+}
+
+/** The prefilled values of the typed fields that declare a default. */
+export function extraFieldDefaults(
+  specs: Record<string, ExtraFieldInputSpec> | null | undefined,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(specs ?? {})
+      .filter(([, spec]) => typeof spec.default === "string")
+      .map(([key, spec]) => [key, spec.default as string]),
+  );
+}
 
 /**
  * The value a controlling field should be treated as having.
