@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.api.v1 import settings as settings_api
 from app.api.v1.platform_settings_helpers import get_platform_settings
+from app.api.v1.schemas.settings import RefreshModelsRequest
 from app.core.config import settings
 from app.models.audit_log import AuditLog
 from app.models.llm_config import LLMProviderConfig
@@ -52,19 +53,38 @@ async def _admin(sessions, role: str = "admin") -> User:
         return admin
 
 
-async def _refresh(sessions, admin: User, provider_id) -> object:
+async def _refresh(sessions, admin: User, provider_id, *, discard_edits: bool = False) -> object:
     async with sessions() as db:
         # Loaded on the request's session, as get_current_user does.
         user = await db.get(User, admin.id)
         return await settings_api.refresh_llm_provider_models(
-            provider_id=str(provider_id), request=None, user=user, db=db, _ai_gate=None
+            provider_id=str(provider_id),
+            request=None,
+            body=RefreshModelsRequest(discard_edits=discard_edits),
+            user=user,
+            db=db,
+            _ai_gate=None,
         )
 
 
-async def _listed_flag(sessions, admin: User) -> bool:
+async def _gateway_response(sessions, admin: User):
     async with sessions() as db:
         providers = await settings_api.list_llm_providers(user=admin, db=db)
-    return next(p.models_listed for p in providers if p.provider == "filigran_gateway")
+    return next(p for p in providers if p.provider == "filigran_gateway")
+
+
+async def _listed_flag(sessions, admin: User) -> bool:
+    return (await _gateway_response(sessions, admin)).models_listed
+
+
+async def _edit_catalog(sessions, models: list[str]) -> None:
+    async with sessions() as db:
+        row = (
+            await db.execute(select(LLMProviderConfig).where(LLMProviderConfig.provider == "filigran_gateway"))
+        ).scalar_one()
+        row.available_models = models
+        row.default_model = models[0] if models else None
+        await db.commit()
 
 
 async def _row(sessions, provider: str) -> LLMProviderConfig:
@@ -373,3 +393,67 @@ async def test_a_refresh_does_not_pin_an_alphabetical_pick_platform_wide(monkeyp
         await _refresh(sessions, admin, row.id)
 
         assert (await _agent_default(sessions))[1] is None
+
+
+@pytest.mark.asyncio
+async def test_an_edited_catalog_follows_the_gateway_again_once_the_edits_are_discarded(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        await _edit_catalog(sessions, ["gpt-5.4"])
+        flags = await _gateway_response(sessions, admin)
+        assert (flags.models_listed, flags.models_followable) == (False, True)
+
+        await _refresh(sessions, admin, row.id, discard_edits=True)
+
+        assert (await _gateway_row(sessions)).available_models == CHAT
+        flags = await _gateway_response(sessions, admin)
+        assert (flags.models_listed, flags.models_followable) == (True, False)
+        async with sessions() as db:
+            entry = (await db.execute(select(AuditLog).where(AuditLog.entity_type == "llm_provider"))).scalar_one()
+        assert entry.details["discarded_edits"] is True
+        # It follows the gateway again at boot.
+        gateway.models = ["gemini-3-pro"]
+        await _boot()
+        assert (await _gateway_row(sessions)).available_models == ["gemini-3-pro"]
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_gateway_kept_unlisted_is_not_made_to_follow(monkeypatch):
+    """Pinned, the environment owns the catalog: next to a chat provider it lists nothing."""
+    async with _database() as sessions:
+        _env(
+            monkeypatch,
+            extra={"LLM_PROVIDER_OPENAI_API_KEY": "sk-openai", "LLM_PROVIDER_OPENAI_MODELS": "gpt-5.4"},
+        )
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        assert not (await _gateway_response(sessions, admin)).models_followable
+
+        with pytest.raises(HTTPException) as refused:
+            await _refresh(sessions, admin, row.id, discard_edits=True)
+
+        assert refused.value.status_code == 409
+        assert gateway.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_a_models_list_in_the_environment_cannot_be_followed_away(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch, editable=True, models="gpt-5.4")
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        assert not (await _gateway_response(sessions, admin)).models_followable
+
+        with pytest.raises(HTTPException) as refused:
+            await _refresh(sessions, admin, row.id, discard_edits=True)
+
+        assert refused.value.status_code == 409
+        assert gateway.calls == 0

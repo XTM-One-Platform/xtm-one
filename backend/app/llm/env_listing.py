@@ -83,6 +83,16 @@ def catalogs_to_list(providers: list[tuple[str, str]], rows: Iterable[Any], mode
     return {n for n in names if _to_list(n)}
 
 
+def catalogs_to_follow(providers: list[tuple[str, str]], rows: Iterable[Any], models_editable: bool) -> set[str]:
+    """The listed providers whose catalog an admin owns (editable mode only) and
+    may hand back to the listing; pinned, the environment decides alone."""
+    if not models_editable:
+        return set()
+    rows = list(rows)
+    eligible = {n for n, _ in providers if n in SEED_LISTED_PROVIDERS and env_models_for(n) is None}
+    return eligible - catalogs_to_list(providers, rows, models_editable)
+
+
 async def list_models_for_seed(provider_name: str, api_key: str) -> list[str] | None:
     """The chat models *provider_name* lists, or ``None`` when it cannot answer."""
     from app.llm.router import PROVIDER_MAP, is_chat_capable_model, provider_instance

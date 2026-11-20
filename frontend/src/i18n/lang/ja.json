@@ -19699,5 +19699,11 @@
   "Refresh models": "モデルを更新",
   "Models refreshed": "モデルを更新しました",
   "{count, plural, one {# model} other {# models}} listed.": "{count, plural, other {#件のモデル}}を取得しました。",
-  "Read the provider's model list again, as a restart would.": "再起動時と同じように、プロバイダーのモデル一覧を読み直します。"
+  "Read the provider's model list again, as a restart would.": "再起動時と同じように、プロバイダーのモデル一覧を読み直します。",
+  "Follow the provider's list": "プロバイダーの一覧に従う",
+  "Follow the provider's model list?": "プロバイダーのモデル一覧に従いますか？",
+  "Your edits to this list are discarded. It then follows the provider's own list, at every restart and refresh.": "この一覧への編集は破棄されます。以後は再起動や更新のたびにプロバイダー自身の一覧に従います。",
+  "Discard my edits": "編集を破棄",
+  "The model list follows the provider again": "モデル一覧は再びプロバイダーに従います",
+  "Discard the edits to this list and follow the provider's own list again.": "この一覧への編集を破棄し、再びプロバイダー自身の一覧に従います。"
 }

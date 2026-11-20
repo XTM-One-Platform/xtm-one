@@ -531,3 +531,65 @@ describe("ProviderCard refresh of a listed catalog", () => {
     expect(refreshButton()).toBeDisabled();
   });
 });
+
+describe("ProviderCard follow of an edited listed catalog", () => {
+  const EDITED: LLMProvider = {
+    ...PROVIDER,
+    provider: "filigran_gateway",
+    display_name: null,
+    is_from_env: true,
+    models_env_locked: false,
+    models_listed: false,
+    models_followable: true,
+  };
+
+  function renderCard(provider: LLMProvider, isAdmin = true) {
+    renderWithProviders(
+      <ProviderCard
+        provider={provider}
+        isAdmin={isAdmin}
+        isEditingModels={false}
+        onEditModels={() => {}}
+        onCloseEditModels={() => {}}
+        onDelete={() => {}}
+        onRenameDisplayName={() => {}}
+        onUpdateModels={() => {}}
+        onUpdateAccess={() => {}}
+        isUpdating={false}
+        platformDefaultModel={null}
+        canSetPlatformDefault={false}
+        onSetPlatformDefault={() => {}}
+      />,
+    );
+  }
+
+  const followButton = () => screen.queryByRole("button", { name: "Follow the provider's list" });
+
+  it("discards the edits once the admin confirms", async () => {
+    post.mockResolvedValue({ ...EDITED, models_listed: true, models_followable: false });
+    renderCard(EDITED);
+    fireEvent.click(followButton()!);
+    fireEvent.click(await screen.findByRole("button", { name: "Discard my edits" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/settings/llm-providers/p-1/refresh-models", { discard_edits: true }),
+    );
+  });
+
+  it("keeps the edits when the admin cancels", async () => {
+    renderCard(EDITED);
+    fireEvent.click(followButton()!);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is offered only for an edited catalog that may follow, to an admin", () => {
+    renderCard({ ...EDITED, models_followable: false });
+    expect(followButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh models" })).toBeNull();
+  });
+
+  it("is not offered to someone who is not an admin", () => {
+    renderCard(EDITED, false);
+    expect(followButton()).toBeNull();
+  });
+});

@@ -19699,5 +19699,11 @@
   "Refresh models": "Refresh models",
   "Models refreshed": "Models refreshed",
   "{count, plural, one {# model} other {# models}} listed.": "{count, plural, one {# model} other {# models}} listed.",
-  "Read the provider's model list again, as a restart would.": "Read the provider's model list again, as a restart would."
+  "Read the provider's model list again, as a restart would.": "Read the provider's model list again, as a restart would.",
+  "Follow the provider's list": "Follow the provider's list",
+  "Follow the provider's model list?": "Follow the provider's model list?",
+  "Your edits to this list are discarded. It then follows the provider's own list, at every restart and refresh.": "Your edits to this list are discarded. It then follows the provider's own list, at every restart and refresh.",
+  "Discard my edits": "Discard my edits",
+  "The model list follows the provider again": "The model list follows the provider again",
+  "Discard the edits to this list and follow the provider's own list again.": "Discard the edits to this list and follow the provider's own list again."
 }
