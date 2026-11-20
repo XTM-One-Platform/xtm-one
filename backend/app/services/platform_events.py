@@ -360,6 +360,23 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _RELEASE_KEYS,
     },
+    "integration.version.changed": {
+        "description": (
+            "A connected OpenCTI, OpenAEV or OpenCRQ platform reported a version other than the one recorded, "
+            "on its registration heartbeat (once per platform and upgrade; not on a first registration): wait "
+            "for a module upgrade instead of polling its version. Payload: provider, platform_identifier, "
+            "integration_id, previous_version, version, first_seen_at. Platform-wide: heard by every "
+            "subscriber whatever its scope."
+        ),
+        "filter_keys": (
+            "provider",
+            "platform_identifier",
+            "integration_id",
+            "previous_version",
+            "version",
+            "first_seen_at",
+        ),
+    },
     "platform.default_model_route.changed": {
         "description": (
             "A default model route of Settings > AI and models > Models (agent_default, routing, fallback, "
@@ -394,7 +411,9 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
 #: The events about the platform itself rather than an object someone takes
 #: part in: a build belongs to no one and its version is shown to every user,
 #: so a ``scope: own`` subscriber hears them too.
-PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset({"platform.release.deployed", "platform.default_model_route.changed"})
+PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
+    {"platform.release.deployed", "platform.default_model_route.changed", "integration.version.changed"}
+)
 
 
 def event_names(config: Mapping[str, Any] | None) -> list[str]:

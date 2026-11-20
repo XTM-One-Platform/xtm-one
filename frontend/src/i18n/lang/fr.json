@@ -2004,6 +2004,7 @@
   "Connect {name}": "Connecter {name}",
   "Connect {product} to {platform}": "Connecter {product} à {platform}",
   "Connected": "Connecté",
+  "Connected platform upgraded": "Plateforme connectée mise à jour",
   "Connected MCP Servers": "Serveurs MCP connectés",
   "Connecting integrations…": "Connexion des intégrations…",
   "Connecting to server...": "Connexion au serveur...",

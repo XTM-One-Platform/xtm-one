@@ -41,7 +41,9 @@ Copilot: its rows are not read here and not guessed.
 Trigger types an assignment accepts today: `schedule`, `webhook`,
 `integration_event`, `manual`, `work_item`, `platform_event`
 (`agent_builder.ASSIGNMENT_TRIGGER_TYPES`). `platform_event` covers
-`work_item.*`, `run.*` and `platform.release.deployed` only: no module event.
+`work_item.*`, `run.*`, `platform.release.deployed` and, for a module's
+upgrade, `integration.version.changed` (a registered platform's heartbeat
+reporting a new version, `services/integration_versions.py`; #584).
 The OpenCTI integration exposes notifier and trigger management
 (`manage_opencti_trigger`, `manage_opencti_notifier`) that S2 builds on; per
 the program brief, the OpenCTI integration event is a create / update / delete
