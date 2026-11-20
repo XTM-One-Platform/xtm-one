@@ -1459,6 +1459,19 @@ def build_work_item_tools(
             return "Error: failed to resolve the scope of the listing. Please try again."
         if isinstance(resolved, str):
             return resolved
+        scope_clause = resolved.work_item_clause()
+        from app.a2a.partner_scope import current_partner
+
+        partner = current_partner()
+        if partner is not None:
+            # Inside an A2A partner task: the tickets that partner's own tasks
+            # filed, on top of the scope, never the run-as identity's reach.
+            from sqlalchemy import and_
+
+            from app.a2a.partner_runs import partner_work_items_clause
+
+            partner_clause = partner_work_items_clause(partner)
+            scope_clause = partner_clause if scope_clause is None else and_(scope_clause, partner_clause)
         filters = {
             "user_id": acting_user_id,
             "owner_agent_id": owner_filter,
@@ -1468,7 +1481,7 @@ def build_work_item_tools(
             "stale_only": stale_only,
             "reader": writer,
             # The caller's fleet or own items; None reads all it can see.
-            "scope": resolved.work_item_clause(),
+            "scope": scope_clause,
             "blocked_on": waited_for,
             "correlation_key_prefix": correlation_key_prefix or None,
             "search": text or None,

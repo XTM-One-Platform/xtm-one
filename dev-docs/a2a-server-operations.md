@@ -175,6 +175,7 @@ delegation carries in its execution payload (`a2a_partner_task`). In it:
 | Trace inspection (`inspect_my_traces`, `inspect_agent_traces`, `get_trace_payload`) | Nothing, explicit or implied by `agent_builder` (`agent_chat._turn_trace_tool_ids`, `traces.may_read_agent_traces`): an agent's traces hold its users' conversations |
 | `agent_builder` | Its reviewed read half only (`mcp_xtm.XTM_MCP_READ_TOOLS`), acting as an anonymous caller: company-managed entities, no write tool wired (`agent_chat._platform_builder_actor`) |
 | `list_runs`, `get_run` | The run history of the same partner's own tasks only (`a2a/partner_runs.py`): the runs its A2A tasks started and the runs those spawned through `parent_run_id`, each naming its partner task; the delivered result only for the run a task maps to, never a prompt, tool call or trace. Scoped by the partner principal (exposure and OAuth client, carried by the scope and by a delegation's `a2a_partner_principal` payload key), never by the run-as identity; any other run answers like an unknown id |
+| `list_work_items` | The tickets the same partner's own tasks filed only (`a2a/partner_runs.partner_work_items_clause`): the items whose `origin_run_id` is a run of that partner's run tree, on top of the desk's scope, so one call reads the status of every ticket the partner filed. Another partner's tickets and the run-as identity's other items are never listed |
 | `flow_builder`, the evaluation tools | Not wired |
 | Everything else | Unchanged, as the run-as user |
 
