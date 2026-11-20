@@ -20,9 +20,12 @@
  * - wide (>= 135rem): one row, title | stats | actions | chips;
  * - medium (>= 90rem): title | stats | actions, the chips on a thin row
  *   under it, right aligned;
- * - narrow: title | actions on the first row, the stat cells inline
- *   (label, then value on one line) on a full row of their own, the chips on
- *   a thin row under them. The title column keeps the room of a greeting.
+ * - narrow: the breadcrumb on a full row of its own, then title | actions
+ *   (the actions on the h1 line), the stat cells inline (label, then value on
+ *   one line) on a full row of their own, the chips on a thin row under them.
+ *   The title column keeps the room of a greeting (UX round 2 on #605: in the
+ *   title column the breadcrumb ran to 3 lines at 1080 and pushed the actions
+ *   above the h1).
  * The thresholds hold the widest command center band (five cells, the
  * actions and four product pills) without a track painting over another (UX
  * round 1 on #11677, B1 and B2). Every element keeps one line
@@ -95,7 +98,10 @@ export function headerLayout(widthPx: number | null): CtemHeaderLayout {
 }
 
 /** The grid tracks and areas of a layout, only the areas the band draws. */
-export function headerGrid(layout: CtemHeaderLayout, has: { stats: boolean; chips: boolean }): { columns: string; areas: string } {
+export function headerGrid(
+  layout: CtemHeaderLayout,
+  has: { stats: boolean; chips: boolean; crumb?: boolean },
+): { columns: string; areas: string } {
   if (layout === "wide") {
     return { columns: "minmax(0,auto) minmax(0,1fr) auto auto", areas: "'title stats acts chips'" };
   }
@@ -108,7 +114,9 @@ export function headerGrid(layout: CtemHeaderLayout, has: { stats: boolean; chip
   return {
     // The title keeps a greeting's room before the actions take theirs.
     columns: "minmax(min(14rem,100%),1fr) auto",
-    areas: ["'title acts'", has.stats && "'stats stats'", has.chips && "'chips chips'"].filter(Boolean).join(" "),
+    areas: [has.crumb && "'crumb crumb'", "'title acts'", has.stats && "'stats stats'", has.chips && "'chips chips'"]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 
@@ -150,7 +158,53 @@ export function CtemPageHeader({
   }, [onContentHeight]);
   const layout = headerLayout(width);
   const stacked = layout !== "narrow";
-  const grid = headerGrid(layout, { stats: hasStats, chips: hasChips });
+  const hasCrumb = Boolean(back || eyebrow || crumbExtras);
+  // Narrow: the breadcrumb takes a full-width row of the band, so its line
+  // wraps on the band's width and the actions sit on the h1 line.
+  const crumbRow = hasCrumb && layout === "narrow";
+  const grid = headerGrid(layout, { stats: hasStats, chips: hasChips, crumb: crumbRow });
+  const breadcrumb = hasCrumb && (
+    <nav
+      aria-label={t_i18n("Breadcrumb")}
+      style={crumbRow ? CRUMB_ROW_STYLE : BREADCRUMB_STYLE}
+      className="flex min-w-0 items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap content-caption text-default-secondary"
+    >
+      {back ? (
+        <>
+          <Link
+            to={back.to}
+            className={cn("inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-accent transition-colors", BUTTON_ROLE_FOCUS_RING)}
+            data-testid="ctem-page-header-back"
+          >
+            <Icon name="chevron-left" size={16} /> {t_i18n(back.label)}
+          </Link>
+          {crumb && (
+            <>
+              <span aria-hidden>/</span>
+              {/* The current page keeps its words ("Stage 2 of 5" was cut
+                  at 1080, A1 of round 2 on #11677): the chips after it give way. */}
+              <span className="shrink-0 font-medium text-default-primary" aria-current="page" title={crumb}>
+                {crumb}
+              </span>
+            </>
+          )}
+        </>
+      ) : (
+        eyebrow
+      )}
+      {/* The extras are items of the breadcrumb line itself (the wrapper
+          draws no box): the back link and the current page stay on line 1,
+          an extra that does not fit goes whole to the next caption line,
+          which starts at the left edge of the breadcrumb, never in a column
+          beside the crumb (#604, UX round 1 on #605). An item wider than the
+          whole line still truncates on its own. */}
+      {crumbExtras && (
+        <span style={CRUMB_EXTRAS_STYLE} data-testid="ctem-page-header-crumb-extras">
+          {crumbExtras}
+        </span>
+      )}
+    </nav>
+  );
   return (
     <div data-testid="ctem-page-header" data-layout={layout}>
       <header
@@ -161,35 +215,9 @@ export function CtemPageHeader({
           className,
         )}
       >
+        {crumbRow && breadcrumb}
         <div className="flex min-w-0 flex-col gap-0.5 [grid-area:title]" data-testid="ctem-page-header-title">
-          {(back || eyebrow || crumbExtras) && (
-            <nav aria-label={t_i18n("Breadcrumb")} className="flex min-w-0 items-center gap-1.5 whitespace-nowrap content-caption text-default-secondary">
-              {back ? (
-                <>
-                  <Link
-                    to={back.to}
-                    className={cn("inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-accent transition-colors", BUTTON_ROLE_FOCUS_RING)}
-                    data-testid="ctem-page-header-back"
-                  >
-                    <Icon name="chevron-left" size={16} /> {t_i18n(back.label)}
-                  </Link>
-                  {crumb && (
-                    <>
-                      <span aria-hidden>/</span>
-                      {/* The current page keeps its words ("Stage 2 of 5" was cut
-                          at 1080, A1 of round 2 on #11677): the chips after it give way. */}
-                      <span className="shrink-0 font-medium text-default-primary" aria-current="page" title={crumb}>
-                        {crumb}
-                      </span>
-                    </>
-                  )}
-                </>
-              ) : (
-                eyebrow
-              )}
-              {crumbExtras && <span className="flex min-w-0 shrink items-center gap-2 overflow-hidden">{crumbExtras}</span>}
-            </nav>
-          )}
+          {!crumbRow && breadcrumb}
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate font-sans-geologica text-xl font-bold leading-tight tracking-tight" title={title}>
               {title}
@@ -250,6 +278,15 @@ export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderSt
 
 /** Wrap, never clip: the rule the no-overflow test pins. */
 export const STAT_ROW_STYLE = { flexWrap: "wrap", overflow: "visible" } as const;
+
+/** The breadcrumb line wraps whole items onto a second caption line, never clips them (#604); read by the test. */
+export const BREADCRUMB_STYLE = { flexWrap: "wrap", minWidth: 0 } as const;
+
+/** The extras wrapper draws no box: its items flow on the breadcrumb line (#604, UX round 1 on #605); read by the test. */
+export const CRUMB_EXTRAS_STYLE = { display: "contents" } as const;
+
+/** Narrow band: the breadcrumb on its own full-width grid row (UX round 2 on #605); read by the test. */
+export const CRUMB_ROW_STYLE = { ...BREADCRUMB_STYLE, gridArea: "crumb" } as const;
 
 function StatCell({ stat, stacked }: { stat: CtemHeaderStat; stacked: boolean }) {
   const body = (
