@@ -255,9 +255,23 @@ async def test_the_health_check_fires_when_the_maintenance_is_overdue(redis):
     await redis.set(wcs._key(JOB, "since"), T0.isoformat())
     [stalled] = await platform_checks.maintenance_stalled(SimpleNamespace(), now)
     assert stalled.failing
-    assert "has not run since never" in stalled.recommendation
+    assert "has never completed" in stalled.recommendation
+    # Never completed: no "never" word as a value, overdue two intervals after the first schedule.
+    assert stalled.evidence["values"] == {"overdue_since": (T0 + 2 * JOB.interval).isoformat()}
 
     claim = await wcs.claim(JOB, now=now)
     await wcs.complete(claim, now=now)
     [fine] = await platform_checks.maintenance_stalled(SimpleNamespace(), now + timedelta(minutes=5))
     assert not fine.failing
+    assert "overdue_since" not in fine.evidence["values"]
+
+    # Completed 3 hours ago, first scheduled long before: overdue since last completed + 2 intervals,
+    # never since the first schedule (UX round 3 B1 on #769).
+    later = now + timedelta(hours=3)
+    [late] = await platform_checks.maintenance_stalled(SimpleNamespace(), later)
+    assert late.failing
+    assert late.evidence["values"] == {
+        "last_completed_at": now.isoformat(),
+        "overdue_since": (now + 2 * JOB.interval).isoformat(),
+    }
+    assert f"has not run since {now.isoformat()}" in late.recommendation

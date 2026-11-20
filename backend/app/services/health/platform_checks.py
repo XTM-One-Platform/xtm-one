@@ -559,22 +559,40 @@ async def maintenance_stalled(db: AsyncSession, now: datetime) -> list[CheckResu
     state = await wall_clock_schedule.status(job, now=now)
     if state.since is None and state.last_completed_at is None:  # never scheduled yet, or Redis unreadable
         return []
-    last = state.last_completed_at.isoformat() if state.last_completed_at else "never"
+    # The row reads what is true (UX round 3 B1, B2 on #769): when the job became overdue (two
+    # intervals after its last completed pass, or after it was first scheduled), and the last
+    # completed pass only when one exists, never an English "never" printed as a value.
+    reference = state.last_completed_at or state.since
+    overdue_since = reference + 2 * job.interval if state.overdue and reference else None
+    # A literal "values" block, so the frontend label gate (health-modules.test.ts) sees its keys;
+    # an absent value is left out rather than printed as "null".
+    evidence = {
+        "values": {
+            "last_completed_at": state.last_completed_at.isoformat() if state.last_completed_at else None,
+            "overdue_since": overdue_since.isoformat() if overdue_since else None,
+        },
+        "threshold": "2 hours",
+        "source": "scheduler schedule hourly_maintenance",
+    }
+    evidence["values"] = {key: value for key, value in evidence["values"].items() if value is not None}
+    if state.last_completed_at:
+        recommendation = (
+            f"Hourly maintenance has not run since {state.last_completed_at.isoformat()}: read the web process "
+            "logs for 'Schedule of hourly_maintenance' and the errors of the scheduler tick."
+        )
+    else:
+        recommendation = (
+            "Hourly maintenance has never completed since it was first scheduled: read the web process logs "
+            "for 'Schedule of hourly_maintenance' and the errors of the scheduler tick."
+        )
     return [
         _result(
             "xtm_one.maintenance_stalled",
             "warning",
             "availability",
             state.overdue,
-            evidence={
-                "values": {"last_completed_at": last, "since": state.since.isoformat() if state.since else None},
-                "threshold": "2 hours",
-                "source": "scheduler schedule hourly_maintenance",
-            },
-            recommendation=(
-                f"Hourly maintenance has not run since {last}: read the web process logs for "
-                "'Schedule of hourly_maintenance' and the errors of the scheduler tick."
-            ),
+            evidence=evidence,
+            recommendation=recommendation,
         )
     ]
 

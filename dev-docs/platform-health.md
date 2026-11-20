@@ -338,7 +338,9 @@ The rows still owed (sandbox latency, version, certificates) follow in S4f.
 maintenance of the scheduler tick, retention sweeps and purges included, has not completed
 in two hours since it was first scheduled; read from the persisted wall-clock schedule
 `services/wall_clock_schedule.py`, Redis keys `schedule:hourly_maintenance:*`; nothing
-recorded before the first schedule or when Redis cannot be read).
+recorded before the first schedule or when Redis cannot be read). Evidence: `last_completed_at`
+(left out when no pass completed) and `overdue_since` (last completed pass, or first schedule,
+plus two intervals); no English word is ever sent as a value.
 
 **Implementation (S4f).** Two daily checks (`DAILY_CHECK_INTERVAL`, 1 day), the only
 platform checks that reach the network: `xtm_one.version_behind` (info when one newer
