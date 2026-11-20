@@ -199,7 +199,10 @@ class _RecordingApi:
         return _FakeResp(self._data), None
 
     def last_json(self) -> dict:
-        return self.calls[-1]["json"] or {}
+        # The last call that sent a body: a write may be followed by a
+        # read-back GET (atomic tests read their stored targets, #660).
+        sent = [c["json"] for c in self.calls if c["json"] is not None]
+        return sent[-1] if sent else {}
 
 
 async def _run(executor, name, arguments):

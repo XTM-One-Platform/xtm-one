@@ -24,6 +24,7 @@ from ._common import (
     inject_targets_line,
     json_answer,
     mirror_content_targets,
+    stored_targets_line,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,27 @@ def register(
     ) -> str:
         action = (action or "").strip().lower()
 
+        async def _stored_inject(iid: str) -> object:
+            # The atomic-testing routes answer InjectResultOverviewOutput, which
+            # carries no inject_assets / inject_asset_groups: the stored
+            # relations are read from the inject itself (a read, never a write).
+            if not iid:
+                return None
+            resp, err = await _api(
+                base_url,
+                headers,
+                "get",
+                f"/api/injects/{iid}",
+                "read the stored targets of the atomic test",
+                retry_transient=True,
+            )
+            if err or resp is None:
+                return None
+            try:
+                return resp.json()
+            except ValueError:
+                return None
+
         def _atomic_body(for_create: bool) -> dict:
             # Only send fields the caller provided so an 'update' that changes
             # one attribute cannot wipe the title / targeting. On 'create' send
@@ -161,7 +183,12 @@ def register(
             )
             if err:
                 return err
-            return json_answer(resp.json())
+            answer = resp.json() if resp is not None else {}
+            stored = await _stored_inject(inject_id)
+            # A read adds the line only from relations it could read: no claim
+            # when the inject read failed.
+            line = inject_targets_line(stored)
+            return f"{line}\n{json_answer(answer)}" if line else json_answer(answer)
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -198,9 +225,13 @@ def register(
             if err:
                 return err
             i = resp.json()
+            if not isinstance(i, dict):
+                i = {}
             verb = "Created" if action == "create" else "Updated"
             lines = [f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."]
-            lines += [t for t in (targets_note, inject_targets_line(i)) if t]
+            stored = await _stored_inject(str(i.get("inject_id") or inject_id or ""))
+            targets = stored_targets_line(i, stored, body.get("inject_assets"), body.get("inject_asset_groups"))
+            lines += [t for t in (targets_note, targets) if t]
             return "\n".join(lines)
 
         if action == "delete":

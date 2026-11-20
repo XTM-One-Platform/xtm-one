@@ -91,8 +91,10 @@ def test_mirror_leaves_content_without_targets_alone(content: Any) -> None:
 def test_targets_line_names_relations_and_warns_when_empty() -> None:
     stored = inject_targets_line({"inject_asset_groups": [{"asset_group_id": GROUP}], "inject_assets": []})
     assert stored == f"Targets stored: 1 asset group(s) [{GROUP}], 0 asset(s)."
-    empty = inject_targets_line({"inject_content": {"target_selector": "asset-groups"}})
+    empty = inject_targets_line({"inject_assets": [], "inject_content": {"target_selector": "asset-groups"}})
     assert "the injector receives no target" in empty
+    # Relations absent from the answer are unknown, not empty (xtm-one #660).
+    assert inject_targets_line({"inject_content": {"target_selector": "asset-groups"}}) == ""
     assert inject_targets_line("not an object") == ""
 
 
@@ -143,7 +145,8 @@ async def test_atomic_testing_create_writes_the_group_relation(monkeypatch: pyte
         "manage_openaev_atomic_testing",
         {"action": "create", "title": "Nmap", "injector_contract_id": "c1", "content": CONTENT},
     )
-    assert api.calls[-1]["json"]["inject_asset_groups"] == [GROUP]
+    post = [c for c in api.calls if c["method"] == "post"][-1]
+    assert post["json"]["inject_asset_groups"] == [GROUP]
     assert f"Targets stored: 1 asset group(s) [{GROUP}]" in content
 
 
