@@ -2322,7 +2322,7 @@ async def update_work_item(
                 title=item.title if title is None else title,
                 payload=item.payload if payload is None else payload,
                 user_id=item.user_id,
-                workspace_id=item.workspace_id,
+                workspace_id=getattr(item, "workspace_id", None),
             )
         from app.services.scheduled_work_items import refuse_generic_action_write
 
