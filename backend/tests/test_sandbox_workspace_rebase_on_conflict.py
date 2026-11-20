@@ -39,5 +39,31 @@ def test_a_clean_merge_is_the_same_whatever_the_mode() -> None:
         assert merge_file(base.encode(), ours.encode(), theirs.encode(), on_conflict=mode).data == b"A\nb\nc\nd\nE\n"
 
 
+def test_ref_keeps_the_ref_lines_alone_and_merges_the_other_hunks() -> None:
+    base, ours, theirs = "x\na\nold()\nc\n", "X\na\nold()\nmine()\nc\n", "x\na\nnew()\nc\n"
+    outcome = merge_file(base.encode(), ours.encode(), theirs.encode(), on_conflict=OnConflict.REF)
+    assert outcome.data == b"X\na\nnew()\nc\n"
+    assert outcome.conflicts == 0 and not has_conflict_markers(outcome.data)
+
+
+def test_workspace_keeps_the_workspace_lines_alone() -> None:
+    outcome = merge_file(BASE.encode(), OURS.encode(), THEIRS.encode(), on_conflict=OnConflict.WORKSPACE)
+    assert outcome.data == OURS.encode()
+    assert outcome.conflicts == 0
+
+
+def test_a_binary_changed_on_both_sides_takes_the_chosen_side() -> None:
+    base, ours, theirs = b"\x00\x01base", b"\x00\x01ours", b"\x00\x01theirs"
+    assert merge_file(base, ours, theirs, on_conflict=OnConflict.REF).data == theirs
+    assert merge_file(base, ours, theirs, on_conflict=OnConflict.WORKSPACE).data == ours
+    assert merge_file(base, ours, theirs).conflicts == 1
+
+
 def test_the_modes_are_named_as_the_tool_takes_them() -> None:
-    assert [mode.value for mode in OnConflict] == ["markers", "ref-then-workspace", "workspace-then-ref"]
+    assert [mode.value for mode in OnConflict] == [
+        "markers",
+        "ref-then-workspace",
+        "workspace-then-ref",
+        "ref",
+        "workspace",
+    ]
