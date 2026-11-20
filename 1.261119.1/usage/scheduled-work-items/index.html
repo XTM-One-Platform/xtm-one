@@ -4072,7 +4072,7 @@
 </table>
 <p>A scheduled item is private to the person who scheduled it, whatever the agent: it runs with their identity and shows their content.</p>
 <h2 id="manage-scheduled-items">Manage scheduled items</h2>
-<p>From the chat, ask the agent to list, cancel or reschedule what it scheduled for you. From the screens above, use <strong>Cancel</strong> or <strong>Reschedule</strong> on the item. Cancelling before the time runs nothing and creates no run. An agent cancels its own one-off with its <code>cancel_scheduled_work_item</code> tool, or with <code>complete_work_item</code> and the status <code>cancelled</code>, and moves it with <code>reschedule_scheduled_work_item</code>; any other change to the item through the work-item tools is refused, with a message naming these tools. A running item can no longer be cancelled or rescheduled, and an item that ran cannot be moved: schedule a new one.</p>
+<p>From the chat, ask the agent to list, cancel or reschedule what it scheduled for you. From the screens above, use <strong>Cancel</strong> or <strong>Reschedule</strong> on the item. Cancelling before the time runs nothing and creates no run. An agent cancels its own one-off with its <code>cancel_scheduled_work_item</code> tool, or with <code>complete_work_item</code> and the status <code>cancelled</code>, and moves it with <code>reschedule_scheduled_work_item</code>; both take the item's full id or its first 8 characters or more, as the other tools do. Any other change to the item through the work-item tools is refused, with a message naming these tools. A running item can no longer be cancelled or rescheduled, and an item that ran cannot be moved: schedule a new one.</p>
 <p>Scheduled items cannot be claimed, completed or handed to another agent: those are the <a href="../work-history/">work items</a> tools of the optional <code>Work Items</code> built-in tool, which only handle the other work items. An agent that also has a work-item assignment never receives scheduled items, and the scheduler never runs the other work items.</p>
 <p>Every scheduled item is recorded in the audit log: who scheduled it and the exact action stored, each cancel and reschedule, each change to its action, and the run that executed it.</p>
 <h2 id="turn-scheduling-off">Turn scheduling off</h2>
@@ -4099,7 +4099,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 20, 2026 04:25:16 UTC"><span class="timeago" datetime="2026-11-20T04:25:16+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 20, 2026 04:25:16 UTC">2026-11-20</span>
   </span>
 
     
@@ -4126,6 +4126,11 @@
 
     
     <nav>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
       
         <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
           
