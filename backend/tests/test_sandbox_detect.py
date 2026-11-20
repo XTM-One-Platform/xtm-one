@@ -167,10 +167,12 @@ def test_circleci_run_lines_become_checks_at_the_checkout_root() -> None:
     found = _detect({".circleci/config.yml": CIRCLECI}, extra=("client/tests/test_x.py", "client/pyproject.toml"))
     argv = _argv(found)
     formats = {name: a for name, a in argv.items() if name.startswith("python-format")}
-    assert ("isort", "--profile", "black", "--check", ".") in formats.values()
-    assert ("black", "--check", ".") in formats.values()
-    # The job directory written in a line is the checkout root.
-    assert argv["python-lint"] == ("flake8", "--ignore=E,W", ".")
+    # `pip install black isort --user` before them: the tools run in the environment that holds them (#714).
+    tools = ("uv", "run", "--no-project", "--with", "black", "--with", "isort")
+    assert (*tools, "isort", "--profile", "black", "--check", ".") in formats.values()
+    assert (*tools, "black", "--check", ".") in formats.values()
+    # The job directory written in a line is the checkout root; the alpine/flake8 job image carries flake8.
+    assert argv["python-lint"] == ("uv", "run", "--no-project", "--with", "flake8", "flake8", "--ignore=E,W", ".")
     # A step below the job directory runs in that directory; a parameter or a directory outside the checkout is skipped.
     assert argv["client:python-unit"] == ("python", "-m", "pytest", "tests")
     assert not any("unittest" in a or a == ("python", "-m", "pytest") for a in argv.values())
@@ -1515,9 +1517,44 @@ def test_a_tool_line_with_no_install_before_it_is_kept_as_written():
     workflow = LINT_WORKFLOW.replace("      - run: uv pip install flake8\n", "")
     found = _detect({".github/workflows/ci-lint.yml": workflow}, images={*IMAGES, "toolchain-python"})
     assert found.checks["python-lint"].argv == ("uv", "run", "flake8", "--ignore=E,W")
+    # A bare tool line the job installed the tool for runs with it too (#714).
     bare = LINT_WORKFLOW.replace("uv run flake8", "flake8")
     found = _detect({".github/workflows/ci-lint.yml": bare}, images={*IMAGES, "toolchain-python"})
-    assert found.checks["python-lint"].argv == ("flake8", "--ignore=E,W"), "only a uv run line gets the job's tools"
+    assert found.checks["python-lint"].argv == (
+        "uv",
+        "run",
+        "--no-project",
+        "--with",
+        "flake8",
+        "flake8",
+        "--ignore=E,W",
+    )
+    # A version-pinned or extras install names the tool by its package name; the pin stays in --with.
+    pinned = bare.replace("uv pip install flake8", 'pip install "flake8>=6" black[jupyter]==24.1.0')
+    found = _detect({".github/workflows/ci-lint.yml": pinned}, images={*IMAGES, "toolchain-python"})
+    assert found.checks["python-lint"].argv[:3] == ("uv", "run", "--no-project")
+    assert "flake8>=6" in found.checks["python-lint"].argv
+    assert detect._requirement_name("Black[jupyter]==24.1.0") == "black"
+    assert detect._requirement_name("pip>=24") == "pip"
+    # A bare tool the job did not install, a pip self-upgrade, a types line and a launcher are kept.
+    other = LINT_WORKFLOW.replace("uv run flake8", "pylint").replace(
+        "uv pip install flake8", "pip3 install -U pip certifi"
+    )
+    found = _detect({".github/workflows/ci-lint.yml": other}, images={*IMAGES, "toolchain-python"})
+    assert found.checks["python-lint"].argv == ("pylint", "--ignore=E,W")
+    assert detect._installed(["pip3", "install", "-U", "pip", "setuptools", "wheel", "certifi"], "", frozenset()) == [
+        "--with",
+        "certifi",
+    ]
+    tools = ["--with", "mypy"]
+    assert detect._with_job_tools("python", "types", ["mypy", "."], ["mypy", "."], tools, "") == ["mypy", "."]
+    assert detect._with_job_tools(
+        "python", "lint", ["poetry", "run", "flake8"], ["poetry", "run", "flake8"], tools, ""
+    ) == [
+        "poetry",
+        "run",
+        "flake8",
+    ]
 
 
 def test_a_project_requiring_an_older_python_runs_on_the_one_the_image_carries():
