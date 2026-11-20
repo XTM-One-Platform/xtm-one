@@ -124,7 +124,8 @@ time a capability's picker opens (`Configure`), and says so while it reads
 `synthesize_speech(SpeechRequest)` with a class-level `default_speech_model`
 (`router.SPEECH_DEFAULTS`). OpenAI-shaped providers share `OpenAISpeechMixin`
 (OpenAI and Azure speak OpenAI's voices; a gateway passes its upstream's voice
-through), Gemini speaks over REST (Interactions API, voice library), ElevenLabs
+through, and the Filigran AI Gateway lists Gemini's prebuilt voices for a Gemini
+model), Gemini speaks over REST (Interactions API, voice library), ElevenLabs
 is its own provider. `router.get_speech_provider()` resolves the caller's
 choice, then `PlatformSettings.speech_*`, then a built-in model, over the
 caller's `provider_routing` - the chat's read-aloud and the Video Studio
