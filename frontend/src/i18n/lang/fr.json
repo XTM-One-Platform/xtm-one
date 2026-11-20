@@ -19740,6 +19740,7 @@
   "On: once a day, the routing model explains each module's open findings when they changed, within the ceilings below. Off: no model is called. Needs AI to be on.": "Activé : une fois par jour, le modèle de routage explique les constats ouverts de chaque module quand ils ont changé, sous les plafonds ci-dessous. Désactivé : aucun modèle n'est appelé. Nécessite que l'IA soit activée.",
   "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "Une explication facultative des constats par le modèle de routage. Sa dépense est tracée comme Platform Health et jamais comptée dans les quotas agentiques.",
   "Runs once a day at most, only for modules whose findings changed.": "S'exécute au plus une fois par jour, uniquement pour les modules dont les constats ont changé.",
+  "Invalid cron": "Cron non valide",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, one {# proposition attend une approbation} other {# propositions attendent une approbation}}",
   "No proposal awaits approval": "Aucune proposition en attente d'approbation",
   "Proposals and cycles": "Propositions et cycles",
