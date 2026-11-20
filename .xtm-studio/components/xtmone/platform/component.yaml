@@ -1,0 +1,78 @@
+# The XTM One platform, its API and its page, as XTM Studio runs it: its database, its Redis keys
+# under its prefix and its bucket, each through an enrollment of its own. The platforms of the suite
+# register with it through its contract xtm-one, and its workers share its settings through its
+# contract xtm-one-worker. Every name of its data derives from its dataset, <env>-<instance>.
+schema: 1
+name: xtmone/platform
+group: xtm-one
+title: XTM One platform
+description: The XTM One platform, its page and its API, which the platforms of the suite register with.
+logo: ../../../../frontend/public/xtm-one-emblem.svg
+image: { version: 1.261119.1 }
+endpoints:
+  - port: 4000
+    contracts:
+      web: { url: { protocol: http, ui: true }, credential: { user: admin@filigran.io } }
+      # The registration of a platform of the suite: the token every platform sends, the same for all.
+      xtm-one: { url: { protocol: http }, enrollment: { token: { secret: true } } }
+      # What its workers share with it: the same database, Redis, bucket and keys.
+      xtm-one-worker:
+        url: { protocol: http }
+        enrollment:
+          database_url: { secret: true }
+          redis_url: { secret: true }
+          redis_key_prefix: {}
+          s3_endpoint: {}
+          s3_access_key: {}
+          s3_secret_key: { secret: true }
+          s3_bucket: {}
+          s3_use_ssl: {}
+          secret_key: { secret: true }
+          base_url: {}
+          registration_token: { secret: true }
+          admin_email: {}
+          admin_password: { secret: true }
+secrets:
+  ADMIN_PASSWORD: { type: password, size: 28 }
+  SECRET_KEY: { type: password, size: 64 }
+  REGISTRATION_TOKEN: { type: password, size: 48 }
+environment:
+  PLATFORM_MODE: xtm_one
+  PLATFORM_REGISTRATION_TOKEN: "{{secrets.REGISTRATION_TOKEN}}"
+  BASE_URL: "{{contracts.web.url.machine.value}}"
+  FRONTEND_URL: "{{contracts.web.url.machine.value}}"
+  ADMIN_EMAIL: admin@filigran.io
+  ADMIN_PASSWORD: "{{secrets.ADMIN_PASSWORD}}"
+  SECRET_KEY: "{{secrets.SECRET_KEY}}"
+  DATABASE_URL: "postgresql+asyncpg://{{requires.postgresql.enrollment.user_credential.user}}:{{requires.postgresql.enrollment.user_credential.password}}@{{requires.postgresql.contract.url.address}}/{{requires.postgresql.enrollment.database}}"
+  REDIS_URL: "redis://{{requires.redis.enrollment.user_credential.user}}:{{requires.redis.enrollment.user_credential.password}}@{{requires.redis.contract.url.address}}"
+  REDIS_KEY_PREFIX: "{{requires.redis.enrollment.prefix}}"
+  S3_ENDPOINT: "{{requires.s3.contract.url.address}}"
+  S3_ACCESS_KEY: "{{requires.s3.enrollment.user_credential.user}}"
+  S3_SECRET_KEY: "{{requires.s3.enrollment.user_credential.password}}"
+  S3_BUCKET: "{{requires.s3.enrollment.bucket}}"
+  S3_USE_SSL: "false"
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+  # The platforms registered with it, reached on the network of the containers: the URL each
+  # registers with is the one of the machine, which is not theirs inside a container.
+  OPENCTI_API_URL: "{{#consumers.xtm-one}}{{#is.opencti_platform}}{{contracts.web.url.value}}{{/is.opencti_platform}}{{/consumers.xtm-one}}"
+  OPENAEV_API_URL: "{{#consumers.xtm-one}}{{#is.openaev_platform}}{{contracts.web.url.value}}{{/is.openaev_platform}}{{/consumers.xtm-one}}"
+  # The platforms address their tokens to the URL they reach it on.
+  XTM_AUTH_ACCEPTED_AUDIENCES: "{{contracts.xtm-one.url.value}}"
+service:
+  healthcheck: { test: [CMD-SHELL, "curl -fsS http://localhost:4000/api/health/ready || exit 1"], interval: 15s, timeout: 10s, retries: 40, start_period: 60s }
+requires:
+  postgresql:
+    count: "1"
+    enrollment: { user_credential: { user: "{{dataset.name_underscore}}" }, database: "{{dataset.name_underscore}}" }
+  # Its keys and its channels under its prefix, which REDIS_KEY_PREFIX gives it.
+  redis:
+    count: "1"
+    enrollment:
+      user_credential: { user: "{{dataset.name}}" }
+      acl: "~{{dataset.name}}:* &{{dataset.name}}:* +@all"
+      prefix: "{{dataset.name}}:"
+  s3:
+    count: "1"
+    enrollment: { user_credential: { user: "{{dataset.name}}" }, bucket: "{{dataset.name}}", policy: ["s3:*"] }

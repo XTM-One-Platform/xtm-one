@@ -1,0 +1,35 @@
+# The XTM One worker, as XTM Studio runs it: the background jobs of its platform, with the same
+# database, Redis, bucket and keys, which the platform gives it through its contract xtm-one-worker.
+# Several workers of one platform share its queues.
+schema: 1
+name: xtmone/worker
+group: xtm-one
+title: XTM One worker
+description: The background jobs of an XTM One platform.
+logo: ../../../../frontend/public/xtm-one-emblem.svg
+image: { version: 1.261119.1 }
+environment:
+  PLATFORM_MODE: xtm_one
+  PLATFORM_REGISTRATION_TOKEN: "{{requires.platform.output.registration_token}}"
+  # The platform's public URL: the worker signs the tokens of the work it runs.
+  BASE_URL: "{{requires.platform.output.base_url}}"
+  FRONTEND_URL: "{{requires.platform.output.base_url}}"
+  ADMIN_EMAIL: "{{requires.platform.output.admin_email}}"
+  ADMIN_PASSWORD: "{{requires.platform.output.admin_password}}"
+  SECRET_KEY: "{{requires.platform.output.secret_key}}"
+  DATABASE_URL: "{{requires.platform.output.database_url}}"
+  REDIS_URL: "{{requires.platform.output.redis_url}}"
+  REDIS_KEY_PREFIX: "{{requires.platform.output.redis_key_prefix}}"
+  S3_ENDPOINT: "{{requires.platform.output.s3_endpoint}}"
+  S3_ACCESS_KEY: "{{requires.platform.output.s3_access_key}}"
+  S3_SECRET_KEY: "{{requires.platform.output.s3_secret_key}}"
+  S3_BUCKET: "{{requires.platform.output.s3_bucket}}"
+  S3_USE_SSL: "{{requires.platform.output.s3_use_ssl}}"
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+service:
+  healthcheck: { test: [CMD-SHELL, "python -m app.healthcheck reconciler"], interval: 30s, timeout: 15s, retries: 10, start_period: 60s }
+requires:
+  platform:
+    accepts: [xtm-one-worker]
+    count: "1"
