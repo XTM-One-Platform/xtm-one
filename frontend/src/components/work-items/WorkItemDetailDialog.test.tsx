@@ -809,6 +809,35 @@ describe("the work item detail", () => {
     expect(screen.getByText("pixel")).toBeTruthy();
   });
 
+  it("shows stamped notes as an activity timeline over the brief, ids as chips (#776)", () => {
+    const run = "8f240eba-1111-4222-8333-944445555666";
+    openDialog(
+      item({
+        description: `2026-11-20 23:22Z (run ${run}): **Pushed** head b6ce1323be6d239a33100a2b6f20a1918298aad3 (run 8f240eba...)\n\nRead the 120 pages.`,
+        note_runs: { [run]: { agent: { id: "a1", name: "Developer" }, accessible: true } },
+      }),
+    );
+    const notes = screen.getAllByTestId("work-item-note");
+    expect(notes).toHaveLength(1);
+    expect(screen.getByTestId("work-item-note-author").textContent).toBe("Developer");
+    // The run is a link named by its first 8 characters, never the uuid inline.
+    expect(notes[0].querySelector(`a[href="/runs/${run}"]`)?.textContent).toContain("8f240eba");
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.textContent).not.toContain(run);
+    expect(body.textContent).not.toContain("(run");
+    expect(body.querySelector("strong")?.textContent).toBe("Pushed");
+    expect(screen.getByTestId("work-item-id-chip").textContent).toBe("b6ce1323");
+    expect(screen.getByTestId("work-item-brief").textContent).toContain("Read the 120 pages.");
+  });
+
+  it("renders no script or iframe a description carries", () => {
+    openDialog(item({ description: 'x <script>window.__pwned = 1</script> <iframe src="https://e.test"></iframe> [a](javascript:alert(1))' }));
+    const detail = screen.getByTestId("work-item-detail");
+    expect(detail.querySelector("script")).toBeNull();
+    expect(detail.querySelector("iframe")).toBeNull();
+    expect(detail.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
   it("offers no action to a reader who may not change the item", () => {
     openDialog(item());
     expect(screen.queryByText("Mark done")).toBeNull();

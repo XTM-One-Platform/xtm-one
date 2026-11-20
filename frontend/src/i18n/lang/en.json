@@ -19762,5 +19762,9 @@
   "Integration silent after": "Integration silent after",
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.",
   "Agents offline above": "Agents offline above",
-  "More agents offline than this share raises a warning, e.g. 50.": "More agents offline than this share raises a warning, e.g. 50."
+  "More agents offline than this share raises a warning, e.g. 50.": "More agents offline than this share raises a warning, e.g. 50.",
+  "Brief": "Brief",
+  "An agent run": "An agent run",
+  "The platform": "The platform",
+  "Copy {value}": "Copy {value}"
 }
