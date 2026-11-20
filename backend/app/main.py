@@ -692,7 +692,12 @@ async def _seed_llm_providers_from_env() -> set[str]:
     from app.core.security import decrypt_stored_value as _dec
     from app.core.security import encrypt_value
     from app.llm import env_capability_defaults
-    from app.llm.env_listing import SEED_LISTED_PROVIDERS, apply_listing, env_provider_keys
+    from app.llm.env_listing import (
+        SEED_LISTED_PROVIDERS,
+        apply_listing,
+        env_provider_keys,
+        listing_platform_model,
+    )
     from app.llm.env_listing import listing_default as _listing_default
     from app.llm.env_models import (
         env_models_for,
@@ -856,14 +861,16 @@ async def _seed_llm_providers_from_env() -> set[str]:
             available_models: list[str] = list(cfg.available_models or [])
             provider_default = cfg.default_model
 
-            model_for_platform = (
-                platform_default_model
-                if platform_default_model and platform_default_model in available_models
-                else provider_default
-            )
-            if listed and model_for_platform not in (platform_default_model, declared_default):
-                # A first-in-alphabet pick is no one's choice: not pinned platform-wide.
-                model_for_platform = None
+            if listed:
+                model_for_platform = listing_platform_model(
+                    available_models, provider_default, platform_default_model, declared_default
+                )
+            else:
+                model_for_platform = (
+                    platform_default_model
+                    if platform_default_model and platform_default_model in available_models
+                    else provider_default
+                )
             if model_for_platform:
                 await _ensure_platform_default_model(
                     db,

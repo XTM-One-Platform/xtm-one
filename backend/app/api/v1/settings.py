@@ -2488,8 +2488,10 @@ async def refresh_llm_provider_models(
     env-only mode included: it applies the environment, not an admin edit.
     Nothing else of the env configuration is re-applied.
     """
+    from app.core.config import settings as app_settings
     from app.core.migrations import bootstrap_lock
-    from app.llm.env_listing import apply_listing, env_provider_keys, list_models_for_seed
+    from app.llm.env_listing import apply_listing, env_provider_keys, list_models_for_seed, listing_platform_model
+    from app.main import _byollm_install_configured
     from app.services.model_catalog_announcements import model_catalog_watch
 
     config_id = parse_path_id(provider_id, not_found_detail="Provider config not found")
@@ -2527,7 +2529,20 @@ async def refresh_llm_provider_models(
             await lock_provider_configs(db)
             config = await _listed_config()  # an admin may have edited it meanwhile
             removed = sorted(set(config.available_models or []) - set(listed))
+            # Read before anything is written, as at boot.
+            install_configured = await _byollm_install_configured(db)
             apply_listing(config, listed)
+            # A first listing fills the empty platform defaults, as boot does.
+            declared = getattr(PROVIDER_MAP.get(config.provider), "default_model", None)
+            if model := listing_platform_model(listed, config.default_model, app_settings.default_model, declared):
+                await _ensure_platform_default_model(
+                    db,
+                    config.provider,
+                    model,
+                    provider_id=str(config.id),
+                    available_models=None,
+                    fill_empty_defaults=not install_configured,
+                )
             await log_audit(
                 db,
                 user=user,

@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api.v1 import settings as settings_api
+from app.api.v1.platform_settings_helpers import get_platform_settings
 from app.core.config import settings
 from app.models.audit_log import AuditLog
 from app.models.llm_config import LLMProviderConfig
@@ -317,3 +318,56 @@ async def test_a_refresh_drops_the_cached_providers(monkeypatch):
         await _refresh(sessions, admin, row.id)
 
         assert cleared
+
+
+async def _agent_default(sessions) -> tuple[str | None, str | None]:
+    async with sessions() as db:
+        ps = await get_platform_settings(db)
+        return ps.agent_default_provider, ps.agent_default_model
+
+
+@pytest.mark.asyncio
+async def test_a_refresh_after_a_failed_first_listing_fills_the_platform_default(monkeypatch):
+    """Gateway down at first boot: the refresh pins what that boot would have."""
+    async with _database() as sessions:
+        _env(monkeypatch, default_model="gpt-5.4")
+        gateway = _Gateway(monkeypatch, RuntimeError("gateway down"))
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        assert await _agent_default(sessions) == (None, None)
+
+        gateway.models = LISTED
+        await _refresh(sessions, admin, row.id)
+
+        assert await _agent_default(sessions) == ("filigran_gateway", "gpt-5.4")
+
+
+@pytest.mark.asyncio
+async def test_the_gateway_default_alias_fills_the_platform_default_on_refresh(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, RuntimeError("gateway down"))
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+
+        gateway.models = [*LISTED, "default"]
+        await _refresh(sessions, admin, row.id)
+
+        assert await _agent_default(sessions) == ("filigran_gateway", "default")
+
+
+@pytest.mark.asyncio
+async def test_a_refresh_does_not_pin_an_alphabetical_pick_platform_wide(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, RuntimeError("gateway down"))
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+
+        gateway.models = LISTED
+        await _refresh(sessions, admin, row.id)
+
+        assert (await _agent_default(sessions))[1] is None

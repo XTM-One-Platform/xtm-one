@@ -121,3 +121,13 @@ def apply_listing(cfg: Any, listed: list[str]) -> None:
     cfg.available_models = listed
     cfg.default_model = listing_default(cfg.default_model, declared, listed)
     cfg.env_models = listed
+
+
+def listing_platform_model(
+    listed: list[str], provider_default: str | None, platform_default: str | None, declared: str | None
+) -> str | None:
+    """The model a listing may pin platform-wide: ``DEFAULT_MODEL`` or the
+    provider's declared default, while listed. A first-in-alphabet pick is no
+    one's choice."""
+    model = platform_default if platform_default and platform_default in listed else provider_default
+    return model if model and model in (platform_default, declared) else None
