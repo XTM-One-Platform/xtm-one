@@ -67,6 +67,29 @@ def test_known_keys_are_kept_bounded_and_unknown_keys_dropped() -> None:
     }
 
 
+def test_non_finite_numbers_are_dropped_never_raised() -> None:
+    """``json.loads`` accepts NaN and Infinity: the reader drops them instead of failing the heartbeat."""
+    nan, inf = float("nan"), float("inf")
+    kept = snapshots.read_snapshot(
+        {
+            "schema_version": 1,
+            "connectors": [{"id": "c1", "works_in_error": nan, "queue_messages": inf}],
+            "rabbitmq": {"queue_messages": -inf, "consumers": 2},
+            "search_engine": {"status": "green", "disk_used_percent": nan},
+            "ingestion_lag_seconds": inf,
+        }
+    )
+    huge = 10**400  # an integer past the float range reads, never an OverflowError
+    assert snapshots.read_snapshot({"schema_version": 1, "search_engine": {"disk_used_percent": huge}}) == {
+        "search_engine": {"disk_used_percent": 100.0}
+    }
+    assert kept == {
+        "connectors": [{"id": "c1", "name": "c1"}],
+        "rabbitmq": {"consumers": 2},
+        "search_engine": {"status": "green"},
+    }
+
+
 def test_connectors_past_the_cap_are_dropped() -> None:
     raw = {"schema_version": 1, "connectors": [{"id": f"c{i}"} for i in range(snapshots.MAX_CONNECTORS + 5)]}
     kept = snapshots.read_snapshot(raw)
