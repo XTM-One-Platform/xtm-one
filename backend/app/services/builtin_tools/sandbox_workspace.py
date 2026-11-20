@@ -710,7 +710,12 @@ def build_sandbox_workspace_tools(
         grouping: reading.Grouping | None = None,
     ) -> reading.GrepResult | ToolResult:
         """The search over an installed tree (*prefix* under node_modules, .venv) run on the files of the
-        workspace's live command container, read-only: nothing enters the manifest."""
+        workspace's live command container, read-only: nothing enters the manifest.
+
+        Each batch is one helper run and one tar round trip, so the batches are large
+        (:data:`reading.INSTALLED_READ_FILES`), and the search stops before the call's deadline
+        naming what it did not reach: one package of a few thousand small files timed the call out.
+        """
         try:
             tree, sandbox = await installed.list_tree(session, prefix, user_id=owner)
         except installed.NoLiveContainerError as exc:
@@ -723,7 +728,13 @@ def build_sandbox_workspace_tools(
             )
         result = reading.GrepResult()
         sized = [(rel, size) for rel, size in tree.files if reading.selected(rel, prefix, globs)]
-        for batch in reading.plan_grep(sized, result):
+        deadline = time.monotonic() + commands.wait_budget()
+        batches = reading.plan_grep(sized, result, batch_files=reading.INSTALLED_READ_FILES)
+        for index, batch in enumerate(batches):
+            if time.monotonic() >= deadline:
+                result.stopped = "the call's time budget ran out"
+                result.left[:0] = [rel for rest in batches[index:] for rel in rest]
+                break
             try:
                 blobs = await installed.read_files(sandbox, batch, max_bytes=reading.MAX_GREP_FILE_BYTES)
             except Exception as exc:
