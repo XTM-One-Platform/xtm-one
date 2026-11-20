@@ -107,6 +107,35 @@ async def _timezone(user_id: str) -> str | None:
         ).scalar_one_or_none()
 
 
+async def _full_item_id(work_item_id: str, user_id: str) -> tuple[str, str | None]:
+    """*work_item_id* with an 8+ hex prefix replaced by the full id of the one
+    scheduled item of the person it starts.
+
+    The prefix is looked up among the person's scheduled items only (the same
+    rows :func:`scheduled_work_items.cancel_scheduled_work_item` reads), so it
+    never reaches another person's item; whether this agent may change the
+    item stays the service's call. Several matches are refused with their ids
+    alone, no title, so a refusal names nothing the list tool would not.
+    """
+    from app.core.database import async_session
+    from app.core.utils import safe_uuid
+    from app.models.work_item import WorkItem
+
+    from .id_prefix import id_prefix, resolve_id_prefix
+
+    uid = safe_uuid(user_id)
+    if uid is None or id_prefix(work_item_id) is None:
+        return work_item_id, None
+    async with async_session() as db:
+        return await resolve_id_prefix(
+            db,
+            WorkItem,
+            work_item_id,
+            [WorkItem.user_id == uid, WorkItem.action_mode.is_not(None)],
+            noun="scheduled work items",
+        )
+
+
 #: The refusal of cancel / reschedule: the same words whether the item does not
 #: exist or this agent may not change it.
 _NOT_CHANGEABLE = (
@@ -263,9 +292,12 @@ def build_scheduling_tools(
         )
 
     async def _cancel(work_item_id: str) -> str:
+        full_id, refused = await _full_item_id(work_item_id, user_id)
+        if refused:
+            return refused
         try:
             item = await swi.cancel_scheduled_work_item(
-                work_item_id, user_id=user_id, agent_id=agent_id
+                full_id, user_id=user_id, agent_id=agent_id
             )
         except swi.ScheduledWorkItemError as exc:
             return f"Error: {exc}"
@@ -279,8 +311,11 @@ def build_scheduling_tools(
         tz_name = await _timezone(user_id)
         try:
             due = swi.parse_due_at(due_at, tz_name=tz_name)
+            full_id, refused = await _full_item_id(work_item_id, user_id)
+            if refused:
+                return refused
             item = await swi.reschedule_scheduled_work_item(
-                work_item_id, due, user_id=user_id, agent_id=agent_id
+                full_id, due, user_id=user_id, agent_id=agent_id
             )
         except swi.ScheduledWorkItemError as exc:
             return f"Error: {exc}"
