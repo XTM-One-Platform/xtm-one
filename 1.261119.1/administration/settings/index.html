@@ -5181,7 +5181,7 @@
 <li>OpenAI (<code>gpt-4o-mini-tts</code>, which also takes a delivery style, and <code>tts-1</code> / <code>tts-1-hd</code>) and an Azure OpenAI speech deployment, with OpenAI's voices;</li>
 <li>Gemini's text-to-speech models, with its studio voices, its voice library and the voices your Google project designed or replicated;</li>
 <li><strong>ElevenLabs</strong>, added as a provider of its own (<code>Add Provider</code>, then <code>ElevenLabs</code>, with its API key). It is never offered for chat; its key is validated against its voices, and the same provider also serves music, video and images. Its voices are the account's voice library: the premade voices and the account's generated, cloned and professional voices, listed first, so the team's brand voice is one choice away. For data residency, give its regional endpoint as the base URL (for example <code>https://api.eu.residency.elevenlabs.io</code>);</li>
-<li>the speech models an OpenAI-compatible gateway serves behind the OpenAI speech API: a LiteLLM proxy in front of Amazon Polly, Azure AI Speech, Vertex AI Chirp, ElevenLabs or MiniMax, a custom OpenAI-compatible endpoint, the Filigran AI Gateway. A LiteLLM model is listed when its proxy declares it a speech model, whatever its alias. Such a model's voices are its upstream's: type the voice it expects.</li>
+<li>the speech models an OpenAI-compatible gateway serves behind the OpenAI speech API: a LiteLLM proxy in front of Amazon Polly, Azure AI Speech, Vertex AI Chirp, ElevenLabs or MiniMax, a custom OpenAI-compatible endpoint, the Filigran AI Gateway. A LiteLLM model is listed when its proxy declares it a speech model, whatever its alias. Such a model's voices are its upstream's: type the voice it expects. A Gemini model behind the Filigran AI Gateway offers Gemini's studio voices, Kore first, but not its voice library nor your Google project's own voices.</li>
 </ul>
 <p>Pick the voice once the model is chosen. <code>Auto</code> leaves both to the platform: a provider added for speech alone (ElevenLabs) first, else the first provider with a built-in speech model (OpenAI, then Gemini), on its first voice. A video can still name another listed model and voice for its narration.</p>
 <p>Speech only runs on a provider the person may use: when the chosen provider is reserved for other groups, or excludes the person, their speech falls back to <code>Auto</code> among the providers left to them, and when none is left the chat reads aloud with the browser's own voice and a video shows its narration as captions. Deleting the provider clears the choice, its voice included.</p>
@@ -6049,7 +6049,7 @@ used.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 19, 2026 15:23:00 UTC"><span class="timeago" datetime="2026-11-19T15:23:00+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 19, 2026 15:23:00 UTC">2026-11-19</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 20, 2026 15:12:41 UTC"><span class="timeago" datetime="2026-11-20T15:12:41+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 20, 2026 15:12:41 UTC">2026-11-20</span>
   </span>
 
     
@@ -6076,6 +6076,11 @@ used.</p>
 
     
     <nav>
+      
+        <a href="https://github.com/fred-lr" class="md-author" title="@fred-lr">
+          
+          <img src="https://avatars.githubusercontent.com/u/294083249?v=4&amp;size=72" alt="fred-lr">
+        </a>
       
         <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
           
