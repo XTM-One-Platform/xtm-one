@@ -143,8 +143,14 @@ def _dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
         return False
 
 
-async def record_results(db: AsyncSession, results: Iterable[CheckResult], *, now: datetime) -> dict[str, int]:
-    """Apply one pass's results to the finding store; counts of ``opened``, ``updated``, ``resolved``."""
+async def record_results(
+    db: AsyncSession, results: Iterable[CheckResult], *, now: datetime, opened_ids: list[str] | None = None
+) -> dict[str, int]:
+    """Apply one pass's results to the finding store; counts of ``opened``, ``updated``, ``resolved``.
+
+    The id of every finding opened or reopened is appended to *opened_ids* when
+    given (the alert emails of #101 S12 read it).
+    """
     counts = {"opened": 0, "updated": 0, "resolved": 0}
     for result in results:
         key = finding_key(result.check_id, result.subject)
@@ -169,6 +175,8 @@ async def record_results(db: AsyncSession, results: Iterable[CheckResult], *, no
                     )
                 )
                 counts["opened"] += 1
+                if opened_ids is not None:
+                    opened_ids.append(key)
                 continue
             row.severity, row.category = result.severity, result.category
             row.evidence, row.last_seen, row.pass_streak = dict(result.evidence), now, 0
@@ -178,6 +186,8 @@ async def record_results(db: AsyncSession, results: Iterable[CheckResult], *, no
             if row.status != STATUS_OPEN:
                 row.status, row.resolved_at, row.dismissal = STATUS_OPEN, None, None
                 counts["opened"] += 1
+                if opened_ids is not None:
+                    opened_ids.append(key)
             else:
                 counts["updated"] += 1
         elif row is not None and row.status == STATUS_OPEN:
@@ -330,9 +340,12 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
 
     Each check runs in its own savepoint, so a check that raises undoes only
     its own writes: the results recorded by the checks before it in the same
-    pass are kept and committed with the pass.
+    pass are kept and committed with the pass. Once committed, the alert emails
+    of the pass go out (``alerts.send_alerts``, off by default); a failure there
+    is logged and never fails the pass.
     """
     totals = {"checks": 0, "opened": 0, "updated": 0, "resolved": 0}
+    opened_ids: list[str] = []
     for check in checks if checks is not None else registered_checks():
         last = _LAST_RUN.get(check.check_id)
         if last is not None and now - last < check.interval:
@@ -341,7 +354,9 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
         try:
             async with db.begin_nested():
                 results = await check.run(db, now)
-                counts = await record_results(db, results, now=now)
+                seen: list[str] = []
+                counts = await record_results(db, results, now=now, opened_ids=seen)
+            opened_ids.extend(seen)
         except Exception:
             logger.exception("Platform Health check %s failed", check.check_id)
             continue
@@ -350,6 +365,13 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
             totals[key] += value
     await rollup_day(db, now.date())
     await db.commit()
+    try:
+        from app.services.health.alerts import send_alerts
+
+        await send_alerts(db, opened_ids, now=now)
+    except Exception:
+        logger.exception("Platform Health alert emails failed")
+        await db.rollback()
     return totals
 
 

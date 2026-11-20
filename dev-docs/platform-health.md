@@ -488,6 +488,11 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - Analysis: on or off, daily and monthly ceiling.
 - Alert emails: off by default; recipients, minimum severity, immediate for a new
   critical finding plus a daily digest, one email per finding (dedupe on finding id).
+  Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`): after
+  each pass commits, `send_alerts` mails every critical finding the pass opened or
+  reopened once (Redis `SET NX` on `health:alert:<finding id>`, 7 days), then the
+  digest once per UTC day (mark `alert:digest` in `health_schedule_marks`). Nothing
+  is sent with SMTP unset or no recipient; a failed send never fails the pass.
 - Removed from the UI: cron editors, durations, dry run, name. Kept as constants or env.
 
 ## 8. Health page
