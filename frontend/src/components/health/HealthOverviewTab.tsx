@@ -608,7 +608,7 @@ export function HealthOverviewTab() {
       )}
       {hidden ? (
         <p className="content-compact text-default-secondary" data-testid="health-findings-truncated">
-          {t_i18n("{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}", { count: hidden })}
+          {t_i18n("{count, plural, one {# more finding is not shown: the list keeps the most severe and most recent ones.} other {# more findings are not shown: the list keeps the most severe and most recent ones.}}", { count: hidden })}
         </p>
       ) : null}
       {restore.isError ? (
