@@ -78,7 +78,10 @@ async def test_opencrq_version_reads_health(monkeypatch: pytest.MonkeyPatch) -> 
     sent: list[str] = []
     executor = _opencrq(monkeypatch, ({"status": "ok", "version": "1.261118.0"}, None), sent)
     out = await _call(executor, "get_opencrq_platform_version")
-    assert out == 'OpenCRQ version: {"version": "1.261118.0"}'
+    assert out.startswith("OpenCRQ version:\n")
+    assert "[source: OpenCRQ platform version]" in out
+    assert '{"version": "1.261118.0"}' in out
+    assert out.index("<<UNTRUSTED-") < out.index('{"version"') < out.index("<<END-UNTRUSTED-")
     assert sent == ["health"]
 
 

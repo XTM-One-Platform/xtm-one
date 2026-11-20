@@ -854,7 +854,7 @@ def register(
         version = health.get("version") if isinstance(health, dict) else None
         if not isinstance(version, str) or not version.strip():
             return "OpenCRQ answered health without a version: the platform version could not be read."
-        return f"OpenCRQ version: {json.dumps({'version': version.strip()[:200]})}"
+        return _quarantined("OpenCRQ version:", json.dumps({"version": version.strip()[:200]}), "platform version")
 
     executor.register("list_opencrq_tenants", list_opencrq_tenants)
     executor.register("get_opencrq_platform_version", get_opencrq_platform_version)
