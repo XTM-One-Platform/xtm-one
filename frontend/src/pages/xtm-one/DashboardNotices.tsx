@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Compass, ListTodo, ShieldOff } from "lucide-react";
+import { Icon } from "@filigran/design-system";
+import { ListTodo, ShieldOff } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -95,12 +96,11 @@ function HealthCriticalFindingsAlert() {
   return (
     <DashboardNotice
       variant="error"
-      icon={Compass}
       title={t_i18n("{count, plural, one {# critical finding is open in Platform Health} other {# critical findings are open in Platform Health}}", { count: findings.length })}
       onClick={open}
       actions={
         <NoticeAction variant="error" onClick={open}>
-          <Compass className="h-4 w-4" aria-hidden /> {t_i18n("Review")}
+          <Icon name="compass" size={16} aria-hidden /> {t_i18n("Review")}
         </NoticeAction>
       }
     >
