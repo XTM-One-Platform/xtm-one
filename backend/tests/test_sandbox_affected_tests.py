@@ -372,6 +372,22 @@ def test_a_missing_file_line_names_the_workspace_path_it_looked_for():
     assert commands.missing_paths("all good", "/srv/ws") == []
 
 
+def test_tsc_missing_files_of_a_narrow_checkout_are_resolved_from_the_check_directory() -> None:
+    """tsc prints TS2307 relative to the check's directory and TS6053 with the absolute path: both name workspace paths."""
+    output = (
+        "error TS6053: File '/srv/ws/co/graphql/src/generated/graphql.ts' not found.\n"
+        "builder/builder.ts(8,30): error TS2307: Cannot find module './plugin/native.node.plugin.ts' or its corresponding type declarations.\n"
+        "vitest.config.ci-unit.ts(1,33): error TS2307: Cannot find module './vitest.config' or its corresponding type declarations.\n"
+        "src/a.ts(3,1): error TS2307: Cannot find module 'lodash' or its corresponding type declarations.\n"
+        "src/b.ts(2,1): error TS2307: Cannot find module '../../../../outside.ts'.\n"
+    )
+    assert commands.missing_paths(output, "/srv/ws", "co/graphql") == [
+        "co/graphql/builder/plugin/native.node.plugin.ts",
+        "co/graphql/src/generated/graphql.ts",
+        "co/graphql/vitest.config",
+    ]
+
+
 def test_a_narrow_checkout_names_the_paths_outside_its_sub_paths():
     record = build_record(
         provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=["backend"], files=[("backend/a.py", b"")]
