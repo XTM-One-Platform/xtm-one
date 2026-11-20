@@ -2549,6 +2549,10 @@ async def refresh_llm_provider_models(
             status_code=503,
             detail="Another instance is applying the provider configuration; try again in a minute.",
         ) from exc
+    from app.llm.router import invalidate_provider_cache
+
+    # After the commit, as for a catalog edit.
+    invalidate_provider_cache()
 
     configs = list((await db.execute(select(LLMProviderConfig))).scalars().all())
     config = next(c for c in configs if c.id == config_id)

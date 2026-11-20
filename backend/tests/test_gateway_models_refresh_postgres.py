@@ -299,3 +299,21 @@ async def test_someone_not_an_admin_is_not_offered_the_refresh(monkeypatch):
         member = await _admin(sessions, role="user")
 
         assert not await _listed_flag(sessions, member)
+
+
+@pytest.mark.asyncio
+async def test_a_refresh_drops_the_cached_providers(monkeypatch):
+    """Like a catalog edit: refusals and warnings learned on the old catalog go."""
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, LISTED)
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        cleared = []
+        monkeypatch.setattr("app.llm.router.invalidate_provider_cache", lambda: cleared.append(True))
+
+        gateway.models = ["gpt-5.4"]
+        await _refresh(sessions, admin, row.id)
+
+        assert cleared
