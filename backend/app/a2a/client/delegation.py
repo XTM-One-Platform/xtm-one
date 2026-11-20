@@ -230,6 +230,11 @@ class CallingRun:
     #: outstanding task when the user abandons the conversation, since the turn
     #: that made the delegation ends the moment the task is handed back.
     conversation_ref: uuid.UUID | None = None
+    #: The work item the inbox dispatched the calling run for, from the
+    #: dispatcher's own record (never the payload). A later run of the same
+    #: agent for the same item may collect a task an earlier run of that item
+    #: started, while the earlier run is still recorded as running (#600).
+    work_item_ref: uuid.UUID | None = None
 
 
 @dataclass
@@ -1076,8 +1081,12 @@ def _scoped_to_caller(stmt: Select[Any], calling: object) -> Select[Any]:
     for that user is the only caller left to collect it. The same agent in
     the SAME conversation may also continue it (#448): a chat turn is its own
     run, so the turn that receives the partner's question or completion is
-    never the turn that started the task. Another agent, another user, another
-    conversation's run still going stays refused.
+    never the turn that started the task. The same agent dispatched for the
+    SAME work item may also collect it (#600): a run wound down by the
+    iteration backstop releases its item before its own end is written, so
+    the next run of that item starts while the starting run still reads as
+    running. Another agent, another user, another conversation's or another
+    work item's run still going stays refused.
     """
     from sqlalchemy import and_, or_, select
 
@@ -1108,6 +1117,20 @@ def _scoped_to_caller(stmt: Select[Any], calling: object) -> Select[Any]:
             and_(
                 A2ADelegation.agent_id == agent_id,
                 A2ADelegation.conversation_ref == conversation_ref,
+            )
+        )
+    work_item_ref = getattr(calling, "work_item_ref", None)
+    if work_item_ref is not None:
+        context = AssignmentRun.trigger_context
+        same_item_runs = select(AssignmentRun.id).where(
+            AssignmentRun.agent_id == agent_id,
+            context["type"].as_string() == "work_item",
+            context["work_item_id"].as_string() == str(work_item_ref),
+        )
+        allowed.append(
+            and_(
+                A2ADelegation.agent_id == agent_id,
+                A2ADelegation.run_ref.in_(same_item_runs),
             )
         )
     return stmt.where(or_(*allowed))
@@ -1937,6 +1960,62 @@ async def _target_for(db, target_id):
     ).scalar_one_or_none()
 
 
+async def _sibling_owner_run(db: Any, integration: Any, target: Any, calling: Any, task_id: str) -> uuid.UUID | None:
+    """The still-running run of the SAME agent and user that holds *task_id*.
+
+    Only read to word a ``continuation_not_owned`` refusal (#600): a sibling
+    run of this agent owns the task, so the answer is to wait for it, never to
+    resend. Scoped to the caller's agent and user, so it names nothing another
+    agent or user owns. ``None`` when there is no such run or it cannot be
+    read: the refusal then stays generic.
+    """
+    from sqlalchemy import select
+
+    from app.models.a2a import A2ADelegation
+
+    agent_id = getattr(calling, "agent_id", None)
+    user_id = getattr(calling, "user_id", None)
+    if agent_id is None or user_id is None:
+        return None
+    stmt = select(A2ADelegation.run_ref).where(
+        A2ADelegation.integration_id == integration.id,
+        A2ADelegation.partner_task_id == task_id,
+        A2ADelegation.agent_id == agent_id,
+        A2ADelegation.user_id == user_id,
+        A2ADelegation.run_ref.is_not(None),
+    )
+    target_id = getattr(target, "id", None)
+    if target_id is not None:
+        stmt = stmt.where(A2ADelegation.target_id == target_id)
+    try:
+        owner = (await db.execute(stmt.limit(1))).scalar_one_or_none()
+    except Exception:
+        logger.debug("a2a.client: owner run of task %s not read", task_id, exc_info=True)
+        return None
+    return owner if isinstance(owner, uuid.UUID) else None
+
+
+def _not_owned_detail(owner_run: uuid.UUID | None) -> str:
+    """The ``continuation_not_owned`` refusal text (#600).
+
+    Never "send it again": a resend duplicates the work on the partner's side.
+    When a still-running run of the same agent owns the task, it is named and
+    the caller is told to collect once it ends or from the completion event.
+    """
+    if owner_run is not None:
+        return (
+            f"Run {owner_run} of this agent started that task and is still "
+            "recorded as running. Do not resend: collect it again (same "
+            "continue_task_id, no message) once that run ends, or let the run "
+            "the a2a.delegation.completed event starts collect it."
+        )
+    return (
+        "This run may not continue that task: it was started by another "
+        "caller. Do not resend work already delegated; a new delegation is "
+        "only for work nobody sent."
+    )
+
+
 async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
     """Whether THIS caller may continue the task it names (FR-046).
 
@@ -2106,10 +2185,7 @@ async def delegate(
             DelegationResult(
                 outcome=OUTCOME_REFUSED_PREFLIGHT,
                 partner_reason="continuation_not_owned",
-                detail=(
-                    "This run did not start that task, so there is nothing to "
-                    "continue. Send the work as a new delegation."
-                ),
+                detail=_not_owned_detail(await _sibling_owner_run(db, integration, target, calling, continue_task_id)),
             )
         )
 

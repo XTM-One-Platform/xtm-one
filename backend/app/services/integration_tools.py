@@ -937,10 +937,27 @@ def _a2a_calling_run(context: dict[str, Any]):
                 if context.get("conversation_id")
                 else None
             ),
+            # The dispatcher's own record of the item this run works (#600),
+            # set by the engine only for an inbox-dispatched run.
+            work_item_ref=_optional_uuid(context.get("work_item_id")),
         )
     except ValueError:
         return None
     return parsed
+
+
+def _optional_uuid(value: Any) -> uuid.UUID | None:
+    """*value* as a UUID, ``None`` when absent or unparseable.
+
+    For an id that only widens what a caller may do: an unreadable one leaves
+    the caller with its narrower rights rather than withdrawing the tool.
+    """
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
 
 
 # Provider → tool builder mapping (integrations only — user-delegated OAuth tokens)

@@ -19,6 +19,7 @@ tested here because "accepted" only means anything if the bound is real:
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -245,6 +246,92 @@ class TestContinuationOwnership:
         assert "assignment_runs" not in where
         assert "a2a_delegations.conversation_ref" not in where
         assert "a2a_delegations.run_ref = " in where
+
+    def test_a_run_of_the_same_work_item_may_collect_while_the_starter_runs(self) -> None:
+        """#600: a run wound down by the iteration backstop releases its work
+        item before its own end is written, so the next run of that item
+        starts while the starting run still reads as running. The same agent
+        dispatched for the SAME item may collect; the item id is matched in
+        the runs' dispatcher record, never a free payload."""
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.models.a2a import A2ADelegation
+
+        item = uuid.uuid4()
+        calling = delegation.CallingRun(
+            agent_id=uuid.uuid4(), user_id=uuid.uuid4(), run_ref=uuid.uuid4(), work_item_ref=item
+        )
+        stmt = delegation._scoped_to_caller(select(A2ADelegation.id), calling)
+        where = str(stmt.compile())
+        assert "a2a_delegations.user_id = " in where
+        assert "assignment_runs.trigger_context" in where
+        params = stmt.compile().params
+        assert str(item) in params.values()
+        assert "work_item" in params.values()
+        assert calling.agent_id in params.values()
+
+    def test_no_work_item_means_no_work_item_branch(self) -> None:
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.models.a2a import A2ADelegation
+
+        calling = delegation.CallingRun(agent_id=uuid.uuid4(), user_id=uuid.uuid4(), run_ref=uuid.uuid4())
+        where = str(delegation._scoped_to_caller(select(A2ADelegation.id), calling).compile())
+        assert "trigger_context" not in where
+
+    def test_the_refusal_names_the_owning_run_and_never_says_resend(self) -> None:
+        """#600: the old text told the model to send the work as a new
+        delegation, which duplicated it on the partner's side."""
+        import uuid
+
+        owner = uuid.uuid4()
+        named = delegation._not_owned_detail(owner)
+        assert str(owner) in named
+        assert "Do not resend" in named
+        assert "a2a.delegation.completed" in named
+        generic = delegation._not_owned_detail(None)
+        assert "Do not resend" in generic
+        assert "Send the work as a new delegation" not in generic
+
+    @pytest.mark.asyncio
+    async def test_the_owner_lookup_is_scoped_to_the_callers_agent_and_user(self) -> None:
+        import uuid
+
+        issued: list[Any] = []
+        owner = uuid.uuid4()
+
+        class _Result:
+            def scalar_one_or_none(self) -> uuid.UUID:
+                return owner
+
+        class _Db:
+            async def execute(self, stmt: Any) -> _Result:
+                issued.append(stmt)
+                return _Result()
+
+        calling = delegation.CallingRun(agent_id=uuid.uuid4(), user_id=uuid.uuid4(), run_ref=uuid.uuid4())
+        found = await delegation._sibling_owner_run(
+            _Db(), integration_row(), settings_row(id=uuid.uuid4()), calling, "t-1"
+        )
+        assert found == owner
+        where = str(issued[0].compile())
+        for column in ("integration_id", "partner_task_id", "agent_id", "user_id", "target_id"):
+            assert f"a2a_delegations.{column}" in where, column
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_owner_keeps_the_generic_refusal(self) -> None:
+        import uuid
+
+        class _Db:
+            async def execute(self, _stmt: object) -> None:
+                raise RuntimeError("aborted transaction")
+
+        calling = delegation.CallingRun(agent_id=uuid.uuid4(), user_id=uuid.uuid4())
+        assert await delegation._sibling_owner_run(_Db(), integration_row(), settings_row(), calling, "t-1") is None
 
 
 class TestContinuation:
