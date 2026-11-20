@@ -125,11 +125,16 @@ async def resolve(db, user_id: object, voiceover: Any):
         raise VoiceUnavailableError(f"{exc} The narration is shown as captions.") from None
     if not (getattr(voiceover, "style", None) or "").strip() or names_its_own(voiceover):
         return target
+    if load := getattr(target.provider, "load_speech_capabilities", None):
+        await load(target.model)
     if target.provider.speech_takes_style(target.model) is not False:
         return target
     styled = await _styled_model(target.provider)
     if styled is None:
         return target
+    if own := getattr(voiceover, "voice", None):
+        # The video's own voice outranks its style: a model without it would refuse it.
+        return replace(target, model=styled) if await _offers(target.provider, styled, own) else target
     # The platform's voice was chosen for its model: another vendor's model may not have it.
     return replace(target, model=styled, voice=target.voice if await _offers(target.provider, styled, target.voice) else None)
 

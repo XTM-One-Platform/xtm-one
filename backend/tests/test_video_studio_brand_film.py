@@ -859,6 +859,14 @@ def test_a_styled_model_that_lacks_the_platforms_voice_speaks_with_its_own_defau
     assert (target.model, target.voice) == ("gpt-4o-mini-tts", None)
 
 
+@pytest.mark.parametrize(("own", "model"), [("v-clone", "eleven_multilingual_v2"), ("nova", "gpt-4o-mini-tts")])
+def test_a_videos_own_voice_moves_with_its_style_only_to_a_model_that_has_it(monkeypatch, own, model):
+    # The video's voice outranks its style: a model without it would refuse it (#713).
+    _speech_platform(monkeypatch, "eleven_multilingual_v2", _GatewaySpeechProvider(), voice="v-rachel")
+    target = asyncio.run(voice.resolve(None, USER_ID, _narrated({"style": "Warm.", "voice": own}).voiceover))
+    assert target.model == model
+
+
 def test_a_style_the_videos_own_model_ignores_is_said_at_save(monkeypatch):
     _speech_platform(monkeypatch, "gpt-4o-mini-tts")
     spec = _narrated({"model": "tts-1-hd", "style": "Warm and assured."})

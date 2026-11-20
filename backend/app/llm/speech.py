@@ -269,7 +269,8 @@ class OpenAISpeechMixin:
         import openai
 
         notes: list[str] = []
-        voices = await self.list_voices(request.model)
+        # A passed-through voice needs no listing, nor a listing that may fail.
+        voices = [] if request.voice and not self.speech_voices_are_fixed else await self.list_voices(request.model)
         if self.speech_voices_are_fixed:
             voice = pick_voice(voices, request.voice, None, notes)
         elif request.voice or voices:

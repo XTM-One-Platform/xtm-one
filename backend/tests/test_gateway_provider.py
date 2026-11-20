@@ -1745,21 +1745,52 @@ class TestElevenLabsVoices:
         assert read.url.params["model"] == model
 
     @pytest.mark.asyncio
-    async def test_the_voices_are_read_once_then_reused(self):
+    async def test_the_voices_are_read_once_per_model_then_reused(self):
         seen: list[httpx.Request] = []
         provider = self._gateway(seen)
         first = await provider.list_voices("eleven_multilingual_v2")
-        assert await provider.list_voices("narrator") == first
-        assert len(self._voice_reads(seen)) == 1
+        assert await provider.list_voices("eleven_multilingual_v2") == first
+        await provider.list_voices("narrator")
+        assert [r.url.params["model"] for r in self._voice_reads(seen)] == ["eleven_multilingual_v2", "narrator"]
 
     @pytest.mark.asyncio
-    async def test_a_refused_listing_raises_and_is_not_cached(self):
+    @pytest.mark.parametrize("status", [403, 503])
+    async def test_a_failed_listing_is_read_once_then_raises_until_it_may_have_recovered(self, status):
         seen: list[httpx.Request] = []
-        provider = self._gateway(seen, voices_status=403)
+        provider = self._gateway(seen, voices_status=status)
         for _ in range(2):
             with pytest.raises(RuntimeError, match="voices"):
                 await provider.list_voices("eleven_multilingual_v2")
-        assert len(self._voice_reads(seen)) == 2
+        assert len(self._voice_reads(seen)) == 1  # no SDK retry, and the failure is kept for a while
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_still_speaks_with_the_voice_id_asked(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices_status=404)
+        result = await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi", voice="v-rachel"))
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert json.loads(speech.content)["voice"] == result.voice == "v-rachel"
+        with pytest.raises(RuntimeError, match="voices"):
+            await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi"))
+
+    @pytest.mark.asyncio
+    async def test_speech_goes_to_elevenlabs_whenever_its_voices_do(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        # eleven_v3 is not in the listing: its voices and its speech both name ElevenLabs.
+        await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi"))
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert speech.headers["X-Target-Provider"] == "elevenlabs"
+
+    @pytest.mark.asyncio
+    async def test_an_alias_is_known_as_elevenlabs_once_its_speech_capabilities_are_loaded(self):
+        provider = self._gateway([])
+        await provider.load_speech_capabilities("narrator")
+        assert provider.speech_takes_style("narrator") is False
 
     @pytest.mark.asyncio
     async def test_speech_always_names_a_voice_id(self):

@@ -2838,6 +2838,9 @@ class BaseLLMProvider(ABC):
         """
         return []
 
+    async def load_speech_capabilities(self, model: str | None) -> None:
+        """Read what *model* speaks with before the sync checks below; the default has nothing to read."""
+
     def speech_takes_style(self, model: str) -> bool | None:
         """Whether speech *model* follows a written delivery instruction (``SpeechRequest.style``); ``None`` when unknown."""
         return None
