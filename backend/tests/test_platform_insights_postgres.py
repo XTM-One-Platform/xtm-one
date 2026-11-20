@@ -318,6 +318,20 @@ async def test_a_non_admin_reads_their_own_slice_and_is_told_so():
         # The caller's own sandbox workspaces, without the administrator's top owners.
         assert overview["sandbox_workspaces"]["count"] == 0 and "top_owners" not in overview["sandbox_workspaces"]
         assert overview["objects_by_type"].get("presentation") == decks["total"]
+        # Any caller can name its own instance: the Instance ID of Settings > Parameters (#690).
+        from app.api.v1.platform_settings_helpers import get_platform_settings
+        from app.core.config import settings
+        from app.services.branding import get_cached_branding
+
+        async with _sessions() as session:
+            platform_settings = await get_platform_settings(session)
+        assert isinstance(overview, dict)
+        instance = overview["instance"]
+        assert instance == {
+            "instance_id": str(platform_settings.id),
+            "platform_name": get_cached_branding().name,
+            "url": settings.frontend_url,
+        }
 
         adoption = await _call(alice, "query_ai_adoption", view="gaps")
         assert adoption["scope"] == "self" and "administrator view" in adoption["note"]
