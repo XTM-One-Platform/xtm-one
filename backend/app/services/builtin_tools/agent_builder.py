@@ -7410,10 +7410,11 @@ def build_agent_builder_tool(
             uid = None
 
         # ``agent_id`` is optional here ("" lists across all visible agents),
-        # so only validate when the LLM actually supplied a value.
+        # so only validate when the LLM actually supplied a value. An id
+        # prefix of a visible agent is taken for its full id, as get_agent does.
         agent_uuid = None
         if agent_id:
-            agent_uuid, id_err = _validate_id_arg(agent_id, "agent_id")
+            agent_uuid, id_err = await _id_arg(agent_id, "agent_id")
             if id_err:
                 return id_err
 
