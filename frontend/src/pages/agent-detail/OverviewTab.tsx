@@ -55,8 +55,7 @@ import {
   HANDOVER_TYPES, MAX_ITERATIONS_DEFAULT, clampMaxIterations, handoverTypeConfig, providerLogoSrc } from "@/lib/constants";
 import { shownHandoverType } from "@/lib/handover-types";
 import { AddAssignmentPanel } from "./AddAssignmentPanel";
-import { HealthOptInCard } from "@/components/health/HealthOptInCard";
-import { HealthTargetCard } from "@/components/health/HealthTargetCard";
+import { HealthImprovementRow } from "@/components/health/HealthImprovementRow";
 import { AgentFleetCard } from "./AgentFleetCard";
 import { ComingUpCard } from "./ComingUpCard";
 import { a2aBindingLabel } from "./a2a-binding-label";
@@ -251,12 +250,6 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
 
       {/* ── Fleet: home fleet and connecting fleets, read only ── */}
       <AgentFleetCard agent={agent} assignments={assignments} onAddAssignment={canManage ? openAddAssignment : undefined} />
-
-      {/* ── Platform Health improvement opt-in (#8254) ── */}
-      <HealthOptInCard targetType="agent" targetId={agent.id} />
-
-      {/* ── Platform Health: its proposals and cycles, for its managers (#8261) ── */}
-      <HealthTargetCard targetType="agent" targetId={agent.id} canManage={canManage} />
 
       {/* ── General Assistant Badge ── */}
       {gaConfig?.linked_agent_id === agent.id && canStandInForGeneralAssistant(agent) && (
@@ -699,6 +692,8 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         </Card>
       </div>
 
+      {/* ── Platform Health improvement: one compact row after the configuration (#101 S10) ── */}
+      <HealthImprovementRow agentId={agent.id} canManage={canManage} />
     </div>
   );
 }

@@ -19739,5 +19739,10 @@
   "Analyse the findings": "Analizar los hallazgos",
   "On: once a day, the routing model explains each module's open findings when they changed, within the ceilings below. Off: no model is called. Needs AI to be on.": "Activado: una vez al día, el modelo de enrutamiento explica los hallazgos abiertos de cada módulo cuando cambiaron, dentro de los límites de abajo. Desactivado: no se llama a ningún modelo. Requiere que la IA esté activada.",
   "An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.": "Una explicación opcional de los hallazgos por el modelo de enrutamiento. Su gasto se registra como Platform Health y nunca cuenta en las cuotas agénticas.",
-  "Runs once a day at most, only for modules whose findings changed.": "Se ejecuta como máximo una vez al día, solo para los módulos cuyos hallazgos cambiaron."
+  "Runs once a day at most, only for modules whose findings changed.": "Se ejecuta como máximo una vez al día, solo para los módulos cuyos hallazgos cambiaron.",
+  "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, one {# propuesta pendiente de aprobación} other {# propuestas pendientes de aprobación}}",
+  "No proposal awaits approval": "Ninguna propuesta pendiente de aprobación",
+  "Proposals and cycles": "Propuestas y ciclos",
+  "Let Platform Health improve this agent?": "¿Permitir que Platform Health mejore este agente?",
+  "Reads its memories and conversations to propose improvements. Off by default.": "Lee sus memorias y conversaciones para proponer mejoras. Desactivado por defecto."
 }
