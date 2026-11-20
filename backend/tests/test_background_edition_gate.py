@@ -1956,9 +1956,9 @@ def _stub_tick(monkeypatch, session) -> dict:
     ):
         monkeypatch.setattr(autonomous, counter, 0)
     # The wall-clock jobs: none due unless a test says so (no Redis here).
-    monkeypatch.setattr(autonomous.wall_clock_schedule, "claim", AsyncMock(return_value=None))
-    monkeypatch.setattr(autonomous.wall_clock_schedule, "complete", AsyncMock())
-    monkeypatch.setattr(autonomous.wall_clock_schedule, "backlog_pending", AsyncMock(return_value=False))
+    monkeypatch.setattr("app.services.wall_clock_schedule.claim", AsyncMock(return_value=None))
+    monkeypatch.setattr("app.services.wall_clock_schedule.complete", AsyncMock())
+    monkeypatch.setattr("app.services.wall_clock_schedule.backlog_pending", AsyncMock(return_value=False))
     monkeypatch.setattr(autonomous, "_dispatch_refusal_logged", None)
     monkeypatch.setattr(
         "app.services.kb_helpers.resolve_embedding_recovery_state",
@@ -2038,10 +2038,12 @@ async def _tick_runs_the_ai_adoption_sync(monkeypatch, platform_mode: str) -> bo
     _stub_tick(monkeypatch, _Session())
     monkeypatch.setattr(app_settings, "platform_mode", platform_mode)
 
-    async def _claim(job, **_kw):
-        return object() if job is autonomous.wall_clock_schedule.AI_METRICS_SYNC else None
+    from app.services import wall_clock_schedule
 
-    monkeypatch.setattr(autonomous.wall_clock_schedule, "claim", _claim)
+    async def _claim(job: wall_clock_schedule.Job, **_kw: object) -> object:
+        return object() if job is wall_clock_schedule.AI_METRICS_SYNC else None
+
+    monkeypatch.setattr(wall_clock_schedule, "claim", _claim)
     collect = AsyncMock(return_value={})
     monkeypatch.setattr("app.services.ai_metrics_collector.collect_all_metrics", collect)
     await autonomous._run_autonomous_tick_inner()

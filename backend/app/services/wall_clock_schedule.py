@@ -136,7 +136,7 @@ def _seconds(delta: timedelta) -> int:
     return max(1, int(delta.total_seconds()))
 
 
-async def _redis():
+async def _redis() -> Any:
     from app.core.redis import redis_client
 
     return await redis_client()
