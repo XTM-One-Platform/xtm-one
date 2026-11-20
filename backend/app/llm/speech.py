@@ -140,7 +140,7 @@ class SpeechRequest:
 @dataclass
 class SpeechResult:
     audio: bytes
-    #: ``audio/mpeg`` or ``audio/wav``.
+    #: The audio type returned, ``audio/mpeg`` or ``audio/wav`` as a rule.
     mime: str
     #: The voice that spoke.
     voice: str
@@ -201,6 +201,17 @@ def pronunciation_instruction(pronunciations: Sequence[tuple[str, str]]) -> str:
         return ""
     said = "; ".join(f'"{written}" as /{ipa}/' for written, ipa in pronunciations)
     return f"Pronounce these words exactly as their IPA reads, every time the text says them: {said}."
+
+
+_MIME_ALIASES = {"audio/x-wav": "audio/wav", "audio/wave": "audio/wav", "audio/mp3": "audio/mpeg"}
+
+
+def _returned_mime(response: Any, asked: str) -> str:
+    """The audio type the server says it sent, else *asked*: a gateway may answer another format (WAV for Gemini)."""
+    headers = getattr(getattr(response, "response", None), "headers", None)
+    content_type = headers.get("content-type") if headers is not None else None
+    mime = str(content_type or "").split(";", 1)[0].strip().lower()
+    return _MIME_ALIASES.get(mime, mime) if mime.startswith("audio/") else asked
 
 
 def _speaks_openai_voices(model: str | None) -> bool:
@@ -299,5 +310,5 @@ class OpenAISpeechMixin:
         data = response.read() if hasattr(response, "read") else response.content
         if asyncio.iscoroutine(data):
             data = await data
-        mime = "audio/wav" if response_format == "wav" else "audio/mpeg"
+        mime = _returned_mime(response, "audio/wav" if response_format == "wav" else "audio/mpeg")
         return SpeechResult(audio=bytes(data), mime=mime, voice=voice, notes=notes)

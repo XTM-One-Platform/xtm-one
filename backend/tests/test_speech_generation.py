@@ -93,6 +93,50 @@ def test_openai_speaks_with_its_voices_and_takes_the_style():
     assert result.mime == "audio/wav" and result.audio == b"AUDIO" and result.voice == "coral"
 
 
+def _answering(content_type: str | None) -> _SpeechAPI:
+    """A speech API answering as the SDK does, with the ``Content-Type`` the server sent."""
+    from openai._legacy_response import HttpxBinaryResponseContent
+
+    api = _SpeechAPI()
+
+    async def create(**kwargs):
+        api.calls.append(kwargs)
+        headers = {"content-type": content_type} if content_type else {}
+        return HttpxBinaryResponseContent(httpx.Response(200, content=b"AUDIO", headers=headers))
+
+    api.create = create
+    return api
+
+
+@pytest.mark.parametrize("content_type", ["audio/wav", "audio/x-wav", "audio/wave", "audio/WAV; codecs=1"])
+def test_speech_is_labelled_by_the_format_returned_not_the_one_asked(content_type):
+    # A Gemini TTS model through the AI Gateway (an OpenAI-compatible provider) answers WAV to an MP3 request.
+    from app.llm.openai_compat import OpenAICompatibleProvider
+
+    provider = _openai_shaped(OpenAICompatibleProvider, _answering(content_type))
+    result = asyncio.run(provider.synthesize_speech(SpeechRequest(model="gemini-3-flash-tts", text="Hi", voice="Kore")))
+    assert result.mime == "audio/wav" and result.audio == b"AUDIO"
+
+
+@pytest.mark.parametrize(
+    ("content_type", "audio_format", "mime"),
+    [
+        ("audio/mp3", "mp3", "audio/mpeg"),
+        (None, "mp3", "audio/mpeg"),
+        ("application/octet-stream", "mp3", "audio/mpeg"),
+        ("application/octet-stream", "wav", "audio/wav"),
+    ],
+)
+def test_speech_without_an_audio_content_type_keeps_the_format_asked(content_type, audio_format, mime):
+    from app.llm.openai_provider import OpenAIProvider
+
+    provider = _openai_shaped(OpenAIProvider, _answering(content_type))
+    result = asyncio.run(
+        provider.synthesize_speech(SpeechRequest(model="tts-1", text="Hi", voice="alloy", audio_format=audio_format))
+    )
+    assert result.mime == mime
+
+
 def test_the_first_openai_models_take_no_style_and_fewer_voices():
     from app.llm.openai_provider import OpenAIProvider
 
