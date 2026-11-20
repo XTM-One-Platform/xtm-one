@@ -2630,14 +2630,27 @@ def build_sandbox_workspace_tools(
         # The writes, the removals and the moved record in one change set: the
         # quota is checked after the removals, and a refusal or a failure
         # leaves every file and the old record as they were.
+        rebase_writes = [*writes.items(), (RECORD_NAME, moved.to_json())]
+        evicted: list[eviction.Footprint] = []
         try:
-            await session.put_tree(
-                [*writes.items(), (RECORD_NAME, moved.to_json())],
-                under=record.path,
-                remove=removals,
-                operation="checkout_rebase",
+            await session.put_tree(rebase_writes, under=record.path, remove=removals, operation="checkout_rebase")
+        except QuotaExceededError as exc:
+            # Over the file limit: as materialize_repository does, the clean
+            # checkouts of a gone ref, an ended run or past the idle TTL go in
+            # the same change set; a checkout with a local change never does.
+            async def _write_without(remove: list[str]) -> Any:
+                return await session.put_tree(
+                    rebase_writes, under=record.path, remove=[*removals, *remove], operation="checkout_rebase"
+                )
+
+            retried = await _evict_stale_checkouts(
+                record.path, _write_without, f"{display(record.path)}/ was not rebased: {exc}."
             )
-        except (QuotaExceededError, WorkspaceUnavailableError, WorkspacePathError) as exc:
+            if isinstance(retried, ToolResult):
+                metrics.operation("checkout_rebase", "refused")
+                return retried
+            _plan, evicted = retried
+        except (WorkspaceUnavailableError, WorkspacePathError) as exc:
             metrics.operation("checkout_rebase", "refused")
             return _error(f"{display(record.path)}/ was not rebased: {exc}.")
         metrics.operation("checkout_rebase", "conflict" if summary.conflicts else "ok")
@@ -2671,6 +2684,8 @@ def build_sandbox_workspace_tools(
             )
         if base_note:
             answer += base_note + "\n"
+        if evicted:
+            answer += eviction.evicted_line(evicted, pruned=False) + "\n"
         return answer
 
     async def sandbox_run_command(

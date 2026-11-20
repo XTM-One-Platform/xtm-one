@@ -473,3 +473,81 @@ async def test_the_refusal_names_the_live_runs_checkouts_as_holders(store, monke
     assert f"run {RUN_LIVE[:8]} (this run)" in refused.content and "workspace/mine/" in refused.content
     (record,) = store.records.values()
     assert f"mine/{RECORD_NAME}" in store.files[record.id], "a checkout of the live run is never reclaimed"
+
+
+# -- sandbox_checkout_rebase ---------------------------------------------------
+
+
+_REBASE_V1 = {"src/app.py": b"a\n", "src/old.py": b"OLD\n"}
+_REBASE_MAIN = {"src/app.py": b"a\n", "src/new.py": b"NEW\n", "src/more.py": b"MORE\n"}
+
+
+def _rebase_compare_tool(gone: set[str], seen: list) -> tuple[list[ToolDefinition], CallableToolExecutor]:
+    """A compare that says a gone ref is gone, and that the recorded commit 0a1b2c3 is behind main."""
+    executor = CallableToolExecutor()
+
+    async def compare_github_commits(repo: str, base: str, head: str, file_offset: int = 0) -> ToolResult:
+        seen.append((repo, base, head))
+        if base == head:
+            status = "ref_not_found" if head in gone else "identical"
+            return ToolResult(tool_call_id="", content=status, structured={"status": status, "merge_base": ""})
+        return ToolResult(tool_call_id="", content="behind", structured={"status": "behind", "merge_base": "0a1b2c3"})
+
+    executor.register("compare_github_commits", compare_github_commits)
+    definitions, _ = _compare_tool(set(), [])
+    return definitions, executor
+
+
+async def _rebase_setup(store, monkeypatch, gone: set[str]):  # noqa: F811
+    from tests.test_sandbox_workspace_tools import _refs_archive_tool
+
+    composite, executor = _composite(uuid.uuid4(), uuid.uuid4())
+    trees = {"v1": ("0a1b2c3", _REBASE_V1), "main": ("9f9f9f9", _REBASE_MAIN), "feat/merged": ("7e7e7e7", _REBASE_V1)}
+    composite.add_tools(*_refs_archive_tool(trees, []))
+    seen: list = []
+    composite.add_tools(*_rebase_compare_tool(gone, seen))
+    with offering_tools(composite.all_tools):
+        for path, ref in (("old", "feat/merged"), ("repo", "v1")):
+            done = await composite.execute_tool(
+                ToolCall(
+                    id=f"m-{path}",
+                    name="materialize_repository",
+                    arguments={"provider": "github", "repository": "acme/repo", "ref": ref, "path": path},
+                )
+            )
+            assert not done.is_error, done.content
+    # Full: the rebase adds one file net (two added by main, one removed).
+    _limited(monkeypatch, len(await executor.session.entries(refresh=True)))
+    executor.session._limits = None
+    return composite, executor, seen
+
+
+async def test_rebase_over_the_limit_evicts_a_clean_checkout_of_a_merged_branch(store, monkeypatch):  # noqa: F811
+    composite, executor, seen = await _rebase_setup(store, monkeypatch, {"feat/merged"})
+    with offering_tools(composite.all_tools):
+        rebased = await composite.execute_tool(
+            ToolCall(id="r", name="sandbox_checkout_rebase", arguments={"checkout": "repo", "ref": "main"})
+        )
+    assert not rebased.is_error, rebased.content
+    assert "Evicted to stay under the file limit (clean, ref gone)" in rebased.content
+    assert "workspace/old/" in rebased.content
+    (record,) = store.records.values()
+    paths = set(store.files[record.id])
+    assert not any(p.startswith("old/") for p in paths)
+    assert {"repo/src/new.py", "repo/src/more.py"} <= paths and "repo/src/old.py" not in paths
+    _entry, data = await executor.session.get_bytes(f"repo/{RECORD_NAME}")
+    assert CheckoutRecord.from_json(data, path="repo").commit == "9f9f9f9"
+    assert ("acme/repo", "feat/merged", "feat/merged") in seen
+
+
+async def test_rebase_over_the_limit_refusal_names_each_checkout(store, monkeypatch):  # noqa: F811
+    composite, executor, _seen = await _rebase_setup(store, monkeypatch, set())
+    with offering_tools(composite.all_tools):
+        refused = await composite.execute_tool(
+            ToolCall(id="r", name="sandbox_checkout_rebase", arguments={"checkout": "repo", "ref": "main"})
+        )
+    assert refused.is_error
+    assert "workspace/repo/ was not rebased" in refused.content
+    assert "workspace/old/" in refused.content and 'sandbox_remove_files(paths=["old"])' in refused.content
+    _entry, data = await executor.session.get_bytes(f"repo/{RECORD_NAME}")
+    assert CheckoutRecord.from_json(data, path="repo").commit == "0a1b2c3", "a refused rebase leaves the record"
