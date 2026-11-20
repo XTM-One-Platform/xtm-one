@@ -16480,6 +16480,7 @@
   "Work item released": "作業項目のブロック解除",
   "Work item no longer dispatched": "作業項目の配信停止",
   "Work item waits for a person": "作業項目が人の対応待ち",
+  "Work items wait on each other": "作業項目が互いに待機中",
   "Run completed": "実行完了",
   "Run failed": "実行失敗",
   "Run ended unfinished": "実行が未完了で終了",
