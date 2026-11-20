@@ -131,8 +131,12 @@ def test_conflict_markers_are_found_only_as_a_whole_hunk():
 class FakeGitHub:
     """The merge base, the branch and the ref as ``{path: text}``; a merge conflicts while a shared path differs."""
 
-    def __init__(self, base: dict[str, str], ours: dict[str, str], theirs: dict[str, str]):
+    def __init__(
+        self, base: dict[str, str], ours: dict[str, str], theirs: dict[str, str], modes: dict[str, str] | None = None
+    ):
         self.sides = {"base": dict(base), "ours": dict(ours), "theirs": dict(theirs)}
+        # modes: the tree mode of a path on every side (100755 for a script), 100644 otherwise.
+        self.modes = modes or {}
         self.tip = OURS
         self.commits: list[dict[str, Any]] = []
         self.merged = False
@@ -189,7 +193,16 @@ class FakeGitHub:
                 return ok({"sha": commit or self.tip, "commit": {"tree": {"sha": TREES[name]}}})
             if method == "get" and url == f"{API}/git/trees/{TREES[name]}":
                 files = self.sides[name]
-                tree = [{"path": p, "type": "blob", "mode": "100644", "sha": _sha(t), "size": len(t.encode())} for p, t in files.items()]
+                tree = [
+                    {
+                        "path": p,
+                        "type": "blob",
+                        "mode": self.modes.get(p, "100644"),
+                        "sha": _sha(t),
+                        "size": len(t.encode()),
+                    }
+                    for p, t in files.items()
+                ]
                 return ok({"tree": tree, "truncated": False})
         if method == "get" and url.startswith(f"{API}/git/blobs/"):
             text = self.blobs[url.rsplit("/", 1)[1]]
@@ -215,11 +228,11 @@ def _tool(name: str, recorder: Any = None):
     return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == name)
 
 
-def _fixture(theirs_line: int, theirs_text: str) -> FakeGitHub:
+def _fixture(theirs_line: int, theirs_text: str, modes: dict[str, str] | None = None) -> FakeGitHub:
     base = {"src/frictions.py": BASE_FILE, "README.md": "readme\n"}
     ours = {"src/frictions.py": _edit(BASE_FILE, 3, "branch 3\n"), "README.md": "readme\n"}
     theirs = {"src/frictions.py": _edit(BASE_FILE, theirs_line, theirs_text), "README.md": "readme\nmain\n"}
-    return FakeGitHub(base, ours, theirs)
+    return FakeGitHub(base, ours, theirs, modes)
 
 
 @pytest.mark.asyncio
@@ -230,6 +243,18 @@ async def test_a_clean_line_merge_lands_in_one_call():
 
     assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
     assert fake.merged and MERGE[:12] in result
+    assert fake.sides["ours"]["src/frictions.py"] == _edit(_edit(BASE_FILE, 3, "branch 3\n"), 9, "main 9\n")
+
+
+@pytest.mark.asyncio
+async def test_an_executable_script_on_every_side_merges_line_by_line() -> None:
+    # createCommitOnBranch keeps the 100755 mode of the path it overwrites: no hand resolution is needed.
+    fake = _fixture(9, "main 9\n", modes={"src/frictions.py": "100755"})
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _tool("merge_github_branch")(repo="acme/app", branch="feat/x")
+
+    assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
+    assert "not a plain file" not in result
     assert fake.sides["ours"]["src/frictions.py"] == _edit(_edit(BASE_FILE, 3, "branch 3\n"), 9, "main 9\n")
 
 

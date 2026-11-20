@@ -81,6 +81,7 @@ from .contents import (
     _MAX_CHECKOUT_SPLIT_CHANGES,
     _MAX_COMMIT_CHANGES,
     _MAX_COMMIT_CONTENT_BYTES,
+    _MODE_EXECUTABLE,
     _MODE_FILE,
     _commit_path,
     _graphql_commit_refusal,
@@ -98,6 +99,32 @@ _MAX_LISTED = 20
 #: The blob bytes one resolved merge may read: the commits are split under the per-commit cap, this bounds the whole.
 _MAX_READ_BYTES = 8 * _MAX_COMMIT_CONTENT_BYTES
 _KINDS = {"100755": "an executable file", "120000": "a symbolic link", "160000": "a submodule", "040000": "a directory"}
+
+
+def _mode_refusal(path: str, sides: tuple[tuple[str, _Entry | None], ...]) -> str | None:
+    """Why the conflict on *path* cannot be resolved in signed commits, or ``None`` when it can.
+
+    ``createCommitOnBranch`` writes plain files and keeps the mode of a path it overwrites (an executable
+    script stays 100755, #10444), but it cannot create a file executable nor set or clear the bit. An
+    executable file held 100755 on both sides is therefore resolved like a plain file; a symbolic link, a
+    submodule, a directory, an executable on one side only or a mode change between the sides is not.
+    """
+    present = [(side, entry) for side, entry in sides if entry is not None]
+    for side, entry in present:
+        if entry.mode not in (_MODE_FILE, _MODE_EXECUTABLE):
+            kind = _KINDS.get(entry.mode, f"a path of mode {entry.mode}")
+            return (
+                f"Error: '{path}' is {kind} on '{side}': createCommitOnBranch, the commit GitHub signs, writes "
+                "plain files only, so this conflict is resolved by hand. Nothing was written."
+            )
+    executable = [side for side, entry in present if entry.mode == _MODE_EXECUTABLE]
+    if executable and len(executable) != len(sides):
+        return (
+            f"Error: '{path}' is an executable file on '{executable[0]}' only: createCommitOnBranch, the commit "
+            "GitHub signs, cannot create a file executable nor set or clear the bit, so this conflict is resolved "
+            "by hand. Nothing was written."
+        )
+    return None
 
 
 class Resolution(NamedTuple):
@@ -939,13 +966,9 @@ async def resolve_and_merge(
     if isinstance(theirs, str):
         return f"{theirs}\nNothing was written."
     for path in sorted(resolutions):
-        for side, entry in ((branch, ours.entries.get(path)), (head, theirs.entries.get(path))):
-            if entry is not None and entry.mode != _MODE_FILE:
-                kind = _KINDS.get(entry.mode, f"a path of mode {entry.mode}")
-                return (
-                    f"Error: '{path}' is {kind} on '{side}': createCommitOnBranch, the commit GitHub signs, writes "
-                    "plain files only, so this conflict is resolved by hand. Nothing was written."
-                )
+        refusal = _mode_refusal(path, ((branch, ours.entries.get(path)), (head, theirs.entries.get(path))))
+        if refusal:
+            return refusal
     written: dict[str, bytes] = {}
     workspace = None
     for path, resolution in resolutions.items():

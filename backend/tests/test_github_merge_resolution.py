@@ -47,6 +47,7 @@ class FakeGitHub:
         both: list[str],
         always_conflict: bool = False,
         modes: dict[str, str] | None = None,
+        their_modes: dict[str, str] | None = None,
         lose_commit: int | None = None,
         move_branch_on_merge: bool = False,
         omit_sizes: bool = False,
@@ -77,6 +78,8 @@ class FakeGitHub:
         self.both = both
         self.always_conflict = always_conflict
         self.modes = modes or {}
+        # their_modes: the ref's tree modes where they differ from the branch's (a bit set on one side only).
+        self.their_modes = their_modes
         self.lose_commit = lose_commit
         self.move_branch_on_merge = move_branch_on_merge
         self.omit_sizes = omit_sizes
@@ -96,12 +99,13 @@ class FakeGitHub:
     def posts(self) -> list[str]:
         return [url for verb, url, _ in self.calls if verb == "post"]
 
-    def _tree(self, files: dict[str, str]) -> list[dict]:
+    def _tree(self, files: dict[str, str], modes: dict[str, str] | None = None) -> list[dict[str, Any]]:
+        modes = self.modes if modes is None else modes
         return [
             {
                 "path": path,
                 "type": "blob",
-                "mode": self.modes.get(path, "100644"),
+                "mode": modes.get(path, "100644"),
                 "sha": _sha(text),
                 **({} if self.omit_sizes else {"size": len(text.encode())}),
             }
@@ -174,7 +178,7 @@ class FakeGitHub:
         if method == "get" and url == f"{API}/git/trees/{'d' * 40}":
             return ok({"tree": self._tree(self.merge_snapshot), "truncated": False})
         if method == "get" and url == f"{API}/git/trees/{'c' * 40}":
-            return ok({"tree": self._tree(self.theirs), "truncated": False})
+            return ok({"tree": self._tree(self.theirs, self.their_modes), "truncated": False})
         if method == "get" and url.startswith(f"{API}/git/blobs/"):
             text = self.blobs[url.rsplit("/", 1)[1]]
             return ok({"encoding": "base64", "content": base64.b64encode(text.encode()).decode()})
@@ -610,13 +614,38 @@ async def test_resolutions_that_do_not_settle_the_conflict_write_nothing(resolut
 
 
 @pytest.mark.asyncio
-async def test_an_executable_file_is_resolved_by_hand():
+async def test_an_executable_file_on_both_sides_is_resolved_like_a_plain_file() -> None:
+    # createCommitOnBranch keeps the mode of a path it overwrites, so a script 100755 on both sides merges.
     ours, theirs = _sides()
     fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "100755"})
     with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "content": "merged a\n"}]
+        )
+
+    assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
+    assert fake.merged and fake.ours["src/a.py"] == "merged a\n"
+
+
+@pytest.mark.asyncio
+async def test_an_executable_bit_on_one_side_only_is_resolved_by_hand() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "100755"}, their_modes={})
+    with patch(_SAFE_REQUEST, new=fake):
         result = await _merge()(repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "keep": "ref"}])
 
-    assert "is an executable file on 'feat/x'" in result and "Nothing was written" in result
+    assert "is an executable file on 'feat/x' only" in result and "Nothing was written" in result
+    assert fake.commits == []
+
+
+@pytest.mark.asyncio
+async def test_a_symbolic_link_is_resolved_by_hand() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "120000"})
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "keep": "ref"}])
+
+    assert "is a symbolic link on 'feat/x'" in result and "Nothing was written" in result
     assert fake.commits == []
 
 
