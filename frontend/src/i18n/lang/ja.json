@@ -17327,6 +17327,7 @@
   "One line, kept with the dismissal": "1 行で、非表示とともに保存されます",
   "Back to suggestions": "提案に戻る",
   "Restore all": "すべて復元",
+  "{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}": "{count, plural, other {さらに # 件の検出結果が表示されていません。フィルターで絞り込んでください。}}",
   "This suggestion could not be restored. Try again in a moment.": "この提案を復元できませんでした。しばらくしてからもう一度お試しください。",
   "No dismissed suggestion.": "非表示の提案はありません。",
   "Dismissed by {name} on {date}": "{date} に {name} が非表示",
