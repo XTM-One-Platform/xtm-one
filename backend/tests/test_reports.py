@@ -908,6 +908,86 @@ def test_get_report_rejects_a_non_uuid(monkeypatch):
     assert session.statements == []
 
 
+def test_get_report_takes_an_id_prefix_of_one_of_the_users_reports(monkeypatch):
+    import app.core.database as database
+
+    user_id = uuid.uuid4()
+    existing = _existing_row(user_id, blocks=2)
+    session = _FakeSession(results=[_Result(rows=[(existing.id, "Brief")]), _Result(one=existing)])
+    monkeypatch.setattr(database, "async_session", _session_factory(session))
+    _defs, executor = _build_tools(str(user_id))
+    result = _run_tool(executor, "get_report", {"report_id": str(existing.id)[:8]})
+
+    content = result.content if hasattr(result, "content") else str(result)
+    assert "revision 1" in content, content
+    # The lookup is scoped to the caller's own reports.
+    lookup = _compiled(session.statements[0])
+    assert "reports.user_id" in lookup
+    assert str(user_id) in lookup
+
+
+def test_get_report_refuses_an_ambiguous_prefix_with_the_candidates(monkeypatch):
+    import app.core.database as database
+
+    first, second = uuid.uuid4(), uuid.uuid4()
+    session = _FakeSession(results=[_Result(rows=[(first, "A"), (second, "B")])])
+    monkeypatch.setattr(database, "async_session", _session_factory(session))
+    _defs, executor = _build_tools()
+    result = _run_tool(executor, "get_report", {"report_id": "abcdef12"})
+
+    content = result.content if hasattr(result, "content") else str(result)
+    assert str(first) in content and str(second) in content
+    assert "Nothing was done" in content
+    assert len(session.statements) == 1
+
+
+def test_get_report_prefix_of_no_report_is_not_found(monkeypatch):
+    import app.core.database as database
+
+    session = _FakeSession(results=[_Result(rows=[])])
+    monkeypatch.setattr(database, "async_session", _session_factory(session))
+    _defs, executor = _build_tools()
+    result = _run_tool(executor, "get_report", {"report_id": "abcdef12"})
+
+    content = result.content if hasattr(result, "content") else str(result)
+    assert "No report `abcdef12` of yours was found." in content
+
+
+def test_export_report_takes_an_id_prefix(monkeypatch):
+    import app.core.database as database
+
+    session = _FakeSession(results=[_Result(rows=[])])
+    monkeypatch.setattr(database, "async_session", _session_factory(session))
+    _defs, executor = _build_tools()
+    result = _run_tool(executor, "export_report", {"report_id": "abcdef12"})
+
+    assert result.is_error
+    assert "No report `abcdef12` of yours was found." in result.content
+
+
+def test_generate_report_revises_by_id_prefix(monkeypatch):
+    import app.core.database as database
+
+    user_id = uuid.uuid4()
+    existing = _existing_row(user_id, blocks=3)
+    session = _FakeSession(results=[_Result(rows=[(existing.id, "Brief")]), _Result(one=existing)])
+    monkeypatch.setattr(database, "async_session", _session_factory(session))
+    _defs, executor = _build_tools(str(user_id))
+    result = _run_tool(
+        executor,
+        "generate_report",
+        {
+            "title": "Brief",
+            "header": _header(),
+            "blocks": _blocks(2),
+            "report_id": str(existing.id)[:8],
+        },
+    )
+    assert not result.is_error, result.content
+    assert "Updated report" in result.content
+    assert str(existing.id) in result.content
+
+
 # ── Template linkage + palette ───────────────────────────────────────────────
 
 
