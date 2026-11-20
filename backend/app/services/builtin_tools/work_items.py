@@ -2142,8 +2142,8 @@ def build_work_item_tools(
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Optional ids of the work items this one waits for: it is created blocked "
-                            "and goes back to open by itself once every one of them is done."
+                            "Ids of the items it waits for: created blocked, reopened once all are done. "
+                            "Wait cycles are refused: a review waits on the fix, the merge on the review."
                         ),
                     },
                     "blocked_on_release_on": _RELEASE_ON_SCHEMA,
@@ -2202,7 +2202,7 @@ def build_work_item_tools(
                     "blocked_on": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Ids of the work items it waits for (replaces the list; [] clears it). Moves it to blocked; it reopens by itself once all are done; dropping an open one is refused.",
+                        "description": "Items it waits for (replaces; [] clears): blocked until all are done; dropping an open one is refused. Wait cycles are refused.",
                     },
                     "drop_open_blockers": {"type": "boolean"},
                     "take_over": _TAKE_OVER_SCHEMA,

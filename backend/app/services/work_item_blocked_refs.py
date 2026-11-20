@@ -1089,6 +1089,17 @@ def apply_dequeue_event(refs: list[dict[str, Any]], event: PullRequestEvent) -> 
     return out, removed
 
 
+def removal_after(removed_at: str | None, last_activity_at: datetime | None) -> bool:
+    """Whether a removal stamped *removed_at* came after *last_activity_at*. Pure; unreadable is ``False``."""
+    when = _parse_stamp(removed_at)
+    if when is None:
+        return False
+    if last_activity_at is None:
+        return True
+    since = last_activity_at if last_activity_at.tzinfo else last_activity_at.replace(tzinfo=UTC)
+    return when > since
+
+
 def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *, still_blocked: bool) -> str:
     """The note of an item whose pull request the merge queue dropped. Pure."""
     when = _host_stamp(event.closed_at)
@@ -1105,13 +1116,22 @@ def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *,
     )
 
 
-async def _apply_dequeue_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datetime) -> str | None:
-    """Apply a merge queue removal to one item, on its locked row. ``surfaced`` / ``noted`` / ``None``."""
+async def _apply_dequeue_to_item(
+    item_id: uuid.UUID, event: PullRequestEvent, now: datetime, *, polled: bool = False
+) -> str | None:
+    """Apply a merge queue removal to one item, on its locked row. ``surfaced`` / ``noted`` / ``None``.
+
+    *polled*: the removal was read from the pull request's timeline, not delivered;
+    it counts only when it is newer than the item's last activity (a removal the
+    item was re-parked after is history, #606).
+    """
     from app.core.database import async_session
 
     async with async_session() as db:
         item = (await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())).scalar_one_or_none()
         if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        if polled and not removal_after(event.closed_at, item.last_activity_at):
             return None
         refs, removed = apply_dequeue_event(list(item.blocked_on_refs), event)
         if not removed:
@@ -2221,7 +2241,11 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
                 if event is None:
                     continue
                 try:
-                    outcome = await _apply_to_item(item_id, event, datetime.now(UTC))
+                    if event.kind == "dequeued":
+                        # A merge queue removal no delivery reported: the owner is told (#606).
+                        outcome = await _apply_dequeue_to_item(item_id, event, datetime.now(UTC), polled=True)
+                    else:
+                        outcome = await _apply_to_item(item_id, event, datetime.now(UTC))
                 except Exception as exc:
                     logger.warning(
                         "Polled reference %s could not move work item %s: %s",

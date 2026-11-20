@@ -1946,6 +1946,22 @@ async def create_work_item(
         if blockers:
             await _check_blockers(db, user_id, blockers)
             status = "blocked"
+        if status == "blocked":
+            # A new item can close a cycle through the pull request it gates (#606).
+            from app.services.work_item_wait_cycles import refuse_wait_cycle
+
+            await refuse_wait_cycle(
+                db,
+                item_id=None,
+                status=status,
+                blocked_on=blockers,
+                blocked_on_refs=refs,
+                correlation_key=key,
+                title=title,
+                payload=payload,
+                user_id=user_uuid,
+                workspace_id=workspace_id,
+            )
         # THE write gate. Read follows the workspace's
         # visibility; filing work INTO one needs the `config` tier. A
         # `read_only` grantee who could create work items would be queueing
@@ -2289,6 +2305,24 @@ async def update_work_item(
                 blocked_on_refs=getattr(item, "blocked_on_refs", None) if refs is None else refs,
                 needs_human=human,
                 payload=item.payload if payload is None else payload,
+            )
+        if landing == "blocked" and any(
+            v is not None for v in (status, blockers, refs, payload, correlation_key, title)
+        ):
+            # Never a wait on itself through other items or gated pull requests (#606).
+            from app.services.work_item_wait_cycles import refuse_wait_cycle
+
+            await refuse_wait_cycle(
+                db,
+                item_id=item.id,
+                status=landing,
+                blocked_on=getattr(item, "blocked_on", None) if blockers is None else blockers,
+                blocked_on_refs=getattr(item, "blocked_on_refs", None) if refs is None else refs,
+                correlation_key=item.correlation_key if correlation_key is None else correlation_key,
+                title=item.title if title is None else title,
+                payload=item.payload if payload is None else payload,
+                user_id=item.user_id,
+                workspace_id=item.workspace_id,
             )
         from app.services.scheduled_work_items import refuse_generic_action_write
 

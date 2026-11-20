@@ -1666,6 +1666,10 @@ async def _run_autonomous_tick_inner() -> int:
                     logger.info("Reopened %d work item(s) whose references closed", polled["released"])
                 # The class of defect: every reference met, the item still blocked.
                 await release_satisfied_blocks()
+                # Items waiting on each other through items or gated pull requests (#606).
+                from app.services.work_item_wait_cycles import release_wait_cycles
+
+                await release_wait_cycles()
                 # An item parked on a pull request whose CI delivery never came (#10692).
                 from app.services.work_item_pull_requests import poll_pull_request_ci
 

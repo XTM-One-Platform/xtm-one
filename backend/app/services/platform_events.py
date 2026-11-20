@@ -255,6 +255,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.wait_cycle": {
+        "description": (
+            "Blocked work items waited on each other (through blocked_on or a pull request a review item "
+            "gates): the platform released the one blocked most recently. The payload's cycle names the "
+            "items, the pull requests and the item released."
+        ),
+        "filter_keys": _WORK_ITEM_KEYS,
+    },
     "work_item.release_exhausted": {
         "description": (
             "Inbox runs ended without completing a work item work_item_max_dispatch_attempts times: it is "

@@ -28,6 +28,10 @@ was read from, so one read tells a fleet orchestrator everything the seeded
   The one SAFE fix: :func:`apply_safe_fixes` releases it with the platform's own
   sweep (``work_item.release_ended_run_claims``), scoped to those runs.
 * ``past_due``, ``blocked_without_blocker``: open items nothing will move.
+* ``wait_cycle``: blocked items waiting on each other, through ``blocked_on`` or a
+  pull request a review item gates (:mod:`app.services.work_item_wait_cycles`, #606).
+* ``blocked_chain_stalled``: a chain of blocked items waiting on each other, every
+  one quiet for two hours and none held by a live run.
 * ``disabled_owner``: a disabled member that still owns open items.
 * ``oversize_state``: an active shared-state entry of the fleet over the soft
   size limit (``shared_state_value_soft_limit_chars``).
@@ -84,6 +88,8 @@ FINDING_FIX: dict[str, str] = {
     "orphaned_claim": FIX_AUTO,
     "past_due": FIX_OWNER,
     "blocked_without_blocker": FIX_OWNER,
+    "wait_cycle": FIX_OWNER,
+    "blocked_chain_stalled": FIX_OWNER,
     "disabled_owner": FIX_OWNER,
     "oversize_state": FIX_OWNER,
     "handover_not_allowed": FIX_OWNER,
@@ -99,6 +105,8 @@ FINDING_ADVICE: dict[str, str] = {
     "orphaned_claim": "Released by the platform's claim sweep: the item goes back to its owner's inbox.",
     "past_due": "Move the due date or hand the item to someone who can finish it.",
     "blocked_without_blocker": "Name what the item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+    "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
+    "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
     "oversize_state": "Archive or split the entry (keep_last_json with archive_key, or one key per object).",
     "handover_not_allowed": "Expose the target member or point the handover at the fleet's orchestrator.",
@@ -389,6 +397,32 @@ async def _work_item_findings(
     ]
     if bare:
         out.append(_finding("blocked_without_blocker", f"{len(bare)} blocked item(s) name no blocker", bare))
+    out += await _wait_graph_findings(db, scope, now)
+    return out
+
+
+async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:
+    """``wait_cycle`` and ``blocked_chain_stalled`` over the fleet's open items (#606)."""
+    from app.services.work_item_wait_cycles import find_cycles, load_nodes, stalled_chains
+
+    nodes = await load_nodes(db, scope=scope)
+    cycles = find_cycles(nodes)
+    out: list[FleetFinding] = []
+    in_cycles = sorted({i for cycle in cycles for _, i in cycle})
+    if in_cycles:
+        out.append(
+            _finding("wait_cycle", f"{len(cycles)} wait cycle(s): blocked items waiting on each other", in_cycles)
+        )
+    chains = stalled_chains(nodes, now, in_cycles=in_cycles)
+    stalled = [i for chain in chains for i in chain]
+    if stalled:
+        out.append(
+            _finding(
+                "blocked_chain_stalled",
+                f"{len(chains)} blocked chain(s) with no progress for 2 hours or more",
+                stalled,
+            )
+        )
     return out
 
 

@@ -296,8 +296,11 @@ async def read_pull_request_closings(bindings: list[dict], user_id: Any) -> list
             except Exception as exc:
                 logger.info("Pull request %s#%s not read: %s", *key, format_exception_message(exc))
                 event = None
-            if event is not None:
+            if event is not None and event.kind == "closed":
+                # A merge queue removal of an open pull request is not a closing (#606).
                 out.append(event)
+                break
+            if event is not None:
                 break
     return out
 
