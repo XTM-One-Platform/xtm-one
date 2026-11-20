@@ -16167,8 +16167,21 @@ export interface HealthBudgetCaps {
   month_cost_usd: string | null;
 }
 
+/**
+ * The analysis layer of Platform Health (#101 S9): off by default, with hard ceilings per day and per
+ * month; `null` clears a ceiling, which refuses every analysis. Costs are decimal strings.
+ */
+export interface HealthAnalysisSettings {
+  enabled: boolean;
+  day_tokens: number | null;
+  day_cost_usd: string | null;
+  month_tokens: number | null;
+  month_cost_usd: string | null;
+}
+
 /** Settings > Platform Health (`services/health/settings.py`); later levels add fields. */
 export interface HealthSettings extends HealthTriggerSettings {
+  analysis: HealthAnalysisSettings;
   enabled: boolean;
   /** The name it goes by with people; `null` is the platform mode's (`HealthName.default_name`). */
   name: string | null;
@@ -16323,6 +16336,36 @@ export interface HealthModuleCard {
   info: number;
   /** The score a week ago; null when no score was written that day. */
   previous_score: number | null;
+}
+
+/** The latest analysis of one module; `status` is null when it was never analysed. */
+export interface HealthModuleAnalysis {
+  module: HealthModule;
+  status: "completed" | "refused" | "failed" | null;
+  /** Why it did not run or failed (`services/health/analysis.py`): disabled, ai_off, ceiling_not_set, ceiling_reached, no_model, no_price, model_error. */
+  reason: string | null;
+  summary: string;
+  model: string | null;
+  tokens: number;
+  cost_usd: string;
+  trigger: "schedule" | "on_demand" | null;
+  analysed_at: string | null;
+}
+
+export interface HealthAnalysisSpend {
+  tokens: number;
+  cost_usd: string;
+  reserved_tokens: number;
+}
+
+/** `GET /health/analysis` (administrators): ceilings, today's and this month's spend, one analysis per module. */
+export interface HealthAnalysisOverview {
+  enabled: boolean;
+  ceilings_set: boolean;
+  ceilings: Omit<HealthAnalysisSettings, "enabled">;
+  day: HealthAnalysisSpend;
+  month: HealthAnalysisSpend;
+  modules: HealthModuleAnalysis[];
 }
 
 export interface HealthOverview {

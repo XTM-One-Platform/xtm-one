@@ -26,6 +26,7 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 | Section | What it sets |
 |---|---|
 | Enable, name, scope, budget | Whether Platform Health works, the name the entry points and refusals use, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
+| Analysis | Whether the routing model explains the findings, and its hard ceilings per day and per month, in tokens and in dollars (see [Analysis](#analysis)). |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
@@ -134,6 +135,8 @@ The checks above are deterministic and never call a model. The **analysis** is a
 - The default ceilings are **100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month**. They come from a measured run: one analysis of a module with 33 open findings cost 4,763 tokens; the most an analysis reads (60 findings) stays under 8,000 tokens, so the daily default covers two analyses of six modules.
 - A ceiling cleared to no value refuses every analysis (*Ceiling not set*).
 - Analysis calls are traced under their own source, **Platform Health**, visible in LLM analytics. They are not counted in any agentic quota or agentic execution count.
+
+Administrators switch the analysis on and set its four ceilings under **Settings > Automations > Platform Health > Analysis**. The **Platform Health** page shows an **Analysis** panel under the score history: today's and this month's spend against each ceiling, then each module's latest analysis (its explanation, or why it did not run: *Ceiling reached*, *Ceiling not set*, AI off, no routing model) and an **Analyse now** action, unavailable while AI is off or a ceiling is cleared.
 
 The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.
 
