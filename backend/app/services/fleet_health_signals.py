@@ -190,27 +190,31 @@ def blocked_without_blocker(
     owner_agent_id: object = None,
     ask: object = None,
     cancelled_blockers: Iterable[str] | None = None,
+    payload: object = None,
 ) -> bool:
     """Whether a blocked item is not black or white (#762).
 
     No owner, no blocker the platform releases (``blocked_reason`` alone is
     free text), ``needs_human`` without an ask card, or every ``blocked_on``
     entry cancelled or gone (*cancelled_blockers*: those ids) with nothing
-    else to release it.
+    else to release it. An open pull request bound in *payload* is a blocker
+    the platform releases (its CI completion or its closing hands it back).
     """
-    from app.services.work_item_blocked_refs import blocked_defects
+    from app.services.work_item_blocked_refs import blocked_defects, bound_open_pull_request
 
+    bound = bound_open_pull_request(payload)
     if blocked_defects(
         owner_agent_id=owner_agent_id,
         blocked_on=blocked_on,
         blocked_on_refs=blocked_on_refs,
         needs_human=needs_human,
         ask=ask,
+        bound_open_pull_request=bound,
     ):
         return True
     lost = set(cancelled_blockers or ())
     waits = [str(b) for b in blocked_on] if isinstance(blocked_on, list) else []
-    return bool(waits) and set(waits) <= lost and not (blocked_on_refs or needs_human)
+    return bool(waits) and set(waits) <= lost and not (blocked_on_refs or needs_human or bound)
 
 
 # ── The read ─────────────────────────────────────────────────────────────────
@@ -417,6 +421,7 @@ async def _work_item_findings(
                 WorkItem.needs_human,
                 WorkItem.owner_agent_id,
                 WorkItem.ask,
+                WorkItem.payload,
             ).where(scope, WorkItem.status == "blocked")
         )
     ).all()
@@ -435,7 +440,7 @@ async def _work_item_findings(
     )
     bare = [
         wid
-        for wid, on, refs, reason, human, owner, ask in blocked
+        for wid, on, refs, reason, human, owner, ask, payload in blocked
         if blocked_without_blocker(
             blocked_on=on,
             blocked_on_refs=refs,
@@ -444,6 +449,7 @@ async def _work_item_findings(
             owner_agent_id=owner,
             ask=ask,
             cancelled_blockers={str(b) for b in on or []} - live,
+            payload=payload,
         )
     ]
     if bare:

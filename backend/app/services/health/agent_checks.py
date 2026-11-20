@@ -546,6 +546,7 @@ async def _owned_open_items(db: AsyncSession, agents: list[uuid.UUID]) -> dict[u
                 WorkItem.blocked_reason,
                 WorkItem.needs_human,
                 WorkItem.ask,
+                WorkItem.payload,
             ).where(WorkItem.owner_agent_id.in_(agents), WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES))
         )
     ).all()
@@ -606,6 +607,7 @@ async def blocked_without_blocker_items(db: AsyncSession, now: datetime, agents:
                 needs_human=row.needs_human,
                 owner_agent_id=row.owner_agent_id,
                 ask=row.ask,
+                payload=row.payload,
             )
         )
         results.append(

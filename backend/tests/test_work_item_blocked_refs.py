@@ -134,6 +134,25 @@ def test_blocked_is_black_or_white(fields: dict[str, Any], missing: str) -> None
         refuse_blocked_without_why("blocked", **fields)
 
 
+_BOUND_DRAFT = {"pull_requests": [{"repo": REPO, "number": 12, "state": "open", "draft": True}]}
+
+
+def test_an_open_bound_pull_request_is_a_blocker_its_ci_releases() -> None:
+    # The inbox finalizer parks a draft between two slices on its own pull
+    # request (#10692): its CI completion hands it back, so it is not free text.
+    refuse_blocked_without_why(
+        "blocked", owner_agent_id=_OWNER, blocked_reason="WAITS FOR: draft CI", payload=_BOUND_DRAFT
+    )
+
+
+def test_a_closed_bound_pull_request_releases_nothing() -> None:
+    closed = {"pull_requests": [{"repo": REPO, "number": 12, "state": "closed"}]}
+    with pytest.raises(ValueError, match="no blocker"):
+        refuse_blocked_without_why("blocked", owner_agent_id=_OWNER, blocked_reason="waits", payload=closed)
+    with pytest.raises(ValueError, match="no owner_agent_id"):
+        refuse_blocked_without_why("blocked", payload=_BOUND_DRAFT)
+
+
 def test_only_a_blocked_status_needs_a_why():
     refuse_blocked_without_why("in_progress")
     refuse_blocked_without_why("open", blocked_reason="deferred")

@@ -194,3 +194,73 @@ async def test_a_legacy_item_is_left_as_it_is_and_reported_by_fleet_health() -> 
             str(rows["free_text"].id), user_id=str(user.id), note="looked at", writer=WRITER
         )
         assert noted is not None and noted["status"] == "blocked"
+        # Refreshing the reason of a legacy item is context, never a blocker: it lands too.
+        refreshed = await wi_service.update_work_item(
+            str(rows["free_text"].id), user_id=str(user.id), blocked_reason="still waits", writer=WRITER
+        )
+        assert refreshed is not None and refreshed["status"] == "blocked"
+        assert refreshed["blocked_reason"] == "still waits"
+
+
+BOUND_DRAFT = {"pull_requests": [{"repo": "xtm-one-platform/xtm-one", "number": 12, "state": "open", "draft": True}]}
+
+
+async def test_a_wait_on_its_own_open_pull_request_is_a_blocker_and_not_reported() -> None:
+    from app.services.fleet_health_signals import _work_item_findings
+
+    async with _database() as sessions:
+        user, agent, fleet = await _world(sessions)
+        item = await _create(user, owner_agent_id=str(agent.id), payload=BOUND_DRAFT)
+        parked = await wi_service.update_work_item(
+            item["id"],
+            user_id=str(user.id),
+            status="blocked",
+            blocked_reason="WAITS FOR: xtm-one#12 (draft) CI; released by its CI completion",
+            writer=WRITER,
+        )
+        assert parked is not None and parked["status"] == "blocked"
+        async with sessions() as db:
+            findings = await _work_item_findings(db, fleet, [agent.id], user_id=str(user.id), now=datetime.now(UTC))
+        assert not [f for f in findings if f.kind == "blocked_without_blocker"]
+
+
+async def test_a_cancelled_item_is_never_a_blocker() -> None:
+    async with _database() as sessions:
+        user, agent, _fleet = await _world(sessions)
+        owner = str(agent.id)
+        gone = await _create(user, owner_agent_id=owner)
+        await wi_service.complete_work_item(gone["id"], user_id=str(user.id), status="cancelled", writer=WRITER)
+        with pytest.raises(ValueError, match="cancelled work item"):
+            await _create(user, owner_agent_id=owner, blocked_on=[gone["id"]])
+        waiter = await _create(user, owner_agent_id=owner)
+        with pytest.raises(ValueError, match="cancelled work item"):
+            await wi_service.update_work_item(
+                waiter["id"], user_id=str(user.id), blocked_on=[gone["id"]], writer=WRITER
+            )
+        still = await wi_service.get_work_item(waiter["id"], user_id=str(user.id))
+        assert still is not None and still["status"] == "open"
+
+
+async def test_a_cancelled_blocker_keeps_the_wait_for_a_person() -> None:
+    async with _database() as sessions:
+        user, agent, _fleet = await _world(sessions)
+        owner = str(agent.id)
+        blocker = await _create(user, owner_agent_id=owner)
+        waiter = await _create(user, owner_agent_id=owner, blocked_on=[blocker["id"]], needs_human=True, ask=ASK)
+        await wi_service.complete_work_item(blocker["id"], user_id=str(user.id), status="cancelled", writer=WRITER)
+        await wi_service.release_satisfied_dependencies()
+        kept = await wi_service.get_work_item(waiter["id"], user_id=str(user.id))
+        assert kept is not None and kept["status"] == "blocked"
+        assert kept["needs_human"] and kept["ask"]["recommendation"] == "A"
+        assert not kept["blocked_on"]
+
+
+async def test_a_released_card_is_never_reused_for_a_new_decision() -> None:
+    async with _database() as sessions:
+        user, agent, _fleet = await _world(sessions)
+        item = await _create(user, owner_agent_id=str(agent.id), needs_human=True, ask=ASK)
+        await wi_service.requeue_work_item(item["id"], user_id=str(user.id), writer=WRITER)
+        back = await wi_service.get_work_item(item["id"], user_id=str(user.id))
+        assert back is not None and back["status"] == "open" and not back.get("ask")
+        with pytest.raises(ValueError, match="needs_human needs an ask card"):
+            await wi_service.update_work_item(item["id"], user_id=str(user.id), needs_human=True, writer=WRITER)

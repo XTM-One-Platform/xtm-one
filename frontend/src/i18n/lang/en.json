@@ -13068,7 +13068,7 @@
   "Delayed run at {when}": "Delayed run at {when}",
   "Next run in the trigger's time zone, then in UTC": "Next run in the trigger's time zone, then in UTC",
   "Blocked on other items": "Blocked on other items",
-  "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.": "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.",
+  "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.": "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.",
   "Blocked on {count, plural, one {# item} other {# items}}": "Blocked on {count, plural, one {# item} other {# items}}",
   "Waits for {count, plural, one {# item} other {# items}}": "Waits for {count, plural, one {# item} other {# items}}",
   "a work item you cannot open": "a work item you cannot open",

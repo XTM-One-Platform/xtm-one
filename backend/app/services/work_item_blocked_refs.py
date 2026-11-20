@@ -502,6 +502,17 @@ def ask_is_complete(ask: object) -> bool:
     )
 
 
+def bound_open_pull_request(payload: object) -> bool:
+    """Whether *payload* binds an open pull request, whose CI completion or closing releases the item. Pure.
+
+    The wait ``work_item_pull_requests.parked_without_release`` hands back: a
+    draft between two slices, parked by the inbox finalizer (#10692).
+    """
+    from app.services.work_item_pull_requests import pull_request_bindings
+
+    return any(b.get("state", "open") == "open" for b in pull_request_bindings(payload))
+
+
 def blocked_defects(
     *,
     owner_agent_id: object = None,
@@ -509,20 +520,23 @@ def blocked_defects(
     blocked_on_refs: object = None,
     needs_human: object = None,
     ask: object = None,
+    bound_open_pull_request: bool = False,
 ) -> list[str]:
     """What keeps a blocked item with these fields from being black or white, ``[]`` when nothing. Pure.
 
     Blocked is either a real blocker the platform releases by itself
-    (``blocked_on``, ``blocked_on_refs``) or a person's decision (``needs_human``
-    with a complete :func:`ask_is_complete` card), and always an owner that
-    resumes it. ``blocked_reason`` and ``not_before`` are never a blocker.
+    (``blocked_on``, ``blocked_on_refs``, or an open pull request bound in the
+    payload, released by its CI completion or its closing:
+    *bound_open_pull_request*) or a person's decision (``needs_human`` with a
+    complete :func:`ask_is_complete` card), and always an owner that resumes
+    it. ``blocked_reason`` and ``not_before`` are never a blocker.
     """
     out: list[str] = []
     if not owner_agent_id:
         out.append("no owner_agent_id")
     if needs_human and not ask_is_complete(ask):
         out.append("needs_human without an ask card")
-    elif not (blocked_on or blocked_on_refs or needs_human):
+    elif not (blocked_on or blocked_on_refs or needs_human or bound_open_pull_request):
         out.append("no blocker the platform releases (free text or nothing)")
     return out
 
@@ -531,11 +545,15 @@ def refuse_blocked_without_why(status: str | None, **fields: object) -> None:
     """Raise ``ValueError`` naming the three options when *status* is ``blocked`` and not black or white.
 
     *fields* are those of :func:`blocked_defects`; ``blocked_reason`` is
-    accepted and ignored (context, never the blocker).
+    accepted and ignored (context, never the blocker); ``payload`` (the item's
+    payload as it lands) counts an open bound pull request as a blocker.
     """
     if status != "blocked":
         return
     fields.pop("blocked_reason", None)
+    payload = fields.pop("payload", None)
+    if payload is not None and "bound_open_pull_request" not in fields:
+        fields["bound_open_pull_request"] = bound_open_pull_request(payload)
     defects = blocked_defects(**fields)
     if defects:
         raise ValueError(f"{WHY_FIELDS_MESSAGE} (missing: {'; '.join(defects)}); nothing was written")
