@@ -16480,6 +16480,7 @@
   "Work item released": "Work item released",
   "Work item no longer dispatched": "Work item no longer dispatched",
   "Work item waits for a person": "Work item waits for a person",
+  "Work items wait on each other": "Work items wait on each other",
   "Run completed": "Run completed",
   "Run failed": "Run failed",
   "Run ended unfinished": "Run ended unfinished",
