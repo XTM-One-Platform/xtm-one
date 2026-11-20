@@ -464,12 +464,20 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   Health page.
 - As built (S9a): `services/health/analysis.py`, tables `health_module_analyses` and
   `health_analysis_spend` (periods `D:YYYY-MM-DD`, `M:YYYY-MM`, row-locked month then day),
-  `HealthSettings.analysis` (off, four ceilings, any unset refuses `ceiling_not_set`), a
+  `HealthSettings.analysis` (off, four ceilings, any cleared refuses `ceiling_not_set`), a
   call without a price row refused `no_price`, routes `GET /health/analysis` and
   `POST /health/analysis/{module}/run` (`require_ai_enabled`), tick after `health_pass_tick`.
-- **Default ceiling: not set in this spec.** It is set in slice S9 from a measured lab run
-  (tokens and dollars of one full analysis pass per module on the lab with OpenCTI and
-  OpenAEV registered), the measurement written here then. No guessed figure.
+- **Default ceiling, measured (S9b, 20 Nov 2026).** Lab `lab-live` (live model through the
+  Copilot LLM proxy, `claude-opus-5-5`), one health pass then one analysis per module:
+  only `xtm_one` had open findings (33); the other modules hold none and complete with no
+  call. Billed: 3,963 input + 800 output = 4,763 tokens, 0.031852 USD (6.7 USD per
+  million tokens blended). The prompt was 8,709 characters: 2.2 characters per token, so
+  the reservation estimate moved from 3 to 2 characters per token (3 under-reserved by a
+  third). Worst case per analysis at `MAX_FINDINGS` 60: about 7,200 input + 800 output, so
+  8,000 tokens. Defaults: 6 modules x 2 analyses a day x 8,000 = 96,000, set to
+  **100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month**; the analysis
+  stays off by default. The lab model quota counter moved only by the analysis calls (9
+  before, 11 after two runs of the measurement); no agentic quota counter is involved.
 
 ## 7. Settings
 

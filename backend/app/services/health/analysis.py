@@ -70,8 +70,10 @@ TRACE_SOURCE = "platform_health"
 MAX_OUTPUT_TOKENS = 800
 #: The most findings one analysis reads (the most severe first).
 MAX_FINDINGS = 60
-#: Characters per token used to estimate the prompt before the call (a high estimate).
-_CHARS_PER_TOKEN = 3
+#: Characters per token used to estimate the prompt before the call (a high estimate):
+#: the findings JSON (ids, keys, numbers) measured at 2.2 characters per token in the
+#: lab (section 6.3), so 3 under-reserved by a third.
+_CHARS_PER_TOKEN = 2
 
 REFUSED_DISABLED = "disabled"
 REFUSED_AI_OFF = "ai_off"
