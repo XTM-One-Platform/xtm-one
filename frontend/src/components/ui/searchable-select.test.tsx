@@ -6,7 +6,6 @@ import userEvent from "@testing-library/user-event";
 import {
   SearchableSelect,
   SEARCH_THRESHOLD,
-  SHRINKING_TRIGGER_STYLE,
   SHRINKING_WRAPPER_CLASS,
   FILLING_WRAPPER_CLASS,
   TWO_LINE_LIST_CLASS,
@@ -292,9 +291,8 @@ describe("SearchableSelect", () => {
     renderWithProviders(<Harness options={[...PROVIDERS, { value: "long", label: name }]} searchable="auto" initial="long" />);
     const trigger = screen.getByRole("combobox", { name: "Provider" });
     expect(trigger.tagName).toBe("BUTTON");
-    expect(SHRINKING_TRIGGER_STYLE).toEqual({ minWidth: 0 });
-    // The inline style the trigger carries (happy-dom has no layout: the lab render proves the width).
-    expect(trigger.style.minWidth).toMatch(/^0(px)?$/);
+    // happy-dom has no layout and the class-name gate forbids pinning `min-w-0`: the lab render
+    // proves the width. Asserted here: the plain select keeps the whole label on hover.
     expect(within(trigger).getByTitle(name)).toHaveTextContent(name);
   });
 

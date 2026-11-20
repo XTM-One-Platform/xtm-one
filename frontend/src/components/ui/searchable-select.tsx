@@ -80,15 +80,6 @@ export const TWO_LINE_LIST_CLASS =
   "[&_[data-radix-select-viewport]]:max-h-[min(18rem,var(--radix-select-content-available-height))]! [&_[data-radix-select-viewport]]:[scrollbar-width:thin]!";
 
 /**
- * The plain select's trigger is a flex item of the DS wrapper, so at `min-width: auto` it never
- * shrinks under the picked label's min-content: a long single-word label (a 14-character group
- * name in a 136 px table cell) drew the field past its cell, over the row's remove button
- * (#611). At 0 it takes the width its container gives it and the label ends in an ellipsis,
- * the chevron kept and the whole label on hover.
- */
-export const SHRINKING_TRIGGER_STYLE = { minWidth: 0 } as const;
-
-/**
  * The DS `SelectTrigger` renders its trigger inside a `<span class="flex">` wrapper (the room
  * for its clear control) and exposes no prop for it. In a flex row (a table cell) that span is
  * the flex item, and at `min-width: auto` it holds the field at the label's min-content: the
@@ -229,8 +220,10 @@ export function SearchableSelect({
           aria-labelledby={ariaLabelledBy}
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
-          style={SHRINKING_TRIGGER_STYLE}
-          className={cn("w-full", INVALID_FIELD_CLASS.error, className)}
+          // The trigger is a flex item of the DS wrapper: at `min-width: auto` it never shrank under the
+          // picked label's min-content and drew the field past its cell (#611). `min-w-0` lets it take
+          // its container's width; the label ends in an ellipsis, the whole label reads on hover.
+          className={cn("w-full min-w-0", INVALID_FIELD_CLASS.error, className)}
         >
           <SelectValue placeholder={placeholder}>
             {selected ? <OptionText option={selected} selected /> : undefined}
