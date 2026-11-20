@@ -24,9 +24,10 @@
 <path d="M120 150.0H1384" stroke="#CFE3F5" stroke-width="1"/>
 <g fill="#4A5068" transform="translate(83.6 156) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-two" x="600"/></g>
 <g fill="#4A5068" transform="translate(92.8 512) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-seven" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
-<g fill="#4A5068" transform="translate(724.8 512) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-eight" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
-<g fill="#4A5068" transform="translate(1356.8 512) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-nine" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
-<path d="M120.0 285.8L752.0 177.2L1384.0 177.2L1384.0 476L120.0 476Z" fill="url(#fill-light)"/>
-<path d="M120.0 285.8L752.0 177.2L1384.0 177.2" stroke="#0015A8" stroke-width="3.5" fill="none" stroke-linejoin="round"/>
-<circle cx="1384.0" cy="177.2" r="7" fill="#0015A8" stroke="#E6F7FF" stroke-width="3"/>
+<g fill="#4A5068" transform="translate(514.2 512) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-eight" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
+<g fill="#4A5068" transform="translate(935.5 512) scale(0.0170)"><use href="#gb400-one" x="0"/><use href="#gb400-nine" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
+<g fill="#4A5068" transform="translate(1356.8 512) scale(0.0170)"><use href="#gb400-two" x="0"/><use href="#gb400-zero" x="600"/><use href="#gb400-N" x="1436"/><use href="#gb400-o" x="2143"/><use href="#gb400-v" x="2703"/></g>
+<path d="M120.0 285.8L541.3 177.2L962.7 150.0L1384.0 150.0L1384.0 476L120.0 476Z" fill="url(#fill-light)"/>
+<path d="M120.0 285.8L541.3 177.2L962.7 150.0L1384.0 150.0" stroke="#0015A8" stroke-width="3.5" fill="none" stroke-linejoin="round"/>
+<circle cx="1384.0" cy="150.0" r="7" fill="#0015A8" stroke="#E6F7FF" stroke-width="3"/>
 </svg>
