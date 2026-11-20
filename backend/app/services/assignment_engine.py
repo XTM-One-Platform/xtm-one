@@ -566,6 +566,9 @@ async def _publish_run_ended(run: AssignmentRun, name: str, *, reason: str, erro
                 work_item_ids=[item_id] if item_id else [],
                 reason=reason,
                 error=error,
+                # A run that completed partial (deadline, budget, iteration
+                # cap) says so: a listener tells it from a finished task.
+                stop_reason=getattr(run, "stop_reason", None) if reason == "completed" else None,
                 participant_agent_ids=participant_agent_ids,
                 workspace_ids=workspace_ids,
                 personal_owner_ids=personal_owner_ids,

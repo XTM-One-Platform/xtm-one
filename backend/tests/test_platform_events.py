@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -587,6 +588,40 @@ async def test_run_failed_carries_the_held_items_workspace_scope(monkeypatch):
     run.is_company_managed = False
     await engine._publish_run_ended(run, "run.completed", reason="completed")
     assert published[-1][1]["personal_owner_ids"] == [str(run.user_id)]
+    # A run that ended on its own terms carries no stop_reason.
+    assert published[-1][1]["stop_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_completed_run_cut_short_says_why_in_its_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run stopped at its deadline or budget completes with a partial
+    result: its run.completed event names the stop_reason, a failed run's
+    event never carries one."""
+    from app.services import assignment_engine as engine
+
+    published: list[tuple[str, dict[str, Any]]] = []
+
+    async def _publish(name: str, data: dict[str, Any]) -> str:
+        published.append((name, data))
+        return "e1"
+
+    monkeypatch.setattr(pe, "publish", _publish)
+    run: Any = SimpleNamespace(
+        id=uuid.uuid4(),
+        agent_id=OTHER,
+        assignment_id=uuid.uuid4(),
+        parent_run_id=None,
+        trigger_context={},
+        user_id=uuid.uuid4(),
+        is_company_managed=True,
+        stop_reason="deadline",
+    )
+    await engine._publish_run_ended(run, "run.completed", reason="completed")
+    assert published[-1][0] == "run.completed"
+    assert published[-1][1]["stop_reason"] == "deadline"
+    await engine._publish_run_ended(run, "run.failed", reason="failed", error="boom")
+    assert published[-1][1]["stop_reason"] is None
+    assert "stop_reason" in pe.PLATFORM_EVENTS["run.completed"]["filter_keys"]
 
 
 def test_run_event_of_a_personal_item_reaches_only_its_owner():

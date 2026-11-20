@@ -182,6 +182,7 @@ _RUN_KEYS = (
     "parent_run_id",
     "work_item_ids",
     "reason",
+    "stop_reason",
 )
 _TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
@@ -280,7 +281,11 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         "filter_keys": _WORK_ITEM_KEYS,
     },
     "run.completed": {
-        "description": "An assignment run completed.",
+        "description": (
+            "An assignment run completed. stop_reason names why a run stopped before its task was done "
+            "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
+            "completes with a partial result; null when it ended on its own terms."
+        ),
         "filter_keys": _RUN_KEYS,
     },
     "run.failed": {
@@ -664,6 +669,7 @@ def run_data(
     work_item_ids: Iterable[object] = (),
     reason: str | None = None,
     error: str | None = None,
+    stop_reason: str | None = None,
     participant_agent_ids: Iterable[object] = (),
     workspace_ids: Iterable[object] = (),
     personal_owner_ids: Iterable[object] = (),
@@ -679,6 +685,9 @@ def run_data(
         "work_item_ids": [str(i) for i in work_item_ids],
         "reason": reason,
         "error": (error or "")[:_PREVIEW_MAX_CHARS] or None,
+        # Why a completed run stopped before its task was done (the run's
+        # stop_reason: deadline, budget, iteration cap...); None otherwise.
+        "stop_reason": stop_reason,
         # The agent whose run it is raised the event (ignore_self_triggered_events).
         "actor_agent_id": _str(agent_id),
         "participant_agent_ids": sorted(participants),
