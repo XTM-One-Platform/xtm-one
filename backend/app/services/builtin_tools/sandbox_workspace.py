@@ -3269,7 +3269,10 @@ def build_sandbox_workspace_tools(
                     "items": {"type": "string"},
                     "description": "A command of your own instead of a declared check; only when the platform allows it.",
                 },
-                "cwd": {"type": "string", "description": "With argv: working directory, relative to the checkout."},
+                "cwd": {
+                    "type": "string",
+                    "description": "With argv or script: working directory, relative to the checkout.",
+                },
                 "run_id": {
                     "type": "string",
                     "description": (
