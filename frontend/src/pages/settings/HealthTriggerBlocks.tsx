@@ -207,7 +207,8 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full table-fixed content-compact" data-testid="settings.health.schedule.table">
-          {/* Fixed widths sized to the all-valid layout: a row flipping to "Not a valid cron expression" while typing never moves a column.
+          {/* Fixed widths sized to the all-valid layout: a row flipping to "Invalid cron" while typing never moves a column (the short
+              message fits the When cell whole, about 109 px at 1080, in en, fr, es and ja).
               Status fits its longest value in en, fr, es and ja ("Desactivado", about 68 px) at 1080; Last run and Next run fit
               "Dernière exécution" / "Prochaine exécution" (about 108 / 116 px plus padding) at 1080 and wrap rather than overflow below it. */}
           <colgroup>
@@ -275,6 +276,7 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                           id={cronId}
                           aria-label={t_i18n("When {schedule} starts.", { schedule: label })}
                           aria-invalid={next === null || undefined}
+                          aria-describedby={next === null ? `${cronId}-error` : undefined}
                           value={cron}
                           onChange={(event) => set({ [key]: event.target.value } as Partial<HealthSchedules>)}
                           className="w-36 [&_input]:font-mono-plex"
@@ -286,13 +288,15 @@ export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
                     )}
                   </td>
                   {(() => {
-                    const reading = next === null ? t_i18n("Not a valid cron expression") : `${humanizeCron(cron.trim(), locale)} (${timezone.replace(/_/g, " ")})`;
+                    const reading = next === null ? t_i18n("Invalid cron") : `${humanizeCron(cron.trim(), locale)} (${timezone.replace(/_/g, " ")})`;
                     const last = `${fired ? when(fired.fired_at) : t_i18n("Never")}${fired?.refusal ? ` · ${t_i18n(healthRefusalKey({ detail: { code: fired.refusal } }), { name: healthName })}` : ""}`;
                     const upcoming = enabled && next ? when(next.toISOString()) : t_i18n("Not scheduled");
                     return (
                       <>
                         <td className={cn("py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")}>
-                          <TruncatedText text={reading} />
+                          <span id={next === null ? `${cronId}-error` : undefined} className="block min-w-0">
+                            <TruncatedText text={reading} />
+                          </span>
                         </td>
                         <td className="py-1.5 pr-3 text-default-secondary" data-testid={`settings.health.schedule.last.${key}`}>
                           <TruncatedText text={last} />

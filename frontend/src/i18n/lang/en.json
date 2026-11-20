@@ -19738,7 +19738,7 @@
   "Runs once a day at most, only for modules whose findings changed.": "Runs once a day at most, only for modules whose findings changed.",
   "Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone of this section. The scheduler reads it at each tick.": "Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone of this section. The scheduler reads it at each tick.",
   "The timezone the cron expressions of this section are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.": "The timezone the cron expressions of this section are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.",
-  "Not a valid cron expression": "Not a valid cron expression",
+  "Invalid cron": "Invalid cron",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}",
   "No proposal awaits approval": "No proposal awaits approval",
   "Proposals and cycles": "Proposals and cycles",

@@ -19738,7 +19738,7 @@
   "Runs once a day at most, only for modules whose findings changed.": "Se ejecuta como máximo una vez al día, solo para los módulos cuyos hallazgos cambiaron.",
   "Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone of this section. The scheduler reads it at each tick.": "Cinco campos: minuto, hora, día del mes, mes, día de la semana, por ejemplo 0 3 * * * para cada día a las 03:00 en la zona horaria de esta sección. El planificador la lee en cada ciclo.",
   "The timezone the cron expressions of this section are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.": "La zona horaria en la que se leen las expresiones cron de esta sección, por ejemplo Europe/Paris. Cada programación de Platform Health la usa. UTC salvo que se elija otra.",
-  "Not a valid cron expression": "Expresión cron no válida",
+  "Invalid cron": "Cron no válido",
   "{count, plural, one {# proposal awaits approval} other {# proposals await approval}}": "{count, plural, one {# propuesta pendiente de aprobación} other {# propuestas pendientes de aprobación}}",
   "No proposal awaits approval": "Ninguna propuesta pendiente de aprobación",
   "Proposals and cycles": "Propuestas y ciclos",
