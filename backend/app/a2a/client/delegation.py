@@ -1288,6 +1288,7 @@ async def drain_background_a2a() -> None:
         list(_BACKGROUND_COLLECTS)
         + list(BACKGROUND_CALLBACKS)
         + list(_BACKGROUND_CANCELS)
+        + list(_BACKGROUND_TARGET_WRITES)
     )
     if not pending:
         return
@@ -1510,6 +1511,85 @@ _OUTCOME_COLUMNS = (
 )
 
 
+#: How long a delegation polls for a target row another session holds before
+#: it hands the outcome write to a detached task. Short: the caller waits.
+_TARGET_OUTCOME_WAIT_SECONDS = 1.0
+_TARGET_OUTCOME_POLL_SECONDS = 0.1
+
+#: The detached write waits for the row at most this long (``lock_timeout``),
+#: then gives the counts up rather than queue behind a stuck holder.
+_TARGET_OUTCOME_LOCK_TIMEOUT = "30s"
+
+#: Kept referenced like the collects: the detached outcome writes.
+_BACKGROUND_TARGET_WRITES: set[asyncio.Task[None]] = set()
+
+#: The row was written and committed.
+_WRITTEN = "written"
+#: Another session holds the row.
+_HELD = "held"
+#: The row no longer exists.
+_GONE = "gone"
+
+
+async def _write_target_now(target_id: Any, changed: dict[str, Any]) -> str:
+    """Claim the target row with ``SKIP LOCKED`` in a session of its own and write *changed*."""
+    from sqlalchemy import select
+
+    from app.core.database import async_session
+    from app.models.a2a import A2AClientTarget
+
+    async with async_session() as own_db:
+        row = (
+            await own_db.execute(
+                select(A2AClientTarget).where(A2AClientTarget.id == target_id).with_for_update(skip_locked=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            exists = (
+                await own_db.execute(select(A2AClientTarget.id).where(A2AClientTarget.id == target_id))
+            ).scalar_one_or_none()
+            await own_db.rollback()
+            return _HELD if exists is not None else _GONE
+        for name, value in changed.items():
+            setattr(row, name, value)
+        await own_db.commit()
+    return _WRITTEN
+
+
+async def _write_target_when_free(target_id: Any, changed: dict[str, Any]) -> None:
+    """Write *changed* once the holder of the row lets it go, bounded by ``lock_timeout``.
+
+    Detached from the delegation: the wait is this task's, never the run's.
+    Never raises; a write that cannot land loses these counts, logged.
+    """
+    from sqlalchemy import select, text
+
+    from app.core.database import async_session
+    from app.models.a2a import A2AClientTarget
+
+    try:
+        async with async_session() as own_db:
+            await own_db.execute(
+                text("SELECT set_config('lock_timeout', :timeout, true)"),
+                {"timeout": _TARGET_OUTCOME_LOCK_TIMEOUT},
+            )
+            row = (
+                await own_db.execute(select(A2AClientTarget).where(A2AClientTarget.id == target_id).with_for_update())
+            ).scalar_one_or_none()
+            if row is None:
+                await own_db.rollback()
+                return
+            for name, value in changed.items():
+                setattr(row, name, value)
+            await own_db.commit()
+    except Exception:
+        logger.warning(
+            "a2a.client: could not write the outcome of target %s once its holder let it go; counts lost",
+            target_id,
+            exc_info=True,
+        )
+
+
 async def _commit_target_outcome(target: Any) -> None:
     """Write what this delegation changed on its target in a session of its own.
 
@@ -1523,18 +1603,19 @@ async def _commit_target_outcome(target: Any) -> None:
 
     Written and committed at once, then marked committed on *target* so the
     caller's session writes nothing for it. A row another session holds is
-    left to the caller's session as before, never waited on: the caller may
-    be that holder. A target the caller's session does not persist (a stub,
+    polled for a moment, then written by a detached task once its holder
+    lets it go: never left to the caller's session, whose next flush would
+    wait for that holder and then keep the lock for the rest of the run.
+    The caller may itself be the holder: the detached write then lands once
+    the run commits. A target the caller's session does not persist (a stub,
     a transient row) is left as it is.
     """
     if not hasattr(target, "_sa_instance_state"):
         return
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import select
-    from sqlalchemy.orm.attributes import set_committed_value
+    import time
 
-    from app.core.database import async_session
-    from app.models.a2a import A2AClientTarget
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.orm.attributes import set_committed_value
 
     state = sa_inspect(target)
     if not state.persistent:
@@ -1542,19 +1623,14 @@ async def _commit_target_outcome(target: Any) -> None:
     changed = {name: getattr(target, name) for name in _OUTCOME_COLUMNS if state.attrs[name].history.has_changes()}
     if not changed:
         return
+    target_id = target.id
+    deadline = time.monotonic() + _TARGET_OUTCOME_WAIT_SECONDS
     try:
-        async with async_session() as own_db:
-            row = (
-                await own_db.execute(
-                    select(A2AClientTarget).where(A2AClientTarget.id == target.id).with_for_update(skip_locked=True)
-                )
-            ).scalar_one_or_none()
-            if row is None:
-                await own_db.rollback()
-                return
-            for name, value in changed.items():
-                setattr(row, name, value)
-            await own_db.commit()
+        while True:
+            outcome = await _write_target_now(target_id, changed)
+            if outcome != _HELD or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(_TARGET_OUTCOME_POLL_SECONDS)
     except Exception:
         logger.warning(
             "a2a.client: could not write the outcome of target %s on its own; left to the caller's transaction",
@@ -1562,6 +1638,12 @@ async def _commit_target_outcome(target: Any) -> None:
             exc_info=True,
         )
         return
+    if outcome == _GONE:
+        return
+    if outcome == _HELD:
+        _bg = asyncio.create_task(_write_target_when_free(target_id, dict(changed)))
+        _BACKGROUND_TARGET_WRITES.add(_bg)
+        _bg.add_done_callback(_BACKGROUND_TARGET_WRITES.discard)
     for name, value in changed.items():
         set_committed_value(target, name, value)
 
