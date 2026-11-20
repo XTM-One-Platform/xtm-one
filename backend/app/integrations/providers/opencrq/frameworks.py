@@ -1,6 +1,7 @@
 """OpenCRQ tenancy, framework catalog, and control capability tools.
 
 * ``list_opencrq_tenants``               - tenants accessible to the caller.
+* ``get_opencrq_platform_version``       - the version the platform runs.
 * ``list_opencrq_organizations``         - organizations of a tenant.
 * ``list_opencrq_frameworks``            - assessment-catalog and Drata frameworks.
 * ``get_opencrq_framework``              - Drata framework detail.
@@ -16,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -845,7 +847,17 @@ def register(
             f"... and {len(events) - 40} more." if len(events) > 40 else "",
         )
 
+    async def get_opencrq_platform_version() -> str:
+        health, err = await _trpc(base_url, headers, "health", "read the platform version")
+        if err:
+            return err
+        version = health.get("version") if isinstance(health, dict) else None
+        if not isinstance(version, str) or not version.strip():
+            return "OpenCRQ answered health without a version: the platform version could not be read."
+        return _quarantined("OpenCRQ version:", json.dumps({"version": version.strip()[:200]}), "platform version")
+
     executor.register("list_opencrq_tenants", list_opencrq_tenants)
+    executor.register("get_opencrq_platform_version", get_opencrq_platform_version)
     executor.register("list_opencrq_organizations", list_opencrq_organizations)
     executor.register("list_opencrq_frameworks", list_opencrq_frameworks)
     executor.register("get_opencrq_framework", get_opencrq_framework)
@@ -884,6 +896,15 @@ def register(
             description=(
                 "List the OpenCRQ tenants accessible to the current user. "
                 "Use the returned tenant IDs to scope other OpenCRQ tools."
+            ),
+            input_schema={"type": "object", "properties": {}},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencrq_platform_version",
+            description=(
+                "Read the version the bound OpenCRQ platform runs (tRPC health). "
+                "Read-only; compare it with a release to tell whether an upgrade landed."
             ),
             input_schema={"type": "object", "properties": {}},
             source=_SOURCE,

@@ -15,6 +15,7 @@ draft-gated. Most require SETTINGS_SETACCESSES on the API token.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -1022,8 +1023,20 @@ def register(
     executor.register("manage_opencti_user", manage_opencti_user)
     executor.register("manage_opencti_group", manage_opencti_group)
     executor.register("manage_opencti_role", manage_opencti_role)
+
+    async def get_opencti_platform_version() -> str:
+        data, err = await _gql("query PlatformVersion { about { version } }")
+        if err:
+            return err
+        about = data.get("about") if isinstance(data, dict) else None
+        version = about.get("version") if isinstance(about, dict) else None
+        if not isinstance(version, str) or not version.strip():
+            return "OpenCTI answered about { version } without a version: the platform version could not be read."
+        return f"OpenCTI version: {json.dumps({'version': version.strip()[:200]})}"
+
     executor.register("list_opencti_capabilities", list_opencti_capabilities)
     executor.register("manage_opencti_profile", manage_opencti_profile)
+    executor.register("get_opencti_platform_version", get_opencti_platform_version)
 
     return [
         ToolDefinition(
@@ -1194,6 +1207,15 @@ def register(
                 },
                 "required": ["action"],
             },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_platform_version",
+            description=(
+                "Read the version the bound OpenCTI platform runs (GraphQL about). "
+                "Read-only; compare it with a release to tell whether an upgrade landed."
+            ),
+            input_schema={"type": "object", "properties": {}, "required": []},
             source=_SOURCE,
         ),
     ]

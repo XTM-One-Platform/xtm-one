@@ -44,6 +44,9 @@ Trigger types an assignment accepts today: `schedule`, `webhook`,
 `work_item.*`, `run.*`, `platform.release.deployed` and, for a module's
 upgrade, `integration.version.changed` (a registered platform's heartbeat
 reporting a new version, `services/integration_versions.py`; #584).
+The version itself is read on demand by `manage_openaev_settings` action
+`version`, `get_opencti_platform_version` (GraphQL `about { version }`) and
+`get_opencrq_platform_version` (the public tRPC `health` procedure).
 The OpenCTI integration exposes notifier and trigger management
 (`manage_opencti_trigger`, `manage_opencti_notifier`) that S2 builds on; per
 the program brief, the OpenCTI integration event is a create / update / delete
