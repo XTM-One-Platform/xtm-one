@@ -1536,13 +1536,25 @@ class TestImageEdits:
         assert not provider.image_takes_mask("gpt-image-1")
         # A gateway older than 1.261120.0 lists no ``image_mask``; a value that is no bool says nothing either.
         for unsaid in ({}, {"image_mask": None}):
-            listed[0] = {**{k: v for k, v in listed[0].items() if k != "image_mask"}, **unsaid}
+            listed[0].pop("image_mask", None)
+            listed[0].update(unsaid)
             await provider.list_image_models()
             assert provider.image_takes_mask("gpt-image-1")
 
+    @pytest.mark.asyncio
+    async def test_a_model_no_longer_listed_is_no_longer_edited_with(self):
+        listed = [{"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": True}]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda r: httpx.Response(200, json={"object": "list", "data": listed}))
+        await provider.list_image_models()
+        assert provider.image_takes_mask("gpt-image-1")
+        listed[0] = {"id": "gpt-image-2", "owned_by": "openai", "types": ["image"]}
+        await provider.list_image_models()
+        assert provider.image_reference_limit("gpt-image-1") == 0 and not provider.image_takes_mask("gpt-image-1")
+
     def test_a_credential_pinned_to_gemini_takes_no_mask(self):
         provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||gemini")
-        provider._editing_models["house-image"] = None
+        provider._image_edit_masks["house-image"] = None
         assert provider.image_reference_limit("house-image") == 3 and not provider.image_takes_mask("house-image")
 
     @pytest.mark.asyncio
