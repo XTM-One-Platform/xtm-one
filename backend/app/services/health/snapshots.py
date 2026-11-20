@@ -33,8 +33,14 @@ Snapshot format, version :data:`SCHEMA_VERSION` (every key optional)::
                       "works_in_error": int, "queue_messages": int}],
       "rabbitmq": {"queue_messages": int, "consumers": int},
       "search_engine": {"status": "green" | "yellow" | "red", "disk_used_percent": number},
-      "ingestion_lag_seconds": int
+      "ingestion_lag_seconds": int,
+      "healthchecks": [{"type": str, "status": "ERROR" | "WARNING", "count": int}],
+      "integrations": [{"id", "name", "kind": "injector" | "collector" | "executor",
+                        "updated_at": ISO 8601}],
+      "agents": {"total": int, "offline": int}
     }
+
+OpenCTI sends the first four keys, OpenAEV the last three (#101 S6).
 """
 
 from __future__ import annotations
@@ -58,6 +64,10 @@ MAX_SNAPSHOT_BYTES = 256 * 1024
 MAX_CONNECTORS = 500
 _MAX_TEXT = 200
 _SEARCH_STATUSES = ("green", "yellow", "red")
+_HEALTHCHECK_STATUSES = ("ERROR", "WARNING")
+_INTEGRATION_KINDS = ("injector", "collector", "executor")
+#: Healthcheck rows (type and status pairs) kept from one snapshot.
+MAX_HEALTHCHECKS = 100
 
 
 def _finite(value: Any) -> float | int | None:
@@ -110,6 +120,33 @@ def _connector(entry: Any) -> dict[str, Any] | None:
     return kept
 
 
+def _healthcheck(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict) or entry.get("status") not in _HEALTHCHECK_STATUSES:
+        return None
+    kind = _text(entry.get("type"))
+    count = _count(entry.get("count"))
+    if kind is None or not count:
+        return None
+    return {"type": kind.lower(), "status": entry["status"], "count": count}
+
+
+def _integration(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict) or entry.get("kind") not in _INTEGRATION_KINDS:
+        return None
+    integration_id = _text(entry.get("id"))
+    if integration_id is None:
+        return None
+    kept: dict[str, Any] = {
+        "id": integration_id,
+        "name": _text(entry.get("name")) or integration_id,
+        "kind": entry["kind"],
+    }
+    updated = _moment(entry.get("updated_at"))
+    if updated is not None:
+        kept["updated_at"] = updated
+    return kept
+
+
 def read_snapshot(raw: Any) -> dict[str, Any] | None:
     """The snapshot as kept, or ``None`` when it does not read as one of :data:`SCHEMA_VERSION`."""
     if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
@@ -142,6 +179,17 @@ def read_snapshot(raw: Any) -> dict[str, Any] | None:
     lag = _count(raw.get("ingestion_lag_seconds"))
     if lag is not None:
         kept["ingestion_lag_seconds"] = lag
+    healthchecks = raw.get("healthchecks")
+    if isinstance(healthchecks, list):
+        kept["healthchecks"] = [h for h in (_healthcheck(e) for e in healthchecks[:MAX_HEALTHCHECKS]) if h is not None]
+    integrations = raw.get("integrations")
+    if isinstance(integrations, list):
+        kept["integrations"] = [i for i in (_integration(e) for e in integrations[:MAX_CONNECTORS]) if i is not None]
+    agents = raw.get("agents")
+    if isinstance(agents, dict):
+        fleet = {k: n for k in ("total", "offline") if (n := _count(agents.get(k))) is not None}
+        if fleet:
+            kept["agents"] = fleet
     return kept
 
 

@@ -103,6 +103,17 @@ In XTM One mode, AI switched off included, every registered OpenCTI is checked e
 | Search engine disk | Warning | The search engine disk is over 85 % used |
 | Ingestion lag | Warning | Ingestion lags by over 15 minutes |
 
+## OpenAEV checks
+
+In XTM One mode, AI switched off included, every registered OpenAEV is checked every 5 minutes, with no enrolment, on the same rules as OpenCTI: the heartbeat reads the registration, the others read the health snapshot OpenAEV sends with its registration while it is under 15 minutes old. An OpenAEV release that sends no snapshot is only checked for its heartbeat.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Heartbeat | Critical | OpenAEV has not registered for 15 minutes |
+| Healthcheck | Warning, Critical | OpenAEV reports a failing healthcheck of a type (mail server, agent or executor, security platform collector, injector contract, ...): critical when one is in error, a warning otherwise (one finding per type) |
+| Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) |
+| Agents offline | Warning | Over half of the agents are offline |
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:
