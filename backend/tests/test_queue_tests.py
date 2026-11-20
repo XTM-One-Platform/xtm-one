@@ -100,5 +100,7 @@ def test_the_unit_job_s_files_run_under_its_marker(
 
     monkeypatch.setattr(subprocess, "run", run)
     assert queue_tests.main(["app/x.py"], python="py") == code
-    assert calls == [["py", "-m", "pytest", "-m", "not integration", "-q", "tests/test_a.py"]]
+    assert calls == [
+        ["py", "-m", "pytest", "-m", "not integration", "-q", "--continue-on-collection-errors", "tests/test_a.py"]
+    ]
     assert "tests/test_b.py: r (integration or chromium as a whole" in capsys.readouterr().out
