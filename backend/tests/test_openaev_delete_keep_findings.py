@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""OpenAEV deletes keep findings by default (keep_findings, OpenAEV #9414).
+"""OpenAEV deletes keep findings by default (keep_findings, OpenAEV #9414, #9550).
 
-OpenAEV deletes the findings of a simulation, scenario or inject with it unless
+OpenAEV deletes the findings of a simulation, scenario, inject or atomic test with it unless
 the DELETE carries keep_findings=true. The tools send keep_findings=true by
 default so an agent's clean-up never destroys evidence silently, send false
 when asked, and say in the answer what happened to the findings.
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.integrations.providers.openaev import build_tools, core, injects, simulations
+from app.integrations.providers.openaev import build_tools, core, injects, simulations, testing
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.openaev.io||test-token"
@@ -93,11 +93,32 @@ async def test_scenario_delete_sends_keep_findings(monkeypatch, arguments, expec
     assert _schema(tools, "delete_openaev_scenario")["default"] is True
 
 
+@pytest.mark.parametrize(
+    ("arguments", "expected"), [({}, "true"), ({"keep_findings": True}, "true"), ({"keep_findings": False}, "false")]
+)
+async def test_atomic_testing_delete_sends_keep_findings(monkeypatch, arguments, expected):
+    api = _Api()
+    monkeypatch.setattr(testing, "_api", api)
+    content, tools = await _run("manage_openaev_atomic_testing", {"action": "delete", "inject_id": "a1", **arguments})
+    assert api.calls == [("delete", "/api/atomic-testings/a1", {"keep_findings": expected})]
+    assert content.startswith("Deleted atomic test a1.")
+    if expected == "true":
+        assert "detached" in content and "ignores it" in content
+    else:
+        assert "findings were deleted with the atomic test" in content
+    assert _schema(tools, "manage_openaev_atomic_testing")["default"] is True
+
+
 async def test_schemas_do_not_share_one_dict():
     executor = CallableToolExecutor()
     tools = build_tools(TOKEN, executor)
     schemas = [
         _schema(tools, name)
-        for name in ("manage_openaev_simulation", "manage_openaev_inject", "delete_openaev_scenario")
+        for name in (
+            "manage_openaev_simulation",
+            "manage_openaev_inject",
+            "delete_openaev_scenario",
+            "manage_openaev_atomic_testing",
+        )
     ]
-    assert len({id(s) for s in schemas}) == 3
+    assert len({id(s) for s in schemas}) == 4
