@@ -96,13 +96,15 @@ In XTM One mode, AI switched off included, every registered OpenCTI is checked e
 | Check | Severity | Fails when |
 |---|---|---|
 | Heartbeat | Critical | OpenCTI has not registered for 15 minutes |
-| Connector silent | Warning | An active connector has not reported for 30 minutes (one finding per connector) |
-| Connector errors | Warning | A connector has over 10 works in error (one finding per connector) |
-| Queue depth | Warning | Over 100,000 messages wait in the broker |
+| Connector silent | Warning | An active connector has not reported for 30 minutes (one finding per connector) (E) |
+| Connector errors | Warning | A connector has over 10 works in error (one finding per connector) (E) |
+| Queue depth | Warning | Over 100,000 messages wait in the broker (E) |
 | No queue consumer | Critical | Messages wait in the broker and no worker reads them |
 | Search engine | Warning, Critical | The Elasticsearch or OpenSearch cluster is yellow (warning) or red (critical) |
-| Search engine disk | Warning | The search engine disk is over 85 % used |
-| Ingestion lag | Warning | Ingestion lags by over 15 minutes |
+| Search engine disk | Warning | The search engine disk is over 85 % used (E) |
+| Ingestion lag | Warning | Ingestion lags by over 15 minutes (E) |
+
+The figures marked (E) are defaults. An administrator changes them with the Platform Health settings API (`PUT /api/v1/health/settings`, keys `opencti.connector_stale_minutes`, `opencti.connector_errors_max`, `opencti.queue_depth_max`, `opencti.search_disk_max_percent`, `opencti.ingestion_lag_minutes`); the next pass, within 5 minutes, reads them.
 
 ## OpenAEV checks
 
@@ -112,8 +114,10 @@ In XTM One mode, AI switched off included, every registered OpenAEV is checked e
 |---|---|---|
 | Heartbeat | Critical | OpenAEV has not registered for 15 minutes |
 | Healthcheck | Warning, Critical | OpenAEV reports a failing healthcheck of a type (mail server, agent or executor, security platform collector, injector contract, ...): critical when one is in error, a warning otherwise (one finding per type) |
-| Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) |
-| Agents offline | Warning | Over half of the agents are offline |
+| Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) (E) |
+| Agents offline | Warning | Over half of the agents are offline (E) |
+
+The figures marked (E) are defaults, changed like the OpenCTI ones (keys `openaev.integration_silent_minutes` and `openaev.agents_offline_max_percent`).
 
 ## OpenCRQ checks
 

@@ -374,7 +374,7 @@ waiting with no consumer), `opencti.search_engine` (yellow warning, red critical
 `opencti.search_disk` (warning, > 85 %), `opencti.ingestion_lag` (warning, > 15 min). Every
 check but the heartbeat reads the latest snapshot only while it is fresh (15 min), and a key
 the snapshot does not carry records nothing; each check closes out the subjects it no longer
-reads. Thresholds are constants until the settings slice (S10) makes them editable. Owed:
+reads. The (E) thresholds are `HealthSettings.opencti` (S10b), read once per pass. Owed:
 connector version, feeds, playbooks, retention and coverage (their snapshot keys come with
 the OpenCTI push PR), and the version and licence row (read from the registration).
 
