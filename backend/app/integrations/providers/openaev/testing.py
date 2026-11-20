@@ -23,8 +23,11 @@ from ._common import (
     _normalize_output_parsers,
     _relation_ids,
     _search_body,
+    findings_fate,
     inject_targets_line,
     json_answer,
+    keep_findings_params,
+    keep_findings_schema,
     mirror_content_targets,
     stored_targets_line,
 )
@@ -196,6 +199,7 @@ def register(
         recurrence_end: str = "",
         search: str = "",
         limit: int = 20,
+        keep_findings: bool = True,
     ) -> str:
         action = (action or "").strip().lower()
 
@@ -351,14 +355,15 @@ def register(
                 return "inject_id is required for action 'delete'."
             _, err = await _api(
                 base_url, headers, "delete", f"/api/atomic-testings/{inject_id}",
-                "delete atomic test",
+                "delete atomic test", params=keep_findings_params(keep_findings),
             )
             if err:
                 return err
             return (
                 f"Deleted atomic test {inject_id}. Its queued agent jobs went with "
                 "it, so a job not yet fetched never runs; an execution an agent or "
-                "injector already picked up is NOT stopped by the delete."
+                "injector already picked up is NOT stopped by the delete. "
+                + findings_fate(keep_findings, "atomic test")
             )
 
         if action in ("launch", "relaunch", "duplicate"):
@@ -585,7 +590,7 @@ def register(
                 "injector_contract_id, optional description/asset_ids/asset_group_ids/"
                 "content JSON), 'update' (inject_id + the fields to change; every "
                 "field left out keeps its stored value, asset_ids=[] clears the "
-                "assets), 'delete' (inject_id), "
+                "assets), 'delete' (inject_id, keep_findings), "
                 "'launch' / 'relaunch' (inject_id - EXECUTES the test against the "
                 "targeted assets), 'duplicate' (inject_id), 'recurrence' "
                 "(inject_id + recurrence, recurrence_start, recurrence_end: send "
@@ -630,6 +635,7 @@ def register(
                     },
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
+                    "keep_findings": keep_findings_schema(),
                 },
                 "required": ["action"],
             },
