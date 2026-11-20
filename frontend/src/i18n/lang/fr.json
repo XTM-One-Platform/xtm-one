@@ -17327,7 +17327,7 @@
   "One line, kept with the dismissal": "Une ligne, conservée avec la suggestion ignorée",
   "Back to suggestions": "Retour aux suggestions",
   "Restore all": "Tout restaurer",
-  "{count, plural, one {# more finding is not shown: narrow the list with the filters.} other {# more findings are not shown: narrow the list with the filters.}}": "{count, plural, one {# constat de plus n'est pas affiché : affinez la liste avec les filtres.} other {# constats de plus ne sont pas affichés : affinez la liste avec les filtres.}}",
+  "{count, plural, one {# more finding is not shown: the list keeps the most severe and most recent ones.} other {# more findings are not shown: the list keeps the most severe and most recent ones.}}": "{count, plural, one {# constat de plus n'est pas affiché : la liste garde les plus graves et les plus récents.} other {# constats de plus ne sont pas affichés : la liste garde les plus graves et les plus récents.}}",
   "This suggestion could not be restored. Try again in a moment.": "Cette suggestion n'a pas pu être restaurée. Réessayez dans un instant.",
   "No dismissed suggestion.": "Aucune suggestion ignorée.",
   "Dismissed by {name} on {date}": "Ignorée par {name} le {date}",
