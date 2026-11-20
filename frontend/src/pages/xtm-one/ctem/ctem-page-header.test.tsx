@@ -12,7 +12,7 @@ import en from "@/i18n/lang/en.json";
 import es from "@/i18n/lang/es.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
-import { CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
+import { CRUMB_EXTRAS_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
 
 const CATALOGS: Record<string, Record<string, string>> = { en, fr, es, ja };
 /** The widest stat row of the CTEM pages (the command center's five cells). */
@@ -137,9 +137,9 @@ describe("CtemPageHeader", () => {
       ),
     });
     const extras = screen.getByTestId("ctem-page-header-crumb-extras");
-    expect(extras.className).toContain("flex-wrap");
-    expect(extras.className).toContain("min-w-0");
-    expect(extras.className).not.toContain("overflow-hidden");
+    expect(extras.style.flexWrap).toBe(CRUMB_EXTRAS_STYLE.flexWrap);
+    expect(extras.style.overflow).toBe("visible");
+    expect(extras.style.minWidth).toBe("0");
     expect(extras.textContent).toBe("Not enough data to scoreOwner agent");
   });
 

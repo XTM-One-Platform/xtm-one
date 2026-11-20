@@ -192,7 +192,7 @@ export function CtemPageHeader({
                   the context confirmation were 0 px wide at 1080 next to a badge).
                   An item wider than the whole line still truncates on its own. */}
               {crumbExtras && (
-                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5" data-testid="ctem-page-header-crumb-extras">
+                <span style={CRUMB_EXTRAS_STYLE} className="flex min-w-0 flex-1 items-center gap-x-2 gap-y-0.5" data-testid="ctem-page-header-crumb-extras">
                   {crumbExtras}
                 </span>
               )}
@@ -258,6 +258,9 @@ export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderSt
 
 /** Wrap, never clip: the rule the no-overflow test pins. */
 export const STAT_ROW_STYLE = { flexWrap: "wrap", overflow: "visible" } as const;
+
+/** The breadcrumb extras wrap whole items, never clip them (#604); read by the test. */
+export const CRUMB_EXTRAS_STYLE = { flexWrap: "wrap", overflow: "visible", minWidth: 0 } as const;
 
 function StatCell({ stat, stacked }: { stat: CtemHeaderStat; stacked: boolean }) {
   const body = (
