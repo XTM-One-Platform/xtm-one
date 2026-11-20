@@ -159,6 +159,36 @@ def test_every_fixture_step_uses_a_component_the_lab_exposes():
     }
 
 
+def test_every_fixture_step_carries_the_configuration_its_component_requires():
+    module = _module()
+    # playbookAddNode refuses a node missing a required key: the seed stopped at Qualify & translate (2 of 11).
+    assert module.missing_configuration(module.PLAYBOOK) == []
+    [qualify] = [n for n in module.PLAYBOOK["nodes"] if n["key"] == "qualify"]
+    action = qualify["configuration"]["actions"][0]
+    assert qualify["configuration"]["applyToElements"] == "only-main"
+    assert set(action["value"][0]) == {"label", "value", "patch_value"}
+    [status] = [n for n in module.PLAYBOOK["nodes"] if n["key"] == "status"]
+    assert json.loads(status["configuration"]["filters"])["mode"] == "and"
+
+
+def test_a_fixture_missing_a_required_configuration_is_not_seeded(monkeypatch):
+    module = _module()
+    calls, fake = _playbook_backend(components=set(module.LAB_COMPONENTS))
+    monkeypatch.setattr(module, "graphql", fake)
+    logged: list[str] = []
+    monkeypatch.setattr(module.lab, "log", logged.append)
+    playbook = {
+        "name": "Bare",
+        "nodes": [
+            {"key": "a", "component_id": "PLAYBOOK_INTERNAL_MANUAL_TRIGGER", "name": "Start", "parent": None},
+            {"key": "b", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Edit", "parent": ["a", "out"]},
+        ],
+    }
+    assert module.seed_playbook(playbook, "http://localhost:3500", {}) is None
+    assert any("required configuration missing: Edit: actions, applyToElements" in line for line in logged)
+    assert not any("playbookAdd" in query for query, _ in calls)
+
+
 def test_a_fixture_with_a_hidden_component_is_not_seeded(monkeypatch):
     module = _module()
     calls, fake = _playbook_backend(components={"PLAYBOOK_INTERNAL_DATA_STREAM"})

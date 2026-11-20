@@ -303,10 +303,40 @@ LAB_CONNECTOR: dict = {
     "only_contextual": False,
     "playbook_compatible": True,
 }
+#: A filter group matching every Report (OpenCTI's FilterGroup, sent as the JSON string its schema types).
+REPORT_FILTERS = json.dumps({
+    "mode": "and",
+    "filters": [{"key": ["entity_type"], "values": ["Report"], "operator": "eq", "mode": "or"}],
+    "filterGroups": [],
+})
+
+
+def manipulate(op: str, attribute: str, value: str) -> dict:
+    """A Manipulate knowledge configuration: one action on *attribute*, applied to the main element only."""
+    return {
+        "actions": [{"op": op, "attribute": attribute, "value": [{"label": value, "value": value, "patch_value": value}]}],
+        "applyToElements": "only-main",
+    }
+
+
+#: The ``required`` keys of each component's ``configuration_schema`` (opencti-graphql playbook-components.ts and
+#: manipulate-knowledge-component.ts): ``playbookAddNode`` refuses a node missing one with 'Playbook node
+#: configuration misses required fields', which stops the seed and leaves a partial canvas.
+REQUIRED_CONFIGURATION: dict[str, tuple[str, ...]] = {
+    "PLAYBOOK_INTERNAL_DATA_STREAM": ("create", "update", "delete"),
+    "PLAYBOOK_INTERNAL_DATA_CRON": ("period", "triggerTime", "onlyLast", "filters"),
+    "PLAYBOOK_LOGGER_COMPONENT": ("level",),
+    "PLAYBOOK_FILTERING_COMPONENT": ("filters",),
+    "PLAYBOOK_REDUCING_COMPONENT": ("filters",),
+    "PLAYBOOK_CONNECTOR_COMPONENT": ("connector",),
+    "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT": ("actions", "applyToElements"),
+    "PLAYBOOK_RULE_COMPONENT": ("rule", "inferences"),
+}
 #: The report qualification pipeline the playbook editor rounds review: 12 steps, 15 links (11 parent links and
 #: 4 ``unmodified`` links joining a branch back). ``parent`` is ``[node key, out port]``; the entry point has none.
 #: Every step uses a component the lab's backend exposes (:data:`LAB_COMPONENTS`): an unexposed one leaves the
-#: canvas node without its component and the editor's error boundary blanks the page.
+#: canvas node without its component and the editor's error boundary blanks the page. Every step carries the
+#: configuration its component requires (:data:`REQUIRED_CONFIGURATION`).
 PLAYBOOK: dict = {
     "name": "Report qualification pipeline",
     "description": "Seeded by the OpenCTI PR-head lab: the playbook editor's reference fixture.",
@@ -316,21 +346,22 @@ PLAYBOOK: dict = {
         {"key": "scrape", "component_id": CONNECTOR_COMPONENT, "name": "Scrape full article",
          "parent": ["listen", "out"], "configuration": {"connector": "{seeded:connector-enrichment}"}},
         {"key": "qualify", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Qualify & translate",
-         "parent": ["scrape", "out"]},
+         "parent": ["scrape", "out"], "configuration": manipulate("replace", "confidence", "75")},
         {"key": "status", "component_id": "PLAYBOOK_FILTERING_COMPONENT", "name": "Status is QUALIFIED",
-         "parent": ["qualify", "out"]},
+         "parent": ["qualify", "out"], "configuration": {"filters": REPORT_FILTERS}},
         {"key": "logerr", "component_id": "PLAYBOOK_LOGGER_COMPONENT", "name": "Qualifier failed: log error",
          "parent": ["qualify", "unmodified"], "configuration": {"level": "error"}},
         {"key": "extract", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT",
-         "name": "Extract entities & relationships", "parent": ["status", "out"]},
+         "name": "Extract entities & relationships", "parent": ["status", "out"],
+         "configuration": manipulate("replace", "x_opencti_score", "50")},
         {"key": "rejected", "component_id": "PLAYBOOK_INGESTION_COMPONENT", "name": "Ingest rejected (status + note)",
          "parent": ["status", "no-match"]},
         {"key": "processed", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Change status to PROCESSED",
-         "parent": ["extract", "out"]},
+         "parent": ["extract", "out"], "configuration": manipulate("replace", "confidence", "90")},
         {"key": "categorize", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Categorize feed flavours",
-         "parent": ["processed", "out"]},
+         "parent": ["processed", "out"], "configuration": manipulate("replace", "report_types", "threat-report")},
         {"key": "ready", "component_id": "PLAYBOOK_UPDATE_KNOWLEDGE_COMPONENT", "name": "Change status to READY",
-         "parent": ["categorize", "out"]},
+         "parent": ["categorize", "out"], "configuration": manipulate("replace", "confidence", "100")},
         {"key": "share", "component_id": "PLAYBOOK_SHARING_COMPONENT", "name": "Share with the lab organization",
          "parent": ["ready", "out"], "configuration": {"organizations": ["{seeded:organization-filled}"]}},
         {"key": "ingest", "component_id": "PLAYBOOK_INGESTION_COMPONENT", "name": "Ingest published report",
@@ -376,6 +407,17 @@ def available_components() -> set[str] | None:
     if not isinstance(rows, list) or answer.get("errors"):
         return None
     return {str(row.get("id")) for row in rows if isinstance(row, dict) and row.get("id")}
+
+
+def missing_configuration(playbook: dict) -> list[str]:
+    """``<step name>: <key>, ...`` for every step missing a key its component requires, in node order."""
+    missing: list[str] = []
+    for node in playbook.get("nodes") or []:
+        configuration = node_configuration(node, {}) or {}
+        keys = [k for k in REQUIRED_CONFIGURATION.get(node.get("component_id"), ()) if k not in configuration]
+        if keys:
+            missing.append(f"{node.get('name')}: {', '.join(keys)}")
+    return missing
 
 
 def playbook_counts(playbook: dict) -> tuple[int, int]:
@@ -515,6 +557,11 @@ def seed_playbook(playbook: dict, base: str, ids: dict[str, str], label: str = "
     if missing:
         # A node whose component the backend does not list renders no card and blanks the editor's canvas.
         lab.log(f"opencti-pr-head: seed {label} skipped: components not available on this backend: {', '.join(missing)}")
+        return None
+    unconfigured = missing_configuration(playbook)
+    if unconfigured:
+        # Named before any write: the backend refuses such a node and the seed would stop on a partial canvas.
+        lab.log(f"opencti-pr-head: seed {label} skipped: required configuration missing: {'; '.join(unconfigured)}")
         return None
     playbook_id, existing = existing_playbook(playbook["name"])
     if (not existing or existing != nodes_count) and uses_component(playbook, CONNECTOR_COMPONENT) \
