@@ -11,7 +11,8 @@ has no git, so the script cannot diff the change itself). It calls
 each selected file with the first reason it was picked, and runs the ones the
 queue's unit job runs (a file marked ``integration`` or ``chromium`` as a
 whole is left out, as :func:`tests.selection.plan_backend` leaves it out)
-under ``pytest -m "not integration"``.
+under ``pytest -m "not integration"``, with ``--continue-on-collection-errors``
+so a module a narrow checkout cannot import is named and the rest still runs.
 
 When the change runs under every test (a ``conftest.py``, the dependencies,
 the selection itself), the queue runs the whole suite: the script says so and
@@ -37,6 +38,10 @@ import sys
 
 #: What the queue's unit job passes besides the files (``ci.yml``, Run unit tests).
 PYTEST = ("-m", "pytest", "-m", "not integration", "-q")
+#: Added here only: a narrow checkout (``sub_paths``) lacks files some selected modules read at
+#: import (a frontend fixture), and one such collection error would stop every other file from
+#: running. The error is still reported and still makes the exit code non-zero.
+CONTINUE = ("--continue-on-collection-errors",)
 SCOPE = (
     "queue_tests: the merge queue's backend selection (tests/selection.py) over {n} changed file(s) under backend/; "
     "files outside backend/ and deleted files are not seen."
@@ -92,7 +97,7 @@ def main(argv: list[str] | None = None, *, python: str = sys.executable) -> int:
     print(f"queue_tests: {len(reasons)} selected, {len(run)} in the unit job.")
     if listing or not run:
         return 0
-    return subprocess.run([python, *PYTEST, *run], check=False).returncode
+    return subprocess.run([python, *PYTEST, *CONTINUE, *run], check=False).returncode
 
 
 if __name__ == "__main__":

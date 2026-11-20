@@ -4,7 +4,7 @@ A pull request runs the static checks of `ci.yml`, the frontend's catalog tests 
 
 The `Test selection` and `E2E selection` jobs write a table to their summary: what runs, and why.
 
-Before a push, the sandbox check `backend-queue-tests` (`backend/scripts/queue_tests.py`) runs the same backend selection on a checkout's change: it prints each selected test file with its reason and runs the ones the queue's unit job runs, so a pull request green on its static checks does not turn red in the queue first. Only the changed files under `backend/` reach it; args `["--list"]` prints the selection without running it.
+Before a push, the sandbox check `backend-queue-tests` (`backend/scripts/queue_tests.py`) runs the same backend selection on a checkout's change: it prints each selected test file with its reason and runs the ones the queue's unit job runs, so a pull request green on its static checks does not turn red in the queue first. Only the changed files under `backend/` reach it; args `["--list"]` prints the selection without running it. It runs pytest with `--continue-on-collection-errors`: on a narrow checkout a selected module that cannot be imported (a frontend fixture outside `sub_paths`) is reported as a collection error and the exit stays non-zero, but the other selected files still run.
 
 ## Backend (unit, integration, Browser tool)
 
