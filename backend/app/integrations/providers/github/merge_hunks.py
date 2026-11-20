@@ -46,7 +46,7 @@ from app.services.sandbox_workspace.jsonmerge import merge_json_objects
 from app.services.sandbox_workspace.reading import is_text
 from app.services.sandbox_workspace.rebase import ConflictRegion, _added, merge_text
 
-from .contents import _MAX_COMMIT_CONTENT_BYTES, _MODE_FILE
+from .contents import _MAX_COMMIT_CONTENT_BYTES, _MODE_EXECUTABLE, _MODE_FILE
 from .merge_resolution import _MAX_READ_BYTES, _read_blob, _read_side, _Side
 
 #: Paths changed on both sides the line merge reads at most; more falls back to the list of paths.
@@ -261,7 +261,15 @@ async def line_merge(
             merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
             continue
         entries = [side.entries.get(path) for side in sides]
-        odd = next((entry for entry in entries if entry is not None and entry.mode != _MODE_FILE), None)
+        # An executable file on every side merges like a plain one: the signed commit keeps its mode.
+        # A path deleted on one side keeps no mode to carry, so an executable one is still resolved whole.
+        modes = {entry.mode for entry in entries if entry is not None}
+        plain = modes == {_MODE_FILE} or (modes == {_MODE_EXECUTABLE} and None not in entries[1:])
+        odd = (
+            None
+            if plain
+            else next((entry for entry in entries if entry is not None and entry.mode != _MODE_FILE), None)
+        )
         if odd is not None:
             merges[path] = PathMerge(path, reason=f"not a plain file (mode {odd.mode}): keep one side whole")
             continue
