@@ -27,6 +27,7 @@ import { defaultHealthName } from "@/lib/health";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import type {
+  HealthAnalysisOverview,
   HealthBudget,
   HealthCycle,
   HealthCycleStart,
@@ -35,6 +36,7 @@ import type {
   HealthFindingStatus,
   HealthHistoryPoint,
   HealthModule,
+  HealthModuleAnalysis,
   HealthName,
   HealthOverview,
   HealthOptIn,
@@ -53,6 +55,7 @@ const SETTINGS_KEY = ["health", "settings"] as const;
 const BUDGET_KEY = ["health", "budget"] as const;
 const OPT_OUT_KEY = ["health", "opt-out"] as const;
 const NAME_KEY = ["health", "name"] as const;
+const ANALYSIS_KEY = ["health", "analysis"] as const;
 
 /** What a manager opts in to improvement: an agent or a flow, on the same route shape. */
 export type OptInTarget = "agent" | "flow";
@@ -125,6 +128,7 @@ export function useSaveHealthSettings() {
       qc.setQueryData(SETTINGS_KEY, data);
       void qc.invalidateQueries({ queryKey: BUDGET_KEY });
       void qc.invalidateQueries({ queryKey: NAME_KEY });
+      void qc.invalidateQueries({ queryKey: ANALYSIS_KEY });
       // The orchestrator agent is renamed with it, in the lists and the flow node catalog.
       void qc.invalidateQueries({ queryKey: ["agents"] });
       syncFlowNodeCatalog(qc);
@@ -317,6 +321,27 @@ export function useDismissHealthFindings() {
     mutationFn: ({ ids, reason, days }: { ids: string[]; reason: string; days: number | null }) =>
       api.post<HealthFindingBulkResult>("/health/findings/dismiss", { ids, reason, days }),
     onSuccess: refresh,
+  });
+}
+
+// ── Analysis layer (#101 S9): administrators only ────────────────────────
+
+/** The latest analysis per module, the ceilings and the spend: stored rows, no model call. */
+export function useHealthAnalysis(options: { enabled?: boolean } = {}) {
+  return useQuery<HealthAnalysisOverview>({
+    queryKey: ANALYSIS_KEY,
+    queryFn: () => api.get("/health/analysis"),
+    enabled: options.enabled ?? true,
+    throwOnError: false,
+  });
+}
+
+/** Analyse one module now, within the ceilings; a refusal comes back as the module's status, not an error. */
+export function useRunHealthAnalysis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (module: HealthModule) => api.post<HealthModuleAnalysis>(`/health/analysis/${module}/run`, {}),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ANALYSIS_KEY }),
   });
 }
 

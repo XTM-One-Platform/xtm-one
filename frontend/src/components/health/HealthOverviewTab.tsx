@@ -35,6 +35,7 @@ import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/comp
 import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { HealthAnalysisPanel } from "@/components/health/HealthAnalysisPanel";
 import {
   useDismissHealthFindings,
   useHealthFindings,
@@ -580,6 +581,8 @@ export function HealthOverviewTab() {
         ))}
       </div>
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
+      {/* The analysis layer (#101 S9c): administrators only, after the history, before the findings. */}
+      {overview.data?.scope === "all" ? <HealthAnalysisPanel /> : null}
       {nothingFound ? (
         <EmptyState
           icon={HealthGlyph}
