@@ -458,6 +458,7 @@ jobs:
           docker run --rm --network none "$IMAGE" ruff --version
           docker run --rm --network none "$IMAGE" mypy --version
           docker run --rm --network none "$IMAGE" python -m pytest --version
+          docker run --rm --network none "$IMAGE" python -c "import tiktoken; assert tiktoken.get_encoding('cl100k_base').encode('ok'); print('ok: tiktoken cl100k_base loads offline')"
 
       # The integration tests' stores (hardening rule 2, a named runtime
       # exception): baked under /opt/stores, owned by root, and each
