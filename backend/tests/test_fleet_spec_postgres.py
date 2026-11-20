@@ -9,6 +9,8 @@
   never edited.
 * **Refused:** an agent the caller cannot manage blocks the apply (nothing
   written) unless ``allow_partial``.
+* **Company-managed:** the export of a company-managed fleet applied back is
+  refused whole, dry run included, never a plan that strips its members.
 """
 
 from __future__ import annotations
@@ -196,3 +198,24 @@ async def test_an_agent_the_caller_cannot_manage_blocks_the_apply() -> None:
 
         partial = await _call(alice, "apply_fleet_spec", spec=spec, dry_run=False, allow_partial=True)
         assert partial.startswith("Applied.") and "Unresolved" in partial, partial
+
+
+async def test_the_export_of_a_company_managed_fleet_is_refused_whole() -> None:
+    async with _database() as session:
+        alice = await _user(session, "alice")
+        fleet_id, _agents = await _office(session, alice)
+        exported = _spec_of(await _call(alice, "export_fleet_spec", fleet_id=fleet_id))
+        fleet = await session.get(Fleet, uuid.UUID(fleet_id))
+        assert fleet is not None
+        fleet.is_company_managed = True
+        await session.commit()
+        members = await _count(session, FleetMember)
+
+        dry = await _call(alice, "apply_fleet_spec", spec=exported)
+        assert "company-managed" in dry and "remove" not in dry, dry
+
+        bob = await _user(session, "bob")
+        await session.commit()
+        theirs = await _call(bob, "apply_fleet_spec", spec=exported)
+        assert "company-managed" in theirs and "create" not in theirs, theirs
+        assert (await _count(session, Fleet), await _count(session, FleetMember)) == (1, members)
