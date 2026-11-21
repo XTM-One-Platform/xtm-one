@@ -64,7 +64,7 @@ interface CtemCaseValidation {
 }
 
 /** A member issue the caller sees. */
-interface CtemCaseVisibleIssue {
+export interface CtemCaseVisibleIssue {
   restricted?: false;
   source: string;
   external_id: string;
@@ -78,6 +78,17 @@ interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
+  /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
+  installed_version?: string | null;
+  fixed_version?: string | null;
+  /** The OpenCTI Software ("name version") that remediates the vulnerability, when it gave the fix. */
+  fixed_by?: string | null;
+  /** The course of action that named the fix, when no remediating Software did. */
+  course_of_action_name?: string | null;
+  /** OpenCTI relates no vulnerability to the declared version: no case opens for it. */
+  not_affected?: boolean;
+  /** With a declared version: whether OpenCTI holds a Software of it; null when none is declared. */
+  declared_version_known?: boolean | null;
   /** OpenAEV finding lifecycle (CTEM-14-UI); absent when the source carries none. */
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
@@ -153,6 +164,8 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
+  /** Issues kept out of every case: OpenCTI relates them to none of the declared tech stack versions (CTEM-11). */
+  not_affected?: number;
   [key: string]: unknown;
 }
 
@@ -194,32 +207,6 @@ export function useCtemCases(options?: {
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
     placeholderData: keepPreviousData,
     ...(options?.throwOnError === false ? { throwOnError: false } : {}),
-  });
-}
-
-/** One loop duration over the cases the caller sees: the median in hours, `null` with no sample. */
-interface CtemLoopDuration {
-  median_hours: number | null;
-  count: number;
-}
-
-/** How fast the loop runs (`GET /ctem-cases/measures`, CTEM-30), read from the case history. */
-interface CtemLoopMeasures {
-  signal_to_case: CtemLoopDuration;
-  case_to_validation: CtemLoopDuration;
-  case_to_decision: CtemLoopDuration;
-  case_to_passing_retest: CtemLoopDuration;
-  closed_on_proof: { share: number | null; proven: number; resolved: number };
-  case_count: number;
-}
-
-export function useCtemLoopMeasures() {
-  return useQuery<{ vertical: string; measures: CtemLoopMeasures }>({
-    queryKey: ["ctem-cases", "measures"],
-    queryFn: () => api.get("/ctem-cases/measures"),
-    retry: ctemCasesRetry,
-    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
-    throwOnError: false,
   });
 }
 
