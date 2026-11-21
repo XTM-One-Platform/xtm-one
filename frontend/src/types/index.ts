@@ -6474,7 +6474,7 @@ interface WorkItemAsk {
 }
 
 /** One source of a decision card, shown as a button under the question (#834). */
-export interface WorkItemAskLink {
+interface WorkItemAskLink {
   label: string;
   url: string;
 }
