@@ -19931,6 +19931,8 @@
   "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "Signaux : {total, plural, one {# reçu} other {# reçus}}, {confirmed, plural, one {# confirmé} other {# confirmés}}, {inScope} dans le périmètre, {cases, plural, one {# a ouvert un dossier} other {# ont ouvert un dossier}}, {watchlist} en surveillance",
   "Back to Case": "Retour au cas",
   "Ran a fleet step on this case": "A exécuté une étape de la flotte sur ce cas",
+  "Fleet step queued on this case": "Étape de la flotte en file d'attente sur ce cas",
+  "Running a fleet step on this case": "Exécute une étape de la flotte sur ce cas",
   "Fleet working": "Flotte au travail",
   "{fleet} is working on {case}": "{fleet} traite {case}",
   "Run queued, it starts shortly": "Exécution en file d'attente, elle démarre bientôt",
