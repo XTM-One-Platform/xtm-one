@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { Plus, Wrench, Code2, Sparkles } from "lucide-react";
 import { DetailTabs } from "@/components/ui/detail-tabs";
@@ -38,7 +38,6 @@ import { AgenticGateDialog, AgenticEEBadgeForButton } from "@/components/ui/lice
 import { useFormatter } from "@/i18n";
 import { ToolGateBadge } from "@/pages/tools/ToolGateBadge";
 import { useToolGateSummary } from "@/pages/tools/useToolGateSummary";
-import { toolApprovalsHref } from "@/lib/hitl";
 import type { CustomTool } from "@/types";
 import { ResourceSharingWaysBadge } from "@/components/ui/sharing-ways-badge";
 import { BuiltinToolsPending } from "@/pages/tools/BuiltinToolsPending";
@@ -374,7 +373,7 @@ export default function CustomTools() {
   const navigate = useNavigate();
   const { t_i18n } = useFormatter();
   const { data: tools, isLoading } = useCustomTools();
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const agenticAIEnabled = useAgenticAIEnabled();
   const customToolsEnabled = useCustomToolsEnabled();
   const {
@@ -385,21 +384,13 @@ export default function CustomTools() {
   const builtinTools = useMemo(() => offeredBuiltinTools("agent"), [offeredBuiltinTools]);
   /* A path segment (#10203): `/tools/custom` is a static route declared before
      `/tools/:id/:tab?`, so it is never read as a tool whose id is "custom".
-     A link written before (`?tab=custom`) is replaced by its path below. */
+     The former tab and gate query parameters are not read: no redirect (#797). */
   const [params] = useSearchParams();
   const { pathname } = useLocation();
-  const legacyTab = params.get("tab");
-  /* The approvals tab moved: the platform's rules to Settings > Access and security >
-     Tool approvals, a person's own approvals to their profile. Links and
-     bookmarks to the old tab (`?tab=approvals`, `?gate=<tool>`) land there. */
   const trimmedPath = pathname.replace(/\/+$/, "");
   const requestedTab = trimmedPath === "/tools/custom" ? "custom" : trimmedPath === "/tools/sources" ? "sources" : null;
-  const toApprovals = legacyTab === "approvals" || params.has("gate");
-  const redirecting = toApprovals || legacyTab !== null;
-  // No list while redirecting: the visibility landing would write `?vis=` to
-  // /tools in the same commit and cancel the redirect.
   const { search, setSearch, selectedTags, setSelectedTags, visibilityFilter, setVisibilityFilter, visibilityCounts, clearAll, allItems: allTools, allTags, filtered } =
-    useEntityFilter({ items: redirecting ? undefined : tools, userId: user?.id });
+    useEntityFilter({ items: tools, userId: user?.id });
   // The two sections are independent lists with different columns, so each
   // remembers its own grid/list choice.
   const [builtinView, setBuiltinView] = useViewMode("tools-builtin");
@@ -434,24 +425,13 @@ export default function CustomTools() {
   );
 
   /* Resolved against the tabs that EXIST, not against the names. A
-     `?tab=custom` on a deployment with custom tools disabled otherwise left
+     custom tab address on a deployment with custom tools disabled otherwise left
      `DetailTabs` highlighting nothing above an empty body — reachable from the
      admin-objects link, and briefly on every refresh of that URL, since
      `useCustomToolsEnabled` reads false until the platform config resolves. */
   const tab: ToolsTab = tabs.some((t) => t.key === requestedTab)
     ? (requestedTab as ToolsTab)
     : "builtin";
-
-  if (toApprovals) {
-    return <Navigate to={toolApprovalsHref(params.get("gate") ?? undefined, isAdmin)} replace />;
-  }
-  if (redirecting) {
-    const rest = new URLSearchParams(params);
-    rest.delete("tab");
-    const q = rest.toString();
-    const target: ToolsTab = legacyTab === "custom" ? "custom" : "builtin";
-    return <Navigate to={`${toolsTabPath(target)}${q ? `?${q}` : ""}`} replace />;
-  }
 
   return (
     <div className="space-y-6">

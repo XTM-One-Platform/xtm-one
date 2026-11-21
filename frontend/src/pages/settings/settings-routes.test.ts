@@ -1,8 +1,8 @@
 /**
- * The Settings sections and their redirects (#9173, S1) - `yarn test`.
+ * The Settings sections (#9173, S1) - `yarn test`.
  *
- * UX condition C1: every old tab route redirects with its query and hash, and
- * no route literal of an old tab is left in the frontend (src, tests_e2e) or
+ * #797: a former tab route is not a section (not found, no redirect), and
+ * no route literal of a former tab is left in the frontend (src, tests_e2e) or
  * the backend. Only route literals are matched: the path then a quote, `?`,
  * `#` or `/`; API calls (`api.get("/settings/quotas")`) and the API hooks are
  * left out, they name backend endpoints, not pages.
@@ -13,30 +13,18 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { automationsSection, LEGACY_SETTINGS_ROUTES, legacySettingsTarget, pickSection } from "./settings-routes";
+import { automationsSection, isSettingsTab, pickSection, RETIRED_SETTINGS_SEGMENTS } from "./settings-routes";
 
-describe("legacySettingsTarget", () => {
-  it("sends every old tab to its new place", () => {
-    expect(legacySettingsTarget("parameters", "", "")).toBe("/settings/platform");
-    expect(legacySettingsTarget("models", "", "")).toBe("/settings/ai/models");
-    expect(legacySettingsTarget("assistant", "", "")).toBe("/settings/ai/assistant");
-    expect(legacySettingsTarget("channels", "", "")).toBe("/settings/integrations/channels");
-    expect(legacySettingsTarget("mcp", "", "")).toBe("/settings/integrations/mcp");
-    expect(legacySettingsTarget("quotas", "", "")).toBe("/settings/usage/quotas");
-    expect(legacySettingsTarget("observability", "", "")).toBe("/settings/usage/observability");
-    expect(legacySettingsTarget("quality", "", "")).toBe("/settings/automations/quality");
-    expect(legacySettingsTarget("concierge", "", "")).toBe("/settings/automations/health");
+describe("isSettingsTab (#797)", () => {
+  it("accepts bare /settings and the 7 sections", () => {
+    for (const tab of [undefined, "organization", "automations", "integrations", "ai", "security", "usage", "platform"]) {
+      expect(isSettingsTab(tab)).toBe(true);
+    }
   });
 
-  it("keeps the query and the hash", () => {
-    expect(legacySettingsTarget("observability", "?gh_connected=true", "")).toBe("/settings/usage/observability?gh_connected=true");
-    expect(legacySettingsTarget("parameters", "", "#xtm-hub")).toBe("/settings/platform#xtm-hub");
-    expect(legacySettingsTarget("channels", "?bot=42", "#top")).toBe("/settings/integrations/channels?bot=42#top");
-  });
-
-  it("leaves the new sections, the kept routes and anything unknown alone", () => {
-    for (const tab of [undefined, "organization", "automations", "integrations", "ai", "security", "usage", "platform", "toString", "nope"]) {
-      expect(legacySettingsTarget(tab, "?a=1", "#b")).toBeNull();
+  it("refuses every former tab and anything unknown: not found, never redirected", () => {
+    for (const tab of [...RETIRED_SETTINGS_SEGMENTS, "toString", "nope"]) {
+      expect(isSettingsTab(tab)).toBe(false);
     }
   });
 });
@@ -50,11 +38,11 @@ describe("automationsSection (C3)", () => {
     expect(automationsSection(undefined, copilot)).toBe("agent-runs");
   });
 
-  it("opens Platform Health in every mode, built in with no flag, the former segment included (#101 S1)", () => {
+  it("opens Platform Health in every mode, built in with no flag; the former segment is no alias (#797)", () => {
     expect(automationsSection("health", xtm)).toBe("health");
     expect(automationsSection("health", copilot)).toBe("health");
-    expect(automationsSection("concierge", xtm)).toBe("health");
-    expect(automationsSection("concierge", copilot)).toBe("health");
+    expect(automationsSection("concierge", xtm)).toBe("fleets");
+    expect(automationsSection("concierge", copilot)).toBe("agent-runs");
   });
 
   it("never shows an XTM One section in Copilot mode", () => {
@@ -95,7 +83,7 @@ function* files(dir: string, ext: RegExp): Generator<string> {
   }
 }
 
-const OLD = Object.keys(LEGACY_SETTINGS_ROUTES).join("|");
+const OLD = RETIRED_SETTINGS_SEGMENTS.join("|");
 // A page route literal: the path, then a quote, `?`, `#` or `/`, not an API call.
 const LITERAL = new RegExp(`(?<!api\\.(?:get|put|post|patch|delete)\\()["'\`]/settings/(?:${OLD})(?=["'\`?#/])`);
 // A frontend URL built in Python: after `{settings.frontend_url}` or as a
