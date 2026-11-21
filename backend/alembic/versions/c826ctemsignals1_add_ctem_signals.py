@@ -102,7 +102,7 @@ def upgrade() -> None:
         sa.Column("recorded_by", sa.String(64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")),
-        sa.UniqueConstraint("organization_id", "dedupe_key", name="uq_ctem_signals_org_dedupe"),
+        sa.UniqueConstraint("organization_id", "recorded_by", "dedupe_key", name="uq_ctem_signals_org_recorder_dedupe"),
         sa.CheckConstraint(_in("trigger_path", _PATHS), name="ck_ctem_signals_path_valid"),
         sa.CheckConstraint(_in("lens", _LENSES), name="ck_ctem_signals_lens_valid"),
         sa.CheckConstraint(_in("state", _STATES), name="ck_ctem_signals_state_valid"),

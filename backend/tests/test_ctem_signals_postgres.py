@@ -1,7 +1,8 @@
-"""CTEM signals on PostgreSQL (#826): one row per dedupe key, filters, organization isolation.
+"""CTEM signals on PostgreSQL (#826): one row per recorder and dedupe key, filters, organization isolation.
 
 The store against the real schema: the upsert keeps one row per
-``(organization, dedupe_key)`` and moves ``last_seen_at`` forward only; the
+``(organization, recorder, dedupe_key)`` and moves ``last_seen_at`` forward
+only; another recorder's key never reaches the row; the
 state, decision and case written by the next steps survive a new sighting;
 the same key in two organizations is two rows that never cross; the check
 constraints refuse an unknown path and a ``case_opened`` signal with no case.
@@ -74,7 +75,7 @@ async def test_the_same_key_twice_is_one_row_with_last_seen_moved_forward_only()
             organization_id=org,
             signal=_leak(observed_at=T0 + timedelta(hours=2), evidence={"link": "https://x"}),
             recorded_via="tool",
-            recorded_by="u2",
+            recorded_by="u1",
         )
         await session.commit()
         older, _ = await signals.record_signal(
@@ -82,7 +83,7 @@ async def test_the_same_key_twice_is_one_row_with_last_seen_moved_forward_only()
             organization_id=org,
             signal=_leak(observed_at=T0 - timedelta(days=1)),
             recorded_via="api",
-            recorded_by="u3",
+            recorded_by="u1",
         )
         await session.commit()
         rows = (await session.execute(select(CtemSignal))).scalars().all()
@@ -96,6 +97,36 @@ async def test_the_same_key_twice_is_one_row_with_last_seen_moved_forward_only()
     assert row.recorded_by == "u1" and row.recorded_via == "api"
 
 
+async def test_another_recorder_with_the_same_key_never_reaches_the_first_row():
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A")
+        first, _ = await signals.record_signal(
+            session,
+            organization_id=org,
+            signal=_leak(evidence={"note": "u1"}, subject_label="Deploy account"),
+            recorded_via="api",
+            recorded_by="u1",
+            now=T0,
+        )
+        first.state = "watchlist"
+        await session.commit()
+        other, created = await signals.record_signal(
+            session,
+            organization_id=org,
+            signal=_leak(evidence={"note": "u2"}, subject_label="forged"),
+            recorded_via="api",
+            recorded_by="u2",
+            now=T0 + timedelta(hours=1),
+        )
+        await session.commit()
+        stored = await signals.get_signal(session, first.id, organization_id=org, recorded_by="u1")
+    assert created is True and other.id != first.id
+    assert other.state == "new" and other.evidence == {"note": "u2"}
+    assert stored is not None
+    assert stored.evidence == {"note": "u1"} and stored.subject_label == "Deploy account"
+    assert stored.seen_count == 1 and stored.last_seen_at == T0 and stored.state == "watchlist"
+
+
 async def test_a_new_sighting_keeps_the_state_decision_and_case_of_the_next_steps():
     async with _database() as sessions, sessions() as session:
         org = await _org(session, "A")
@@ -106,7 +137,7 @@ async def test_a_new_sighting_keeps_the_state_decision_and_case_of_the_next_step
         row.decision = {"outcome": "watchlist", "reason": "below the scope threshold"}
         await session.commit()
         again, created = await signals.record_signal(
-            session, organization_id=org, signal=_leak(), recorded_via="listener", recorded_by="system", now=T0
+            session, organization_id=org, signal=_leak(), recorded_via="tool", recorded_by="u1", now=T0
         )
         await session.commit()
     assert created is False

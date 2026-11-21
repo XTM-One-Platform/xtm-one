@@ -5,7 +5,8 @@
 Three ways in, one rule: the API (``api/v1/ctem_signals.py``), the agent tools
 (``builtin_tools/ctem_signals.py``) and the integration listeners
 (``services/ctem_signal_listeners.py``) all go through :func:`record_signal`,
-idempotent on ``(organization_id, dedupe_key)``: a signal seen again moves its
+idempotent on ``(organization_id, recorded_by, dedupe_key)``: a signal seen
+again by the same recorder moves its
 ``last_seen_at``, counts the sighting and keeps its latest evidence; its state,
 decision and case are never touched by a new sighting.
 
@@ -134,7 +135,10 @@ async def record_signal(
     recorded_by: str,
     now: datetime | None = None,
 ) -> tuple[CtemSignal, bool]:
-    """Record *signal* once per dedupe key; ``(row, created)``. The caller commits.
+    """Record *signal* once per recorder and dedupe key; ``(row, created)``. The caller commits.
+
+    The conflict scope holds the recorder: a caller never reaches, reads or
+    overwrites a row another user or a listener recorded under the same key.
 
     A known key moves ``last_seen_at`` to the later of the stored one and this
     sighting, adds one to ``seen_count`` and keeps this sighting's evidence;
@@ -170,7 +174,7 @@ async def record_signal(
     insert = pg_insert(CtemSignal).values(**values)
     row = CtemSignal.__table__.c
     statement = insert.on_conflict_do_update(
-        constraint="uq_ctem_signals_org_dedupe",
+        constraint="uq_ctem_signals_org_recorder_dedupe",
         set_={
             "last_seen_at": func.greatest(row.last_seen_at, insert.excluded.last_seen_at),
             "observed_at": insert.excluded.observed_at,

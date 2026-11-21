@@ -37,7 +37,7 @@ inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
-One row per `(organization_id, dedupe_key)`.
+One row per `(organization_id, recorded_by, dedupe_key)`.
 
 | Column | Meaning |
 |---|---|
@@ -54,8 +54,11 @@ One row per `(organization_id, dedupe_key)`.
 | `recorded_via`, `recorded_by` | `api`, `tool` or `listener`; the user id, or `system` for a listener |
 
 Idempotence: `services/ctem_signals.record_signal` is one `INSERT ... ON
-CONFLICT (organization_id, dedupe_key) DO UPDATE`. A sighting of a known key
-moves `last_seen_at` to the later of the stored value and its own time, adds
+CONFLICT (organization_id, recorded_by, dedupe_key) DO UPDATE`. The recorder
+is part of the key: a caller never reads back, nor overwrites, a row another
+user or a listener recorded under the same (guessable) key; it gets its own
+row, and the reconcile step merges what several recorders saw. A sighting of
+a known key by the same recorder moves `last_seen_at` to the later of the stored value and its own time, adds
 one to `seen_count`, keeps its evidence and label; recorder, state, decision
 and case stay as the first sighting and the next steps left them.
 
@@ -65,7 +68,10 @@ and case stay as the first sighting and the next steps left them.
    declarative table (provider, event keys, object types, path, lens, subject
    kind). The three webhook routes that carry integration events (provider,
    integration, integration-assignment) hand every delivery to `note_event`
-   after its signature check; no model call, no run, no quota. A provisioned
+   after its signature check; no model call, no run, no quota. Only a
+   delivery verified against a configured `webhook_secret` records a signal
+   (`verified=True`): the routes accept an unsigned delivery when no secret
+   is set, and such a delivery never plants a signal nor costs a write. A provisioned
    OpenCTI trigger delivers on the integration-assignment route, so the
    signal exists only for the objects an assignment subscribes to. OpenAEV
    events (`simulation_finished`, `atomic_test_finished`, `finding_created`)

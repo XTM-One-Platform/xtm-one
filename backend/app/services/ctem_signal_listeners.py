@@ -5,7 +5,10 @@
 :data:`LISTENERS` is the declarative table: one row per (provider, event key,
 object type) that is a change in exposure, naming its trigger path, lens and
 subject kind. The webhook routes hand every delivery to :func:`note_event`
-after its signature check; a delivery no row matches is ignored, one that
+after its signature check, saying whether it was verified against a
+configured webhook secret; an unverified delivery records nothing (a forged
+payload never plants a signal, and an unsigned storm writes no row). A
+delivery no row matches is ignored, one that
 matches records a signal through ``services/ctem_signals.record_signal``
 (recorded by ``system``, idempotent on the source object). No model call, no
 run, no quota: a signal is data the reconcile and scope gate read next.
@@ -153,14 +156,17 @@ def match(provider: str, event_key: str, payload: Mapping[str, Any]) -> tuple[Li
     return None
 
 
-async def note_event(provider: str, event_key: str, payload: Mapping[str, Any]) -> bool:
+async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], *, verified: bool) -> bool:
     """Record the signal a webhook delivery carries, if any; never raises. ``True`` when one was recorded.
 
-    XTM One mode only, and only once an organization is set up.
+    XTM One mode only, once an organization is set up, and only for a delivery
+    *verified* against a configured webhook secret: the route accepts an
+    unsigned delivery when no secret is set, and such a delivery is never
+    trusted with a signal.
     """
     from app.core.config import settings
 
-    if settings.is_copilot_like or not isinstance(payload, Mapping):
+    if not verified or settings.is_copilot_like or not isinstance(payload, Mapping):
         return False
     found = match(provider, event_key, payload)
     if found is None:

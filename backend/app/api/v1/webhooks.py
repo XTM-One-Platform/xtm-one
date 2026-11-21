@@ -3353,8 +3353,15 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
             "method": request.method,
         }
         # A change in exposure the CTEM loop listens to, whether or not the
-        # event reaches an assignment (#826).
-        await ctem_signal_listeners.note_event(provider, event_key, payload)
+        # event reaches an assignment (#826). Only a delivery verified against
+        # a configured webhook secret records one: this route accepts an
+        # unsigned delivery when no OAuth default or no secret is set.
+        await ctem_signal_listeners.note_event(
+            provider,
+            event_key,
+            payload,
+            verified=routing.oauth_default_exists and _signed_with_webhook_secret(routing.extra_config_enc),
+        )
 
         installation_id = _event_installation_id(provider, payload)
         if (
@@ -4011,8 +4018,14 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
-            # A change in exposure the CTEM loop listens to (#826).
-            await ctem_signal_listeners.note_event(provider, event_key, payload)
+            # A change in exposure the CTEM loop listens to (#826), from a
+            # delivery verified against a configured webhook secret only.
+            await ctem_signal_listeners.note_event(
+                provider,
+                event_key,
+                payload,
+                verified=_signed_with_webhook_secret(integration.extra_config_enc),
+            )
 
             # ── 5. Find agents bound to this integration ───────────────────
             agents = await _agents_bound_to_integration(
@@ -4627,8 +4640,14 @@ async def receive_assignment_webhook(
                 "method": request.method,
             }
             # A change in exposure the CTEM loop listens to (#826): a provisioned
-            # OpenCTI trigger delivers here; the signal is recorded once per object.
-            await ctem_signal_listeners.note_event(provider, event_key, payload)
+            # OpenCTI trigger delivers here; the signal is recorded once per object,
+            # from a delivery verified against a configured webhook secret only.
+            await ctem_signal_listeners.note_event(
+                provider,
+                event_key,
+                payload,
+                verified=_signed_with_webhook_secret(integration.extra_config_enc),
+            )
 
             # ── 6. Resolve the specific assignment ────────────────────────────
             wf_result = await db.execute(

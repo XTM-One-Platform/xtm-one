@@ -184,18 +184,21 @@ async def test_note_event_records_through_the_store_as_system(monkeypatch):
     monkeypatch.setattr("app.services.organizations.get_primary", _primary)
     monkeypatch.setattr(signals, "record_signal", _record)
     payload = {"type": "create", "data": {"type": "vulnerability", "id": "vulnerability--1", "name": "CVE-1"}}
-    assert await listeners.note_event("opencti", "create", payload) is True
+    assert await listeners.note_event("opencti", "create", payload, verified=False) is False
+    assert seen == {}
+    assert await listeners.note_event("opencti", "create", payload, verified=True) is True
     assert seen["recorded_via"] == "listener"
     assert seen["recorded_by"] == "system"
     assert seen["organization_id"] == ORG
     assert seen["committed"]
-    assert await listeners.note_event("opencti", "create", {"type": "create", "data": {"type": "note"}}) is False
+    note = {"type": "create", "data": {"type": "note"}}
+    assert await listeners.note_event("opencti", "create", note, verified=True) is False
 
 
 async def test_note_event_never_raises_and_stays_off_in_copilot(monkeypatch):
     payload = {"type": "create", "data": {"type": "vulnerability", "id": "vulnerability--1", "name": "CVE-1"}}
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
-    assert await listeners.note_event("opencti", "create", payload) is False
+    assert await listeners.note_event("opencti", "create", payload, verified=True) is False
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
 
     @asynccontextmanager
@@ -204,7 +207,7 @@ async def test_note_event_never_raises_and_stays_off_in_copilot(monkeypatch):
         yield  # pragma: no cover
 
     monkeypatch.setattr("app.core.database.async_session", _broken)
-    assert await listeners.note_event("opencti", "create", payload) is False
+    assert await listeners.note_event("opencti", "create", payload, verified=True) is False
 
 
 # ── a fake store shared by the API and tool tests ─────────────────────────
@@ -214,11 +217,11 @@ class _Store:
     """``record_signal`` / ``list_signals`` / ``get_signal`` over a dict, keyed like the table."""
 
     def __init__(self):
-        self.rows: dict[tuple[uuid.UUID, str], CtemSignal] = {}
+        self.rows: dict[tuple[uuid.UUID, str, str], CtemSignal] = {}
 
     async def record(self, _db, *, organization_id, signal, recorded_via, recorded_by, now=None):
         clean = signals.normalize(signal)
-        key = (organization_id, clean.dedupe_key)
+        key = (organization_id, recorded_by, clean.dedupe_key)
         at = clean.observed_at or now or datetime.now(UTC)
         row = self.rows.get(key)
         if row is not None:
@@ -252,7 +255,7 @@ class _Store:
     def _mine(self, organization_id, recorded_by):
         return [
             r
-            for (org, _), r in self.rows.items()
+            for (org, _, _), r in self.rows.items()
             if org == organization_id and (recorded_by is None or r.recorded_by == recorded_by)
         ]
 
@@ -387,6 +390,23 @@ async def test_a_user_reads_only_their_signals_and_an_admin_reads_the_organizati
     assert [s["subject"]["ref"] for s in alice["signals"]] == ["a"]
     assert bob_reads_alice.status_code == 404
     assert admin["total"] == 2
+
+
+async def test_another_users_dedupe_key_never_returns_or_touches_their_signal(client, store):
+    alice_body = _body(
+        "credential_leak", "manual", "identity", "svc@example.com", evidence={"link": "https://a", "note": "alice"}
+    )
+    bob_body = _body("credential_leak", "manual", "identity", "svc@example.com", evidence={"note": "bob"})
+    async with client as http:
+        alice = (await http.post("/api/v1/ctem-signals", json=alice_body)).json()
+        bob = (await http.post("/api/v1/ctem-signals", json=bob_body, headers={"X-User": BOB})).json()
+        alice_again = (await http.get(f"/api/v1/ctem-signals/{alice['signal']['id']}")).json()
+    assert alice["signal"]["dedupe_key"] == bob["signal"]["dedupe_key"]
+    assert bob["created"] is True and bob["signal"]["id"] != alice["signal"]["id"]
+    assert bob["signal"]["evidence"] == {"note": "bob"}
+    assert alice_again["evidence"] == {"link": "https://a", "note": "alice"}
+    assert alice_again["seen_count"] == 1
+    assert len(store.rows) == 2
 
 
 async def test_the_paths_endpoint_names_the_listened_paths(client):

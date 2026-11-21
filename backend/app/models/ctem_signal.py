@@ -9,8 +9,11 @@ control, a leaked credential, a third-party event or a blind spot. It is the
 first box of the loop (signal, reconcile, scope gate, case); the design is
 ``dev-docs/ctem-signals.md``.
 
-- One row per ``(organization_id, dedupe_key)``: recording the same signal
-  again moves ``last_seen_at`` and counts it, never a second row.
+- One row per ``(organization_id, recorded_by, dedupe_key)``: the same
+  recorder recording the same signal again moves ``last_seen_at`` and counts
+  it, never a second row. Another recorder's key is never reached (its row is
+  neither returned nor updated); the reconcile step merges what several
+  recorders saw.
 - ``state`` starts at ``new``; the reconcile and scope gate step writes
   ``confirmed``, ``to_validate``, ``discarded`` or ``watchlist`` with its
   ``decision`` record, and the case step ``case_opened`` with ``case_id``.
@@ -62,7 +65,7 @@ def _in(column: str, values: tuple[str, ...]) -> str:
 class CtemSignal(Base):
     __tablename__ = "ctem_signals"
     __table_args__ = (
-        UniqueConstraint("organization_id", "dedupe_key", name="uq_ctem_signals_org_dedupe"),
+        UniqueConstraint("organization_id", "recorded_by", "dedupe_key", name="uq_ctem_signals_org_recorder_dedupe"),
         CheckConstraint(_in("trigger_path", TRIGGER_PATHS), name="ck_ctem_signals_path_valid"),
         CheckConstraint(_in("lens", LENSES), name="ck_ctem_signals_lens_valid"),
         CheckConstraint(_in("state", SIGNAL_STATES), name="ck_ctem_signals_state_valid"),
