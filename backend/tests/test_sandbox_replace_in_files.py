@@ -63,6 +63,7 @@ async def test_replace_in_files_writes_every_file_in_one_write(store):  # noqa: 
     )
     assert not preview.is_error, preview.content
     assert preview.content.startswith("Dry run, nothing written: 3 replacement(s) in 2 file(s)")
+    assert "-def old_name():\n+def new_name():\n" in preview.content
     assert await _workspace_bytes(store, conversation, "repo/src/b.py") == b"from a import old_name\nold_name()\n"
     done = await _call(
         composite, "sandbox_replace_in_files", pattern=r"\bold_name\b", replacement="new_name", path_prefix="repo/src"
@@ -72,7 +73,11 @@ async def test_replace_in_files_writes_every_file_in_one_write(store):  # noqa: 
         "3 replacement(s) in 2 file(s)" in done.content
         and "workspace/repo/src/b.py: 2 replacement(s), +2 -2" in done.content
     )
-    assert "-def old_name():\n+def new_name():\n" in done.content
+    # A write answers each distinct line change once, never the per-site diff.
+    # b.py's two adjacent changed lines are one change; a.py's def is the other.
+    assert "Distinct line changes: 2, most frequent first" in done.content
+    assert "1x in 1 file(s):\n  - def old_name():\n  + def new_name():" in done.content
+    assert "+++ b/" not in done.content
     assert await _workspace_bytes(store, conversation, "repo/src/b.py") == b"from a import new_name\nnew_name()\n"
     assert await _workspace_bytes(store, conversation, "repo/docs/c.md") == b"old_name is documented\n"
 
@@ -210,6 +215,34 @@ def test_report_caps_the_diffstat_lines():
     lines = stats.splitlines()
     assert len(lines) == replacing.MAX_STAT_LINES + 1
     assert lines[-1].startswith("- ... and 5 more file(s) changed")
+
+
+def test_distinct_changes_counts_repeats_once():
+    changes = [
+        replacing.FileChange(
+            path=f"f{i}.py",
+            before="x\nimport old\ny\nimport old\n",
+            after="x\nimport new\ny\nimport new\n",
+            replacements=2,
+        )
+        for i in range(30)
+    ]
+    text = replacing.distinct_changes(changes)
+    assert text.startswith("Distinct line changes: 1, most frequent first")
+    assert "60x in 30 file(s):\n  - import old\n  + import new" in text
+    assert len(text) < 200
+
+
+def test_distinct_changes_bounded_and_lines_clipped():
+    changes = [
+        replacing.FileChange(path="a.py", before=f"v{i}\n", after=f"w{i}\n", replacements=1) for i in range(2000)
+    ]
+    text = replacing.distinct_changes(changes, max_chars=500)
+    assert len(text) < 700
+    assert "more distinct change(s); sandbox_checkout_diff reads the whole diff" in text
+    long = [replacing.FileChange(path="a.py", before="a" * 1000 + "\n", after="b" * 1000 + "\n", replacements=1)]
+    clipped = replacing.distinct_changes(long)
+    assert f"[+{1000 - replacing.MAX_CHANGE_LINE_CHARS:,} chars]" in clipped
 
 
 def test_replace_in_files_is_offered_with_the_workspace():
