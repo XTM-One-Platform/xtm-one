@@ -38,7 +38,7 @@ import {
 } from "@/hooks/api/useAssignmentApi";
 import { useDismissNotification, useMarkNotificationsRead, useNotifications } from "@/hooks/api/useNotificationApi";
 import { useFormatter } from "@/i18n";
-import { notificationSubtitle, UNREAD_UNTIL_ANSWERED } from "@/lib/notification-kinds";
+import { notificationSubtitle, readsOnOpen, UNREAD_UNTIL_ANSWERED } from "@/lib/notification-kinds";
 import { cn, timeAgo } from "@/lib/utils";
 import type { NotificationItem } from "@/types";
 
@@ -111,7 +111,7 @@ export function CompanionInbox() {
 
   if (isLoading) return <PageSkeleton cards={3} />;
   const items = feed?.items ?? [];
-  // An entry unread until answered has no read state to clear.
+  // "Mark all read" leaves an entry unread until answered; opening one reads it.
   const canMarkAllRead = items.some((item) => item.unread && !UNREAD_UNTIL_ANSWERED.has(item.kind));
 
   return (
@@ -149,7 +149,7 @@ export function CompanionInbox() {
                     type="button"
                     className="flex w-full items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                     onClick={() => {
-                      if (item.unread && !UNREAD_UNTIL_ANSWERED.has(item.kind)) dismiss.mutate(item.id);
+                      if (readsOnOpen(item)) dismiss.mutate(item.id);
                       navigate(item.route);
                     }}
                   >

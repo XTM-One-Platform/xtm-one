@@ -51,11 +51,16 @@ export function ageBands(cases: CtemCaseSummary[], now: number): number[] {
   return counts;
 }
 
-/** The three highest-priority cases, most urgent first, then the oldest in its state. */
+/** Rank of a loop severity, most urgent first; a case with none comes after (CTEM-03-UI, #892). */
+const SEVERITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2 };
+const severityRank = (c: CtemCaseSummary) => (c.severity ? (SEVERITY_RANK[c.severity] ?? 3) : 3);
+
+/** The three most urgent cases: loop severity (P1 first), then priority, then the oldest in its state. */
 export function topCases(cases: CtemCaseSummary[]): CtemCaseSummary[] {
   return [...cases]
     .sort(
       (a, b) =>
+        severityRank(a) - severityRank(b) ||
         CASE_PRIORITY_RANK[b.priority] - CASE_PRIORITY_RANK[a.priority] ||
         (a.state_since ?? "").localeCompare(b.state_since ?? ""),
     )

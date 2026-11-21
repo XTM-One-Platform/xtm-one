@@ -363,12 +363,24 @@ async def _run_tree(db: AsyncSession, root_id: uuid.UUID) -> list:
     return list((await db.execute(query.where(AssignmentRun.id.in_(ids)))).all())
 
 
-async def _book_runs(db: AsyncSession, cycle_id: uuid.UUID, runs: list, *, now: datetime) -> bool:
+async def _book_runs(
+    db: AsyncSession, cycle_id: uuid.UUID, runs: list, *, now: datetime, own_ledger: bool = False
+) -> bool:
     """Charge each ended run's LLM traces on the cycle, once per run; whether every one is booked.
 
     Traces reach the store after the run ends: a run that ended moments ago
-    with none yet is booked at a later tick.
+    with none yet is booked at a later tick. ``own_ledger``: the cycle's spend is
+    already on the Module Analyst's own ledger (#101 S14b-2, dev-docs 12.5), so
+    each run is marked booked with nothing charged here: one ceiling, no double count.
     """
+    if own_ledger:
+        from app.services.health.budget import charge, charged_refs
+
+        done = await charged_refs(db, "run", [run.id for run in runs])
+        for run in runs:
+            if run.id not in done:
+                await charge(db, cycle_id, tokens=0, cost_usd=Decimal(0), ref=("run", run.id))
+        return True
     from sqlalchemy import func
 
     from app.models.llm_trace import LLMTrace
@@ -442,11 +454,20 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     from app.services.health.budget import REFUSAL_MESSAGES, budget_refusal, close_cycle, remaining
 
     tree = await _run_tree(db, root_id)
-    booked = await _book_runs(db, cycle_id, [run for run in tree if run.status in TERMINAL_RUN_STATUSES], now=now)
+    specialist = await db.scalar(select(HealthCycle.specialist).where(HealthCycle.id == cycle_id))
+    booked = await _book_runs(
+        db,
+        cycle_id,
+        [run for run in tree if run.status in TERMINAL_RUN_STATUSES],
+        now=now,
+        own_ledger=specialist == "module_analyst",
+    )
     await db.commit()
     active = [run.id for run in tree if run.status not in TERMINAL_RUN_STATUSES]
+    own_ledger = specialist == "module_analyst"
     if active:
-        cap = (await remaining(db, cycle_id)).refusal
+        # The Module Analyst stops at its own ceiling, call by call, never at the fleet caps.
+        cap = None if own_ledger else (await remaining(db, cycle_id)).refusal
         if cap in _CAPS:
             logger.info("Platform Health cycle %s: %s, its runs are stopped", cycle_id, cap)
             await _stop_runs(db, active, REFUSAL_MESSAGES[cap])
@@ -454,7 +475,7 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     root = next((run for run in tree if run.id == root_id), None)
     if not booked or root is None:
         return 0
-    refusal = await budget_refusal(db, cycle_id)
+    refusal = None if own_ledger else await budget_refusal(db, cycle_id)
     if refusal in _CAPS:
         # A cap reached when the run ends may have cut its work short, and
         # which tool call it refused is not recorded: never read as completed.

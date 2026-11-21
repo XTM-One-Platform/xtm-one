@@ -105,6 +105,21 @@ export function useCtemSignalList(state: CtemSignalState | null, limit = 50, ena
   });
 }
 
+/**
+ * The signals that opened or joined one case, for its "Opened by" card
+ * (CTEM-03-UI, #892). Read as the caller may see them; the `ctem_case_update`
+ * frame of the case refreshes it.
+ */
+export function useCtemCaseSignals(caseId: string | undefined) {
+  return useQuery<CtemSignalList>({
+    queryKey: ["ctem-signals", "case", caseId],
+    queryFn: () => api.get(`/ctem-signals?case_id=${caseId}&limit=50`),
+    enabled: Boolean(caseId),
+    retry: ctemCasesRetry,
+    throwOnError: false,
+  });
+}
+
 /** One signal; one the caller cannot read is a 404 the loop trace shows as "not available". */
 export function useCtemSignal(id: string | undefined) {
   return useQuery<CtemSignal>({

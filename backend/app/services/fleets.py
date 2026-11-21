@@ -253,6 +253,8 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
         "budget_config",
         "max_iterations",
         "autonomy_level",
+        # Per-gate pins (#916, CTEM-34): the customer's choice, never written by the seed, so it survives an upgrade.
+        "approval_pins",
         "prerequisite_confirmations",
         "health_dismissals",
         "health_check",
@@ -263,7 +265,7 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
 
 BUILTIN_FLEET_REFUSAL = (
     "Built-in fleets ship with the platform and are read-only: only archiving, the run "
-    "defaults (budget, iteration cap), the autonomy level, the prerequisite confirmations, "
+    "defaults (budget, iteration cap), the autonomy level and its per-action pins, the prerequisite confirmations, "
     "the dismissed health findings and the weekly health check can be changed."
 )
 

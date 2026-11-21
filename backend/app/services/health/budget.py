@@ -263,7 +263,9 @@ async def open_cycle(
         raise ValueError(f"not a Platform Health role: {specialist!r}")
     if trigger not in _TRIGGERS:
         raise ValueError(f"not a cycle trigger: {trigger!r}")
-    refusal = await budget_refusal(db)
+    # The Module Analyst is the one exception to the fleet caps (#101 S14b-2, dev-docs 12.5):
+    # the switches and the licence still gate its cycle, its own ceiling bounds its spend.
+    refusal = await _gate(db) if specialist == "module_analyst" else await budget_refusal(db)
     if refusal is not None:
         raise BudgetRefusedError(refusal)
     cycle = HealthCycle(

@@ -19,11 +19,12 @@ _CTEM = sorted(BUILTIN_FLEET_STRUCTURED)
 
 #: Per fleet at Low: the gates that still wait for a person. Every other gate runs alone and is logged.
 _WAITS_AT_LOW = {
-    "ctem-threat-response": {"openaev.scenario.launch"},
-    "ctem-vuln-prioritization": {"openaev.validation.launch"},
-    "ctem-ai-security": {"openaev.ai_test.launch"},
+    # The CTEM loop fleets (#916, CTEM-34): one decision per case out of the box, Mobilize.
+    "ctem-threat-response": {"ctem.mobilize"},
+    "ctem-vuln-prioritization": {"ctem.mobilize"},
+    "ctem-ai-security": {"ctem.mobilize"},
     "ctem-posture": set(),
-    "ctem-third-party-risk": {"supplier.action"},
+    "ctem-third-party-risk": {"ctem.mobilize"},
     "opencti-pir-desk": {"indicator.revoke"},
     "openaev-detection-desk": {"openaev.simulation.launch"},
     "opencrq-risk-budget-desk": set(),
@@ -58,16 +59,17 @@ def test_at_low_only_destructive_gates_wait(slug):
     assert all(e["impact"] != "destructive" for e in catalog if not e["gated"]), slug
 
 
-def test_openaev_launches_still_pause_in_the_tool_path_at_low():
+def test_at_low_only_the_mobilize_tickets_pause_in_the_tool_path():
+    """#916: the OpenAEV launches run at Low; the remediation tickets wait for the one Mobilize decision."""
     gates = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
-    names = {r["name"] for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert names == {"manage_openaev_simulation", "manage_openaev_atomic_testing"}
+    rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)
+    assert {r["name"] for r in rules} == {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change"}
+    assert {r["key"] for r in rules} == {"ctem.mobilize"}
 
 
-def test_the_remediation_ticket_runs_alone_at_low():
+def test_the_openaev_validation_runs_alone_at_low():
     gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
     catalog = {e["key"]: e for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert catalog["ticket.create"]["impact"] == "low"
-    assert catalog["ticket.create"]["gated"] is False
+    assert catalog["ctem.validation.non_readonly"]["gated"] is False
     names = {r["name"] for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert "create_jira_issue" not in names
+    assert "manage_openaev_atomic_testing" not in names

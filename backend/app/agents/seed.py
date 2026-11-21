@@ -72,6 +72,7 @@ from app.services.assignment_pause import (
     mark_schedule_resumed,
     pause_assignment,
 )
+from app.services.builtin_customer_layer import seed_keeps_field, seed_keeps_model
 from app.services.kb_helpers import bump_kb_revision, reset_changed_document
 
 logger = logging.getLogger(__name__)
@@ -317,15 +318,24 @@ def _sync_agent_fields(
     agent.disable_chat = data.get("disable_chat", False)
     agent.hide_runs = data.get("hide_runs", False)
     agent.max_iterations = data.get("max_iterations")
-    agent.llm_model = _resolve_llm_model(data, anthropic_enabled=anthropic_enabled)
-    # A built-in that takes a narrow decision runs on the platform routing model:
-    # the deployment's own lightweight model, which no seed can name.
-    agent.llm_model_source = data.get("llm_model_source")
+    # The model is customer layer once a person pinned one (#914,
+    # ``services/builtin_customer_layer``): the seed then leaves it as set.
+    # Every other customer-layer field (bindings, MCP servers, knowledge
+    # bases, skills, custom tools, organization notes) is never written here.
+    if not seed_keeps_model(agent):
+        agent.llm_model = _resolve_llm_model(data, anthropic_enabled=anthropic_enabled)
+        # A built-in that takes a narrow decision runs on the platform routing
+        # model: the deployment's own lightweight model, which no seed can name.
+        agent.llm_model_source = data.get("llm_model_source")
     agent.tool_deny_list = data.get("tool_deny_list") or []
     agent.builtin_tool_ids = data.get("builtin_tool_ids") or []
-    agent.integration_template_bindings = data.get("integration_template_bindings", [])
+    # Template-bound providers and their read-only set are seeded defaults of
+    # the customer layer (#914): once a person set one, the seed leaves it.
+    if not seed_keeps_field(agent, "integration_template_bindings"):
+        agent.integration_template_bindings = data.get("integration_template_bindings", [])
     # The template-bound providers a seeded reader desk may only read.
-    agent.integration_template_read_only = data.get("integration_template_read_only") or None
+    if not seed_keeps_field(agent, "integration_template_read_only"):
+        agent.integration_template_read_only = data.get("integration_template_read_only") or None
     agent.available_channel_types = ["web"]
     agent.tags = data.get("tags", ["builtin"])
     agent.supported_intents = data.get("supported_intents") or {}

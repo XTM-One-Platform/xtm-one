@@ -217,6 +217,26 @@ def _product_matches(product: str, ref: str) -> bool:
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
 
 
+def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
+    """The tech stack products and assets of *profile* a software or asset *name* names (CTEM-08).
+
+    *name* is the source of an OpenCTI ``has`` relationship (a Software name
+    or CPE, an Infrastructure or System name). Empty: the organization does
+    not run it, and the "vulnerability on software we run" rule drops it.
+    """
+    text = str(name or "").strip()
+    if not text:
+        return []
+    found = [
+        entry.product
+        for entry in profile.tech_stack
+        if _product_matches(entry.product, text) or (entry.cpe and entry.cpe.lower() == text.lower())
+    ]
+    key = stable_key(text)
+    found += [a.name for a in profile.assets_exposure if key in {stable_key(a.name), stable_key(a.external_id)}]
+    return list(dict.fromkeys(found))
+
+
 def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
     """Resolve the subject (and the assets its evidence names) to the profile."""
     out = Resolution()
