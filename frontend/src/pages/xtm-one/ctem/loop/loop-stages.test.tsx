@@ -8,9 +8,8 @@ import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { renderWithProviders } from "@/testing/providers";
 import { eventStatus, mergeActivity, signalActivity, type ActivityEvent } from "../activity-feed";
 import { ActivityFeed } from "../ActivityFeed";
-import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop, signalsParam } from "./loop-stages";
-import { DecisionReason, decisionSentence } from "./DecisionReason";
-import { SignalCounter } from "./SignalCounter";
+import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop } from "./loop-stages";
+import { DecisionReason, decisionSentence, nextStepSentence } from "./DecisionReason";
 
 const ID = "11111111-2222-3333-4444-555555555555";
 const t = (id: string) => id;
@@ -67,29 +66,6 @@ describe("parseLoopParam", () => {
     expect(parseLoopParam(`case:${ID}`)).toEqual({ kind: "case", id: ID });
     expect(parseLoopParam("signal:../x")).toBeNull();
     expect(parseLoopParam(null)).toBeNull();
-  });
-
-  // CTEM-01-UI: the signals counter opens the signal list, filtered by state.
-  it("reads the signal list in one state or every state, and refuses an unknown state", () => {
-    expect(parseLoopParam(signalsParam("watchlist"))).toEqual({ kind: "signals", state: "watchlist" });
-    expect(parseLoopParam(signalsParam(null))).toEqual({ kind: "signals", state: null });
-    expect(parseLoopParam("signals:bogus")).toBeNull();
-  });
-});
-
-describe("SignalCounter", () => {
-  it("shows every state with its count, zeros included, and opens the state clicked", () => {
-    const onOpen = vi.fn();
-    renderWithProviders(<SignalCounter counts={{ new: 2, to_validate: 1, watchlist: 0, discarded: 3, case_opened: 0, confirmed: 1 }} onOpen={onOpen} />);
-    const counter = screen.getByTestId("ctem-signal-counter");
-    expect(counter.querySelectorAll("[data-state]")).toHaveLength(5);
-    expect(counter.querySelector('[data-state="watchlist"]')?.textContent).toContain("0");
-    fireEvent.click(counter.querySelector('[data-state="to_validate"]') as Element);
-    expect(onOpen).toHaveBeenCalledWith("to_validate");
-    fireEvent.click(screen.getByRole("button", { name: "Open all signals" }));
-    expect(onOpen).toHaveBeenLastCalledWith(null);
-    // All counts every state, confirmed included.
-    expect(screen.getByRole("button", { name: "Open all signals" }).textContent).toContain("7");
   });
 });
 
@@ -214,6 +190,45 @@ describe("decided signals in the trace and the row", () => {
     expect(inputs).toHaveTextContent("Internet exposure required: passed");
     expect(inputs).not.toHaveTextContent("cvss_min");
     expect(screen.getByText("CVSS 5.3 below the policy minimum 7")).toBeInTheDocument();
+  });
+});
+
+// #874: every stopped signal says what would make it a case; the inputs say
+// whether an asset matched and how the criticality compares with the threshold.
+describe("what would make it a case", () => {
+  const below = {
+    outcome: "watchlist",
+    reason_code: "below_scope_threshold",
+    reason_params: { criticality: "medium", threshold: "high" },
+    reconcile: { assets: ["vpn-gw-01"], lenses: ["world", "outside"] },
+    scope: { criticality: "medium", threshold: "high", risk_scenarios: [] },
+  };
+
+  it("names the next step of each stopped outcome, none for a case or an unknown code", () => {
+    expect(nextStepSentence(below, t)).toBe("Becomes a case if criticality rises to {threshold}");
+    expect(nextStepSentence({ outcome: "to_validate", reason_code: "subject_unresolved" }, t)).toBe(
+      "Becomes a case once it is matched to an asset, a crown jewel or the tech stack",
+    );
+    expect(nextStepSentence({ outcome: "case", reason_code: "in_scope" }, t)).toBeNull();
+    expect(nextStepSentence({ outcome: "watchlist", reason_code: "later_code" }, t)).toBeNull();
+    expect(nextStepSentence(null, t)).toBeNull();
+  });
+
+  it("draws the next step and the criticality against the threshold in the trace", () => {
+    renderWithProviders(<DecisionReason state="watchlist" decision={below} showInputs />);
+    expect(screen.getByTestId("ctem-decision-next-step")).toHaveTextContent("Becomes a case if criticality rises to High");
+    const inputs = screen.getByTestId("ctem-decision-inputs");
+    expect(inputs).toHaveTextContent("Medium, below High");
+    expect(inputs).toHaveTextContent("2 lenses agree");
+  });
+
+  it("says no asset matched on an unresolved subject, and draws no next step on a row", () => {
+    const unresolved = { outcome: "to_validate", reason_code: "subject_unresolved", reconcile: { assets: [], lenses: ["world"] } };
+    const { unmount } = renderWithProviders(<DecisionReason state="to_validate" decision={unresolved} showInputs />);
+    expect(screen.getByTestId("ctem-decision-inputs")).toHaveTextContent("None matched");
+    unmount();
+    renderWithProviders(<DecisionReason state="to_validate" decision={unresolved} />);
+    expect(screen.queryByTestId("ctem-decision-next-step")).toBeNull();
   });
 });
 
