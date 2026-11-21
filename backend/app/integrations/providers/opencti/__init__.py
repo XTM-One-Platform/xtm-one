@@ -48,6 +48,7 @@ from .capabilities import install_capability_gate
 from .connectors import register as register_connectors
 from .customization import register as register_customization
 from .data_sharing import register as register_data_sharing
+from .health_reads import register as register_health_reads
 from .ids import install_short_id_guard
 from .ingestion import register as register_ingestion
 from .knowledge import register_knowledge
@@ -160,6 +161,7 @@ def build_tools(
     tools += register_markings(base_url, headers, executor)
     tools += register_data_sharing(base_url, headers, executor)
     tools += register_connectors(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
     # Unattended runs act for a user who did not ask for anything (a per-user
     # fan-out runs as every user in turn): never send a query the user's role
     # cannot pass, or OpenCTI records it as their unauthorized access.
