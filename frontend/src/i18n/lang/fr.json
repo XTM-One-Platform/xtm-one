@@ -15807,6 +15807,7 @@
   "Only an administrator can answer a company-managed work item.": "Seul un administrateur peut répondre à un élément de travail géré par l'entreprise.",
   "An agent waits for your decision on this work item.": "Un agent attend votre décision sur cet élément de travail.",
   "Decision needed: {title}": "Décision attendue : {title}",
+  "This card is incomplete: its agent is asked to rewrite it.": "Cette carte est incomplète : son agent est invité à la réécrire.",
   "Show the full description": "Afficher la description complète",
   "Delete {name}": "Supprimer {name}",
   "New preset": "Nouveau préréglage",

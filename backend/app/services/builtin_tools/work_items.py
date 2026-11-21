@@ -609,9 +609,9 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     "ask": {
         "type": "object",
         "description": (
-            "{question, context, options:[{key,label,effect}], recommendation: option key, deadline}. "
-            "needs_human: all but deadline, 2+ options. Plain words for a person; "
-            "no timestamp, id, key or 'card sent' (refused; put them in blocked_reason). "
+            "{question, context, options:[{key,label,effect}], recommendation: option key, deadline, "
+            "links:[{label,url}]}. needs_human: all but deadline, links; 2+ options. Plain words; "
+            "no timestamp, id, key or 'card sent' (use blocked_reason). "
             "Good: 'Post Legal's comment asking for the 4 missing documents?'. "
             "Bad: 'CARD SENT 2026-11-20T11:43Z msg 1795175038574: waiting for GO'"
         ),

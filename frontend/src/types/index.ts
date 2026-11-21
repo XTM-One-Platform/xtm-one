@@ -6469,6 +6469,23 @@ interface WorkItemAsk {
   recommendation?: string | null;
   /** When the answer is needed, ISO-8601 UTC. */
   deadline?: string | null;
+  /** The sources the reader opens to decide (#834): a Jira ticket, a pull request, a document. */
+  links?: WorkItemAskLink[];
+}
+
+/** One source of a decision card, shown as a button under the question (#834). */
+interface WorkItemAskLink {
+  label: string;
+  url: string;
+}
+
+/** What a decision card shows when its ask is missing or incomplete (#834): read from the item, no model. */
+interface WorkItemCardFallback {
+  /** The first lines of the item's brief, past the stamped notes. */
+  brief: string;
+  links: WorkItemAskLink[];
+  /** The ask fields still missing, e.g. `ask.question`. */
+  missing: string[];
 }
 
 export interface WorkItem {
@@ -6506,6 +6523,8 @@ export interface WorkItem {
   needs_human?: boolean;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
+  /** Set when the item needs a person and its ask is missing or incomplete (#834). */
+  card_fallback?: WorkItemCardFallback | null;
   /** `work_item_blocked_refs.blocked_why`: null when not blocked; `missing` for a blocked item that says nothing. */
   blocked_why?: { text: string; missing: boolean } | null;
   source: string;
