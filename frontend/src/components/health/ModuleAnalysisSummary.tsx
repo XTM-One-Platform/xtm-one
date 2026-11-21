@@ -22,7 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * "all" scope. One AI block per card: the Module Analyst's line joins this block, never a second one.
  */
 import { useId, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { useRunHealthAnalysis } from "@/hooks/api/useHealthApi";
@@ -30,6 +30,11 @@ import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import { HEALTH_MODULE_LABELS } from "@/lib/health-modules";
 import type { HealthAnalysisOverview, HealthModule, HealthModuleAnalysis } from "@/types";
+
+/** The AI glyph, rendered by the library <Icon name> (no direct lucide-react import). */
+function SparklesGlyph({ className }: { className?: string }) {
+  return <Icon name="sparkles" size={16} className={className} aria-hidden />;
+}
 
 /** What each refusal or failure reason means to an administrator. @i18n-keys */
 const ANALYSIS_REASON_LABELS = {
@@ -80,7 +85,7 @@ function AnalysisActions({
         {
           id: `health-analysis-run-${module}`,
           label: t_i18n("Analyse now"),
-          icon: Sparkles,
+          icon: SparklesGlyph,
           onSelect: () => run.mutate(module),
           disabled: blocked !== null,
           disabledReason: blocked ?? undefined,
@@ -167,7 +172,7 @@ export function ModuleAnalysisSummary({
     <section className="space-y-1.5" aria-label={t_i18n("AI summary")} data-testid={`health-analysis-${module}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 content-caption font-medium uppercase tracking-wider text-default-secondary">
-          <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <SparklesGlyph className="shrink-0" />
           {t_i18n("AI summary")}
         </span>
         <AnalysisActions module={module} overview={overview} run={run} />
