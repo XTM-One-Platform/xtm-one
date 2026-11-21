@@ -352,7 +352,8 @@ describe("OrganizationSection", () => {
     expect(within(row).queryByRole("combobox")).toBeNull();
     openTab(/^Technology/);
     const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
-    expect(within(tech).getByText("Not set")).toBeTruthy();
+    // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
+    expect(within(tech).getAllByText("Not set")).toHaveLength(2);
     expect(within(tech).queryByRole("textbox")).toBeNull();
     expect(screen.queryByPlaceholderText("cpe:2.3:a:vendor:product:*")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
@@ -555,6 +556,32 @@ describe("OrganizationSection", () => {
       { product: "Jira", vendor: "Atlassian", cpe: "" },
       { product: "Slack", vendor: "Acme", cpe: "" },
       { product: "Notion", vendor: "Acme", cpe: "" },
+    ]);
+  });
+
+  it("reads and pastes the version the organization runs on a tech stack row, and saves it only when set (CTEM-11, #928)", async () => {
+    const base = get.getMockImplementation()!;
+    const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPage("technology");
+    const row = (await screen.findByText("Jira")).closest("tr")!;
+    expect(within(row).getByText("9.12.2")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    const dialog = await screen.findByTestId("settings.organization.paste-dialog");
+    fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "nginx, F5, , 1.25.3\nSlack, Salesforce" } });
+    fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
+    await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
+    fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: Record<string, string>[] } }];
+    expect(body.profile.tech_stack).toEqual([
+      { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
+      { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
+      // No version typed: none saved, so a profile that never declares one keeps its shape.
+      { product: "Slack", vendor: "Salesforce", cpe: "" },
     ]);
   });
 
