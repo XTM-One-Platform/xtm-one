@@ -169,8 +169,9 @@ export function Header() {
               <div className="max-h-96 overflow-y-auto">
                 {allNotifs.length > 0 ? allNotifs.map((item) => {
                   const isHitl = item.kind === "hitl";
-                  // Pinned until answered: no read dot, no "Mark as read", the warning chrome.
-                  const isPinned = UNREAD_UNTIL_ANSWERED.has(item.kind);
+                  // Pinned until answered or opened: the warning chrome, no read dot.
+                  // Opening or dismissing it reads it (#901), so it never stays stuck.
+                  const isPinned = UNREAD_UNTIL_ANSWERED.has(item.kind) && item.unread;
                   const isAnalyticsRefresh = item.kind === "analytics_refresh";
                   const unread = isPinned || item.unread;
                   return (
@@ -180,9 +181,9 @@ export function Header() {
                         "px-4 py-3 border-b border-elevation-subtle-soft last:border-0 hover:bg-elevation-hover transition-colors cursor-pointer relative group",
                         isPinned ? "bg-feedback-warning-primary/[0.05] border-l-2 border-l-feedback-warning-primary/50" : unread && "bg-accent/[0.03]",
                       )}
-                      /* Opening a notification IS reading it; an entry pinned until
-                         answered has no read state to write. */
-                      onClick={() => { if (!isPinned) markOneRead(item.id); navigate(item.route); setShowNotifs(false); }}
+                      /* Opening a notification IS reading it, a pinned one included,
+                         even when its target can no longer be opened (#901). */
+                      onClick={() => { if (unread) markOneRead(item.id); navigate(item.route); setShowNotifs(false); }}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -225,7 +226,7 @@ export function Header() {
                         <div className="flex items-center gap-1 shrink-0">
                           {isPinned && <span className="content-caption font-medium text-feedback-warning-primary mr-1">{t_i18n("Action needed")}</span>}
                           <span className="content-caption text-default-secondary">{formatTimeAgo(intl, item.created_at)}</span>
-                          {unread && !isPinned && (
+                          {unread && (
                             <Tip content={t_i18n("Mark as read")}>
                               <button aria-label={t_i18n("Mark as read")} className="hidden group-hover:flex h-4 w-4 items-center justify-center rounded-sm hover:bg-elevation-hover" onClick={(e) => dismissOne(item.id, e)}>
                                 <Check className="h-2.5 w-2.5 text-default-secondary" />
