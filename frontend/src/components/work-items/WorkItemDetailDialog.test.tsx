@@ -616,6 +616,27 @@ describe("the work item detail", () => {
     expect(screen.getByText("Mark done")).toBeTruthy();
   });
 
+  // #864 UX round 1 B1: a person's decision plus an item it waits for keeps
+  // the blocker item visible, the person on the "Also waits for" row.
+  it("lists the blocker items of an item waiting for a person, the person under Also waits for", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        needs_human: true,
+        blocked_on: ["b1"],
+        context: context({
+          pickup: { ...context().pickup, state: "waiting_for_person", auto_cancel_at: null },
+          blocked_on: [{ id: "b1", title: "Ship the migration", status: "in_progress", accessible: true }],
+        }),
+      }),
+      { close: vi.fn() },
+    );
+    const blockers = screen.getByTestId("work-item-blockers");
+    expect(blockers.textContent).toContain("Ship the migration");
+    expect(screen.getByText("Also waits for")).toBeTruthy();
+    expect(screen.getByTestId("work-item-blocked-why")).toBeTruthy();
+  });
+
   it("keeps Blocked: not picked up on a legacy item that waits for a reason only", () => {
     openDialog(
       item({
