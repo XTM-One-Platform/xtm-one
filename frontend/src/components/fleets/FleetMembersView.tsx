@@ -108,6 +108,7 @@ import {
   type MembersTableState,
 } from "./members-view";
 import { ApplyPresetDialog } from "./ApplyPresetDialog";
+import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { MemberInstructionPanel } from "./MemberInstructionPanel";
 import { OrganizationScopeDialog } from "./OrganizationScopeDialog";
 
@@ -414,6 +415,9 @@ export function FleetMembersView({
           {t_i18n(reason)}
         </p>
       )}
+
+      {/* Capability slots (#914): bindings are the customer layer, open on a built-in fleet too. */}
+      <FleetCapabilitySlotsCard fleet={fleet} />
 
       <FleetDefaultsBar
         fleet={fleet}
