@@ -1,6 +1,7 @@
 # Human gates: one decision system
 
-Status: proposal (spec only, no code). Tracking issue: #842.
+Status: accepted, choices F3, G2 and H widened (Sam, 21 Nov 2026); spec only,
+no code. Tracking issue: #842.
 
 A person meets one kind of human gate anywhere in XTM One: the same card, the
 same inbox, the same bell entry, the same answer flow, whatever asked (an agent
@@ -9,9 +10,13 @@ card is readable on its own: nobody has to open a run to understand the
 decision or to answer it. The run, flow or item stays one link under the card.
 
 This document is the contract of that system and the plan to reach it from the
-five gates main ships today. Three choices are open for the reviewer:
-**F** (long waits), **G** (storage) and **H** (the Teams sender when the bot
-is not in the conversation, section 9); each carries a recommendation.
+five gates main ships today. The three open choices were decided by the
+reviewer (Sam, 21 Nov 2026): **F3** (long waits stay paused, release the
+assignment queue, expire at the deadline, section 7), **G2** (one `decisions`
+table with a reversible data migration, section 8) and **H widened** (a
+decision card is answerable on every send path, bot or not, Microsoft, Google
+and the other discussion integrations, section 9, I.4). Every link a card or a
+message carries resolves (section 9, I.7).
 
 ## 1. What exists today
 
@@ -21,7 +26,7 @@ is not in the conversation, section 9); each carries a recommendation.
 | 2 | Per-tool approval | the gate of `hitl_whitelist.py` / `tools/approval.py` before a gated tool call | `pending_approvals`, `approval_decisions`; standing approvals in `ToolApprovalPreference` (schema fingerprint) | same endpoint, `decisions: [{decision: approve, approve_always, reject}]` | `ActionProposalCard`, `FleetPendingApprovals` | `hitl` (push Approve / Reject actions) |
 | 3 | Irreversible consent | a tool (today `merge_opencti_entities`) asks through gate 1 for `APPROVE <code>` | inside the free-text reply, `human_input_history` | parsed server-side by `hitl_consent.py` | none of its own | `hitl` |
 | 4 | Flow Ask-user node | `flow_runner._exec_ask_user` (title, question) | park `{kind: human, question, released, response, responded_by}` in `FlowRun.state.waiting` | `POST /flows/runs/{id}/respond`, `response` text | flow builder run panel | `flow_hitl` (activity row) |
-| 5 | Work-item decision | `needs_human` + `ask` (`work_item_ask.py`) | `work_items.ask` {question, context, options, recommendation, deadline}; recipient in `waits_for_user_id` (`work_item_recipient.py`) | `POST /work-items/{id}/answer`, `{option, text}` | `WorkItemDecisionCard` in the work item dialog; Operations > Work Items "Waiting for me" | `work_item_waiting` |
+| 5 | Work-item decision | `needs_human` + `ask` (`work_item_ask.py`) | `work_items.ask` {question, context, options, recommendation, deadline}; recipient in `waits_for_user_id` (`work_item_recipient.py`) | `POST /work-items/{id}/answer`, `{option, text}` | `WorkItemDecisionCard` in the work item dialog; Tasks > Work Items "Waiting for me" (`/tasks/work-items`) | `work_item_waiting` |
 
 Adjacent gates, in scope for the card (B) but not for the router at first:
 chat inline approvals (`request_approval`, general chat pause), runner
@@ -111,7 +116,8 @@ keep their own transport and adopt the card in the last slice.
 
 ## 4. C. One inbox
 
-"Waiting for you" (Operations, today the work items "Waiting for me" view, and
+"Waiting for you" (Tasks, today the work items "Waiting for me" view at
+`/tasks/work-items`, and
 the home dashboard notice) lists every open decision of the caller, whatever
 the source, oldest deadline first then oldest asked:
 
@@ -124,15 +130,18 @@ the source, oldest deadline first then oldest asked:
 | Answer by | deadline or nothing |
 
 A row opens the same `DecisionCard` in a side panel and answers there. The
-companion inbox reads the same list. The list is a read of the store chosen in
-G, no model call on the read path.
+companion inbox reads the same list. The list is one indexed read of the
+`decisions` table (G2: recipient, status, deadline), no model call on the read
+path.
 
 ## 5. D. One bell kind
 
 A new kind `decision` replaces `hitl`, `flow_hitl` and `work_item_waiting` in
 the feed: title = the question, subtitle = "<source> · <agent>", summary = the
 deadline text (`waiting_deadline_text`), route = the inbox with the card open
-(`/operations/waiting?decision=<id>`). It is urgent, unread until answered and
+(`/tasks/work-items?decision=<id>`; a work item decision keeps
+`/tasks/work-items/<item id>`, the route the feed writes today; see I.7). It
+is urgent, unread until answered and
 pushed the same way: Approve / Reject push actions whenever the options hold
 an `approve` and a `reject` kind, else a plain push that opens the card. The
 Teams and email notify paths (`notify.py`, the waiting work item notification
@@ -164,7 +173,7 @@ The three current endpoints stay as they are and call the same dispatch, so
 legacy clients, the Teams card answer and runs paused before the change keep
 answering.
 
-## 7. F. Long waits (open choice)
+## 7. F. Long waits (decided: F3)
 
 A run that waits long holds a worker slot of nothing but also its assignment's
 queue (`awaiting_human` is a blocking status) and is hard to find after a
@@ -185,13 +194,13 @@ day. Options:
   option when the decision names one, else "no answer", which the run receives
   as its tool result).
 
-**Recommendation: F3.** It keeps the exact resume (the agent continues with
+**Decision: F3** (Sam, 21 Nov 2026). It keeps the exact resume (the agent continues with
 its context, which F2 loses), keeps one decision per question (F2 creates a
 second object for the same question), and fixes the only real harm of F1 (a
 routinely pausing scheduled assignment holding its queue). N defaults to 4
 hours for scheduled and event runs and is off for chat-started runs.
 
-## 8. G. Storage (open choice)
+## 8. G. Storage (decided: G2)
 
 - **G1, a projection over the existing storages**: decisions stay where they
   are (`assignment_runs` columns plus a new JSON `human_input_ask`, the flow
@@ -204,14 +213,54 @@ hours for scheduled and event runs and is off for chat-started runs.
   engine's pause and resume path changes and existing paused runs, parks and
   items need a backfill.
 
-**Recommendation: G1 now, with the router and the audit trail as the only new
-write.** The regression risk sits in the three pause and resume paths, and G1
-leaves them untouched; the inbox query unions three indexed reads
-(`assignment_runs.status = awaiting_human`, flow runs with a human park,
-`work_items.needs_human`), each already filtered by owner today. A single
-`decision_answers` audit table (append only) gives one trail without moving
-the questions. G2 stays open if the union read measures above budget at
-production volume; the `Decision` view model makes that switch internal.
+**Decision: G2, one `decisions` table** (Sam, 21 Nov 2026). One store gives
+one index for the inbox and the bell, one audit trail, one place to expire
+(F3) and one row the channel cards of section 9 point at, instead of a union
+of three reads that every later surface would have to repeat. The regression
+risk that made G1 the first recommendation (the pause and resume paths) is
+handled by the migration contract below, not avoided.
+
+The table, `decisions`: `id` (the `run:` / `flow_run:` / `work_item:` prefixed
+id of section 6 stays the public id; the row keeps `source_type`,
+`source_id`), `ask` (the model of section 2), `recipient` (user, group or
+`company`), `status` (`open`, `answered`, `expired`, `cancelled`), `answer`
+(`{option, text}`), `answered_by`, `answered_at`, `surface` (web, inbox,
+bell, push, Teams bot card, answer link, Google Chat, Slack, WhatsApp,
+email), `deadline`, `created_at`; one `decision_events` audit table (append
+only: asked, notified per channel, answered, expired, refused with the
+reason). Indexes: (`recipient`, `status`, `deadline`), (`source_type`,
+`source_id`) unique while open.
+
+Migration contract:
+
+1. Dual write first: each engine keeps its own columns (`AssignmentRun`
+   human input, `pending_approvals`, the flow park, `work_items.ask`) and
+   writes the `decisions` row in the same transaction. Engines still resume
+   from their own columns; the router answers by the row and dispatches to
+   the engine as in section 6.
+2. Backfill (Alembic data migration, idempotent, batched): every open run
+   HITL (`status = awaiting_human` with a question), every open tool approval
+   (`pending_approvals` without a decision), every flow run with an
+   unreleased human park, every work item with `needs_human` and an `ask`
+   gets its `decisions` row and an `asked` event stamped `backfill`. A source
+   already answered is not copied.
+3. Read switch: the inbox, the bell and the cards read the table only once
+   the backfill count equals the source count (the migration logs it, a
+   health probe repeats it).
+4. Rollback: the downgrade turns the read switch off first (a setting read on
+   every request), then drops the tables. The engines kept their columns
+   through steps 1 to 3 and every answer is dispatched to its source, so a
+   rollback loses no open question and no answer. The downgrade runs in CI on
+   a seeded database.
+5. Retire: the engine columns become derived only after one release with the
+   read switch on and no rollback; a later slice, never part of the
+   migration.
+
+Tests the migration ships with: unit on the backfill (each source, already
+answered skipped, re-run idempotent), the downgrade on a seeded database, and
+an e2e on legacy paused objects: a run paused, a tool approval pending, a flow
+parked and a work item asked BEFORE the migration each answer after it, from
+the old endpoint and from the router, and resume the right engine.
 
 ## 9. I. Channel cards
 
@@ -246,12 +295,12 @@ channel, all fed by the `Decision` view model of section 3:
 
 | Channel | Format | Options | Answer in place |
 |---|---|---|---|
-| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) | one button per option, recommendation as the positive style, free text as `Input.Text` | yes, bot only (I.4) |
+| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) from the bot; `Action.OpenUrl` answer links from an account (I.4) | one button per option, recommendation as the positive style, free text as `Input.Text` (bot) or the text link | yes, every path (I.4) |
 | Slack | Block Kit (header, section, context, actions) | one button per option, recommendation `primary`, free text through a modal | yes (interactivity endpoint) |
 | Google Chat | cardsV2 | one button per option, free text as a text input widget | yes (`CARD_CLICKED`) |
 | WhatsApp | interactive message | up to 3 options as reply buttons, else a list; 1:1 only | yes (button reply webhook) |
 | Discord, Telegram | components / inline keyboard, if the channel's API allows | buttons | after the others, if their APIs allow |
-| Any other, email | plain text and an Open link | none | no (the link opens the card) |
+| Any other, email | plain text and one answer link per option (I.4) | the links | yes, through the answer link |
 
 Each card carries the question, the context, the options with their effect,
 the recommendation marked, the deadline (in UTC when the viewer's zone is
@@ -282,44 +331,112 @@ with the signing secret, Google Chat with its token verification, WhatsApp
 replies are mapped to the open decision of that conversation by the button
 payload (never by the reply text).
 
-### I.4 The Teams sender (choice H)
+### I.4 Every send path answers (choice H, decided: H widened)
 
-A Teams card that answers in place must be posted by the Teams bot, installed
-in that chat, group chat or team. Detection: before the send, the bot's
-conversation reference for the target (1:1 with the recipient, the group chat
-id, the team and channel) is read from the bot's installation store; present =
-the bot posts the interactive card.
+**Decision** (Sam, 21 Nov 2026): a decision card WORKS, answerable and not
+only readable, on every path that sends it, not only through the Teams bot. A
+read-only card is never the end state. The former options H1 (bot when
+present, else read-only), H2 (bot only) and H3 (plain text) are withdrawn.
 
-- **H1, bot when present, else a read-only card from the account**: the
-  agent's account (user or service account, Graph) posts the same card with
-  one `Action.OpenUrl` "Open" button to the inbox card, and the notify result
-  says the bot was not installed there. No silent text-only send.
-- **H2, bot only**: refuse the send when the bot is not installed.
-- **H3, plain text fallback**: today's behaviour.
+The send paths:
 
-**Recommendation: H1.** The person always gets the decision as a card in the
-conversation it was meant for, and the gap is visible to the sender instead of
-a lost message. Admin setup stated in the user docs: the bot app is installed
-for the tenant (manifest with `bots` scopes `personal`, `groupChat`, `team`),
-added to each team or group chat where agents post decisions; 1:1 needs the
-app installed for the user (proactive install through Graph where the tenant
-allows it).
+- **(a) Teams bot**: the bot is installed in the 1:1, group chat or team.
+- **(b) An agent's native Microsoft integration**: the agent posts through
+  its Graph chat and channel tools as a user or a service account (for
+  example a fleet's shared mailbox account).
+- **(c) AI agent accounts**: the Outlook and Teams agent accounts, on the
+  same Microsoft integration.
+- **(d) Google Chat and the other discussion integrations** (Slack,
+  WhatsApp, then Discord and Telegram), through the integration bound to the
+  agent, the user or agent account included.
+
+The constraints, stated rather than hidden: a Graph message posted as a user
+or a service account accepts only `Action.OpenUrl` (no `Action.Execute`, no
+inputs, `providers/microsoft/_cards.py` `parse_card`), and a Google Chat
+message sent with user authentication carries no interactive card (cardsV2
+needs app authentication).
+
+The mechanism per path (when the Teams bot is installed in the target
+conversation it posts instead of the account: detection reads the bot's
+conversation reference for the 1:1, group chat or channel before the send):
+
+| Path | Card | Answer | Decided state shown |
+|---|---|---|---|
+| (a) Teams bot | Adaptive Card, `Action.Execute` per option, `Input.Text` for free text | in place, verb `xtm.decision.answer` (I.3) | per-viewer `refresh` for every viewer |
+| (b), (c) Microsoft as a user, service account or agent account | the same Adaptive Card content, one `Action.OpenUrl` button per option plus "Answer with text" | the answer link below: one click answers that option | the sender updates its message to the decided card (`PATCH` of the chat or channel message as its sender, verified by slice S9b before it is relied on); when the API refuses, the link page shows the decided state and the next card read shows it |
+| (d) Google Chat with app auth (the Chat app is in the space) | cardsV2, one button per option, text input | in place, `CARD_CLICKED` (I.3) | the app updates its message |
+| (d) Google Chat as a user | text with one link per option | the answer link | the link page; the user message is updated where the Chat API allows an edit by its sender |
+| (d) Slack, WhatsApp | interactive per I.1 (bot token, business number) | in place | message update |
+| Email, any channel without interactivity | text and one link per option | the answer link | the link page |
+
+**The answer link** (`/decide/<token>`): one URL per option and per
+recipient, signed by the server (HMAC with a platform secret, key rotation
+kept), carrying the decision id, the option (or `text`), the recipient and
+an expiry (the decision deadline, else 7 days). Opening it:
+
+1. requires SSO; the signed-in user must be the token's recipient AND pass
+   the one recipient rule of section 6 (a forwarded link answers nothing: a
+   non-recipient gets "Waiting for <name>" and a `refused` event);
+2. answers in one click for an option (no second confirmation), except an
+   irreversible consent option, which asks for its code on the page (the
+   `hitl_consent` check is unchanged); "Answer with text" opens the card with
+   the text field;
+3. takes the decision's row lock, writes the answer through the router of
+   section 6 with `surface` = the channel the link was sent on (Teams chat,
+   Teams channel, Google Chat, email ...), and is single use: a second open
+   shows the decided state (who, when, which option), never answers twice;
+4. shows the decided state, with the link to the source under it.
+
+The link is never a bearer credential alone: without the SSO session of the
+recipient it answers nothing, so a link read by another member of a group
+chat or channel is harmless.
+
+Admin setup, stated in the user docs: the Teams bot app is installed for the
+tenant (manifest `bots` scopes `personal`, `groupChat`, `team`) and added where
+agents post decisions, to get the in-place answer; the Google Chat app is added
+to the spaces where it should answer in place. Without them, paths (b), (c) and
+(d) still answer through the link.
 
 ### I.5 1:1, group and channel behave the same
 
 In a group chat or channel every viewer sees the card; only the recipient (or
 the recipient group, or `company`) can answer; any other viewer sees "Waiting
-for <name>" in place of the buttons (Teams per-viewer refresh; on Slack and
-Google Chat a click from a non-recipient is refused with an ephemeral message
-and the card is unchanged).
+for <name>" in place of the buttons (Teams bot per-viewer refresh; on Slack
+and Google Chat a click from a non-recipient is refused with an ephemeral
+message and the card is unchanged; on an answer link the page refuses, I.4).
 
-### I.6 Acceptance per channel
+### I.6 Acceptance per path
 
-For each channel: the four sources (run HITL, tool approval, flow Ask-user,
-work item) produce the card; answering from it resumes the right engine; the
-card refreshes for every viewer; a non-recipient is refused; the fallback
-renders. A UX Director round on the card visuals, Teams dark and light themes
+For each send path of I.4 ((a) Teams bot, (b) Microsoft integration as a user
+or service account, (c) AI agent account, (d) Google Chat with app auth and as
+a user, Slack, WhatsApp, email), in a 1:1, a group chat and a channel where
+the channel has them: the four sources (run HITL, tool approval, flow
+Ask-user, work item) produce the card; the recipient answers FROM THE CARD (a
+button in place or one answer link click) and the right engine resumes; a
+non-recipient is refused; the card (or, where the API refuses the update, the
+link page and the next card read) shows the decided state; a second click
+answers nothing. No path passes with a read-only card. A UX Director round on
+the card visuals and the answer link page, Teams dark and light themes
 included.
+
+### I.7 Every link resolves
+
+Every link a card, a bell entry, a push or a message carries opens a page that
+exists. A work item opens `/tasks/work-items/<item id>` (the route the feed
+writes today, `notification_feed.py`); `/operations/work-items` is gone since
+#785 and answers "Page not found", so no sender may build it. Runs open
+`/operations/executions/<run id>`, flow runs their flow run page, a decision
+the inbox with the card open. Links are built by one helper
+(`decision_links.py`, used by the feed, the notify paths, `work_item_notify`,
+the channel renderers and the answer link page), never by string in a caller.
+
+Test: a unit table over every bell kind (`hitl`, `flow_hitl`,
+`work_item_waiting`, `run_action_request`, `decision` and the others of
+`NOTIFICATION_KINDS`) and every channel card renderer asserts that each route
+it emits matches a route of the frontend router (the `App.tsx` route list the
+lab seed tests already read), and an e2e opens the deep link of each bell kind
+and each channel card on the lab and checks no "Page not found". A route moved
+later fails that test, not a person.
 
 ## 10. H. Slices
 
@@ -332,16 +449,18 @@ verification is done.
 | Slice | Content | UI | Acceptance tests |
 |---|---|---|---|
 | S1 | `decision_ask.py` shared model and guard (re-exported by `work_item_ask`); `request_human_input` options / recommendation / deadline / links, context stored apart; HITL prompt and tool texts | no | unit: old call shape still pauses with the same question; options validated; unreadable question refused; e2e: assignment with HITL on pauses and resumes with an option and with free text |
-| S2 | `Decision` view model and `decision_feed` projection (G1); `POST /decisions/{id}/answer` router with the one recipient rule and `decision_answers` audit; old endpoints call the same dispatch | no | unit per source dispatch and refusal; e2e: answer a run, a flow park and a work item through the router; a run paused before the change answers through the old endpoint |
+| S2 | `decisions` and `decision_events` tables (G2), Alembic schema migration with downgrade; `Decision` model; dual write from the four engines in their own transactions; `POST /decisions/{id}/answer` router with the one recipient rule and the audit; old endpoints call the same dispatch; `decision_links.py` link helper (I.7) | no | unit per source dispatch and refusal; dual write per engine; downgrade on a seeded database; route table test of I.7 over every bell kind; e2e: answer a run, a flow park and a work item through the router; a run paused before the change answers through the old endpoint |
+| S2b | Backfill data migration (idempotent, batched) of open run HITL, tool approvals, flow parks and work item asks; backfill count check and health probe; read switch setting (off by default) | no | unit: each source backfilled, answered ones skipped, re-run idempotent; rollback step (switch off, downgrade) loses nothing; e2e on legacy objects paused BEFORE the migration (run, tool approval, flow park, work item) answering after it from the old endpoint and the router |
 | S3 | `DecisionCard` (generalised from `WorkItemDecisionCard`) on run detail, Operations rows, run card, fleet pending approvals, work item dialog; tool approvals as Approve / Approve always / Reject; consent option | yes | e2e: tool approval decided from the card (approve, approve always fingerprint kept, reject); consent option resumes `merge` with the check passing; card readable without the run page |
 | S4 | Bell kind `decision` with aliases; push urgency and actions unified; `flow_hitl` unread until answered; Teams and email text aligned | yes (bell, companion) | unit: one presenter for the three sources; aliases still read; e2e: each source rings one `decision` entry, cleared when answered |
 | S5 | "Waiting for you" inbox across sources, companion inbox on the same list, home notice | yes | e2e: four sources listed in one view, answered from the side panel |
 | S6 | Flow Ask-user options / recommendation / deadline and the flow run panel on the card | yes | e2e: flow parks, answered by option from the inbox, `{{ask.option}}` downstream |
-| S7 | Long waits per F; scheduled run pause rule | no | e2e per the chosen option |
+| S7 | Long waits per F3: past N hours (default 4 h for scheduled and event runs, off for chat-started runs) an `awaiting_human` run stops counting in the assignment's blocking statuses; expiry at the decision deadline with the default option or "no answer" as the tool result | no | e2e: a scheduled run paused past N h no longer holds its assignment's queue and still resumes on answer; a decision past its deadline expires with the stated outcome; a chat-started run is unaffected |
 | S8 | Chat inline approvals and runner shell approvals on the card; `run-human-input.tsx` removed; old bell kinds dropped after a release | yes | e2e: chat approval and runner approval from the card; no caller of the old component left |
-| S9 | Teams: `render_decision_card` Adaptive Card renderer; `teams_link_cards` generalised to every source with `xtm.decision.answer` (old verbs aliased); bot detection and the H read-only fallback; `work_item_notify` and the D notify path send the card; channel send tools take a `decision` | yes (card visuals, dark and light) | e2e per I.6 on 1:1, group chat and channel; old verbs still answer a card posted before the change |
+| S9 | Teams bot: `render_decision_card` Adaptive Card renderer; `teams_link_cards` generalised to every source with `xtm.decision.answer` (old verbs aliased); bot detection per conversation; `work_item_notify` and the D notify path send the card; channel send tools take a `decision` | yes (card visuals, dark and light) | e2e per I.6, path (a), on 1:1, group chat and channel; old verbs still answer a card posted before the change |
+| S9b | Answer links (I.4): signed single-use per-recipient `/decide/<token>` page with SSO, recipient rule, row lock, audit with the channel as `surface`, decided state; Microsoft paths (b) and (c): the Graph card with one `Action.OpenUrl` per option posted by the user, service account or agent account, the message updated to the decided state by its sender (`PATCH` verified first, fallback stated); email carries the same links | yes (card, link page) | e2e per I.6, paths (b) and (c), on 1:1, group chat and channel; forwarded link refused; second click answers nothing; expired token refused |
 | S10 | Slack: Block Kit renderer, interactivity endpoint with signing-secret check, modal for free text | yes | e2e per I.6 |
-| S11 | Google Chat: cardsV2 renderer, `CARD_CLICKED` handler with token verification | yes | e2e per I.6 |
+| S11 | Google Chat: cardsV2 renderer with app auth, `CARD_CLICKED` handler with token verification; user-auth sends carry the answer links of S9b | yes | e2e per I.6, path (d), app and user auth, in a DM and a space |
 | S12 | WhatsApp (1:1): reply buttons or list, button reply webhook mapped to the open decision; Discord and Telegram if their APIs allow | yes | e2e per I.6 (1:1 only for WhatsApp) |
 
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
@@ -368,12 +487,16 @@ and push; answering any of them from the bell, the inbox or the phone resumes
 the right engine; one e2e test per source; no run page needs to be opened to
 understand or answer; runs paused before the change still answer; a decision
 sent to Teams, Slack, Google Chat or WhatsApp is a card of that channel,
-answerable in place where the channel allows it.
+answerable from the card on every send path (bot, the agent's own integration,
+AI agent accounts), in place or through its answer link; every link it
+carries resolves; legacy paused objects answer after the G2 migration.
 
 ## 12. Constraints
 
 - No model call on the read path (inbox, bell, card).
-- No change to the pause and resume semantics of a run beyond what F adopts.
+- No change to the pause and resume semantics of a run beyond F3.
+- The G2 migration is reversible (section 8, step 4) and never retires the
+  engines' own columns in the same release.
 - Fingerprints, standing approvals and the consent check keep their server-side
   rules; the card only changes how they are asked.
 - Every slice ships with the e2e of the gates it touches.
