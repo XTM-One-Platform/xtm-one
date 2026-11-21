@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.base import strip_artifact_markers
 from app.models.notification_read_state import NotificationReadState
+from app.services.decision_links import flow_run_link, run_link, work_item_link
 
 #: Activity types an integration auth failure is recorded under (#3218).
 AUTH_FAILURE_ACTIVITY_TYPES: tuple[str, ...] = ("assignment_auth_quarantine", "assignment_auth_failure")
@@ -154,7 +155,7 @@ def present_run(run: Any) -> NotificationItem | None:
             id=str(run.id),
             kind="hitl",
             created_at=created,
-            route=f"/operations/executions/{run.id}",
+            route=run_link(run.id),
             title=title,
             subtitle=run.agent_name,
             summary=run.human_input_question,
@@ -168,7 +169,7 @@ def present_run(run: Any) -> NotificationItem | None:
         id=str(run.id),
         kind="run",
         created_at=created,
-        route=f"/operations/executions/{run.id}",
+        route=run_link(run.id),
         title=title,
         subtitle=run.agent_name,
         summary=preview,
@@ -206,7 +207,7 @@ def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
         id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
         kind="work_item_waiting",
         created_at=str(item.get("since") or ""),
-        route=f"/tasks/work-items/{item_id}",
+        route=work_item_link(item_id),
         title=title,
         subtitle="Waiting for your decision",
         summary=waiting_deadline_text(item.get("deadline")),
@@ -249,11 +250,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
             return None
         flow_id = _str(metadata, "flow_id")
         run_id = _str(metadata, "flow_run_id")
-        route = "/flows"
-        if _is_uuid(flow_id):
-            route = f"/flows/library/{flow_id}"
-            if source == "flow_hitl" and _is_uuid(run_id):
-                route += f"?run={run_id}"
+        route = flow_run_link(flow_id, run_id if source == "flow_hitl" else None)
         return item(source, route, "Flow")
     if source == "security_audit":
         audit_path = _str(metadata, "audit_path")
@@ -278,7 +275,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         run_id = _str(metadata, "run_id")
         conversation_id = _str(metadata, "conversation_id")
         if _is_uuid(run_id):
-            route = f"/operations/executions/{run_id}"
+            route = run_link(run_id)
         elif _is_uuid(conversation_id):
             route = f"/chat?c={conversation_id}"
         else:
@@ -289,9 +286,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
     if source == "run_action_request":
         # Someone who cannot answer a paused run asked its owner to act: the run.
         run_id = _str(metadata, "run_id")
-        return item(
-            "run_action_request", f"/operations/executions/{run_id}" if _is_uuid(run_id) else "/operations", "Run"
-        )
+        return item("run_action_request", run_link(run_id), "Run")
     if source == "builtin_tools_outside_allowlist":
         # A release shipped tools an agent's allowlist leaves out (#12192): its
         # Tooling section, where each one is added in one click.
