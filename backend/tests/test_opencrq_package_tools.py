@@ -68,6 +68,7 @@ EXPECTED_TOOLS = {
     "delete_opencrq_risk_scenarios",
     "update_opencrq_risk_tolerance",
     "get_opencrq_scenario_exposure",
+    "get_opencrq_cve_exploitation",
     "list_opencrq_attack_outcomes",
     "get_opencrq_attack_outcome",
     "get_opencrq_financial_summary",
@@ -334,6 +335,8 @@ SMOKE_CALLS = [
     # Risk (new)
     ("delete_opencrq_risk_scenarios", {"risk_scenario_ids": []}),
     ("get_opencrq_scenario_exposure", {"risk_scenario_id": ""}),
+    ("get_opencrq_cve_exploitation", {"risk_scenario_id": "", "cve_id": "CVE-2024-3094"}),
+    ("get_opencrq_cve_exploitation", {"risk_scenario_id": "s", "cve_id": "log4shell"}),
     ("get_opencrq_attack_outcome", {"attack_outcome_id": ""}),
     ("update_opencrq_risk_tolerance", {}),
     ("update_opencrq_risk_tolerance", {"risk_scenario_id": "s", "organization_id": "o", "clear": True}),

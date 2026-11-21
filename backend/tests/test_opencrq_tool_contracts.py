@@ -414,6 +414,60 @@ READS = {
         # risk-scenarios-router.ts: ScenarioSupportingAssetsPageSchema.nullable()
         overrides={"riskScenarios.listDerivedSupportingAssets": None},
     ),
+    "get_opencrq_cve_exploitation": Read(
+        "get_opencrq_cve_exploitation",
+        {"risk_scenario_id": SCENARIO, "cve_id": "cve-2024-6387"},
+        opencrq_risk,
+        # risk-scenarios/risk-scenarios-router.ts: getCveExploitation input is
+        # {riskScenarioId, cveId (CVE-YYYY-NNNN), limit (1 to 500, default 50)}
+        [
+            _sent(
+                "riskScenarios.getCveExploitation", {"riskScenarioId": SCENARIO, "cveId": "CVE-2024-6387", "limit": 30}
+            )
+        ],
+        ("riskScenarios.getCveExploitation",),
+        (
+            "Exploitation on the scenario's assets (2 reached) for risk scenario",
+            "CVE: CVE-2024-6387 - OpenSSH regreSSHion signal handler race (CVSS 8.1)",
+            "internet-facing, 1 asset(s): T1190 Exploit Public-Facing Application (topology, medium confidence);"
+            " topology rule, CVSS AV:N UI:N PR:N on internet-facing",
+            "internal, 1 asset(s): T1210 Exploitation of Remote Services (topology, medium confidence);"
+            " topology rule, CVSS AV:N UI:N PR:N on internal",
+            "Edge bastion (OpenSSH) (internet-facing, impact 0.50, depth 1, primary assets Credit Decision Process):"
+            " T1190",
+            "Core Banking System (Temenos T24) (internal, impact 0.25, depth 0, primary assets Credit Decision Process):"
+            " T1210",
+        ),
+        absent=("more.",),
+    ),
+    "get_opencrq_cve_exploitation_named_past_one_page": Read(
+        "get_opencrq_cve_exploitation",
+        {"risk_scenario_id": SCENARIO, "cve_id": "CVE-2024-6387"},
+        opencrq_risk,
+        [
+            _sent(
+                "riskScenarios.getCveExploitation", {"riskScenarioId": SCENARIO, "cveId": "CVE-2024-6387", "limit": 30}
+            )
+        ],
+        (),
+        (
+            "(40 reached)",
+            "mapping that names this CVE (curated)",
+            "    ... and 38 more.",
+        ),
+        overrides={
+            "riskScenarios.getCveExploitation": {
+                **_fixture("riskScenarios.getCveExploitation")[1],
+                "byExposure": [
+                    {
+                        **_fixture("riskScenarios.getCveExploitation")[1]["byExposure"][0],
+                        "reading": {"kind": "named", "lanes": ["curated"]},
+                    }
+                ],
+                "total": 40,
+            }
+        },
+    ),
     "get_opencrq_attack_outcome_for_an_organization": Read(
         "get_opencrq_attack_outcome",
         {"attack_outcome_id": ATTACK_OUTCOME, "organization_id": ORGANIZATION}, opencrq_risk,
