@@ -19944,7 +19944,14 @@
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {SLA dépassé de {shown} min} other {SLA dépassé de {shown} min}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {SLA dépassé de {shown} h} other {SLA dépassé de {shown} h}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {SLA dépassé de {shown} jour} other {SLA dépassé de {shown} jours}}",
-  "P1 case opened by the loop: {sla}": "Dossier P1 ouvert par la boucle : {sla}",
-  "P1 case opened by the loop": "Dossier P1 ouvert par la boucle",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# atténué, sous surveillance} other {# atténués, sous surveillance}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# atténué, sous surveillance} other {# atténués, sous surveillance}}",
+  "Crown jewel: {name}": "Actif critique : {name}",
+  "Scope criticality: {level}": "Criticité du périmètre : {level}",
+  "Case opened by the loop": "Dossier ouvert par la boucle",
+  "Signals by trigger path": "Signaux par chemin de déclenchement",
+  "{live} of {total} paths with a source": "{live} chemins sur {total} avec une source",
+  "Propose to raise the scope": "Proposer d'élargir le périmètre",
+  "Optional: nothing waits on it.": "Facultatif : rien n'attend cette action.",
+  "Proposal saved. An administrator reviews it in Settings > Organization.": "Proposition enregistrée. Un administrateur l'examine dans Paramètres > Organisation.",
+  "The proposal could not be saved": "La proposition n'a pas pu être enregistrée"
 }
