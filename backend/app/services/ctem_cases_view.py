@@ -379,30 +379,3 @@ def list_for_viewer(
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
     """Whether the would-be owner sees at least one issue of the case in the source products."""
     return bool(visible_members(rows, owner_view))
-
-
-async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = None) -> bool:
-    """Whether *user_id* may open case *case_id*: the API's rule (a 404 otherwise), from their own view.
-
-    The platform events of a case reach only such users (#933). *vertical* is
-    ignored: the case's own vertical decides the view read. Any unknown or
-    unreadable input answers ``False``.
-    """
-    import uuid
-
-    from app.services import ctem_cases_store as store
-    from app.services.organizations import get_primary
-
-    try:
-        case_uuid = uuid.UUID(str(case_id))
-        uuid.UUID(str(user_id))
-    except (ValueError, TypeError):
-        return False
-    primary = await get_primary(db)
-    if primary is None:
-        return False
-    found = await store.get_case(db, case_uuid, organization_id=primary.id)
-    if found is None:
-        return False
-    case, rows, _events = found
-    return bool(visible_members(rows, await viewer_view(db, str(user_id), case.vertical)))

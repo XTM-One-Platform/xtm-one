@@ -170,13 +170,13 @@ async def evaluate_ctem_signal(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Run the reconcile and scope gate again on one signal, OpenCRQ risk scenarios read with its
-    recorder's rights (a system signal: the administrator's, #933); 409 once it opened a case."""
+    """Run the reconcile and scope gate again on one signal, OpenCRQ risk scenarios read for it; 409 once it opened a case."""
     _require_xtm_one()
     row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id)
+    scenarios = await scope_gate.read_scenarios(db, user_id=admin.id)
+    decision = await scope_gate.evaluate(db, row, scenarios=scenarios)
     if decision is None:
         raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
     await db.commit()

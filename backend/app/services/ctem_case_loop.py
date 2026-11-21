@@ -168,23 +168,25 @@ def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None
 _SEVERITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
 
-def case_data(case: CtemCase) -> dict[str, Any]:
-    """The payload of a case event: the case id and its routing, nothing else (#933).
-
-    Severity, SLA, owner, risk scenarios, the signal and the validation stay on
-    the case, read with ``get_ctem_case`` under the run's own view. The event
-    reaches only subscribers whose run-as user sees the case
-    (``platform_events.can_read_object``).
-    """
-    return {
+def case_data(case: CtemCase, **extra: Any) -> dict[str, Any]:
+    """The payload of a case event: ids and facts only, never a source issue's content (no title)."""
+    data = {
         "case_id": str(case.id),
+        "organization_id": str(case.organization_id),
         "vertical": case.vertical,
         "state": case.state,
+        "remediation_kind": case.remediation_kind,
         "trigger_path": case.trigger_path,
+        "severity": case.severity,
+        "sla_due_at": case.sla_due_at.isoformat() if case.sla_due_at else None,
+        "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
+        "risk_scenario_ids": list(case.risk_scenario_ids or []),
         "object_type": "ctem_case",
         "object_id": str(case.id),
         "participant_agent_ids": [],
     }
+    data.update(extra)
+    return data
 
 
 def _event_id(name: str, case: CtemCase, marker: str) -> str:
@@ -273,7 +275,7 @@ async def open_from_signal(
     if events is not None:
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
-        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
+        events.add(CASE_OPENED, case_data(case, signal_id=str(signal.id)), _event_id(CASE_OPENED, case, "open"))
     return case
 
 
@@ -344,12 +346,14 @@ async def record_validation(
             db.add(_transition(case, "resolved", now, evidence=evidence, actor=actor))
             case.resolution_kind = "not_exposed" if result == "not_exposed" else "fixed"
             if events is not None:
-                events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, at))
+                events.add(
+                    CASE_RESOLVED, case_data(case, validation=entry), _event_id(CASE_RESOLVED, case, at)
+                )
     elif result == "failed" and case.state in ("resolved", "mitigated_watching"):
         db.add(_transition(case, "needs_attention", now, reason=f"re-test failed: {evidence}", actor=actor))
         case.resolution_kind = None
         if events is not None:
-            events.add(CASE_REOPENED, case_data(case), _event_id(CASE_REOPENED, case, at))
+            events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, at))
     if events is not None:
         events.frame(case, "validation", now)
     return case
