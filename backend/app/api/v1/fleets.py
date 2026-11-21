@@ -255,13 +255,17 @@ def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None
 
 
 def _lock_fixes_on_health_fleet(fleet: Fleet, lines: list[Any]) -> None:
-    """Nobody fixes a prerequisite of Platform Health from its page, administrators included.
+    """Nobody fixes a prerequisite of Platform Health from its page, but its Settings switch.
 
     Sets ``can_fix`` false on every live line of the health fleet, so the About
     page offers no Fix it link and no Fix with AI (#101 S1b, UX r2 B1 on #464).
+    The ``platform_health_off`` line keeps ``can_fix`` as computed (an
+    administrator opens Settings > Platform Health), UX r2 B3 on #980.
     """
     if is_health_fleet(fleet):
         for line in lines:
+            if getattr(line, "reason_code", "") == "platform_health_off":
+                continue
             line.can_fix = False
 
 
