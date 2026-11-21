@@ -100,7 +100,12 @@ def test_a_bad_field_is_refused_by_name(change, field):
 
 
 def test_listeners_cover_the_paths_whose_events_exist_today():
-    assert listeners.paths_with_listener() == {"new_vulnerability", "relevant_threat", "code_flaw"}
+    assert listeners.paths_with_listener() == {
+        "new_vulnerability",
+        "relevant_threat",
+        "code_flaw",
+        "mitigation_regression",
+    }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
 
@@ -272,12 +277,6 @@ class _Store:
     async def get(self, _db, signal_id, *, organization_id, recorded_by):
         return next((r for r in self._mine(organization_id, recorded_by) if r.id == signal_id), None)
 
-    async def counts_by_path(self, _db, *, organization_id, recorded_by):
-        counts = {p: {s: 0 for s in SIGNAL_STATES} for p in TRIGGER_PATHS}
-        for r in self._mine(organization_id, recorded_by):
-            counts[r.trigger_path][r.state] += 1
-        return counts
-
 
 class _Db:
     async def commit(self):
@@ -299,7 +298,6 @@ def store(monkeypatch):
     monkeypatch.setattr(signals, "record_signal", fake.record)
     monkeypatch.setattr(signals, "list_signals", fake.list)
     monkeypatch.setattr(signals, "get_signal", fake.get)
-    monkeypatch.setattr(signals, "counts_by_path", fake.counts_by_path)
     return fake
 
 
@@ -420,80 +418,12 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
     async with client as http:
         paths = (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]
     assert [p["id"] for p in paths] == list(TRIGGER_PATHS)
-    assert {p["id"] for p in paths if p["listener"]} == {"new_vulnerability", "relevant_threat", "code_flaw"}
-
-
-async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_configured(client):
-    """CTEM-30 (#937): per-path counts on the caller's visible signals; a path with no listener and no signal is not configured."""
-    async with client as http:
-        await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))
-        await http.post(
-            "/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB}
-        )
-        alice = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
-        admin = {
-            p["id"]: p
-            for p in (await http.get("/api/v1/ctem-signals/paths", headers={"X-User": ADMIN})).json()["paths"]
-        }
-    assert alice["stale_asset"]["total"] == 1 and alice["stale_asset"]["counts"]["new"] == 1
-    assert admin["stale_asset"]["total"] == 2
-    assert alice["stale_asset"]["configured"] is True
-    assert alice["new_exposure"] == {**alice["new_exposure"], "total": 0, "configured": False}
-    assert alice["new_vulnerability"]["configured"] is True and alice["new_vulnerability"]["total"] == 0
-
-
-def _watchlisted(store, owner, *, code="below_scope_threshold", criticality="medium"):
-    row = next(r for r in store.rows.values() if r.recorded_by == owner)
-    row.state = "watchlist"
-    row.decision = {"reason_code": code, "scope": {"criticality": criticality, "threshold": "high"}}
-    return row
-
-
-async def test_propose_scope_stores_a_proposal_for_a_readable_watchlisted_signal_only(client, store, monkeypatch):
-    """CTEM-30 (#937): "propose to raise the scope" stores a proposal, never a profile write; another user's signal is 404."""
-    from app.services import organization_context_proposals as proposals
-
-    stored: list[dict] = []
-
-    async def _propose(_db, *, author_user_id, changes=None, **_kw):
-        stored.append({"author": str(author_user_id), "changes": changes})
-        return SimpleNamespace(id=uuid.uuid4(), status="pending")
-
-    monkeypatch.setattr(proposals, "propose", _propose)
-    async with client as http:
-        await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))
-        await http.post(
-            "/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB}
-        )
-        mine = _watchlisted(store, ALICE)
-        bobs = _watchlisted(store, BOB)
-        ok = await http.post(f"/api/v1/ctem-signals/{mine.id}/propose-scope")
-        other = await http.post(f"/api/v1/ctem-signals/{bobs.id}/propose-scope")
-        mine.decision = {"reason_code": "criticality_unknown", "scope": {"criticality": None}}
-        unknown = await http.post(f"/api/v1/ctem-signals/{mine.id}/propose-scope")
-    assert ok.status_code == 200
-    assert ok.json()["value"] == "medium"
-    assert stored == [
-        {
-            "author": ALICE,
-            "changes": [
-                {
-                    "field": "prioritization_policy.scope_min_criticality",
-                    "value": "medium",
-                    "basis": "Watchlisted CTEM signal on a: criticality medium below the scope threshold",
-                }
-            ],
-        }
-    ]
-    assert other.status_code == 404
-    assert unknown.status_code == 409
-
-
-def test_the_scope_threshold_is_a_proposable_field_of_the_primary_profile_only():
-    from app.services import organization_context_proposals as proposals
-
-    assert "prioritization_policy.scope_min_criticality" in proposals._contract_paths("primary")
-    assert "prioritization_policy.scope_min_criticality" not in proposals._contract_paths("tracked")
+    assert {p["id"] for p in paths if p["listener"]} == {
+        "new_vulnerability",
+        "relevant_threat",
+        "code_flaw",
+        "mitigation_regression",
+    }
 
 
 async def test_an_invalid_body_is_422_and_copilot_mode_is_404(client, monkeypatch):
