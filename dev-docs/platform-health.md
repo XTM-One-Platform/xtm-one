@@ -232,10 +232,19 @@ migration, 2.3). `backend/tests/test_health_built_in.py` pins the built-in behav
   (`agents`, `fleets`, `xtm_one`, `opencti`, `openaev`, `opencrq`), `subject` (ids),
   `category` (availability, performance, capacity, configuration, security, licence,
   coverage, cost), `severity` (critical, warning, info), `status` (open, resolved,
-  dismissed), `evidence` (values, threshold, read time, source), `recommendation`,
-  `doc_link`, `first_seen`, `last_seen`, `resolved_at`. Dedupe on `id`; auto-resolve when
-  the check passes twice in a row; dismiss with a reason and an expiry, reusing the
+  dismissed; `pending` internally), `evidence` (values, threshold, read time, source),
+  `recommendation`, `doc_link`, `first_seen`, `last_seen`, `resolved_at`, `opened_at`,
+  `alerted_at`. Dedupe on `id`; opens when the check fails twice in a row
+  (`OPEN_AFTER_FAILS` = 2, `fail_streak`; before, the row is `pending`: not scored, not
+  listed, never alerted, deleted by a passing read); auto-resolve when the check passes
+  twice in a row; dismiss with a reason and an expiry, reusing the
   `fleet_health_dismissals` pattern.
+- **Restart grace.** A failing `availability` read during a restart is marked `in_grace`
+  and never opens a finding (it still refreshes one already open): the XTM One checks for
+  `STARTUP_GRACE` (10 minutes) after the process starts (`PROCESS_STARTED_AT`), a
+  module's checks for `RESTART_GRACE` (10 minutes) after its registration reads as a
+  restart (version changed, or a heartbeat more than 8 minutes after the previous one:
+  `snapshots.registration_restarted`, stamped `platform_health_snapshots.restarted_at`).
 - **Score.** Per module: `100 - 25 x critical - 8 x warning - 1 x info`, floored at 0,
   open findings only; overall = the lowest module score. The formula is shown on the page.
 - **History.** Daily rollup of score and counts per module, kept 90 days (7/30/90 d views).
@@ -515,13 +524,20 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - Analysis: on or off, daily and monthly ceiling, and under them today's and this month's
   analysis spend against each ceiling (`AnalysisSpendLines`, from `GET /health/analysis`;
   moved from the Health page by #961).
-- Alert emails: off by default; recipients, minimum severity, immediate for a new
-  critical finding plus a daily digest, one email per finding (dedupe on finding id).
-  Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`): after
-  each pass commits, `send_alerts` mails every critical finding the pass opened or
-  reopened once (Redis `SET NX` on `health:alert:<finding id>`, 7 days), then the
-  digest once per UTC day (mark `alert:digest` in `health_schedule_marks`). Nothing
-  is sent with SMTP unset or no recipient; a failed send never fails the pass.
+- Alert emails: off by default; recipients, minimum severity, immediate for a critical
+  finding open for the alert window plus a daily digest, one email per finding and open
+  episode. Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`):
+  after each pass commits, `send_alerts` mails every critical finding open continuously
+  for `alert_after_minutes` (default 15, 0 to 1440, the "Send after" field) and not
+  alerted in this episode (`alerted_at` stamped; Redis `SET NX` on
+  `health:alert:<finding id>:<opened_at>` against a second replica), then the digest
+  once per UTC day (mark `alert:digest` in `health_schedule_marks`, unchanged). A
+  finding that resolves within the window never mails, so a restart sends nothing
+  (#958, with the open-after-two-reads rule and the restart grace of section 3); a
+  reopened finding, or a dismissed one restored, is a new episode. Nothing is sent with
+  the emails off, SMTP unset or no recipient (or immediate off), but the due findings are
+  still stamped `alerted_at` (`stamp_due_alerts`), so turning the emails on later never
+  mails a burst of the findings already open; a failed send never fails the pass.
 - Layout (S13, `pages/settings/HealthSection.tsx` `GROUPS`): one section, a horizontal
   `SectionIndex` ("On this page") jumping to four groups, anchors `#health-settings-<key>`:
   status (enable and name, scope), spend (budget, analysis), checks (schedule, signals,
@@ -582,7 +598,10 @@ its file and line, and a `/health?tab=` link fails (the page reads its tab from 
   layout (`services/email.py`), attachments by file id (20 MB total, the existing cap).
 - Guards: recipient domain allowlist (empty = refuse all), per-agent daily send limit,
   tool approval on by default, audit log entry per send, From fixed to the platform sender.
-- Health alert emails (section 7) use `deliver_email` directly, not the agent tool.
+- Health alert emails (section 7) use `deliver_email` directly, not the agent tool: the
+  immediate email of a critical finding goes out once it has been open for
+  `alert_after_minutes` (default 15), at most once per open episode; a restart of XTM One
+  or of a module sends none.
 
 ## 10. Slice plan
 
