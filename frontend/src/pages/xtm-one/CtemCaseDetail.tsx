@@ -36,6 +36,7 @@ import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -96,6 +97,8 @@ const EVENT_LABEL: Record<string, string> = {
   signal: "A signal joined the case",
   validation: "Recorded a validation",
   sla_breached: "Escalated: SLA breached",
+  // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
+  exploitation: "Recorded how it would be exploited",
 };
 
 /** The result word of a validation history row, translated where drawn. */
@@ -379,6 +382,8 @@ export default function CtemCaseDetail() {
       )}
 
       <CaseOpenedBy caseId={kase.id} />
+
+      <CaseExploitation entries={kase.exploitation} />
 
       <Card>
         <CardHeader>
