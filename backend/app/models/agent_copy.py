@@ -1162,6 +1162,9 @@ TRIGGER_CONFIG_PORTABLE_KEYS: tuple[str, ...] = (
     # CTEM-08: keep a relationship only when its source runs in the profile
     # (``services/ctem_trigger_rules.py``), read against each instance's own profile.
     "runs_in_profile",
+    # CTEM-08: hold a PIR playbook delivery to the policy's PIR score thresholds,
+    # read against each instance's own profile and OpenCTI.
+    "pir_min_score",
 )
 
 

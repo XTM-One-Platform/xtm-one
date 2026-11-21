@@ -78,6 +78,10 @@ interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
+  /** OpenAEV finding lifecycle (CTEM-14-UI); absent when the source carries none. */
+  retest_status?: "open" | "not_reproduced" | "resolved" | null;
+  last_tested_at?: string | null;
+  retest_pending?: boolean;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -87,7 +91,7 @@ export interface CtemCaseRestrictedIssue {
 
 export type CtemCaseIssue = CtemCaseVisibleIssue | CtemCaseRestrictedIssue;
 
-interface CtemCaseEvent {
+export interface CtemCaseEvent {
   at: string | null;
   actor: string;
   kind: string;
@@ -200,6 +204,32 @@ export function useCtemCase(id: string | undefined) {
     enabled: Boolean(id),
     // An unknown case, or one the caller sees nothing of (#11613), is a 404
     // the page shows as NotFoundState, never the ErrorBoundary.
+    ...notFoundIsOrdinary,
+  });
+}
+
+/** One fleet run a case event started (`CaseRunEntry`, `GET /fleets/case-runs/{id}`, #915). */
+export interface CtemCaseRun {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  outcome: string;
+}
+
+/**
+ * The fleet runs working on one case, oldest first, the ones the caller may
+ * see. Only with agentic AI licensed (`enabled`): the route is gated like the
+ * other fleet reads. Polled while a run is in flight so steps show live.
+ */
+export function useCtemCaseRuns(id: string | undefined, enabled: boolean) {
+  return useQuery<{ case_id: string; runs: CtemCaseRun[] }>({
+    queryKey: ["ctem-cases", "runs", id],
+    queryFn: () => api.get(`/fleets/case-runs/${id}`),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: (query) => (query.state.data?.runs.some((r) => r.outcome === "active") ? 10_000 : REFETCH_INTERVAL_SLOW),
     ...notFoundIsOrdinary,
   });
 }

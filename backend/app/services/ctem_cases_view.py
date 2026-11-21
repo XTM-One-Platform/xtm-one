@@ -121,8 +121,24 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     return rules.SourceIssue(**data)
 
 
-def _view_key(user_id: str, vertical: str) -> str:
-    return f"ctem:cases:view:{user_id}:{vertical}"
+def _view_key(user_id: str, vertical: str, generation: str = "0") -> str:
+    return f"ctem:cases:view:{user_id}:{vertical}:{generation}"
+
+
+def _generation_key(vertical: str) -> str:
+    return f"ctem:cases:view-generation:{vertical}"
+
+
+async def _generation(client: Any, vertical: str) -> str:
+    """The current generation of every cached view of *vertical* (``0`` before the first bump)."""
+    try:
+        raw = await client.get(_generation_key(vertical))
+    except Exception:
+        logger.info("CTEM cases: view generation unreadable for %s", vertical, exc_info=True)
+        return "0"
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    return str(raw) if raw else "0"
 
 
 def _seen_key(user_id: str, vertical: str) -> str:
@@ -178,9 +194,10 @@ async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) ->
     from app.services import ctem_cases_source as source
 
     client = await _redis()
+    generation = await _generation(client, vertical) if client is not None else "0"
     if client is not None and not fresh:
         try:
-            cached = await client.get(_view_key(user_id, vertical))
+            cached = await client.get(_view_key(user_id, vertical, generation))
             if cached:
                 return ViewerView.from_json(cached)
         except Exception:
@@ -198,7 +215,7 @@ async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) ->
             logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
     if client is not None:
         try:
-            await client.set(_view_key(user_id, vertical), view.to_json(), ex=VIEW_TTL_SECONDS)
+            await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
@@ -212,9 +229,25 @@ async def forget_view(user_id: str, vertical: str) -> None:
     if client is None:
         return
     try:
-        await client.delete(_view_key(user_id, vertical))
+        await client.delete(_view_key(user_id, vertical, await _generation(client, vertical)))
     except Exception:
         logger.info("CTEM cases: view cache not dropped for %s", user_id, exc_info=True)
+
+
+async def forget_all_views(vertical: str) -> None:
+    """Drop every viewer's cached view of *vertical* (a case opened, a signal joined one).
+
+    The cases changed for everyone, not only for the caller, so the views are
+    retired by bumping their generation: the next read of each viewer misses
+    and reads its own source again; the old entries expire with their TTL.
+    """
+    client = await _redis()
+    if client is None:
+        return
+    try:
+        await client.incr(_generation_key(vertical))
+    except Exception:
+        logger.info("CTEM cases: view generation not bumped for %s", vertical, exc_info=True)
 
 
 def _member_id(row: CtemCaseIssue) -> str:
@@ -238,6 +271,16 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
         "crown_jewels": list(issue.crown_jewels),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
+        # The OpenAEV finding lifecycle (CTEM-14-UI): absent when the source carries none.
+        **(
+            {
+                "retest_status": issue.retest_status,
+                "last_tested_at": issue.last_tested_at,
+                "retest_pending": issue.retest_pending,
+            }
+            if issue.retest_status or issue.retest_pending
+            else {}
+        ),
     }
 
 

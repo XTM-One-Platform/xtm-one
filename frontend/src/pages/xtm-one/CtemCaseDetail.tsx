@@ -9,11 +9,13 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon, Textarea } from "@filigran/design-system";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NotFoundState } from "@/components/ui/not-found-state";
@@ -26,16 +28,20 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
   useCtemCase,
+  useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
 } from "@/hooks/api/useCtemCasesApi";
+import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
+import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
+import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
-import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -99,6 +105,15 @@ const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Escalated: SLA breached",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
+  // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
+  source_event: "OpenAEV result received",
+};
+
+/** The OpenAEV event of a `source_event` history row, translated where drawn (#956). */
+const SOURCE_EVENT_LABEL: Record<string, string> = {
+  simulation_finished: "Simulation finished",
+  finding_updated: "Finding updated",
+  finding_deleted: "Finding deleted",
 };
 
 /** The result word of a validation history row, translated where drawn. */
@@ -107,6 +122,25 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   not_exposed: "Not exposed",
   failed: "Failed",
   pending: "Pending",
+};
+
+/**
+ * The badge of a fleet run on the case history, the keys the fleet timeline
+ * uses (one run). @i18n-keys
+ */
+const RUN_OUTCOME_LABELS = {
+  succeeded: "Run outcome: succeeded",
+  failed: "Run outcome: failed",
+  running: "Run outcome: running",
+  pending: "Run outcome: pending",
+  interrupted: "Run outcome: interrupted",
+  cancelled: "Run outcome: cancelled",
+} as const satisfies Record<TimelineOutcome, string>;
+
+const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning" | "destructive" | "secondary">> = {
+  succeeded: "success",
+  failed: "destructive",
+  interrupted: "warning",
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
@@ -118,6 +152,9 @@ export default function CtemCaseDetail() {
   const { toast } = useToast();
   const { data: me } = useMe();
   const { data: kase, isLoading, error, isError, refetch } = useCtemCase(id);
+  const agenticLicensed = useAgenticAIEnabled();
+  const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
+  const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -207,6 +244,9 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
+  // The Re-test column exists only when a member carries the OpenAEV lifecycle,
+  // so an older case looks the same as before (UX round 1 on #962, B1).
+  const showRetest = hasRetestData(kase.issues ?? []);
 
   const columns: DataTableColumn<IssueRow>[] = [
     {
@@ -274,6 +314,28 @@ export default function CtemCaseDetail() {
       hideBelow: "4xl",
       hideable: true,
     },
+    ...(showRetest
+      ? [
+          {
+            key: "retest",
+            header: "Re-test",
+            cell: (r: IssueRow) =>
+              isRestrictedIssue(r.issue) ? null : (
+                <span className="flex flex-col items-start gap-0.5">
+                  <RetestChip issue={r.issue} />
+                  {r.issue.last_tested_at && (
+                    <span className="content-caption text-default-secondary">
+                      <DateTimeCell value={r.issue.last_tested_at} testId="ctem-case-issue-last-tested" />
+                    </span>
+                  )}
+                </span>
+              ),
+            sortValue: (r: IssueRow) => (isRestrictedIssue(r.issue) ? 99 : retestRank(r.issue)),
+            csv: (r: IssueRow) => (isRestrictedIssue(r.issue) ? "" : (r.issue.retest_status ?? (r.issue.retest_pending ? "queued" : ""))),
+            hideable: true,
+          } satisfies DataTableColumn<IssueRow>,
+        ]
+      : []),
     {
       key: "state",
       header: "State",
@@ -441,8 +503,35 @@ export default function CtemCaseDetail() {
         </CardHeader>
         <CardContent>
           <ol className="space-y-3" data-testid="ctem-case-history">
-            {[...kase.history].reverse().map((e, i) => (
-              <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-2 content-base">
+            {activity.map((item) => {
+              if (item.kind === "run") {
+                const run = item.run;
+                const outcome = timelineOutcome(run.outcome, run.status);
+                return (
+                  <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base" data-testid="ctem-case-run">
+                    <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
+                    <Link
+                      to={`/operations/executions/${run.id}`}
+                      state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
+                      aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
+                      className="hover:underline"
+                    >
+                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
+                    </Link>
+                    {outcome && (
+                      <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
+                        {t_i18n(RUN_OUTCOME_LABELS[outcome])}
+                      </Badge>
+                    )}
+                    <span className="ml-auto whitespace-nowrap text-default-secondary">
+                      {intl.formatDate(run.created_at, { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                  </li>
+                );
+              }
+              const e = item.event;
+              return (
+              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base">
                 <span className="font-medium">
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
@@ -450,6 +539,9 @@ export default function CtemCaseDetail() {
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
                 {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
+                {e.to && e.kind === "source_event" && (
+                  <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
+                )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
@@ -458,7 +550,8 @@ export default function CtemCaseDetail() {
                   </span>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ol>
         </CardContent>
       </Card>
