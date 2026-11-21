@@ -26,6 +26,7 @@ from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER
 from app.models.user import User
 from app.services import ctem_scope_gate_store as scope_gate
 from app.services import ctem_signals as signals
+from app.services.ctem_loop_stream import publish_signal_update
 from app.services.organizations import get_primary
 
 router = APIRouter()
@@ -143,6 +144,7 @@ async def record_ctem_signal(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await scope_gate.evaluate_after_record(db, row, created=created)
     await db.commit()
+    await publish_signal_update(db, row)
     return {"created": created, "signal": signals.to_dict(row)}
 
 

@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/**
+ * The why of a loop decision, the same component everywhere it shows
+ * (dev-docs/ctem-loop-visibility.md section 3): the state in words as a DS
+ * Chip, one sentence built from the decision record's `reason_code` and
+ * `reason_params` (the English `reason` line is for agents, never drawn), and
+ * the inputs the rule read, labelled. No decision yet reads "Waiting for
+ * reconcile"; a decided record whose code this version does not know keeps
+ * its chip and says so, never an empty cell.
+ */
+import { Chip } from "@filigran/design-system";
+import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { useFormatter } from "@/i18n";
+import { formatDayIntl } from "@/lib/relative-time";
+
+type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
+type Translate = (id: string, values?: Record<string, string | number>) => string;
+
+/** English labels of the signal states, translated where drawn. */
+export const SIGNAL_STATE_LABEL: Record<CtemSignalState, string> = {
+  new: "New",
+  confirmed: "Confirmed",
+  to_validate: "To validate",
+  discarded: "Discarded",
+  watchlist: "Watchlist",
+  case_opened: "Case opened",
+};
+
+const SIGNAL_STATE_SEVERITY: Record<CtemSignalState, ChipSeverity> = {
+  new: "info",
+  confirmed: "info",
+  to_validate: "medium",
+  discarded: "neutral",
+  watchlist: "medium",
+  case_opened: "high",
+};
+
+/**
+ * The sentence of each `reason_code` the reconcile and scope gate writes
+ * (backend/app/services/ctem_scope_gate.py, one per outcome branch), with its
+ * ICU params. A backend item that adds a code adds its sentence here and in
+ * the four catalogs. @i18n-keys
+ */
+const REASON_SENTENCE = {
+  subject_unresolved: "Not resolved to an asset, a crown jewel or the tech stack",
+  contradicted_by_evidence: "Contradicted by the verdict of its own source",
+  contradicted_by_signals: "Contradicted by {count, plural, one {# other signal} other {# other signals}}",
+  excluded_by_policy: "Excluded by the policy ({kind}: {value})",
+  accepted_risk: "Accepted risk owned by {owner} until {until}",
+  score_below_policy: "{score} {value} below the policy minimum {minimum}",
+  internet_exposure_required: "No internet-facing asset, and the policy requires internet exposure",
+  crown_jewel_below_policy: "No crown jewel at or above {minimum}",
+  no_risk_scenario: "No risk scenario holds the subject",
+  risk_scenario_unreadable: "A risk scenario is required and OpenCRQ could not be read",
+  criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
+  below_scope_threshold: "Criticality {criticality} below the scope threshold {threshold}",
+  in_scope: "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
+} as const;
+const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
+
+/** The level words a record carries (criticality, threshold, confidence), translated before they fill a sentence. */
+const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
+const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
+
+/** The exclusion kinds the gate reads (`reason_params.kind` of excluded_by_policy), in words (#851 UX round 4 B7). @i18n-keys */
+const EXCLUSION_KIND_LABEL = { product: "Product", asset_group: "Asset group", tag: "Tag" } as const;
+const EXCLUSION_KIND_LABELS: Readonly<Record<string, string>> = EXCLUSION_KIND_LABEL;
+
+/** The lens words, as the trace header draws them. @i18n-keys */
+const LENS_LABEL = { inside: "Inside", outside: "Outside", world: "World" } as const;
+const LENS_LABELS: Readonly<Record<string, string>> = LENS_LABEL;
+
+/** The policy rules the gate checks (`policy_checks[].rule`), in words. @i18n-keys */
+const POLICY_RULE_LABEL = {
+  exclusion: "Exclusion",
+  accepted_risk: "Accepted risk",
+  kev_always_in: "Known exploited always in",
+  cvss_min: "CVSS minimum",
+  epss_min: "EPSS minimum",
+  internet_exposure_required: "Internet exposure required",
+  min_crown_jewel_criticality: "Crown jewel minimum criticality",
+  require_risk_scenario: "Risk scenario required",
+} as const;
+const POLICY_RULE_LABELS: Readonly<Record<string, string>> = POLICY_RULE_LABEL;
+
+/** A level word is translated; a number (a CVSS or EPSS minimum) passes through as it is. */
+function levelLabel(value: unknown, t_i18n: Translate): string | number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" || !value) return "";
+  return LEVEL_LABEL[value] ? t_i18n(LEVEL_LABEL[value]) : value;
+}
+
+function lensLabel(value: unknown, t_i18n: Translate): string {
+  const lens = String(value);
+  return LENS_LABELS[lens] ? t_i18n(LENS_LABELS[lens]) : lens;
+}
+
+function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): string {
+  const label = POLICY_RULE_LABELS[rule] ? t_i18n(POLICY_RULE_LABELS[rule]) : rule;
+  return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
+}
+
+function SignalStateChip({ state }: { state: CtemSignalState }) {
+  const { t_i18n } = useFormatter();
+  return <Chip label={t_i18n(SIGNAL_STATE_LABEL[state] ?? state)} severity={SIGNAL_STATE_SEVERITY[state] ?? "neutral"} className="shrink-0" />;
+}
+
+/**
+ * The sentence of a decision record, or the waiting and unknown-code wordings.
+ * `formatDay` draws a date param (the `until` of an accepted risk) with the
+ * product date formatter (#851 UX round 4 B8); without it the ISO day is kept.
+ */
+export function decisionSentence(
+  decision: CtemDecisionRecord | null | undefined,
+  t_i18n: Translate,
+  formatDay: (iso: string) => string = (iso) => iso,
+): string {
+  if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
+  const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
+  if (!sentence) return t_i18n("Reason not available in this version");
+  const params: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(decision.reason_params ?? {})) {
+    if (LEVEL_PARAMS.has(key)) params[key] = levelLabel(value, t_i18n);
+    else if (key === "kind" && EXCLUSION_KIND_LABELS[String(value)]) params[key] = t_i18n(EXCLUSION_KIND_LABELS[String(value)]);
+    else if (key === "until" && typeof value === "string" && value) params[key] = formatDay(value);
+    else params[key] = value;
+  }
+  return t_i18n(sentence, params);
+}
+
+/** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
+function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): { label: string; value: string }[] {
+  if (!decision) return [];
+  const level = (value: unknown) => String(levelLabel(value, t_i18n));
+  const list = (value: unknown) => (Array.isArray(value) ? value.filter(Boolean).map(String).join(", ") : "");
+  const reconcile = decision.reconcile ?? {};
+  const scope = decision.scope ?? null;
+  const checks = (decision.policy_checks ?? []).map((c) => policyCheckLabel(c.rule, c.passed, t_i18n)).join(", ");
+  const lenses = Array.isArray(reconcile.lenses) ? reconcile.lenses.filter(Boolean).map((lens) => lensLabel(lens, t_i18n)).join(", ") : "";
+  const rows: { label: string; value: string }[] = [
+    { label: t_i18n("Lenses"), value: lenses },
+    { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
+    { label: t_i18n("Matched assets"), value: list(reconcile.assets) },
+    { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },
+    { label: t_i18n("Tech stack"), value: list(reconcile.tech_stack) },
+    { label: t_i18n("Criticality"), value: level(scope?.criticality) },
+    { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },
+    { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
+    { label: t_i18n("Policy checks"), value: checks },
+  ];
+  return rows.filter((row) => row.value);
+}
+
+export function DecisionReason({
+  state,
+  decision,
+  showInputs = false,
+}: {
+  state: CtemSignalState;
+  decision: CtemDecisionRecord | null | undefined;
+  /** The loop trace lists the inputs; a row keeps the chip and the sentence. */
+  showInputs?: boolean;
+}) {
+  const { t_i18n, intl } = useFormatter();
+  const inputs = showInputs ? decisionInputs(decision, t_i18n) : [];
+  return (
+    <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
+      <div className="flex min-w-0 items-center gap-2">
+        <SignalStateChip state={state} />
+        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, (iso) => formatDayIntl(intl, iso))}</span>
+      </div>
+      {inputs.length > 0 && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-decision-inputs">
+          {inputs.map((input) => (
+            <div key={input.label} className="contents">
+              <dt className="text-default-secondary">{input.label}</dt>
+              <dd className="min-w-0 truncate" title={input.value}>
+                {input.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}

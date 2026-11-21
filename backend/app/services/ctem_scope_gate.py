@@ -372,18 +372,40 @@ def decide(
         "sla_hours": None,
     }
 
-    def done(outcome: str, reason: str, severity: str | None = None) -> Decision:
+    def done(
+        outcome: str,
+        reason: str,
+        severity: str | None = None,
+        *,
+        code: str,
+        params: dict[str, str | int | float] | None = None,
+    ) -> Decision:
+        """Close the record: ``reason`` is the English line agents read,
+        ``reason_code`` and ``reason_params`` the stable key and values the
+        frontend translates (dev-docs/ctem-loop-visibility.md section 3)."""
         record["outcome"], record["state"], record["reason"] = outcome, OUTCOME_STATE[outcome], reason
+        record["reason_code"], record["reason_params"] = code, dict(params or {})
         return Decision(outcome=outcome, reason=reason, severity=severity, record=record)
 
     if contradicted:
-        return done("discarded", f"contradicted by {', '.join(contradicted)}")
+        others = [c for c in contradicted if c != "this signal"]
+        code = "contradicted_by_signals" if others else "contradicted_by_evidence"
+        return done("discarded", f"contradicted by {', '.join(contradicted)}", code=code, params={"count": len(others)})
     exclusion = _excluded(profile, resolution)
     if exclusion:
         record["policy_checks"].append({"rule": "exclusion", **exclusion, "passed": False})
-        return done("discarded", f"excluded by the policy ({exclusion['kind']} {exclusion['value']})")
+        return done(
+            "discarded",
+            f"excluded by the policy ({exclusion['kind']} {exclusion['value']})",
+            code="excluded_by_policy",
+            params={"kind": str(exclusion["kind"]), "value": str(exclusion["value"])},
+        )
     if not resolution.resolved:
-        return done("to_validate", "subject not resolved to an asset, a crown jewel or the tech stack")
+        return done(
+            "to_validate",
+            "subject not resolved to an asset, a crown jewel or the tech stack",
+            code="subject_unresolved",
+        )
 
     # Scope criticality: assets, their crown jewels, the risk scenarios holding them.
     sources: list[dict[str, str]] = []
@@ -413,7 +435,12 @@ def decide(
     accepted = _accepted(profile, facts, resolution, today)
     if accepted:
         checks.append({"rule": "accepted_risk", **accepted, "passed": False})
-        return done("watchlist", f"accepted risk owned by {accepted['owner']} until {accepted['expires_on']}")
+        return done(
+            "watchlist",
+            f"accepted risk owned by {accepted['owner']} until {accepted['expires_on']}",
+            code="accepted_risk",
+            params={"owner": str(accepted["owner"]), "until": str(accepted["expires_on"])},
+        )
 
     # CVE-bearing signals: the score thresholds of the policy.
     kev = bool(facts.evidence.get("kev"))
@@ -433,12 +460,22 @@ def decide(
                 passed = value >= minimum
                 checks.append({"rule": rule, "value": value, "threshold": minimum, "passed": passed})
                 if not passed:
-                    return done("watchlist", f"{rule.split('_')[0].upper()} {value} below the policy minimum {minimum}")
+                    score = rule.split("_")[0].upper()
+                    return done(
+                        "watchlist",
+                        f"{score} {value} below the policy minimum {minimum}",
+                        code="score_below_policy",
+                        params={"score": score, "value": value, "minimum": minimum},
+                    )
     if policy.internet_exposure_required:
         facing = any(a.internet_facing == "yes" for a in resolution.assets) or facts.lens == "outside"
         checks.append({"rule": "internet_exposure_required", "value": facing, "passed": facing})
         if not facing:
-            return done("watchlist", "no internet-facing asset, and the policy requires internet exposure")
+            return done(
+                "watchlist",
+                "no internet-facing asset, and the policy requires internet exposure",
+                code="internet_exposure_required",
+            )
     if policy.min_crown_jewel_criticality:
         best = _highest([c for _, c in jewels])
         passed = _rank(best) >= _rank(policy.min_crown_jewel_criticality)
@@ -451,24 +488,45 @@ def decide(
             }
         )
         if not passed:
-            return done("watchlist", f"no crown jewel at or above {policy.min_crown_jewel_criticality}")
+            return done(
+                "watchlist",
+                f"no crown jewel at or above {policy.min_crown_jewel_criticality}",
+                code="crown_jewel_below_policy",
+                params={"minimum": policy.min_crown_jewel_criticality},
+            )
     if policy.require_risk_scenario:
         passed = bool(held)
         checks.append({"rule": "require_risk_scenario", "value": len(held), "passed": passed})
         if not passed:
-            why = (
-                "no risk scenario holds the subject"
-                if scenarios.connected
-                else f"a risk scenario is required ({scenarios.note})"
+            if scenarios.connected:
+                return done("watchlist", "no risk scenario holds the subject", code="no_risk_scenario")
+            return done(
+                "watchlist",
+                f"a risk scenario is required ({scenarios.note})",
+                code="risk_scenario_unreadable",
+                params={"note": scenarios.note},
             )
-            return done("watchlist", why)
     if not criticality:
-        return done("watchlist", f"criticality unknown, below the scope threshold {threshold}")
+        return done(
+            "watchlist",
+            f"criticality unknown, below the scope threshold {threshold}",
+            code="criticality_unknown",
+            params={"threshold": threshold},
+        )
     if _rank(criticality) < _rank(threshold):
-        return done("watchlist", f"criticality {criticality} below the scope threshold {threshold}")
+        return done(
+            "watchlist",
+            f"criticality {criticality} below the scope threshold {threshold}",
+            code="below_scope_threshold",
+            params={"criticality": criticality, "threshold": threshold},
+        )
     severity = severity_of(criticality, confidence)
     record["severity"] = severity
     record["sla_hours"] = getattr(policy.sla_hours, severity.lower())
     return done(
-        "case", f"in scope: criticality {criticality} at or above {threshold}, {confidence} confidence", severity
+        "case",
+        f"in scope: criticality {criticality} at or above {threshold}, {confidence} confidence",
+        severity,
+        code="in_scope",
+        params={"criticality": criticality, "threshold": threshold, "confidence": confidence},
     )
