@@ -71,7 +71,7 @@ export function OrganizationProposalsCard() {
                 <div className="text-default-secondary">
                   {t_i18n("From {current} to {proposed}", { current: value(entry, entry.current), proposed: value(entry, entry.value) })}
                 </div>
-                {entry.basis && <div className="content-caption text-default-secondary">{entry.basis}</div>}
+                {entry.basis && <div className="content-compact text-default-secondary">{entry.basis}</div>}
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-2">
@@ -86,7 +86,7 @@ export function OrganizationProposalsCard() {
                 {t_i18n("Reject")}
               </Button>
               {decide.isError && decide.variables?.id === proposal.id && (
-                <span className="content-caption text-feedback-error-primary" role="alert">
+                <span className="content-compact text-feedback-error-primary" role="alert">
                   {t_i18n("The decision could not be saved")}
                 </span>
               )}
