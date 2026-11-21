@@ -65,6 +65,23 @@ class CycleStartResponse(BaseModel):
     run_id: uuid.UUID
 
 
+class ModuleInvestigationStart(BaseModel):
+    """What "Investigate now" did on one registration of the module (section 12.7)."""
+
+    registration_id: uuid.UUID
+    cycle_id: uuid.UUID | None
+    run_id: uuid.UUID | None
+    #: ``None`` when the cycle started, else ``start_cycle``'s refusal code (``cycle_open``, budget, ...).
+    refusal: str | None
+    #: With ``cycle_open``: the cycle already investigating it.
+    open_cycle_id: uuid.UUID | None = None
+
+
+class ModuleInvestigationResponse(BaseModel):
+    module: str
+    items: list[ModuleInvestigationStart]
+
+
 class CycleResponse(BaseModel):
     id: uuid.UUID
     specialist: str
@@ -218,6 +235,81 @@ async def request_cycle(
     )
     await db.commit()
     return CycleStartResponse(cycle_id=result.cycle_id, run_id=result.run_id)
+
+
+@router.post(
+    "/modules/{module}/investigate",
+    response_model=ModuleInvestigationResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def investigate_module(
+    module: str,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    # Agentic work: refused while AI is off or unlicensed, before any cycle opens.
+    _agentic_gate: None = Depends(require_agentic_ai),
+) -> ModuleInvestigationResponse:
+    """ "Investigate now": a Module Analyst cycle on every active registration of *module* (section 12.7).
+
+    Administrators, XTM One mode, Platform Health and the Module Analyst on; the
+    cycle is the analyst's own (its quota exemption and ceiling apply), a
+    registration already under investigation answers its open cycle.
+    """
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
+    from app.services.audit import log_audit
+    from app.services.health.cycles import start_cycle
+    from app.services.health.module_analyst import active_registrations
+    from app.services.health.settings import load_health_settings
+
+    if module not in ANALYST_MODULES or module not in present_modules():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown health module")
+    health = await load_health_settings(db)
+    if not health.enabled or not health.module_analyst.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "module_analyst_off", "message": "The Module Analyst is switched off."},
+        )
+    registrations = await active_registrations(db, module, health.module_analyst.excluded_registration_ids)
+    if not registrations:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "no_registration", "message": "No active registration of this module to investigate."},
+        )
+    items: list[ModuleInvestigationStart] = []
+    for registration_id in registrations:
+        result = await start_cycle(
+            db,
+            key="module_analyst",
+            trigger="on_demand",
+            target_type="module",
+            target_id=registration_id,
+            requested_by_user_id=user.id,
+            payload={"module_trigger": "on_demand"},
+        )
+        items.append(
+            ModuleInvestigationStart(
+                registration_id=registration_id,
+                cycle_id=result.cycle_id,
+                run_id=result.run_id,
+                refusal=result.refusal,
+                open_cycle_id=result.open_cycle_id,
+            )
+        )
+        if result.started:
+            await log_audit(
+                db,
+                user=user,
+                action="trigger",
+                entity_type="health_cycle",
+                entity_id=result.cycle_id,
+                entity_name=module,
+                summary=f"Asked the Platform Health Module Analyst to investigate {module}",
+                details={"target_type": "module", "target_id": str(registration_id)},
+                request=request,
+            )
+    await db.commit()
+    return ModuleInvestigationResponse(module=module, items=items)
 
 
 @router.get("/cycles", response_model=list[CycleResponse])
