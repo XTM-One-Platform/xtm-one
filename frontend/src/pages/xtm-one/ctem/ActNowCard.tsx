@@ -46,7 +46,7 @@ import { GenericContextNotice } from "./GenericContextNotice";
 import { RecommendedActionsEmpty } from "./RecommendedActionsEmpty";
 import {
   ACT_NOW_COLLAPSED, ACT_NOW_GROUP_FILLS, ACT_NOW_GROUP_LABELS, ACT_NOW_PRIORITY, actNowAskAiPrompt, actNowGroup, actNowGroupCounts,
-  actNowIsGeneric, actNowOffersAskAi, actNowP1Cases, actNowPriorityLabel, actNowQueue,
+  actNowIsGeneric, actNowOffersAskAi, actNowP1Cases, actNowPriorityLabel, actNowQueue, actNowShowsPriority,
   type ActNowRow,
 } from "./act-now";
 
@@ -127,12 +127,19 @@ function ActNowRowButton({
           </span>
         )}
       </span>
+      {/* A P1 case shows its urgency chip; a fleet row keeps the slot empty (an
+          invisible twin) so the chevrons stay aligned with the rows that carry a
+          priority (UX round 1 on #920, B2). */}
       {row.caseUrgency ? (
         <span className="shrink-0" data-testid="ctem-act-now-case-urgency">
           <CaseUrgencyChip severity={row.caseUrgency.severity} priority={row.caseUrgency.priority} />
         </span>
+      ) : actNowShowsPriority(row) ? (
+        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)} data-testid="ctem-act-now-priority">
+          {t_i18n(prio.label)}
+        </span>
       ) : (
-        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)}>
+        <span aria-hidden className="invisible shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold" data-testid="ctem-act-now-priority-slot">
           {t_i18n(prio.label)}
         </span>
       )}

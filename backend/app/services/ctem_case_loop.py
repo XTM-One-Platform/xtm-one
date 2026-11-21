@@ -105,9 +105,16 @@ class CaseFix:
 
 @dataclass
 class PendingEvents:
-    """Platform events to raise after the caller's commit, in order."""
+    """Platform events to raise after the caller's commit, in order.
+
+    ``verticals`` names the verticals whose case membership changed (a case
+    opened, a signal joined one): their cached viewer views are dropped after
+    the commit, so the case shows on the board and its page at once instead of
+    after the view TTL.
+    """
 
     items: list[tuple[str, dict[str, Any], str]] = field(default_factory=list)
+    verticals: set[str] = field(default_factory=set)
     #: Live frames for the web app (``ctem_case_update``, CTEM-03-UI #892): ids and states only.
     frames: list[dict[str, str]] = field(default_factory=list)
 
@@ -273,6 +280,7 @@ async def open_from_signal(
     signal.case_id = case.id
     signal.updated_at = now
     if events is not None:
+        events.verticals.add(vertical)
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case, signal_id=str(signal.id)), _event_id(CASE_OPENED, case, "open"))
@@ -520,9 +528,18 @@ async def sweep_due() -> bool:
 
 
 async def publish_pending(events: PendingEvents | None) -> int:
-    """Raise the collected case events and live frames (after the commit); how many events were published."""
+    """Drop the stale viewer views, then raise the live frames and the collected case events (after the commit); how many events were published.
+
+    The views go first: a web app that refetches on a live frame reads the case at once.
+    """
     if not events:
         return 0
+    if events.verticals:
+        from app.services.ctem_cases_view import forget_all_views
+
+        for vertical in sorted(events.verticals):
+            await forget_all_views(vertical)
+        events.verticals.clear()
     if events.frames:
         from app.services.ctem_loop_stream import publish_case_updates
 
