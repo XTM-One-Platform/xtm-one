@@ -220,6 +220,78 @@ async def test_the_release_pass_does_nothing_while_agentic_ai_may_not_run(monkey
     assert await backfill.on_release_deployed({"version": "1.0.0", "git_sha": "abc"}, rewriter=never) is None
 
 
+@pytest.mark.asyncio
+async def test_a_refused_boot_pass_takes_no_lease_and_is_asked_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#806: the boot call ran before agentic AI was allowed and the build never got its pass."""
+    from app.services import agentic_gate
+
+    release = {"version": "9.9.9-806", "git_sha": "refused"}
+    taken: list[str] = []
+    state: dict[str, str | None] = {"refusal": agentic_gate.LICENSE_REQUIRED_CODE}
+
+    async def refusal(db: Any) -> str | None:
+        return state["refusal"]
+
+    async def held(rel: dict[str, Any]) -> bool:
+        return False
+
+    async def take(rel: dict[str, Any]) -> bool:
+        taken.append(rel["version"])
+        return True
+
+    async def empty(db: Any, rewriter: Any) -> backfill.BackfillReport:
+        return backfill.BackfillReport()
+
+    class _Session:
+        async def __aenter__(self) -> _Session:
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def commit(self) -> None:
+            return None
+
+    from app.core import database
+
+    monkeypatch.setattr(database, "async_session", _Session)
+    monkeypatch.setattr(agentic_gate, "agentic_refusal", refusal)
+    monkeypatch.setattr(backfill, "_lease_held", held)
+    monkeypatch.setattr(backfill, "_take_lease", take)
+    monkeypatch.setattr(backfill, "backfill_readable_asks", empty)
+    monkeypatch.setattr(backfill, "_done", set())
+
+    assert await backfill.on_release_deployed(release, rewriter=_rewriter(GOOD)) is None
+    assert taken == []  # the refusal leaves the lease for the next try
+    assert backfill._lease_key(release) not in backfill._done
+
+    state["refusal"] = None
+    report = await backfill.on_release_deployed(release, rewriter=_rewriter(GOOD))
+    assert report is not None and taken == [release["version"]]
+    assert backfill._lease_key(release) in backfill._done
+
+    scheduled: list[dict[str, Any]] = []
+    monkeypatch.setattr(backfill, "schedule_readable_ask_backfill", scheduled.append)
+    backfill.schedule_if_due(release)
+    assert scheduled == []  # ran once in this process: the tick asks no more
+
+
+def test_the_tick_asks_again_for_a_build_not_yet_passed(monkeypatch: pytest.MonkeyPatch) -> None:
+    scheduled: list[dict[str, Any]] = []
+    monkeypatch.setattr(backfill, "schedule_readable_ask_backfill", scheduled.append)
+    monkeypatch.setattr(backfill, "_done", set())
+    backfill.schedule_if_due({})
+    backfill.schedule_if_due({"version": "9.9.9-806", "git_sha": None})
+    assert scheduled == [{"version": "9.9.9-806", "git_sha": None}]
+
+
+def test_the_build_tick_retries_the_pass() -> None:
+    from pathlib import Path
+
+    source = Path(backfill.__file__).with_name("platform_builds.py").read_text(encoding="utf-8")
+    assert "schedule_if_due(" in source
+
+
 def test_the_release_hook_schedules_the_pass() -> None:
     from pathlib import Path
 

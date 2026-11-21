@@ -229,6 +229,12 @@ async def touch_running_build_if_due() -> None:
 
     async with async_session() as db:
         await record_running_build(db)
+    # A pass the boot call could not run (agentic AI not yet allowed, no
+    # routing model) is asked again here until one process runs it.
+    from app.services.work_item_ask_backfill import schedule_if_due
+
+    version, git_sha = running_build()
+    schedule_if_due({"version": version, "git_sha": git_sha or None})
 
 
 @dataclass(frozen=True)
