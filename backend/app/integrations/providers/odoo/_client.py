@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """The Odoo external API client: one call shape over two transports.
 
 Odoo answers its external API in two forms, both with an API key:
