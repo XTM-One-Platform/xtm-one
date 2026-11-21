@@ -16,11 +16,12 @@
 Off by default (``HealthSettings.alert_emails``). When an administrator turns
 them on and names recipients:
 
-* **Immediate**: one email per finding of critical severity that a health pass
-  opened (new, or reopened after it resolved), deduplicated on the finding id:
-  the Redis key ``health:alert:<finding id>`` is set with ``NX`` before the send
-  and lives :data:`DEDUPE_TTL`, so a second pass, a second replica or a restart
-  never sends it twice, and a finding that flaps alerts at most once a week.
+* **Immediate**: one email per finding of critical severity once it has been
+  open continuously for ``alert_after_minutes`` (default 15, #958), at most once
+  per open episode: ``alerted_at`` is stamped on the row, and the Redis key
+  ``health:alert:<finding id>:<opened_at>`` is set with ``NX`` before the send, so a
+  second replica never sends it twice. A finding that resolves within the window
+  never mails: a restart caught by a pass sends nothing.
 * **Daily digest**: one email a day (UTC) listing the open findings at or above
   the minimum severity, sent only when there is at least one; the day is marked
   in ``health_schedule_marks`` under ``alert:digest``.
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 #: The schedule mark of the daily digest (``health_schedule_marks.schedule``, 16 characters at most).
 DIGEST_MARK = "alert:digest"
-#: How long the dedupe key of an immediate alert lives.
+#: How long the dedupe key of an immediate alert lives (the episode stamp ``alerted_at`` is the durable guard).
 DEDUPE_TTL = timedelta(days=7)
 #: The most findings one digest lists; the rest are counted.
 DIGEST_MAX_ROWS = 50
@@ -68,9 +69,10 @@ def at_or_above(severity: str, minimum: str) -> bool:
     return _RANK.get(severity, 99) <= _RANK.get(minimum, 0)
 
 
-def dedupe_key(finding_id: str) -> str:
-    """The dedupe key of the immediate alert of one finding."""
-    return f"health:alert:{finding_id}"
+def dedupe_key(finding_id: str, opened_at: datetime | None = None) -> str:
+    """The dedupe key of the immediate alert of one open episode of one finding."""
+    episode = f":{opened_at.astimezone(UTC).isoformat()}" if opened_at is not None else ""
+    return f"health:alert:{finding_id}{episode}"
 
 
 def _health_link() -> str:
@@ -181,32 +183,47 @@ async def _claim(key: str) -> bool:
     return bool(await client.set(key, "1", nx=True, ex=int(DEDUPE_TTL.total_seconds())))
 
 
+def alert_due(row: HealthCheckFinding, config: HealthAlertEmailSettings, now: datetime) -> bool:
+    """Whether the immediate alert of *row* is due: critical, open for the whole window, not sent this episode."""
+    if row.status != STATUS_OPEN or row.severity != "critical" or row.alerted_at is not None:
+        return False
+    opened = row.opened_at or row.first_seen
+    return opened is not None and now - opened >= timedelta(minutes=config.alert_after_minutes)
+
+
 async def send_immediate_alerts(
     db: AsyncSession,
-    opened_ids: Sequence[str],
     config: HealthAlertEmailSettings,
     *,
+    now: datetime,
     claim: Callable[[str], Awaitable[bool]] = _claim,
 ) -> int:
-    """One email per critical finding opened by this pass; the number of findings alerted."""
-    if not opened_ids or not config.immediate:
+    """One email per critical finding open for the alert window and not yet alerted; the number alerted."""
+    if not config.immediate:
         return 0
-    rows = (
-        await db.execute(
-            select(HealthCheckFinding).where(
-                HealthCheckFinding.id.in_(list(opened_ids)),
-                HealthCheckFinding.status == STATUS_OPEN,
-                HealthCheckFinding.severity == "critical",
+    rows = [
+        row
+        for row in (
+            await db.execute(
+                select(HealthCheckFinding).where(
+                    HealthCheckFinding.status == STATUS_OPEN,
+                    HealthCheckFinding.severity == "critical",
+                    HealthCheckFinding.alerted_at.is_(None),
+                )
             )
-        )
-    ).scalars()
+        ).scalars()
+        if alert_due(row, config, now)
+    ]
     alerted = 0
     for row in rows:
-        if not await claim(dedupe_key(row.id)):
+        row.alerted_at = now
+        if not await claim(dedupe_key(row.id, row.opened_at)):
             continue
         subject, html, text = finding_email(row)
         if await _send_to_all(config.recipients, subject, html, text):
             alerted += 1
+    if rows:
+        await db.commit()
     return alerted
 
 
@@ -241,13 +258,13 @@ async def send_daily_digest(db: AsyncSession, config: HealthAlertEmailSettings, 
     return bool(await _send_to_all(config.recipients, subject, html, text))
 
 
-async def send_alerts(db: AsyncSession, opened_ids: Sequence[str], *, now: datetime) -> dict[str, int]:
+async def send_alerts(db: AsyncSession, *, now: datetime) -> dict[str, int]:
     """The pass's alert emails: nothing when off, without recipients or without SMTP."""
     from app.services.email import is_email_configured
 
     config = (await load_health_settings(db)).alert_emails
     if not config.enabled or not config.recipients or not is_email_configured():
         return {"immediate": 0, "digest": 0}
-    immediate = await send_immediate_alerts(db, opened_ids, config)
+    immediate = await send_immediate_alerts(db, config, now=now)
     digest = await send_daily_digest(db, config, now=now)
     return {"immediate": immediate, "digest": int(digest)}
