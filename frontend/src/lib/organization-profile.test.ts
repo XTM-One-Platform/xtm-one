@@ -9,6 +9,7 @@ import {
   pirLink,
   pirNamesOf,
   splitList,
+  isSupportedRecordType,
   ticketingDefaults,
   ticketingSyncOf,
   toForm,
@@ -146,6 +147,13 @@ describe("organization profile form", () => {
     assert.deepEqual(ticketingSyncOf(undefined), DEFAULT_TICKETING_SYNC);
     assert.equal(ticketingDefaults("servicenow").record_type, "incident");
     assert.equal(ticketingDefaults("jira").priority.P1, "Highest");
+  });
+
+  it("accepts only the three ServiceNow tables the case sync writes to, any Jira issue type", () => {
+    for (const table of ["incident", "change_request", "problem", "", " problem "]) assert.equal(isSupportedRecordType("servicenow", table), true, table);
+    for (const table of ["sc_task", "Incident", "task"]) assert.equal(isSupportedRecordType("servicenow", table), false, table);
+    assert.equal(isSupportedRecordType("jira", "sc_task"), true);
+    assert.equal(isSupportedRecordType("", "Bug"), true);
   });
 
   it("names the field when an amount is not a number", () => {

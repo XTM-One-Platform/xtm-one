@@ -116,6 +116,19 @@ export const CASE_SEVERITIES = ["P1", "P2", "P3"] as const;
 /** The case ticket statuses a system status can be mapped to. */
 export const CASE_TICKET_STATUSES = ["open", "in_progress", "done", "cancelled"] as const satisfies readonly CaseTicketStatus[];
 
+/**
+ * The ServiceNow tables the CTEM case sync writes to (backend ctem_ticketing.target_problem); any other
+ * table is refused with a 422 on save, so the form offers these alone.
+ */
+export const SERVICENOW_RECORD_TYPES = ["incident", "change_request", "problem"] as const;
+export type ServiceNowRecordType = (typeof SERVICENOW_RECORD_TYPES)[number];
+
+/** Whether a record type can be saved for this provider: free for Jira, one of the three tables for ServiceNow. */
+export function isSupportedRecordType(provider: string, recordType: string): boolean {
+  const value = recordType.trim();
+  return provider !== "servicenow" || value === "" || (SERVICENOW_RECORD_TYPES as readonly string[]).includes(value);
+}
+
 /** The defaults the backend applies when a field is empty, per provider (ctem_ticketing.DEFAULT_*). */
 export function ticketingDefaults(provider: string): { record_type: string; priority: Record<string, string> } {
   if (provider === "servicenow") return { record_type: "incident", priority: { P1: "1", P2: "2", P3: "3" } };

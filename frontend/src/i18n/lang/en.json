@@ -19949,6 +19949,7 @@
   "Due date from the SLA": "Due date from the SLA",
   "When a case gets its ticket in the ticketing system.": "When a case gets its ticket in the ticketing system.",
   "The Jira issue type or the ServiceNow table. Empty: {value}.": "The Jira issue type or the ServiceNow table. Empty: {value}.",
+  "The ServiceNow table each ticket is created in. Empty: {value}.": "The ServiceNow table each ticket is created in. Empty: {value}.",
   "Priority for {severity} cases": "Priority for {severity} cases",
   "Empty: {value}.": "Empty: {value}.",
   "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.": "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.",
@@ -20015,5 +20016,9 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.",
   "Restricted asset": "Restricted asset",
   "Techniques in attack order": "Techniques in attack order",
-  "Recorded how it would be exploited": "Recorded how it would be exploited"
+  "Recorded how it would be exploited": "Recorded how it would be exploited",
+  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.",
+  "Break-fix: restore something that is broken.": "Break-fix: restore something that is broken.",
+  "Planned change: a fix rolled out under change control.": "Planned change: a fix rolled out under change control.",
+  "Root cause: the cause behind repeated incidents.": "Root cause: the cause behind repeated incidents."
 }

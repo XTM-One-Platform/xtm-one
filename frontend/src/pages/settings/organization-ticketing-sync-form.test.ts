@@ -32,6 +32,16 @@ describe("OrganizationTicketingSync form standard", () => {
     for (const tile of tiles) expect(tile).toMatch(/info=\{info\("/);
   });
 
+  it("offers a ServiceNow target the three tables the sync writes to, each with its meaning, never free text", () => {
+    expect(SOURCE).toMatch(/serviceNow \? \(\s*<SearchableSelect[\s\S]*?id=\{`\$\{idPrefix\}-record-type`\}[\s\S]*?options=\{SERVICENOW_RECORD_TYPES\.map\([\s\S]*?description: t_i18n\(SERVICENOW_RECORD_TYPE_MEANINGS\[value\]\)/);
+    for (const table of ["incident", "change_request", "problem"]) expect(SOURCE).toMatch(new RegExp(`\\n  ${table}: "[A-Z]`));
+  });
+
+  it("marks a refused ServiceNow table inline on the field, from aria-invalid, not in a toast", () => {
+    expect(SOURCE).toMatch(/error=\{\s*recordTypeRefused\s*\?\s*t_i18n\(/);
+    expect(SOURCE).toMatch(/aria-invalid=\{recordTypeRefused \|\| undefined\}/);
+  });
+
   it("explains the status mapping with an info bubble", () => {
     expect(SOURCE).toMatch(/<InfoTip content=\{[\s\S]*?info\("status_map"\)/);
   });

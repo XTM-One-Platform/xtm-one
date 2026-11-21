@@ -19949,6 +19949,7 @@
   "Due date from the SLA": "Fecha límite según el SLA",
   "When a case gets its ticket in the ticketing system.": "Cuándo recibe un caso su ticket en el sistema de tickets.",
   "The Jira issue type or the ServiceNow table. Empty: {value}.": "El tipo de incidencia de Jira o la tabla de ServiceNow. Vacío: {value}.",
+  "The ServiceNow table each ticket is created in. Empty: {value}.": "La tabla de ServiceNow en la que se crea cada ticket. Vacío: {value}.",
   "Priority for {severity} cases": "Prioridad de los casos {severity}",
   "Empty: {value}.": "Vacío: {value}.",
   "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.": "Un nombre de estado del ticket hacia el estado del ticket del caso. Se lee primero; los nombres sin correspondencia siguen las categorías del sistema.",
@@ -20015,5 +20016,9 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Aún no hay lectura de explotación: el triaje la escribe desde OpenCRQ cuando un escenario de riesgo contiene un activo afectado.",
   "Restricted asset": "Activo restringido",
   "Techniques in attack order": "Técnicas en el orden del ataque",
-  "Recorded how it would be exploited": "Registró cómo se explotaría"
+  "Recorded how it would be exploited": "Registró cómo se explotaría",
+  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "La sincronización de casos CTEM solo escribe en la tabla incident, change_request o problem. Elija una de ellas.",
+  "Break-fix: restore something that is broken.": "Reparación: restablecer algo que está roto.",
+  "Planned change: a fix rolled out under change control.": "Cambio planificado: una corrección desplegada bajo control de cambios.",
+  "Root cause: the cause behind repeated incidents.": "Causa raíz: la causa de incidentes repetidos."
 }

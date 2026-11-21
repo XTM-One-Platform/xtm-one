@@ -24,7 +24,17 @@ import { SettingsField, SettingsFieldGrid, SettingsSwitchField, settingsFieldHin
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { TagInput } from "@/components/ui/tag-input";
 import { useFormatter } from "@/i18n";
-import { CASE_SEVERITIES, CASE_TICKET_STATUSES, type CaseTicketStatus, type TicketingSync, ticketingDefaults, ticketingSyncOf } from "@/lib/organization-profile";
+import {
+  CASE_SEVERITIES,
+  CASE_TICKET_STATUSES,
+  type CaseTicketStatus,
+  isSupportedRecordType,
+  SERVICENOW_RECORD_TYPES,
+  type ServiceNowRecordType,
+  type TicketingSync,
+  ticketingDefaults,
+  ticketingSyncOf,
+} from "@/lib/organization-profile";
 
 /** @i18n-keys */
 const CREATE_ON_LABELS = {
@@ -46,6 +56,17 @@ const TICKET_STATUS_LABELS = {
   done: "Done (ticket)",
   cancelled: "Cancelled (ticket)",
 } as const satisfies Record<CaseTicketStatus, string>;
+
+/**
+ * The one-line meaning of each ServiceNow table the CTEM case sync writes to:
+ * the Record type of a ServiceNow target is a pick among these, never free
+ * text, since the backend refuses any other table (#923 UX round 3 B1). @i18n-keys
+ */
+const SERVICENOW_RECORD_TYPE_MEANINGS = {
+  incident: "Break-fix: restore something that is broken.",
+  change_request: "Planned change: a fix rolled out under change control.",
+  problem: "Root cause: the cause behind repeated incidents.",
+} as const satisfies Record<ServiceNowRecordType, string>;
 
 /**
  * The info bubble of each field, the same text in read and edit mode: what it
@@ -133,6 +154,10 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
   const removeStatusRow = (index: number) => set({ status_map: Object.fromEntries(statusRows.filter((_, i) => i !== index)) });
   // A new row starts with an empty name; the save drops a row whose name stays empty.
   const addStatusRow = () => set({ status_map: { ...sync.status_map, "": "done" } });
+  // ServiceNow: the record type is one of the three tables the sync writes to; a
+  // table stored before that rule (or through the API) is shown invalid inline.
+  const serviceNow = provider === "servicenow";
+  const recordTypeRefused = !isSupportedRecordType(provider, sync.record_type);
 
   return (
     <div className="space-y-4" data-testid="settings.organization.ticketing-sync-form">
@@ -174,17 +199,42 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
         <SettingsField
           id={`${idPrefix}-record-type`}
           label={t_i18n("Record type")}
-          helper={t_i18n("The Jira issue type or the ServiceNow table. Empty: {value}.", { value: defaults.record_type })}
+          helper={
+            serviceNow
+              ? t_i18n("The ServiceNow table each ticket is created in. Empty: {value}.", { value: defaults.record_type })
+              : t_i18n("The Jira issue type or the ServiceNow table. Empty: {value}.", { value: defaults.record_type })
+          }
+          error={
+            recordTypeRefused
+              ? t_i18n("The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.")
+              : undefined
+          }
           info={info("record_type")}
         >
-          <Input
-            id={`${idPrefix}-record-type`}
-            aria-labelledby={settingsFieldLabelId(`${idPrefix}-record-type`)}
-            aria-describedby={settingsFieldHintId(`${idPrefix}-record-type`)}
-            placeholder={defaults.record_type}
-            value={sync.record_type}
-            onChange={(e) => set({ record_type: e.target.value })}
-          />
+          {serviceNow ? (
+            <SearchableSelect
+              id={`${idPrefix}-record-type`}
+              aria-labelledby={settingsFieldLabelId(`${idPrefix}-record-type`)}
+              aria-describedby={settingsFieldHintId(`${idPrefix}-record-type`)}
+              aria-invalid={recordTypeRefused || undefined}
+              searchable="auto"
+              sort={false}
+              clearable
+              placeholder={t_i18n("Default: {value}", { value: defaults.record_type })}
+              options={SERVICENOW_RECORD_TYPES.map((value) => ({ value, label: value, description: t_i18n(SERVICENOW_RECORD_TYPE_MEANINGS[value]) }))}
+              value={sync.record_type}
+              onValueChange={(value) => set({ record_type: value })}
+            />
+          ) : (
+            <Input
+              id={`${idPrefix}-record-type`}
+              aria-labelledby={settingsFieldLabelId(`${idPrefix}-record-type`)}
+              aria-describedby={settingsFieldHintId(`${idPrefix}-record-type`)}
+              placeholder={defaults.record_type}
+              value={sync.record_type}
+              onChange={(e) => set({ record_type: e.target.value })}
+            />
+          )}
         </SettingsField>
         {CASE_SEVERITIES.map((severity) => (
           <SettingsField

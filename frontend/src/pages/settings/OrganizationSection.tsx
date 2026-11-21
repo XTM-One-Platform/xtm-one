@@ -85,6 +85,7 @@ import {
   SIZE_BANDS,
   TICKETING_PROJECT_ELEMENT,
   formatAmount,
+  isSupportedRecordType,
   fromForm,
   toForm,
   unreadablePlatform,
@@ -612,6 +613,13 @@ export function OrganizationSection() {
     }
     setInvalidField(null);
     if (scoreInvalid) return;
+    // A ServiceNow table the CTEM case sync cannot write to is shown inline on the Record type
+    // field (#923 UX round 3 B1): nothing is sent, the field is focused, never a toast.
+    if (form.ticketing.sync && !isSupportedRecordType(ticketingIntegration?.provider ?? "", form.ticketing.sync.record_type)) {
+      goToTab(tabOfField("ticketing"));
+      setFocusTarget(`${fieldId}-ticketing-sync-record-type`);
+      return;
+    }
     // The exposure rows the API would refuse are marked on their row, nothing is sent (UX B3).
     if (exposureIssues(form).length > 0) {
       setCheckExposure(true);
