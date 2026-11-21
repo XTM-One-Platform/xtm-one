@@ -52,7 +52,96 @@ import { WorkItemAskAgent } from "@/components/work-items/WorkItemAskAgent";
 import { useAnswerWorkItem } from "@/hooks/api/useWorkItemApi";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 import type { WorkItem, WorkItemAskOption } from "@/types";
+
+/** An effect longer than this is clamped to 3 lines with a "Show more" (#842, J.1). */
+const LONG_EFFECT_CHARS = 160;
+
+/**
+ * The effect as the card shows it: a leading "Recommended:" an agent wrote
+ * into the text is dropped, the tile carries its own pill (#842, J.1).
+ */
+function effectText(effect: string | null | undefined): string {
+  return (effect ?? "").replace(/^\s*(?:\(recommended\)|recommended\s*[:.-])\s*/i, "").trim();
+}
+
+/**
+ * One option as a full-width tile (#842, J.1): the label on line 1, its
+ * effect under it, the whole tile one button. Every tile takes the width of
+ * the list, so options never get unequal widths or a ragged side column. The
+ * recommended tile is accented and carries a "Recommended" pill. A long
+ * effect is clamped to 3 lines; "Show more" sits under the tile, outside the
+ * button, so no control is nested in another.
+ */
+function DecisionTile({
+  option,
+  recommended,
+  disabled,
+  onPick,
+}: {
+  option: WorkItemAskOption;
+  recommended: boolean;
+  disabled: boolean;
+  onPick: () => void;
+}) {
+  const { t_i18n } = useFormatter();
+  const [open, setOpen] = useState(false);
+  const effect = effectText(option.effect);
+  const long = effect.length > LONG_EFFECT_CHARS;
+  const effectId = useId();
+  return (
+    <li className="min-w-0" data-testid="work-item-decision-tile" data-recommended={recommended ? "true" : undefined}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onPick}
+        aria-describedby={effect ? effectId : undefined}
+        data-testid="work-item-decision-option"
+        className={cn(
+          "flex w-full flex-col items-stretch gap-1 rounded-sm border px-3 py-2 text-left transition-colors",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          recommended
+            ? "border-accent bg-accent/10 enabled:hover:bg-accent/15"
+            : "border-elevation-subtle bg-elevation-default enabled:hover:bg-elevation-hover",
+        )}
+      >
+        <span className="flex min-w-0 items-start gap-2">
+          <span className="min-w-0 flex-1 break-words content-base font-semibold text-default-primary" data-testid="work-item-decision-option-label">
+            {option.label}
+          </span>
+          {recommended && (
+            <Badge variant="outline" className="content-caption shrink-0 gap-1 border-accent text-accent" data-testid="work-item-decision-recommended">
+              <Sparkles className="h-3 w-3" aria-hidden />
+              {t_i18n("Recommended")}
+            </Badge>
+          )}
+        </span>
+        {effect && (
+          <span
+            id={effectId}
+            className={cn("block break-words content-compact text-default-secondary", long && !open && "line-clamp-3")}
+            data-testid="work-item-decision-effect"
+            data-clamped={long && !open ? "true" : undefined}
+          >
+            {effect}
+          </span>
+        )}
+      </button>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="mt-1 rounded-sm px-1 content-compact text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+        >
+          {open ? t_i18n("Show less") : t_i18n("Show more")}
+        </button>
+      )}
+    </li>
+  );
+}
 
 export function WorkItemDecisionCard({
   item,
@@ -89,6 +178,9 @@ export function WorkItemDecisionCard({
   const links = ask?.links?.length ? ask.links : (fallback?.links ?? []);
   const brief = fallback?.brief?.trim() ?? "";
 
+  const asker = item.context?.owner_agent;
+  const askerName = asker?.accessible && asker.name ? asker.name : null;
+
   const send = async (option?: WorkItemAskOption) => {
     const words = text.trim();
     if (!option && !words) return;
@@ -112,6 +204,25 @@ export function WorkItemDecisionCard({
     }
   };
 
+  const freeText = (
+    <div className="space-y-1.5">
+      <Label htmlFor={textId} className="text-default-secondary">
+        {textLabel}
+      </Label>
+      <Textarea id={textId} aria-label={textLabel} value={text} rows={2} onChange={(e) => setText(e.target.value)} />
+      <div className="flex justify-end">
+        <Button
+          variant={options.length > 0 ? "outline" : "default"}
+          className="gap-1"
+          disabled={!text.trim() || answer.isPending}
+          onClick={() => void send()}
+        >
+          <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send answer")}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <section
       className="space-y-3 rounded-sm border border-accent/40 bg-accent/5 p-3"
@@ -133,6 +244,11 @@ export function WorkItemDecisionCard({
       <p id={`${textId}-question`} className="content-base font-medium text-default-primary">
         {question}
       </p>
+      {askerName && (
+        <p className="content-caption text-default-secondary" data-testid="work-item-decision-asker">
+          {t_i18n("Asked by {agent}", { agent: askerName })}
+        </p>
+      )}
       {links.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label={t_i18n("Sources")} data-testid="work-item-decision-links">
           {links.map((link) => (
@@ -168,51 +284,29 @@ export function WorkItemDecisionCard({
       )}
 
       {options.length > 0 && (
-        <ul className="space-y-2" data-testid="work-item-decision-options">
-          {options.map((option) => {
-            const isRecommended = !!recommended && option.key === recommended;
-            return (
-              <li key={option.key} className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
-                <Button
-                  size="sm"
-                  variant={isRecommended ? "default" : "outline"}
-                  className="h-auto min-h-6 max-w-full gap-1 whitespace-normal py-1 text-left"
-                  disabled={!canAnswer || answer.isPending}
-                  onClick={() => void send(option)}
-                  data-testid="work-item-decision-option"
-                >
-                  {isRecommended && <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />}
-                  {option.label}
-                </Button>
-                <div className="min-w-0 flex-1 space-y-0.5 pt-1">
-                  {isRecommended && (
-                    <span className="block content-compact font-medium text-accent">{t_i18n("Recommended")}</span>
-                  )}
-                  {option.effect && <span className="block content-compact text-default-secondary">{option.effect}</span>}
-                </div>
-              </li>
-            );
-          })}
+        <ul className="grid grid-cols-1 gap-2" data-testid="work-item-decision-options">
+          {options.map((option) => (
+            <DecisionTile
+              key={option.key}
+              option={option}
+              recommended={!!recommended && option.key === recommended}
+              disabled={!canAnswer || answer.isPending}
+              onPick={() => void send(option)}
+            />
+          ))}
         </ul>
       )}
 
       {canAnswer ? (
-        <div className="space-y-1.5">
-          <Label htmlFor={textId} className="text-default-secondary">
-            {textLabel}
-          </Label>
-          <Textarea id={textId} aria-label={textLabel} value={text} rows={2} onChange={(e) => setText(e.target.value)} />
-          <div className="flex justify-end">
-            <Button
-              variant={options.length > 0 ? "outline" : "default"}
-              className="gap-1"
-              disabled={!text.trim() || answer.isPending}
-              onClick={() => void send()}
-            >
-              <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send answer")}
-            </Button>
-          </div>
-        </div>
+        options.length > 0 ? (
+          // With options, free text is the exception: folded behind one line (#842, J.1).
+          <details data-testid="work-item-decision-free-text">
+            <DisclosureSummary>{t_i18n("Answer differently")}</DisclosureSummary>
+            <div className="pt-2">{freeText}</div>
+          </details>
+        ) : (
+          freeText
+        )
       ) : (
         <p className="content-compact text-default-secondary">
           {t_i18n("Only an administrator can answer a company-managed work item.")}
