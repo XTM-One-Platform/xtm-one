@@ -177,7 +177,10 @@ describe("HealthSection read view", () => {
       expect(current()).toBe("Spend limits");
       scrollTo(1400);
       expect(current()).toBe("Health checks");
-      // The bottom of the page: Alerts and pets are on screen and never reach the band.
+      // Over the last viewport the line slides down (UX r3 B1): Alerts gets its own stretch of scroll.
+      scrollTo(2060);
+      expect(current()).toBe("Alerts");
+      // The bottom of the page: the last section, Companion pets.
       scrollTo(2273);
       expect(current()).toBe("Companion pets");
       // A click on Alerts lands at the bottom and stays current while the jump scrolls.

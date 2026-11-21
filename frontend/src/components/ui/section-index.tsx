@@ -20,9 +20,10 @@ import { cn } from "@/lib/utils";
  * The current section carries `aria-current="location"`: the one clicked
  * last, kept until the reader scrolls (wheel, touch, a press or a scroll key), then the
  * one the reader scrolls to, read from the sections' positions on every
- * scroll (`pickCurrentSection`, #794 UX r2 B1): short last sections that can
- * never reach the band under the header still become current at the bottom
- * of the page. A target section takes
+ * scroll (`pickCurrentSection`, #794 UX r2 and r3 B1): over the last viewport
+ * of scroll the band slides down to the bottom of the screen, so each short
+ * last section that can never reach the band under the header gets its own
+ * stretch of scroll and is current in turn. A target section takes
  * `SECTION_ANCHOR_CLASS` (vertical) or `SECTION_BAR_ANCHOR_CLASS` (horizontal)
  * so a jump lands its heading below the header and the bar, not behind them.
  * `section-index.test.ts` fails on a second hand-written index.
@@ -62,21 +63,34 @@ interface SectionGeometry {
   viewportBottom: number;
   /** The page is scrolled to its top. */
   atTop: boolean;
-  /** The page is scrolled to its bottom. */
-  atBottom: boolean;
+  /** Pixels of scroll left below this position (0 at the bottom). */
+  remaining: number;
+  /** Height of the visible area: the last viewport of scroll is where the band slides. */
+  viewportHeight: number;
 }
 
 /**
- * The index of the current section: the first at the top of the page; at the bottom, the last
- * one in view (short last sections never reach the band); otherwise the last one whose top is at
- * or above the band, or the first while none is.
+ * The line a section's top crosses to become current: the band under the header, sliding down to
+ * the bottom of the visible area over the last viewport of scroll (#794 UX r3 B1), so short last
+ * sections whose tops cannot reach the band each get a stretch of scroll where they are current.
  */
-export function pickCurrentSection({ tops, bandTop, viewportBottom, atTop, atBottom }: SectionGeometry): number {
+export function currentLine({ bandTop, viewportBottom, remaining, viewportHeight }: Omit<SectionGeometry, "tops" | "atTop">): number {
+  const progress = viewportHeight > 0 ? Math.min(1, Math.max(0, 1 - remaining / viewportHeight)) : 1;
+  return bandTop + (viewportBottom - bandTop) * progress;
+}
+
+/**
+ * The index of the current section: the first at the top of the page; otherwise the last one whose
+ * top is at or above the current line (`currentLine`), or the first while none is.
+ */
+export function pickCurrentSection(geometry: SectionGeometry): number {
+  const { tops, atTop } = geometry;
   if (tops.length === 0) return -1;
   if (atTop) return 0;
+  const line = currentLine(geometry);
   let picked = 0;
   tops.forEach((top, i) => {
-    if (atBottom ? top < viewportBottom : top <= bandTop) picked = i;
+    if (top <= line) picked = i;
   });
   return picked;
 }
@@ -151,7 +165,9 @@ export function SectionIndex({
         bandTop: horizontal ? BAND_TOP.horizontal : BAND_TOP.vertical,
         viewportBottom,
         atTop: scrollTop <= 0,
-        atBottom: scrollTop + clientHeight >= scrollHeight - 2,
+        // Within 2 px of the bottom counts as the bottom (fractional scroll positions).
+        remaining: Math.max(0, scrollHeight - clientHeight - scrollTop - 2),
+        viewportHeight: clientHeight,
       });
       if (index >= 0) setCurrent(targets[index].id);
     };
