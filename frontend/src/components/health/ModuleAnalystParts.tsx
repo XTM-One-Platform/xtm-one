@@ -22,6 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * shows (UX round 6 B1 and B2 on #953). Reading calls no model; "Investigate now" is an AI action,
  * disabled and explained while AI is off.
  */
+import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { Badge } from "@/components/ui/badge";
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
@@ -73,6 +74,11 @@ const INVESTIGATE_REFUSAL_LABELS = {
   no_registration: "No active registration of this module to investigate.",
 } as const;
 
+/** The glyph of Investigate now, so its label lines up with Analyse now in the menu (UX round 7 B1 on #953). */
+function InvestigateGlyph({ className }: { className?: string }) {
+  return <Icon name="file-search" size={16} className={className} aria-hidden />;
+}
+
 function labelOf<T extends Record<string, string>>(labels: T, key: string | null | undefined, fallback: string): string {
   return key && Object.prototype.hasOwnProperty.call(labels, key) ? labels[key as keyof T] : fallback;
 }
@@ -118,6 +124,7 @@ function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; 
   const item: OverflowMenuItem = {
     id: `health-investigate-${module}`,
     label: t_i18n("Investigate now"),
+    icon: InvestigateGlyph,
     onSelect: run,
     disabled: aiOff || investigate.isPending,
     disabledReason: aiOff ? t_i18n("AI is off on this platform.") : undefined,

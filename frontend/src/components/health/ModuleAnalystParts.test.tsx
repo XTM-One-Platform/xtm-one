@@ -84,6 +84,14 @@ describe("ModuleAnalystBlock", () => {
     expect(screen.getByRole("menuitem", { name: /Analyse now/ })).toBeTruthy();
   });
 
+  it("gives every item of the AI actions menu an icon, so the labels line up (UX round 7 B1 on #953)", async () => {
+    renderBlock();
+    await openMenu();
+    const items = screen.getAllByRole("menuitem");
+    expect(items.length).toBeGreaterThanOrEqual(2);
+    for (const item of items) expect(item.querySelector("svg")).not.toBeNull();
+  });
+
   it("starts an investigation of the module on demand from the menu", async () => {
     api.post.mockResolvedValue({ module: "opencti", items: [{ registration_id: "r-1", cycle_id: "c-2", run_id: "run-2", refusal: null }] });
     renderBlock();
