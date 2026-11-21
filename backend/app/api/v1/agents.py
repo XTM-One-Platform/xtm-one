@@ -1749,6 +1749,17 @@ async def update_agent(
         else set()
     )
     _customer_layer_only = bool(_customer_changes) and not _locked
+    # The integration fields the seed writes a default for are recorded too,
+    # so the next seed run keeps what a person set (diffed before the update).
+    # A null sent is "unchanged" for these fields, as in the integration diff.
+    _seeded_default_changes = (
+        builtin_customer_layer.customer_layer_changes(
+            agent,
+            {f: v for f, v in _sent.items() if f in builtin_customer_layer.SEEDED_DEFAULT_FIELDS and v is not None},
+        )
+        if agent.is_builtin
+        else set()
+    )
     _builtin_carve_out = _builtin_writable_only or _integrations_only or _customer_layer_only
 
     if agent.is_builtin and settings.is_xtm_one and not _builtin_carve_out:
@@ -2521,8 +2532,8 @@ async def update_agent(
 
     # The customer layer of a built-in (#914): remember what a person set, so
     # the seed leaves it as they set it on the next boot.
-    if agent.is_builtin and _customer_changes:
-        builtin_customer_layer.record_customer_fields(agent, _customer_changes)
+    if agent.is_builtin and (_customer_changes or _seeded_default_changes):
+        builtin_customer_layer.record_customer_fields(agent, _customer_changes | _seeded_default_changes)
 
     wf_count = (
         await db.execute(

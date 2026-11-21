@@ -62,6 +62,10 @@ INTEGRATION_LAYER_FIELDS = frozenset(
     }
 )
 
+#: Customer-layer integration fields the seed writes a default for: once a
+#: person set one, it is recorded in ``customer_fields`` and the seed keeps it.
+SEEDED_DEFAULT_FIELDS = frozenset({"integration_template_bindings", "integration_template_read_only"})
+
 #: The model a customer may pin on a built-in; the seed keeps it once set.
 MODEL_LAYER_FIELDS = frozenset({"llm_provider", "llm_provider_id", "llm_model", "llm_model_source"})
 
@@ -155,6 +159,15 @@ def record_customer_fields(agent: Any, changed: Iterable[str]) -> None:
 def seed_keeps_model(agent: Any) -> bool:
     """Whether the seed must leave this built-in's model as the customer set it."""
     return bool(set(getattr(agent, "customer_fields", None) or []) & MODEL_LAYER_FIELDS)
+
+
+def seed_keeps_field(agent: Any, field: str) -> bool:
+    """Whether the seed must leave *field* as a person set it on this built-in.
+
+    The seed writes a default for a few customer-layer fields (the template-bound
+    providers and their read-only set); once a person set one, it is theirs.
+    """
+    return field in set(getattr(agent, "customer_fields", None) or [])
 
 
 def persona_with_customer_notes(agent: Any, persona: str | None) -> str | None:

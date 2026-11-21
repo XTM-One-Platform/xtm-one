@@ -106,6 +106,21 @@ async def test_an_admin_adds_an_mcp_server_to_a_builtin(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_an_admin_sets_template_bindings_the_seed_then_keeps(monkeypatch):
+    agent = _builtin_agent()
+    await _invoke_agent_update(
+        monkeypatch,
+        UpdateAgentRequest(
+            integration_template_bindings=["opencti", "jira"],
+            integration_template_read_only=["jira"],
+        ),
+        agent,
+        _admin(),
+    )
+    assert agent.customer_fields == ["integration_template_bindings", "integration_template_read_only"]
+
+
+@pytest.mark.asyncio
 async def test_an_admin_sets_organization_notes_on_a_builtin(monkeypatch):
     agent = _builtin_agent()
     await _invoke_agent_update(
@@ -197,6 +212,44 @@ def test_a_seed_run_keeps_every_customer_field_and_restores_the_mechanics(monkey
     assert agent.integration_bindings == bindings
     assert agent.customer_notes == "EDR is Defender."
     assert agent.llm_model == "customer-model"
+
+
+def test_a_seed_run_keeps_template_bindings_a_person_set(monkeypatch):
+    agent = _seeded_builtin(
+        integration_template_bindings=["opencti", "jira"],
+        integration_template_read_only=["jira"],
+        customer_fields=["integration_template_bindings", "integration_template_read_only"],
+    )
+    _sync(
+        agent,
+        {
+            "slug": "triage",
+            "name": "Triage",
+            "persona": "Seeded.",
+            "integration_template_bindings": ["opencti"],
+            "integration_template_read_only": ["opencti"],
+        },
+        monkeypatch,
+    )
+    assert agent.integration_template_bindings == ["opencti", "jira"]
+    assert agent.integration_template_read_only == ["jira"]
+
+
+def test_a_seed_run_writes_the_seeded_template_bindings_when_none_were_set(monkeypatch):
+    agent = _seeded_builtin(integration_template_bindings=["stale"])
+    _sync(
+        agent,
+        {
+            "slug": "triage",
+            "name": "Triage",
+            "persona": "Seeded.",
+            "integration_template_bindings": ["opencti"],
+            "integration_template_read_only": ["opencti"],
+        },
+        monkeypatch,
+    )
+    assert agent.integration_template_bindings == ["opencti"]
+    assert agent.integration_template_read_only == ["opencti"]
 
 
 def test_a_seed_run_writes_the_release_model_when_none_was_pinned(monkeypatch):
