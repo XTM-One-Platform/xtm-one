@@ -2980,6 +2980,8 @@ def build_sandbox_workspace_tools(
             deadline=commands.selection_deadline(),
             always=command.affected_always,
             scans=command.affected_scan_patterns,
+            # A file marked `integration` under backend-unit's -m "not integration" is collected and runs nothing.
+            excluded=affecting.excluded_markers(command.without_defaults()),
         )
         if not selection.tests:
             whole = (

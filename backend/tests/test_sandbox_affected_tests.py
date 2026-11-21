@@ -676,3 +676,47 @@ def test_a_check_scan_pattern_selects_a_python_tripwire_on_a_source_change_only(
     }
     assert affected.select_tests(tests, set(), source_changed=False, scans=scans) == {}
     assert affected.select_tests(tests, set(), source_changed=True) == {}
+
+
+def test_the_markers_a_check_deselects_are_read_from_its_argv() -> None:
+    unit = ("python", "-m", "pytest", "-m", "not integration", "-q")
+    assert affected.excluded_markers(unit) == ("integration",)
+    assert affected.excluded_markers(("pytest", "-m", "not slow and not integration")) == ("slow", "integration")
+    assert affected.excluded_markers(("pytest", "-mnot slow")) == ("slow",)
+    # A selecting or mixed expression deselects nothing this reader can name.
+    assert affected.excluded_markers(("pytest", "-m", "integration")) == ()
+    assert affected.excluded_markers(("pytest", "-m", "not slow or fast")) == ()
+    assert affected.excluded_markers(("python", "-m", "scripts.queue_tests")) == ()
+
+
+async def test_a_selected_file_marked_with_a_deselected_marker_is_named_not_silently_skipped() -> None:
+    """#778 left the queue red: the postgres test on the changed key was selected and ran nothing."""
+    workspace = _workspace()
+    tree = [
+        ("backend/app/tool.py", BEFORE),
+        (
+            "backend/tests/test_tool_postgres.py",
+            b"import pytest\n\npytestmark = pytest.mark.integration\n\ndef test_x():\n    assert 'start_frame'\n",
+        ),
+        ("backend/tests/test_tool.py", b"def test_y():\n    assert 'start_frame'\n"),
+    ]
+    record = build_record(
+        provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=["backend"], files=tree
+    )
+    await workspace.put_tree([(f"co/{p}", d) for p, d in tree] + [(record.record_path, record.to_json())])
+    await workspace.put_tree([("co/backend/app/tool.py", AFTER)])
+    changes = changes_since(record, await workspace.entries(refresh=True))
+
+    async def read_base(repo_path: str) -> bytes | str:
+        return dict(tree)[repo_path]
+
+    selection = await affected.affected_tests(
+        workspace, record, changes, cwd="co/backend", read_base=read_base, excluded=("integration",)
+    )
+    assert set(selection.tests) == {"tests/test_tool_postgres.py", "tests/test_tool.py"}
+    assert selection.deselected == {"tests/test_tool_postgres.py": ["integration"]}
+    text = selection.describe()
+    assert "Deselected by this check's -m: 1 selected test file(s) are marked integration" in text
+    assert "tests/test_tool_postgres.py" in text
+    plain = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
+    assert plain.deselected == {}
