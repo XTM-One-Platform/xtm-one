@@ -157,6 +157,42 @@ async def test_a_slot_held_by_another_replica_reads_nothing(monkeypatch):
     assert await icv._platform_tick(None, reg, SimpleNamespace(id=uuid.uuid4()), [uuid.uuid4()]) == 0
 
 
+@pytest.mark.asyncio
+async def test_the_read_goes_through_the_person_scoped_resolver(monkeypatch):
+    """A user the integration is not visible to is skipped; the next one reads."""
+    from app.integrations.providers.opencti import _common
+    from app.services import platform_access
+
+    refused, allowed = uuid.uuid4(), uuid.uuid4()
+    asked: list[uuid.UUID] = []
+
+    async def resolve(db, user_id, integration_id, provider):
+        asked.append(user_id)
+        assert provider == "opencti"
+        if user_id == refused:
+            raise platform_access.PlatformAccessError()
+        return SimpleNamespace(base_url="https://cti.example", headers={"Authorization": "Bearer t"})
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def graphql(client, base, headers, query):
+        assert base == "https://cti.example" and headers["Authorization"] == "Bearer t"
+        return {"connectors": [{"id": "c-1", "name": "A", "slug": "a", "version": "7.1"}]}, None
+
+    monkeypatch.setattr(platform_access, "resolve_platform_client", resolve)
+    monkeypatch.setattr(_common, "_client", lambda headers, timeout=30: _Client())
+    monkeypatch.setattr(_common, "_graphql", graphql)
+    integration = SimpleNamespace(id=uuid.uuid4(), auth_type="api_key")
+    components = await icv._read_opencti(None, integration, [refused, allowed])
+    assert asked == [refused, allowed]
+    assert [c["id"] for c in components or []] == ["c-1"]
+
+
 def test_the_autonomous_tick_runs_the_step():
     from app.services import autonomous
 

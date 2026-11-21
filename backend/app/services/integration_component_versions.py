@@ -16,8 +16,10 @@ Cost and identity:
   (:func:`platform_events.live_subscriptions`), and one read per platform runs
   at most every :data:`INTERVAL_SECONDS` across replicas (a Redis slot);
 * a module call acts as a person (``module_identity``): the read is made as a
-  subscriber's run-as user (else its owner), with that person's own minted JWT
-  on a registered platform, and the capability probe never sends the query
+  subscriber's run-as user (else its owner) through
+  :func:`platform_access.resolve_platform_client` (the integration visible to
+  that person, its credential usable by them, their own minted JWT on a
+  registered platform), and the capability probe never sends the query
   when their role lacks the ``MODULES`` capability ``connectors`` needs;
 * a first sight of a connector records its version and raises nothing; a
   connector that reports no version is skipped.
@@ -142,15 +144,21 @@ async def _read_opencti(db: Any, integration: Any, user_ids: list[Any]) -> list[
     """The connectors of the OpenCTI behind *integration*, read as the first of *user_ids* that can."""
     from app.integrations.providers.opencti._common import _client, _graphql
     from app.integrations.providers.opencti.capabilities import attach_probe
-    from app.services.integration_tools import _get_token
+    from app.services.platform_access import PlatformAccessError, resolve_platform_client
 
     for user_id in user_ids:
-        token = await _get_token(db, str(integration.id), "opencti", user_id=str(user_id), integ=integration)
-        if not token or "||" not in token:
+        # The person-scoped resolver: the integration visible to *user_id* as a
+        # non-admin, its credential usable by them, a JWT minted for them on a
+        # registered platform. Never the tool funnel's private token resolver.
+        try:
+            platform = await resolve_platform_client(db, user_id, integration.id, "opencti")
+        except PlatformAccessError as exc:
+            logger.info(
+                "Component versions of integration %s not readable as %s: %s", integration.id, user_id, exc.code
+            )
             continue
-        api_base, _, api_token = token.partition("||")
-        api_base = api_base.strip().rstrip("/")
-        headers: Any = {"Authorization": f"Bearer {api_token.strip()}", "Content-Type": "application/json"}
+        api_base = platform.base_url
+        headers: Any = {**platform.headers, "Content-Type": "application/json"}
         if getattr(integration, "auth_type", None) == "platform_managed":
             headers = attach_probe(headers, api_base)
         async with _client(headers, timeout=30) as client:
