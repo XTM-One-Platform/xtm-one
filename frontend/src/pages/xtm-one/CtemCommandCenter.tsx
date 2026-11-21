@@ -107,6 +107,7 @@ import {
 } from "./ctem/dashboard-context";
 import { coverageMatrix, exposureStats } from "@/lib/ctem-coverage-stats";
 import { useCtemFleetActivity } from "@/hooks/api/useCtemFleetActivity";
+import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { inviteVisible } from "@/lib/fleet-activity";
 import { formatTimeAgo } from "@/lib/relative-time";
 
@@ -497,6 +498,13 @@ export default function CtemCommandCenter({
   const [fleetChoiceOverride, setFleetChoiceOverride] = useState<string[] | null | undefined>(undefined);
   const chosenFleetIds = fleetChoiceOverride !== undefined ? fleetChoiceOverride : user?.ctem_dashboard_fleet_ids ?? null;
   const fleetActivity = useCtemFleetActivity({ isAdmin, licensed: configLoaded && agenticLicensed, chosenIds: chosenFleetIds });
+  // The cases the reader sees, by id: a timeline row of a case run names its case (#915).
+  // Same query as the Cases card and board (shared cache), never a request per row.
+  const { data: casesRead } = useCtemCases({ throwOnError: false });
+  const casesById = useMemo(
+    () => Object.fromEntries((casesRead?.cases ?? []).map((c) => [c.id, c])),
+    [casesRead],
+  );
   const { data: allFleets } = useFleets({ optional: true, enabled: configLoaded && agenticLicensed });
   const [chooseFleetsOpen, setChooseFleetsOpen] = useState(false);
   const saveFleetChoice = useCallback(
@@ -1687,6 +1695,7 @@ export default function CtemCommandCenter({
     fleet_timeline: (
       <FleetTimelineCard
         timeline={fleetActivity.timeline}
+        casesById={casesById}
         isLoading={fleetActivity.timelineLoading || !configLoaded}
         licensed={!configLoaded || agenticLicensed}
         lockReason={aiLockReason}

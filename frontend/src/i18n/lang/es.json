@@ -15342,6 +15342,7 @@
   "No fleet run yet": "Aún no hay ejecuciones de flotas",
   "Runs of your fleets show here as their triggers fire: OpenCTI, OpenAEV and OpenCRQ events, schedules and work items.": "Las ejecuciones de sus flotas aparecen aquí a medida que se activan sus disparadores: eventos de OpenCTI, OpenAEV y OpenCRQ, programaciones y elementos de trabajo.",
   "Open run of {agent}": "Abrir la ejecución de {agent}",
+  "Open case {title}": "Abrir el caso {title}",
   "Agent not read yet": "Agente aún no leído",
   "Run source: schedule": "Programación",
   "Run source: work item": "Elemento de trabajo",

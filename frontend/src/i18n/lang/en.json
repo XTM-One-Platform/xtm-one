@@ -15342,6 +15342,7 @@
   "No fleet run yet": "No fleet run yet",
   "Runs of your fleets show here as their triggers fire: OpenCTI, OpenAEV and OpenCRQ events, schedules and work items.": "Runs of your fleets show here as their triggers fire: OpenCTI, OpenAEV and OpenCRQ events, schedules and work items.",
   "Open run of {agent}": "Open run of {agent}",
+  "Open case {title}": "Open case {title}",
   "Agent not read yet": "Agent not read yet",
   "Run source: schedule": "Schedule",
   "Run source: work item": "Work item",
