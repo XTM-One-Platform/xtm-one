@@ -72,6 +72,29 @@ function evidenceText(value: unknown): string {
 }
 
 /**
+ * The trigger rule that started the signal (CTEM-08-UI), read from its evidence:
+ * the relationship source the "vulnerability on software we run" rule matched
+ * (`software`), or the PIR match the PIR score rule held to the policy (`pir`).
+ * Undefined when the evidence names neither (another source, another path).
+ */
+export function signalTriggerRule(
+  evidence: Record<string, unknown> | null | undefined,
+): { rule: "software"; software: string } | { rule: "pir"; score: number } | undefined {
+  const software = evidence?.software;
+  const name = Array.isArray(software) ? software.find((s): s is string => typeof s === "string" && s.length > 0) : undefined;
+  if (name) return { rule: "software", software: name };
+  const pir = evidence?.pir;
+  const scores = (Array.isArray(pir) ? pir : [])
+    .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>).score_at_delivery : undefined))
+    .filter((s): s is number => typeof s === "number");
+  if (scores.length > 0) return { rule: "pir", score: Math.max(...scores) };
+  return undefined;
+}
+
+/** Evidence keys a dedicated row already says (CTEM-08-UI): never repeated as raw evidence. */
+const RULE_EVIDENCE_KEYS = ["software", "pir"] as const;
+
+/**
  * What the signal is, before where it is in the loop (CTEM-01-UI): its
  * subject, its source with the link to the source object, when it was first
  * and last seen, how many times, and the evidence the source gave.
@@ -80,8 +103,10 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const link = safeExternalUrl(signalSourceLink(signal.evidence));
   const provider = CTEM_PRODUCT_INFO[signal.source.provider]?.name ?? signal.source.provider;
+  const rule = signalTriggerRule(signal.evidence);
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
+    .filter(([key]) => !(rule && (RULE_EVIDENCE_KEYS as readonly string[]).includes(key)))
     .map(([key, value]) => ({ key, value: evidenceText(value) }))
     .filter((row) => row.value)
     .slice(0, 8);
@@ -100,6 +125,17 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
         provider
       ),
     },
+    ...(rule
+      ? [
+          {
+            label: t_i18n("Trigger rule"),
+            value:
+              rule.rule === "software"
+                ? t_i18n("Vulnerability on software we run: {software}", { software: rule.software })
+                : t_i18n("Flagged in a PIR at score {score}", { score: rule.score }),
+          },
+        ]
+      : []),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },

@@ -17592,6 +17592,7 @@
   "Crown jewel links": "Vínculos con activos críticos",
   "Decision owner": "Responsable de la decisión",
   "EPSS minimum": "EPSS mínimo",
+  "PIR score minimum: vulnerabilities": "Puntuación PIR mínima: vulnerabilidades",
   "Enterprise knowledge": "Conocimiento de la empresa",
   "Expires on": "Vence el",
   "Expires soon": "Vence pronto",
@@ -20014,5 +20015,12 @@
   "Re-test passed on {date}": "Nueva prueba superada el {date}",
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
-  "Not re-tested yet": "Aún sin nueva prueba"
+  "Not re-tested yet": "Aún sin nueva prueba",
+  "PIR score minimum: threat activity": "Puntuación PIR mínima: actividad de amenazas",
+  "0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70.": "0 a 100. Una vulnerabilidad marcada en un PIR inicia una ejecución de la flota con esta puntuación. Predeterminado: 70.",
+  "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75.": "0 a 100. Un intrusion set, una campaña o un malware marcado en un PIR inicia una ejecución de la flota con esta puntuación. Predeterminado: 75.",
+  "Type a whole number from 0 to 100, or leave it empty for the default.": "Escriba un número entero de 0 a 100, o déjelo vacío para usar el valor predeterminado.",
+  "Trigger rule": "Regla de activación",
+  "Vulnerability on software we run: {software}": "Vulnerabilidad en software que usamos: {software}",
+  "Flagged in a PIR at score {score}": "Marcado en un PIR con puntuación {score}"
 }

@@ -17592,6 +17592,7 @@
   "Crown jewel links": "Crown jewel links",
   "Decision owner": "Decision owner",
   "EPSS minimum": "EPSS minimum",
+  "PIR score minimum: vulnerabilities": "PIR score minimum: vulnerabilities",
   "Enterprise knowledge": "Enterprise knowledge",
   "Expires on": "Expires on",
   "Expires soon": "Expires soon",
@@ -20014,5 +20015,12 @@
   "Re-test passed on {date}": "Re-test passed on {date}",
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
-  "Not re-tested yet": "Not re-tested yet"
+  "Not re-tested yet": "Not re-tested yet",
+  "PIR score minimum: threat activity": "PIR score minimum: threat activity",
+  "0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70.": "0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70.",
+  "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75.": "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75.",
+  "Type a whole number from 0 to 100, or leave it empty for the default.": "Type a whole number from 0 to 100, or leave it empty for the default.",
+  "Trigger rule": "Trigger rule",
+  "Vulnerability on software we run: {software}": "Vulnerability on software we run: {software}",
+  "Flagged in a PIR at score {score}": "Flagged in a PIR at score {score}"
 }

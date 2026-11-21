@@ -114,6 +114,9 @@ const EMPTY_POLICY: PrioritizationPolicy = {
   accepted_risks: [],
 };
 
+/** CTEM-08: the backend defaults of the PIR score thresholds (organization_context.PrioritizationPolicy). */
+const PIR_SCORE_DEFAULTS = { pir_min_score_vulnerability: 70, pir_min_score_threat: 75 } as const;
+
 /** Days before an accepted risk's expiry when the page starts warning. */
 const EXPIRY_REMINDER_DAYS = 30;
 const ANY_CRITICALITY = "any";
@@ -199,7 +202,7 @@ export function exposureIssueFromRefusal(form: ProfileForm, detail: string): Exp
     const index = formIndex(risks, (row) => Boolean(row.subject.trim()), Number(risk[1]));
     return index === undefined ? null : { section: "risk", index, field: risk[2], message: ISSUE_MESSAGES.refused };
   }
-  const score = /^prioritization_policy\.(cvss_min|epss_min)\b/.exec(detail);
+  const score = /^prioritization_policy\.(cvss_min|epss_min|pir_min_score_vulnerability|pir_min_score_threat)\b/.exec(detail);
   return score ? { section: "score", field: score[1], message: ISSUE_MESSAGES.refused } : null;
 }
 
@@ -209,12 +212,15 @@ function ScoreInput({
   value,
   max,
   placeholder,
+  integer = false,
   onCommit,
   onValidity,
 }: {
   id: string;
   value: number | null;
   max: number;
+  /** Whole numbers only (a PIR score). */
+  integer?: boolean;
   placeholder: string;
   onCommit: (value: number | null) => void;
   onValidity: (invalid: boolean) => void;
@@ -228,11 +234,12 @@ function ScoreInput({
     });
   }, [value]);
   const parsed = Number(text.trim());
-  const invalid = text.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0 || parsed > max);
+  const inRange = (n: number) => Number.isFinite(n) && n >= 0 && n <= max && (!integer || Number.isInteger(n));
+  const invalid = text.trim() !== "" && !inRange(parsed);
   return (
     <Input
       id={id}
-      inputMode="decimal"
+      inputMode={integer ? "numeric" : "decimal"}
       aria-labelledby={settingsFieldLabelId(id)}
       aria-describedby={settingsFieldHintId(id)}
       aria-invalid={invalid ? true : undefined}
@@ -242,7 +249,7 @@ function ScoreInput({
         const next = e.target.value;
         setText(next);
         const n = Number(next.trim());
-        const valid = next.trim() === "" || (Number.isFinite(n) && n >= 0 && n <= max);
+        const valid = next.trim() === "" || inRange(n);
         // An out-of-range score is shown and blocks Save (UX B4): never a silent send of the last valid one.
         onValidity(!valid);
         if (next.trim() === "") onCommit(null);
@@ -768,7 +775,28 @@ export function OrganizationExposureCards({
     );
   };
 
-  const policySet = JSON.stringify(policy) !== JSON.stringify(EMPTY_POLICY);
+  // The PIR score thresholds always carry the backend's defaults, so they never make a policy "set".
+  const policySet = JSON.stringify({ ...policy, pir_min_score_vulnerability: undefined, pir_min_score_threat: undefined }) !== JSON.stringify(EMPTY_POLICY);
+
+  /** CTEM-08: a PIR score threshold, 0 to 100; empty sends nothing and the backend default applies. */
+  const pirField = (key: "pir_min_score_vulnerability" | "pir_min_score_threat", title: string, helper: string) => {
+    const id = `${fieldId}-${key}`;
+    const refused = issueOf("score", key);
+    const error = invalidScores[key] ? t_i18n("Type a whole number from 0 to 100, or leave it empty for the default.") : refused ? t_i18n(refused.message) : undefined;
+    return (
+      <SettingsField id={id} label={title} helper={helper} error={error}>
+        <ScoreInput
+          id={id}
+          value={policy[key] ?? null}
+          max={100}
+          integer
+          placeholder={String(PIR_SCORE_DEFAULTS[key])}
+          onCommit={(value) => patchPolicy({ [key]: value ?? undefined } as Partial<PrioritizationPolicy>)}
+          onValidity={(invalid) => setInvalidScores((prev) => (prev[key] === invalid ? prev : { ...prev, [key]: invalid }))}
+        />
+      </SettingsField>
+    );
+  };
   const soonCount = policy.accepted_risks.filter((risk) => expiryState(risk.expires_on) !== "ok" && expiryState(risk.expires_on) !== "unset").length;
 
   return (
@@ -945,6 +973,8 @@ export function OrganizationExposureCards({
             <SettingsFieldGrid>
               {scoreField("cvss_min", t_i18n("CVSS minimum"), t_i18n("0 to 10. Empty: no CVSS threshold. Recommended: 7."), 10)}
               {scoreField("epss_min", t_i18n("EPSS minimum"), t_i18n("0 to 1. Empty: no EPSS threshold. Recommended: 0.1."), 1)}
+              {pirField("pir_min_score_vulnerability", t_i18n("PIR score minimum: vulnerabilities"), t_i18n("0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70."))}
+              {pirField("pir_min_score_threat", t_i18n("PIR score minimum: threat activity"), t_i18n("0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75."))}
               <SettingsField id={`${fieldId}-min_crown_jewel_criticality`} label={t_i18n("Minimum crown jewel criticality")} helper={t_i18n("Keep only findings on assets linked to a crown jewel at this level or above.")}>
                 {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum crown jewel criticality", (v) =>
                   patchPolicy({ min_crown_jewel_criticality: v === ANY_CRITICALITY ? "" : v }),
@@ -970,6 +1000,12 @@ export function OrganizationExposureCards({
           <SettingsReadGrid columns={3}>
             <SettingsReadField label={t_i18n("CVSS minimum")} value={policy.cvss_min === null ? "" : String(policy.cvss_min)} mono />
             <SettingsReadField label={t_i18n("EPSS minimum")} value={policy.epss_min === null ? "" : String(policy.epss_min)} mono />
+            <SettingsReadField
+              label={t_i18n("PIR score minimum: vulnerabilities")}
+              value={String(policy.pir_min_score_vulnerability ?? PIR_SCORE_DEFAULTS.pir_min_score_vulnerability)}
+              mono
+            />
+            <SettingsReadField label={t_i18n("PIR score minimum: threat activity")} value={String(policy.pir_min_score_threat ?? PIR_SCORE_DEFAULTS.pir_min_score_threat)} mono />
             <SettingsReadField
               label={t_i18n("Minimum crown jewel criticality")}
               value={policy.min_crown_jewel_criticality ? label(CRITICALITY_LABELS, policy.min_crown_jewel_criticality) : ""}

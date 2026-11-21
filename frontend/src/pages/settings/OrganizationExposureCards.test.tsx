@@ -153,6 +153,41 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("shows the PIR score thresholds with their defaults and edits them as whole numbers from 0 to 100 (CTEM-08-UI)", async () => {
+    mockApi();
+    const { unmount } = renderWithProviders(<Harness initial={BASE} editing={false} />);
+    const card = screen.getByTestId("settings.organization.prioritization-policy");
+    expect(within(card).getByText("PIR score minimum: vulnerabilities")).toBeTruthy();
+    expect(within(card).getByText("70")).toBeTruthy();
+    expect(within(card).getByText("75")).toBeTruthy();
+    // The defaults alone never make a policy "set".
+    expect(within(card).getByText(/No policy yet/)).toBeTruthy();
+    unmount();
+
+    let last: ProfileForm | null = null;
+    const validity = vi.fn();
+    renderWithProviders(<Harness initial={BASE} editing onChange={(form) => (last = form)} onScoreValidity={validity} />);
+    const vuln = screen.getByRole("textbox", { name: "PIR score minimum: vulnerabilities" }) as HTMLInputElement;
+    expect(vuln.placeholder).toBe("70");
+    fireEvent.change(vuln, { target: { value: "60" } });
+    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBe(60);
+    fireEvent.change(vuln, { target: { value: "60.5" } });
+    expect(vuln.getAttribute("aria-invalid")).toBe("true");
+    await waitFor(() => expect(validity).toHaveBeenLastCalledWith(true));
+    fireEvent.change(vuln, { target: { value: "101" } });
+    expect(screen.getByRole("alert").textContent).toBe("Type a whole number from 0 to 100, or leave it empty for the default.");
+    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBe(60);
+    fireEvent.change(vuln, { target: { value: "" } });
+    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBeUndefined();
+    const threat = screen.getByRole("textbox", { name: "PIR score minimum: threat activity" });
+    fireEvent.change(threat, { target: { value: "90" } });
+    expect(last!.prioritization_policy?.pir_min_score_threat).toBe(90);
+  });
+
+  it("maps a refused PIR score to its field", () => {
+    expect(exposureIssueFromRefusal(BASE, "prioritization_policy.pir_min_score_threat: Input should be less than or equal to 100")).toMatchObject({ section: "score", field: "pir_min_score_threat" });
+  });
+
   it("picks an asset group among the Asset groups rows or None, never free text (UX B2, #11781)", async () => {
     mockApi();
     const initial: ProfileForm = {
