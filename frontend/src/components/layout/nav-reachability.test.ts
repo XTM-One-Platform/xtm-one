@@ -246,7 +246,8 @@ test("no route redirects or aliases a former address; an unknown one is not foun
   assert.doesNotMatch(source, /<Navigate to=\{/, "no computed redirect target");
   assert.doesNotMatch(source, /LegacyRedirect/);
   // The license splash has its own catch-all; the app's is the last one.
-  const catchAll = routes.filter((route) => route.path === "*").at(-1);
+  const catchAlls = routes.filter((route) => route.path === "*");
+  const catchAll = catchAlls[catchAlls.length - 1];
   assert.ok(catchAll, "a catch-all route exists");
   assert.match(catchAll.body, /<RouteNotFound \/>/);
   assert.ok(routes.some((route) => route.path === "/fleets"), "/fleets is a page of its own");

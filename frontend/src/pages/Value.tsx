@@ -52,7 +52,7 @@ import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
 import { outcomeRowPath } from "@/lib/roi-outcomes";
-import { operationsPath, valuePath, workItemsPath } from "@/lib/task-routes";
+import { operationsPath, workItemsPath } from "@/lib/task-routes";
 import {
   VALUE_SCOPE_LABELS,
   VALUE_SCOPE_LINES,

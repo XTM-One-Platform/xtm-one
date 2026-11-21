@@ -384,7 +384,7 @@ export default function CustomTools() {
   const builtinTools = useMemo(() => offeredBuiltinTools("agent"), [offeredBuiltinTools]);
   /* A path segment (#10203): `/tools/custom` is a static route declared before
      `/tools/:id/:tab?`, so it is never read as a tool whose id is "custom".
-     The former `?tab=` and `?gate=` queries are not read: no redirect (#797). */
+     The former tab and gate query parameters are not read: no redirect (#797). */
   const [params] = useSearchParams();
   const { pathname } = useLocation();
   const trimmedPath = pathname.replace(/\/+$/, "");
@@ -425,7 +425,7 @@ export default function CustomTools() {
   );
 
   /* Resolved against the tabs that EXIST, not against the names. A
-     `?tab=custom` on a deployment with custom tools disabled otherwise left
+     custom tab address on a deployment with custom tools disabled otherwise left
      `DetailTabs` highlighting nothing above an empty body — reachable from the
      admin-objects link, and briefly on every refresh of that URL, since
      `useCustomToolsEnabled` reads false until the platform config resolves. */

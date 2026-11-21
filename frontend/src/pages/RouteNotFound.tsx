@@ -8,14 +8,19 @@
  */
 
 import { useNavigate } from "react-router-dom";
-import { MapPinOff } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { NotFoundState } from "@/components/ui/not-found-state";
+
+/** The design-system compass, sized like the other not-found icons. */
+function NotFoundIcon({ className }: { className?: string }) {
+  return <Icon name="compass" size={40} className={className} aria-hidden />;
+}
 
 export default function RouteNotFound() {
   const navigate = useNavigate();
   return (
     <NotFoundState
-      icon={MapPinOff}
+      icon={NotFoundIcon}
       title="Page not found"
       description="No page answers this address. The menu on the left lists every page."
       actionLabel="Go to Home"
