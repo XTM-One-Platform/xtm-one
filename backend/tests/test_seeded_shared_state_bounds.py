@@ -26,7 +26,9 @@ _WRITERS = {
 }
 
 _RECORDS = re.compile(r"(record|keep)[^.\n]*shared state `[a-z0-9:_-]+`", re.IGNORECASE)
-_BOUND = re.compile(r"keep_last \d+")
+# A list appended with keep_last, or no list at all: the CTEM loop fleets keep
+# counters only since their open work moved to the cases (#891).
+_BOUND = re.compile(r"keep_last \d+|keeps counters only")
 
 
 def test_every_persona_that_records_shared_state_is_listed() -> None:
