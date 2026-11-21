@@ -3222,7 +3222,12 @@ async def run_agent_chat(
                 else "You are a helpful AI assistant."
             )
         else:
-            _persona_source = agent.persona or "You are a helpful AI assistant."
+            # A built-in's organization notes follow its seeded persona (#914).
+            from app.services.builtin_customer_layer import persona_with_customer_notes
+
+            _persona_source = (
+                persona_with_customer_notes(agent, agent.persona) or "You are a helpful AI assistant."
+            )
         _persona = substitute_variables(_persona_source, _variables)
         system_parts = [_persona]
         # The organization summary opens the prompt when the cascade agent >

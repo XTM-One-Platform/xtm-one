@@ -1,9 +1,10 @@
-"""CTEM-11 (#894): the version a case must reach, and members outside their range.
+"""CTEM-11 (#894, #946): the version a case must reach, read from OpenCTI.
 
 dev-docs/ctem-cases.md section 4.2bis on fixtures: versions compare per part,
-ranges come from NVD 2.0 configurations (or OpenCTI once it carries them, or a
-course of action), the group keys on the smallest version that fixes every
-member, and nothing changes when the profile declares no version.
+the fixed version is the smallest Software that remediates the vulnerability
+in OpenCTI (a course of action is the fallback), a declared version OpenCTI
+relates no vulnerability to is not affected, the group keys on the smallest
+version that fixes every member, and nothing changes without a declared version.
 """
 
 from __future__ import annotations
@@ -43,107 +44,17 @@ def test_a_value_without_a_number_is_not_a_version(value):
     assert fv.compare_versions(value or "", "1.0") is None
 
 
-def test_a_range_contains_with_its_inclusive_flags():
-    rng = fv.AffectedRange(start="1.25.0", start_inclusive=True, end="1.25.5", end_inclusive=False, fixed="1.25.5")
-    assert rng.contains("1.25.0") is True
-    assert rng.contains("1.25.3") is True
-    assert rng.contains("1.25.5") is False
-    assert rng.contains("1.24.9") is False
-    assert rng.contains("unknown") is None
+def test_the_smallest_fix_above_the_declared_version_is_taken():
+    assert fv.smallest_fix_above(["9.0.99", "9.0.98", "8.5.1"], "9.0.90") == "9.0.98"
+    assert fv.smallest_fix_above(["8.5.1"], "9.0.90") is None
+    assert fv.smallest_fix_above(["9.0.99", "x", None], None) == "9.0.99"
 
 
-# ---------------------------------------------------------------------------
-# NVD 2.0 configurations (the shape enrichment providers serve)
-# ---------------------------------------------------------------------------
-
-NVD2 = {
-    "id": "CVE-2026-123633",
-    "configurations": [
-        {
-            "nodes": [
-                {
-                    "cpeMatch": [
-                        {
-                            "vulnerable": True,
-                            "criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
-                            "versionStartIncluding": "1.19.7",
-                            "versionEndExcluding": "1.30.7",
-                        },
-                        {
-                            "vulnerable": True,
-                            "criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
-                            "versionStartIncluding": "1.31.0",
-                            "versionEndExcluding": "1.31.9",
-                        },
-                        {"vulnerable": True, "criteria": "cpe:2.3:a:f5:nginx:1.18.0:*:*:*:*:*:*:*"},
-                        {"vulnerable": False, "criteria": "cpe:2.3:o:linux:linux_kernel:-:*:*:*:*:*:*:*"},
-                        {
-                            "vulnerable": True,
-                            "criteria": "cpe:2.3:a:other:proxy:*:*:*:*:*:*:*:*",
-                            "versionEndExcluding": "9.9",
-                        },
-                    ]
-                }
-            ]
-        }
-    ],
-}
-
-
-def test_nvd2_ranges_keep_the_product_only():
-    ranges = fv.ranges_from_nvd2(NVD2, vendor="F5", product="NGINX")
-    assert [r.fixed for r in ranges] == ["1.30.7", "1.31.9", None]
-    assert ranges[2].exact == "1.18.0"
-
-
-def test_nvd2_ranges_refuse_another_vendor():
-    assert fv.ranges_from_nvd2(NVD2, vendor="Apache", product="nginx") == []
-
-
-# ---------------------------------------------------------------------------
-# Resolver: sources in order, "not affected", "unknown"
-# ---------------------------------------------------------------------------
-
-
-def test_the_provider_range_holding_the_installed_version_gives_its_fix():
-    ranges = fv.ranges_from_nvd2(NVD2, vendor="f5", product="nginx")
-    assert fv.resolve(installed="1.27.1", provider=ranges) == fv.Resolution("1.30.7", fv.SOURCE_PROVIDER)
-    assert fv.resolve(installed="1.31.2", provider=ranges).fixed_version == "1.31.9"
-
-
-def test_without_an_installed_version_the_smallest_fix_is_taken():
-    ranges = fv.ranges_from_nvd2(NVD2, vendor="f5", product="nginx")
-    assert fv.resolve(installed=None, provider=ranges).fixed_version == "1.30.7"
-
-
-def test_an_installed_version_outside_every_range_is_not_affected():
-    ranges = fv.ranges_from_nvd2(NVD2, vendor="f5", product="nginx")
-    resolution = fv.resolve(installed="1.30.7", provider=ranges)
-    assert resolution.fixed_version is None
-    assert resolution.not_affected == "not affected: version 1.30.7 is outside the affected ranges"
-
-
-def test_opencti_ranges_win_then_a_course_of_action_then_the_provider():
-    octi = [fv.AffectedRange(end="1.30.8", fixed="1.30.8")]
-    provider = [fv.AffectedRange(end="1.30.7", fixed="1.30.7")]
-    assert fv.resolve(installed="1.27.1", opencti=octi, course_of_action_version="1.31.0", provider=provider) == (
-        fv.Resolution("1.30.8", fv.SOURCE_OPENCTI)
-    )
-    assert fv.resolve(installed="1.27.1", course_of_action_version="1.31.0", provider=provider) == (
-        fv.Resolution("1.31.0", fv.SOURCE_COURSE_OF_ACTION)
-    )
-
-
-def test_nothing_known_is_unknown_never_guessed():
-    assert fv.resolve(installed="1.27.1") == fv.Resolution()
-
-
-def test_the_opencti_hook_answers_nothing_until_opencti_carries_ranges(monkeypatch):
-    assert fv.opencti_ranges({"id": "v1", "name": "CVE-1"}) == []
-    # Once it answers, the reader uses it before any other source (a stub stands in for CTEM-09).
-    monkeypatch.setattr(fv, "opencti_ranges", lambda vuln: [fv.AffectedRange(end="9.0.98", fixed="9.0.98")])
-    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [])
-    assert {i.fixed_version for i in issues} == {"9.0.98"}
+def test_same_version_folds_trailing_zeros_and_reads_text():
+    assert fv.same_version("1.2", "1.2.0")
+    assert fv.same_version("Release-A", "release-a")
+    assert not fv.same_version("1.2", "1.3")
+    assert not fv.same_version("", "")
 
 
 @pytest.mark.parametrize(
@@ -164,6 +75,16 @@ def test_a_course_of_action_names_its_version_only_when_it_is_a_plain_upgrade(na
 def test_the_smallest_version_fixing_every_member_is_the_greatest_fix():
     assert fv.smallest_fixing_every(["1.30.7", "1.30.10", "1.30.9"]) == "1.30.10"
     assert fv.smallest_fixing_every(["x"]) is None
+
+
+def test_no_range_engine_is_left_in_xtm_one():
+    """#946: affected ranges are OpenCTI's knowledge; XTM One holds no range engine and no NVD read."""
+    from app.integrations.providers import vulncheck
+
+    for gone in ("AffectedRange", "ranges_from_nvd2", "opencti_ranges", "resolve"):
+        assert not hasattr(fv, gone)
+    assert not hasattr(source, "provider_ranges_for") and not hasattr(source, "_enrichment_key")
+    assert not hasattr(vulncheck, "nvd2_records")
 
 
 # ---------------------------------------------------------------------------
@@ -199,8 +120,8 @@ def test_without_a_declared_version_two_fixes_stay_two_cases():
     assert sorted(grouping.groups) == ["upgrade:f5/nginx@1.30.7", "upgrade:f5/nginx@1.30.9"]
 
 
-def test_a_member_outside_its_range_opens_no_case_and_is_listed_with_the_reason():
-    out = _cti("2", None, not_affected="not affected: version 1.30.7 is outside the affected ranges")
+def test_a_member_not_affected_opens_no_case_and_is_listed_with_the_reason():
+    out = _cti("2", None, not_affected="not affected: version 1.30.7 has no 'has' relation to CVE-2026-2 in OpenCTI")
     grouping = cc.group_issues([_cti("1", "1.31.9"), out])
     assert list(grouping.groups) == ["upgrade:f5/nginx@1.31.9"]
     assert grouping.not_affected == [out]
@@ -211,7 +132,7 @@ def test_a_member_turning_not_affected_is_resolved_in_its_case():
     case = cc.CaseSnapshot(
         id="c1", keys=["upgrade:f5/nginx@latest"], state="needs_attention", members={"opencti:9": True}
     )
-    out = _cti("9", None, not_affected="not affected: version 1.30.7 is outside the affected ranges")
+    out = _cti("9", None, not_affected="not affected: version 1.30.7 has no 'has' relation to CVE-2026-9 in OpenCTI")
     (plan,) = cc.plan_recompute([case], [out], closed=["opencti:9"])
     assert plan.resolve == ["opencti:9"]
     assert plan.new_state == "resolved"
@@ -267,13 +188,24 @@ def test_an_unowned_key_of_another_product_still_opens_a_case() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The reader: stack version in, fixed version out
+# The reader: OpenCTI's Software version, has and remediates (#946)
 # ---------------------------------------------------------------------------
 
-SOFTWARE = [{"id": "sw-1", "name": "tomcat", "vendor": "apache", "cpe": ""}]
+SOFTWARE = [
+    {"id": "sw-90", "name": "tomcat", "vendor": "apache", "version": "9.0.90", "cpe": ""},
+    {"id": "sw-80", "name": "tomcat", "vendor": "apache", "version": "9.0.80", "cpe": ""},
+]
 RELATIONS = [
-    {"from": {"id": "sw-1"}, "to": {"id": "v1", "name": "CVE-2026-1"}},
-    {"from": {"id": "sw-1"}, "to": {"id": "v2", "name": "CVE-2026-2"}},
+    {"from": {"id": "sw-90"}, "to": {"id": "v1", "name": "CVE-2026-1"}},
+    {"from": {"id": "sw-90"}, "to": {"id": "v2", "name": "CVE-2026-2"}},
+    {"from": {"id": "sw-80"}, "to": {"id": "v3", "name": "CVE-2026-3"}},
+]
+FIXES = [
+    {"from": {"id": "sw-98", "name": "tomcat", "vendor": "apache", "version": "9.0.98"}, "to": {"id": "v1"}},
+    {"from": {"id": "sw-99", "name": "tomcat", "vendor": "apache", "version": "9.0.99"}, "to": {"id": "v1"}},
+    {"from": {"id": "sw-99", "name": "tomcat", "vendor": "apache", "version": "9.0.99"}, "to": {"id": "v2"}},
+    # Another product remediating the same CVE is not this product's fix.
+    {"from": {"id": "ng-1", "name": "nginx", "vendor": "f5", "version": "1.31.0"}, "to": {"id": "v2"}},
 ]
 
 
@@ -281,41 +213,59 @@ def _stack(version=""):
     return [{"product": "Tomcat", "vendor": "Apache", "cpe": "", "version": version, "label": "Apache Tomcat"}]
 
 
-def test_the_reader_fills_the_fixed_version_from_provider_ranges():
-    ranges = {
-        "CVE-2026-1|apache tomcat": [fv.AffectedRange(start="9.0.0", end="9.0.98", fixed="9.0.98")],
-        "CVE-2026-2|apache tomcat": [fv.AffectedRange(start="9.0.0", end="9.0.99", fixed="9.0.99")],
+def test_the_fixed_version_is_the_smallest_remediating_software_above_the_declared_one():
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], FIXES)
+    by_id = {i.external_id: i for i in issues}
+    assert by_id["v1"].fixed_version == "9.0.98" and by_id["v2"].fixed_version == "9.0.99"
+    assert list(cc.group_issues(issues).groups) == ["upgrade:apache/tomcat@9.0.99"]
+
+
+def test_no_has_on_the_declared_version_is_not_affected():
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], FIXES)
+    v3 = next(i for i in issues if i.external_id == "v3")
+    assert v3.not_affected == "not affected: version 9.0.90 has no 'has' relation to CVE-2026-3 in OpenCTI"
+    assert v3.version_note is None
+
+
+def test_a_declared_version_unknown_to_opencti_is_kept_and_named():
+    issues = source.opencti_issues(SOFTWARE, _stack("10.1.0"), RELATIONS, [], FIXES)
+    assert all(i.not_affected is None for i in issues)
+    assert {i.version_note for i in issues if i.external_id == "v3"} == {
+        "version not known to OpenCTI: 10.1.0; fixed version unknown"
     }
-    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], ranges)
-    assert {i.external_id: i.fixed_version for i in issues} == {"v1": "9.0.98", "v2": "9.0.99"}
-    grouping = cc.group_issues(issues)
-    assert list(grouping.groups) == ["upgrade:apache/tomcat@9.0.99"]
 
 
-def test_the_reader_marks_a_member_outside_its_range():
-    ranges = {"CVE-2026-1|apache tomcat": [fv.AffectedRange(start="9.0.0", end="9.0.98", fixed="9.0.98")]}
-    issues = source.opencti_issues(SOFTWARE, _stack("10.1.0"), RELATIONS[:1], [], ranges)
-    assert issues[0].not_affected and issues[0].not_affected.startswith("not affected: version 10.1.0")
+def test_a_course_of_action_is_the_fallback_and_nothing_known_is_unknown():
+    remediations = [{"from": {"standard_id": "course-of-action--1", "name": "Upgrade to 9.0.95"}, "to": {"id": "v3"}}]
+    issues = source.opencti_issues(SOFTWARE, _stack(), RELATIONS, remediations, [])
+    by_id = {i.external_id: i for i in issues}
+    assert by_id["v3"].fixed_version == "9.0.95" and by_id["v3"].version_note is None
+    assert by_id["v1"].fixed_version is None and by_id["v1"].version_note == "fixed version unknown"
+    remediation = cc.remediation_of(by_id["v3"])
+    assert remediation is not None and remediation.kind == "course_of_action" and remediation.fixed_version == "9.0.95"
 
 
-def test_the_reader_keeps_latest_when_no_version_is_known():
-    issues = source.opencti_issues(SOFTWARE, _stack(), RELATIONS[:1], [])
-    assert issues[0].fixed_version is None and issues[0].not_affected is None
-    assert list(cc.group_issues(issues).groups) == ["upgrade:apache/tomcat@latest"]
-
-
-def test_a_stack_without_version_keys_still_reads():
-    stack = [{"product": "Tomcat", "vendor": "Apache", "cpe": "", "label": "Apache Tomcat"}]
-    issues = source.opencti_issues(SOFTWARE, stack, RELATIONS[:1], [])
-    assert issues[0].installed_version is None
-
-
-def test_a_course_of_action_that_is_an_upgrade_carries_its_version():
-    remediations = [{"from": {"standard_id": "course-of-action--1", "name": "Upgrade to 9.0.98"}, "to": {"id": "v1"}}]
-    issues = source.opencti_issues(SOFTWARE, _stack(), RELATIONS[:1], remediations)
+def test_a_remediating_software_wins_over_a_course_of_action():
+    remediations = [{"from": {"standard_id": "course-of-action--1", "name": "Upgrade to 9.1.0"}, "to": {"id": "v1"}}]
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS[:1], remediations, FIXES)
     assert issues[0].fixed_version == "9.0.98"
-    remediation = cc.remediation_of(issues[0])
-    assert remediation is not None and remediation.kind == "course_of_action" and remediation.fixed_version == "9.0.98"
+
+
+def test_the_declared_version_matches_on_the_cpe_too():
+    software = [
+        {"id": "sw-c", "name": "Tomcat", "vendor": "Apache", "version": "", "cpe": "cpe:2.3:a:apache:tomcat:9.0.90"}
+    ]
+    stack = [dict(_stack("9.0.90")[0], cpe="cpe:2.3:a:apache:tomcat:9.0.90")]
+    relations = [{"from": {"id": "sw-c"}, "to": {"id": "v1", "name": "CVE-2026-1"}}]
+    (issue,) = source.opencti_issues(software, stack, relations, [], FIXES)
+    assert issue.not_affected is None and issue.version_note is None and issue.fixed_version == "9.0.98"
+
+
+def test_without_a_declared_version_every_has_counts_and_latest_stays():
+    issues = source.opencti_issues(SOFTWARE, _stack(), RELATIONS, [], [])
+    assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
+    assert all(i.not_affected is None and i.installed_version is None for i in issues)
+    assert "upgrade:apache/tomcat@latest" in cc.group_issues(issues).groups
 
 
 def test_the_tech_stack_entry_takes_an_optional_version():
@@ -323,132 +273,71 @@ def test_the_tech_stack_entry_takes_an_optional_version():
     assert TechStackEntry(product="nginx", version="1.27.1").version == "1.27.1"
 
 
-# ---------------------------------------------------------------------------
-# Slice 2: the enrichment provider read (VulnCheck NVD 2.0) in the reader
-# ---------------------------------------------------------------------------
-
-
-class _Resp:
-    def __init__(self, payload):
-        self.status_code = 200
-        self._payload = payload
-
-    def json(self):
-        return self._payload
-
-
-def _fake_vulncheck(monkeypatch, served: dict[str, dict[str, dict]], calls: list | None = None):
-    """*served*: index name -> CVE -> record; an index absent answers a 402 error."""
-    from app.integrations.providers import vulncheck
-
-    async def _fake(client, method, url, provider, action, **kwargs):
-        index = url.rsplit("/", 1)[-1]
-        cve = kwargs["params"]["cve"]
-        if calls is not None:
-            calls.append((index, cve))
-        if index not in served:
-            return None, "VulnCheck: 402 not licensed"
-        record = served[index].get(cve)
-        return _Resp({"data": [record] if record else []}), None
-
-    monkeypatch.setattr(vulncheck, "safe_request", _fake)
-
-
-@pytest.mark.asyncio
-async def test_nvd2_records_fall_back_to_the_community_index(monkeypatch):
-    from app.integrations.providers.vulncheck import nvd2_records
-
-    calls: list = []
-    _fake_vulncheck(monkeypatch, {"nist-nvd2": {"CVE-2026-123633": NVD2}}, calls)
-    records = await nvd2_records("vc_key", ["cve-2026-123633", "not-a-cve", "CVE-2026-9"])
-    assert list(records) == ["CVE-2026-123633"]
-    assert ("vulncheck-nvd2", "CVE-2026-123633") in calls and ("nist-nvd2", "CVE-2026-123633") in calls
-
-
-@pytest.mark.asyncio
-async def test_nvd2_records_read_nothing_without_a_key_or_a_cve(monkeypatch):
-    from app.integrations.providers.vulncheck import nvd2_records
-
-    calls: list = []
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {}}, calls)
-    assert await nvd2_records("  ", ["CVE-2026-1"]) == {}
-    assert await nvd2_records("vc_key", ["latest"]) == {}
-    assert calls == []
-
-
-@pytest.mark.asyncio
-async def test_nvd2_records_stop_at_the_cap(monkeypatch):
-    from app.integrations.providers.vulncheck import nvd2_records
-
-    calls: list = []
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {}}, calls)
-    await nvd2_records("vc_key", [f"CVE-2026-{1000 + n}" for n in range(10)], cap=3)
-    assert len({cve for _, cve in calls}) == 3
-
-
-NGINX_STACK = [{"product": "nginx", "vendor": "F5", "cpe": "", "version": "1.27.1", "label": "F5 nginx"}]
-
-
-@pytest.mark.asyncio
-async def test_provider_ranges_are_keyed_as_the_reader_reads_them(monkeypatch):
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
-    ranges = await source.provider_ranges_for("vc_key", NGINX_STACK, ["CVE-2026-123633", "CVE-2026-404"])
-    assert list(ranges) == ["CVE-2026-123633|f5 nginx"]
-    assert [r.fixed for r in ranges["CVE-2026-123633|f5 nginx"]] == ["1.30.7", "1.31.9", None]
-
-
 class _FakeOpenCti:
-    """The three OpenCTI reads of ``_read_opencti``: software, has relations, remediations."""
+    """OpenCTI as one user sees it: *visible* are the ids that user's markings let through."""
 
-    def __init__(self):
-        self.queries = 0
+    def __init__(self, visible: set[str] | None = None):
+        self.visible = visible
+        self.headers: list[dict] = []
+        self.queries: list[str] = []
+
+    def _see(self, node_id: str) -> bool:
+        return self.visible is None or node_id in self.visible
 
     async def __call__(self, client, base_url, headers, query, variables):
-        self.queries += 1
+        self.headers.append(headers)
         if "stixCyberObservables" in query:
-            node = {"id": "sw-1", "name": "nginx", "vendor": "F5", "cpe": ""}
-            return {"stixCyberObservables": {"edges": [{"node": node}]}}, None
+            self.queries.append("software")
+            nodes = [n for n in SOFTWARE if self._see(n["id"])]
+            return {"stixCyberObservables": {"edges": [{"node": n} for n in nodes]}}, None
         if "CtemCaseStackVulns" in query:
-            rel = {"from": {"id": "sw-1"}, "to": {"id": "v1", "name": "CVE-2026-123633"}}
-            return {"stixCoreRelationships": {"edges": [{"node": rel}], "pageInfo": {}}}, None
+            self.queries.append("has")
+            rels = [r for r in RELATIONS if r["from"]["id"] in variables["from"] and self._see(r["to"]["id"])]
+            return {"stixCoreRelationships": {"edges": [{"node": r} for r in rels], "pageInfo": {}}}, None
+        if "CtemCaseSoftwareRemediates" in query:
+            self.queries.append("remediates")
+            assert "remediates" in query and "Software" in query
+            rels = [r for r in FIXES if r["to"]["id"] in variables["to"] and self._see(r["from"]["id"])]
+            return {"stixCoreRelationships": {"edges": [{"node": r} for r in rels]}}, None
+        self.queries.append("course_of_action")
         return {"stixCoreRelationships": {"edges": []}}, None
 
 
 @pytest.mark.asyncio
-async def test_the_opencti_read_takes_the_fixed_version_from_the_provider(monkeypatch):
-    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
-    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, "vc_key")
-    assert [(i.external_id, i.fixed_version, i.installed_version) for i in issues] == [("v1", "1.30.7", "1.27.1")]
-    assert list(cc.group_issues(issues).groups) == ["upgrade:f5/nginx@1.30.7"]
+async def test_the_opencti_read_takes_the_fixed_version_from_remediates(monkeypatch):
+    fake = _FakeOpenCti()
+    monkeypatch.setattr(source, "_graphql", fake)
+    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer user"}, _stack("9.0.90"))
+    assert {(i.external_id, i.fixed_version) for i in issues if not i.not_affected} == {
+        ("v1", "9.0.98"),
+        ("v2", "9.0.99"),
+    }
+    assert set(fake.queries) == {"software", "has", "course_of_action", "remediates"}
+    # Every read is the acting user's own: the headers given, never another credential.
+    assert all(h == {"Authorization": "Bearer user"} for h in fake.headers)
 
 
 @pytest.mark.asyncio
-async def test_the_opencti_read_without_a_provider_keeps_latest(monkeypatch):
-    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
-    calls: list = []
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}}, calls)
-    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, None)
-    assert calls == []
-    assert issues[0].fixed_version is None
+async def test_a_restricted_user_gets_only_what_opencti_lets_them_read(monkeypatch):
+    """KB 34 s.6.2: a user whose markings hide sw-98 and v2 sees no fix from it and no v2 member."""
+    monkeypatch.setattr(source, "_graphql", _FakeOpenCti(visible={"sw-90", "sw-80", "v1", "v3", "sw-99"}))
+    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer restricted"}, _stack("9.0.90"))
+    assert {i.external_id for i in issues} == {"v1", "v3"}
+    v1 = next(i for i in issues if i.external_id == "v1")
+    # sw-98 is hidden from this user, so the fix they can read is 9.0.99, never the hidden 9.0.98.
+    assert v1.fixed_version == "9.0.99"
 
 
 @pytest.mark.asyncio
-async def test_a_provider_outage_never_drops_the_opencti_read(monkeypatch):
-    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
+async def test_an_unreadable_remediates_read_keeps_the_issues(monkeypatch):
+    fake = _FakeOpenCti()
 
-    async def _boom(*args, **kwargs):
-        raise RuntimeError("provider down")
+    async def _graphql(client, base_url, headers, query, variables):
+        if "CtemCaseSoftwareRemediates" in query:
+            return None, "OpenCTI: 500"
+        return await fake(client, base_url, headers, query, variables)
 
-    monkeypatch.setattr(source, "provider_ranges_for", _boom)
-    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, "vc_key")
-    assert [i.external_id for i in issues] == ["v1"] and issues[0].fixed_version is None
-
-
-@pytest.mark.asyncio
-async def test_an_installed_version_outside_the_provider_ranges_is_not_affected(monkeypatch):
-    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
-    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
-    stack = [dict(NGINX_STACK[0], version="1.30.7")]
-    issues = await source._read_opencti(None, "http://octi", {}, stack, "vc_key")
-    assert issues[0].not_affected == "not affected: version 1.30.7 is outside the affected ranges"
+    monkeypatch.setattr(source, "_graphql", _graphql)
+    issues = await source._read_opencti(None, "http://octi", {}, _stack())
+    assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
+    assert all(i.fixed_version is None for i in issues)

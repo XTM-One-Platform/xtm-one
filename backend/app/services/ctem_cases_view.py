@@ -69,6 +69,9 @@ class ViewerView:
     #: The signal members (``signal:<id>``) this viewer may read, read fresh on
     #: every call and never cached: the signals API judges them, not a product.
     signals: set[str] = field(default_factory=set)
+    #: True when this viewer's own OpenCRQ read is available (#936): only then
+    #: are the OpenCRQ asset names and scenario ids of a case's exploitation shown.
+    opencrq: bool = False
 
     def sees(self, member_id: str) -> bool:
         return member_id in self.issues or member_id in self.unavailable or member_id in self.signals
@@ -82,6 +85,7 @@ class ViewerView:
                 "missing": self.missing,
                 "complete": self.complete,
                 "no_access": self.no_access,
+                "opencrq": self.opencrq,
             }
         )
 
@@ -96,6 +100,7 @@ class ViewerView:
             missing=list(data.get("missing") or []),
             complete=bool(data.get("complete", True)),
             no_access=bool(data.get("no_access", False)),
+            opencrq=bool(data.get("opencrq", False)),
         )
 
 
@@ -341,7 +346,33 @@ def hydrate(
         "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
         + [{"restricted": True} for _ in range(restricted)],
         "history": [_event(e, view) for e in events],
+        "exploitation": exploitation_for(case, view),
     }
+
+
+def exploitation_for(case: CtemCase, view: ViewerView) -> list[dict[str, Any]]:
+    """The case's exploitation reading as this viewer may read it (#936).
+
+    Techniques, exposure class and reading are served to every viewer of the
+    case; the OpenCRQ asset name and scenario id only to a viewer whose own
+    OpenCRQ read is available, else the asset is ``Restricted`` and the
+    scenario absent.
+    """
+    out: list[dict[str, Any]] = []
+    for entry in getattr(case, "exploitation", None) or []:
+        if not isinstance(entry, dict):
+            continue
+        out.append(
+            {
+                "asset": entry.get("asset") if view.opencrq else RESTRICTED,
+                "risk_scenario_id": entry.get("risk_scenario_id") if view.opencrq else None,
+                "exposure": entry.get("exposure") or "unknown",
+                "techniques": list(entry.get("techniques") or []),
+                "reading": entry.get("reading") or "",
+                "at": entry.get("at"),
+            }
+        )
+    return out
 
 
 _PRIORITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -379,3 +410,30 @@ def list_for_viewer(
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
     """Whether the would-be owner sees at least one issue of the case in the source products."""
     return bool(visible_members(rows, owner_view))
+
+
+async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = None) -> bool:
+    """Whether *user_id* may open case *case_id*: the API's rule (a 404 otherwise), from their own view.
+
+    The platform events of a case reach only such users (#933). *vertical* is
+    ignored: the case's own vertical decides the view read. Any unknown or
+    unreadable input answers ``False``.
+    """
+    import uuid
+
+    from app.services import ctem_cases_store as store
+    from app.services.organizations import get_primary
+
+    try:
+        case_uuid = uuid.UUID(str(case_id))
+        uuid.UUID(str(user_id))
+    except (ValueError, TypeError):
+        return False
+    primary = await get_primary(db)
+    if primary is None:
+        return False
+    found = await store.get_case(db, case_uuid, organization_id=primary.id)
+    if found is None:
+        return False
+    case, rows, _events = found
+    return bool(visible_members(rows, await viewer_view(db, str(user_id), case.vertical)))

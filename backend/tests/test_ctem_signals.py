@@ -100,7 +100,12 @@ def test_a_bad_field_is_refused_by_name(change, field):
 
 
 def test_listeners_cover_the_paths_whose_events_exist_today():
-    assert listeners.paths_with_listener() == {"new_vulnerability", "relevant_threat", "code_flaw"}
+    assert listeners.paths_with_listener() == {
+        "new_vulnerability",
+        "relevant_threat",
+        "code_flaw",
+        "mitigation_regression",
+    }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
 
@@ -413,7 +418,12 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
     async with client as http:
         paths = (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]
     assert [p["id"] for p in paths] == list(TRIGGER_PATHS)
-    assert {p["id"] for p in paths if p["listener"]} == {"new_vulnerability", "relevant_threat", "code_flaw"}
+    assert {p["id"] for p in paths if p["listener"]} == {
+        "new_vulnerability",
+        "relevant_threat",
+        "code_flaw",
+        "mitigation_regression",
+    }
 
 
 async def test_an_invalid_body_is_422_and_copilot_mode_is_404(client, monkeypatch):

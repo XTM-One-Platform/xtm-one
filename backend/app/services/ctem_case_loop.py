@@ -168,25 +168,23 @@ def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None
 _SEVERITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
 
-def case_data(case: CtemCase, **extra: Any) -> dict[str, Any]:
-    """The payload of a case event: ids and facts only, never a source issue's content (no title)."""
-    data = {
+def case_data(case: CtemCase) -> dict[str, Any]:
+    """The payload of a case event: the case id and its routing, nothing else (#933).
+
+    Severity, SLA, owner, risk scenarios, the signal and the validation stay on
+    the case, read with ``get_ctem_case`` under the run's own view. The event
+    reaches only subscribers whose run-as user sees the case
+    (``platform_events.can_read_object``).
+    """
+    return {
         "case_id": str(case.id),
-        "organization_id": str(case.organization_id),
         "vertical": case.vertical,
         "state": case.state,
-        "remediation_kind": case.remediation_kind,
         "trigger_path": case.trigger_path,
-        "severity": case.severity,
-        "sla_due_at": case.sla_due_at.isoformat() if case.sla_due_at else None,
-        "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
-        "risk_scenario_ids": list(case.risk_scenario_ids or []),
         "object_type": "ctem_case",
         "object_id": str(case.id),
         "participant_agent_ids": [],
     }
-    data.update(extra)
-    return data
 
 
 def _event_id(name: str, case: CtemCase, marker: str) -> str:
@@ -275,7 +273,7 @@ async def open_from_signal(
     if events is not None:
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
-        events.add(CASE_OPENED, case_data(case, signal_id=str(signal.id)), _event_id(CASE_OPENED, case, "open"))
+        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
     return case
 
 
@@ -346,14 +344,12 @@ async def record_validation(
             db.add(_transition(case, "resolved", now, evidence=evidence, actor=actor))
             case.resolution_kind = "not_exposed" if result == "not_exposed" else "fixed"
             if events is not None:
-                events.add(
-                    CASE_RESOLVED, case_data(case, validation=entry), _event_id(CASE_RESOLVED, case, at)
-                )
+                events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, at))
     elif result == "failed" and case.state in ("resolved", "mitigated_watching"):
         db.add(_transition(case, "needs_attention", now, reason=f"re-test failed: {evidence}", actor=actor))
         case.resolution_kind = None
         if events is not None:
-            events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, at))
+            events.add(CASE_REOPENED, case_data(case), _event_id(CASE_REOPENED, case, at))
     if events is not None:
         events.frame(case, "validation", now)
     return case
@@ -413,6 +409,88 @@ def record_ticket(
             from_value=previous.get("status") if previous else None,
             to_value=status,
             evidence=f"{integration}:{key}",
+        )
+    )
+    return case
+
+
+#: The exposure classes OpenCRQ's topology rule reads (CTEM-24); anything else is ``unknown``.
+EXPOSURES: tuple[str, ...] = ("internet_facing", "internal", "unknown")
+#: Supporting assets one exploitation write keeps (the tool lists 30 a read).
+EXPLOITATION_MAX = 30
+_TECHNIQUES_MAX = 12
+#: An ATT&CK technique id, alone or leading a label ("T1190 Exploit Public-Facing Application").
+_TECHNIQUE_ID = re.compile(r"^(T\d{4}(?:\.\d{3})?)\b")
+
+
+def _exposure(value: object) -> str:
+    word = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return word if word in EXPOSURES else "unknown"
+
+
+def _techniques(value: object) -> list[str]:
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        match = _TECHNIQUE_ID.match(str(item or "").strip().upper())
+        if match and match.group(1) not in out:
+            out.append(match.group(1))
+    return out[:_TECHNIQUES_MAX]
+
+
+def record_exploitation(
+    db: AsyncSession,
+    case: CtemCase,
+    entries: list[dict[str, Any]],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write how the CVE would be exploited on the scenario's assets (CTEM-24, #936).
+
+    *entries* is the triage step's ``exploitation`` array (from
+    ``get_opencrq_cve_exploitation``): per supporting asset, the ATT&CK
+    techniques in attack order, the exposure and the reading. The list is
+    replaced whole (the newest read is the truth); an entry with no valid
+    technique is dropped. One ``exploitation`` event when it changed, its
+    evidence the technique ids alone (the history is served to every viewer,
+    the asset names are not). Never moves the case state. The caller commits.
+    """
+    now = now or datetime.now(UTC)
+    kept: list[dict[str, Any]] = []
+    for raw in entries if isinstance(entries, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        techniques = _techniques(raw.get("techniques"))
+        asset = str(raw.get("asset") or "").strip()[:200]
+        if not techniques or not asset:
+            continue
+        kept.append(
+            {
+                "risk_scenario_id": str(raw.get("risk_scenario_id") or "").strip()[:100] or None,
+                "asset": asset,
+                "exposure": _exposure(raw.get("exposure")),
+                "techniques": techniques,
+                "reading": str(raw.get("reading") or "").strip()[:500],
+            }
+        )
+    if len(kept) > EXPLOITATION_MAX:
+        kept = kept[:EXPLOITATION_MAX]
+    if not kept:
+        raise rules.CaseRuleError("an exploitation reading needs at least one asset with an ATT&CK technique id")
+    previous = [{k: v for k, v in e.items() if k != "at"} for e in (case.exploitation or [])]
+    if previous == kept:
+        return case
+    case.exploitation = [{**e, "at": now.isoformat()} for e in kept]
+    ids = sorted({t for e in kept for t in e["techniques"]})
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "exploitation",
+            now,
+            from_value=str(len(previous)) if previous else None,
+            to_value=str(len(kept)),
+            evidence=", ".join(ids)[:300],
         )
     )
     return case
