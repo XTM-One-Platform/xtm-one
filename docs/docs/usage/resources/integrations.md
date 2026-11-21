@@ -228,6 +228,14 @@ An agent can open a SharePoint or OneDrive folder shared with the account that a
 - **Sites.** `list_microsoft_site_files` takes a site by the ID `list_microsoft_sharepoint_sites` gives, by its address (`https://contoso.sharepoint.com/sites/finance`), or as `contoso.sharepoint.com:/sites/finance`. When the account cannot open the site, which is the case when all it holds there is a folder shared with it, the tool says the site is not accessible and points to `list_microsoft_folder_by_url`.
 - It only reads: a read-only binding of the integration offers it. It uses the delegated permissions `Files.Read.All` and `Sites.Read.All`, which the integration already requests.
 
+### Microsoft 365: SharePoint list item fields (metadata columns)
+
+An agent can read the metadata columns a document library adds to its files (a choice, text, date or person column) with their values, without opening the files. It only reads: no tool writes a field.
+
+- **One file.** `get_microsoft_list_item_fields` takes the file as the site plus its `Path` from `list_microsoft_site_files` (and the library when it is not the site's default one), or as the file's URL or sharing link. `columns` keeps only the named columns; a column the item does not carry is said so.
+- **A whole library.** `list_microsoft_list_items` lists a list or a document library, named by its display name or list id, with each item's fields. `filter_column` and `filter_value` keep only the items whose column equals the value (case-insensitive, a multi-value column matches on any of its values); the filter is applied by the platform, so a column the library does not index works too. A listing with more items ends with a `page_token` to pass back for the next page.
+- **Permissions.** Both use `Sites.Read.All`, delegated or application as the integration row is set up. A refused read answers an error naming that permission.
+
 ### Microsoft 365: commenting on a Word document
 
 An agent can review a Word document in OneDrive or SharePoint the way a person does: it reads the document, then leaves native Word comments in it, as the account that authorized the integration. Each comment appears on the passage it is about, in Word desktop and Word for the web, under that account's name. The tool is `add_microsoft_document_comments`; the document is given by its link, or by its path (with the site for a SharePoint library).

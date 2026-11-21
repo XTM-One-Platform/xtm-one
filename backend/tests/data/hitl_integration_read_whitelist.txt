@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1969 tools across 114 providers; 52 held back by hand.
+# 1971 tools across 114 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1057,6 +1057,7 @@ microsoft:get_microsoft_email_signature
 microsoft:get_microsoft_file_by_url
 microsoft:get_microsoft_file_content
 microsoft:get_microsoft_free_busy
+microsoft:get_microsoft_list_item_fields
 microsoft:get_microsoft_meeting_ai_insights
 microsoft:get_microsoft_meeting_attendance
 microsoft:get_microsoft_meeting_transcript_by_join_url
@@ -1078,6 +1079,7 @@ microsoft:list_microsoft_emails
 microsoft:list_microsoft_event_occurrences
 microsoft:list_microsoft_flagged_emails
 microsoft:list_microsoft_folder_by_url
+microsoft:list_microsoft_list_items
 microsoft:list_microsoft_meeting_recordings
 microsoft:list_microsoft_meeting_transcripts
 microsoft:list_microsoft_online_meetings
