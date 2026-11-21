@@ -50,7 +50,10 @@ export function BlockedStatusBadge({
 }) {
   const { t_i18n, locale } = useFormatter();
   const tip =
-    kind === "waiting"
+    kind === "waiting" && !blockers.length
+      ? // Waits for references or a person's answer (#861): released by itself.
+        t_i18n("Goes back to the queue by itself once what it waits for is released: nothing to do.")
+      : kind === "waiting"
       ? t_i18n("Reopens by itself when {count, plural, one {# item completes} other {# items complete}}: {titles}", {
           count: blockers.length,
           titles: formatList(blockers, locale),
