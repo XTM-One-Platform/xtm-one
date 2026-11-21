@@ -30,6 +30,9 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     # CTEM-08 (#919): the trigger rule on software we run, seeded off, after migration c9160fleetoptin1.
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
+    # CTEM-08 (#919): the PIR score thresholds of the policy, seeded off, after migration c9160fleetoptin1.
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
     ("ctem-ai-security-orchestrator", "New AI-enabled report"),
     ("ctem-ai-security-orchestrator", "Weekly AI threat watch"),
     ("ctem-ai-security-orchestrator", "AI system registered"),
@@ -74,6 +77,8 @@ _SEEDED_AFTER_C9160 = {
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencti-pir-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "openaev-detection-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencrq-risk-desk-orchestrator"),
