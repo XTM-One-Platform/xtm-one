@@ -742,12 +742,19 @@ async def _ensure_trigger(
 #: The notifier body of a PIR playbook delivery. A playbook digest has no trigger
 #: (``notification``); each item names the playbook node (``notification_id``)
 #: and carries the flagged entity (``data[0].instance``, its PIR information
-#: in the OpenCTI extension) and the in-pir event's message; the message enters
-#: the id so a second PIR, a new score or a re-entry is a new change, and a
-#: redelivery of the same one is dropped by the receiver.
+#: in the OpenCTI extension) and the in-pir event's message. Two score changes
+#: carry the same message ("Update 2 elements ... internal-relationship", read in
+#: the lab), so the entity's PIR information (score and score date) enters the id
+#: too: each change is new, a redelivery of the same one is dropped by the receiver.
+#: OpenCTI master renders the entity as loaded when the in-pir relationship is
+#: patched, before its own PIR information is rewritten: on an update the score
+#: delivered is the one before the change (lab, 21 Nov 2026). The signal records it
+#: as the score at delivery; the fleet reads the live score from OpenCTI.
 PIR_WEBHOOK_TEMPLATE = (
     '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
-    '<%= data[0].type %>:<%= data[0].message %>", '
+    '<%= data[0].type %>:<%= data[0].message %>:'
+    "<%= JSON.stringify((data[0].instance.extensions || {})"
+    "['extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba'] || {}).pir_information) %>\", "
     '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
     '"xtm_source": "pir_playbook", '
     '"data": <%- JSON.stringify(data[0].instance) %>}'

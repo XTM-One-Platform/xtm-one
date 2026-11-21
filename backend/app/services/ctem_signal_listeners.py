@@ -123,12 +123,15 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
 
 
 def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """CTEM-05: the PIRs an OpenCTI entity is flagged in, as ``[{pir_id, score}]``.
+    """CTEM-05: the PIRs an OpenCTI entity is flagged in, as ``[{pir_id, score_at_delivery}]``.
 
     Read from ``pir_information`` in the entity's OpenCTI extension, which a
     delivery of the provisioned PIR playbook carries (``xtm_source``
     ``pir_playbook``). Ids and score only: the matched criteria and the causing
-    relationship stay in OpenCTI, under its own rights model.
+    relationship stay in OpenCTI, under its own rights model. On a score change
+    OpenCTI delivers the entity before its PIR information is rewritten, so the
+    score is the one at delivery, possibly the previous one: the fleet reads the
+    live score from OpenCTI before acting on it.
     """
     if payload.get("xtm_source") != "pir_playbook":
         return []
@@ -140,7 +143,7 @@ def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[di
             pir_id = _text(item.get("pir_id")) if isinstance(item, dict) else ""
             score = item.get("pir_score") if isinstance(item, dict) else None
             if pir_id and isinstance(score, int | float) and not isinstance(score, bool):
-                found.append({"pir_id": pir_id, "score": score})
+                found.append({"pir_id": pir_id, "score_at_delivery": score})
     return sorted(found, key=lambda p: p["pir_id"])
 
 
