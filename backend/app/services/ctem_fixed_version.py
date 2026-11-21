@@ -1,44 +1,37 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""CTEM Cases: the version a case must reach (CTEM-11, #894).
+"""CTEM Cases: version arithmetic for the version a case must reach (CTEM-11, #894, #946).
 
 Design: ``dev-docs/ctem-cases.md`` section 4.2bis. Pure functions over plain
-data; the case reader (``ctem_cases_source``) feeds them.
+data. The knowledge itself (which version of a product has a vulnerability,
+which version remediates it) lives in OpenCTI: the case reader
+(``ctem_cases_source``) reads ``Software has Vulnerability`` and ``Software
+remediates Vulnerability`` and only orders the versions it found here.
 
 - :func:`parse_version` and :func:`compare_versions` order versions with a
   generic scheme (numeric parts compare as numbers, a pre-release tag such as
   ``rc1`` sorts before the release, an epoch ``1:`` and a ``v`` prefix are
   read). Distribution backports are not visible to it.
-- :class:`AffectedRange` is one affected range of one product: start and end
-  with their inclusive flags, the fixed version (the excluded end, or a stated
-  fix). :func:`ranges_from_nvd2` reads them from an NVD 2.0 CVE record
-  (``configurations[].nodes[].cpeMatch[]``), the shape enrichment providers
-  serve.
-- :func:`opencti_ranges` is the hook for OpenCTI's affected ranges on a
-  Vulnerability (CTEM-09). OpenCTI has no such attribute yet, so it answers
-  nothing; it is the first source the resolver asks once it does.
+- :func:`smallest_fix_above` picks the smallest remediating version above the
+  declared one.
 - :func:`version_from_course_of_action` reads the version a course of action
-  names when it is a plain upgrade ("Upgrade to 9.0.98").
-- :func:`resolve` answers, for one vulnerability on one product, the fixed
-  version to reach and where it came from, or that the declared version is
-  outside every affected range ("not affected: version"), or nothing
-  ("fixed version unknown"). Nothing is guessed.
+  names when it is a plain upgrade ("Upgrade to 9.0.98"), the fallback.
+- :func:`smallest_fixing_every` folds the members of one product onto one
+  target. Nothing is guessed.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import Any
 
-#: Where a fixed version came from, in the order the resolver asks.
-SOURCE_OPENCTI = "opencti_ranges"
-SOURCE_COURSE_OF_ACTION = "course_of_action"
-SOURCE_PROVIDER = "provider"
-
-#: Reason recorded on a member whose declared version is outside every affected range.
+#: Reason recorded on a member OpenCTI does not relate to the declared version.
 NOT_AFFECTED_PREFIX = "not affected: version"
+#: Named for a stack entry whose declared version has no Software node in OpenCTI.
+VERSION_NOT_KNOWN = "version not known to OpenCTI"
+#: Named for a member when neither a remediating Software nor a course of action names a version.
+FIXED_VERSION_UNKNOWN = "fixed version unknown"
 
 _PRE_RELEASE = {"dev": -4, "alpha": -3, "a": -3, "beta": -2, "b": -2, "pre": -1, "rc": -1, "c": -1}
 _TOKEN = re.compile(r"\d+|[a-z]+")
@@ -47,7 +40,6 @@ _UPGRADE_COA = re.compile(
     r"^\s*(?:upgrade|update|patch)\b(?:[\w .+-]*?)\b(?:to|>=)\s*(?:version\s+)?v?(\d+(?:[.\-_]\w+)*)\s*$",
     re.IGNORECASE,
 )
-_VERSION_COLUMN = 5  # cpe:2.3:part:vendor:product:version:...
 _MAX_PARTS = 16
 
 
@@ -88,92 +80,22 @@ def compare_versions(left: str, right: str) -> int | None:
     return (a > b) - (a < b)
 
 
-@dataclass(frozen=True)
-class AffectedRange:
-    """One affected range of one product (bounds are versions, ``None`` when open)."""
-
-    start: str | None = None
-    start_inclusive: bool = True
-    end: str | None = None
-    end_inclusive: bool = False
-    #: The version that fixes this range (the excluded end, or a stated fix).
-    fixed: str | None = None
-    #: The exact affected version when the range is a single version.
-    exact: str | None = None
-
-    def contains(self, version: str) -> bool | None:
-        """True or False, ``None`` when *version* cannot be compared."""
-        if parse_version(version) is None:
-            return None
-        if self.exact is not None:
-            same = compare_versions(version, self.exact)
-            return None if same is None else same == 0
-        if self.start is not None:
-            cmp = compare_versions(version, self.start)
-            if cmp is None or cmp < 0 or (cmp == 0 and not self.start_inclusive):
-                return False if cmp is not None else None
-        if self.end is not None:
-            cmp = compare_versions(version, self.end)
-            if cmp is None or cmp > 0 or (cmp == 0 and not self.end_inclusive):
-                return False if cmp is not None else None
-        return True
+def same_version(left: str | None, right: str | None) -> bool:
+    """True when both sides are the same version (``1.2`` equals ``1.2.0``), else a plain text match."""
+    cmp = compare_versions(left or "", right or "")
+    if cmp is not None:
+        return cmp == 0
+    return bool((left or "").strip()) and (left or "").strip().lower() == (right or "").strip().lower()
 
 
-def _cpe_part(cpe: str, index: int) -> str:
-    parts = cpe.split(":")
-    return parts[index].lower() if len(parts) > index else ""
-
-
-def _same_name(left: str, right: str) -> bool:
-    fold = re.compile(r"[\s_\-]+")
-    return bool(left) and fold.sub("", left.lower()) == fold.sub("", right.lower())
-
-
-def ranges_from_nvd2(record: dict[str, Any], *, vendor: str, product: str) -> list[AffectedRange]:
-    """The vulnerable ranges of *product* in an NVD 2.0 CVE record.
-
-    Reads ``configurations[].nodes[].cpeMatch[]`` entries marked vulnerable
-    whose CPE names the product (and the vendor, when both sides name one).
-    """
-    out: list[AffectedRange] = []
-    for config in record.get("configurations") or []:
-        for node in (config or {}).get("nodes") or []:
-            for match in (node or {}).get("cpeMatch") or []:
-                if not isinstance(match, dict) or not match.get("vulnerable"):
-                    continue
-                criteria = str(match.get("criteria") or "")
-                if not _same_name(_cpe_part(criteria, 4), product):
-                    continue
-                cpe_vendor = _cpe_part(criteria, 3)
-                if vendor and cpe_vendor and cpe_vendor != "*" and not _same_name(cpe_vendor, vendor):
-                    continue
-                start_in, start_ex = match.get("versionStartIncluding"), match.get("versionStartExcluding")
-                end_in, end_ex = match.get("versionEndIncluding"), match.get("versionEndExcluding")
-                if start_in or start_ex or end_in or end_ex:
-                    out.append(
-                        AffectedRange(
-                            start=start_in or start_ex,
-                            start_inclusive=not start_ex,
-                            end=end_ex or end_in,
-                            end_inclusive=not end_ex,
-                            fixed=end_ex or None,
-                        )
-                    )
-                    continue
-                version = _cpe_part(criteria, _VERSION_COLUMN)
-                if parse_version(version) is not None:
-                    out.append(AffectedRange(exact=version))
-    return out
-
-
-def opencti_ranges(vulnerability: dict[str, Any]) -> list[AffectedRange]:
-    """OpenCTI's affected ranges on a Vulnerability node (CTEM-09).
-
-    OpenCTI has no range attribute today; this hook answers nothing until it
-    does, then reads it here and the resolver uses it before any other source.
-    """
-    del vulnerability
-    return []
+def smallest_fix_above(versions: Iterable[str | None], installed: str | None) -> str | None:
+    """The smallest of *versions* above *installed* (any when nothing is declared), else ``None``."""
+    known = [v.strip() for v in versions if v and parse_version(v) is not None]
+    if installed and parse_version(installed) is not None:
+        known = [v for v in known if (compare_versions(v, installed) or 0) > 0]
+    if not known:
+        return None
+    return min(known, key=lambda v: parse_version(v) or ())
 
 
 def version_from_course_of_action(name: str | None) -> str | None:
@@ -183,68 +105,6 @@ def version_from_course_of_action(name: str | None) -> str | None:
         return None
     version = match.group(1)
     return version if parse_version(version) is not None else None
-
-
-@dataclass(frozen=True)
-class Resolution:
-    """What the resolver found for one vulnerability on one product."""
-
-    fixed_version: str | None = None
-    source: str | None = None
-    #: Set when the declared version is outside every affected range: the reason.
-    not_affected: str | None = None
-
-
-def _smallest_fix_above(ranges: Iterable[AffectedRange], installed: str | None) -> str | None:
-    fixes = [r.fixed for r in ranges if r.fixed and parse_version(r.fixed) is not None]
-    if installed and parse_version(installed) is not None:
-        # The fixes of the ranges the installed version is in, above it.
-        held = [
-            r.fixed
-            for r in ranges
-            if r.fixed and r.contains(installed) and (compare_versions(r.fixed, installed) or 0) > 0
-        ]
-        fixes = held or []
-    if not fixes:
-        return None
-    return min(fixes, key=lambda v: parse_version(v) or ())
-
-
-def resolve(
-    *,
-    installed: str | None,
-    opencti: Iterable[AffectedRange] = (),
-    course_of_action_version: str | None = None,
-    provider: Iterable[AffectedRange] = (),
-) -> Resolution:
-    """The fixed version of one vulnerability on one product, sources in order.
-
-    OpenCTI ranges, then a course of action naming a version, then the
-    connected enrichment provider's ranges. With a declared *installed*
-    version, ranges that do not contain it are ignored, and a source whose
-    ranges are known and contain none of them answers "not affected".
-    """
-    installed = (installed or "").strip() or None
-    order: list[tuple[str, list[AffectedRange] | str]] = [
-        (SOURCE_OPENCTI, list(opencti)),
-        (SOURCE_COURSE_OF_ACTION, course_of_action_version or ""),
-        (SOURCE_PROVIDER, list(provider)),
-    ]
-    for source, answer in order:
-        if isinstance(answer, str):
-            if answer:
-                return Resolution(fixed_version=answer, source=source)
-            continue
-        if not answer:
-            continue
-        if installed and parse_version(installed) is not None:
-            verdicts = [r.contains(installed) for r in answer]
-            if all(v is False for v in verdicts):
-                return Resolution(not_affected=f"{NOT_AFFECTED_PREFIX} {installed} is outside the affected ranges")
-        fixed = _smallest_fix_above(answer, installed)
-        if fixed:
-            return Resolution(fixed_version=fixed, source=source)
-    return Resolution()
 
 
 def smallest_fixing_every(versions: Iterable[str]) -> str | None:

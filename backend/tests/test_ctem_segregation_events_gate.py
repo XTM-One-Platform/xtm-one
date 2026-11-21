@@ -15,7 +15,13 @@ from app.services import ctem_scope_gate as gate
 from app.services import ctem_scope_gate_store as store
 from app.services import platform_events as pe
 
-CASE_EVENTS = ("ctem_case.opened", "ctem_case.reopened", "ctem_case.resolved", "ctem_case.sla_breached")
+CASE_EVENTS = (
+    "ctem_case.opened",
+    "ctem_case.reopened",
+    "ctem_case.resolved",
+    "ctem_case.sla_breached",
+    "ctem_case.validation_finished",
+)
 
 
 def _case(**extra) -> SimpleNamespace:

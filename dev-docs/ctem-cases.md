@@ -120,38 +120,44 @@ Keys are normalized (lower case, trimmed, vendor folded to the stack entry).
 The same vulnerability on two products yields two memberships, one per key.
 A configuration change is R1 only (a course of action); it is never guessed.
 
-### 4.2bis Fixed version and declared version (CTEM-11, #894)
+### 4.2bis Fixed version and declared version (CTEM-11, #894, #946)
 
-The reader fills `fixed_version` per (vulnerability, stack product), first
-source that answers wins (`services/ctem_fixed_version.py`, pure):
+Affected and fixed versions are knowledge: they live in OpenCTI, XTM One
+reads them (#946, which removed the range engine and the VulnCheck NVD 2.0
+read of #895 and #932). The reader (`ctem_cases_source._read_opencti`) reads,
+with the acting user's own OpenCTI credentials and nothing else:
 
-1. OpenCTI's affected ranges on the Vulnerability (`opencti_ranges`). OpenCTI
-   carries none today; the hook answers nothing until the range attribute of
-   CTEM-09 lands, then is read here first.
-2. A course of action that is a plain upgrade ("Upgrade to 9.0.98",
-   `version_from_course_of_action`): the case stays R1, its `fixed_version`
-   is the named version.
-3. Ranges a connected enrichment provider served, in the NVD 2.0 shape
-   (`configurations[].nodes[].cpeMatch[]`, `ranges_from_nvd2`), passed to
-   `opencti_issues(provider_ranges=...)`. The reader reads them itself
-   (`ctem_cases_source._read_opencti`, slice 2): when a company-managed
-   VulnCheck integration is visible to the reading user
-   (`ENRICHMENT_PROVIDER`, `_enrichment_key`), the CVE names of the
-   vulnerabilities on the stack are looked up with
-   `vulncheck.nvd2_records` (enriched `vulncheck-nvd2` index first, the
-   community `nist-nvd2` index when the key is not licensed for it, 8 reads at
-   a time, at most `ENRICHMENT_CVE_CAP` = 100 CVEs per recompute) and parsed
-   per stack entry (`provider_ranges_for`, keyed `<CVE>|<stack label>`). No
-   integration, an unreadable key, a provider outage or a CVE past the cap
-   leave the fixed version to the other sources: the OpenCTI read is never
-   dropped for it.
-4. Nothing: "fixed version unknown", the key stays `@latest`.
+- the stack's Software observables with their `version`
+  (`_OCTI_STACK_SOFTWARE`);
+- `Software has Vulnerability` from those nodes (`_OCTI_STACK_VULNS`);
+- `Course-Of-Action remediates|mitigates Vulnerability` (`_OCTI_REMEDIATIONS`);
+- `Software remediates Vulnerability` (`_OCTI_SOFTWARE_REMEDIATES`), the
+  relation OpenCTI models between a Software version and the vulnerability
+  it fixes.
+
+`opencti_issues` then fills, per (vulnerability, stack product):
+
+1. the fixed version: the smallest version of a Software of that product
+   that `remediates` the vulnerability, above the declared version
+   (`ctem_fixed_version.smallest_fix_above`);
+2. else the version a course of action names when it is a plain upgrade
+   ("Upgrade to 9.0.98", `version_from_course_of_action`): the case stays
+   R1, its `fixed_version` is the named version;
+3. else nothing: the member says "fixed version unknown" and the key stays
+   `@latest`.
 
 A tech stack entry takes an optional `version` (the version the organization
-runs). With it:
+runs). The declared version is the Software node of that product whose
+`version` equals it (`1.2` equals `1.2.0`) or whose CPE equals the entry's.
+With it:
 
-- the fix taken is the smallest fix of the ranges that contain the declared
-  version and lie above it;
+- a vulnerability that node has no `has` to is "not affected: version <v>
+  has no 'has' relation to <CVE> in OpenCTI": it opens no case, is counted
+  `not_affected` and listed in the recompute answer (`not_affected_issues`,
+  at most 50), and an existing member that turns not affected is closed with
+  that reason as evidence;
+- when OpenCTI holds no Software of the declared version, nothing is marked
+  not affected and every member says "version not known to OpenCTI: <v>";
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
@@ -161,17 +167,14 @@ runs). With it:
   of the same `upgrade:<vendor>/<product>@` that holds the most of the new
   key's members takes the new key (added to its `keys`, the old ones kept),
   its title and `fixed_version` follow, and a `retargeted` event records the
-  key (`ctem_cases._holder_of`, `CasePlan.add_keys`);
-- a member whose declared version is outside every known range is "not
-  affected: version <v> is outside the affected ranges": it opens no case, is
-  counted `not_affected` and listed in the recompute answer
-  (`not_affected_issues`, at most 50), and an existing member that turns not
-  affected is closed with that reason as evidence.
+  key (`ctem_cases._holder_of`, `CasePlan.add_keys`).
 
-Without a declared version nothing changes (two fixed versions stay two
-cases, as section 2 says). Versions compare part by part (numbers as numbers,
-`rc`/`beta`/`alpha`/`dev` before the release, a post-release letter after it,
-an epoch `1:` and a `v` prefix read); distribution backports are not visible.
+What OpenCTI could not tell is listed in the recompute answer
+(`version_notes`, at most 50), never guessed. Without a declared version
+nothing changes (two fixed versions stay two cases, as section 2 says).
+Versions compare part by part (numbers as numbers, `rc`/`beta`/`alpha`/`dev`
+before the release, a post-release letter after it, an epoch `1:` and a `v`
+prefix read); distribution backports are not visible.
 
 ### 4.3 Recompute
 
@@ -569,6 +572,8 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
 
 **Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id; filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
+
+**OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted` and `scenario_score_degraded`; its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}` on top of the case routing; like the other case events it is in `VIEWER_CHECKED_EVENTS`, so only a run whose user reads the case hears it (#933). Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table. Path 4 waits for an OpenAEV event on an attack path reaching a critical asset (CTEM-13).
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 

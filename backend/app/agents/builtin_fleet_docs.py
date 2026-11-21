@@ -91,7 +91,10 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
         "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
         "- **Case opened or reopened**: a CTEM case on any other path is opened, reopened by a failed "
-        "re-test, or past its SLA; the case is the record of the loop."
+        "re-test, past its SLA, or an OpenAEV result it waits on arrived; the case is the record of the loop.\n"
+        "- **OpenAEV results into cases**: listens to OpenAEV with no run of its own; a finished "
+        "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
+        "a regression signal."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"
