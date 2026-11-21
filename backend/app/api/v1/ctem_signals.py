@@ -218,7 +218,9 @@ async def propose_ctem_signal_scope(
     decision = row.decision or {}
     criticality = ((decision.get("scope") or {}).get("criticality")) or ""
     if row.state != "watchlist" or decision.get("reason_code") not in SCOPE_PROPOSAL_CODES or not criticality:
-        raise HTTPException(status_code=409, detail="Only a watchlisted signal below the scope threshold can propose a scope change")
+        raise HTTPException(
+            status_code=409, detail="Only a watchlisted signal below the scope threshold can propose a scope change"
+        )
     label = row.subject_label or row.subject_ref
     try:
         proposal = await proposals.propose(
@@ -235,7 +237,12 @@ async def propose_ctem_signal_scope(
     except proposals.ProposalError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
-    return {"proposal_id": str(proposal.id), "status": proposal.status, "field": "prioritization_policy.scope_min_criticality", "value": criticality}
+    return {
+        "proposal_id": str(proposal.id),
+        "status": proposal.status,
+        "field": "prioritization_policy.scope_min_criticality",
+        "value": criticality,
+    }
 
 
 @router.get("/{signal_id}")

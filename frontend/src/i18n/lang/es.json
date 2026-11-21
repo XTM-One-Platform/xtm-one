@@ -19953,5 +19953,19 @@
   "Propose to raise the scope": "Proponer ampliar el alcance",
   "Optional: nothing waits on it.": "Opcional: nada espera esta acción.",
   "Proposal saved. An administrator reviews it in Settings > Organization.": "Propuesta guardada. Un administrador la revisa en Configuración > Organización.",
-  "The proposal could not be saved": "No se pudo guardar la propuesta"
+  "The proposal could not be saved": "No se pudo guardar la propuesta",
+  "Signal to case": "De la señal al caso",
+  "Case to first validation": "Del caso a la primera validación",
+  "Case to decision": "Del caso a la decisión",
+  "Case to passing re-test": "Del caso a la nueva prueba superada",
+  "No case yet": "Aún no hay casos",
+  "{count, plural, one {# hour} other {# hours}}": "{count, plural, one {# hora} other {# horas}}",
+  "The loop measures could not be read": "No se pudieron leer las medidas del ciclo",
+  "No case yet: the measures start with the first case the loop opens": "Aún no hay casos: las medidas empiezan con el primer caso que abre el ciclo",
+  "Median of {count, plural, one {# case} other {# cases}}": "Mediana de {count, plural, one {# caso} other {# casos}}",
+  "Closed on proof": "Cerrado con prueba",
+  "No resolved case yet": "Aún no hay casos resueltos",
+  "{proven} of {count, plural, one {# resolved case} other {# resolved cases}}": "{proven} de {count, plural, one {# caso resuelto} other {# casos resueltos}}",
+  "Loop measures": "Medidas del ciclo",
+  "How fast the loop runs, read from the history of the cases you can see": "La velocidad del ciclo, leída del historial de los casos que puede ver"
 }

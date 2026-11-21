@@ -427,9 +427,14 @@ async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_con
     """CTEM-30 (#937): per-path counts on the caller's visible signals; a path with no listener and no signal is not configured."""
     async with client as http:
         await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))
-        await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB})
+        await http.post(
+            "/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB}
+        )
         alice = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
-        admin = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths", headers={"X-User": ADMIN})).json()["paths"]}
+        admin = {
+            p["id"]: p
+            for p in (await http.get("/api/v1/ctem-signals/paths", headers={"X-User": ADMIN})).json()["paths"]
+        }
     assert alice["stale_asset"]["total"] == 1 and alice["stale_asset"]["counts"]["new"] == 1
     assert admin["stale_asset"]["total"] == 2
     assert alice["stale_asset"]["configured"] is True
@@ -457,7 +462,9 @@ async def test_propose_scope_stores_a_proposal_for_a_readable_watchlisted_signal
     monkeypatch.setattr(proposals, "propose", _propose)
     async with client as http:
         await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))
-        await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB})
+        await http.post(
+            "/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "b"), headers={"X-User": BOB}
+        )
         mine = _watchlisted(store, ALICE)
         bobs = _watchlisted(store, BOB)
         ok = await http.post(f"/api/v1/ctem-signals/{mine.id}/propose-scope")

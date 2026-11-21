@@ -267,6 +267,23 @@ async def counts_by_path(
     return counts
 
 
+async def observed_by_case(
+    db: AsyncSession, case_ids: list[uuid.UUID], *, organization_id: uuid.UUID, recorded_by: str | None
+) -> dict[uuid.UUID, list[datetime]]:
+    """When the signals that opened or joined each case were observed, the reader's own only (CTEM-30, #937)."""
+    out: dict[uuid.UUID, list[datetime]] = {cid: [] for cid in case_ids}
+    if not case_ids:
+        return out
+    statement = _visible(
+        select(CtemSignal.case_id, CtemSignal.observed_at).where(CtemSignal.case_id.in_(case_ids)),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    )
+    for case_id, observed in (await db.execute(statement)).all():
+        out.setdefault(case_id, []).append(observed)
+    return out
+
+
 async def get_signal(
     db: AsyncSession, signal_id: uuid.UUID, *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> CtemSignal | None:
