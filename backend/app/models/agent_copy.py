@@ -1153,6 +1153,9 @@ TRIGGER_CONFIG_PORTABLE_KEYS: tuple[str, ...] = (
     # The OpenCTI / OpenAEV trigger an assignment declares (fleet, purpose,
     # filter), provisioned by each instance on its own platform.
     "provision",
+    # CTEM-08: keep a relationship only when its source runs in the profile
+    # (``services/ctem_trigger_rules.py``), read against each instance's own profile.
+    "runs_in_profile",
 )
 
 

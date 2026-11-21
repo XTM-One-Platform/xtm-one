@@ -109,6 +109,9 @@ def test_spec_is_normalised_and_named():
         ({"cisa_kev": "yes"}, "cisa_kev"),
         ({"min_epss_score": 1.5}, "min_epss_score"),
         ({"min_epss_score": True}, "min_epss_score"),
+        ({"min_cvss": 11}, "min_cvss"),
+        ({"min_cvss": True}, "min_cvss"),
+        ({"to_types": [""]}, "non-empty"),
         ("yes", "object"),
     ],
 )
@@ -147,8 +150,34 @@ def test_epss_alone_is_a_gte_filter_and_a_usable_spec():
 def test_a_spec_without_vulnerability_signals_keeps_its_filters():
     spec = prov.read_provision_spec(SPEC_CONFIG)
     assert spec["cisa_kev"] is None and spec["min_epss_score"] is None and spec["from_types"] == []
+    assert spec["to_types"] == [] and spec["relationship_types"] == [] and spec["min_cvss"] is None
     filters = json.loads(prov.trigger_filters(spec, ["label-1"]))
     assert {f["key"][0] for f in filters["filters"]} == {"entity_type", "objectLabel", "x_opencti_score"}
+
+
+def test_to_types_relationship_types_and_min_cvss_are_filters():
+    spec = prov.read_provision_spec(
+        {
+            "provider": "opencti",
+            "provision": {"to_types": ["Vulnerability"], "relationship_types": ["has"], "min_cvss": 7},
+        }
+    )
+    assert spec["to_types"] == ["Vulnerability"] and spec["relationship_types"] == ["has"]
+    assert spec["min_cvss"] == 7.0
+    keys = {f["key"][0]: f for f in json.loads(prov.trigger_filters(spec, []))["filters"]}
+    assert keys["toTypes"] == {"key": ["toTypes"], "values": ["Vulnerability"], "operator": "eq", "mode": "or"}
+    assert keys["entity_type"]["values"] == ["has"]
+    assert keys["x_opencti_cvss_base_score"] == {
+        "key": ["x_opencti_cvss_base_score"],
+        "values": ["7.0"],
+        "operator": "gte",
+        "mode": "or",
+    }
+
+
+def test_each_new_key_alone_is_a_usable_spec():
+    for provision in ({"to_types": ["Vulnerability"]}, {"relationship_types": ["has"]}, {"min_cvss": 9}):
+        assert prov.read_provision_spec({"provider": "opencti", "provision": provision})
 
 
 def test_notifier_posts_to_the_receiver_with_the_token():

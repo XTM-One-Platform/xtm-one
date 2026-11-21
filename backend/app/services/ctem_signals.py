@@ -206,6 +206,7 @@ async def list_signals(
     state: str | None = None,
     trigger_path: str | None = None,
     lens: str | None = None,
+    case_id: uuid.UUID | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[CtemSignal], int, dict[str, int]]:
@@ -227,6 +228,9 @@ async def list_signals(
         base = base.where(CtemSignal.trigger_path == trigger_path)
     if lens:
         base = base.where(CtemSignal.lens == lens)
+    if case_id is not None:
+        # The signals that opened or joined one case (CTEM-03-UI #892: its "Opened by" card).
+        base = base.where(CtemSignal.case_id == case_id)
     counted = base.with_only_columns(CtemSignal.state, func.count()).group_by(CtemSignal.state)
     counts = {s: 0 for s in SIGNAL_STATES}
     for value, number in (await db.execute(counted)).all():

@@ -1031,6 +1031,26 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   these types (`fromTypes`; a sighting's `sighting_of_ref`), so
   `{"entity_types": ["stix-sighting-relationship"], "from_types":
   ["Vulnerability"]}` is a sighting of a vulnerability.
+- Relationship target, type and CVSS (CTEM-08): `to_types` keeps a
+  relationship whose target is of these types (`toTypes`, parent types
+  included); `relationship_types` names the relationship type (`has`,
+  `targets`...), matched on `entity_type`, which is the relationship type of
+  a relationship in OpenCTI; `min_cvss` (0 to 10, gte on
+  `x_opencti_cvss_base_score`) is read on the delivered object, so it applies
+  to a Vulnerability, never to a relationship.
+- Trigger rule "a vulnerability on software we run" (CTEM-08):
+  `trigger_config.runs_in_profile: "source"` (beside `provision`, never
+  sent to OpenCTI) keeps a relationship delivery only when its source
+  (`source_value` of the OpenCTI extension) names a tech stack product
+  (product name or CPE) or an asset (name or external id) of the primary
+  organization profile. The receiver reads it before the trigger's filter,
+  gate or run (`services/ctem_trigger_rules.py`); a drop is counted on the
+  assignment with its reason. The F2 orchestrator's "Vulnerability on
+  software we run" listener uses it on `has` from Software, Infrastructure
+  or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
+  listener records the source in the signal's `evidence.software`, so the
+  scope gate resolves the signal to that product. The PIR score thresholds
+  of the same item wait for OpenCTI to emit an event at PIR flag time.
 
 ### 8.2 Event enrichment
 
