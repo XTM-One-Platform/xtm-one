@@ -320,11 +320,6 @@ async def _deliver(config: A2APushConfig, task: A2ATask, state: str) -> None:
     exhausting the budget is what stops a dead endpoint being retried.
     """
     config.attempts += 1
-    headers = {"Content-Type": "application/json"}
-    credentials = _reveal(config.auth_credentials)
-    if config.auth_scheme and credentials:
-        headers["Authorization"] = f"{config.auth_scheme} {credentials}"
-
     # Identity and state only. A forged notification therefore discloses
     # nothing; the partner reads the result through tasks/get.
     body: dict[str, Any] = {
@@ -332,20 +327,8 @@ async def _deliver(config: A2APushConfig, task: A2ATask, state: str) -> None:
         "contextId": str(task.context_id),
         "state": state,
     }
-    token = _reveal(config.token)
-    if token:
-        body["token"] = token
-
-    try:
-        # Re-checked, not trusted from registration: DNS moves, and a host that
-        # resolved outward then can resolve inward now.
-        await assert_allowed_async(config.url)
-        async with httpx.AsyncClient(timeout=_DELIVERY_TIMEOUT_SECONDS) as client:
-            response = await client.post(config.url, json=body, headers=headers)
-        response.raise_for_status()
-    except Exception:
+    if not await _post(config, body):
         config.delivery_state = "failed"
-        a2a_metrics.record_push_delivery("failed")
         logger.info(
             "Push notification to task %s callback failed (attempt %s/%s)",
             task.id,
@@ -355,7 +338,45 @@ async def _deliver(config: A2APushConfig, task: A2ATask, state: str) -> None:
         return
 
     config.delivery_state = "delivered"
+
+
+async def deliver_body(config: A2APushConfig, body: dict[str, Any], *, label: str) -> bool:
+    """One best-effort send of *body* to *config*, outside the task's announcement.
+
+    For a notification that is not the task's own state (``ticket_push``): it
+    neither spends the callback's attempt budget nor changes its delivery
+    state, which belong to the task's announcement. Never raises.
+    """
+    delivered = await _post(config, body)
+    if not delivered:
+        logger.info("Push notification about %s to a callback of task %s failed", label, config.task_id)
+    return delivered
+
+
+async def _post(config: A2APushConfig, body: dict[str, Any]) -> bool:
+    """POST *body* to the callback with the partner's credential; whether it was taken.
+
+    Records the delivery metric. Never raises.
+    """
+    headers = {"Content-Type": "application/json"}
+    credentials = _reveal(config.auth_credentials)
+    if config.auth_scheme and credentials:
+        headers["Authorization"] = f"{config.auth_scheme} {credentials}"
+    token = _reveal(config.token)
+    if token:
+        body = {**body, "token": token}
+    try:
+        # Re-checked, not trusted from registration: DNS moves, and a host that
+        # resolved outward then can resolve inward now.
+        await assert_allowed_async(config.url)
+        async with httpx.AsyncClient(timeout=_DELIVERY_TIMEOUT_SECONDS) as client:
+            response = await client.post(config.url, json=body, headers=headers)
+        response.raise_for_status()
+    except Exception:
+        a2a_metrics.record_push_delivery("failed")
+        return False
     a2a_metrics.record_push_delivery("delivered")
+    return True
 
 
 def _reveal(stored: str | None) -> str | None:

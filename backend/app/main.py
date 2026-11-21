@@ -40,6 +40,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.a2a import grants as a2a_grants
 from app.a2a import hooks as a2a_hooks
+from app.a2a import ticket_push as a2a_ticket_push
 from app.api import auth_sso, oauth_callbacks
 from app.api.deps import CodedHTTPException
 from app.api.v1 import (
@@ -4697,6 +4698,10 @@ application.include_router(mcp_xtm.router, prefix="/mcp", tags=["mcp-xtm"])
 # an exposure whose boundary no longer matches it, and chat coming back would
 # resolve it. See ``app.a2a.hooks.register_a2a_hooks``.
 a2a_hooks.register_a2a_hooks()
+
+# A ticket a partner's A2A task filed changed status: the partner's callbacks on
+# that task are told (identity and status only). See ``app.a2a.ticket_push``.
+a2a_ticket_push.register_ticket_push()
 
 # platform.default_model_route.changed: a session listener, so every writer of a
 # default model route (Settings page, agent tool, provider deletion, env seed)
