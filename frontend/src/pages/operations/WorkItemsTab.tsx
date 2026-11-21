@@ -684,7 +684,9 @@ export default function WorkItemsTab({
     const scheduled = isScheduledItem(item);
     const pullRequests = pullRequestsOf(item.payload);
     const facts: OpsFact[] = [];
-    const blockers = pickup === "blocked_on_items" ? listedBlockers(item) : [];
+    // Every unfinished blocker item of a blocked item, whatever the pickup
+    // state (a person's decision too), as the drawer lists them.
+    const blockers = item.status === "blocked" ? listedBlockers(item) : [];
     if (blockers.length) {
       facts.push({ label: t_i18n("Waits for"), tone: "warning", value: <WorkItemBlockers blockers={blockers} /> });
     }
@@ -759,7 +761,7 @@ export default function WorkItemsTab({
     const pickup = context?.pickup.state;
     const pullRequests = pullRequestsOf(item.payload);
     const facts = factsOf(item);
-    const blockers = pickup === "blocked_on_items" ? listedBlockers(item) : [];
+    const blockers = item.status === "blocked" ? listedBlockers(item) : [];
     const waitsOnRefs =
       item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || !!item.needs_human);
     // The meta column shows the owner, then the key, the references or the due date;
