@@ -33,7 +33,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Protocol, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -765,17 +765,133 @@ async def sync_cases(
         counts["errors"] += int(bool(outcome.error))
         if outcome.retest_requested:
             counts["retest"] += 1
-            if events is not None:
-                events.add(
-                    CASE_RETEST_REQUESTED,
-                    case_loop.case_data(
-                        case,
-                        ticket_integration=(managed_ticket(case) or {}).get("integration"),
-                        ticket_key=(managed_ticket(case) or {}).get("key"),
-                    ),
-                    f"{CASE_RETEST_REQUESTED}:{case.id}:{(managed_ticket(case) or {}).get('at', now.isoformat())}",
-                )
+            _raise_retest(events, case, now)
     return counts
+
+
+def _raise_retest(events: case_loop.PendingEvents | None, case: CtemCase, now: datetime) -> None:
+    """Queue ``ctem_case.retest_requested`` once per ticket change (dedupe key: case and ticket time)."""
+    if events is None:
+        return
+    ticket = managed_ticket(case) or {}
+    events.add(
+        CASE_RETEST_REQUESTED,
+        case_loop.case_data(case, ticket_integration=ticket.get("integration"), ticket_key=ticket.get("key")),
+        f"{CASE_RETEST_REQUESTED}:{case.id}:{ticket.get('at', now.isoformat())}",
+    )
+
+
+# --- Inbound status events (Jira pushes; ServiceNow is polled by sync_cases) ----
+
+
+@dataclass(frozen=True)
+class _InboundSource:
+    """Stands for the adapter when the status arrived on an event: only ``provider`` is read."""
+
+    provider: str
+
+
+async def apply_inbound_status(
+    db: AsyncSession,
+    *,
+    integration_id: str,
+    key: str,
+    status_name: str,
+    category: str = "",
+    provider: str = "jira",
+    events: case_loop.PendingEvents | None = None,
+    now: datetime | None = None,
+) -> SyncOutcome | None:
+    """Apply a ticket status an inbound event carried to the case that manages that ticket.
+
+    Only the declared ticketing integration counts; a ticket no case manages
+    answers ``None``. The status goes through the customer's ``status_map``
+    like a pull, so the case moves the moment the ticket does, and ``done``
+    asks for the re-test once. The caller commits and publishes *events*.
+    """
+    from sqlalchemy import select
+
+    from app.services import organization_context as oc
+
+    now = now or datetime.now(UTC)
+    key = (key or "").strip()
+    if not key or not integration_id:
+        return None
+    row = await oc.current_version(db)
+    if row is None:
+        return None
+    profile = oc.parse_profile(row.profile)
+    if (profile.ticketing.integration or "").strip() != str(integration_id):
+        return None
+    sync = profile.ticketing.sync
+    cases = (
+        (
+            await db.execute(
+                select(CtemCase)
+                .where(CtemCase.organization_id == row.organization_id)
+                .order_by(CtemCase.updated_at.desc())
+                .limit(SYNC_BATCH)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in cases:
+        ticket = managed_ticket(case)
+        if ticket is None or str(ticket.get("key")) != key or str(ticket.get("integration")) != str(integration_id):
+            continue
+        remote = RemoteTicket(
+            key=key,
+            url=str(ticket.get("url") or ""),
+            status=map_status(status_name, status_map=dict(getattr(sync, "status_map", {}) or {}), category=category),
+            external_status=status_name,
+        )
+        # The status is given (``remote``): pull_ticket_status reads only the adapter's provider name.
+        source = cast(TicketingAdapter, _InboundSource(provider))
+        outcome = await pull_ticket_status(db, case, source, sync, remote=remote, now=now)
+        if outcome.retest_requested:
+            _raise_retest(events, case, now)
+        return outcome
+    return None
+
+
+async def apply_jira_delivery(integration_id: str, payload: Any) -> SyncOutcome | None:
+    """Move the case of a Jira issue a verified webhook delivery carries (``jira_webhooks``).
+
+    Never raises: a failure is logged and the next ``sync_cases`` pull applies the status.
+    """
+    from app.core.database import async_session
+
+    issue = payload.get("issue") if isinstance(payload, dict) else None
+    if not isinstance(issue, dict):
+        return None
+    raw_fields = issue.get("fields")
+    fields: dict[str, Any] = raw_fields if isinstance(raw_fields, dict) else {}
+    raw_status = fields.get("status")
+    status: dict[str, Any] = raw_status if isinstance(raw_status, dict) else {}
+    name = str(status.get("name") or "")
+    if not name:
+        return None
+    category = str((status.get("statusCategory") or {}).get("key") or "")
+    pending = case_loop.PendingEvents()
+    try:
+        async with async_session() as db:
+            outcome = await apply_inbound_status(
+                db,
+                integration_id=str(integration_id),
+                key=str(issue.get("key") or ""),
+                status_name=name,
+                category=category,
+                events=pending,
+            )
+            if outcome is None:
+                return None
+            await db.commit()
+        await case_loop.publish_pending(pending)
+        return outcome
+    except Exception:
+        logger.warning("CTEM ticket status from a Jira delivery left to the sync pull", exc_info=True)
+        return None
 
 
 #: The providers the sync knows, by integration provider key. A new ticketing

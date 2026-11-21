@@ -312,6 +312,76 @@ async def test_scheduled_pass_with_no_ticketing_does_nothing(monkeypatch):
     assert counts == {"created": 0, "pulled": 0, "pushed": 0, "retest": 0, "errors": 0, "not_connected": 1}
 
 
+@pytest.mark.asyncio
+async def test_a_jira_status_event_moves_its_case_at_once_and_asks_the_retest_once(monkeypatch):
+    from app.services import ctem_case_loop as case_loop
+    from app.services import organization_context as oc
+
+    org = uuid.uuid4()
+    case = _case(organization_id=org)
+    other = _case(organization_id=org)
+    adapter = FakeAdapter()
+    await tk.ensure_ticket(FakeSession(), case, adapter, SYNC, integration="jira-1", now=NOW)
+    row = type(
+        "V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "jira-1", "project": "ITS"}}}
+    )()
+
+    async def _current(db, organization_id=None):
+        return row
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    db = _SyncSession([other, case])
+    events = case_loop.PendingEvents()
+    moved = await tk.apply_inbound_status(
+        db, integration_id="jira-1", key="ITS-1", status_name="In Progress", category="indeterminate", events=events
+    )
+    assert moved is not None and moved.updated and not moved.retest_requested
+    assert tk.managed_ticket(case)["status"] == "in_progress" and other.tickets == []
+    done = await tk.apply_inbound_status(
+        db, integration_id="jira-1", key="ITS-1", status_name="Done", category="done", events=events
+    )
+    assert done.retest_requested and case.state == "in_progress"  # the case closes on the re-test, never on the ticket
+    again = await tk.apply_inbound_status(
+        db, integration_id="jira-1", key="ITS-1", status_name="Done", category="done", events=events
+    )
+    assert not again.updated and [n for n, _d, _i in events.items] == [tk.CASE_RETEST_REQUESTED]
+    assert tk.managed_ticket(case)["sync"]["state"] == "in_sync"
+
+
+@pytest.mark.asyncio
+async def test_an_event_from_another_integration_or_an_unknown_key_moves_nothing(monkeypatch):
+    from app.services import organization_context as oc
+
+    org = uuid.uuid4()
+    case = _case(organization_id=org)
+    await tk.ensure_ticket(FakeSession(), case, FakeAdapter(), SYNC, integration="jira-1", now=NOW)
+    row = type(
+        "V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "jira-1", "project": "ITS"}}}
+    )()
+
+    async def _current(db, organization_id=None):
+        return row
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    db = _SyncSession([case])
+    assert await tk.apply_inbound_status(db, integration_id="jira-2", key="ITS-1", status_name="Done") is None
+    assert await tk.apply_inbound_status(db, integration_id="jira-1", key="ITS-9", status_name="Done") is None
+    assert tk.managed_ticket(case)["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_a_jira_delivery_without_a_status_or_with_a_failure_never_raises(monkeypatch):
+    assert await tk.apply_jira_delivery("jira-1", {"issue": {"key": "ITS-1", "fields": {}}}) is None
+    assert await tk.apply_jira_delivery("jira-1", {"no": "issue"}) is None
+
+    async def _boom(db, **kw):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(tk, "apply_inbound_status", _boom)
+    delivery = {"issue": {"key": "ITS-1", "fields": {"status": {"name": "Done", "statusCategory": {"key": "done"}}}}}
+    assert await tk.apply_jira_delivery("jira-1", delivery) is None
+
+
 def test_retest_event_is_declared_platform_wide():
     from app.services import platform_events
 
