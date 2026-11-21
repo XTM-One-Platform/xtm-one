@@ -129,7 +129,11 @@ def _activity(activity_type="notification", **metadata):
         (_activity(notification_source="work_item"), "reminder", "/operations"),
         (_activity(notification_source="agent", path="/dashboards/x"), "agent_message", "/dashboards/x"),
         (_activity(notification_source="agent", path="//evil.example"), "agent_message", "/"),
-        (_activity(notification_source="run_action_request", run_id=UUID_A), "run_action_request", f"/operations/executions/{UUID_A}"),
+        (
+            _activity(notification_source="run_action_request", run_id=UUID_A),
+            "run_action_request",
+            f"/operations/executions/{UUID_A}",
+        ),
         (_activity(notification_source="run_action_request", run_id="../x"), "run_action_request", "/operations"),
     ],
 )

@@ -289,7 +289,9 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
     if source == "run_action_request":
         # Someone who cannot answer a paused run asked its owner to act: the run.
         run_id = _str(metadata, "run_id")
-        return item("run_action_request", f"/operations/executions/{run_id}" if _is_uuid(run_id) else "/operations", "Run")
+        return item(
+            "run_action_request", f"/operations/executions/{run_id}" if _is_uuid(run_id) else "/operations", "Run"
+        )
     if source == "builtin_tools_outside_allowlist":
         # A release shipped tools an agent's allowlist leaves out (#12192): its
         # Tooling section, where each one is added in one click.

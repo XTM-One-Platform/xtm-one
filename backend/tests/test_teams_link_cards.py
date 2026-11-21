@@ -97,7 +97,9 @@ def test_anything_else_does_not_unfurl(url):
 
 
 def test_the_open_link_is_built_from_the_platform_address_and_the_id_only():
-    assert cards.page_url(cards.LinkTarget("run", RUN_ID)) == f"https://xtm.example.com/one/operations/executions/{RUN_ID}"
+    assert (
+        cards.page_url(cards.LinkTarget("run", RUN_ID)) == f"https://xtm.example.com/one/operations/executions/{RUN_ID}"
+    )
 
 
 # --- The posted card -------------------------------------------------------------
@@ -123,7 +125,11 @@ def test_the_posted_card_is_the_same_for_every_run():
     }
     assert "userIds" not in content["refresh"]
     assert content["actions"] == [
-        {"type": "Action.OpenUrl", "title": "Open in XTM One", "url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}"}
+        {
+            "type": "Action.OpenUrl",
+            "title": "Open in XTM One",
+            "url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}",
+        }
     ]
 
 
@@ -539,7 +545,9 @@ async def test_a_pasted_link_unfurls_without_reading_anything():
         patch("app.core.database.async_session") as sessions,
     ):
         response = await teams_messages(
-            _invoke("composeExtension/queryLink", {"url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}"})
+            _invoke(
+                "composeExtension/queryLink", {"url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}"}
+            )
         )
 
     assert response.status_code == 200
@@ -553,7 +561,9 @@ async def test_a_link_that_is_not_ours_gets_no_card():
         patch("app.channels.teams._get_teams_app_id", new=AsyncMock(return_value="app-123")),
         patch("app.channels.teams._verify_botframework_jwt", return_value=True),
     ):
-        response = await teams_messages(_invoke("composeExtension/queryLink", {"url": "https://evil.test/operations/executions/x"}))
+        response = await teams_messages(
+            _invoke("composeExtension/queryLink", {"url": "https://evil.test/operations/executions/x"})
+        )
 
     assert response.status_code == 200
     assert response.body == b""
