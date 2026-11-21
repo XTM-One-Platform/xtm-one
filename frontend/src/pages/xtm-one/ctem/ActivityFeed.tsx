@@ -5,6 +5,7 @@ import { formatTimeAgo } from "@/lib/relative-time";
 import { eventStatus, type ActivityEvent } from "./activity-feed";
 import { activityText } from "./activity-text";
 import { ActivityRow } from "./ActivityRow";
+import { SIGNAL_STATE_LABEL } from "./loop/DecisionReason";
 
 /**
  * The deterministic activity feed of the Live activity card (D3-4, #9567):
@@ -31,6 +32,7 @@ export function ActivityFeed({ events, onOpenSignal }: { events: ActivityEvent[]
             title={title}
             detail={detail}
             status={eventStatus(event)}
+            statusLabel={event.kind === "signal_received" ? t_i18n(SIGNAL_STATE_LABEL[event.state] ?? event.state) : undefined}
             time={formatTimeAgo(intl, event.at)}
             at={event.at}
             onOpen={open}

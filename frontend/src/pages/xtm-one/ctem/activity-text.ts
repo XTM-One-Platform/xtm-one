@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { CheckCircle2, PlugZap, Radar, RefreshCw, ServerOff, type LucideIcon } from "lucide-react";
+import { CheckCircle2, PlugZap, RefreshCw, ServerOff, type LucideIcon } from "lucide-react";
+import type { IconName } from "@filigran/design-system";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import type { ActivityEvent } from "./activity-feed";
 import { decisionSentence, SIGNAL_STATE_LABEL } from "./loop/DecisionReason";
@@ -15,7 +16,7 @@ const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside
 export function activityText(
   event: ActivityEvent,
   t_i18n: (id: string, values?: Record<string, string | number>) => string,
-): { icon: LucideIcon; title: string; detail: string } {
+): { icon: IconName | LucideIcon; title: string; detail: string } {
   switch (event.kind) {
     case "posture_synced":
       return {
@@ -41,8 +42,9 @@ export function activityText(
       };
     case "signal_received":
       // Never hidden (section 3): the path, the lens, the state and its why on one line.
+      // A DS icon (#851 UX round 1 B3): no new direct lucide icon since DS 1.9.0.
       return {
-        icon: Radar,
+        icon: "activity",
         title: t_i18n("Signal received: {subject}", { subject: event.label }),
         detail: [
           t_i18n(event.path),

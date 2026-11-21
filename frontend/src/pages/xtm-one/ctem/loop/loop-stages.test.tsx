@@ -95,6 +95,14 @@ describe("signal rows in Live activity", () => {
     expect(open).toHaveBeenCalledWith(ID);
   });
 
+  // #851 UX round 1 A3: the dot of a signal reads its state, never the run wording.
+  it("reads the signal state for the status dot", () => {
+    renderWithProviders(<ActivityFeed events={signalActivity([signal({ state: "watchlist" })])} onOpenSignal={vi.fn()} />);
+    const status = screen.getByTestId("activity-row-status");
+    expect(status).toHaveTextContent("Watchlist");
+    expect(status).not.toHaveTextContent("Partial");
+  });
+
   it("keeps the other rows read-only", () => {
     const older: ActivityEvent = { kind: "posture_synced", id: "posture", at: "2026-11-21T07:00:00Z", covered: 4, total: 5 };
     renderWithProviders(<ActivityFeed events={[older]} onOpenSignal={vi.fn()} />);

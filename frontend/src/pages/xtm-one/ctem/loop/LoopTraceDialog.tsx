@@ -20,6 +20,7 @@ import { useCtemSignal, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
+import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { DecisionReason } from "./DecisionReason";
 import { parseLoopParam, signalLoop, type LoopStageView } from "./loop-stages";
@@ -52,17 +53,20 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
         <span aria-hidden>·</span>
         <span>{t_i18n("Lens: {lens}", { lens: t_i18n(LENS_LABEL[signal.lens] ?? signal.lens) })}</span>
         <span aria-hidden>·</span>
-        <span>{t_i18n("Source: {provider}", { provider: signal.source.provider })}</span>
+        <span>{t_i18n("Source: {provider}", { provider: CTEM_PRODUCT_INFO[signal.source.provider]?.name ?? signal.source.provider })}</span>
       </div>
       <DecisionReason state={signal.state} decision={signal.decision} showInputs />
-      <ol className="flex flex-col gap-0 xl:flex-row xl:gap-1" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
+      {/* One vertical list at every width (#851 UX round 1 B1): the dialog is
+          896 px at most, so a row of ten cells (81 px each) wraps its labels
+          and staggers the status captions; the list keeps one baseline. */}
+      <ol className="flex flex-col gap-0" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
         {stages.map((stage, index) => (
           <li
             key={stage.key}
             data-stage={stage.key}
             data-status={stage.status}
             className={cn(
-              "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 xl:flex-1 xl:flex-col xl:items-start xl:gap-1",
+              "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5",
               (stage.status === "current" || stage.status === "stopped") && "layer-1 bg-elevation-hover",
               stage.status === "not_reached" && "text-default-secondary",
             )}
@@ -70,7 +74,7 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
             <span className="flex h-4 w-4 shrink-0 items-center justify-center">
               <StageGlyph status={stage.status} />
             </span>
-            <span className="min-w-0 flex-1 xl:flex-none">
+            <span className="min-w-0 flex-1">
               <span className="block content-compact font-medium">
                 <span className="sr-only">{t_i18n("Stage {n}", { n: index + 1 })}: </span>
                 {t_i18n(stage.label)}

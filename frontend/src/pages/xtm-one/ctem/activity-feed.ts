@@ -15,8 +15,10 @@ import { listCapacity, type WidgetSize } from "@/components/dashboard-grid/widge
  *  the gaps and a two-line lock footer (measured 140 px at the default size,
  *  #9568 UX round 1 B1). */
 const FEED_CHROME = 140;
-/** One row of the card (`ActivityRow`): 55.5 px measured, rounded up. */
-const FEED_ROW_HEIGHT = 56;
+/** One row of the card (`ActivityRow`): since #851 UX round 1 B2 it takes the
+ *  anatomy of the compact run rows (12 px inset, 32 px icon tile), measured
+ *  59 to 62 px in that round: the tallest is kept so no row is cut. */
+const FEED_ROW_HEIGHT = 62;
 
 /** Rows the Live activity card shows at its grid size, at most `max`: every
  *  row it draws is fully visible, none hides under an inner scroll (#9568 UX
