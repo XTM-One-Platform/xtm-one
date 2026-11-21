@@ -351,3 +351,105 @@ def module_tools_offered() -> bool:
     from app.core.config import settings
 
     return bool(settings.is_xtm_one)
+
+
+async def _cycle_module_target(
+    db: AsyncSession, trigger_context: object, agent_id: uuid.UUID
+) -> tuple[str, uuid.UUID] | None:
+    """``(provider, integration id)`` of the registration the run's own Module Analyst cycle
+    investigates; ``None`` for any other run (no cycle, another target type or agent, an
+    inactive registration or one without its integration)."""
+    from sqlalchemy import select
+
+    from app.models.health_cycle import HealthCycleRun
+    from app.models.platform_registration import PlatformRegistration
+    from app.services.health.memory_steward_deps import cycle_id_of
+    from app.services.health.module_analyst import MODULE_PROVIDERS
+
+    cycle_id = cycle_id_of(trigger_context)
+    if cycle_id is None:
+        return None
+    cycle = (
+        await db.execute(
+            select(HealthCycleRun.target_type, HealthCycleRun.target_id, HealthCycleRun.agent_id).where(
+                HealthCycleRun.cycle_id == cycle_id
+            )
+        )
+    ).one_or_none()
+    if cycle is None or cycle.target_type != "module" or cycle.target_id is None or cycle.agent_id != agent_id:
+        return None
+    row = (
+        await db.execute(
+            select(
+                PlatformRegistration.platform_identifier,
+                PlatformRegistration.status,
+                PlatformRegistration.integration_id,
+            ).where(PlatformRegistration.id == cycle.target_id)
+        )
+    ).one_or_none()
+    if row is None or row.platform_identifier not in MODULE_PROVIDERS:
+        return None
+    if row.status != "active" or row.integration_id is None:
+        return None
+    return str(row.platform_identifier), row.integration_id
+
+
+def keep_allow_listed_reads(
+    provider: str, definitions: list[ToolDefinition], executor: CallableToolExecutor
+) -> list[ToolDefinition]:
+    """The module tools the analyst sees: allow-listed and read (both locks of section 12.3);
+    every other tool of the binding is dropped and a call to it by name refused."""
+    from app.services.health.module_analyst import REFUSAL_REASON, refuse_module_tool
+    from app.services.integration_read_only import withhold_tools
+
+    return withhold_tools(
+        definitions,
+        executor,
+        {
+            d.name: REFUSAL_REASON
+            for d in definitions
+            if refuse_module_tool(provider, d.base_name or d.name) is not None
+        },
+    )
+
+
+async def add_module_read_tools(
+    db: AsyncSession,
+    composite: Any,
+    builtin_tool_ids: list[str],
+    *,
+    trigger_context: object,
+    agent_id: uuid.UUID,
+    user_id: str | None,
+    run_id: str,
+) -> int:
+    """Wire the module reads into a Module Analyst cycle's run (section 12.3); the tools added.
+
+    The registration the cycle investigates is read from the cycle row, never from the
+    payload, and its integration (the one the registration created) is built read-only:
+    write tools are withheld by the read-only binding rule, then everything outside
+    ``MODULE_ANALYST_TOOLS`` is withheld too. Any other run gets nothing.
+    """
+    if MODULES_GROUP_ID not in builtin_tool_ids or not module_tools_offered():
+        return 0
+    target = await _cycle_module_target(db, trigger_context, agent_id)
+    if target is None:
+        return 0
+    provider, integration_id = target
+    from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
+    from app.services.integration_tools import build_integration_tools
+
+    context = {
+        "source": "health_module_analyst",
+        "agent_id": str(agent_id),
+        "run_id": run_id,
+        "autonomous": True,
+        "hitl_enabled": False,
+        "user_id": user_id,
+        READ_ONLY_CONTEXT_KEY: frozenset({str(integration_id)}),
+    }
+    definitions, executor = await build_integration_tools(db, {provider: str(integration_id)}, context=context)
+    kept = keep_allow_listed_reads(provider, definitions, executor)
+    if kept:
+        composite.add_tools(kept, executor)
+    return len(kept)
