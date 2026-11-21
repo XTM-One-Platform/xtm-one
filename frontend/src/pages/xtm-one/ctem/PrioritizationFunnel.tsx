@@ -644,6 +644,22 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
             style={{ left: layout.tiles.x, top: FLOW_TOP + 92, width: layout.tiles.width }}
             data-testid="ctem-flow-cases-closed"
           >
+            {/* Mitigated, watching first: closed for now, its re-test still on (#865 prod retest D1). */}
+            {(caseStates.mitigated_watching ?? 0) > 0 && (
+              <>
+                <Link
+                  to={casesListHref({ state: "mitigated_watching" })}
+                  className={cn("inline-flex items-center gap-1 text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+                  data-flow-mark=""
+                  tabIndex={-1}
+                  data-testid="ctem-flow-cases-mitigated"
+                >
+                  <Icon name="eye" size={16} aria-hidden />
+                  {t_i18n("{count, plural, one {# mitigated, watching} other {# mitigated, watching}}", { count: caseStates.mitigated_watching ?? 0 })}
+                </Link>
+                {", "}
+              </>
+            )}
             <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
               {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
             </Link>
@@ -712,6 +728,7 @@ export function PrioritizationFunnelWithCases({
     ? {
         needs_attention: data.counts.needs_attention ?? 0,
         in_progress: data.counts.in_progress ?? 0,
+        mitigated_watching: data.counts.mitigated_watching ?? 0,
         resolved: data.counts.resolved ?? 0,
         accepted_risk: data.counts.accepted_risk ?? 0,
       }

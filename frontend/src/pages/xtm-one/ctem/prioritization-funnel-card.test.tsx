@@ -195,6 +195,17 @@ describe("the cases layer", () => {
     expect(screen.getByTestId("ctem-flow-outcome").textContent).toBe("21 issues grouped into 5 open cases");
   });
 
+  // #865 prod retest D1: a watched case is drawn, first of the closed line, linked to its list.
+  it("shows the mitigated, watching cases first on the closed line", () => {
+    casesRead.value = {
+      data: { vertical: "cyber", counts: { needs_attention: 1, in_progress: 0, mitigated_watching: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
+    };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-flow-cases-closed").textContent).toBe("2 mitigated, watching, 4 resolved, 1 accepted risk");
+    expect(screen.getByTestId("ctem-flow-cases-mitigated").getAttribute("href")).toBe("/ctem/cases?state=mitigated_watching");
+    casesRead.value = { data: undefined };
+  });
+
   it("puts one tab stop on the flow and moves it with the arrow keys", async () => {
     const user = userEvent.setup();
     draw(<PrioritizationFunnel variant="stage" funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);

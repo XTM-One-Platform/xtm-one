@@ -98,10 +98,12 @@ export interface FunnelCases {
   total: number;
 }
 
-/** The four case states of the Cases board (S5c), their counts as the Cases API sent them. */
+/** The case states of the Cases board (S5c), their counts as the Cases API sent them. */
 export interface FunnelCaseStates {
   needs_attention: number;
   in_progress: number;
+  /** Mitigated, watching (#857): the re-test stays on until the permanent fix. */
+  mitigated_watching?: number;
   resolved: number;
   accepted_risk: number;
 }

@@ -19945,5 +19945,6 @@
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
   "P1 case opened by the loop: {sla}": "P1 case opened by the loop: {sla}",
-  "P1 case opened by the loop": "P1 case opened by the loop"
+  "P1 case opened by the loop": "P1 case opened by the loop",
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}"
 }
