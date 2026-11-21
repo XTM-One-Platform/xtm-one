@@ -74,6 +74,17 @@ class SweepSession(FakeSession):
         return SimpleNamespace(scalars=lambda: rows)
 
 
+class _ExpiringSignal(SimpleNamespace):
+    """A signal whose attributes fail once expired, as a lazy refresh on an AsyncSession raises MissingGreenlet."""
+
+    expired = False
+
+    def __getattribute__(self, name):
+        if name != "expired" and not name.startswith("__") and object.__getattribute__(self, "expired"):
+            raise RuntimeError("MissingGreenlet: greenlet_spawn has not been called")
+        return object.__getattribute__(self, name)
+
+
 def _signal(**kw) -> SimpleNamespace:
     base = dict(
         id=uuid.uuid4(),
@@ -208,12 +219,15 @@ def test_a_long_subject_keeps_the_key_and_title_within_their_columns(path, kind)
 async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
     bad, good = _signal(), _signal(subject_ref="vpn.example.com", subject_label="vpn.example.com")
     late = _case(sla_due_at=NOW - timedelta(hours=1))
+    bad = _ExpiringSignal(**vars(bad))
     db = SweepSession([bad, good], [], [late])  # signals, the good signal's case lookup, late cases
     real = loop.open_from_signal
 
     async def open_or_fail(session, signal, **kw):
         if signal is bad:
             kw["events"].add(loop.CASE_OPENED, {}, "half-written")
+            # The real savepoint rollback expires the rows changed inside it, the signal included.
+            signal.expired = True
             raise RuntimeError("value too long for type character varying(300)")
         return await real(session, signal, **kw)
 
@@ -221,6 +235,7 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
     assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1}
+    bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"
     assert [name for name, _, _ in events.items] == [loop.CASE_OPENED, loop.CASE_SLA_BREACHED]
     assert "half-written" not in [event_id for _, _, event_id in events.items]

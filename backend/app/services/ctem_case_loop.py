@@ -379,6 +379,9 @@ async def sweep(
     )
     for signal in waiting:
         before = len(events.items) if events is not None else 0
+        # Read before the savepoint: its rollback expires the signal, and a lazy refresh on an
+        # AsyncSession raises MissingGreenlet inside the handler, which would stop the whole pass.
+        signal_id = signal.id
         # One savepoint per signal: a signal that cannot be opened is skipped, never the whole pass.
         try:
             async with db.begin_nested():
@@ -387,7 +390,7 @@ async def sweep(
             if events is not None:
                 del events.items[before:]
             counts["skipped"] += 1
-            logger.warning("CTEM case not opened for signal %s; skipped this sweep", signal.id, exc_info=True)
+            logger.warning("CTEM case not opened for signal %s; skipped this sweep", signal_id, exc_info=True)
             continue
         if case is None:
             continue
