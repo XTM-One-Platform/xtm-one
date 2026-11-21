@@ -66,7 +66,7 @@ import { useFormatter } from "@/i18n";
 import type { RoiSummaryItem } from "@/hooks/api/useRoiReportApi";
 import { cardStartsAndModules, moduleDisplayName, type FleetStarts } from "@/lib/fleet-card-facts";
 import { ROI_COLUMN_HEADERS } from "@/lib/roi-summary";
-import { isEntityShared, timeAgo, timeUntil } from "@/lib/utils";
+import { cn, isEntityShared, timeAgo, timeUntil } from "@/lib/utils";
 
 import { autonomyStatusLabel, effectiveAutonomyLevel } from "./fleet-autonomy";
 import { fleetControlState } from "./fleet-control";
@@ -202,9 +202,13 @@ export function FleetListCard({
   // Its modules are the ones Platform Health covers (XTM One modes; none in Copilot mode), not its members' bindings.
   const { starts: shownStarts, modules } = cardStartsAndModules(healthStarts, starts, memberModules);
   const startsBase = useStartsLine(shownStarts);
-  const startsLine = healthStarts?.next_run_at
-    ? t_i18n("{starts}, next {time}", { starts: startsBase, time: timeUntil(healthStarts.next_run_at, locale) })
-    : startsBase;
+  // Platform Health off starts nothing: the line says so, never a next run (UX r1 B2 on #980).
+  const startsLine =
+    healthStarts && healthStarts.active === false
+      ? t_i18n("{starts}, off in Settings", { starts: startsBase })
+      : healthStarts?.next_run_at
+        ? t_i18n("{starts}, next {time}", { starts: startsBase, time: timeUntil(healthStarts.next_run_at, locale) })
+        : startsBase;
   const names = modules.map((m) => moduleDisplayName(m));
   const shownModules = modules.slice(0, modules.length > LOGOS_SHOWN ? LOGOS_SHOWN - 1 : LOGOS_SHOWN);
   const hiddenNames = names.slice(shownModules.length);
@@ -302,9 +306,17 @@ export function FleetListCard({
                 <Clock className="h-3 w-3 shrink-0" aria-hidden />
                 <span className="truncate" title={lastRun}>{lastRun}</span>
               </span>
-              <span className="col-span-2 flex min-w-0 items-center gap-1.5" data-testid="fleet-card-starts">
+              {/* The Platform Health line wraps instead of cutting its next time (UX r1 B4 on #980, fr at 1080). */}
+              <span
+                className={cn("col-span-2 flex min-w-0 items-center gap-x-1.5 gap-y-0.5", healthStarts && "flex-wrap")}
+                data-testid="fleet-card-starts"
+              >
                 <Zap className="h-3 w-3 shrink-0" aria-hidden />
-                <span className="truncate" title={startsLine}>{startsLine}</span>
+                {healthStarts ? (
+                  <span className="min-w-0">{startsLine}</span>
+                ) : (
+                  <span className="truncate" title={startsLine}>{startsLine}</span>
+                )}
                 {healthStarts && (
                   // Its schedules live in Settings > Platform Health, the one place they change (#974).
                   <Link

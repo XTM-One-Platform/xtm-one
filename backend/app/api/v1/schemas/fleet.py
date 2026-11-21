@@ -526,6 +526,8 @@ class FleetHealthStartsResponse(BaseModel):
     modules: list[str] = Field(default_factory=list)
     #: Where an administrator switches and schedules it.
     settings_route: str = ""
+    #: Platform Health is on in Settings; off, ``next_run_at`` is ``null`` (nothing starts).
+    active: bool = True
 
 
 class FleetAutomationsResponse(BaseModel):

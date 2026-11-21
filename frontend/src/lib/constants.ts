@@ -777,7 +777,8 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
   opencrq: "/logos/opencrq.svg",
-  xtm_one: "/logos/xtm_one.svg",
+  // The pinned emblem (#964 palette); the light theme reads PROVIDER_LOGOS_LIGHT (UX r1 B1 on #980).
+  xtm_one: "/xtm-one-emblem.svg",
   xtm_hub: "/logos/xtm_hub.svg",
   intune: "/logos/intune.svg",
   sentinel: "/logos/sentinel.svg",
@@ -878,6 +879,11 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   telegram_bot: "/logos/telegram.svg",
   discord_bot: "/logos/discord.svg",
   googlechat_bot: "/logos/google_chat.svg",
+});
+
+/** The marks drawn twice, one per theme: the light theme's file (UX r1 B1 on #980, the #964 palette). */
+export const PROVIDER_LOGOS_LIGHT: Record<string, string> = assetPaths({
+  xtm_one: "/xtm-one-emblem-light.svg",
 });
 
 /**

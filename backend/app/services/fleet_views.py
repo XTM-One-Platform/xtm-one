@@ -840,12 +840,23 @@ class HealthFleetStarts:
     #: The modules it covers: XTM One and every active registered module, XTM One modes only.
     modules: tuple[str, ...] = ()
     settings_route: str = HEALTH_SETTINGS_ROUTE
+    #: Platform Health is on in Settings: off, nothing starts, so no next run is promised (UX r1 B2 on #980).
+    active: bool = True
 
 
 def health_fleet_starts(
-    health_settings: object, *, xtm_one: bool, registered: Iterable[str] = (), now: datetime | None = None
+    health_settings: object,
+    *,
+    xtm_one: bool,
+    registered: Iterable[str] = (),
+    now: datetime | None = None,
+    active: bool = True,
 ) -> HealthFleetStarts:
-    """Pure: the starts line and modules of the Platform Health fleet from its settings (#974)."""
+    """Pure: the starts line and modules of the Platform Health fleet from its settings (#974).
+
+    Platform Health off (*active* false) starts nothing: the schedules are still
+    counted, but no next run is computed, so a paused fleet never promises one.
+    """
     from zoneinfo import ZoneInfo
 
     from app.core.utils import next_cron_run
@@ -860,13 +871,21 @@ def health_fleet_starts(
         except (KeyError, ValueError):
             tz = None
     base = now or datetime.now(UTC)
-    upcoming = [run for key in on if (run := next_cron_run(getattr(schedules, key, None), base, tz=tz)) is not None]
+    upcoming = (
+        [run for key in on if (run := next_cron_run(getattr(schedules, key, None), base, tz=tz)) is not None]
+        if active
+        else []
+    )
     events = signals is not None and any(getattr(signals, f"{key}_enabled", False) for key in HEALTH_SIGNAL_KEYS)
     modules: tuple[str, ...] = ()
     if xtm_one:
         modules = (HEALTH_CORE_MODULE, *sorted({m for m in registered if m and m != HEALTH_CORE_MODULE}))
     return HealthFleetStarts(
-        events=events, schedules=len(on), next_run_at=min(upcoming) if upcoming else None, modules=modules
+        events=events,
+        schedules=len(on),
+        next_run_at=min(upcoming) if upcoming else None,
+        modules=modules,
+        active=active,
     )
 
 
@@ -874,9 +893,11 @@ async def platform_health_starts(db: AsyncSession) -> HealthFleetStarts:
     """:func:`health_fleet_starts` read from Settings > Platform Health and the module registrations."""
     from app.core.config import settings as app_settings
     from app.models.platform_registration import PlatformRegistration
+    from app.services.health.availability import health_active, health_enabled
     from app.services.health.module_analyst import MODULE_PROVIDERS
     from app.services.health.settings import load_health_settings
 
+    active = health_enabled() and await health_active(db)
     xtm_one = bool(app_settings.is_xtm_one)
     registered: list[str] = []
     if xtm_one:
@@ -893,7 +914,7 @@ async def platform_health_starts(db: AsyncSession) -> HealthFleetStarts:
                 )
             ).all()
         ]
-    return health_fleet_starts(await load_health_settings(db), xtm_one=xtm_one, registered=registered)
+    return health_fleet_starts(await load_health_settings(db), xtm_one=xtm_one, registered=registered, active=active)
 
 
 async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:

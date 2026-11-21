@@ -112,6 +112,16 @@ def test_the_starts_line_reads_the_settings_schedules_and_signals() -> None:
     assert starts.settings_route == HEALTH_SETTINGS_ROUTE
 
 
+def test_platform_health_off_promises_no_next_run() -> None:
+    """UX r1 B2 on #980: a paused fleet keeps its schedules counted but never names a next run."""
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 11, 21, 20, 0, tzinfo=UTC)
+    starts = health_fleet_starts(HealthSettings(), xtm_one=True, now=now, active=False)
+    assert (starts.active, starts.schedules, starts.next_run_at) == (False, 4, None)
+    assert health_fleet_starts(HealthSettings(), xtm_one=True, now=now).active is True
+
+
 def test_schedules_off_and_copilot_mode() -> None:
     settings = HealthSettings()
     for key in ("memory", "quality", "flows", "digest"):

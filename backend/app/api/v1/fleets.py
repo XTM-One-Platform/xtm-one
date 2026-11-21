@@ -323,6 +323,7 @@ def _health_starts(starts: HealthFleetStarts | None) -> FleetHealthStartsRespons
         next_run_at=_iso(starts.next_run_at),
         modules=list(starts.modules),
         settings_route=starts.settings_route,
+        active=starts.active,
     )
 
 

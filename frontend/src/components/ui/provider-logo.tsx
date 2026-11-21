@@ -2,7 +2,8 @@
 
 import { Plug2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PROVIDER_LOGOS } from "@/lib/constants";
+import { PROVIDER_LOGOS, PROVIDER_LOGOS_LIGHT } from "@/lib/constants";
+import { useColorMode } from "@/hooks/useColorMode";
 
 /**
  * Shared provider logo component – displays the provider's logo image
@@ -21,7 +22,9 @@ export function ProviderLogo({
   className?: string;
   decorative?: boolean;
 }) {
-  const src = logo || PROVIDER_LOGOS[provider];
+  const light = useColorMode() === "light";
+  // A mark drawn per theme takes its light file on the light theme (the XTM One emblem, #964).
+  const src = logo || (light && PROVIDER_LOGOS_LIGHT[provider]) || PROVIDER_LOGOS[provider];
   if (src) {
     return (
       <img

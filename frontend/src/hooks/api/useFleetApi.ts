@@ -100,6 +100,8 @@ interface FleetHealthStarts {
   modules: string[];
   /** Where an administrator switches and schedules it. */
   settings_route: string;
+  /** Platform Health is on in Settings; off, nothing starts and `next_run_at` is `null` (UX r1 B2 on #980). */
+  active?: boolean;
 }
 
 /** Where a forked fleet came from, as recorded at fork time (`fleets.forked_from`). */
