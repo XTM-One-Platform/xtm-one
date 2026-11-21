@@ -223,7 +223,14 @@ export default function CtemCaseDetail() {
     {
       key: "source",
       header: "Source",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.source === "openaev" ? "OpenAEV" : "OpenCTI"),
+      cell: (r) =>
+        isRestrictedIssue(r.issue)
+          ? null
+          : r.issue.source === "signal"
+            ? t_i18n("Signal")
+            : r.issue.source === "openaev"
+              ? "OpenAEV"
+              : "OpenCTI",
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : r.issue.source),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.source),
     },
