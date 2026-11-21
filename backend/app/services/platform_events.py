@@ -209,21 +209,6 @@ _AGENT_ACCOUNT_KEYS = (
     "sent_at",
 )
 _RELEASE_KEYS = ("version", "git_sha", "previous_version", "previous_git_sha", "first_seen_at", "release")
-#: A CTEM case event carries ids and facts only, never a source issue's content (#11613, #857).
-_CTEM_CASE_KEYS = (
-    "case_id",
-    "organization_id",
-    "vertical",
-    "state",
-    "remediation_kind",
-    "trigger_path",
-    "severity",
-    "sla_due_at",
-    "owner_user_id",
-    "signal_id",
-    "validation.provider",
-    "validation.result",
-)
 _VIDEO_KEYS = (
     "job_kind",
     "job_id",
@@ -393,8 +378,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A connected OpenCTI, OpenAEV or OpenCRQ platform reported a version other than the one recorded, "
             "on its registration heartbeat (once per platform and upgrade; not on a first registration): wait "
             "for a module upgrade instead of polling its version. Payload: provider, platform_identifier, "
-            "integration_id, previous_version, version, first_seen_at. Platform-wide: heard by every "
-            "subscriber whatever its scope."
+            "integration_id, previous_version, version, first_seen_at. Also raised when a connector of a "
+            "connected OpenCTI reports another version (read every 5 minutes while a subscriber exists): "
+            "the payload then adds component_kind, component_id, component_name, component_slug. "
+            "Platform-wide: heard by every subscriber whatever its scope."
         ),
         "filter_keys": (
             "provider",
@@ -403,6 +390,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "previous_version",
             "version",
             "first_seen_at",
+            "component_kind",
+            "component_id",
+            "component_name",
+            "component_slug",
         ),
     },
     "platform.default_model_route.changed": {
@@ -426,35 +417,6 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "after.model",
         ),
     },
-    "ctem_case.opened": {
-        "description": (
-            "A CTEM case was opened from a confirmed, in-scope exposure signal (services/ctem_case_loop.py): "
-            "start a fleet run from the case. Payload: case_id, organization_id, vertical, state, "
-            "remediation_kind, trigger_path, severity, sla_due_at, owner_user_id, risk_scenario_ids, signal_id. "
-            "Platform-wide: heard by every subscriber whatever its scope."
-        ),
-        "filter_keys": _CTEM_CASE_KEYS,
-    },
-    "ctem_case.reopened": {
-        "description": (
-            "A resolved or watched CTEM case reopened because a re-test failed: restart the remediation. "
-            "Payload: the case fields and the failed validation reference. Platform-wide."
-        ),
-        "filter_keys": _CTEM_CASE_KEYS,
-    },
-    "ctem_case.resolved": {
-        "description": (
-            "A CTEM case resolved on a passing validation reference (not exposed, or fixed): close the run. "
-            "Payload: the case fields and the validation reference. Platform-wide."
-        ),
-        "filter_keys": _CTEM_CASE_KEYS,
-    },
-    "ctem_case.sla_breached": {
-        "description": (
-            "An open CTEM case passed its SLA (once per case): escalate. Payload: the case fields. Platform-wide."
-        ),
-        "filter_keys": _CTEM_CASE_KEYS,
-    },
     "timer.due": {
         "description": (
             "A timer an agent armed with arm_timer reached its due time (services/platform_timers.py): "
@@ -469,15 +431,7 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
 #: part in: a build belongs to no one and its version is shown to every user,
 #: so a ``scope: own`` subscriber hears them too.
 PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
-    {
-        "platform.release.deployed",
-        "platform.default_model_route.changed",
-        "integration.version.changed",
-        "ctem_case.opened",
-        "ctem_case.reopened",
-        "ctem_case.resolved",
-        "ctem_case.sla_breached",
-    }
+    {"platform.release.deployed", "platform.default_model_route.changed", "integration.version.changed"}
 )
 
 

@@ -1632,22 +1632,6 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
-        # CTEM case loop (#857): open the cases of confirmed signals still
-        # waiting, escalate SLA breaches once. Rules only, no model call;
-        # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).
-        try:
-            from app.services import ctem_case_loop
-
-            if await ctem_case_loop.sweep_due():
-                pending = ctem_case_loop.PendingEvents()
-                counts = await ctem_case_loop.sweep(db, events=pending)
-                await db.commit()
-                await ctem_case_loop.publish_pending(pending)
-                if any(counts.values()):
-                    logger.info("CTEM case sweep: %s", counts)
-        except Exception as e:
-            logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
-            await db.rollback()
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
         try:
@@ -2608,6 +2592,16 @@ async def _run_autonomous_tick_inner() -> int:
             await purge_expired_sandbox_copies_tick()
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
+
+        # --- 9c0. Component versions of the connected platforms ---
+        # No model call; nothing is read while no assignment subscribes to
+        # integration.version.changed, one read per platform every 5 minutes.
+        try:
+            from app.services.integration_component_versions import component_versions_tick
+
+            await component_versions_tick()
+        except Exception as e:
+            logger.error("Component versions tick error: %s", format_exception_message(e), exc_info=True)
 
         # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
