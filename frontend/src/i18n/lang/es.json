@@ -20014,5 +20014,6 @@
   "Re-test passed on {date}": "Nueva prueba superada el {date}",
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
-  "Not re-tested yet": "Aún sin nueva prueba"
+  "Not re-tested yet": "Aún sin nueva prueba",
+  "Quick filters": "Filtros rápidos"
 }

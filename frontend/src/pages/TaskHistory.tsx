@@ -21,7 +21,7 @@ import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/compo
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
-import { storedPageSize, type DataTableState } from "@/lib/data-table-state";
+import { clearFilterParams, storedPageSize, type DataTableState } from "@/lib/data-table-state";
 import type { SortDirection } from "@/lib/table-rows";
 import { useViewMode } from "@/hooks/useViewMode";
 import type { ExecutionRunSort } from "@/hooks/api/useAssignmentApi";
@@ -1284,6 +1284,13 @@ export default function TaskHistory({
           toolbar={hideHeader ? cleanupButton : undefined}
           filterPills={morePills}
           externalFilterCount={moreFilterCount}
+          // Clear all clears what the count counts, the status and search too, in one write (#1001).
+          onClearAll={() =>
+            setSearchParams(
+              (prev) => clearFilterParams(prev, ["status", "type", "filter", "review", "agent", ...(lockedFleet ? [] : ["fleet"])]),
+              { replace: true },
+            )
+          }
           view={{ value: viewMode, onChange: setViewMode }}
           // One scroller, inside the list: the cards scroll in their box, the page does not
           // (UX r1 B2 on #11894; the table body already fits the viewport).

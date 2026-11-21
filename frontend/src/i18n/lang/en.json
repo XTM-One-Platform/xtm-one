@@ -20014,5 +20014,6 @@
   "Re-test passed on {date}": "Re-test passed on {date}",
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
-  "Not re-tested yet": "Not re-tested yet"
+  "Not re-tested yet": "Not re-tested yet",
+  "Quick filters": "Quick filters"
 }
