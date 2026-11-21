@@ -32,6 +32,7 @@ earlier one.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -86,12 +87,12 @@ class Decision(Base):
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The ask model of section 2 (``decision_ask.py``): question, context, options...
-    ask: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    ask: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     #: ``user:<uuid>``, ``group:<uuid>``, ``company`` (every member), ``admins``.
     recipient: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     #: ``{option?, label?, text?}`` once answered.
-    answer: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    answer: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     answered_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -123,9 +124,9 @@ class DecisionEvent(Base):
     )
     surface: Mapped[str | None] = mapped_column(String(40), nullable=True)
     #: What happened: the option and text of an answer, the reason of a refusal.
-    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
 # The dual write: registered with the model so every process that maps it writes it.
-import app.models.decision_hooks  # noqa: E402,F401
+import app.models.decision_hooks  # noqa: F401

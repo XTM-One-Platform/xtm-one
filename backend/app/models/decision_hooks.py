@@ -42,7 +42,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import event, inspect as sa_inspect, update
+from sqlalchemy import Table, event, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.models.decision import Decision, DecisionEvent
@@ -53,6 +54,9 @@ logger = logging.getLogger(__name__)
 #: (the router sets ``router``, or the surface its body names); read by the
 #: hook when it writes the ``answered`` event.
 answer_surface: contextvars.ContextVar[str | None] = contextvars.ContextVar("decision_answer_surface", default=None)
+#: The person answering, set by the same callers: an engine that stores a name
+#: (a flow park's ``responded_by``, a work item's ``answered_by``) has no id.
+answer_actor: contextvars.ContextVar[uuid.UUID | None] = contextvars.ContextVar("decision_answer_actor", default=None)
 
 #: Tool approvals are decided with these options (human-gates.md section 2).
 APPROVAL_OPTIONS: tuple[dict[str, str], ...] = (
@@ -141,10 +145,12 @@ def run_transition(
 
 def flow_transition(old_state: Any, new_state: Any) -> Transition:
     """What a flow run's flush does to its Ask-user decision (pure)."""
-    old = (old_state or {}).get("waiting") if isinstance(old_state, dict) else None
-    new = (new_state or {}).get("waiting") if isinstance(new_state, dict) else None
-    old_open = isinstance(old, dict) and old.get("kind") == "human" and not old.get("released")
-    new_human = isinstance(new, dict) and new.get("kind") == "human"
+    old_raw = old_state.get("waiting") if isinstance(old_state, dict) else None
+    new_raw = new_state.get("waiting") if isinstance(new_state, dict) else None
+    old: dict[str, Any] = old_raw if isinstance(old_raw, dict) else {}
+    new: dict[str, Any] = new_raw if isinstance(new_raw, dict) else {}
+    old_open = old.get("kind") == "human" and not old.get("released")
+    new_human = new.get("kind") == "human"
     if new_human and not new.get("released"):
         same = old_open and (old.get("step_id"), old.get("node")) == (new.get("step_id"), new.get("node"))
         return None if same else ("open",)
@@ -167,13 +173,15 @@ def work_item_transition(old_needs: Any, new_needs: Any, *, answer: dict[str, An
     return None
 
 
-_HAS_TABLE: dict[int, bool] = {}
+_HAS_TABLE: dict[str, bool] = {}
 
 
 def _store_ready(session: Session) -> bool:
     """The table exists on this connection's database (a scratch test schema may lack it)."""
     bind = session.get_bind()
-    key = id(bind)
+    # By database, not by object id: a test's throwaway database never inherits another's answer.
+    url = getattr(bind, "url", None)
+    key = url.render_as_string(hide_password=True) if url is not None else str(id(bind))
     if key not in _HAS_TABLE:
         _HAS_TABLE[key] = sa_inspect(session.connection()).has_table(Decision.__tablename__)
     return _HAS_TABLE[key]
@@ -181,6 +189,8 @@ def _store_ready(session: Session) -> bool:
 
 def _close_open(session: Session, source_type: str, source_id: uuid.UUID, values: dict[str, Any]) -> list[uuid.UUID]:
     table = Decision.__table__
+    if not isinstance(table, Table):  # pragma: no cover - a mapped class always has one
+        raise TypeError("decisions is not a table")
     result = session.connection().execute(
         update(table)
         .where(table.c.source_type == source_type, table.c.source_id == source_id, table.c.status == "open")
@@ -217,7 +227,7 @@ def _apply(session: Session, source_type: str, source_id: Any, transition: Trans
         return
     if transition[0] == "answer":
         _, answer, actor = transition
-        actor_id = _uuid_or_none(actor)
+        actor_id = _uuid_or_none(actor) or answer_actor.get()
         values: dict[str, Any] = {"status": "answered", "answer": answer, "answered_at": now, "surface": surface}
         if actor_id is not None:
             values["answered_by"] = actor_id
@@ -291,11 +301,11 @@ def _sync_work_item(session: Session, item: Any) -> None:
     if not changed:
         return
     payload = item.payload if isinstance(item.payload, dict) else {}
-    transition = work_item_transition(old_needs, new_needs, answer=payload.get("answer") if not new_needs else None)
-    if transition and transition[0] == "answer":
-        answer = payload.get("answer") or {}
-        user_id = getattr(item, "_decision_answered_by_id", None)
-        transition = ("answer", transition[1], user_id or answer.get("answered_by_id"))
+    _, _, payload_changed = _old_new(item, "payload")
+    # Only an answer this flush stores counts: an older one left in the payload
+    # by an earlier decision never answers a later one.
+    answer = payload.get("answer") if (payload_changed and not new_needs) else None
+    transition = work_item_transition(old_needs, new_needs, answer=answer)
 
     def opener() -> tuple[str, dict[str, Any], str, datetime | None]:
         ask = dict(item.ask) if isinstance(item.ask, dict) and item.ask.get("question") else {}
