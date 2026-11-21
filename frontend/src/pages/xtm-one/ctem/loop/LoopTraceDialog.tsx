@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import {
   CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, type CtemSignal, type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
@@ -181,6 +182,7 @@ function SignalListBody({ state, onState, onOpen }: {
   onOpen: (id: string) => void;
 }) {
   const { t_i18n, intl } = useFormatter();
+  const { count: formatCount, exactCount } = useNumberFormat();
   const { data, isLoading } = useCtemSignalList(state);
   const counts = data?.counts ?? {};
   const all = CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
@@ -205,7 +207,9 @@ function SignalListBody({ state, onState, onOpen }: {
             )}
           >
             {f.label}
-            <span className="tabular-nums">{intl.formatNumber(f.count)}</span>
+            <span className="tabular-nums" title={exactCount(f.count)}>
+              {formatCount(f.count)}
+            </span>
           </button>
         ))}
       </div>

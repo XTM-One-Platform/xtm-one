@@ -12,6 +12,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import type { CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,8 @@ export function SignalCounter({
   /** `null` opens every signal. */
   onOpen: (state: CtemSignalState | null) => void;
 }) {
-  const { t_i18n, intl } = useFormatter();
+  const { t_i18n } = useFormatter();
+  const { count: formatCount, exactCount } = useNumberFormat();
   const total = Object.values(counts).reduce<number>((sum, n) => sum + (n ?? 0), 0);
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 content-caption" data-testid="ctem-signal-counter">
@@ -40,7 +42,9 @@ export function SignalCounter({
       >
         <Icon name="activity" size={16} className="shrink-0 text-accent" aria-hidden />
         {t_i18n("Signals")}
-        <span className="tabular-nums">{intl.formatNumber(total)}</span>
+        <span className="tabular-nums" title={exactCount(total)}>
+          {formatCount(total)}
+        </span>
       </button>
       {COUNTED_SIGNAL_STATES.map((state) => {
         const count = counts[state] ?? 0;
@@ -51,14 +55,16 @@ export function SignalCounter({
             type="button"
             data-state={state}
             onClick={() => onOpen(state)}
-            aria-label={t_i18n("Open the signals: {state}", { state: `${label} ${intl.formatNumber(count)}` })}
+            aria-label={t_i18n("Open the signals: {state}", { state: `${label} ${exactCount(count)}` })}
             className={cn(
               "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 hover:bg-elevation-hover",
               BUTTON_ROLE_FOCUS_RING,
               count === 0 ? "text-default-secondary" : "text-default-primary",
             )}
           >
-            <span className="tabular-nums font-medium">{intl.formatNumber(count)}</span>
+            <span className="tabular-nums font-medium" title={exactCount(count)}>
+              {formatCount(count)}
+            </span>
             <span>{label}</span>
           </button>
         );
