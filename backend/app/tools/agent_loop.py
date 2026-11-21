@@ -6699,17 +6699,85 @@ def _is_curation_stub(content: str) -> bool:
 #: back through :data:`_REFETCHABLE_STUB_RE`, derived from this same string so
 #: the writer and the matcher cannot drift). The loop breaker keys on it.
 #: ``{tool}`` is the tool's LLM-visible name, ``{chars}`` the cleared
-#: body's length with thousands separators.
+#: body's length with thousands separators, ``{target}`` what the call
+#: addressed (`` for path=a.py, offset_line=100``, :func:`_tool_call_target`)
+#: or empty: a model whose read windows were cleared is told WHICH window
+#: went, so it re-reads that one alone instead of every range of the file
+#: (gap reread-after-context-prune, run 3350c28d: the same windows read 2-3
+#: times after two resumes).
 _REFETCHABLE_STUB_TEMPLATE = (
-    "[Earlier {tool} result ({chars} chars) cleared to keep the working context "
-    "focused — it is stale and re-fetchable. Re-call the tool only if you still "
-    "need this exact data.]"
+    "[Earlier {tool} result{target} ({chars} chars) cleared to keep the working "
+    "context focused — it is stale and re-fetchable. Re-call the tool only if you "
+    "still need this exact data.]"
 )
 _REFETCHABLE_STUB_RE = re.compile(
     re.escape(_REFETCHABLE_STUB_TEMPLATE)
     .replace(re.escape("{tool}"), r"[^\n]+?")
+    .replace(re.escape("{target}"), r"(?: for [^\n\]]+?)?")
     .replace(re.escape("{chars}"), r"\d{1,3}(?:,\d{3})*")
 )
+
+#: The arguments that ADDRESS what a call read (a file, a window of it, a
+#: document, a page), in the order the stub names them. Generic names only:
+#: a body argument (content, code, query text) is never echoed into a stub.
+_TOOL_CALL_TARGET_KEYS = (
+    "path",
+    "file_id",
+    "document_id",
+    "url",
+    "repository",
+    "ref",
+    "symbol",
+    "section",
+    "key",
+    "offset_line",
+    "max_lines",
+    "offset",
+    "max_chars",
+    "page",
+)
+#: Ceiling on one value and on the whole target segment of a stub.
+_TOOL_CALL_TARGET_VALUE_MAX = 120
+_TOOL_CALL_TARGET_MAX = 240
+
+
+def _tool_call_target(arguments: object) -> str:
+    """`` for path=a.py, offset_line=100`` from a call's arguments, or ``""``.
+
+    Only the scalar arguments named in :data:`_TOOL_CALL_TARGET_KEYS`, each
+    on one line without ``]`` (the stub's terminator) and bounded, so the
+    segment always matches :data:`_REFETCHABLE_STUB_RE`.
+    """
+    if not isinstance(arguments, dict):
+        return ""
+    parts: list[str] = []
+    for key in _TOOL_CALL_TARGET_KEYS:
+        value = arguments.get(key)
+        if value is None or value == "" or isinstance(value, (dict, list, tuple, set)):
+            continue
+        flat = " ".join(str(value).split()).replace("]", ")")
+        if len(flat) > _TOOL_CALL_TARGET_VALUE_MAX:
+            flat = flat[: _TOOL_CALL_TARGET_VALUE_MAX - 3].rstrip() + "..."
+        parts.append(f"{key}={flat}")
+    if not parts:
+        return ""
+    segment = ", ".join(parts)
+    if len(segment) > _TOOL_CALL_TARGET_MAX:
+        segment = segment[: _TOOL_CALL_TARGET_MAX - 3].rstrip() + "..."
+    return f" for {segment}"
+
+
+def _tool_call_arguments_by_id(messages: list[ChatMessage]) -> dict[str, object]:
+    """Each tool call id of the transcript -> the arguments the model sent."""
+    found: dict[str, object] = {}
+    for m in messages:
+        if m.role != "assistant" or not m.tool_calls:
+            continue
+        for tc in m.tool_calls:
+            call_id = getattr(tc, "id", None)
+            if call_id:
+                found[str(call_id)] = getattr(tc, "arguments", None)
+    return found
 
 
 def _is_refetchable_stub(content: str) -> bool:
@@ -7530,6 +7598,7 @@ def _clear_stale_tool_results(
     freed = 0
     cleared = 0
     budget_exceeded = False
+    call_arguments: dict[str, object] | None = None
     for position, idx in enumerate(reversed(tool_indices)):
         msg = messages[idx]
         body = msg.content or ""
@@ -7565,9 +7634,14 @@ def _clear_stale_tool_results(
             _drop_tool_result_files(msg, replace_content=stub)
         else:
             # The ONE stub that invites a re-call (``_is_refetchable_stub``):
-            # the loop breaker forgives the re-read it invites.
+            # the loop breaker forgives the re-read it invites. It names what
+            # the call addressed, so the re-read is that window alone.
+            if call_arguments is None:
+                call_arguments = _tool_call_arguments_by_id(messages)
             msg.content = _REFETCHABLE_STUB_TEMPLATE.format(
-                tool=msg.name or "tool", chars=f"{body_len:,}"
+                tool=msg.name or "tool",
+                target=_tool_call_target(call_arguments.get(str(msg.tool_call_id or ""))),
+                chars=f"{body_len:,}",
             )
         freed += body_len - len(msg.content or "")
         # The stub still occupies space in the live context; count it so the
