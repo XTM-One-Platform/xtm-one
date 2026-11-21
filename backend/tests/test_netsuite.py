@@ -339,6 +339,31 @@ async def test_bank_details_are_read_and_written_on_the_entity_record():
 
 
 @pytest.mark.asyncio
+async def test_generic_tools_refuse_bank_detail_tables_and_fields():
+    executor = CallableToolExecutor()
+    netsuite.build_tools(_TBA, executor)
+    with fake_api(_route) as sent:
+        answers = [
+            await call(executor, "run_netsuite_suiteql", query="SELECT * FROM CUSTOMRECORD_2663_ENTITY_BANK_DETAILS"),
+            await call(executor, "run_netsuite_suiteql", query="SELECT v.id, b.custrecord_2663_acct_num FROM vendor v"),
+            await call(executor, "describe_netsuite_records", record_type="customrecord_2663_entity_bank_details"),
+            await call(
+                executor, "get_netsuite_record", record_type="customrecord_2663_entity_bank_details", record_id="1"
+            ),
+            await call(
+                executor,
+                "get_netsuite_record",
+                record_type="vendor",
+                record_id="12",
+                fields="custrecord_2663_acct_num",
+            ),
+            await call(executor, "list_netsuite_records", record_type="customrecord_2663_entity_bank_details"),
+        ]
+    assert sent == []
+    assert all("set_netsuite_entity_bank_details only" in a.content for a in answers)
+
+
+@pytest.mark.asyncio
 async def test_period_status_patches_the_accounting_period():
     executor = CallableToolExecutor()
     netsuite.build_tools(_TBA, executor)

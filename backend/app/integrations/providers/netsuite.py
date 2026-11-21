@@ -28,10 +28,12 @@ split greedily):
 ``account||tba||consumer_key||consumer_secret||token_id||token_secret``.
 
 Every amount a tool reports carries its currency, its subsidiary and its
-period. Entity bank details are read by one tool alone
-(``get_netsuite_entity_bank_details``) so a binding can withhold them; the
-generic SuiteQL and record tools refuse those tables and fields, and no tool
-pays a vendor, changes a bank detail or closes a period.
+period. Entity bank details are read and written by two named tools alone
+(``get_netsuite_entity_bank_details``, ``set_netsuite_entity_bank_details``)
+so a binding can withhold them: the generic SuiteQL and record tools refuse
+the Electronic Bank Payments tables and fields (``BANK_DETAILS_PATTERN``).
+Posting transactions, period close and bank-detail writes ask a person first
+(always_ask).
 """
 
 from __future__ import annotations
@@ -118,6 +120,15 @@ POSTING_RECORDS = {
 
 #: The Electronic Bank Payments record of entity bank details (its default ids).
 BANK_DETAILS_RECORD = "customrecord_2663_entity_bank_details"
+
+#: Electronic Bank Payments records and fields (``customrecord_2663_*``,
+#: ``custrecord_2663_*``): the generic SuiteQL and record tools refuse them so
+#: withholding the two bank-detail tools withholds the data.
+BANK_DETAILS_PATTERN = re.compile(r"\bcust(?:om)?record_2663_", re.I)
+_BANK_DETAILS_REFUSAL = (
+    "Error: Electronic Bank Payments records and fields (customrecord_2663_*, custrecord_2663_*) are read with "
+    "get_netsuite_entity_bank_details and written with set_netsuite_entity_bank_details only."
+)
 
 #: Transaction types as SuiteQL stores them (``transaction.type``), by the name a tool takes.
 TRANSACTION_TYPES = {
@@ -541,6 +552,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         sql = (query or "").strip().rstrip(";")
         if not re.match(r"^(select|with)\b", sql, re.I):
             return "Error: run_netsuite_suiteql runs a SELECT (or WITH ... SELECT) query only."
+        if BANK_DETAILS_PATTERN.search(sql):
+            return _BANK_DETAILS_REFUSAL
         return await _query_text(sql, _rows_arg(max_rows), "run a SuiteQL query")
 
     async def describe_netsuite_records(record_type: str = "") -> str:
@@ -558,6 +571,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             )
         if not _RECORD_TYPE.match(rtype):
             return "Error: record_type is a NetSuite record type name such as vendorBill."
+        if BANK_DETAILS_PATTERN.search(rtype):
+            return _BANK_DETAILS_REFUSAL
         data, err, _ = await _call(
             "get",
             f"{base}/record/v1/metadata-catalog/{quote(rtype, safe='')}",
@@ -582,6 +597,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         rtype = (record_type or "").strip()
         if not _RECORD_TYPE.match(rtype):
             return "Error: record_type is a NetSuite record type name such as vendorBill."
+        if BANK_DETAILS_PATTERN.search(rtype) or BANK_DETAILS_PATTERN.search(fields or ""):
+            return _BANK_DETAILS_REFUSAL
         query: dict[str, str] = {}
         if (fields or "").strip():
             query["fields"] = ",".join(f.strip() for f in fields.split(",") if f.strip())
@@ -608,6 +625,8 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
         rtype = (record_type or "").strip()
         if not _RECORD_TYPE.match(rtype):
             return "Error: record_type is a NetSuite record type name such as vendorBill."
+        if BANK_DETAILS_PATTERN.search(rtype) or BANK_DETAILS_PATTERN.search(q or ""):
+            return _BANK_DETAILS_REFUSAL
         query = {"limit": str(max(1, min(int(limit or 100), 1000))), "offset": str(max(0, int(offset or 0)))}
         if (q or "").strip():
             query["q"] = q.strip()
