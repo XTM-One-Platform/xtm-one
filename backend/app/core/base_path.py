@@ -165,7 +165,6 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "register",
         "reports",
         "reset-password",
-        "runners",
         "search",
         "settings",
         "share",

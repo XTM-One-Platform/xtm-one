@@ -91,6 +91,7 @@ import { InlineFileContent } from "@/components/chat-panel/InlineFileContent";
 import { conversationRevisions, fileTag } from "@/pages/chat/file-revisions";
 import { FileRevisionsContext } from "@/pages/chat/file-revisions-context";
 import { answerProse, summaryPreview } from "@/pages/chat/answerMarkers";
+import RouteNotFound from "@/pages/RouteNotFound";
 import type { ChatMessageAttachment } from "@/types";
 import { cn, formatDateTime, formatCompactNumber, formatDurationShort, pluralize, attachmentTypeLabel } from "@/lib/utils";
 import { runErrorIsNeutral, runErrorText } from "@/lib/run-error-text";
@@ -886,7 +887,7 @@ export default function RunDetail() {
   useTick(REFETCH_INTERVAL_SLOW); // keep relative timestamps fresh
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: run, isLoading } = useAssignmentRunDetail(id || "");
+  const { data: run, isLoading } = useAssignmentRunDetail(id || "", { notFoundIsOrdinary: true });
   const { isAdmin } = useAuth();
   const respondHitl = useRespondToHumanInput();
   const submitApprovals = useSubmitApprovalDecisions();
@@ -916,7 +917,8 @@ export default function RunDetail() {
   const { data: descendants, isLoading: descendantsLoading } = useDescendantRuns(hasChildren ? id ?? null : null);
 
   if (isLoading) return <PageSkeleton cards={3} />;
-  if (!run) return <div className="py-20 text-center text-default-secondary">{t_i18n("Run not found.")}</div>;
+  // An unknown id (or one you cannot read) is an address no page answers (#797 S4).
+  if (!run) return <RouteNotFound />;
 
   const statusCfg = runStatusConfig(run);
   // A failed run the platform ended: its error block reads neutral, as its badge does.

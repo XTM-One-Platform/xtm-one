@@ -626,7 +626,7 @@ export function WorkItemOriginLink({ origin }: { origin: WorkItemContext["origin
       return hidden(<Workflow className="h-3 w-3" />, t_i18n("a flow run you cannot open"));
     }
     return (
-      <Link to={`/flows/${run.flow_id}/builder?run=${run.id}`} onClick={stop} className={linkClass}>
+      <Link to={`/flows/library/${run.flow_id}?run=${run.id}`} onClick={stop} className={linkClass}>
         <Workflow className="h-3 w-3 shrink-0" />
         <span className="truncate">{run.name ?? t_i18n("Flow run")}</span>
       </Link>

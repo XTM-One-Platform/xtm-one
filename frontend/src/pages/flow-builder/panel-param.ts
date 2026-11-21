@@ -27,7 +27,7 @@ const OWNER_ACCESS_PANEL = "owner-access";
 
 /** Root-relative builder URL that opens the Owner and access drawer. */
 export function ownerAccessUrl(flowId: string): string {
-  return `/flows/${encodeURIComponent(flowId)}/builder?${FLOW_PANEL_PARAM}=${OWNER_ACCESS_PANEL}`;
+  return `/flows/library/${encodeURIComponent(flowId)}?${FLOW_PANEL_PARAM}=${OWNER_ACCESS_PANEL}`;
 }
 
 /** Whether the search params ask for the Owner and access drawer. */

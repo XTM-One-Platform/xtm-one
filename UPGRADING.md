@@ -1060,7 +1060,7 @@ removed from the flag registry, and the code paths they used to gate are now
 always on:
 
 * The **visual flow builder** — the `Flows` tab of `Agentic Flow`, the canvas
-  at `/flows/:id/builder`, and the `/api/v1/flows` + `/api/v1/flow-event-types`
+  at `/flows/library/:id`, and the `/api/v1/flows` + `/api/v1/flow-event-types`
   routes, which no longer answer `403`.
 * **Flow execution** — activate/run/history/cancel, the cron tick, inbound
   webhooks and polled integration events, plus the run/activate controls in the

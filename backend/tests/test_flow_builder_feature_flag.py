@@ -11,7 +11,7 @@ Two boundaries are easy to get wrong, and both are asserted below.
 Agent-to-agent map (with its Schedule view) and Fleets tabs read agents,
 fleets, assignments and delegations, no flow endpoint between them, so the
 page, its nav entry, those two tabs and their documentation stay live. Only
-the ``Flows`` library tab and the ``/flows/<id>/builder`` canvas are hidden.
+the ``Flows`` library tab and the ``/flows/library/<id>`` canvas are hidden.
 
 **The flag is UI-only.** The ``/api/v1/flows`` router stays *mounted* because
 the agent-creation wizard reads the node catalog, and the engine keeps
@@ -134,7 +134,7 @@ def test_the_page_route_is_open_and_the_builder_route_is_gated():
     builder = next(
         line
         for line in app_tsx.splitlines()
-        if 'path="/flows/:id/builder"' in line
+        if 'path="/flows/library/:id"' in line
     )
     assert "FeatureFlagGate" not in page, (
         "gating the page hides the map and the fleets too"

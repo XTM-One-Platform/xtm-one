@@ -88,7 +88,7 @@ export function RoutedTab({ group }: { group: RelayGroup }) {
     <div className="space-y-4">
       <Section title={t_i18n("Integrations")} icon={Link2} entries={data.integrations} href={(id) => `/integrations/${id}`} provider />
       <Section title={t_i18n("MCP servers")} icon={Server} entries={data.mcp_servers} href={(id) => `/mcp-servers/${id}`} />
-      <Section title={t_i18n("Flows")} icon={Workflow} entries={data.flows} href={(id) => `/flows/${id}/builder`} />
+      <Section title={t_i18n("Flows")} icon={Workflow} entries={data.flows} href={(id) => `/flows/library/${id}`} />
       {data.hidden > 0 && (
         <p className="flex items-center gap-1.5 content-compact text-default-secondary">
           <EyeOff className="h-3.5 w-3.5" />

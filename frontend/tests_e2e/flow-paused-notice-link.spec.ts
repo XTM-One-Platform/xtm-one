@@ -43,11 +43,11 @@ test.describe.serial('Flows - paused-flow notice links to Owner and access', () 
   });
 
   test('an admin gets a link to the Owner and access drawer in the notice', async ({ page }) => {
-    await page.goto(`/flows/${flowId}/builder`);
+    await page.goto(`/flows/library/${flowId}`);
     await expect(page.getByText("Paused: the owner's account is deactivated").first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'Owner and access' })).toHaveAttribute(
       'href',
-      new RegExp(`/flows/${flowId}/builder\\?panel=owner-access$`),
+      new RegExp(`/flows/library/${flowId}\\?panel=owner-access$`),
     );
   });
 });

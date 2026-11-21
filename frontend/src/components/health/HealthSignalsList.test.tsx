@@ -65,7 +65,7 @@ describe("the Platform Health signals list", () => {
     // The target is plain text; the row opens it (#12070).
     const target = screen.getByText("Weekly digest");
     expect(target.closest("a")).toBeNull();
-    expect(within(target.closest("tr") as HTMLElement).getByRole("link").getAttribute("href")).toBe("/flows/f-1/builder");
+    expect(within(target.closest("tr") as HTMLElement).getByRole("link").getAttribute("href")).toBe("/flows/library/f-1");
     const agentRow = screen.getByText("Triage analyst").closest("tr") as HTMLElement;
     expect(within(agentRow).getByRole("link").getAttribute("href")).toContain("a-1");
 

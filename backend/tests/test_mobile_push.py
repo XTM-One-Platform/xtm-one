@@ -88,7 +88,7 @@ def _activity(activity_type="notification", **metadata):
         (
             _activity(notification_source="flow_hitl", flow_id=UUID_A, flow_run_id=UUID_B),
             "flow_hitl",
-            f"/flows/{UUID_A}/builder?run={UUID_B}",
+            f"/flows/library/{UUID_A}?run={UUID_B}",
         ),
         (_activity(notification_source="flow", flow_id="not-a-uuid"), "flow", "/flows"),
         (

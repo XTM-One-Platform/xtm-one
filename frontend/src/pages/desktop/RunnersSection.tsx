@@ -296,7 +296,7 @@ export function RunnerFleet({
           rows={runners ?? []}
           columns={columns}
           rowKey={(r) => r.id}
-          rowHref={(r) => `/runners/${r.id}`}
+          rowHref={(r) => `/desktop/runners/${r.id}`}
           rowTestId="runner-row"
           pinFirst={highlightRunnerId ? (r) => r.id === highlightRunnerId : undefined}
           defaultSort={{ key: "name", direction: "asc" }}
@@ -1037,7 +1037,7 @@ export function EnrollmentKeysCard({
 /**
  * One machine: status, host facts, permission model, pending approvals and
  * the manage actions `can_manage` allows. Shared by the Desktop fleet list and
- * the `/runners/:id` detail page - the page the admin Objects browser
+ * the `/desktop/runners/:id` detail page - the page the admin Objects browser
  * opens a colleague's machine on - so the two surfaces cannot drift.
  */
 export function RunnerCard({
