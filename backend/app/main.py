@@ -72,6 +72,7 @@ from app.api.v1 import (
     csp_reports,
     ctem_cases,
     ctem_metrics,
+    ctem_signals,
     custom_dashboards,
     custom_tool_sources,
     custom_tools,
@@ -4655,6 +4656,7 @@ application.include_router(
     ctem_metrics.router, prefix="/api/v1/ctem-metrics", tags=["ctem-metrics"]
 )
 application.include_router(ctem_cases.router, prefix="/api/v1/ctem-cases", tags=["ctem-cases"])
+application.include_router(ctem_signals.router, prefix="/api/v1/ctem-signals", tags=["ctem-signals"])
 application.include_router(
     organization_context.router,
     prefix="/api/v1/organization-context",

@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""CTEM signals API (#826): record, list and read the changes in exposure that start the loop.
+
+XTM One mode only, no model call. ``POST`` records a signal for the caller,
+idempotent on its dedupe key (the same key again answers ``created: false``
+with ``last_seen_at`` moved). An administrator reads every signal of the
+organization; anyone else reads the signals recorded for them. The rules are
+``services/ctem_signals.py``; the design ``dev-docs/ctem-signals.md``.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
+from app.models.user import User
+from app.services import ctem_signals as signals
+from app.services.organizations import get_primary
+
+router = APIRouter()
+
+TriggerPath = Literal[TRIGGER_PATHS]  # type: ignore[valid-type]
+Lens = Literal[LENSES]  # type: ignore[valid-type]
+SignalState = Literal[SIGNAL_STATES]  # type: ignore[valid-type]
+SubjectKind = Literal[SUBJECT_KINDS]  # type: ignore[valid-type]
+
+
+class SignalSource(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+    external_id: str | None = Field(default=None, max_length=300)
+
+
+class SignalSubject(BaseModel):
+    kind: SubjectKind
+    ref: str = Field(min_length=1, max_length=300)
+    label: str | None = Field(default=None, max_length=300)
+
+
+class SignalCreate(BaseModel):
+    """One change in exposure; the lens defaults to the path's usual one."""
+
+    trigger_path: TriggerPath
+    lens: Lens | None = None
+    source: SignalSource
+    subject: SignalSubject
+    observed_at: datetime | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    dedupe_key: str | None = Field(default=None, max_length=200)
+
+
+def _require_xtm_one() -> None:
+    if settings.is_copilot_like:
+        raise HTTPException(status_code=404, detail="CTEM signals are only available in XTM One mode")
+
+
+def _reader(user: User) -> str | None:
+    """``None`` reads the organization (an administrator); else the caller's own signals."""
+    return None if getattr(user, "is_admin", False) else str(user.id)
+
+
+async def _organization_id(db: AsyncSession) -> uuid.UUID:
+    primary = await get_primary(db)
+    if primary is None:
+        raise HTTPException(status_code=404, detail="No organization set up yet")
+    return primary.id
+
+
+@router.get("/paths")
+async def list_ctem_signal_paths(user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """The 12 trigger paths, their default lens and whether an integration listener feeds them."""
+    _require_xtm_one()
+    return {"paths": signals.path_catalog()}
+
+
+@router.get("")
+async def list_ctem_signals(
+    state: SignalState | None = Query(default=None),
+    trigger_path: TriggerPath | None = Query(default=None),
+    lens: Lens | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=signals.MAX_PAGE),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One page of signals, newest sighting first, with the total and the counts by state."""
+    _require_xtm_one()
+    primary = await get_primary(db)
+    if primary is None:
+        return {"total": 0, "counts": {s: 0 for s in SIGNAL_STATES}, "signals": []}
+    rows, total, counts = await signals.list_signals(
+        db,
+        organization_id=primary.id,
+        recorded_by=_reader(user),
+        state=state,
+        trigger_path=trigger_path,
+        lens=lens,
+        limit=limit,
+        offset=offset,
+    )
+    return {"total": total, "counts": counts, "signals": [signals.to_dict(r) for r in rows]}
+
+
+@router.post("")
+async def record_ctem_signal(
+    body: SignalCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``."""
+    _require_xtm_one()
+    organization_id = await _organization_id(db)
+    try:
+        row, created = await signals.record_signal(
+            db,
+            organization_id=organization_id,
+            signal=signals.SignalInput(
+                trigger_path=body.trigger_path,
+                lens=body.lens or "",
+                source_provider=body.source.provider,
+                source_external_id=body.source.external_id,
+                subject_kind=body.subject.kind,
+                subject_ref=body.subject.ref,
+                subject_label=body.subject.label,
+                observed_at=body.observed_at,
+                evidence=body.evidence,
+                dedupe_key=body.dedupe_key,
+            ),
+            recorded_via="api",
+            recorded_by=str(user.id),
+        )
+    except signals.SignalError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.commit()
+    return {"created": created, "signal": signals.to_dict(row)}
+
+
+@router.get("/{signal_id}")
+async def get_ctem_signal(
+    signal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One signal the caller may see; 404 otherwise."""
+    _require_xtm_one()
+    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user))
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such signal")
+    return signals.to_dict(row)
