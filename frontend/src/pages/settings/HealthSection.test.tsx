@@ -4,7 +4,7 @@
 // Asserted on roles, text and test ids (src/no-class-name-assertions.test.ts).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { HealthSection } from "@/pages/settings/HealthSection";
@@ -59,6 +59,7 @@ const settings = {
     ingestion_lag_minutes: 15,
   },
   openaev: { integration_silent_minutes: 60, agents_offline_max_percent: 50 },
+  alert_emails: { enabled: false, recipients: [], min_severity: "warning", immediate: true, digest: true },
 };
 
 const budget = {
@@ -116,5 +117,96 @@ describe("HealthSection read view", () => {
     const usage = await screen.findByTestId("health.budget-usage");
     expect(usage).toHaveTextContent("Spent in 2026-11: 0 tokens, $4.20.");
     expect(usage).not.toHaveTextContent("USD");
+  });
+
+  it("is one compact section: a bar jumping to four groups and the pets, each block in its group once", async () => {
+    renderSection();
+    await screen.findByTestId("health.analysis");
+    const bar = screen.getByRole("navigation", { name: "On this page" });
+    const links = within(bar).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")]);
+    expect(links).toEqual([
+      ["Status and scope", "#health-settings-status"],
+      ["Spend limits", "#health-settings-spend"],
+      ["Health checks", "#health-settings-checks"],
+      ["Alerts", "#health-settings-alerts"],
+      ["Companion pets", "#health-settings-pets"],
+    ]);
+    expect(within(screen.getByTestId("settings.health.group.spend")).getByTestId("health.analysis")).toBeInTheDocument();
+    expect(within(screen.getByTestId("settings.health.group.checks")).getByTestId("settings.health.schedule")).toBeInTheDocument();
+    expect(within(screen.getByTestId("settings.health.group.alerts")).getByTestId("settings.health.alert-emails")).toBeInTheDocument();
+    // The section title is the tab's; the first block no longer repeats it as a header.
+    expect(screen.queryByRole("heading", { name: "Platform Health" })).toBeNull();
+  });
+
+  it("moves the bar's current entry with the scroll, the short last groups included (UX r1 and r2 B1)", async () => {
+    // r1: the bar observed the pets section alone. r2: an observer band under the header never
+    // saw Alerts and Companion pets, which are short and cannot scroll up into it. The bar now
+    // reads the groups' positions on every scroll; this drives that geometry, the one the UX
+    // Director measured at 1728x1117 (Alerts at 652 px, pets at 814 px at the bottom).
+    renderSection();
+    await screen.findByTestId("health.analysis");
+    const bar = screen.getByRole("navigation", { name: "On this page" });
+    const current = () => within(bar).getByRole("link", { current: "location" }).textContent;
+    const scroller = (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+    const ids = ["health-settings-status", "health-settings-spend", "health-settings-checks", "health-settings-alerts", "health-settings-pets"];
+    const tops = [429, 700, 1500, 2925, 3087];
+    let scrollTop = 0;
+    const restore: (() => void)[] = [];
+    const define = (el: object, key: string, get: () => unknown) => {
+      Object.defineProperty(el, key, { configurable: true, get });
+      restore.push(() => delete (el as Record<string, unknown>)[key]);
+    };
+    define(scroller, "scrollTop", () => scrollTop);
+    define(scroller, "scrollHeight", () => 3390);
+    define(scroller, "clientHeight", () => 1117);
+    ids.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error(`no group ${id}`);
+      define(el, "getBoundingClientRect", () => () => ({ top: tops[i] - scrollTop }) as DOMRect);
+    });
+    const scrollTo = (y: number) => {
+      scrollTop = y;
+      act(() => {
+        document.dispatchEvent(new Event("scroll"));
+      });
+    };
+    try {
+      scrollTo(0);
+      expect(current()).toBe("Status and scope");
+      scrollTo(600);
+      expect(current()).toBe("Spend limits");
+      scrollTo(1400);
+      expect(current()).toBe("Health checks");
+      // Over the last viewport the line slides down (UX r3 B1): Alerts gets its own stretch of scroll.
+      scrollTo(2060);
+      expect(current()).toBe("Alerts");
+      // The bottom of the page: the last section, Companion pets.
+      scrollTo(2273);
+      expect(current()).toBe("Companion pets");
+      // A click on Alerts lands at the bottom and stays current while the jump scrolls.
+      act(() => {
+        within(bar).getByRole("link", { name: "Alerts" }).click();
+      });
+      scrollTo(2273);
+      expect(current()).toBe("Alerts");
+      // The reader scrolls back up: the bar follows again, Status and scope at the top.
+      act(() => {
+        document.dispatchEvent(new Event("wheel"));
+      });
+      scrollTo(1400);
+      expect(current()).toBe("Health checks");
+      scrollTo(0);
+      expect(current()).toBe("Status and scope");
+    } finally {
+      restore.forEach((undo) => undo());
+    }
+  });
+
+  it("shows the alert emails block, off by default", async () => {
+    renderSection();
+    const alerts = await screen.findByTestId("settings.health.alert-emails");
+    expect(alerts).toHaveTextContent("Send alert emails");
+    expect(alerts).toHaveTextContent("Off");
+    expect(screen.queryByTestId("health.read.alert-recipients")).toBeNull();
   });
 });

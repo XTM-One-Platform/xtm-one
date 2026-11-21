@@ -210,6 +210,24 @@ export function useAnswerWorkItem() {
   });
 }
 
+/**
+ * Send Re-check, It's solved or Do it to the item's own agent (#774): a note
+ * lands on the item and the agent takes it now. The caller toasts the
+ * outcome itself, so the global error toast stays quiet.
+ */
+export function useAskWorkItem() {
+  const qc = useQueryClient();
+  return useMutation<
+    { item: WorkItem; agent: { id: string; name: string }; via: "inbox" | "run" },
+    Error,
+    { id: string; action: "recheck" | "solved" | "do"; text?: string }
+  >({
+    mutationFn: ({ id, ...body }) => api.post(`/work-items/${id}/ask`, body),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["work-items"] }),
+  });
+}
+
 /** Put an item back in the queue: open, unclaimed, dispatch attempts reset. */
 export function useRequeueWorkItem() {
   const qc = useQueryClient();

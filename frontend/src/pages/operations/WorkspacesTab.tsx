@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Workspaces - the Operations `workspaces` tab (`/operations/workspaces`).
+ * Workspaces - the Tasks `workspaces` tab (`/tasks/workspaces`, #775).
  * A workspace is the boundary the other Operations tabs (work items,
  * shared state, worksets) are scoped by.
  *
@@ -37,6 +37,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   failing. So is every action the caller's right does not cover
  *   (`can_manage`, and "Make default" on a workspace they do not own).
  */
+import { workspacePath } from "@/lib/task-routes";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Boxes, FolderKanban, Hash, LayoutGrid, Plus, Sparkles, User } from "lucide-react";
@@ -216,11 +217,13 @@ export default function Workspaces() {
             onAction={() => setCreateOpen(true)}
           />
         }
-        rowHref={(w) => `/workspaces/${w.id}`}
+        rowHref={(w) => workspacePath(w.id)}
         rowClassName={(w) => (w.is_archived ? "opacity-60" : undefined)}
         rowActions={(w) => <WorkspaceActionsMenu workspace={w} className="size-7" />}
         rowActionsWidth={64}
         view={{ value: viewMode, onChange: setViewMode }}
+        // One scrollbar in grid view too: the rows scroll inside, the pager stays in the list (UX r1 on #785, B1).
+        fitGrid
         renderGrid={
           viewMode === "grid"
             ? (rows) => (
@@ -437,7 +440,7 @@ function WorkspaceRow({ workspace: w, userId, isAdmin }: { workspace: Workspace;
     (workspaceAccess(w, { id: userId, isAdmin }, t_i18n) ? 1 : 0) +
     (total > 0 ? 1 : 0);
   const hiddenFacts = Math.max(0, facts.length - shown);
-  const open = () => navigate(`/workspaces/${w.id}`);
+  const open = () => navigate(workspacePath(w.id));
 
   return (
     <Card
@@ -456,7 +459,7 @@ function WorkspaceRow({ workspace: w, userId, isAdmin }: { workspace: Workspace;
                 <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap" data-testid="workspace-line1">
                   <OpsHoverCard title={w.name} facts={facts}>
                     <Link
-                      to={`/workspaces/${w.id}`}
+                      to={workspacePath(w.id)}
                       className="min-w-[4rem] shrink truncate text-left font-medium hover:text-accent focus-visible:outline-none focus-visible:underline"
                       data-testid="workspace-title"
                       onClick={(e) => e.stopPropagation()}

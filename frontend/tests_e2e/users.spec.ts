@@ -33,7 +33,7 @@ test.describe.serial('Users — admin management', () => {
   test('should display the users list page (admin only)', async ({ page }) => {
     const userPage = new UserManagementPage(page);
     await userPage.gotoList();
-    await expect(page).toHaveURL('/users');
+    await expect(page).toHaveURL('/users-and-groups');
     await expect(page.getByRole('button', { name: 'New User' })).toBeVisible();
   });
 

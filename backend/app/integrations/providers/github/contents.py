@@ -610,11 +610,8 @@ def _parse_commit_changes(
         except UnicodeEncodeError:
             return [], [], f"Error: the content of '{path}' is not valid UTF-8 text, so it cannot be committed."
         writes.append((path, item["content"], executable))
-    if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
-        return [], [], (
-            f"Error: the files add up to {total_bytes} bytes, over the {_MAX_COMMIT_CONTENT_BYTES} one commit "
-            "may carry; split them into several commits."
-        )
+    # The byte cap of one signed commit is weighed by the caller once every
+    # file is read: a change set over it is split into signed commits (#764).
     deletes: list[str] = []
     for raw in raw_deletes:
         path, err = _commit_path(raw, "delete_paths")
@@ -1344,6 +1341,34 @@ async def _advance_checkout(
             )
         )
     return str(await advance(record, commit=commit, ref=branch, written=written, removed=list(delete_paths or [])))
+
+
+def _split_files_change_set(
+    staged: list[tuple[str, Any, bool | None]], total_bytes: int
+) -> list[dict[str, Any]] | str:
+    """The ``files[]`` writes of a change set over the byte cap, ready for the split path; or the refusal.
+
+    An ``edits`` entry is resolved against the branch tip of one commit, and a
+    single file over the cap fits no commit: both keep the refusal (#764).
+    """
+    if any(isinstance(content, _Edits) for _path, content, _x in staged):
+        return (
+            f"Error: the files add up to {total_bytes} bytes, over the {_MAX_COMMIT_CONTENT_BYTES} one commit "
+            "may carry, and an 'edits' entry cannot be split; commit the edits apart."
+        )
+    batch: list[dict[str, Any]] = []
+    for path, content, executable in staged:
+        data = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        if len(data) > _MAX_COMMIT_CONTENT_BYTES:
+            return (
+                f"Error: {path} is {len(data)} bytes, over the {_MAX_COMMIT_CONTENT_BYTES} one signed commit may "
+                "carry, so no split can commit it; nothing was committed."
+            )
+        item: dict[str, Any] = {"path": path, "content": _WorkspaceBytes(data)}
+        if executable is not None:
+            item["executable"] = executable
+        batch.append(item)
+    return batch
 
 
 async def _advance_checkout_files(
@@ -2096,9 +2121,21 @@ def register(
                 )
             files_drift_note = drift_note
         if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
-            return (
-                f"Error: the files add up to {total_bytes} bytes, over the {_MAX_COMMIT_CONTENT_BYTES} one commit "
-                "may carry; split them into several commits."
+            split = _split_files_change_set(staged, total_bytes)
+            if isinstance(split, str):
+                return split
+            # Over the cap of one signed commit: the from_checkout split path (#764),
+            # consecutive signed commits on a scratch branch and one branch move.
+            return await _commit_checkout_in_batches(
+                repo,
+                message,
+                split,
+                list(deletes),
+                branch,
+                files_drift_note,
+                None,
+                workspace_written=workspace_written,
+                merged_on=merged_on,
             )
         repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
         async with egress_client(timeout=60) as client:
@@ -2657,6 +2694,8 @@ def register(
         rewrites: dict[str, bytes] | None = None,
         *,
         keep_record_commit: bool = False,
+        workspace_written: dict[str, tuple[str, bytes]] | None = None,
+        merged_on: str = "",
     ) -> str:
         """A ``from_checkout`` change set over a cap of one commit: several signed commits, one branch move.
 
@@ -2670,6 +2709,11 @@ def register(
         an intermediate commit (CI never starts on a half-applied change set),
         and a batch that fails leaves it unchanged: the change set lands whole
         or not at all.
+
+        *workspace_written* are the checkout files a ``files[]`` set read
+        through ``workspace_path`` (#764): their record moves to the last part,
+        as the single-commit path does. *merged_on* is the tip those files were
+        merged with; a target at another tip is refused before any part.
         """
         owner, name, _ = parse_repo(repo)
         repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
@@ -2690,6 +2734,9 @@ def register(
             tip = _coerce_str(ref_object.get("sha")) if isinstance(ref_object, dict) else ""
             if not _GIT_OBJECT_ID_RE.fullmatch(tip):
                 return f"Error: could not read the tip of branch '{target}' of {repo}; nothing was committed."
+            if merged_on and tip != merged_on:
+                # The checkout files were merged with another tip: on this one they could revert a commit.
+                return _moved_tip_refusal(target, repo, tip)
             now = time.time()
             await _sweep_stale_scratch_branches(client, headers, repo_url, repo, now)
             scratch = _scratch_branch_name(tip, now)
@@ -2800,6 +2847,12 @@ def register(
         )
         if moved:
             lines.append(moved)
+        if workspace_written and checkout_record is None:
+            moved = await _advance_checkout_files(
+                repo, target, tip, last_commit, workspace_written, sorted(landed_paths) + list(removed)
+            )
+            if moved:
+                lines.append(moved)
         named = await name_pushed_pull_request(repo, owner, name, target, last_commit)
         if named:
             lines.append(named)

@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useTick } from "@/hooks/useTick";
@@ -75,7 +75,8 @@ import { EvaluationTab } from "./agent-detail/EvaluationTab";
 import { VersioningTab } from "./agent-detail/VersioningTab";
 import { ObservabilityTab } from "./agent-detail/ObservabilityTab";
 import { FeedbackTab } from "./agent-detail/FeedbackTab";
-import { agentDetailTabs, legacyAgentTabTarget, type AgentTab } from "./agent-detail/tabs";
+import { agentDetailTabs, isAgentTab, type AgentTab } from "./agent-detail/tabs";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { AgentSuccessorDialog } from "./agent-detail/AgentSuccessorDialog";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 
@@ -124,10 +125,9 @@ export default function AgentDetail() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [duplicateGateOpen, setDuplicateGateOpen] = useState(false);
 
-  // The former Budget tab and Overview links to the ROI section open Value (#11037).
-  const legacyTarget = id ? legacyAgentTabTarget(`/agents/${id}`, tabSegment, location.search, location.hash) : null;
-  if (legacyTarget) return <Navigate to={legacyTarget} replace state={location.state} />;
-
+  // A `:tab` segment that names no agent tab (the former `budget` included) is
+  // not found, before the agent header renders: no redirect (#797).
+  if (!isAgentTab(tabSegment)) return <RouteNotFound />;
   if (isLoading) return <DetailPageSkeleton backTo={backTo} backLabel={backLabel} tabs={6} descriptionLines={1} actions={3} />;
   if (!agent) return (
     <NotFoundState

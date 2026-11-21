@@ -661,7 +661,7 @@ test.describe.serial('Agents — Observability access (non-admin owner)', () => 
     await expect(traceRow).toBeVisible();
     await expect(traceRow.getByRole('link', { name: 'Owner Observability Trace' })).toHaveCount(0);
     await traceRow.getByText('Owner Observability Trace', { exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/traces/${TRACE_ID}`));
+    await expect(page).toHaveURL(new RegExp(`/observability/traces/${TRACE_ID}`));
     await expect(page.getByRole('heading', { name: 'Owner Observability Trace', level: 1 })).toBeVisible();
   });
 

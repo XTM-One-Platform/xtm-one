@@ -91,11 +91,14 @@ describe("ScrollableComboboxContent", () => {
     expect(reachedDocument).toEqual([]);
   });
 
-  it.each(cases)("%s: a %s goes on to the document outside a dialog", async (_, move, Picker) => {
+  // Since @filigran/design-system 1.9.0 the Combobox list stops its wheel and
+  // touch moves itself, dialog or not; outside a dialog the move is still never
+  // cancelled, so the list and the page scroll as usual.
+  it.each(cases)("%s: a %s over the list is not cancelled outside a dialog", async (_, move, Picker) => {
     renderWithProviders(<Picker />);
 
-    await moveOverList(move);
+    const event = await moveOverList(move);
 
-    expect(reachedDocument).toEqual([move]);
+    expect(event.defaultPrevented).toBe(false);
   });
 });

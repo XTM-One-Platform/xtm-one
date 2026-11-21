@@ -12,6 +12,7 @@ import {
   ledgerTrend,
   parseValueScope,
   parseValueTab,
+  isValueTab,
   parseValueWindow,
   valueRemainders,
   valueReviewShares,
@@ -135,6 +136,10 @@ describe("Value page arithmetic", () => {
     expect(parseValueTab("")).toBe("fleets");
     expect(parseValueTab("by-agent")).toBe("fleets");
     expect(parseValueTab("constructor")).toBe("fleets");
+    expect(isValueTab(undefined)).toBe(true);
+    expect(isValueTab("agents")).toBe(true);
+    expect(isValueTab("by-agent")).toBe(false);
+    expect(isValueTab("constructor")).toBe(false);
   });
 
   it("draws the value's range as the trend band", () => {

@@ -30,6 +30,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Fleets layer.
  */
 
+import { workItemsPath } from "./task-routes.ts";
 import type { FleetGraph, FleetMemberHealth, FleetMemberHealthStatus } from "@/hooks/api/useFleetApi";
 
 /**
@@ -206,7 +207,7 @@ export function healthBadge(h: Pick<FleetMemberHealth, "status" | "stale_work_it
 
 /** Operations > Work Items, filtered on the stale items this agent owns. */
 export function staleWorkItemsHref(agentId: string): string {
-  return `/operations/work-items?${new URLSearchParams({ view: "stale", agent: agentId }).toString()}`;
+  return workItemsPath({ view: "stale", agent: agentId });
 }
 
 /** One line of the health badge's tooltip: an i18n key and its values. */

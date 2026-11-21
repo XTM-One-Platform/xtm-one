@@ -456,7 +456,7 @@ describe("Data table gates (dev-docs/reference/data-tables.md)", () => {
 
   it("9. draws the page box of a card grid in the toolbar only, never a page-level select row", () => {
     // A selectable `renderGrid` list gets its page box from the DataTable, first in the toolbar
-    // (Sam on /operations/state, 14 Nov 2026: a lone checkbox row above the cards). A page that
+    // (Sam on /operations/shared-state, 14 Nov 2026: a lone checkbox row above the cards). A page that
     // draws its own "select the page" box, or a `*-page-select` row, brings that row back.
     const ownPageBox = /Select every row on this page|data-testid="[a-z-]*page-select"/;
     const found = FILES.filter(({ path, text }) => path !== TABLE && ownPageBox.test(text)).map(({ path }) => path);

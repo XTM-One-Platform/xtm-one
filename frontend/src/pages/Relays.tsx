@@ -71,7 +71,7 @@ function GroupCard({ group, userId }: { group: RelayGroup; userId?: string }) {
   return (
     <Card
       className="cursor-pointer transition-all hover:bg-elevation-hover hover:shadow-glow h-full"
-      onClick={() => navigate(`/relays/${group.id}`)}
+      onClick={() => navigate(`/connections/relays/${group.id}`)}
     >
       <CardContent className="p-4 flex flex-col gap-3 h-full">
         <div className="flex items-start gap-3">
@@ -175,7 +175,7 @@ function CreateGroupDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         onSuccess: (group) => {
           toast({ title: t_i18n("Relay group created"), variant: "success" });
           onOpenChange(false);
-          navigate(`/relays/${group.id}?enroll=1`);
+          navigate(`/connections/relays/${group.id}?enroll=1`);
         },
       },
     );
@@ -270,7 +270,7 @@ export default function Relays() {
     return (
       <div className="space-y-6">
         <NavFamilyHeader
-          to="/relays"
+          to="/connections/relays"
           title="Relays"
           infoLabel={t_i18n("About relays")}
           info={t_i18n("Reach the services inside your networks - Splunk, Tanium, an on-premises OpenCTI - without opening any inbound flow. A relay runs in the network and connects out to the platform.")}
@@ -285,7 +285,7 @@ export default function Relays() {
         {/* Relays off: the page is no member of the reader's family, so the
             shared header shows its own title and no tab row. */}
         <NavFamilyHeader
-          to="/relays"
+          to="/connections/relays"
           title="Relays"
           infoLabel={t_i18n("About relays")}
           info={t_i18n("Reach the services inside your networks - Splunk, Tanium, an on-premises OpenCTI - without opening any inbound flow. A relay runs in the network and connects out to the platform.")}
@@ -306,7 +306,7 @@ export default function Relays() {
       {/* The Connections family header (#9301 N3b): its h1, the page's help
           in the "i" (#10215), and one tab row of the connection pages. */}
       <NavFamilyHeader
-        to="/relays"
+        to="/connections/relays"
         title="Relays"
         infoLabel={t_i18n("About relays")}
         info={t_i18n("Reach the services inside your networks - Splunk, Tanium, an on-premises OpenCTI - without opening any inbound flow. A relay runs in the network and connects out to the platform.")}

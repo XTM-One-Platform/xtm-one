@@ -13,6 +13,7 @@ import subprocess
 
 from tests.test_bootstrap import (
     BASE_URL,
+    FAULTHANDLER_MARKER,
     STACK_DUMP_GRACE,
     STARTUP_TIMEOUT,
     _startup_timeout_message,
@@ -81,3 +82,14 @@ def test_the_output_kept_is_its_end_where_the_stacks_are():
     message = _startup_timeout_message(False, None, "", "x" * 10_000 + "STACKS")
     assert message.endswith("STACKS")
     assert message.count("x") <= 6000
+
+
+def test_a_long_stack_dump_keeps_the_server_log_before_it():
+    """The stacks after SIGABRT never push out the log naming the startup step (#806)."""
+    output = "boot\n" + "y" * 10_000 + "\nSTEP running migrations\n" + FAULTHANDLER_MARKER + "\n" + "z" * 10_000
+    message = _startup_timeout_message(True, 503, '{"status": "starting"}', output)
+    assert "STEP running migrations" in message
+    assert FAULTHANDLER_MARKER in message
+    assert message.index("STEP running migrations") < message.index(FAULTHANDLER_MARKER)
+    assert message.count("y") <= 4000
+    assert message.count("z") <= 4000

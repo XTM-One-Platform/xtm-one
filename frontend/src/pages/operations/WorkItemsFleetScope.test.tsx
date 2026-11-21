@@ -33,6 +33,7 @@ vi.mock("@/hooks/api/useWorkItemApi", () => ({
   useCompleteWorkItem: () => idle,
   useCancelScheduledWorkItem: () => idle,
   useRescheduleScheduledWorkItem: () => idle,
+  useAskWorkItem: () => idle,
 }));
 
 const { default: WorkItemsTab, fleetListScope } = await import("./WorkItemsTab");

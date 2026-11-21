@@ -109,12 +109,12 @@ export default function Groups() {
       {/* The Users and groups family header (#9301 N3b): its h1, the page's
           help in the "i" (#10215), and one tab row Users / Groups. */}
       <NavFamilyHeader
-        to="/groups"
+        to="/users-and-groups/groups"
         title="Groups"
         infoLabel={t_i18n("About groups")}
         info={t_i18n("Manage user groups for sharing agents, knowledge bases, and other resources.")}
         actions={
-          <Button className="gap-1.5" onClick={() => navigate("/groups/new")}>
+          <Button className="gap-1.5" onClick={() => navigate("/users-and-groups/groups/new")}>
             <Plus className="h-4 w-4" /> {t_i18n("New Group")}
           </Button>
         }
@@ -124,7 +124,7 @@ export default function Groups() {
         rows={groups ?? []}
         columns={columns}
         rowKey={(g) => g.id}
-        rowHref={(g) => `/groups/${g.id}`}
+        rowHref={(g) => `/users-and-groups/groups/${g.id}`}
         defaultSort={DEFAULT_SORT}
         defaultPageSize={PAGE_SIZE}
         server={{ total: counted?.count ?? groups?.length ?? 0 }}

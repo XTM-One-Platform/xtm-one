@@ -192,7 +192,7 @@ async def evidence_links(
         if kind == "trace":
             agent_id = (await db.execute(select(LLMTrace.agent_id).where(LLMTrace.id == ref_id))).scalar_one_or_none()
             if await agent_chats_readable(agent_id):
-                href = f"/traces/{ref_id}"
+                href = f"/observability/traces/{ref_id}"
         elif kind == "rating":
             agent_id = await _rating_agent_id(db, ref_id)
             if await agent_chats_readable(agent_id):

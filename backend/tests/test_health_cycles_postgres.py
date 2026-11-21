@@ -1053,7 +1053,7 @@ async def test_evidence_links_only_what_the_viewer_may_open(concierge_on):
         async with _client(sessions, users["config"]) as client:
             configurer = (await client.get(f"/api/v1/health/improvements/{proposal.id}/evidence")).json()
     assert owner == [
-        {"kind": "trace", "id": str(trace.id), "href": f"/traces/{trace.id}", "hidden": False},
+        {"kind": "trace", "id": str(trace.id), "href": f"/observability/traces/{trace.id}", "hidden": False},
         {"kind": "trace", "id": None, "href": None, "hidden": True},
     ]
     # A config grantee manages the agent but does not read its chats (config_with_chats does).

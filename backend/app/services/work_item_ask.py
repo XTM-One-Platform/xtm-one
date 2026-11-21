@@ -18,15 +18,23 @@ free text; the views had to show that text, or the whole description, and the
 person had to find the question in it. ``ask`` carries the decision itself, so
 a view renders it as a card with one button per option:
 
-``{"question": str, "options": [{"key", "label", "effect"?}],
+``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?}],
 "recommendation"?: option key, "deadline"?: ISO-8601}``
 
 * ``question``: one sentence, required.
+* ``context``: 2 to 4 short plain lines for the reader (what the matter is,
+  what was found, what each answer leads to) (#776).
 * ``options``: up to :data:`MAX_OPTIONS`; ``key`` short and unique (``A``,
   ``merge``), ``label`` the button text, ``effect`` what choosing it does.
   None at all: the person answers in free text.
 * ``recommendation``: the key of the option the agent recommends.
 * ``deadline``: when the answer is needed, normalized to ISO-8601 UTC.
+
+The question, the context and the option texts are read by a person: they
+are refused when they carry what only an agent reads (a timestamp, an id, a
+message id, a correlation or timer key, "card sent"), with a message saying
+how to rewrite them (:func:`unreadable_reasons`, #776). Those details belong
+in ``blocked_reason``, which the card shows under "Technical details".
 
 :func:`normalize_ask` validates and trims a written ask (``ValueError`` with
 the reason); ``{}`` or ``null`` clears it. Stored in ``work_items.ask``
@@ -37,18 +45,73 @@ ask: the views show its ``blocked_reason`` as the question.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 MAX_QUESTION_CHARS = 500
+MAX_CONTEXT_CHARS = 800
 MAX_OPTIONS = 6
 MAX_KEY_CHARS = 40
 MAX_LABEL_CHARS = 120
 MAX_EFFECT_CHARS = 400
 
 ASK_FIELDS_MESSAGE = (
-    "ask is {question, options?: [{key, label, effect?}], recommendation?: an option key, deadline?: ISO-8601}"
+    "ask is {question, context?, options?: [{key, label, effect?}], recommendation?: an option key, "
+    "deadline?: ISO-8601}"
 )
+
+# What a person never reads on a decision card (#776): each pattern with what
+# to write instead. Checked on the question, the context and every option text.
+_UNREADABLE: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"\b\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?\b|\b\d{1,2}:\d{2}Z\b"
+        ),
+        "a machine timestamp: put the time in ask.deadline, the card shows it in the reader's time zone",
+    ),
+    (
+        re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE),
+        "a UUID: name the thing in words (its title), ids go in blocked_reason",
+    ),
+    (
+        re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\b", re.IGNORECASE),
+        "a hexadecimal id or SHA: name the thing in words, ids go in blocked_reason",
+    ),
+    (
+        re.compile(r"\b\d{10,}\b"),
+        "a message or object id (a long run of digits): say what it is in words, ids go in blocked_reason",
+    ),
+    (
+        re.compile(r"\b[a-z][a-z0-9_]*:[a-z0-9][a-z0-9_.]*-[a-z0-9][a-z0-9_.-]*", re.IGNORECASE),
+        "a correlation or timer key: describe the matter in plain words, keys go in blocked_reason",
+    ),
+    (
+        re.compile(r"\bcard sent\b|\bmsg\b", re.IGNORECASE),
+        "delivery bookkeeping ('card sent', 'msg'): the reader needs the decision, not how it reached them",
+    ),
+)
+
+READABLE_ASK_EXAMPLE = (
+    'good: {"question": "Post Legal\'s comment asking the supplier for the 4 missing documents?", '
+    '"context": "The contract review found 4 documents missing. Go posts the prepared comment; '
+    'Edit lets you change it first; No closes the review as is."}; bad: {"question": "CARD SENT '
+    '2026-11-20T11:43:58Z (msg 1795175038574): waiting for GO / EDIT / NO, timer legal:fin-796-reminder"}'
+)
+
+
+def unreadable_reasons(text: str) -> list[str]:
+    """What in *text* a person should not have to read, one reason per pattern found."""
+    return [reason for pattern, reason in _UNREADABLE if pattern.search(text or "")]
+
+
+def _refuse_unreadable(field: str, text: str) -> None:
+    reasons = unreadable_reasons(text)
+    if reasons:
+        raise ValueError(
+            f"ask.{field} is read by a person and holds {'; '.join(reasons)}. Rewrite it as the decision in "
+            f"the reader's terms; technical details go in blocked_reason ({READABLE_ASK_EXAMPLE})"
+        )
 
 
 def _text(value: object, limit: int) -> str:
@@ -68,6 +131,16 @@ def _deadline(value: object) -> str | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC).isoformat()
+
+
+def _context(value: object) -> str:
+    """The context lines, each trimmed, blank lines dropped, line breaks kept."""
+    if value in (None, ""):
+        return ""
+    if isinstance(value, list):
+        value = "\n".join(str(line) for line in value)
+    lines = [" ".join(line.split()) for line in str(value).splitlines()]
+    return "\n".join(line for line in lines if line)[:MAX_CONTEXT_CHARS]
 
 
 def _options(value: object) -> list[dict[str, str]]:
@@ -116,14 +189,21 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
         raise ValueError(ASK_FIELDS_MESSAGE)
     if not value:
         return None
-    unknown = sorted(set(value) - {"question", "options", "recommendation", "deadline"})
+    unknown = sorted(set(value) - {"question", "context", "options", "recommendation", "deadline"})
     if unknown:
         raise ValueError(f"ask has unknown field(s) {', '.join(unknown)}: {ASK_FIELDS_MESSAGE}")
     question = _text(value.get("question"), MAX_QUESTION_CHARS)
     if not question:
         raise ValueError("ask.question is required: the decision in one sentence")
+    _refuse_unreadable("question", question)
     ask: dict[str, Any] = {"question": question}
+    context = _context(value.get("context"))
+    if context:
+        _refuse_unreadable("context", context)
+        ask["context"] = context
     options = _options(value.get("options"))
+    for option in options:
+        _refuse_unreadable("options", f"{option['label']} {option.get('effect', '')}")
     if options:
         ask["options"] = options
     recommendation = _text(value.get("recommendation"), MAX_KEY_CHARS)
@@ -138,11 +218,40 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
     return ask
 
 
+def person_ask_missing(ask: object) -> list[str]:
+    """What a decision card for a person still lacks in *ask* (#776).
+
+    An agent that parks an item for a person (``needs_human``) writes the card
+    the person reads: a question, the context and at least two options.
+    Empty when the ask is complete.
+    """
+    if not isinstance(ask, dict) or not str(ask.get("question") or "").strip():
+        return ["ask.question", "ask.context", "ask.options (at least 2)"]
+    missing: list[str] = []
+    if not str(ask.get("context") or "").strip():
+        missing.append("ask.context")
+    if len(ask.get("options") or []) < 2:
+        missing.append("ask.options (at least 2)")
+    return missing
+
+
+def refuse_incomplete_person_ask(ask: object) -> None:
+    """``ValueError`` naming what an agent's needs_human write must add to its ask."""
+    missing = person_ask_missing(ask)
+    if missing:
+        raise ValueError(
+            f"needs_human parks the item for a person, who reads its ask as a decision card: add "
+            f"{', '.join(missing)} in the same call ({READABLE_ASK_EXAMPLE})"
+        )
+
+
 def ask_lines(ask: object) -> list[str]:
     """What a tool result says of an item's ask (nothing when it has none)."""
     if not isinstance(ask, dict) or not ask.get("question"):
         return []
     lines = [f"  - ask: {ask['question']}"]
+    if ask.get("context"):
+        lines.append(f"    context: {' / '.join(str(ask['context']).splitlines())}")
     recommended = ask.get("recommendation")
     for option in ask.get("options") or []:
         mark = " (recommended)" if option.get("key") == recommended else ""

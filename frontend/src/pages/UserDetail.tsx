@@ -125,7 +125,7 @@ export default function UserDetail() {
   const [ConfirmDialog, confirm] = useConfirm();
   const [deactivateOpen, setDeactivateOpen] = useState(false);
 
-  if (isLoading) return <DetailPageSkeleton backTo="/users" backLabel="Back to Users" tabs={TABS.length} actions={3} />;
+  if (isLoading) return <DetailPageSkeleton backTo="/users-and-groups" backLabel="Back to Users" tabs={TABS.length} actions={3} />;
 
   if (!user) {
     return (
@@ -134,8 +134,8 @@ export default function UserDetail() {
         title="User not found"
         description="This user may have been deleted or doesn't exist."
         actionLabel="View All Users"
-        onAction={() => navigate("/users")}
-        backTo="/users"
+        onAction={() => navigate("/users-and-groups")}
+        backTo="/users-and-groups"
         backLabel="Back to Users"
       />
     );
@@ -179,7 +179,7 @@ export default function UserDetail() {
       variant: "danger",
     });
     if (!ok) return;
-    deleteUser.mutate(id, { onSuccess: () => navigate("/users") });
+    deleteUser.mutate(id, { onSuccess: () => navigate("/users-and-groups") });
   };
 
   return (
@@ -196,7 +196,7 @@ export default function UserDetail() {
       )}
 
       <EntityPageHeader
-        backTo="/users"
+        backTo="/users-and-groups"
         backLabel="Back to Users"
         icon={user.role === "admin" ? <Shield className="h-7 w-7 text-accent" /> : <UserIcon className="h-7 w-7 text-default-secondary" />}
         tileClassName={user.role === "admin" ? "bg-accent/10" : "bg-elevation-hover"}
@@ -697,7 +697,7 @@ function UserGroupsCard({ userId }: { userId: string }) {
               <div
                 key={g.id}
                 className="flex items-center gap-3 rounded-sm border border-elevation-subtle-soft layer-1 bg-elevation-default px-4 py-2.5 cursor-pointer transition-colors hover:bg-elevation-hover"
-                onClick={() => navigate(`/groups/${g.id}`)}
+                onClick={() => navigate(`/users-and-groups/groups/${g.id}`)}
               >
                 <UsersRound className="h-3.5 w-3.5 text-accent shrink-0" />
                 <div className="flex-1 min-w-0">

@@ -181,7 +181,7 @@ describe("EntityPageHeader", () => {
 
     renderWithProviders(
       <MemoryRouter>
-        <EntityPageHeader backTo="/traces" backLabel="Back to Traces" title="chat" />
+        <EntityPageHeader backTo="/observability/traces" backLabel="Back to Traces" title="chat" />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId("entity-page-header-tile")).toBeNull();
@@ -590,11 +590,11 @@ describe("FleetWorkspaceChip", () => {
 
   it("links a fleet to its workspace with the way back", () => {
     expect(fleetWorkspaceChipLink({ kind: "workspace", id: "w-1", name: "CEO Office" }, fromFleet)).toEqual({
-      to: "/workspaces/w-1",
+      to: "/tasks/workspaces/w-1",
       state: { backTo: "/fleets/f-1", backLabel: "Back to the fleet" },
     });
     expect(
-      fleetWorkspaceChipLink({ kind: "fleet", id: "f-1", name: "CEO Office" }, { path: "/workspaces/w-1", label: "x" }).to,
+      fleetWorkspaceChipLink({ kind: "fleet", id: "f-1", name: "CEO Office" }, { path: "/tasks/workspaces/w-1", label: "x" }).to,
     ).toBe("/fleets/f-1");
   });
 
@@ -604,7 +604,7 @@ describe("FleetWorkspaceChip", () => {
         <FleetWorkspaceChip target={{ kind: "workspace", id: "w-1", name: "CEO Office" }} from={fromFleet} />
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office" }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
         />
       </MemoryRouter>,
     );
@@ -615,7 +615,7 @@ describe("FleetWorkspaceChip", () => {
     expect(screen.getByRole("img", { name: "Works in workspace" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Hosts fleet" })).toBeTruthy();
     const links = screen.getAllByRole("link");
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/workspaces/w-1", "/fleets/f-1"]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/tasks/workspaces/w-1", "/fleets/f-1"]);
     expect(links.map((a) => a.getAttribute("aria-label"))).toEqual([
       "Works in workspace: CEO Office",
       "Hosts fleet: CEO Office",
@@ -630,7 +630,7 @@ describe("FleetWorkspaceChip", () => {
       <MemoryRouter>
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office", archived: true }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
         />
       </MemoryRouter>,
     );
@@ -642,7 +642,7 @@ describe("FleetWorkspaceChip", () => {
       <MemoryRouter>
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office", archived: true }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
           prefix=""
         />
       </MemoryRouter>,

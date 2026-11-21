@@ -429,7 +429,7 @@ export interface DataTableProps<T> {
   onStateChange?: (state: DataTableState) => void;
   /**
    * Controlled state: the caller owns search, filters, sort, page and page size
-   * (a page whose URL keys predate the table, such as `/traces`), and each change
+   * (a page whose URL keys predate the table, such as `/observability/traces`), and each change
    * reaches it through `onStateChange` only. Omitted = the table keeps its state.
    */
   state?: DataTableState;
@@ -1181,7 +1181,7 @@ function DataTableView<T>({
   const selectionShown = Boolean(selection) && selected.length > 0;
   const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;
   // A card list (`renderGrid`) has no header row: its page box is the first control of the
-  // toolbar, never a row of its own above the cards (Sam on /operations/state, 14 Nov 2026).
+  // toolbar, never a row of its own above the cards (Sam on /operations/shared-state, 14 Nov 2026).
   // Its slot holds its width during the first read, so the toolbar does not move when it lands.
   const gridPageBox = Boolean(selection && renderGrid) && (isLoading || pageKeys.length > 0);
   const toolbarShown =

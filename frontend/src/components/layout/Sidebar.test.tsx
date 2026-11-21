@@ -45,7 +45,7 @@ const sections: NavSection[] = [
     label: "Observability",
     collapsible: true,
     icon: Gauge,
-    entries: [{ kind: "leaf", to: "/traces", icon: Settings, label: "Traces" }],
+    entries: [{ kind: "leaf", to: "/observability/traces", icon: Settings, label: "Traces" }],
   },
 ];
 
@@ -166,7 +166,7 @@ describe("Sidebar", () => {
   });
 
   it("marks the active route with aria-current, which is how the library shows selection", () => {
-    renderSidebar("/traces");
+    renderSidebar("/observability/traces");
     const traces = screen.getByRole("link", { name: /Traces/ });
     expect(traces).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /Home/ })).not.toHaveAttribute("aria-current");
@@ -257,7 +257,7 @@ describe("Sidebar", () => {
   });
 
   it("goes home from the switcher's logo through the router, without a page load", () => {
-    renderSidebar("/traces");
+    renderSidebar("/observability/traces");
     fireEvent.click(screen.getByRole("link", { name: "XTM One home" }));
     expect(screen.getByTestId("location").textContent).toBe("/");
   });

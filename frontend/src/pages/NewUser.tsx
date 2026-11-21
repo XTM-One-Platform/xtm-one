@@ -63,7 +63,7 @@ export default function NewUser() {
       {
         onSuccess: (newUser) => {
           toast({ title: t_i18n("User created"), variant: "success" });
-          navigate(`/users/${newUser.id}`);
+          navigate(`/users-and-groups/users/${newUser.id}`);
         },
       },
     );
@@ -76,7 +76,7 @@ export default function NewUser() {
 
   return (
     <div className="space-y-6">
-      <BackButton to="/users" label="Back to Users" />
+      <BackButton to="/users-and-groups" label="Back to Users" />
       <div className="flex items-center gap-3">
         <UserPlus className="h-6 w-6 text-accent" />
         <h1 className="text-2xl font-bold">{t_i18n("New User")}</h1>
@@ -199,7 +199,7 @@ export default function NewUser() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => navigate("/users")}>{t_i18n("Cancel")}</Button>
+            <Button variant="ghost" onClick={() => navigate("/users-and-groups")}>{t_i18n("Cancel")}</Button>
             <Button onClick={handleCreate} disabled={!canSubmit || create.isPending}>
               {create.isPending ? t_i18n("Creating...") : t_i18n("Create User")}
             </Button>

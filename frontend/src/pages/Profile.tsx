@@ -87,8 +87,7 @@ export default function Profile() {
   const { data: authConfig } = useAuthConfig();
   const minPasswordLength = authConfig?.min_password_length ?? MIN_PASSWORD_LENGTH;
 
-  // The runners tab moved to the Desktop page: `/profile/runners`
-  // redirects there (App.tsx), so the machines are one click from the
+  // The runners live on the Desktop page (`/desktop`), one click from the
   // sidebar instead of a tab under the profile.
   const TABS = useMemo<{ key: Tab; label: string; icon: React.ElementType }[]>(
     () => [

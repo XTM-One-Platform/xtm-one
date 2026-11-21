@@ -3,6 +3,7 @@
 /** Shared TypeScript types for XTM One frontend. */
 
 import type { ChatChartBlock } from "@/components/chat/chat-chart";
+import type { ExtraFieldInputSpec } from "@/lib/extra-fields";
 
 // Auth
 
@@ -1538,6 +1539,8 @@ export interface ProviderCatalogItem {
   a2a_directions?: ("inbound" | "outbound")[];
   /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
+  /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
+  company_managed_only?: boolean;
   /** Which operator choice reshapes this entry (`a2a_direction` for A2A), and
    * the facets each of its values changes. The base entry is the default. */
   variant_selector?: string | null;
@@ -1547,6 +1550,8 @@ export interface ProviderCatalogItem {
   /** Which extra fields belong to which answer: {field: {control: [values]}}.
    *  A field whose condition is unmet is hidden and omitted when saving. */
   extra_field_visible_when?: Record<string, Record<string, string[]>> | null;
+  /** The typed control of an extra field (a domain list as tags, a bounded number); absent, a text input. */
+  extra_field_inputs?: Record<string, ExtraFieldInputSpec> | null;
   description: string | null;
   logo: string | null;
   integration_types: string[];
@@ -6457,6 +6462,8 @@ export interface WorkItemAskOption {
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
 interface WorkItemAsk {
   question: string;
+  /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
+  context?: string | null;
   options?: WorkItemAskOption[];
   /** The key of the option the agent recommends. */
   recommendation?: string | null;
@@ -6524,6 +6531,14 @@ export interface WorkItem {
   roi?: RoiReviewBlock | null;
   /** The files the item carries, by name (detail only, #12092). */
   attachments?: WorkItemAttachments;
+  /** The agent behind each run its stamped notes name (detail only, #776). */
+  note_runs?: Record<string, WorkItemNoteRun>;
+}
+
+/** The run a stamped note names: its agent as the reader may see it, and whether the reader may open it. */
+export interface WorkItemNoteRun {
+  agent: { id: string; name: string } | null;
+  accessible: boolean;
 }
 
 /** One file a work item carries, as its dialog lists it. */
@@ -16192,6 +16207,17 @@ export interface HealthSettings extends HealthTriggerSettings {
   /** The editable thresholds of the OpenCTI and OpenAEV checks (#101 S10b), read on the next pass. */
   opencti: HealthOpenCTIThresholds;
   openaev: HealthOpenAEVThresholds;
+  /** The alert emails (#101 S12), off by default. */
+  alert_emails: HealthAlertEmailSettings;
+}
+
+/** `HealthAlertEmailSettings` of `services/health/settings.py`. */
+export interface HealthAlertEmailSettings {
+  enabled: boolean;
+  recipients: string[];
+  min_severity: "critical" | "warning" | "info";
+  immediate: boolean;
+  digest: boolean;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */

@@ -90,12 +90,17 @@ export function parseValueScope(value: string | null, offered: { scopes: ValueSc
 /** The three tables of the page, each a tab with its own URL keys. */
 export type ValueTab = "fleets" | "agents" | "units";
 
-/** The tabs in their page order; the first is the default (`/value`). */
+/** The tabs in their page order; the first is the default (`/tasks/value`). */
 const VALUE_TAB_KEYS = ["fleets", "agents", "units"] as const satisfies readonly ValueTab[];
 
-/** The `/value/:tab?` segment, kept only when it names a tab: an unknown or retired one answers the default (#12229). */
+/** The `/tasks/value/:tab?` segment, kept only when it names a tab: an unknown or retired one answers the default (#12229). */
 export function parseValueTab(value: string | undefined): ValueTab {
   return value && (VALUE_TAB_KEYS as readonly string[]).includes(value) ? (value as ValueTab) : VALUE_TAB_KEYS[0];
+}
+
+/** Whether a `/tasks/value/:tab?` segment names a table (none is the default); an unknown or retired one is not found (#797). */
+export function isValueTab(value: string | undefined): boolean {
+  return value === undefined || (VALUE_TAB_KEYS as readonly string[]).includes(value);
 }
 
 export interface ValueRow {

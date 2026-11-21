@@ -44,6 +44,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
+import { WorkItemActivity } from "@/components/work-items/WorkItemActivity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyIconButton } from "@/components/ui/copy-icon-button";
@@ -440,7 +441,7 @@ function Timeline({ item }: { item: WorkItem }) {
   );
 }
 
-function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
+function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemActions; onClose: () => void }) {
   const { t_i18n } = useFormatter();
   const context = item.context;
   const scheduled = isScheduledItem(item) ? item : null;
@@ -449,8 +450,10 @@ function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
   // An item waiting for the reader leads with its decision; the run notes
   // below it are history, folded until asked for.
   const deciding = !scheduled && waitsForAnswer(item);
+  // A bare #N and a commit SHA link to the one repository the item's PRs live in.
+  const repos = [...new Set(pullRequestsOf(item.payload).map((pr) => pr.repo))];
   const description = item.description ? (
-    <ChatMarkdown content={item.description} className="chat-markdown content-base" remoteImages={false} />
+    <WorkItemActivity description={item.description} runs={item.note_runs} repo={repos.length === 1 ? repos[0] : null} />
   ) : (
     <p className="text-default-secondary">{t_i18n("No description.")}</p>
   );
@@ -489,10 +492,10 @@ function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
       </DialogHeader>
 
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1" data-testid="work-item-detail">
-        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} />}
+        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} onAnswered={onClose} />}
         {!deciding && !scheduled && offersAskTheAgent(item) && (
           <section className="rounded-sm border border-elevation-subtle p-3" data-testid="work-item-ask-agent-section">
-            <WorkItemAskAgent item={item} bordered={false} />
+            <WorkItemAskAgent item={item} bordered={false} onDone={onClose} />
           </section>
         )}
         <Facts item={item} context={context} />
@@ -610,7 +613,7 @@ export function WorkItemDetailDialog({
             <Skeleton className="h-24 w-full" />
           </div>
         ) : item ? (
-          <Body item={item} actions={actionsFor(item)} />
+          <Body item={item} actions={actionsFor(item)} onClose={onClose} />
         ) : (
           <EmptyState
             icon={ListTodo}

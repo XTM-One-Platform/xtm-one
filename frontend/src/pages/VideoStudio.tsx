@@ -41,10 +41,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * picked card by card, or every one the filters match - `Select
  *   all unused` selects every medium no video uses in one click.
  * Recordings sign in with a browser profile, managed on its own page
- * (`/browser-profiles`, Tools & Integrations): every agent browses with them.
+ * (`/connections`, Tools & Integrations): every agent browses with them.
  */
 import { useId, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Clapperboard,
   Copy,
@@ -147,8 +147,6 @@ import type {
 import { formatTimeAgo } from "@/lib/relative-time";
 
 const TABS: StudioTab[] = ["videos", "media"];
-/** Older links named the media tabs one by one. */
-const LEGACY_TABS: Record<string, StudioTab> = { recordings: "media", clips: "media" };
 
 /** The address of a studio tab: the library is `/videos`, the media `/videos/media`. */
 function studioTabPath(tab: StudioTab): string {
@@ -1423,26 +1421,13 @@ function MediaTab() {
 
 export default function VideoStudio() {
   const { t_i18n } = useFormatter();
-  const [params] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   // The tab is the path (#10203): `/videos` is the library, `/videos/media` the media.
   const tab: StudioTab = pathname.replace(/\/+$/, "") === "/videos/media" ? "media" : "videos";
-  // A link written before (`?tab=media`, `?tab=recordings`...) is replaced by its path.
-  const requested = params.get("tab");
-  const legacy: StudioTab | null =
-    requested === null ? null : TABS.includes(requested as StudioTab) ? (requested as StudioTab) : (LEGACY_TABS[requested] ?? "videos");
+  // The former `?tab=` query is not read: no redirect (#797).
   const [creating, setCreating] = useState(false);
   const options = useMemo(() => TABS.map((key) => ({ key, label: STUDIO_TAB_LABELS[key] })), []);
-
-  // The browser profiles left the studio for their own page; older links follow.
-  if (requested === "profiles") return <Navigate to="/browser-profiles" replace />;
-  if (legacy) {
-    const rest = new URLSearchParams(params);
-    rest.delete("tab");
-    const q = rest.toString();
-    return <Navigate to={`${studioTabPath(legacy)}${q ? `?${q}` : ""}`} replace />;
-  }
 
   return (
     <div className="space-y-6">
@@ -1461,7 +1446,7 @@ export default function VideoStudio() {
             </Button>
             <Tip content={t_i18n("The sign-ins recordings start with, shared with every agent's browser")}>
               <Button variant="outline" className="gap-1.5" asChild>
-                <Link to="/browser-profiles">
+                <Link to="/connections">
                   <KeyRound className="h-4 w-4" /> {t_i18n("Browser profiles")}
                 </Link>
               </Button>

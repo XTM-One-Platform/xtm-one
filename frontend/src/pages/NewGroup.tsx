@@ -23,12 +23,12 @@ export default function NewGroup() {
       name: name.trim(),
       description: description.trim() || null,
     });
-    navigate(`/groups/${group.id}`);
+    navigate(`/users-and-groups/groups/${group.id}`);
   };
 
   return (
     <div className="space-y-6">
-      <BackButton to="/groups" label="Back to Groups" />
+      <BackButton to="/users-and-groups/groups" label="Back to Groups" />
 
       <div>
         <h1 className="text-3xl font-bold">{t_i18n("New Group")}</h1>
@@ -61,7 +61,7 @@ export default function NewGroup() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="ghost" onClick={() => navigate("/groups")}>{t_i18n("Cancel")}</Button>
+              <Button type="button" variant="ghost" onClick={() => navigate("/users-and-groups/groups")}>{t_i18n("Cancel")}</Button>
               <Button type="submit" disabled={!name.trim() || createGroup.isPending}>
                 {createGroup.isPending ? t_i18n("Creating...") : t_i18n("Create Group")}
               </Button>

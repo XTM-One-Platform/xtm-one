@@ -71,6 +71,7 @@ from app.llm.provider_access import acting_for
 from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun
 from app.models.knowledge_base import KBExportPackage
+from app.services import wall_clock_schedule
 from app.services.assignment_engine import has_active_run, trigger_assignment
 from app.services.assignment_pause import (
     AssignmentOwnerDeactivatedError,
@@ -133,17 +134,14 @@ _SKILL_REFRESH_OUTCOMES = get_or_create_counter(
     ["outcome", "auth"],
 )
 
-# ── Memory maintenance scheduling ─────────────────────────────────────────────
-# Run memory maintenance once per hour (every 60th tick at 60s interval).
-_MEMORY_MAINTENANCE_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_tick_counter = 0
-
-# ── Skill auto-refresh scheduling ────────────────────────────────────────────
-# Check for stale URL-based skills once per hour (same cadence as memory
-# maintenance).  Individual skills are refreshed when their fetched_at is
-# older than SKILL_REFRESH_MAX_AGE_SECONDS (24 hours).
-_SKILL_REFRESH_CHECK_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_skill_tick_counter = 0
+# ── Hourly jobs: a wall-clock schedule shared by every process (#768) ─────────
+# The hourly maintenance block, the skill auto-refresh check, the AI adoption
+# sync and the model prices git sync run when their last COMPLETED pass, kept
+# in Redis, is older than their interval, under a cluster-wide lock
+# (``services/wall_clock_schedule.py``). They used to count ticks in a module
+# global that restarted at 0 on every boot: a platform redeploying more often
+# than hourly never reached 60 ticks and never ran them. Individual skills are
+# refreshed when their fetched_at is older than SKILL_REFRESH_MAX_AGE_SECONDS.
 SKILL_REFRESH_MAX_AGE_SECONDS = 86400  # 24 hours
 
 # ── API key stats flush scheduling ────────────────────────────────────────────
@@ -156,11 +154,6 @@ _apikey_stats_tick_counter = 0
 _QUOTA_FLUSH_INTERVAL = 5  # ticks (5 × 60s = 5 minutes)
 _quota_flush_tick_counter = 0
 
-
-# ── AI adoption metrics sync scheduling ──────────────────────────────────────
-# Collect external AI platform metrics once per hour (every 60th tick).
-_AI_METRICS_SYNC_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_ai_metrics_tick_counter = 0
 
 # ── CTEM metrics: no scheduling. Collected live, per-user, on dashboard load
 # (each request mints the acting user's JWT so OpenCTI/OpenAEV return only what
@@ -192,19 +185,11 @@ _daily_stats_tick_counter = _DAILY_STATS_INTERVAL
 _TEAMS_SUBSCRIPTION_INTERVAL = 60
 _teams_subscription_tick_counter = _TEAMS_SUBSCRIPTION_INTERVAL
 
-# ── Model prices git sync scheduling ────────────────────────────────────────
-# Pull LiteLLM model pricing/context JSON and re-sync llm_model_prices on a
-# configurable cadence (minutes), using the autonomous 60s tick.
-_model_prices_git_sync_tick_counter = 0
-
 # ── Blocked references polling fallback ─────────────────────────────
 # Starts at 0: the first tick after a restart reads the references of the items
 # no delivery released, then every ``work_item_blocked_refs.POLL_EVERY_TICKS``.
 _blocked_refs_poll_tick_counter = 0
 
-
-def _model_prices_git_sync_interval_ticks() -> int:
-    return max(1, int(settings.model_prices_git_sync_interval_minutes))
 
 # ── Cron warning rate limiting ────────────────────────────────────────────────
 # A misconfigured cron expression would otherwise log a WARNING every
@@ -361,15 +346,11 @@ async def _flag_assignment_cron_misconfiguration(
 
 
 __all__ = [
-    "_ai_metrics_tick_counter",
     "_apikey_stats_tick_counter",
     "_blocked_refs_poll_tick_counter",
     "_daily_stats_tick_counter",
-    "_model_prices_git_sync_tick_counter",
     "_quota_flush_tick_counter",
-    "_skill_tick_counter",
     "_teams_subscription_tick_counter",
-    "_tick_counter",
     "_trace_purge_tick_counter",
 ]
 
@@ -1268,29 +1249,67 @@ async def _cleanup_figure_stills() -> int:
     return await figure_stills.sweep() + await insert_builds.sweep()
 
 
-async def _cleanup_check_files(db: AsyncSession) -> int:
+async def _cleanup_check_files(db: AsyncSession) -> tuple[int, bool]:
     """Delete the check files made more than ``agent_check_file_retention_days`` ago.
 
     The pictures a tool made for the agent to look at (frames, contact sheets,
     insert sweeps, slide captures, page renders); one a video uses is kept.
-    Returns how many were deleted.
+    Returns how many were deleted and whether more are left past retention.
     """
     from app.services import check_files
 
-    return await check_files.sweep(db)
+    return await check_files.sweep_pass(db)
 
 
-async def _cleanup_retained_files(db: AsyncSession) -> int:
+async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | None = None) -> tuple[int, bool]:
     """Delete the stored files past their category's retention (Settings > Storage & retention).
 
     The agent's scratch and delivered files go 60 days after their last use by
     default; a file a live object still names is kept, and a deleted one stays
-    as a tombstone (``services/file_retention.py``). Returns how many files.
+    as a tombstone (``services/file_retention.py``). *also* adds the files an
+    older sweep deleted (check pictures) to the figures Settings shows. Returns
+    how many files and whether a category stopped at its per-tick cap.
     """
     from app.services import file_retention
 
-    report = await file_retention.sweep(db)
-    return sum(int(tally.get("files", 0)) for tally in report.values())
+    report = await file_retention.sweep(db, also=also)
+    files = sum(int(tally.get("files", 0)) for key, tally in report.items() if not also or key not in also)
+    return files, any(bool(tally.get("more")) for tally in report.values())
+
+
+async def _run_retention_pass(db: AsyncSession) -> None:
+    """One bounded pass of the check file and file retention sweeps (#768).
+
+    Each sweep is capped per tick; when one stops at its cap, the backlog flag
+    of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
+    pass again until nothing past retention is left, instead of waiting an hour.
+    Each sweep catches its own failure, so one never starves the other.
+    """
+    swept_checks, more_checks = 0, False
+    try:
+        swept_checks, more_checks = await _cleanup_check_files(db)
+        if swept_checks:
+            logger.info(
+                "Check file retention: deleted %d picture%s made for an agent to look at",
+                swept_checks,
+                "" if swept_checks == 1 else "s",
+            )
+    except Exception as e:
+        logger.error("Check file retention error: %s", format_exception_message(e), exc_info=True)
+        await db.rollback()
+    more_files = False
+    try:
+        swept_files, more_files = await _cleanup_retained_files(db, also={"agent_check": swept_checks})
+        if swept_files:
+            logger.info(
+                "File retention: deleted the bytes of %d file%s past their retention",
+                swept_files,
+                "" if swept_files == 1 else "s",
+            )
+    except Exception as e:
+        logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
+        await db.rollback()
+    await wall_clock_schedule.set_backlog(wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files)
 
 
 async def _cleanup_kb_figure_sources(db: AsyncSession) -> int:
@@ -2240,13 +2259,10 @@ async def _run_autonomous_tick_inner() -> int:
 
         # --- 5e. Periodic model-prices git sync (optional) ---
         if settings.model_prices_git_sync_enabled:
-            global _model_prices_git_sync_tick_counter
-            _model_prices_git_sync_tick_counter += 1
-            if (
-                _model_prices_git_sync_tick_counter
-                >= _model_prices_git_sync_interval_ticks()
-            ):
-                _model_prices_git_sync_tick_counter = 0
+            _prices_claim = await wall_clock_schedule.claim(
+                wall_clock_schedule.model_prices_git_sync(settings.model_prices_git_sync_interval_minutes)
+            )
+            if _prices_claim is not None:
                 try:
                     from app.services.tracing.price_loader import (
                         pull_model_prices_git_source,
@@ -2274,6 +2290,8 @@ async def _run_autonomous_tick_inner() -> int:
                 except Exception as e:
                     logger.error("Model prices git sync error: %s", format_exception_message(e), exc_info=True)
                     await db.rollback()
+                # A failed pull waits for the next interval, as it did before.
+                await wall_clock_schedule.complete(_prices_claim)
 
         await _run_trace_storage_maintenance(db)
 
@@ -2283,11 +2301,12 @@ async def _run_autonomous_tick_inner() -> int:
         # --- 6c. Agent accounts: subscriptions, chat polls, grace periods ---
         await _run_agent_account_maintenance()
 
-        # --- 6. Periodic memory maintenance (once per hour) ---
-        global _tick_counter
-        _tick_counter += 1
-        if _tick_counter >= _MEMORY_MAINTENANCE_INTERVAL:
-            _tick_counter = 0
+        # --- 6. Periodic memory maintenance and retention sweeps (once per hour) ---
+        # Due when the last COMPLETED pass, in Redis, is an hour old; one
+        # process runs it under a cluster-wide lock, and a pass a deploy cut
+        # is run again once its lock expires (#768).
+        _maintenance_claim = await wall_clock_schedule.claim(wall_clock_schedule.HOURLY_MAINTENANCE)
+        if _maintenance_claim is not None:
             try:
                 from app.services.persistent_memory import run_memory_maintenance
 
@@ -2466,28 +2485,7 @@ async def _run_autonomous_tick_inner() -> int:
             except Exception as e:
                 logger.error("Knowledge base figure source retention error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
-            try:
-                swept_checks = await _cleanup_check_files(db)
-                if swept_checks:
-                    logger.info(
-                        "Check file retention: deleted %d picture%s made for an agent to look at",
-                        swept_checks,
-                        "" if swept_checks == 1 else "s",
-                    )
-            except Exception as e:
-                logger.error("Check file retention error: %s", format_exception_message(e), exc_info=True)
-                await db.rollback()
-            try:
-                swept_files = await _cleanup_retained_files(db)
-                if swept_files:
-                    logger.info(
-                        "File retention: deleted the bytes of %d file%s past their retention",
-                        swept_files,
-                        "" if swept_files == 1 else "s",
-                    )
-            except Exception as e:
-                logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
-                await db.rollback()
+            await _run_retention_pass(db)
             try:
                 swept_work = await _cleanup_stored_video_work()
                 if swept_work:
@@ -2514,12 +2512,18 @@ async def _run_autonomous_tick_inner() -> int:
                     "Orphan annotation cleanup error: %s", format_exception_message(e), exc_info=True
                 )
                 await db.rollback()
+            # Every step above caught its own failure: the pass is complete.
+            await wall_clock_schedule.complete(_maintenance_claim)
+        elif await wall_clock_schedule.backlog_pending(wall_clock_schedule.RETENTION_DRAIN):
+            # --- 6h. A retention pass stopped at its cap: drain on the next ticks ---
+            _drain_claim = await wall_clock_schedule.claim(wall_clock_schedule.RETENTION_DRAIN)
+            if _drain_claim is not None:
+                await _run_retention_pass(db)
+                await wall_clock_schedule.complete(_drain_claim)
 
         # --- 7. Periodic skill auto-refresh (check once per hour) ---
-        global _skill_tick_counter
-        _skill_tick_counter += 1
-        if _skill_tick_counter >= _SKILL_REFRESH_CHECK_INTERVAL:
-            _skill_tick_counter = 0
+        _skills_claim = await wall_clock_schedule.claim(wall_clock_schedule.SKILL_REFRESH)
+        if _skills_claim is not None:
             try:
                 refreshed = await _refresh_stale_skills(db)
                 if refreshed:
@@ -2527,6 +2531,7 @@ async def _run_autonomous_tick_inner() -> int:
             except Exception as e:
                 logger.error("Skill auto-refresh error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
+            await wall_clock_schedule.complete(_skills_claim)
 
         # --- 8. Flush Redis-buffered API key usage stats (every 5 min) ---
         global _apikey_stats_tick_counter
@@ -2664,10 +2669,8 @@ async def _run_autonomous_tick_inner() -> int:
         from app.services.ai_state import AI_DISABLED_MODE
 
         if _app_settings.platform_mode != AI_DISABLED_MODE and _ai_on:
-            global _ai_metrics_tick_counter
-            _ai_metrics_tick_counter += 1
-            if _ai_metrics_tick_counter >= _AI_METRICS_SYNC_INTERVAL:
-                _ai_metrics_tick_counter = 0
+            _metrics_claim = await wall_clock_schedule.claim(wall_clock_schedule.AI_METRICS_SYNC)
+            if _metrics_claim is not None:
                 try:
                     # The platform's own agentic usage only (#11380): no
                     # external vendor is called any more.
@@ -2677,6 +2680,7 @@ async def _run_autonomous_tick_inner() -> int:
                     logger.info("AI metrics sync completed: %s", summary)
                 except Exception as e:
                     logger.error("AI metrics sync error: %s", format_exception_message(e), exc_info=True)
+                await wall_clock_schedule.complete(_metrics_claim)
 
         # --- 11. CTEM metrics: intentionally NOT scheduled (lazy-by-design). CTEM
         # posture is collected on demand on dashboard load and served

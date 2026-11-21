@@ -23,12 +23,22 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ## Settings > Automations > Platform Health
 
-| Section | What it sets |
+The settings are one section. A bar at its top (**On this page**) jumps to its four groups, each with a link that can be shared (`#health-settings-status`, `#health-settings-spend`, `#health-settings-checks`, `#health-settings-alerts`), then to the companion pets:
+
+| Group | Blocks |
+|---|---|
+| Status and scope | Status (enable, name), scope |
+| Spend limits | Budget, analysis |
+| Health checks | Schedule, signals, module thresholds, durations, dry-run |
+| Alerts | Alert emails |
+
+| Block | What it sets |
 |---|---|
 | Enable, name, scope, budget | Whether Platform Health works, the name the entry points and refusals use, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
 | Analysis | Whether the routing model explains the findings, and its hard ceilings per day and per month, in tokens and in dollars (see [Analysis](#analysis)). |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
+| Alert emails | Off by default. On, Platform Health emails the recipients named (up to 20) from the platform sender: one email per critical finding as soon as a health pass opens it, once per finding, and one digest a day (UTC) of the open findings at or above the minimum severity, sent only when there is at least one. Each of the two can be switched off. Nothing is sent while the platform email (SMTP) is not configured; no model call. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
 | Dry-run | Every write of every Platform Health agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
 
@@ -71,7 +81,7 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Registration token | Critical | `PLATFORM_REGISTRATION_TOKEN` is the published default value, which authenticates nobody |
 | Licence | Critical | A Filigran licence is installed and refused (no licence installed is Community Edition, not a finding) |
 | Licence expiry | Warning | The validated Filigran licence expires within 30 days |
-| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email |
+| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email (nor can agents, through the Platform email integration) |
 | XTM Hub registration | Info | The platform is not registered with XTM Hub, or its registration lost connectivity or must be done again |
 | Integration broken | Warning | A company-managed integration is in error, must be re-authorized, or failed its last connection test (one finding per integration) |
 | MCP server broken | Warning | An enabled company-managed MCP server could not renew its OAuth token (one finding per server) |

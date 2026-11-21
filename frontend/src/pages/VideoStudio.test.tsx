@@ -101,9 +101,9 @@ function Location() {
 }
 
 describe("The studio tabs as path routes (#10203)", () => {
-  it("replaces an old ?tab= link by its path, the rest of the query kept", async () => {
+  it("leaves a former ?tab= link where it is: no redirect (#797)", async () => {
     open("/videos?tab=recordings&kind=shots");
-    expect(await screen.findByTestId("location")).toHaveTextContent("/videos/media?kind=shots");
+    expect(await screen.findByTestId("location")).toHaveTextContent("/videos?tab=recordings&kind=shots");
   });
 
   it("moves between tabs by path", async () => {

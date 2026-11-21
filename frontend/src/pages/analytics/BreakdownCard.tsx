@@ -654,7 +654,7 @@ export function BreakdownCard({
           rows={data?.items ?? []}
           columns={userColumns}
           rowKey={(item) => item.user_id}
-          rowHref={(item) => (linkEntities && item.is_active !== null ? `/users/${item.user_id}` : "")}
+          rowHref={(item) => (linkEntities && item.is_active !== null ? `/users-and-groups/users/${item.user_id}` : "")}
           defaultSort={{ key: "cost", direction: "desc" }}
           searchFields={(item) => [item.user_name, item.user_email, ...item.group_names]}
           searchPlaceholder={t_i18n("Search by name, email or group...")}
@@ -711,7 +711,7 @@ export function BreakdownCard({
           rows={data?.items ?? []}
           columns={groupColumns}
           rowKey={(item) => item.group_id}
-          rowHref={(item) => (linkEntities ? `/groups/${item.group_id}` : "")}
+          rowHref={(item) => (linkEntities ? `/users-and-groups/groups/${item.group_id}` : "")}
           defaultSort={{ key: "cost", direction: "desc" }}
           searchFields={(item) => [item.group_name]}
           searchPlaceholder={t_i18n("Search groups...")}

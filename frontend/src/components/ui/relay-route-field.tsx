@@ -114,7 +114,7 @@ export function RelayRouteField({
           <Icon name="network" size={16} className="text-accent" />
           {value
             ? current
-              ? <Link to={`/relays/${current.id}`} className="hover:text-accent">{current.name}</Link>
+              ? <Link to={`/connections/relays/${current.id}`} className="hover:text-accent">{current.name}</Link>
               : t_i18n("A relay group")
             : t_i18n("Direct (from the platform)")}
         </p>
@@ -186,7 +186,7 @@ export function RelayRouteField({
       {noGroup && (
         <p id={noGroupId} className="content-compact text-default-secondary">
           {t_i18n("No relay group is shared with you yet.")}{" "}
-          <Link to="/relays" className="text-accent hover:underline">{t_i18n("Relays")}</Link>
+          <Link to="/connections/relays" className="text-accent hover:underline">{t_i18n("Relays")}</Link>
         </p>
       )}
     </div>

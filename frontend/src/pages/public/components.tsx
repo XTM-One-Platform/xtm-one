@@ -470,7 +470,7 @@ export function CatalogSetupWizard({
                 onClick={() => {
                   setInstalled(null);
                   onClose();
-                  navigate("/variables");
+                  navigate("/connections/variables");
                 }}
               >
                 {t_i18n("Set values in Variables")}

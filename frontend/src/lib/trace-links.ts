@@ -34,7 +34,7 @@ export function isTraceScopeId(value: string): boolean {
 }
 
 function tracesPath(key: string, value: string): string {
-  return `/traces?${new URLSearchParams({ [key]: value }).toString()}`;
+  return `/observability/traces?${new URLSearchParams({ [key]: value }).toString()}`;
 }
 
 /** Every trace recorded by any run of the assignment. */

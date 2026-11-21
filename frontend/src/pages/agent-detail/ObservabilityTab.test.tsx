@@ -44,10 +44,10 @@ describe("ObservabilityTab", () => {
   it("keeps a failed feedback comments read in its table with Retry", async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes("/feedback-comments")) return Promise.reject(new Error("boom"));
-      if (url.startsWith("/traces/analytics/summary")) return Promise.resolve(SUMMARY);
-      if (url.startsWith("/traces/analytics/cost-over-time")) return Promise.resolve({ series: [] });
-      if (url.startsWith("/traces/analytics/cost-by-model")) return Promise.resolve({ items: [] });
-      if (url.startsWith("/traces?")) return Promise.resolve({ items: [], total: 0 });
+      if (url.startsWith("/observability/traces/analytics/summary")) return Promise.resolve(SUMMARY);
+      if (url.startsWith("/observability/traces/analytics/cost-over-time")) return Promise.resolve({ series: [] });
+      if (url.startsWith("/observability/traces/analytics/cost-by-model")) return Promise.resolve({ items: [] });
+      if (url.startsWith("/observability/traces?")) return Promise.resolve({ items: [], total: 0 });
       return Promise.resolve({});
     });
     // The app's default (main.tsx): a read that fails throws to the nearest boundary unless it opts out.
@@ -91,10 +91,10 @@ describe("ObservabilityTab", () => {
           offset: 0,
         });
       }
-      if (url.startsWith("/traces/analytics/summary")) return Promise.resolve(SUMMARY);
-      if (url.startsWith("/traces/analytics/cost-over-time")) return Promise.resolve({ series: [] });
-      if (url.startsWith("/traces/analytics/cost-by-model")) return Promise.resolve({ items: [] });
-      if (url.startsWith("/traces?")) return Promise.resolve({ items: [], total: 0 });
+      if (url.startsWith("/observability/traces/analytics/summary")) return Promise.resolve(SUMMARY);
+      if (url.startsWith("/observability/traces/analytics/cost-over-time")) return Promise.resolve({ series: [] });
+      if (url.startsWith("/observability/traces/analytics/cost-by-model")) return Promise.resolve({ items: [] });
+      if (url.startsWith("/observability/traces?")) return Promise.resolve({ items: [], total: 0 });
       return Promise.resolve({});
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });

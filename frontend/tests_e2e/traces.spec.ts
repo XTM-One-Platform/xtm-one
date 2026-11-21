@@ -22,7 +22,7 @@ async function mockTraceDetailApis(page: Page) {
 test.describe('Trace detail explorer', () => {
   test('should switch explorer modes with mocked trace data', async ({ page }) => {
     await mockTraceDetailApis(page);
-    await page.goto(`/traces/${TRACE_ID}/tree`);
+    await page.goto(`/observability/traces/${TRACE_ID}/tree`);
 
     await expect(page.getByRole('heading', { name: 'E2E Trace Explorer', level: 1 })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Tree' })).toBeVisible();
@@ -44,7 +44,7 @@ test.describe('Trace detail explorer', () => {
 
   test('should update span inspector on span selection', async ({ page }) => {
     await mockTraceDetailApis(page);
-    await page.goto(`/traces/${TRACE_ID}/tree`);
+    await page.goto(`/observability/traces/${TRACE_ID}/tree`);
 
     await expect(page.getByText('Root generation span').first()).toBeVisible();
     await page.getByRole('button', { name: /Tool span/i }).first().click();

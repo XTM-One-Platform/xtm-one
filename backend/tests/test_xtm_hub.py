@@ -949,6 +949,21 @@ async def test_myself_names_the_user_the_organization_and_the_access(monkeypatch
 
 
 @pytest.mark.parametrize(
+    ("scope", "label"),
+    [("read_write", "read and write"), ("admin", "read, write and admin"), ("other", "unknown access")],
+)
+@pytest.mark.asyncio
+async def test_myself_names_every_token_scope(
+    monkeypatch: pytest.MonkeyPatch, client_kwargs: list[dict[str, Any]], scope: str, label: str
+) -> None:
+    myself: dict[str, Any] = json.loads(json.dumps(_MYSELF))
+    myself["data"]["currentApiToken"]["scope"] = scope
+    _install(monkeypatch, _authed_hub({"XtmOneHubMyself": myself}))
+    answer = await _call(_token_executor(), "get_xtm_hub_myself")
+    assert f"Access: {label}" in answer.splitlines()
+
+
+@pytest.mark.parametrize(
     ("response", "expected"),
     [
         (_answer(401, {"message": "Invalid or expired API token"}), hub._HUB_KEY_REFUSED),
@@ -956,7 +971,10 @@ async def test_myself_names_the_user_the_organization_and_the_access(monkeypatch
             _answer(403, {"errors": [{"message": "READ_ONLY_API_TOKEN"}]}),
             hub._READ_ONLY_HUB_KEY,
         ),
-        (_answer(403, {"errors": [{"message": "SESSION_REQUIRED"}]}), hub._REFUSED),
+        (
+            _answer(403, {"errors": [{"message": "SESSION_REQUIRED"}]}),
+            f"{hub._REFUSED} Hub error: SESSION_REQUIRED.",
+        ),
         (_answer(400, {"errors": [{"message": f"bad {_SECRET}"}]}), hub._REFUSED),
         (_answer(403, {"data": None}), hub._NOT_A_HUB),
         (httpx.Response(403, text=_SECRET), hub._NOT_A_HUB),
@@ -1011,14 +1029,14 @@ async def test_libraries_list_their_ids_and_what_the_user_may_do(monkeypatch, cl
 
 
 @pytest.mark.asyncio
-async def test_a_library_search_sends_the_exact_query_and_hides_inactive_resources(
+async def test_a_library_search_sends_the_exact_query_and_hides_unpublished_resources(
     monkeypatch, client_kwargs
 ):
-    inactive = {**_CONNECTOR, "id": "RG9jdW1lbnQ6OQ==", "name": "Withdrawn", "active": False}
+    inactive = {**_CONNECTOR, "id": "RG9jdW1lbnQ6OQ==", "name": "Withdrawn", "status": "draft"}
     documents = {
         "data": {
             "documents": _connection(
-                [{**_DASHBOARD, "id": _DOC_ID, "active": True, "file_name": "tracker.json"}, inactive],
+                [{**_DASHBOARD, "id": _DOC_ID, "status": "published", "file_name": "tracker.json"}, inactive],
                 total=2,
                 cursor="Y3Vyc29yOjI=",
             )
@@ -1040,7 +1058,7 @@ async def test_a_library_search_sends_the_exact_query_and_hides_inactive_resourc
             "search": "ransomware",
         }
     ]
-    assert answer.startswith("1 of 2 resources of the library (1 inactive not shown):\n")
+    assert answer.startswith("1 of 2 resources of the library (1 not published not shown):\n")
     assert f"  resource id: {_DOC_ID}" in answer.splitlines()
     assert "Withdrawn" not in answer
     assert "Hub page:" not in answer
@@ -1112,7 +1130,7 @@ _DOCUMENT = {
     "data": {
         "document": {
             "id": _DOC_ID, "name": "Ransomware tracker", "file_name": "tracker.json",
-            "active": True, "service_instance_id": "1",
+            "status": "published", "service_instance_id": "1",
         }
     }
 }
@@ -1162,7 +1180,7 @@ async def test_a_download_reads_the_resource_then_stores_its_file(monkeypatch, c
     [
         ({"data": {"document": None}}, "Error: no such resource in that library"),
         (
-            {"data": {"document": {**_DOCUMENT["data"]["document"], "active": False}}},
+            {"data": {"document": {**_DOCUMENT["data"]["document"], "status": "in_validation"}}},
             "Error: this resource was withdrawn",
         ),
     ],
@@ -1260,7 +1278,7 @@ _DASHBOARDS_LIBRARY = {
 _UPLOADER = {"data": {"me": {"id": "VXNlcjox"}}}
 _CREATED = {
     "data": {
-        "createDocument": {"id": "RG9jdW1lbnQ6NDI=", "name": "Tracker", "slug": "tracker", "active": False}
+        "createDocument": {"id": "RG9jdW1lbnQ6NDI=", "name": "Tracker", "slug": "tracker", "status": "draft"}
     }
 }
 _PUBLISH_ARGS = {
@@ -1348,7 +1366,8 @@ async def test_publishing_sends_the_file_as_the_tokens_own_user(monkeypatch, cli
             "slug": "ransomware-tracker",
             "short_description": "Track ransomware groups",
             "description": "## Ransomware\nGroups and victims.",
-            "active": False,
+            "meta_description": "Track ransomware groups",
+            "status": "draft",
             "use_cases": ["uc-1", "uc-2"],
             "solution_categories": [],
             "uploader_id": "VXNlcjox",
@@ -1485,5 +1504,6 @@ async def test_an_agent_asking_to_publish_active_still_publishes_inactive(monkey
     answer = await _publish(executor, file_id=file_id, **{**_PUBLISH_ARGS, "active": True})
     assert len(fake.uploads) == 1
     operations = json.loads(_multipart(fake.uploads[0])["operations"][1])
-    assert operations["variables"]["input"]["active"] is False
+    assert operations["variables"]["input"]["status"] == "draft"
+    assert "active" not in operations["variables"]["input"]
     assert "(inactive: only its publishers see it" in answer

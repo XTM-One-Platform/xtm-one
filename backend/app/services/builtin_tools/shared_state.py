@@ -95,6 +95,8 @@ _WRITE_KEY_CHARS = 80
 _READ_VALUE_CHARS = 2000
 _READ_WINDOW_DEFAULT_CHARS = 20_000
 _READ_WINDOW_MAX_CHARS = 50_000
+#: Keys a ``PREFIX*`` read searches (gap-evidence-overflow-scatter).
+_FAMILY_MAX_KEYS = 50
 # The default read of a large object value: its top-level keys, a
 # small value inline (its JSON up to _READ_KEY_INLINE_CHARS), a larger one by
 # its size; at most _READ_KEYS_SHOWN keys. Then the latest _READ_NOTES notes.
@@ -1000,6 +1002,47 @@ def build_shared_state_tools(
             line += ")"
         return {**shown, "value": value}, line
 
+    async def _read_family(family: str, path: str) -> str:
+        """The part `path` names in every active key starting with *family* (gap-evidence-overflow-scatter).
+
+        A record split across sibling keys (``dev:harness-gaps:evidence-3`` ...
+        ``-12``) is found in one call instead of one probe per key: each key
+        where the path resolves is answered with its part, the others counted.
+        """
+        from app.services.content_safety import wrap_untrusted
+        from app.services.shared_state import list_states
+
+        if not family.strip() or not path:
+            return "Error: a key ending in * reads one `path` across the keys starting with it; give both."
+        try:
+            states = await list_states(
+                user_id=acting_user_id,
+                status="active",
+                reader=writer,
+                key_prefix=_ns(family),
+                limit=_FAMILY_MAX_KEYS,
+            )
+        except Exception as exc:
+            logger.error("get_shared_state family read failed: %s", format_exception_message(exc), exc_info=True)
+            return "Error: failed to read the shared state. Please try again."
+        hits: list[tuple[str, str]] = []
+        for state in states:
+            part, missing = _resolve_path(state.get("value") or {}, path)
+            if missing is None:
+                hits.append((_strip_ns(state)["key"], json.dumps(part, default=str)))
+        lines = [f"Family `{family}*`: `{path}` found in {len(hits)} of {len(states)} active key(s)"]
+        if len(states) >= _FAMILY_MAX_KEYS:
+            lines[0] += f" (first {_FAMILY_MAX_KEYS} keys only)"
+        budget = _READ_WINDOW_DEFAULT_CHARS
+        for name, dumped in hits:
+            shown = dumped[: max(budget, 0)]
+            budget -= len(shown)
+            lines.append(f"  - `{name}` ({len(dumped)} chars):")
+            lines.append(wrap_untrusted(shown, source=f"shared state value of {name}"))
+            if len(shown) < len(dumped):
+                lines.append(f"    [cut: get_shared_state(key='{name}', path='{path}') reads it whole]")
+        return "\n".join(lines)
+
     async def _get_shared_state(
         key: str,
         path: str = "",
@@ -1020,6 +1063,8 @@ def build_shared_state_tools(
         if not (key or "").strip():
             return "Error: key is required."
         path = (path or "").strip() if isinstance(path, str) else ""
+        if key.strip().endswith("*"):
+            return await _read_family(key.strip()[:-1], path)
         try:
             start = int(offset) if offset is not None else 0
             size = int(max_chars) if max_chars is not None else 0
@@ -1794,7 +1839,7 @@ def build_shared_state_tools(
             input_schema={
                 "type": "object",
                 "properties": {
-                    "key": {"type": "string", "description": "Exact state key"},
+                    "key": {"type": "string", "description": "Exact key; PREFIX*: path in each key"},
                     "path": {"type": "string", "description": "A top-level key or dot-separated path (e.g. 'prs', 'pools.x') to read alone, whole up to max_chars"},
                     "offset": {"type": "integer", "description": "Character offset into the value's JSON (or the path's) to read from (default 0)"},
                     "max_chars": {"type": "integer", "description": "Characters to return in a windowed read (default 20,000, at most 50,000)"},

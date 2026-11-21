@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { workItemPath, workItemsPath } from "@/lib/task-routes";
 import { Icon } from "@filigran/design-system";
 import { ListTodo, ShieldOff } from "lucide-react";
 import { useMemo } from "react";
@@ -43,8 +44,8 @@ function WorkItemsWaitingForMeAlert() {
   const open = () =>
     navigate(
       count === 1 && oldest
-        ? `/operations/work-items?item=${oldest.id}`
-        : "/operations/work-items?view=waiting",
+        ? workItemPath(oldest.id)
+        : workItemsPath({ view: "waiting" }),
     );
   return (
     <DashboardNotice
@@ -77,7 +78,8 @@ function WorkItemsWaitingForMeAlert() {
  * reads the engine's findings, never a second implementation of a check. Administrators only (the
  * Health page is theirs). The checks a dedicated notice already says (model configuration,
  * knowledge base health: `HEALTH_NOTICE_COVERED_CHECKS`) are left to that notice. Names the most
- * recent one; Review opens the Overview tab of Platform Health. Renders nothing when none is open.
+ * recent one; Review opens Platform Health on its Overview tab (`/health`: the page reads its tab
+ * from the path, never from a query). Renders nothing when none is open.
  */
 function HealthCriticalFindingsAlert() {
   const { t_i18n } = useFormatter();
@@ -88,7 +90,8 @@ function HealthCriticalFindingsAlert() {
   const findings = (data?.items ?? []).filter((f) => !HEALTH_NOTICE_COVERED_CHECKS.has(f.check_id));
   if (findings.length === 0) return null;
   const latest = findings.reduce((a, b) => (b.last_seen > a.last_seen ? b : a));
-  const open = () => navigate("/health?tab=overview");
+  // Overview is the default tab: the bare entry route (#797).
+  const open = () => navigate("/health");
   const where = t_i18n(HEALTH_MODULE_LABELS[latest.module] ?? latest.module);
   const what = latest.subject_name
     ? `${checkTitle(latest.check_id, t_i18n)} (${latest.subject_name})`

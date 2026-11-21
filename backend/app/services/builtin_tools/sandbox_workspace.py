@@ -2580,7 +2580,7 @@ def build_sandbox_workspace_tools(
             ours[repo_path] = hashlib.sha256(data).hexdigest()
         for repo_path in dropped:
             ours.pop(repo_path, None)
-        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers)
+        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers, checked_out=record.files)
         summary = rebasing.RebaseSummary(pulled=sorted(extra))
         # The branch's files brought in are written as they are unless a step below replaces them.
         writes: dict[str, bytes] = dict(pulled)
@@ -2980,7 +2980,26 @@ def build_sandbox_workspace_tools(
             deadline=commands.selection_deadline(),
             always=command.affected_always,
             scans=command.affected_scan_patterns,
+            # A file marked `integration` under backend-unit's -m "not integration" is collected and runs nothing.
+            excluded=affecting.excluded_markers(command.without_defaults()),
         )
+        if selection.deselected:
+            # Name the check that runs a deselected marker (integration -> backend-integration), not "the check".
+            from app.core.config import settings
+
+            try:
+                declared = await commands.checkout_checks(session, record.path, images=set(settings.opensandbox_images))
+            except ChecksError:
+                declared = None  # the generic advice stays: the checks file was read once already
+            if declared is not None:
+                selection.runners = affecting.marker_runners(
+                    (
+                        (spec.name, spec.argv, "/".join(p for p in (record.path, spec.cwd.strip("/")) if p))
+                        for spec in declared.specs.values()
+                    ),
+                    command.cwd,
+                    {m for found in selection.deselected.values() for m in found},
+                )
         if not selection.tests:
             whole = (
                 f"args [{WHOLE_ARG!r}] (the whole suite, bounded)"
@@ -4157,7 +4176,8 @@ def build_sandbox_workspace_tools(
                         "description": (
                             "A hunk both sides changed: markers (default), or written without markers as the "
                             "ref's lines then the lines the workspace added there (ref-then-workspace: a line added "
-                            "next to a line the ref rewrote), or the workspace's then the ref's added lines."
+                            "next to a line the ref rewrote), or the workspace's then the ref's added lines; ref or "
+                            "workspace keeps that side's lines alone."
                         ),
                     },
                     "background": {
