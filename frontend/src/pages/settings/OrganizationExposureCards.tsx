@@ -757,12 +757,12 @@ export function OrganizationExposureCards({
     },
   ];
 
-  const scoreField = (key: "cvss_min" | "epss_min", title: string, helper: string, max: number) => {
+  const scoreField = (key: "cvss_min" | "epss_min", title: string, helper: string, info: string, max: number) => {
     const id = `${fieldId}-${key}`;
     const refused = issueOf("score", key);
     const error = invalidScores[key] ? t_i18n("Type a number from 0 to {max}, or leave it empty.", { max }) : refused ? t_i18n(refused.message) : undefined;
     return (
-      <SettingsField id={id} label={title} helper={helper} error={error}>
+      <SettingsField id={id} label={title} helper={helper} info={info} error={error}>
         <ScoreInput
           id={id}
           value={policy[key]}
@@ -779,12 +779,12 @@ export function OrganizationExposureCards({
   const policySet = JSON.stringify({ ...policy, pir_min_score_vulnerability: undefined, pir_min_score_threat: undefined }) !== JSON.stringify(EMPTY_POLICY);
 
   /** CTEM-08: a PIR score threshold, 0 to 100; empty sends nothing and the backend default applies. */
-  const pirField = (key: "pir_min_score_vulnerability" | "pir_min_score_threat", title: string, helper: string) => {
+  const pirField = (key: "pir_min_score_vulnerability" | "pir_min_score_threat", title: string, helper: string, info: string) => {
     const id = `${fieldId}-${key}`;
     const refused = issueOf("score", key);
     const error = invalidScores[key] ? t_i18n("Type a whole number from 0 to 100, or leave it empty for the default.") : refused ? t_i18n(refused.message) : undefined;
     return (
-      <SettingsField id={id} label={title} helper={helper} error={error}>
+      <SettingsField id={id} label={title} helper={helper} info={info} error={error}>
         <ScoreInput
           id={id}
           value={policy[key] ?? null}
@@ -971,11 +971,38 @@ export function OrganizationExposureCards({
         {editing ? (
           <div className="space-y-4">
             <SettingsFieldGrid>
-              {scoreField("cvss_min", t_i18n("CVSS minimum"), t_i18n("0 to 10. Empty: no CVSS threshold. Recommended: 7."), 10)}
-              {scoreField("epss_min", t_i18n("EPSS minimum"), t_i18n("0 to 1. Empty: no EPSS threshold. Recommended: 0.1."), 1)}
-              {pirField("pir_min_score_vulnerability", t_i18n("PIR score minimum: vulnerabilities"), t_i18n("0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70."))}
-              {pirField("pir_min_score_threat", t_i18n("PIR score minimum: threat activity"), t_i18n("0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75."))}
-              <SettingsField id={`${fieldId}-min_crown_jewel_criticality`} label={t_i18n("Minimum crown jewel criticality")} helper={t_i18n("Keep only findings on assets linked to a crown jewel at this level or above.")}>
+              {scoreField(
+                "cvss_min",
+                t_i18n("CVSS minimum"),
+                t_i18n("0 to 10. Empty: no CVSS threshold. Recommended: 7."),
+                t_i18n("The CVSS base score of a vulnerability, from 0 to 10, one decimal. Example: 7 keeps a 7.5 and drops a 6.8. Read by the CTEM scope gate and the policy stage of the funnel. Empty: no CVSS threshold."),
+                10,
+              )}
+              {scoreField(
+                "epss_min",
+                t_i18n("EPSS minimum"),
+                t_i18n("0 to 1. Empty: no EPSS threshold. Recommended: 0.1."),
+                t_i18n("The EPSS probability of exploitation in the next 30 days, from 0 to 1. Example: 0.1 keeps a 0.35 and drops a 0.02. Read by the CTEM scope gate and the policy stage of the funnel. Empty: no EPSS threshold."),
+                1,
+              )}
+              {pirField(
+                "pir_min_score_vulnerability",
+                t_i18n("PIR score minimum: vulnerabilities"),
+                t_i18n("0 to 100. A vulnerability flagged in a PIR starts a fleet run at or above this score. Default: 70."),
+                t_i18n("The live OpenCTI PIR score of a vulnerability, a whole number from 0 to 100. Example: 80: a vulnerability flagged at 85 starts a run, one at 75 does not. Read by the PIR playbook fleet runs (CTEM-08 trigger rule). Empty: the default, 70."),
+              )}
+              {pirField(
+                "pir_min_score_threat",
+                t_i18n("PIR score minimum: threat activity"),
+                t_i18n("0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75."),
+                t_i18n("The live OpenCTI PIR score of an intrusion set, campaign or malware, a whole number from 0 to 100. Example: 80: a campaign flagged at 85 starts a run, one at 75 does not. Read by the PIR playbook fleet runs (CTEM-08 trigger rule). Empty: the default, 75."),
+              )}
+              <SettingsField
+                id={`${fieldId}-min_crown_jewel_criticality`}
+                label={t_i18n("Minimum crown jewel criticality")}
+                helper={t_i18n("Keep only findings on assets linked to a crown jewel at this level or above.")}
+                info={t_i18n("The criticality of the crown jewel a finding's asset is linked to: low, medium, high or critical. Example: High keeps a finding on a critical crown jewel and drops one on a medium one. Read by the CTEM scope gate. Any: no criticality threshold.")}
+              >
                 {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum crown jewel criticality", (v) =>
                   patchPolicy({ min_crown_jewel_criticality: v === ANY_CRITICALITY ? "" : v }),
                 )}
@@ -985,6 +1012,7 @@ export function OrganizationExposureCards({
               id={`${fieldId}-kev_always_in`}
               label={t_i18n("Known exploited vulnerabilities always in")}
               helper={t_i18n("A vulnerability in CISA KEV passes the thresholds whatever its scores.")}
+              info={t_i18n("On: a vulnerability in the CISA Known Exploited Vulnerabilities catalog passes the CVSS and EPSS thresholds. Off: it is held to them like any other. Read by the CTEM scope gate.")}
               checked={policy.kev_always_in}
               onCheckedChange={(kev_always_in) => patchPolicy({ kev_always_in })}
             />
@@ -992,6 +1020,7 @@ export function OrganizationExposureCards({
               id={`${fieldId}-internet_exposure_required`}
               label={t_i18n("Internet exposure required")}
               helper={t_i18n("Keep only findings on assets marked internet-facing. This drops the findings on user endpoints too.")}
+              info={t_i18n("On: a finding passes only when its asset is marked internet-facing in the profile. Off: internet exposure is not checked. Read by the CTEM scope gate.")}
               checked={policy.internet_exposure_required}
               onCheckedChange={(internet_exposure_required) => patchPolicy({ internet_exposure_required })}
             />
