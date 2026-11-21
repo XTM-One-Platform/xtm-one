@@ -19945,5 +19945,6 @@
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {SLA dépassé de {shown} h} other {SLA dépassé de {shown} h}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {SLA dépassé de {shown} jour} other {SLA dépassé de {shown} jours}}",
   "P1 case opened by the loop: {sla}": "Dossier P1 ouvert par la boucle : {sla}",
-  "P1 case opened by the loop": "Dossier P1 ouvert par la boucle"
+  "P1 case opened by the loop": "Dossier P1 ouvert par la boucle",
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# atténué, sous surveillance} other {# atténués, sous surveillance}}"
 }

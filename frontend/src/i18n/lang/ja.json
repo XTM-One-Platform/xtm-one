@@ -19945,5 +19945,6 @@
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, other {SLA を {shown} 時間超過}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, other {SLA を {shown} 日超過}}",
   "P1 case opened by the loop: {sla}": "ループが開いた P1 ケース: {sla}",
-  "P1 case opened by the loop": "ループが開いた P1 ケース"
+  "P1 case opened by the loop": "ループが開いた P1 ケース",
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, other {# 件 緩和済み・監視中}}"
 }
