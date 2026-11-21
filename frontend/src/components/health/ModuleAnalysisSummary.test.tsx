@@ -78,10 +78,25 @@ describe("ModuleAnalysisSummary", () => {
     expect(analysisRowFor("xtm_one", true, overview())?.module).toBe("xtm_one");
   });
 
-  it("offers no expand for a one-line summary", () => {
+  it("offers no expand for a one-line summary that fits", () => {
     render(overview({ summary: "One fix." }));
     expect(screen.getByTestId("health-analysis-headline").textContent).toBe("One fix.");
     expect(screen.queryByTestId("health-analysis-expand")).toBeNull();
+  });
+
+  it("offers Show more for a one-line summary whose clamped headline is cut (UX round 3 B4 on #965)", () => {
+    // happy-dom lays nothing out: the headline reports a scroll height past its clamped height.
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(120);
+    const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(40);
+    const long = "A one-line summary long enough to need more than the two lines the card clamps it to.";
+    try {
+      render(overview({ summary: long }));
+      fireEvent.click(screen.getByTestId("health-analysis-expand"));
+      expect(screen.getByRole("dialog", { name: "AI summary" }).textContent).toContain(long);
+    } finally {
+      scroll.mockRestore();
+      client.mockRestore();
+    }
   });
 
   it("shows nothing for a module with no open finding", () => {

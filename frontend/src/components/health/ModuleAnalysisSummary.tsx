@@ -23,6 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * explained while AI or the analysis is off. Administrators only: the overview mounts it for the
  * "all" scope. One AI block per card: the Module Analyst's line joins this block, never a second one.
  */
+import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { InfoPopover } from "@/components/ui/info-popover";
@@ -72,6 +73,26 @@ export function summaryHeadline(summary: string): string {
   return summary.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
 }
 
+/**
+ * Whether the clamped headline is cut: measured after layout and again on every resize, so a
+ * one-line summary too long for two lines still opens the whole text (UX round 3 B4 on #965).
+ */
+function useClampCut(text: string) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const measure = () => setCut(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text]);
+  return { ref, cut };
+}
+
 /** Why Analyse now is not offered, in plain words; null when it may run. */
 function runBlockedReason(overview: HealthAnalysisOverview, aiOff: boolean, t: (key: string) => string): string | null {
   if (aiOff) return t(ANALYSIS_REASON_LABELS.ai_off);
@@ -113,6 +134,9 @@ function AnalysisActions({
 
 function Outcome({ module, analysis }: { module: HealthModule; analysis: HealthModuleAnalysis }) {
   const { t_i18n } = useFormatter();
+  // Hooks before the early returns: the headline is empty unless the analysis completed.
+  const headline = analysis.status === "completed" ? summaryHeadline(analysis.summary) : "";
+  const { ref, cut } = useClampCut(headline);
   if (!analysis.status) {
     return (
       <p className="content-compact text-default-secondary" data-testid="health-analysis-never">
@@ -127,8 +151,8 @@ function Outcome({ module, analysis }: { module: HealthModule; analysis: HealthM
       </p>
     );
   }
-  const headline = summaryHeadline(analysis.summary);
-  const more = analysis.summary.trim() !== headline;
+  // Show more when the summary holds more than its headline OR the clamped headline is cut.
+  const more = analysis.summary.trim() !== headline || cut;
   const asOf = analysis.analysed_at ? (
     <span className="inline-flex items-center gap-1">
       {t_i18n("As of")} <DateTimeCell value={analysis.analysed_at} />
@@ -136,7 +160,7 @@ function Outcome({ module, analysis }: { module: HealthModule; analysis: HealthM
   ) : null;
   return (
     <div className="min-w-0 space-y-1">
-      <p className="line-clamp-2 content-compact text-default-primary" data-testid="health-analysis-headline">
+      <p ref={ref} className="line-clamp-2 content-compact text-default-primary" data-testid="health-analysis-headline">
         {headline}
       </p>
       <div className="flex flex-wrap items-center gap-x-2 content-caption text-default-secondary">

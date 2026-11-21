@@ -477,7 +477,10 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   "AI summary" block (`components/health/ModuleAnalysisSummary.tsx`, the `StatCard` footer):
   the first line of `summary` (the headline, the first fix), clamped to two lines, with
   "As of <time>"; Show more opens the whole text and the order of fixes in the shared
-  `InfoPopover`, never in place, so the cards of a grid row keep one height. The footer
+  `InfoPopover`, never in place, so the cards of a grid row keep one height. Show more is
+  offered when the summary holds more than its headline OR the clamped headline is cut
+  (measured after layout and on resize, `scrollHeight > clientHeight`), so a one-line
+  summary too long for two lines still opens in full. The footer
   follows the subtitle in normal flow, never pinned to the card bottom: the dividers of one
   grid row share one y and the spare height falls below the footer content. A module with no open finding, or the analysis off, shows
   no block and its card no footer (`analysisRowFor` decides it in the overview); a refused or failed analysis shows one muted line with its
