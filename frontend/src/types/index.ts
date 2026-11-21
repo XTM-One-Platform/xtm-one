@@ -6729,60 +6729,6 @@ export interface WorkItemBlockedRef {
   at?: string | null;
 }
 
-/** `services/work_item_graph.py`: a work item of the Graph view. */
-export interface WorkItemGraphItemNode {
-  id: string;
-  kind: "item";
-  title: string;
-  status: WorkItemStatus;
-  priority: string | null;
-  correlation_key: string | null;
-  owner_agent: { id: string | null; name: string | null; icon: string | null } | null;
-  needs_human: boolean;
-  ask: { question: string; options: { key: string; label: string }[]; recommendation?: string | null } | null;
-  is_program_root: boolean;
-  /** A blocker the filter left out, drawn so the chain does not end on nothing. */
-  outside_filter: boolean;
-}
-
-/** A pull request, issue, deployment or workflow run an item waits for. */
-export interface WorkItemGraphRefNode {
-  id: string;
-  kind: "ref";
-  ref_kind: WorkItemBlockedRef["kind"];
-  label: string;
-  repo: string | null;
-  number: number | null;
-  state: WorkItemBlockedRef["state"];
-  satisfied: boolean;
-  url: string | null;
-}
-
-/** The person a `needs_human` item waits for. */
-export interface WorkItemGraphPersonNode {
-  id: string;
-  kind: "person";
-  name: string | null;
-  is_you: boolean;
-}
-
-export type WorkItemGraphNode = WorkItemGraphItemNode | WorkItemGraphRefNode | WorkItemGraphPersonNode;
-
-/** `blocked_on`, `ref` and `person` go from the waiter to what it waits for; `program` from the root to a child. */
-export interface WorkItemGraphEdge {
-  id: string;
-  source: string;
-  target: string;
-  kind: "blocked_on" | "ref" | "person" | "program";
-}
-
-/** `GET /work-items/graph`. */
-export interface WorkItemGraph {
-  nodes: WorkItemGraphNode[];
-  edges: WorkItemGraphEdge[];
-  truncated: boolean;
-}
-
 /** `work_item_context._Lookup.blocked_on`: an item another one waits for. */
 export interface WorkItemBlockerRef {
   id: string | null;
@@ -12645,8 +12591,10 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on. */
+  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
   run_id: string | null;
+  /** A decision still waiting: unread until answered, never read by opening it (#991). */
+  awaiting_answer?: boolean;
   unread: boolean;
 }
 
@@ -16459,6 +16407,49 @@ export interface HealthModuleCard {
   info: number;
   /** The score a week ago; null when no score was written that day. */
   previous_score: number | null;
+  /** OpenCTI, OpenAEV, OpenCRQ for an administrator: the Module Analyst's last cycle, null when none (#101 S14c). */
+  last_investigation?: HealthLastInvestigation | null;
+}
+
+/** The Module Analyst's latest cycle on one of a module's registrations (dev-docs/platform-health.md section 12.7). */
+export interface HealthLastInvestigation {
+  cycle_id: string;
+  registration_id: string;
+  status: "open" | "completed" | "budget_reached" | "failed" | "cancelled";
+  trigger: "schedule" | "signal" | "on_demand";
+  opened_at: string;
+  closed_at: string | null;
+}
+
+/** What "Investigate now" did on one registration: started, or the refusal code of `start_cycle`. */
+interface HealthModuleInvestigationStart {
+  registration_id: string;
+  cycle_id: string | null;
+  run_id: string | null;
+  refusal: string | null;
+  open_cycle_id?: string | null;
+}
+
+export interface HealthModuleInvestigation {
+  module: HealthModule;
+  items: HealthModuleInvestigationStart[];
+}
+
+/** One read the Module Analyst made to back a recommendation. */
+interface HealthAnalystEvidence {
+  tool?: string;
+  object_ids?: string[];
+  values?: Record<string, unknown>;
+  read_at?: string;
+}
+
+/** The Module Analyst's newest recommendation on a finding (section 12.7). */
+export interface HealthAnalystRecommendation {
+  text: string;
+  confidence: "high" | "medium" | "low";
+  evidence: HealthAnalystEvidence[];
+  cycle_id: string;
+  created_at: string;
 }
 
 /** The latest analysis of one module; `status` is null when it was never analysed. */
@@ -16515,6 +16506,10 @@ export interface HealthFinding {
   resolved_at: string | null;
   dismissal: { reason: string; by_name?: string; at?: string; until?: string | null } | null;
   can_dismiss: boolean;
+  /** Discovered by the Module Analyst (check id `<module>.agentic.<slug>`), not by a deterministic check. */
+  agentic?: boolean;
+  /** The Module Analyst's newest recommendation on this finding, null when none. */
+  analyst_recommendation?: HealthAnalystRecommendation | null;
 }
 
 export interface HealthFindingList {
