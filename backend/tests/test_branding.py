@@ -252,7 +252,7 @@ def test_resolved_payload_has_no_light_variant_for_an_operators_logo(logo):
 
 @pytest.mark.parametrize(
     ("is_xtm", "dark", "light"),
-    [(True, "/xtm-one-emblem.svg", "/xtm-one-emblem.svg"), (False, "/filigran-white.svg", "/filigran-black.svg")],
+    [(True, "/xtm-one-emblem.svg", "/xtm-one-emblem-light.svg"), (False, "/filigran-white.svg", "/filigran-black.svg")],
     ids=["xtm_one", "copilot"],
 )
 def test_resolved_payload_serves_the_bundled_emblem_for_the_collapsed_rail(is_xtm, dark, light):
