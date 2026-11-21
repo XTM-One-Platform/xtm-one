@@ -109,6 +109,7 @@ from app.services.branding import (
 )
 from app.services.chat_turn_stream import AGENTIC_ACTION_STATUS
 from app.services.context_usage import CONTEXT_USAGE_META_KEYS, ContextUsageTracker
+from app.services.intent_aliases import canonical_intent_name, canonical_vertical
 from app.services.platform_chat_extras import (
     list_platform_chat_prompts,
     load_user_feedback_by_message,
@@ -1308,7 +1309,9 @@ def _registered_business_vertical(
     """
     if reg is not None and registration_token_state() == "published_default":
         return reg.business_vertical
-    return sent_vertical
+    # A platform build that predates a vertical rename still sends the old
+    # name; it is recorded under the current one.
+    return canonical_vertical(sent_vertical)
 
 
 @dataclass(frozen=True)
@@ -1485,6 +1488,12 @@ async def _sync_platform_intents(
     """
     from app.api.v1.helpers import get_or_create_intent, get_or_create_vertical
     from app.models.intent import Intent, PlatformIntentDeclaration
+
+    # A platform build that predates a vertical rename still declares the old
+    # vertical and intent names: they resolve to the current ones, so the old
+    # rows are never recreated next to the migrated ones.
+    business_vertical = canonical_vertical(business_vertical)
+    declared_intents = [decl.model_copy(update={"name": canonical_intent_name(decl.name)}) for decl in declared_intents]
 
     # 1. Upsert vertical from business_vertical (race-safe ON CONFLICT
     # upsert — a registration can run concurrently with the startup seed

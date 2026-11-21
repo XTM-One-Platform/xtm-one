@@ -32,6 +32,7 @@ from app.api.v1.helpers import parse_path_id, parse_uuid
 from app.api.v1.schemas.column_limits import column_length_validator
 from app.models.intent import Intent, IntentBinding, PlatformIntentDeclaration, Vertical
 from app.models.user import User
+from app.services.intent_aliases import canonical_intent_name, canonical_vertical
 from app.services.intent_binding_writes import agent_shared_scope_filter as _agent_shared_scope_filter
 
 logger = logging.getLogger(__name__)
@@ -327,7 +328,12 @@ async def get_intent_catalog(
       - platform: only intents declared by this platform identifier
       - vertical: only agents bound with this vertical (or universal)
       - intent: comma-separated intent names to filter (e.g. "analyze-email,draft-reply")
+
+    A renamed vertical or intent namespace (``intent_aliases``) is read under
+    its current name, so a platform build that predates the rename keeps its
+    catalog.
     """
+    vertical = canonical_vertical(vertical)
     from app.api.v1.helpers import get_user_group_ids, user_visible_filter
     from app.models.agent import Agent
 
@@ -341,7 +347,7 @@ async def get_intent_catalog(
         )
         intent_query = intent_query.where(Intent.id.in_(intent_ids))
     if intent:
-        intent_names = [n.strip() for n in intent.split(",") if n.strip()]
+        intent_names = [canonical_intent_name(n.strip()) for n in intent.split(",") if n.strip()]
         if intent_names:
             intent_query = intent_query.where(Intent.name.in_(intent_names))
 
