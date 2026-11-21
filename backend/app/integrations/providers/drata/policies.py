@@ -18,6 +18,25 @@ from ._common import (
     _full_name,
 )
 
+# Window of policy text one call returns; offset / max_chars page the rest.
+_POLICY_TEXT_DEFAULT_CHARS = 10_000
+_POLICY_TEXT_MAX_CHARS = 50_000
+
+
+def _policy_text_window(version_id: int, text: str, offset: int, max_chars: int) -> str:
+    """One window of a policy text, with its range, total and the next offset."""
+    total = len(text)
+    size = max_chars if max_chars > 0 else _POLICY_TEXT_DEFAULT_CHARS
+    size = min(size, _POLICY_TEXT_MAX_CHARS)
+    start = max(offset, 0)
+    if total and start >= total:
+        return f"Policy Version {version_id} Content: offset {start} is past the end of the text ({total} characters)."
+    end = min(start + size, total)
+    header = f"Policy Version {version_id} Content, characters {start} to {end} of {total}"
+    if end < total:
+        header += f"; {total - end} more: call again with offset={end}"
+    return f"{header}:\n\n{text[start:end]}"
+
 
 def register(
     base_url: str,
@@ -136,8 +155,14 @@ def register(
                 empty_msg=f"No versions found for policy {policy_id}.",
             )
 
-    async def get_drata_policy_version_content(policy_id: int, version_id: int) -> str:
-        """Get the HTML content of a specific policy version. Returns the full policy text."""
+    async def get_drata_policy_version_content(
+        policy_id: int, version_id: int, offset: int = 0, max_chars: int = _POLICY_TEXT_DEFAULT_CHARS
+    ) -> str:
+        """Get the text of a policy version, one window at a time.
+
+        The answer names the range shown, the total length and the offset of
+        the next window, so a policy of any length is read whole.
+        """
         async with egress_client(timeout=30) as client:
             resp, err = await _common.safe_request(
                 client,
@@ -155,7 +180,7 @@ def register(
                 html = resp.text
                 text = re.sub(r"<[^>]+>", "", html)
                 text = re.sub(r"\s+", " ", text).strip()
-                return f"Policy Version {version_id} Content:\n\n{text[:10000]}"
+                return _policy_text_window(version_id, text, offset, max_chars)
 
             data = resp.json()
             lines = [
@@ -299,12 +324,23 @@ def register(
         ),
         ToolDefinition(
             name="get_drata_policy_version_content",
-            description="Get the full text content of a specific policy version from Drata.",
+            description=(
+                "Get the text of a Drata policy version by window: the answer names "
+                "the characters shown, the total and the offset of the next window."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "policy_id": {"type": "integer"},
                     "version_id": {"type": "integer"},
+                    "offset": {
+                        "type": "integer",
+                        "description": "First character to return (default 0)",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Characters to return (default 10000, at most 50000)",
+                    },
                 },
                 "required": ["policy_id", "version_id"],
             },
