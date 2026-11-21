@@ -232,19 +232,10 @@ migration, 2.3). `backend/tests/test_health_built_in.py` pins the built-in behav
   (`agents`, `fleets`, `xtm_one`, `opencti`, `openaev`, `opencrq`), `subject` (ids),
   `category` (availability, performance, capacity, configuration, security, licence,
   coverage, cost), `severity` (critical, warning, info), `status` (open, resolved,
-  dismissed; `pending` internally), `evidence` (values, threshold, read time, source),
-  `recommendation`, `doc_link`, `first_seen`, `last_seen`, `resolved_at`, `opened_at`,
-  `alerted_at`. Dedupe on `id`; opens when the check fails twice in a row
-  (`OPEN_AFTER_FAILS` = 2, `fail_streak`; before, the row is `pending`: not scored, not
-  listed, never alerted, deleted by a passing read); auto-resolve when the check passes
-  twice in a row; dismiss with a reason and an expiry, reusing the
+  dismissed), `evidence` (values, threshold, read time, source), `recommendation`,
+  `doc_link`, `first_seen`, `last_seen`, `resolved_at`. Dedupe on `id`; auto-resolve when
+  the check passes twice in a row; dismiss with a reason and an expiry, reusing the
   `fleet_health_dismissals` pattern.
-- **Restart grace.** A failing `availability` read during a restart is marked `in_grace`
-  and never opens a finding (it still refreshes one already open): the XTM One checks for
-  `STARTUP_GRACE` (10 minutes) after the process starts (`PROCESS_STARTED_AT`), a
-  module's checks for `RESTART_GRACE` (10 minutes) after its registration reads as a
-  restart (version changed, or a heartbeat more than 8 minutes after the previous one:
-  `snapshots.registration_restarted`, stamped `platform_health_snapshots.restarted_at`).
 - **Score.** Per module: `100 - 25 x critical - 8 x warning - 1 x info`, floored at 0,
   open findings only; overall = the lowest module score. The formula is shown on the page.
 - **History.** Daily rollup of score and counts per module, kept 90 days (7/30/90 d views).
@@ -524,20 +515,13 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - Analysis: on or off, daily and monthly ceiling, and under them today's and this month's
   analysis spend against each ceiling (`AnalysisSpendLines`, from `GET /health/analysis`;
   moved from the Health page by #961).
-- Alert emails: off by default; recipients, minimum severity, immediate for a critical
-  finding open for the alert window plus a daily digest, one email per finding and open
-  episode. Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`):
-  after each pass commits, `send_alerts` mails every critical finding open continuously
-  for `alert_after_minutes` (default 15, 0 to 1440, the "Send after" field) and not
-  alerted in this episode (`alerted_at` stamped; Redis `SET NX` on
-  `health:alert:<finding id>:<opened_at>` against a second replica), then the digest
-  once per UTC day (mark `alert:digest` in `health_schedule_marks`, unchanged). A
-  finding that resolves within the window never mails, so a restart sends nothing
-  (#958, with the open-after-two-reads rule and the restart grace of section 3); a
-  reopened finding, or a dismissed one restored, is a new episode. Nothing is sent with
-  the emails off, SMTP unset or no recipient (or immediate off), but the due findings are
-  still stamped `alerted_at` (`stamp_due_alerts`), so turning the emails on later never
-  mails a burst of the findings already open; a failed send never fails the pass.
+- Alert emails: off by default; recipients, minimum severity, immediate for a new
+  critical finding plus a daily digest, one email per finding (dedupe on finding id).
+  Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`): after
+  each pass commits, `send_alerts` mails every critical finding the pass opened or
+  reopened once (Redis `SET NX` on `health:alert:<finding id>`, 7 days), then the
+  digest once per UTC day (mark `alert:digest` in `health_schedule_marks`). Nothing
+  is sent with SMTP unset or no recipient; a failed send never fails the pass.
 - Layout (S13, `pages/settings/HealthSection.tsx` `GROUPS`): one section, a horizontal
   `SectionIndex` ("On this page") jumping to four groups, anchors `#health-settings-<key>`:
   status (enable and name, scope), spend (budget, analysis), checks (schedule, signals,
@@ -598,10 +582,7 @@ its file and line, and a `/health?tab=` link fails (the page reads its tab from 
   layout (`services/email.py`), attachments by file id (20 MB total, the existing cap).
 - Guards: recipient domain allowlist (empty = refuse all), per-agent daily send limit,
   tool approval on by default, audit log entry per send, From fixed to the platform sender.
-- Health alert emails (section 7) use `deliver_email` directly, not the agent tool: the
-  immediate email of a critical finding goes out once it has been open for
-  `alert_after_minutes` (default 15), at most once per open episode; a restart of XTM One
-  or of a module sends none.
+- Health alert emails (section 7) use `deliver_email` directly, not the agent tool.
 
 ## 10. Slice plan
 
@@ -900,5 +881,5 @@ decision written here).
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
-| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n | yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n | S14d-1 no, S14d-2 yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |
