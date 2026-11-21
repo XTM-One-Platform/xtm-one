@@ -114,7 +114,7 @@ test.describe.serial('Entity page header — height budget at 1440 px', () => {
 
   test('the fleet page header stays within the budget', async ({ page }) => {
     test.skip(!!fleetSkip, fleetSkip);
-    await page.goto(`/flows/fleets/${fleetId}`);
+    await page.goto(`/fleets/${fleetId}`);
     expect(await headerHeight(page)).toBeLessThanOrEqual(BUDGET_PX);
   });
 
@@ -130,7 +130,7 @@ test.describe.serial('Entity page header — height budget at 1440 px', () => {
         await route.fulfill({ response, json: { ...(await response.json()), language } });
       });
       await page.setViewportSize({ width: 1024, height: 900 });
-      await page.goto(`/flows/fleets/${forkId}`);
+      await page.goto(`/fleets/${forkId}`);
       const meta = page.getByTestId('entity-page-header-meta');
       await expect(meta).toBeVisible();
       await expect(meta).toHaveAttribute('data-one-line', 'true');
@@ -154,7 +154,7 @@ test.describe.serial('Entity page header — height budget at 1440 px', () => {
   // actions keep the title's line only and the header still fits the budget.
   test('the fleet page header stays within the budget with Modify with AI open', async ({ page }) => {
     test.skip(!!fleetSkip, fleetSkip);
-    await page.goto(`/flows/fleets/${fleetId}?ai=1`);
+    await page.goto(`/fleets/${fleetId}?ai=1`);
     await expect(page.getByTestId('entity-page-header-row')).toHaveAttribute('data-actions-placement', 'title');
     expect(await headerHeight(page)).toBeLessThanOrEqual(BUDGET_PX);
   });

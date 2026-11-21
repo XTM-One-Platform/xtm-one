@@ -32,8 +32,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *     collapsed fleet node that opens the fleet page (`lib/fleet-layer`);
  *     a toolbar switch draws every agent again;
  *   - a second view, the schedule of the same agents (`/flows/map/schedule`,
- *     `?agent=<id>` narrows it to one agent): the former Schedule tab, which
- *     `/flows/schedule` now redirects to.
+ *     `?agent=<id>` narrows it to one agent): the former Schedule tab.
  *
  * The page carries no info block (amendment 3): no handover warnings
  * stack, no hints paragraph, no stat tiles; the graph is the page.
@@ -223,7 +222,6 @@ export default function MapTab() {
   const setView = useCallback(
     (next: MapView) => {
       const params = new URLSearchParams(searchParams);
-      params.delete("view");
       if (next !== "schedule") params.delete("agent");
       const query = params.toString();
       navigate({ pathname: mapViewPath(next), search: query ? `?${query}` : "" });

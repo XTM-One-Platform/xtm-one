@@ -17,7 +17,7 @@
  * until then), locked `unlicensed` on Community Edition like Value; every other
  * line is N1's, unchanged. N2c adds `/agents-hub`, the Agents group's hub
  * (open to everyone, no lock: its cards carry their own), and moves `/fleets`
- * to its own route; `/flows/fleets...` redirects there (tested below).
+ * to its own route. #797: no former address redirects (tested below).
  * N3 lists `/analytics/outcomes`, a tab of Analytics until then, as a page
  * of the Observability family (administrators, as its tab was).
  */
@@ -234,13 +234,22 @@ test("every destination is a route of App.tsx, behind the guard the table record
   }
 });
 
-test("every old Fleets URL redirects to /fleets, the rest of the path, query and hash kept (N2c)", () => {
+test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
-  const legacy = appRoutes().find((route) => route.path === "/flows/fleets/*");
-  assert.ok(legacy, "a /flows/fleets/* route exists");
-  assert.match(legacy.body, /^path="\/flows\/fleets\/\*" element=\{<FleetsLegacyRedirect \/>\}/);
-  assert.match(source, /pathname\.replace\(\/\^\\\/flows\\\/fleets\/, "\/fleets"\)\}\$\{search\}\$\{hash\}`\} replace/);
-  assert.ok(appRoutes().some((route) => route.path === "/fleets"), "/fleets is a page of its own");
+  const routes = appRoutes();
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*"]) {
+    assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
+  }
+  // The only redirects left are access guards (home, or the login page): never one page aliasing another.
+  const targets = [...source.matchAll(/<Navigate to="([^"]*)"/g)].map((match) => match[1]);
+  assert.deepEqual([...new Set(targets)].sort(), ["/", "/login"]);
+  assert.doesNotMatch(source, /<Navigate to=\{/, "no computed redirect target");
+  assert.doesNotMatch(source, /LegacyRedirect/);
+  // The license splash has its own catch-all; the app's is the last one.
+  const catchAll = routes.filter((route) => route.path === "*").at(-1);
+  assert.ok(catchAll, "a catch-all route exists");
+  assert.match(catchAll.body, /<RouteNotFound \/>/);
+  assert.ok(routes.some((route) => route.path === "/fleets"), "/fleets is a page of its own");
 });
 
 test("Agentic Flow keeps the map and the library, never a Fleets tab (two rows never open one page)", () => {

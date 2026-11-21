@@ -89,7 +89,8 @@ function HealthCriticalFindingsAlert() {
   const findings = (data?.items ?? []).filter((f) => !HEALTH_NOTICE_COVERED_CHECKS.has(f.check_id));
   if (findings.length === 0) return null;
   const latest = findings.reduce((a, b) => (b.last_seen > a.last_seen ? b : a));
-  const open = () => navigate("/health?tab=overview");
+  // Overview is the default tab: the bare entry route (#797).
+  const open = () => navigate("/health");
   const where = t_i18n(HEALTH_MODULE_LABELS[latest.module] ?? latest.module);
   const what = latest.subject_name
     ? `${checkTitle(latest.check_id, t_i18n)} (${latest.subject_name})`
