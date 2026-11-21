@@ -29,7 +29,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import type { AgentSkill } from "@/types";
 
 /** Tag keying the learned skill of an agent (`AGENT_TAG_PREFIX`). */
-export const LEARNED_AGENT_TAG_PREFIX = "learned-for-agent:";
+const LEARNED_AGENT_TAG_PREFIX = "learned-for-agent:";
 /** Tag an administrator sets to stop the agent writing (`FROZEN_TAG`). */
 export const LEARNED_FROZEN_TAG = "learned-frozen";
 /** Upper bound of the organization notes (`CUSTOMER_NOTES_MAX_CHARS`). */

@@ -464,7 +464,7 @@ export function useFleetFlow(fleetId: string | null | undefined, shown = true) {
 }
 
 /** An integration as a capability slot shows it (`FleetSlotIntegration`, #914 slice 2). */
-export interface FleetSlotIntegration {
+interface FleetSlotIntegration {
   integration_id: string;
   provider: string;
   /** Empty when the reader cannot see the bound integration. */

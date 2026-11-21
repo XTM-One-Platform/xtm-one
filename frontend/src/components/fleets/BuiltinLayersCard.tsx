@@ -26,8 +26,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Textarea } from "@filigran/design-system";
-import { GraduationCap, Lock, UserRound } from "lucide-react";
+import { Icon, Textarea } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,7 +64,7 @@ export function BuiltinLayersCard({ agent, canEditCustomerLayer }: { agent: Agen
         <div className="grid gap-3 md:grid-cols-2">
           <section aria-labelledby="builtin-locked" className="rounded-md border border-elevation-subtle p-3">
             <h3 id="builtin-locked" className="flex items-center gap-1.5 content-compact font-medium">
-              <Lock className="h-3.5 w-3.5 text-default-secondary" aria-hidden /> {t_i18n("Locked by the product")}
+              <Icon name="lock" size={16} className="text-default-secondary" aria-hidden /> {t_i18n("Locked by the product")}
             </h3>
             <ul className="mt-2 space-y-1 content-compact text-default-secondary">
               {LOCKED_ITEMS.map((item) => (
@@ -75,7 +74,7 @@ export function BuiltinLayersCard({ agent, canEditCustomerLayer }: { agent: Agen
           </section>
           <section aria-labelledby="builtin-yours" className="rounded-md border border-elevation-subtle p-3">
             <h3 id="builtin-yours" className="flex items-center gap-1.5 content-compact font-medium">
-              <UserRound className="h-3.5 w-3.5 text-accent" aria-hidden /> {t_i18n("Yours")}
+              <Icon name="users" size={16} className="text-accent" aria-hidden /> {t_i18n("Yours")}
             </h3>
             <ul className="mt-2 space-y-1 content-compact">
               {YOURS_ITEMS.map((item) => (
@@ -165,7 +164,7 @@ function LearnedSkill({ agentId }: { agentId: string }) {
     <section aria-labelledby="builtin-learned" className="space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="builtin-learned" className="flex items-center gap-1.5 content-compact font-medium">
-          <GraduationCap className="h-3.5 w-3.5 text-accent" aria-hidden /> {t_i18n("Learned skill")}
+          <Icon name="graduation-cap" size={16} className="text-accent" aria-hidden /> {t_i18n("Learned skill")}
           {learnedSkillFrozen(skill) && <Badge variant="outline">{t_i18n("Frozen")}</Badge>}
         </h3>
         {skill && (

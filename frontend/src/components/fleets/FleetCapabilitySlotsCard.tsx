@@ -25,12 +25,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * shown when no member's role declares a slot.
  */
 import { Link } from "react-router-dom";
-import { Plug, X } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
 import {
   useBindFleetSlot,
@@ -59,7 +59,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
     <Card data-testid="fleet-capability-slots">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 content-base">
-          <Plug className="h-4 w-4 text-accent" aria-hidden /> {t_i18n("Capabilities")}
+          <Icon name="network" size={16} className="text-accent" aria-hidden /> {t_i18n("Capabilities")}
         </CardTitle>
         <p className="content-caption text-default-secondary">
           {fleet.is_builtin
@@ -131,30 +131,28 @@ function SlotRow({ fleetId, member, slot }: { fleetId: string; member: FleetMemb
                 )
               }
             >
-              <X className="h-3 w-3" aria-hidden />
+              <Icon name="x" size={16} aria-hidden />
             </Button>
           )}
         </span>
       ))}
       {member.can_edit && slot.candidates.length > 0 && (
-        <Select
+        <SearchableSelect
+          aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(slot.label) })}
+          options={slot.candidates.map((candidate) => ({
+            value: candidate.integration_id,
+            label: candidate.name || candidate.provider,
+            keywords: [candidate.provider],
+          }))}
+          searchable="auto"
           value=""
           disabled={busy}
-          onValueChange={(integrationId) =>
-            bind.mutate({ memberId: member.member_id, capability: slot.capability, integrationId }, { onError: refused })
-          }
-        >
-          <SelectTrigger className="h-7 w-[200px]" aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(slot.label) })}>
-            <SelectValue placeholder={t_i18n("Bind an integration")} />
-          </SelectTrigger>
-          <SelectContent>
-            {slot.candidates.map((candidate) => (
-              <SelectItem key={candidate.integration_id} value={candidate.integration_id}>
-                {candidate.name || candidate.provider}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder={t_i18n("Bind an integration")}
+          onValueChange={(integrationId) => {
+            if (integrationId) bind.mutate({ memberId: member.member_id, capability: slot.capability, integrationId }, { onError: refused });
+          }}
+          className="w-[200px] shrink-0"
+        />
       )}
       {slot.state === "unavailable" && member.can_edit && (
         <Link to="/integrations" className="content-caption text-accent hover:underline">
