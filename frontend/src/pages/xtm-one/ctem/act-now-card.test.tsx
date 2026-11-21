@@ -19,6 +19,12 @@ const state = vi.hoisted(() => ({
   isAdmin: true,
   version: null as number | null,
   navigated: [] as string[],
+  cases: [] as { id: string; title: string; state: string; severity: string | null; priority?: string; sla_due_at: string | null }[],
+}));
+
+vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/api/useCtemCasesApi")>()),
+  useCtemCases: () => ({ data: { cases: state.cases } }),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -81,6 +87,7 @@ beforeEach(() => {
   state.isAdmin = true;
   state.version = null;
   state.navigated = [];
+  state.cases = [];
   sessionStorage.clear();
 });
 
@@ -92,6 +99,29 @@ describe("ActNowCard", () => {
     expect(sources()).toEqual(["work_item", "approval", "module"]);
     expect(screen.getByText("2 work items wait for you")).toBeTruthy();
     expect(screen.getByText("4 runs wait for your approval")).toBeTruthy();
+  });
+
+  it("puts an open P1 case of the loop first, as Do first, with its SLA (#892)", () => {
+    state.waiting = { count: 1, oldest: { id: "w1", title: "Approve the patch window", reason: null, since: null } };
+    state.cases = [
+      { id: "c1", title: "Close the exposure of edge-01", state: "needs_attention", severity: "P1", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      { id: "c2", title: "Patch a P2", state: "needs_attention", severity: "P2", sla_due_at: null },
+    ];
+    card([row("kev", 95)]);
+    expect(sources()).toEqual(["case", "work_item", "module"]);
+    expect(within(items()[0]).getByText("Do first")).toBeTruthy();
+    expect(within(items()[0]).getByText("Close the exposure of edge-01")).toBeTruthy();
+    expect(screen.queryByText("Patch a P2")).toBeNull();
+  });
+
+  it("shows a case row's own urgency, the P1 chip of the case, never a High band (UX round 2 on #897, B3)", () => {
+    state.cases = [
+      { id: "c1", title: "Close the exposure of edge-01", state: "needs_attention", severity: "P1", priority: "critical", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+    ];
+    card([row("kev", 95)]);
+    const first = items()[0];
+    expect(within(first).getByTestId("ctem-act-now-case-urgency").textContent).toContain("P1");
+    expect(within(first).queryByText("High")).toBeNull();
   });
 
   it("marks the first row Do first, and only the first", () => {

@@ -58,6 +58,7 @@ export function useActivityStream() {
         presenter_name?: string;
         presentation_id?: string;
         signal_id?: string;
+        case_id?: string;
       } | null = null;
       try {
         parsed = JSON.parse(event.data as string);
@@ -112,6 +113,16 @@ export function useActivityStream() {
         qc.invalidateQueries({ queryKey: ["ctem-signals", "recent"] });
         qc.invalidateQueries({ queryKey: ["ctem-signals", "list"] });
         if (parsed.signal_id) qc.invalidateQueries({ queryKey: ["ctem-signals", "signal", parsed.signal_id] });
+        return;
+      }
+      // A case opened, joined, validated or past its SLA (CTEM-03-UI, #892):
+      // the board, Act now and the case page re-read through the API.
+      if (parsed?.type === "ctem_case_update") {
+        qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+        if (parsed.case_id) {
+          qc.invalidateQueries({ queryKey: ["ctem-cases", "case", parsed.case_id] });
+          qc.invalidateQueries({ queryKey: ["ctem-signals", "case", parsed.case_id] });
+        }
         return;
       }
 
