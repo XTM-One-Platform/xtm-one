@@ -348,6 +348,65 @@ async def record_validation(
     return case
 
 
+#: What a ticket reference's status may say, mapped from the ITSM's own workflow by the writer.
+TICKET_STATUSES: tuple[str, ...] = ("open", "in_progress", "done", "cancelled")
+
+
+def record_ticket(
+    db: AsyncSession,
+    case: CtemCase,
+    *,
+    integration: str,
+    key: str,
+    url: str | None = None,
+    status: str = "open",
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write or update a ticket reference on *case* (#891); never moves the case state.
+
+    One entry per ``(integration, key)``: a second write of the same ticket
+    updates its status and url in place, so a rerun never lists a ticket twice.
+    The case closes on proof (a validation reference), not on a ticket. The caller commits.
+    """
+    integration = (integration or "").strip()[:80]
+    key = (key or "").strip()[:120]
+    if not integration or not key:
+        raise rules.CaseRuleError("a ticket reference needs its integration and its key")
+    if status not in TICKET_STATUSES:
+        raise rules.CaseRuleError(f"unknown ticket status {status!r}: one of {', '.join(TICKET_STATUSES)}")
+    now = now or datetime.now(UTC)
+    entry: dict[str, Any] = {
+        "integration": integration,
+        "key": key,
+        "url": (url or "").strip()[:500] or None,
+        "status": status,
+        "at": now.isoformat(),
+    }
+    tickets = [dict(t) for t in (case.tickets or [])]
+    previous = next((t for t in tickets if (t.get("integration"), t.get("key")) == (integration, key)), None)
+    if previous is not None:
+        if previous.get("status") == status and (entry["url"] in (None, previous.get("url"))):
+            return case
+        entry["url"] = entry["url"] or previous.get("url")
+        tickets = [entry if t is previous else t for t in tickets]
+    else:
+        tickets.append(entry)
+    case.tickets = tickets[-20:]
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "ticket",
+            now,
+            from_value=previous.get("status") if previous else None,
+            to_value=status,
+            evidence=f"{integration}:{key}",
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)
