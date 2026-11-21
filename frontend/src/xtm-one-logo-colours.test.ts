@@ -1,12 +1,12 @@
 /**
- * The bundled XTM One logo and rail emblem draw the design system's colours.
+ * The bundled XTM One logo and rail emblem draw one design-system purple.
  *
- * Source of truth: Figma (XTM_Hub frame 6685:1130, design-system node
- * 2624:11345) and filigran-design-system docs/public/product-logos/xtmone.svg.
- * Dark: emblem purple-300 #A47AF0, wordmark gray-100 #F2F2F3. Light, from the
- * `.light` tokens: emblem --color-filigran-ia-primary (purple-500 #651FE5),
- * wordmark --text-default-primary (gray-900 #18191B). #903 drew the whole
- * lockup #9C27B0, off the palette and 3.05:1 on the dark sidebar (#964).
+ * Sam, 21 Nov 2026 (#964): the whole lockup, emblem and "XTM One" wordmark,
+ * is one purple from the Figma tokens. Dark: purple-300 #A47AF0, the emblem
+ * colour of Figma XTM_Hub frame 6685:1130 and of filigran-design-system
+ * docs/public/product-logos/xtmone.svg (node 2624:11345). Light: the `.light`
+ * --color-filigran-ia-primary, purple-500 #651FE5. #903 drew it #9C27B0,
+ * off the palette and 3.05:1 on the dark sidebar.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -15,35 +15,20 @@ import { join } from "node:path";
 // vitest runs from frontend/ (CI and `yarn test`).
 const read = (file: string) => readFileSync(join(process.cwd(), "public", file), "utf8");
 
-/** The four emblem paths start at these points; every other path is the wordmark. */
-const EMBLEM_STARTS = ["M122.326", "M116.525", "M41.2039", "M54.8965"];
-
-function fills(file: string): { emblem: Set<string>; wordmark: Set<string> } {
-  const emblem = new Set<string>();
-  const wordmark = new Set<string>();
-  for (const [, d, fill] of read(file).matchAll(/<path d="([^"]*)"[^>]*\bfill="([^"]*)"/g)) {
-    const isEmblem = EMBLEM_STARTS.some((start) => d.startsWith(start));
-    (isEmblem ? emblem : wordmark).add(fill.toUpperCase());
-  }
-  return { emblem, wordmark };
+/** Every path fill of a bundled SVG, upper-cased (the clip-path rect is not a path). */
+function pathFills(file: string): string[] {
+  return [...read(file).matchAll(/<path\b[^>]*\bfill="([^"]*)"/g)].map(([, fill]) => fill.toUpperCase());
 }
 
 describe("XTM One logo colours", () => {
   it.each([
-    ["xtp-one.svg", "#A47AF0", "#F2F2F3"],
-    ["xtp-one-light.svg", "#651FE5", "#18191B"],
-  ])("%s draws the emblem %s and the wordmark %s", (file, emblem, wordmark) => {
-    const got = fills(file);
-    expect([...got.emblem]).toEqual([emblem]);
-    expect([...read.wordmark]).toEqual([wordmark]);
-  });
-
-  it.each([
-    ["xtm-one-emblem.svg", "#A47AF0"],
-    ["xtm-one-emblem-light.svg", "#651FE5"],
-  ])("the rail emblem %s draws %s", (file, emblem) => {
-    const got = fills(file);
-    expect([...got.emblem]).toEqual([emblem]);
-    expect(read.wordmark.size).toBe(0);
+    ["xtp-one.svg", "#A47AF0", 10],
+    ["xtm-one-emblem.svg", "#A47AF0", 4],
+    ["xtp-one-light.svg", "#651FE5", 10],
+    ["xtm-one-emblem-light.svg", "#651FE5", 4],
+  ])("%s draws every path in %s", (file, purple, paths) => {
+    const fills = pathFills(file);
+    expect(fills).toHaveLength(paths);
+    expect(new Set(fills)).toEqual(new Set([purple]));
   });
 });
