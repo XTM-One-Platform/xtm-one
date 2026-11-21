@@ -146,7 +146,7 @@ async def route(
             "resource_id": resource_id,
             "platform_url": facts.get("platform_url"),
         }
-        data = case_data(case, openaev={k: v for k, v in openaev.items() if v})
+        data = {**case_data(case), "openaev": {k: v for k, v in openaev.items() if v}}
         out.append((CASE_VALIDATION_FINISHED, data, event_id(case, event, facts)))
     return out
 

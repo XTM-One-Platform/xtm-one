@@ -164,7 +164,9 @@ async def test_an_unverified_delivery_moves_nothing() -> None:
 
 def test_the_case_event_is_registered_and_heard_by_exactly_one_fleet() -> None:
     assert aev.CASE_VALIDATION_FINISHED in platform_events.PLATFORM_EVENTS
-    assert aev.CASE_VALIDATION_FINISHED in platform_events.PLATFORM_WIDE_EVENTS
+    # A case event reaches only the readers of the case (#933).
+    assert aev.CASE_VALIDATION_FINISHED not in platform_events.PLATFORM_WIDE_EVENTS
+    assert aev.CASE_VALIDATION_FINISHED in platform_events.VIEWER_CHECKED_EVENTS
     for assignment in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT):
         assert aev.CASE_VALIDATION_FINISHED in assignment["trigger_config"]["event"]
         assert "record_ctem_case_validation" in assignment["prompt"]
