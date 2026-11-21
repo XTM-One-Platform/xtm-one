@@ -87,7 +87,7 @@ export interface CtemCaseRestrictedIssue {
 
 export type CtemCaseIssue = CtemCaseVisibleIssue | CtemCaseRestrictedIssue;
 
-export interface CtemCaseEvent {
+interface CtemCaseEvent {
   at: string | null;
   actor: string;
   kind: string;
@@ -99,10 +99,27 @@ export interface CtemCaseEvent {
   evidence: string | null;
 }
 
+/**
+ * How the CVE would be exploited on one supporting asset of the risk scenario
+ * (CTEM-24, #936), read from OpenCRQ by the triage step. `asset` is
+ * "Restricted" and `risk_scenario_id` null for a viewer who does not read OpenCRQ.
+ */
+export interface CtemCaseExploitation {
+  asset: string;
+  risk_scenario_id: string | null;
+  exposure: "internet_facing" | "internal" | "unknown";
+  /** ATT&CK technique ids in attack order. */
+  techniques: string[];
+  reading: string;
+  at: string | null;
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
+  /** Absent on an API older than #936. */
+  exploitation?: CtemCaseExploitation[];
 }
 
 export interface CtemCaseList {
@@ -183,32 +200,6 @@ export function useCtemCase(id: string | undefined) {
     enabled: Boolean(id),
     // An unknown case, or one the caller sees nothing of (#11613), is a 404
     // the page shows as NotFoundState, never the ErrorBoundary.
-    ...notFoundIsOrdinary,
-  });
-}
-
-/** One fleet run a case event started (`CaseRunEntry`, `GET /fleets/case-runs/{id}`, #915). */
-export interface CtemCaseRun {
-  id: string;
-  agent_id: string;
-  agent_name: string | null;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
-  outcome: string;
-}
-
-/**
- * The fleet runs working on one case, oldest first, the ones the caller may
- * see. Only with agentic AI licensed (`enabled`): the route is gated like the
- * other fleet reads. Polled while a run is in flight so steps show live.
- */
-export function useCtemCaseRuns(id: string | undefined, enabled: boolean) {
-  return useQuery<{ case_id: string; runs: CtemCaseRun[] }>({
-    queryKey: ["ctem-cases", "runs", id],
-    queryFn: () => api.get(`/fleets/case-runs/${id}`),
-    enabled: Boolean(id) && enabled,
-    refetchInterval: (query) => (query.state.data?.runs.some((r) => r.outcome === "active") ? 10_000 : REFETCH_INTERVAL_SLOW),
     ...notFoundIsOrdinary,
   });
 }

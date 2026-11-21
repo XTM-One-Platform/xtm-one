@@ -69,6 +69,9 @@ class ViewerView:
     #: The signal members (``signal:<id>``) this viewer may read, read fresh on
     #: every call and never cached: the signals API judges them, not a product.
     signals: set[str] = field(default_factory=set)
+    #: True when this viewer's own OpenCRQ read is available (#936): only then
+    #: are the OpenCRQ asset names and scenario ids of a case's exploitation shown.
+    opencrq: bool = False
 
     def sees(self, member_id: str) -> bool:
         return member_id in self.issues or member_id in self.unavailable or member_id in self.signals
@@ -82,6 +85,7 @@ class ViewerView:
                 "missing": self.missing,
                 "complete": self.complete,
                 "no_access": self.no_access,
+                "opencrq": self.opencrq,
             }
         )
 
@@ -96,6 +100,7 @@ class ViewerView:
             missing=list(data.get("missing") or []),
             complete=bool(data.get("complete", True)),
             no_access=bool(data.get("no_access", False)),
+            opencrq=bool(data.get("opencrq", False)),
         )
 
 
@@ -116,24 +121,8 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     return rules.SourceIssue(**data)
 
 
-def _view_key(user_id: str, vertical: str, generation: str = "0") -> str:
-    return f"ctem:cases:view:{user_id}:{vertical}:{generation}"
-
-
-def _generation_key(vertical: str) -> str:
-    return f"ctem:cases:view-generation:{vertical}"
-
-
-async def _generation(client: Any, vertical: str) -> str:
-    """The current generation of every cached view of *vertical* (``0`` before the first bump)."""
-    try:
-        raw = await client.get(_generation_key(vertical))
-    except Exception:
-        logger.info("CTEM cases: view generation unreadable for %s", vertical, exc_info=True)
-        return "0"
-    if isinstance(raw, bytes):
-        raw = raw.decode()
-    return str(raw) if raw else "0"
+def _view_key(user_id: str, vertical: str) -> str:
+    return f"ctem:cases:view:{user_id}:{vertical}"
 
 
 def _seen_key(user_id: str, vertical: str) -> str:
@@ -189,10 +178,9 @@ async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) ->
     from app.services import ctem_cases_source as source
 
     client = await _redis()
-    generation = await _generation(client, vertical) if client is not None else "0"
     if client is not None and not fresh:
         try:
-            cached = await client.get(_view_key(user_id, vertical, generation))
+            cached = await client.get(_view_key(user_id, vertical))
             if cached:
                 return ViewerView.from_json(cached)
         except Exception:
@@ -210,7 +198,7 @@ async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) ->
             logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
     if client is not None:
         try:
-            await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
+            await client.set(_view_key(user_id, vertical), view.to_json(), ex=VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
@@ -224,25 +212,9 @@ async def forget_view(user_id: str, vertical: str) -> None:
     if client is None:
         return
     try:
-        await client.delete(_view_key(user_id, vertical, await _generation(client, vertical)))
+        await client.delete(_view_key(user_id, vertical))
     except Exception:
         logger.info("CTEM cases: view cache not dropped for %s", user_id, exc_info=True)
-
-
-async def forget_all_views(vertical: str) -> None:
-    """Drop every viewer's cached view of *vertical* (a case opened, a signal joined one).
-
-    The cases changed for everyone, not only for the caller, so the views are
-    retired by bumping their generation: the next read of each viewer misses
-    and reads its own source again; the old entries expire with their TTL.
-    """
-    client = await _redis()
-    if client is None:
-        return
-    try:
-        await client.incr(_generation_key(vertical))
-    except Exception:
-        logger.info("CTEM cases: view generation not bumped for %s", vertical, exc_info=True)
 
 
 def _member_id(row: CtemCaseIssue) -> str:
@@ -374,7 +346,33 @@ def hydrate(
         "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
         + [{"restricted": True} for _ in range(restricted)],
         "history": [_event(e, view) for e in events],
+        "exploitation": exploitation_for(case, view),
     }
+
+
+def exploitation_for(case: CtemCase, view: ViewerView) -> list[dict[str, Any]]:
+    """The case's exploitation reading as this viewer may read it (#936).
+
+    Techniques, exposure class and reading are served to every viewer of the
+    case; the OpenCRQ asset name and scenario id only to a viewer whose own
+    OpenCRQ read is available, else the asset is ``Restricted`` and the
+    scenario absent.
+    """
+    out: list[dict[str, Any]] = []
+    for entry in getattr(case, "exploitation", None) or []:
+        if not isinstance(entry, dict):
+            continue
+        out.append(
+            {
+                "asset": entry.get("asset") if view.opencrq else RESTRICTED,
+                "risk_scenario_id": entry.get("risk_scenario_id") if view.opencrq else None,
+                "exposure": entry.get("exposure") or "unknown",
+                "techniques": list(entry.get("techniques") or []),
+                "reading": entry.get("reading") or "",
+                "at": entry.get("at"),
+            }
+        )
+    return out
 
 
 _PRIORITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}

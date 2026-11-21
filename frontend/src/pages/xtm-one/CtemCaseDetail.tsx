@@ -9,9 +9,8 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Icon, Textarea } from "@filigran/design-system";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
@@ -27,20 +26,17 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
   useCtemCase,
-  useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
 } from "@/hooks/api/useCtemCasesApi";
-import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
-import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
-import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -101,6 +97,8 @@ const EVENT_LABEL: Record<string, string> = {
   signal: "A signal joined the case",
   validation: "Recorded a validation",
   sla_breached: "Escalated: SLA breached",
+  // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
+  exploitation: "Recorded how it would be exploited",
 };
 
 /** The result word of a validation history row, translated where drawn. */
@@ -109,25 +107,6 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   not_exposed: "Not exposed",
   failed: "Failed",
   pending: "Pending",
-};
-
-/**
- * The badge of a fleet run on the case history, the keys the fleet timeline
- * uses (one run). @i18n-keys
- */
-const RUN_OUTCOME_LABELS = {
-  succeeded: "Run outcome: succeeded",
-  failed: "Run outcome: failed",
-  running: "Run outcome: running",
-  pending: "Run outcome: pending",
-  interrupted: "Run outcome: interrupted",
-  cancelled: "Run outcome: cancelled",
-} as const satisfies Record<TimelineOutcome, string>;
-
-const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning" | "destructive" | "secondary">> = {
-  succeeded: "success",
-  failed: "destructive",
-  interrupted: "warning",
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
@@ -139,9 +118,6 @@ export default function CtemCaseDetail() {
   const { toast } = useToast();
   const { data: me } = useMe();
   const { data: kase, isLoading, error, isError, refetch } = useCtemCase(id);
-  const agenticLicensed = useAgenticAIEnabled();
-  const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
-  const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -407,6 +383,8 @@ export default function CtemCaseDetail() {
 
       <CaseOpenedBy caseId={kase.id} />
 
+      <CaseExploitation entries={kase.exploitation} />
+
       <Card>
         <CardHeader>
           <CardTitle>{t_i18n("Issues")}</CardTitle>
@@ -463,35 +441,8 @@ export default function CtemCaseDetail() {
         </CardHeader>
         <CardContent>
           <ol className="space-y-3" data-testid="ctem-case-history">
-            {activity.map((item) => {
-              if (item.kind === "run") {
-                const run = item.run;
-                const outcome = timelineOutcome(run.outcome, run.status);
-                return (
-                  <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base" data-testid="ctem-case-run">
-                    <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
-                    <Link
-                      to={`/operations/executions/${run.id}`}
-                      state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
-                      aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
-                      className="hover:underline"
-                    >
-                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
-                    </Link>
-                    {outcome && (
-                      <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
-                        {t_i18n(RUN_OUTCOME_LABELS[outcome])}
-                      </Badge>
-                    )}
-                    <span className="ml-auto whitespace-nowrap text-default-secondary">
-                      {intl.formatDate(run.created_at, { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
-                  </li>
-                );
-              }
-              const e = item.event;
-              return (
-              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base">
+            {[...kase.history].reverse().map((e, i) => (
+              <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-2 content-base">
                 <span className="font-medium">
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
@@ -507,8 +458,7 @@ export default function CtemCaseDetail() {
                   </span>
                 )}
               </li>
-              );
-            })}
+            ))}
           </ol>
         </CardContent>
       </Card>

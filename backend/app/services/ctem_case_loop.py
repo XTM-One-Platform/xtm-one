@@ -105,16 +105,9 @@ class CaseFix:
 
 @dataclass
 class PendingEvents:
-    """Platform events to raise after the caller's commit, in order.
-
-    ``verticals`` names the verticals whose case membership changed (a case
-    opened, a signal joined one): their cached viewer views are dropped after
-    the commit, so the case shows on the board and its page at once instead of
-    after the view TTL.
-    """
+    """Platform events to raise after the caller's commit, in order."""
 
     items: list[tuple[str, dict[str, Any], str]] = field(default_factory=list)
-    verticals: set[str] = field(default_factory=set)
     #: Live frames for the web app (``ctem_case_update``, CTEM-03-UI #892): ids and states only.
     frames: list[dict[str, str]] = field(default_factory=list)
 
@@ -278,7 +271,6 @@ async def open_from_signal(
     signal.case_id = case.id
     signal.updated_at = now
     if events is not None:
-        events.verticals.add(vertical)
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
@@ -422,6 +414,88 @@ def record_ticket(
     return case
 
 
+#: The exposure classes OpenCRQ's topology rule reads (CTEM-24); anything else is ``unknown``.
+EXPOSURES: tuple[str, ...] = ("internet_facing", "internal", "unknown")
+#: Supporting assets one exploitation write keeps (the tool lists 30 a read).
+EXPLOITATION_MAX = 30
+_TECHNIQUES_MAX = 12
+#: An ATT&CK technique id, alone or leading a label ("T1190 Exploit Public-Facing Application").
+_TECHNIQUE_ID = re.compile(r"^(T\d{4}(?:\.\d{3})?)\b")
+
+
+def _exposure(value: object) -> str:
+    word = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return word if word in EXPOSURES else "unknown"
+
+
+def _techniques(value: object) -> list[str]:
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        match = _TECHNIQUE_ID.match(str(item or "").strip().upper())
+        if match and match.group(1) not in out:
+            out.append(match.group(1))
+    return out[:_TECHNIQUES_MAX]
+
+
+def record_exploitation(
+    db: AsyncSession,
+    case: CtemCase,
+    entries: list[dict[str, Any]],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write how the CVE would be exploited on the scenario's assets (CTEM-24, #936).
+
+    *entries* is the triage step's ``exploitation`` array (from
+    ``get_opencrq_cve_exploitation``): per supporting asset, the ATT&CK
+    techniques in attack order, the exposure and the reading. The list is
+    replaced whole (the newest read is the truth); an entry with no valid
+    technique is dropped. One ``exploitation`` event when it changed, its
+    evidence the technique ids alone (the history is served to every viewer,
+    the asset names are not). Never moves the case state. The caller commits.
+    """
+    now = now or datetime.now(UTC)
+    kept: list[dict[str, Any]] = []
+    for raw in entries if isinstance(entries, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        techniques = _techniques(raw.get("techniques"))
+        asset = str(raw.get("asset") or "").strip()[:200]
+        if not techniques or not asset:
+            continue
+        kept.append(
+            {
+                "risk_scenario_id": str(raw.get("risk_scenario_id") or "").strip()[:100] or None,
+                "asset": asset,
+                "exposure": _exposure(raw.get("exposure")),
+                "techniques": techniques,
+                "reading": str(raw.get("reading") or "").strip()[:500],
+            }
+        )
+    if len(kept) > EXPLOITATION_MAX:
+        kept = kept[:EXPLOITATION_MAX]
+    if not kept:
+        raise rules.CaseRuleError("an exploitation reading needs at least one asset with an ATT&CK technique id")
+    previous = [{k: v for k, v in e.items() if k != "at"} for e in (case.exploitation or [])]
+    if previous == kept:
+        return case
+    case.exploitation = [{**e, "at": now.isoformat()} for e in kept]
+    ids = sorted({t for e in kept for t in e["techniques"]})
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "exploitation",
+            now,
+            from_value=str(len(previous)) if previous else None,
+            to_value=str(len(kept)),
+            evidence=", ".join(ids)[:300],
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)
@@ -524,18 +598,9 @@ async def sweep_due() -> bool:
 
 
 async def publish_pending(events: PendingEvents | None) -> int:
-    """Drop the stale viewer views, then raise the live frames and the collected case events (after the commit); how many events were published.
-
-    The views go first: a web app that refetches on a live frame reads the case at once.
-    """
+    """Raise the collected case events and live frames (after the commit); how many events were published."""
     if not events:
         return 0
-    if events.verticals:
-        from app.services.ctem_cases_view import forget_all_views
-
-        for vertical in sorted(events.verticals):
-            await forget_all_views(vertical)
-        events.verticals.clear()
     if events.frames:
         from app.services.ctem_loop_stream import publish_case_updates
 
