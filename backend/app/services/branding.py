@@ -87,9 +87,9 @@ _XTM_ONE_DEFAULTS = BrandingDefaults(
     name="XTM One",
     logo="/xtp-one.svg",
     logo_light="/xtp-one-light.svg",
-    # The design system's XTM One mark colours: purple-300 on dark, purple-500 on light.
+    # Drawn in the brand purple, which reads on both themes.
     emblem="/xtm-one-emblem.svg",
-    emblem_light="/xtm-one-emblem-light.svg",
+    emblem_light="/xtm-one-emblem.svg",
     description="Unified Agentic AI for Continuous Threat Exposure Management",
     theme_color="#5E1AD5",
     accent_color="#8c3dff",
