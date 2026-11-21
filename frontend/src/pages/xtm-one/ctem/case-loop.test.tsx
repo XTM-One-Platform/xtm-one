@@ -2,8 +2,10 @@
 // escalated marks, and the open P1 cases Act now puts first.
 
 import { describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import { renderWithProviders } from "@/testing/providers";
 import { actNowP1Cases } from "./act-now";
-import { caseLoopMarks, slaCountdown } from "./case-loop";
+import { CaseUrgencyChip, caseLoopMarks, slaCountdown } from "./case-loop";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 
@@ -37,6 +39,20 @@ describe("caseLoopMarks", () => {
   });
   it("marks nothing on a resolved case", () => {
     expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({ reopened: false, escalated: false });
+  });
+});
+
+describe("CaseUrgencyChip", () => {
+  // One case, one urgency (UX round 1 on #897, B3): never "P1" beside "Low".
+  it("shows the severity alone when the case has one", () => {
+    renderWithProviders(<CaseUrgencyChip severity="P1" priority="critical" />);
+    expect(screen.getByText("P1")).toBeInTheDocument();
+    expect(screen.queryByText("Critical")).toBeNull();
+    expect(screen.queryByText("Low")).toBeNull();
+  });
+  it("shows the priority when the case has no severity", () => {
+    renderWithProviders(<CaseUrgencyChip severity={null} priority="low" />);
+    expect(screen.getByText("Low")).toBeInTheDocument();
   });
 });
 

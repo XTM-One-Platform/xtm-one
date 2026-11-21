@@ -35,9 +35,9 @@ import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
-import { CaseLoopLine, CaseSeverityChip } from "./ctem/case-loop";
+import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
-import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 
@@ -319,8 +319,7 @@ export default function CtemCaseDetail() {
         crumbExtras={
           <>
             <CaseStateChip state={kase.state} />
-            <CaseSeverityChip severity={kase.severity} />
-            <CasePriorityChip priority={kase.priority} />
+            <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
             <CaseLoopLine c={kase} now={now} />
           </>

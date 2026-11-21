@@ -107,8 +107,9 @@ export default function CtemCases() {
     {
       key: "fix",
       header: "Fix",
-      // The title gives way first at 1080 so the State chip is never cut (#865 prod retest D2).
-      cell: (c) => <TruncatedText text={c.title} className="max-w-[18rem] min-[1280px]:max-w-[28rem] font-medium" />,
+      // The title gives way first at 1080 so the State chip is never cut and the
+      // table never scrolls (#865 prod retest D2; UX round 1 on #897, B1).
+      cell: (c) => <TruncatedText text={c.title} className="max-w-[15rem] min-[1280px]:max-w-[28rem] font-medium" />,
       sortValue: (c) => c.title.toLowerCase(),
       csv: (c) => c.title,
     },
@@ -178,8 +179,8 @@ export default function CtemCases() {
     {
       key: "state",
       header: "State",
-      // Room for the longest translated chip ("Atténué, sous surveillance", 211 px in FR): #865 prod retest D2.
-      headerClassName: "min-w-[14rem]",
+      // The chip sets the width (never cut, never a fixed 14rem that scrolls the
+      // table at 1080 in FR): UX round 1 on #897, B1.
       className: "whitespace-nowrap",
       cell: (c) => <CaseStateChip state={c.state} />,
       sortValue: (c) => CTEM_CASE_STATES.indexOf(c.state),

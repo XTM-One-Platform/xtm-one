@@ -26,8 +26,8 @@ import { useFormatter } from "@/i18n";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
 import { BOARD_COLUMN_SURFACE, BOARD_GRID, DAY, OVERDUE_TEXT, ageBands, daysSince, topCases } from "./cases-board";
-import { CaseLoopLine, CaseSeverityChip } from "./case-loop";
-import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip, useCasesEmptyLabel } from "./cases-shared";
+import { CaseLoopLine, CaseUrgencyChip } from "./case-loop";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, useCasesEmptyLabel } from "./cases-shared";
 
 const PERIODS = ["7", "30", "90"] as const;
 type Period = (typeof PERIODS)[number];
@@ -83,8 +83,7 @@ function TopCase({ c, owner, now }: { c: CtemCaseSummary; owner: string | null; 
       >
         <TruncatedText text={c.title} className="content-base font-medium" />
         <span className="flex min-w-0 items-center gap-2 content-caption text-default-secondary">
-          <CaseSeverityChip severity={c.severity} />
-          <CasePriorityChip priority={c.priority} />
+          <CaseUrgencyChip severity={c.severity} priority={c.priority} />
           <span className="whitespace-nowrap">
             {t_i18n("{count, plural, one {# issue} other {# issues}}", { count: c.open_issue_count })}
           </span>

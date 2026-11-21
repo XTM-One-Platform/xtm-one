@@ -240,6 +240,16 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
     return [r for r in rows if view.sees(_member_id(r))]
 
 
+SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
+
+
+def case_priority(severity: str | None, details: list[Any]) -> str:
+    """The priority a case shows: its loop severity when set, else the default policy."""
+    if severity in SEVERITY_PRIORITY:
+        return SEVERITY_PRIORITY[severity]
+    return rules.default_priority(details) if details else "low"
+
+
 def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict[str, Any] | None:
     """The list row of *case* for this viewer, ``None`` when they see none of its issues."""
     visible = visible_members(rows, view)
@@ -260,9 +270,12 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "due_at": case.due_at.isoformat() if case.due_at else None,
         "accepted_reason": case.accepted_reason,
         "accepted_until": case.accepted_until.isoformat() if case.accepted_until else None,
-        # Computed on what this viewer sees: another viewer may get another figure.
-        "priority": rules.default_priority(details) if details else "low",
-        "priority_basis": "default policy, on the issues you can see",
+        # One case, one urgency (UX round 1 on #897, B3): a loop severity sets the
+        # priority; otherwise computed on what this viewer sees.
+        "priority": case_priority(case.severity, details),
+        "priority_basis": (
+            "loop severity" if case.severity in SEVERITY_PRIORITY else "default policy, on the issues you can see"
+        ),
         "issue_count": len(rows),
         "open_issue_count": sum(1 for r in rows if r.open),
         "restricted_count": len(rows) - len(visible),

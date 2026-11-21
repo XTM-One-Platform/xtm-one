@@ -37,6 +37,15 @@ def test_a_signal_only_case_is_shown_to_a_viewer_of_its_signal() -> None:
     assert rendered is not None
     assert rendered["issues"] == [{"source": "signal", "external_id": str(signal_id), "open": True}]
     assert rendered["details_unavailable"] == [] and rendered["restricted_count"] == 0
+    # One case, one urgency (UX round 1 on #897, B3): P1 shows as critical, never "low".
+    assert rendered["priority"] == "critical" and rendered["priority_basis"] == "loop severity"
+
+
+def test_case_priority_follows_the_loop_severity_else_the_default_policy() -> None:
+    assert view_of.case_priority("P1", []) == "critical"
+    assert view_of.case_priority("P2", []) == "high"
+    assert view_of.case_priority("P3", []) == "medium"
+    assert view_of.case_priority(None, []) == "low"
 
 
 def test_a_signal_only_case_stays_hidden_from_who_cannot_see_the_signal() -> None:

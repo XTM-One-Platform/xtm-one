@@ -649,12 +649,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
               <>
                 <Link
                   to={casesListHref({ state: "mitigated_watching" })}
-                  className={cn("inline-flex items-center gap-1 text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+                  className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
                   data-flow-mark=""
                   tabIndex={-1}
                   data-testid="ctem-flow-cases-mitigated"
                 >
-                  <Icon name="eye" size={16} aria-hidden />
+                  {/* Inline, on the text baseline with the ", " after it (UX round 1 on #897, B2). */}
+                  <Icon name="eye" size={16} aria-hidden className="mr-1 inline-block align-text-bottom" />
                   {t_i18n("{count, plural, one {# mitigated, watching} other {# mitigated, watching}}", { count: caseStates.mitigated_watching ?? 0 })}
                 </Link>
                 {", "}

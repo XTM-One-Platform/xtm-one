@@ -9,9 +9,10 @@
  * say the same thing in the same words.
  */
 import { Chip, Icon } from "@filigran/design-system";
-import type { CtemCaseSeverity, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCasePriority, CtemCaseSeverity, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
+import { CasePriorityChip } from "./cases-shared";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 
@@ -68,9 +69,18 @@ export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" |
   return { reopened: open && last?.result === "failed", escalated: open && Boolean(c.sla_breached_at) };
 }
 
-export function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
+function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
   if (!severity) return null;
   return <Chip label={severity} severity={SEVERITY_CHIP[severity]} className="shrink-0" />;
+}
+
+/**
+ * The one urgency chip of a case (UX round 1 on #897, B3): the loop severity
+ * when the case has one (the API then sets the priority from it), the priority
+ * otherwise; never "P1" beside "Low".
+ */
+export function CaseUrgencyChip({ severity, priority }: { severity: CtemCaseSeverity | null | undefined; priority: CtemCasePriority }) {
+  return severity ? <CaseSeverityChip severity={severity} /> : <CasePriorityChip priority={priority} />;
 }
 
 /**
