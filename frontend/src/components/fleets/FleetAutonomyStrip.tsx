@@ -429,6 +429,9 @@ export function FleetAutonomyStrip({
               catalog={catalog}
               level={level}
               source={gates ? t_i18n(gates.stored ? SOURCE_STORED : SOURCE_DOCUMENTED) : undefined}
+              fleetId={fleetId}
+              canManage={canManage}
+              isAdmin={isAdmin}
             />
           )}
         </div>

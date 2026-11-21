@@ -49,6 +49,22 @@ const STATUS_LABEL: Record<LoopStageView["status"], string> = {
   not_reached: "Not reached",
 };
 
+/**
+ * The evidence keys that are the link to the source object, not a fact: `link`
+ * (OpenCTI, Aikido) and `platform_url` (an OpenAEV delivery, CTEM-15-UI #956:
+ * the scenario that regressed or the run that proved a path).
+ */
+const SOURCE_LINK_KEYS = ["link", "platform_url"] as const;
+
+/** The link to the source object a signal's evidence carries, if any. */
+export function signalSourceLink(evidence: Record<string, unknown> | null | undefined): string | undefined {
+  for (const key of SOURCE_LINK_KEYS) {
+    const value = evidence?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
+}
+
 /** An evidence value in words: a scalar as it is, a list joined, anything else left out. */
 function evidenceText(value: unknown): string {
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -63,10 +79,10 @@ function evidenceText(value: unknown): string {
  */
 function SignalFacts({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
-  const link = safeExternalUrl(typeof signal.evidence?.link === "string" ? signal.evidence.link : undefined);
+  const link = safeExternalUrl(signalSourceLink(signal.evidence));
   const provider = CTEM_PRODUCT_INFO[signal.source.provider]?.name ?? signal.source.provider;
   const evidence = Object.entries(signal.evidence ?? {})
-    .filter(([key]) => key !== "link")
+    .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
     .map(([key, value]) => ({ key, value: evidenceText(value) }))
     .filter((row) => row.value)
     .slice(0, 8);

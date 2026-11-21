@@ -609,6 +609,9 @@ export interface FleetDocNote {
 /** How many of a fleet's gated actions wait for a person (`fleets.autonomy_level`, #9769). */
 export type FleetAutonomyLevel = "full_gates" | "medium" | "low" | "autonomous";
 
+/** A per-action override of the level (`fleet_autonomy.APPROVAL_PINS`). */
+export type FleetGatePin = "wait" | "run";
+
 /** One declared gate of the fleet, as `fleet_autonomy.gate_catalog` returns it. */
 export interface FleetAutonomyGate {
   key: string;
@@ -617,6 +620,8 @@ export interface FleetAutonomyGate {
   /** The integration a gate proposed from write tools acts in (#10034); absent for a declared gate. */
   provider?: string;
   impact: "low" | "high" | "destructive";
+  /** A per-action override of the level (#10153; on a built-in fleet too since #916): `wait` always waits, `run` always runs alone; absent, the gate follows the level. */
+  pin?: FleetGatePin | null;
   /** Waits for a person at the fleet's level. */
   gated: boolean;
   /** Waits for a person, per level. */
@@ -1208,6 +1213,26 @@ export function useSetFleetAutonomy(fleetId: string) {
     onSettled: () => {
       invalidate();
       qc.invalidateQueries({ queryKey: [...KEY, "documentation", fleetId] });
+    },
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/**
+ * Apply the level and the per-action pins in one call (`PUT /fleets/{id}/autonomy`,
+ * #10153 C3; built-in fleets take pins since #916, CTEM-34). The pins are the
+ * whole map: a gate left out follows the level. Re-reads the documentation,
+ * whose `autonomy_catalog` the strip and the matrix draw.
+ */
+export function useSetFleetGatePins(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { level: FleetAutonomyLevel; pins: Record<string, FleetGatePin> }>({
+    mutationFn: (body) => api.put(`/fleets/${fleetId}/autonomy`, body),
+    onSettled: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: [...KEY, "documentation", fleetId] });
+      qc.invalidateQueries({ queryKey: [...KEY, "approval-gates", fleetId] });
     },
     meta: OWN_ERROR_TOAST,
   });
