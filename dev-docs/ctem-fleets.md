@@ -162,7 +162,11 @@ Common rules:
   signal (`record_ctem_signal`) instead of starting a loop; the scope gate
   opens or joins the case. `ctem:f1:state` and `ctem:f2:state` keep counters
   only; migration `c891ctemfleetcase1` dropped their open and closed lists
-  with a dated note. Gates are unchanged. Tests:
+  with a dated note. The dropped open items are discarded: no fleet pass
+  re-records them (the F2 daily pass re-ranks existing cases, the F1 weekly
+  sweep covers the last 7 days); one reaches a case again only on a new
+  signal, and the note lists their identifiers (first 50) so an operator can
+  record a signal by hand. Gates are unchanged. Tests:
   `tests/test_ctem_fleets_on_cases.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only

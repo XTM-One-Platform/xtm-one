@@ -4,9 +4,12 @@ The seeded CTEM loop fleets run on cases (#891): ``ctem:f1:state`` and
 ``ctem:f2:state`` keep counters only. This one-shot data migration rewrites
 each such shared state entry: numbers and the last pass or refresh stay, every
 other key (the open items, the closed and history lists) is dropped and the
-entry gets one dated note naming how many open items were closed, and why.
-A dropped open item is not lost: its CVE or threat is re-recorded as a signal
-by the next fleet pass, and the scope gate opens or joins its case.
+entry gets one dated note naming how many open items were discarded, and why.
+A dropped open item is DISCARDED: no fleet pass re-records it (the F2 daily
+pass re-ranks existing cases only, the F1 weekly sweep records signals for the
+last 7 days only). It reaches a case again only on a new signal for its CVE or
+threat; the note lists the identifiers of the discarded items (at most
+``MAX_LISTED``) so an operator can record a signal for one by hand.
 
 Data only, no DDL; touches at most a handful of rows. Downgrade is a no-op:
 the dropped lists are not rebuilt.
@@ -37,9 +40,13 @@ STATE_KEYS: tuple[str, ...] = ("ctem:f1:state", "ctem:f2:state")
 KEPT_KEYS: frozenset[str] = frozenset({"last_pass", "last_refresh"})
 #: The keys that held open items, counted in the note.
 OPEN_KEYS: tuple[str, ...] = ("open", "open_cases", "cases")
+#: The identifiers of discarded open items listed in the note, at most.
+MAX_LISTED = 50
+#: The fields read, in order, as the identifier of an open item.
+ID_FIELDS: tuple[str, ...] = ("cve", "cve_id", "threat_id", "id", "name")
 REASON = (
-    "the open items moved to CTEM cases (#891): the fleet re-records each as a signal "
-    "on its next pass and the scope gate opens or joins its case"
+    "the fleets run on CTEM cases (#891); the discarded items are not re-recorded "
+    "by any fleet pass and reach a case again only on a new signal"
 )
 
 
@@ -51,6 +58,23 @@ def _count(value: Any) -> int:
     if isinstance(value, (list, dict)):
         return len(value)
     return 0
+
+
+def open_item_ids(value: dict[str, Any] | None) -> list[str]:
+    """The identifiers of the open items of ``value``, in order, at most MAX_LISTED."""
+    ids: list[str] = []
+    for key in OPEN_KEYS:
+        items = (value or {}).get(key)
+        if isinstance(items, dict):
+            items = [{"id": k} | (v if isinstance(v, dict) else {}) for k, v in items.items()]
+        for item in items if isinstance(items, list) else []:
+            if isinstance(item, dict):
+                ident = next((str(item[f]) for f in ID_FIELDS if item.get(f)), None)
+            else:
+                ident = str(item) if item else None
+            if ident:
+                ids.append(ident)
+    return ids[:MAX_LISTED]
 
 
 def counters_only(value: dict[str, Any] | None) -> tuple[dict[str, Any], int, list[str]]:
@@ -67,6 +91,18 @@ def counters_only(value: dict[str, Any] | None) -> tuple[dict[str, Any], int, li
             dropped.append(key)
     opened = sum(_count(value.get(k)) for k in OPEN_KEYS)
     return kept, opened, sorted(dropped)
+
+
+def discard_note(opened: int, dropped: list[str], ids: list[str]) -> str:
+    """The dated note's text: the count, the keys dropped, the reason, the identifiers discarded."""
+    note = (
+        f"migration c891ctemfleetcase1: {opened} open item(s) discarded, keys {', '.join(dropped)} dropped; "
+        f"reason: {REASON}."
+    )
+    if ids:
+        more = f" (first {len(ids)} of {opened})" if opened > len(ids) else ""
+        note += f" Discarded{more}: {', '.join(ids)}."
+    return note
 
 
 def upgrade() -> None:
@@ -89,14 +125,7 @@ def upgrade() -> None:
         if not dropped:
             continue
         notes = list(row.notes or [])
-        notes.append(
-            {
-                "at": now,
-                "agent_id": None,
-                "note": f"migration c891ctemfleetcase1: {opened} open item(s) closed, keys {', '.join(dropped)} "
-                f"dropped; reason: {REASON}.",
-            }
-        )
+        notes.append({"at": now, "agent_id": None, "note": discard_note(opened, dropped, open_item_ids(value))})
         bind.execute(sa.update(table).where(table.c.id == row.id).values(value=kept, notes=notes))
 
 

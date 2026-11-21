@@ -131,6 +131,20 @@ def test_the_migration_keeps_counters_only() -> None:
     assert module.counters_only({"cve_triaged": 1}) == ({"cve_triaged": 1}, 0, [])
 
 
+def test_the_migration_note_says_the_open_items_are_discarded_and_lists_them() -> None:
+    module = _migration()
+    value = {"open": [{"cve": "CVE-1"}, {"threat_id": "T-9"}, "CVE-3", {}], "cases": {"CVE-4": {"state": "open"}}}
+    ids = module.open_item_ids(value)
+    assert ids == ["CVE-1", "T-9", "CVE-3", "CVE-4"]
+    note = module.discard_note(5, ["cases", "open"], ids)
+    assert "5 open item(s) discarded" in note and "not re-recorded" in note
+    assert note.endswith("Discarded (first 4 of 5): CVE-1, T-9, CVE-3, CVE-4.")
+    assert "re-records each" not in module.__doc__ and "DISCARDED" in module.__doc__
+    many = module.open_item_ids({"open": [{"cve": f"CVE-{i}"} for i in range(80)]})
+    assert len(many) == module.MAX_LISTED
+    assert module.discard_note(0, ["closed"], []).endswith("new signal.")
+
+
 def test_the_migration_matches_the_two_fleet_keys_only() -> None:
     module = _migration()
     assert module.is_fleet_state_key("ctem:f1:state")
