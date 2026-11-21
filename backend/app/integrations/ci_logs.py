@@ -225,6 +225,8 @@ class Summary:
     #: With no block: the step the job stopped in and its last lines before the post-job cleanup.
     stopped_step: str = ""
     stopped_lines: list[str] = field(default_factory=list)
+    #: Failure blocks left out because an earlier block is the same but for numbers and addresses.
+    repeated_blocks: int = 0
 
 
 def _bounded(line: str) -> str:
@@ -357,9 +359,62 @@ def _failure_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
+#: What makes two failure blocks the same failure: a memory address, then a standalone number
+#: (a pid, a thread id, a line or frame number, a duration). A digit inside a name
+#: (``test_shard_2``, ``worker3``) is kept, so two different tests never fold into one.
+_HEX_ADDRESS = re.compile(r"0x[0-9a-fA-F]+")
+_DIGITS = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
+#: Non-blank lines a block needs before a repeat of it is folded: a one-line cue repeated
+#: by several steps stays, each under its step.
+MIN_FOLDED_LINES = 3
+
+
+def _block_key(block: list[str]) -> tuple[str, ...]:
+    """*block* with its addresses and numbers masked: equal keys are one failure printed again."""
+    return tuple(_DIGITS.sub("#", _HEX_ADDRESS.sub("0x#", ln.strip())) for ln in block if ln.strip())
+
+
+def _collapse_repeats(blocks: list[tuple[str, list[str]]]) -> tuple[list[tuple[str, list[str]]], int]:
+    """*blocks* with every block equal to an earlier one (:func:`_block_key`) dropped, the first one counting them.
+
+    A setup error retried by a test runner, or one crash printed by every worker,
+    writes the same block (a C stack of a hundred lines) once per attempt: the
+    reader needs it once and the count, not seven copies filling the summary
+    and squeezing the other failures out. Returns the blocks kept and the
+    number dropped.
+    """
+    first: dict[tuple[str, ...], int] = {}
+    repeats: list[int] = []
+    kept: list[tuple[str, list[str]]] = []
+    for step, block in blocks:
+        # The test runner's report (pytest FAILURES, short test summary) is never folded.
+        key = _block_key(block) if not _SECTION.match(block[0] if block else "") else ()
+        if len(key) < MIN_FOLDED_LINES:
+            key = ()
+        if key and key in first:
+            repeats[first[key]] += 1
+            continue
+        if key:
+            first[key] = len(kept)
+        kept.append((step, block))
+        repeats.append(0)
+    for k, count in enumerate(repeats):
+        if count:
+            step, block = kept[k]
+            kept[k] = (
+                step,
+                [
+                    *block,
+                    f"[the same block, but for numbers and addresses, appears {count} more time(s) in the log: shown once]",
+                ],
+            )
+    return kept, sum(repeats)
+
+
 def summarize(text: str) -> Summary:
     out = Summary(total_lines=text.count("\n") + (1 if text and not text.endswith("\n") else 0))
     steps = split_steps(text)
+    collected: list[tuple[str, list[str]]] = []
     for step in steps:
         blocks = _failure_blocks(step.lines)
         # A line a pytest section already shows (its short summary, its raise locations) is not repeated.
@@ -372,9 +427,9 @@ def summarize(text: str) -> Summary:
         if not blocks and not findings:
             continue
         out.steps_failed.append(step.name or "(no step marker)")
-        for block in blocks:
-            out.blocks.append((step.name, block))
-            out.kept_lines += len(block)
+        collected.extend((step.name, block) for block in blocks)
+    out.blocks, out.repeated_blocks = _collapse_repeats(collected)
+    out.kept_lines += sum(len(block) for _, block in out.blocks)
     if not out.blocks and not out.findings:
         out.stopped_step, out.stopped_lines = _stopped_at(steps)
     return out
@@ -514,7 +569,8 @@ def format_summary(summary: Summary, *, title: str, log_chars: int | None = None
     what = f"{found:,} finding line(s) and " if found else ""
     order = "the test runner's report first, then the findings" if found else "the test runner's report first"
     lines: list[str] = [
-        f"{title}: {what}{len(summary.blocks)} failure block(s) in step(s) "
+        f"{title}: {what}{len(summary.blocks)} failure block(s)"
+        f"{f' ({summary.repeated_blocks} repeat(s) of them folded)' if summary.repeated_blocks else ''} in step(s) "
         f"{', '.join(repr(s) for s in summary.steps_failed)}; {summary.kept_lines:,} of {summary.total_lines:,} lines "
         f"kept, {order}.{whole}",
     ]
