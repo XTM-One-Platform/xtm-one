@@ -1,6 +1,7 @@
 # Platform Health: the Concierge reworked into a built-in health suite
 
-Issue: #101. Status: S0 (this spec). Read on main `7674eb87`, 18 Nov 2026.
+Issue: #101. Status: S0 (this spec). Read on main `7674eb87`, 18 Nov 2026. S14 (Module
+Analyst, section 12) added on main `e1b19ef`, 21 Nov 2026.
 
 Platform Health replaces the Platform Concierge (`dev-docs/concierge-*.md`; its former
 flag document is retired, section 2.4). It is built in, has no feature flag, and its checks never
@@ -54,7 +55,8 @@ These rules win over anything below.
 In XTM One mode, XTM One platform health and OpenCTI, OpenAEV and OpenCRQ module health
 are on by default for every registered platform from the release that ships them, with no
 enrolment and no admin action. Settings let an admin tune thresholds or switch off
-individual checks.
+individual checks. "Automatic" covers the deterministic checks of section 4 and, from S14,
+the agentic Module Analyst of section 12 (on by default under its own spend ceiling).
 
 ### 1.4 Acceptance pinned by tests
 
@@ -68,6 +70,7 @@ individual checks.
 - (e) A forced analysis over-spend is refused at the ceiling.
 - (f) No `CONCIERGE` flag; no "Concierge" or "Alfred" string in UI, nav, docs or API, the
   documented aliases excepted.
+- (g) to (k): the Module Analyst acceptance tests of section 12.9.
 
 ## 2. Inventory and disposition
 
@@ -584,6 +587,7 @@ APPROVE on its head.
 | S11 | Platform email (SMTP) integration and `send_email` | yes |
 | S12 | Health alert emails | yes |
 | S13 | Consistency and polish pass (Sam, 19 Nov 2026): role matrix (admin, group manager, agent owner, plain user) x mode (Copilot, XTM One, `ai_disabled`) for every Health surface written here and each cell pinned by a test (visible <=> openable <=> API 200); an automated guard walking every in-app link of the Health surfaces per role; one compact Settings section; display quality (empty states, score formula, trends, evidence, links, vocabulary, i18n, dark and light, a11y); UX Director full-journey review per role in the lab, APPROVE closes the program; matrix and before/after captures in the PR body | yes |
+| S14 | Module Analyst (section 12, Sam, 21 Nov 2026): agentic read-only investigation of every registered OpenCTI, OpenAEV and OpenCRQ, recommendations on findings, outside agentic quota under its own ceiling; sub-slices S14a to S14e (section 12.10) | yes |
 
 Companion (Sam, 19 Nov 2026, ahead of S8): the companion, its profile card and
 `/health/me/{companion,activity}` exist only for who can open Platform Health. While
@@ -600,3 +604,226 @@ of an enrolled agent or fleet gets the companion and its link opens that view.
 - Companion and pets: **kept** as a profile option; not removed in the rename.
 - Acquisition: **push** in the heartbeat, with automatic refresh of the UI (section 5).
 - Analysis ceiling: **go**, set from the S9 measurement (section 6).
+
+Decided by Sam, 21 Nov 2026:
+
+- Module Analyst (section 12): **go**. In XTM One mode the fleet runs agentic checks on
+  the registered modules, outside agentic quota, under its own daily and monthly ceiling
+  in Spend limits. This reverses the "extra cap, never a bypass" rule of
+  `services/health/budget.py` for this member only (section 12.5).
+
+## 12. Module Analyst: agentic module checks (S14)
+
+Decided by Sam, 21 Nov 2026 (section 11). The deterministic checks of sections 4.3 to 4.5 say
+*what* is wrong from the pushed snapshot; the one-call analysis of section 6 orders the
+fixes from the findings alone. Neither reads the module itself. The Module Analyst is a
+sixth member of the Platform Health fleet that investigates each registered OpenCTI,
+OpenAEV and OpenCRQ through its integration, read-only, and attaches recommendations to
+the findings it explains. It adds to the engine, it never replaces a check: a module with
+no open finding still gets its daily look, and the deterministic pass runs whatever the
+analyst does.
+
+### 12.1 Scope and switches
+
+- **XTM One mode only** (section 1.1): domain content, gated on the mode, listed with its
+  reason in the mode-split guard allowlists. In Copilot mode the member is seeded but its
+  assignments never start, its routes answer 404 and no surface draws it.
+- **Where AI runs only**: the member is a model run, so `ai_disabled`, an unlicensed
+  edition or the AI switch off start nothing (`agentic_gate.agentic_verdict`, read where
+  the cycle opens, as `budget.open_cycle` does). The deterministic checks keep running.
+- **The Platform Health on/off switch** (`availability.health_active`) stops it like the
+  rest of the fleet.
+- **On by default** in XTM One mode under its default ceiling (section 1.3, modules are
+  automatic); `HealthSettings.module_analyst.enabled` switches it off, and a module can be
+  excluded one by one.
+- **Built in and read-only** (`read_only.py`): seeded by `fleet_seed.seed_health_fleet`
+  with `health_role` `module_analyst` (a new value of `identity.HealthRole`), rewritten on
+  every boot, never edited by anyone.
+
+### 12.2 Triggers
+
+One cycle per registration (target type `module`, target id = the registration id; one
+open cycle per target, the partial unique index of `concierge_cycles` extended to it):
+
+- **Finding set change.** After each health pass, for every registration whose open
+  finding set changed since the analyst's last cycle on it (new finding, resolved finding,
+  severity change: the `analysis.finding_set_hash` of that registration's findings, kept
+  per registration), a `signal` cycle starts. Debounce: at most one change-triggered
+  cycle per registration per `change_min_interval` (default 2 hours), so a flapping
+  connector does not start a cycle every 5 minutes; the next allowed cycle reads the set
+  as it is then.
+- **Daily.** One `schedule` cycle per registration per UTC day (schedule key
+  `module_analyst` in `cycles.SCHEDULE_KEYS`, mark in `health_schedule_marks`), skipped
+  for a registration a change-triggered cycle already covered that day.
+- **On demand.** An administrator may start one from the module card ("Investigate
+  now"), refused at the ceiling like the others.
+- A registration that is not active (unregistered, heartbeat missed: `opencti.heartbeat`
+  and its equivalents critical) gets no cycle: there is nothing to read; the finding
+  already says so.
+
+### 12.3 What it reads (read-only, by allow-list)
+
+The member reads the module through the integration its registration created
+(`PlatformRegistration.integration_id`), never a user's own binding and never a
+credential stored for the purpose (company-managed agent, company-managed integration
+only). Two locks, both enforced where the tools are built, never by a prompt sentence:
+
+1. The binding is read-only (`services/integration_read_only.py`): every write tool is
+   withheld from the model and refused by the executor.
+2. An explicit allow-list of read tools per provider (`MODULE_ANALYST_TOOLS`, one tuple
+   per provider in `services/health/module_analyst.py`), so a read tool added later to a
+   module integration is not reachable until it is listed. A tool name outside the list
+   is refused with the read-only reason.
+
+What it looks at (whatever the module API exposes; each S14a tool names its query):
+
+| Module | Reads |
+|---|---|
+| OpenCTI | connectors (state, last heartbeat, works in error, queue), workers and queues, feeds (TAXII, RSS, CSV) and their last run, playbooks and their last executions, background tasks, retention rules, platform version vs the connectors' versions |
+| OpenAEV | injectors, collectors and executors (state, last seen, version), agents online, simulations and scenarios in error, health checks, background jobs, platform version drift |
+| OpenCRQ | registration status, scheduled computations and their last result, data sources, version drift |
+
+Plus the platform's own data, read through the existing health tools: the open findings
+of that registration with their evidence, the latest snapshot, the previous analyst
+recommendations (so a repeated cause is said once), the organization context tech stack
+(coverage gaps of section 4.3).
+
+No conversation content, no user data beyond the module's own configuration objects. A
+read that fails (module down, timeout, a tool the module version lacks) is recorded in
+the cycle digest and the cycle goes on with what it has; it never retries in a loop.
+
+### 12.4 What it writes
+
+Only inside XTM One, never to a module:
+
+- **Recommendations on findings.** A new `health_finding_recommendations` row per
+  (finding, cycle): the finding id, the text (bounded, 1,500 characters), the evidence it
+  read (tool, object ids, values, read time), a confidence (`high`, `medium`, `low`), the
+  cycle id. The deterministic `recommendation` field of the finding is kept as is; the
+  agentic one is shown next to it, labelled as such. A finding resolved by the engine
+  keeps its recommendations as history.
+- **Findings it discovers.** A cause the checks do not cover (a playbook failing on a
+  removed connector, a feed pointing at a dead URL) is recorded through the engine
+  (`record_results`) under check id `<module>.agentic.<slug>`, `source` `module_analyst`,
+  category from the section 3 list, tagged agentic on the page. It follows the engine's
+  life (dedupe, dismiss with expiry); since no deterministic pass re-checks it, the
+  analyst's next cycle on that registration resolves it when it no longer sees the cause,
+  and it auto-expires after 7 days without a confirming cycle.
+- **Proposals.** A change the analyst recommends inside XTM One (a threshold, a check to
+  switch off) goes through the existing improvement proposals with administrator approval.
+  A change inside the module is a recommendation text only: the analyst has no path to
+  write it.
+
+### 12.5 Quota: outside agentic quota, under its own ceiling
+
+This is the one exception to "an extra cap, never a bypass" (`budget.py`), for this
+member only, and the docstring of `budget.py` says so.
+
+Why: the modules are automatic (section 1.3) and the analyst is part of the product's
+own health, not work an admin asked an agent to do. Metering it on the action tiers would
+make customer agents compete with the platform's own diagnosis, and a customer at its
+tier limit would lose the investigation exactly when its modules degrade. The
+section 6 analysis already runs outside quota on the same reasoning; the analyst extends
+it to an agentic loop, with a ceiling of its own instead of the tiers.
+
+How, so the exception cannot leak:
+
+- **Exemption decided by the server only.** The quota check skips a run only when its
+  assignment is the seeded module analyst assignment of the built-in fleet
+  (`fleet_assignment("module_analyst")`, agent `health_role` `module_analyst`,
+  company-managed), read from the database at run start. No trigger payload, setting or
+  run field a person or a tool can write turns it on. Every other fleet member keeps
+  counting in the tiers.
+- **Own trace source** `platform_health` (`LLM_TRACE_SOURCES`), excluded from customer
+  quota and from agentic execution counts, visible in observability and LLM analytics.
+- **Own ceiling**, `HealthSettings.module_analyst`: tokens and dollars per day and per
+  month, plus a per-cycle token cap, shown as one row "Module Analyst" in Settings >
+  Platform Health > Spend limits, next to the analysis row. A cleared ceiling refuses
+  (`ceiling_not_set`), as section 6.
+- **Enforced by reservation before every model call** of the loop (the worst case of the
+  next turn: its estimated input plus the output cap), on day and month rows of
+  `health_module_analyst_spend` locked month then day, the `health_analysis_spend`
+  pattern; real usage replaces the reservation after the call, a failed call books its
+  reserved worst case. Over any ceiling the turn is refused, the run stops with what it
+  has written, and the cycle digest and the page say so.
+- It does not touch the fleet budget of `budget.py` (caps of the other members) either:
+  one ceiling, one ledger, no double count.
+
+### 12.6 Default ceiling
+
+The default is set from a measured cost per module per cycle, as section 6 did, in the
+S14b lab measurement (`lab-live`, live model, one registered OpenCTI and one OpenAEV, a
+cycle on a module with open findings and one on a module with none), written here with
+the billed tokens and dollars before S14 ships on by default.
+
+Provisional figure until then, from the S9b blend (6.7 USD per million tokens) and the
+shape of the loop (system and tool definitions cached, about 12 read calls of at most
+4,000 characters of result each, 2.2 characters per token): about 45,000 input and 5,000
+output tokens per cycle, 50,000 tokens, 0.34 USD. Per-cycle cap 80,000 tokens. With 3
+modules and at most 3 cycles a module a day (daily plus two change-triggered at the 2
+hour debounce in a bad day): 9 x 50,000 = 450,000 tokens, 3.0 USD a day. Provisional
+defaults: **500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**
+(a month does not run at the bad-day rate every day). The measurement replaces these
+numbers; if it lands more than 30 % away, the defaults move with it in the S14b PR.
+
+Model: the platform routing model, as section 6, unless the measurement shows it cannot
+hold the loop (then the platform default model, priced in the same ledger, and the
+decision written here).
+
+### 12.7 Where it shows
+
+- **Health page.** On a finding: a "Module Analyst" block under the recommendation with
+  the agentic recommendation, its confidence, the evidence it read and when; agentic
+  findings carry an "Agentic" tag and a category filter value. On the module card: the
+  last investigation (time, outcome) and "Investigate now" for an administrator.
+- **Cycles.** Each cycle is a `HealthCycle` of the member (target type `module`, its
+  registration's title), listed in the Cycles tab with its digest (what it read, what it
+  attached, what it could not read, its spend).
+- **Weekly digest.** A "Modules" part: cycles run, recommendations attached, agentic
+  findings opened and resolved, spend against the ceiling.
+- **Spend limits.** The "Module Analyst" row (section 12.5), with the day and month spend.
+- Access follows section 8.1: module surfaces are for administrators (an agent manager
+  manages no module); the access matrix and the link guard of section 8.2 gain the new
+  routes and files (S13 tests extended).
+
+### 12.8 Fleet and implementation map
+
+- `identity.HealthRole` gains `module_analyst`; `fleet_seed.FLEET_ASSIGNMENTS` and
+  `AssignmentKey` gain `module_analyst`; `cycles.TargetType` gains `module`;
+  `digest.py` gains the member's sections.
+- `services/health/module_analyst.py`: triggers (`due_registrations`, the finding set
+  hash per registration, debounce), the tool allow-list, the quota exemption predicate
+  (`is_module_analyst_run`), the ceiling ledger.
+- Built-in tools of the health group for the member: `list_module_findings`,
+  `record_finding_recommendation`, `record_agentic_finding`; the module reads are the
+  registration integration's own read tools behind the allow-list.
+- The orchestrator does not delegate to the analyst; it starts only from its own
+  triggers.
+
+### 12.9 Acceptance pinned by tests
+
+- (g) XTM One mode, Platform Health on, a registered OpenCTI with an open finding: after
+  the pass a Module Analyst cycle starts with no admin action, its run calls the module's
+  read tools, and at least one recommendation is attached to the finding and served by
+  `GET /health/findings` (backend test with a stubbed model and integration; lab retest
+  at deploy).
+- (h) A full analyst cycle changes no agentic quota counter (per user and `_global`) and
+  no agentic execution count; another fleet member's run still counts (test (d) extended).
+- (i) A forced over-spend stops the run at the module analyst ceiling, day and month;
+  a cleared ceiling refuses.
+- (j) Copilot mode, Platform Health off, `ai_disabled`: no cycle starts, routes 404 or
+  absent as section 8.1 says.
+- (k) No write reaches a module: the member's tool set holds only allow-listed read
+  tools, a write tool called by name is refused, and an allow-list entry the classifier
+  reads as a write fails the test.
+
+### 12.10 Sub-slices (one PR each, `Refs #101 (S14x of the plan)`)
+
+| Slice | Content | UI |
+|---|---|---|
+| S14 spec | This section | no |
+| S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k) | no |
+| S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i) | no |
+| S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now" | yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n | yes |
+| S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |
