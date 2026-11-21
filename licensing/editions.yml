@@ -715,6 +715,7 @@ ce:
   - backend/app/integrations/providers/opencrq  # a connector
   - backend/app/integrations/providers/opencti  # a connector
   - backend/app/integrations/providers/ovhcloud  # a connector
+  - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
   - backend/app/integrations/providers/servicenow  # a connector

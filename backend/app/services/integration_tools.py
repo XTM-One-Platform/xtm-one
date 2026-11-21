@@ -135,6 +135,7 @@ from app.integrations.providers.opencrq.procedure_manifest import PROBE, Manifes
 from app.integrations.providers.opencti import build_tools as opencti_tools
 from app.integrations.providers.ovhcloud import build_tools as ovhcloud_tools
 from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
+from app.integrations.providers.pennylane import build_tools as pennylane_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
@@ -996,6 +997,7 @@ PROVIDER_TOOLS = {
     "filigran_ai": filigran_ai_tools,
     "hubspot": hubspot_tools,
     "drata": drata_tools,
+    "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
     "wordsmith": wordsmith_tools,
@@ -1122,6 +1124,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "docusign",
         "doppel",
         "drata",
+        "pennylane",
         "facebook",
         "figma",
         "flashpoint",
@@ -4239,6 +4242,21 @@ async def _get_token(
         except Exception as exc:
             logger.warning(
                 "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
+    # Pennylane: a firm token names the company of each request (X-Company-Id).
+    if provider == "pennylane" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            company_id = str(extra.get("company_id") or "").strip()
+            if company_id:
+                return f"{company_id}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract company_id from extra_config for '%s' (%s): %s",
                 integ.name,
                 provider,
                 format_exception_message(exc),

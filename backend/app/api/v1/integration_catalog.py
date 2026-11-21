@@ -9030,6 +9030,64 @@ PROVIDER_CATALOG = {
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
         },
     },
+    "pennylane": {
+        "name": "Pennylane",
+        "description": "Accounting, Invoicing & Banking - Ledger entries and lines, Trial balance, FEC and general ledger exports, Customer and supplier invoices (with PDFs, payments, matching), Customers, Suppliers, Products, Quotes, Bank transactions, Analytical categories (Company API v2)",
+        "logo": "/logos/pennylane.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {"company_id": "Company ID (firm token only)"},
+        "setup_guide": {
+            "title": "Pennylane API Token Setup",
+            "url": "https://app.pennylane.com",
+            "steps": [
+                "Log in to Pennylane as an administrator of the company.",
+                "Open Settings > Connectivity > Developers and generate an API token (Company API v2).",
+                "Give it the read-only scopes your agents need, and the write scopes only where they may write (listed below).",
+                "Paste the token in the API Key field below. One integration per Pennylane company.",
+                "With a firm (accounting practice) token, also fill in the Company ID of the company it should act on.",
+            ],
+            "permissions": [
+                {
+                    "scope": "ledger_entries:readonly",
+                    "description": "Ledger entries and lines, lettering, their analytics and changelogs",
+                },
+                {
+                    "scope": "ledger_accounts:readonly / journals:readonly",
+                    "description": "Chart of accounts and journals",
+                },
+                {
+                    "scope": "trial_balance:readonly / fiscal_years:readonly",
+                    "description": "Trial balance and fiscal years",
+                },
+                {
+                    "scope": "exports:fec / exports:gl / exports:agl",
+                    "description": "FEC, general ledger and analytical general ledger exports",
+                },
+                {
+                    "scope": "customer_invoices:readonly / supplier_invoices:readonly",
+                    "description": "Invoices, lines, payments, matched transactions, PDFs, changelogs",
+                },
+                {
+                    "scope": "customers:readonly / suppliers:readonly / products:readonly / quotes:readonly",
+                    "description": "Customers, suppliers (IBAN masked), products, quotes",
+                },
+                {
+                    "scope": "bank_accounts:readonly / transactions:readonly",
+                    "description": "Bank accounts and transactions with their matching",
+                },
+                {"scope": "categories:readonly", "description": "Analytical category groups and categories"},
+                {
+                    "scope": "*:all (write)",
+                    "description": "Draft customer invoices, supplier invoice updates, customers, suppliers, ledger entries, matching, analytical categorisation, paid status (each on its own resource scope); file_attachments:all for uploads",
+                },
+            ],
+            "notes": "Pennylane allows 25 requests per 5 seconds per token; a 429 is retried after Retry-After. A tool that lacks a scope names it. No tool initiates a payment, changes bank details or touches mandates. Bind read-only to withhold every write tool; list_pennylane_bank_accounts is the only tool showing bank account data. See https://pennylane.readme.io/reference.",
+        },
+    },
     "linkedin": {
         "name": "LinkedIn",
         "description": "Posts (text, images, video, documents), Pages (Organizations), Analytics, Comments, Reactions",
