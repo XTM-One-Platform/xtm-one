@@ -64,7 +64,8 @@ def _dump(payload: dict[str, Any]) -> str:
 def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The two signal tools, acting for *user_id*: an administrator lists the organization's signals.
 
-    Whether the user is an administrator is read at each list, as the API reads it.
+    Whether the user's agent takes the administrator's reach is read at each list,
+    through ``agent_tool_admin_bypass``.
     """
     try:
         scope: uuid.UUID | None = uuid.UUID(str(user_id))
@@ -136,13 +137,16 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 primary = await get_primary(db)
                 if primary is None:
                     return "No organization is set up yet: there are no signals."
+                from app.api.v1.helpers import agent_tool_admin_bypass
                 from app.models.user import User
 
-                is_admin = bool(getattr(await db.get(User, scope), "is_admin", False))
+                # The admin bypass of an agent tool goes through the helper (strict admin
+                # access for agent tools and Platform Health reach decide it).
+                bypass = agent_tool_admin_bypass(await db.get(User, scope))
                 rows, total, counts = await signals.list_signals(
                     db,
                     organization_id=primary.id,
-                    recorded_by=None if is_admin else str(scope),
+                    recorded_by=None if bypass else str(scope),
                     state=state or None,
                     trigger_path=trigger_path or None,
                     lens=lens or None,
