@@ -1582,7 +1582,7 @@ async def _approval_gates_response(db: AsyncSession, user: User, fleet: Fleet) -
     Also the level and the effective catalog it acts on (#10153), the same one
     the runs read (``fleet_gate_proposals.fleet_effective_gates``).
     """
-    from app.services.fleet_autonomy import effective_gates
+    from app.services.fleet_autonomy import customer_gates_of, effective_gates
     from app.services.fleet_gate_proposals import existing_approvals, fleet_configuration
 
     config = await fleet_configuration(db, fleet.id)
@@ -1592,15 +1592,19 @@ async def _approval_gates_response(db: AsyncSession, user: User, fleet: Fleet) -
     computed_on = not fleet.is_builtin and pins is not None
     level = effective_level(fleet.autonomy_level)
     group_ids = await get_user_group_ids(db, user.id)
+    customer = getattr(fleet, "customer_gates", None) if fleet.is_builtin else None
     return FleetApprovalGatesResponse(
         catalog=[dict(g) for g in fleet_gates(stored, fleet.documentation)],
         stored=isinstance(stored, list),
         proposals=proposals,
         existing_approvals=existing_approvals(config.agents, config.assignments),
         editable=not fleet.is_builtin and can_manage(user, fleet, group_ids),
+        # A built-in fleet takes added gates in its customer layer (#916).
+        customer_gates_editable=bool(fleet.is_builtin) and can_manage(user, fleet, group_ids),
+        customer_gates=[dict(g) for g in customer_gates_of(customer)],
         autonomy_level=level,
         effective_catalog=gate_catalog(
-            level, effective_gates(stored, fleet.documentation, proposals if computed_on else None, pins)
+            level, effective_gates(stored, fleet.documentation, proposals if computed_on else None, pins, customer)
         ),
         computed_catalog_on=computed_on,
         instructions_position=getattr(fleet, "instructions_position", None),
@@ -1730,17 +1734,22 @@ async def update_fleet_approval_gates_endpoint(
     db: AsyncSession = Depends(get_db),
     _gate: None = Depends(require_agentic_ai_licensed),
 ):
-    """Store a custom fleet's approval gate catalog (#10014): the gates its autonomy level acts on.
+    """Store a fleet's approval gate catalog (#10014): the gates its autonomy level acts on.
 
-    A built-in fleet is refused (its catalog is the seed's). Removing a stored
-    gate, a tool of one or lowering its impact lets an action run with less
-    approval: administrators only, as raising the level. Audit logged.
+    On a built-in fleet (#916, CTEM-34) the body is the gates a person adds
+    to the seeded catalog: stored in its customer layer (``customer_gates``),
+    never written by the seed, so they survive an upgrade; a seeded key is
+    refused (a pin moves a seeded gate). Removing a stored gate, a tool of one
+    or lowering its impact lets an action run with less approval:
+    administrators only, as raising the level. Audit logged.
     """
+    from app.services.fleet_autonomy import customer_gates_of
     from app.services.fleet_docs import clean_structured
     from app.services.fleet_gate_proposals import removes_a_gate
 
     fleet = await _manageable_fleet(db, user, fleet_id)
-    _ensure_writable(fleet, {"approval_gates"})
+    builtin = bool(fleet.is_builtin)
+    _ensure_writable(fleet, {"customer_gates" if builtin else "approval_gates"})
     try:
         cleaned = (clean_structured({"gates": body.gates}) or {}).get("gates") or []
     except FleetActionRefusedError as exc:
@@ -1748,13 +1757,25 @@ async def update_fleet_approval_gates_endpoint(
     keys = [str(g.get("key") or "") for g in cleaned]
     if any(not k for k in keys) or len(set(keys)) != len(keys):
         raise HTTPException(status_code=422, detail="Every approval gate needs its own key.")
-    previous = [dict(g) for g in fleet_gates(getattr(fleet, "approval_gates", None), fleet.documentation)]
+    if builtin:
+        seeded = {str(g.get("key") or "") for g in fleet_gates(getattr(fleet, "approval_gates", None), None)}
+        if seeded & set(keys):
+            raise HTTPException(
+                status_code=422,
+                detail="A built-in fleet's seeded gate cannot be redeclared; pin it to wait or run instead.",
+            )
+        previous = [dict(g) for g in customer_gates_of(getattr(fleet, "customer_gates", None))]
+    else:
+        previous = [dict(g) for g in fleet_gates(getattr(fleet, "approval_gates", None), fleet.documentation)]
     if removes_a_gate(previous, cleaned) and not user.is_admin:
         raise HTTPException(
             status_code=403,
             detail="Only an administrator can remove an approval gate, a tool of one or lower its impact; adding is open.",
         )
-    fleet.approval_gates = cleaned
+    if builtin:
+        fleet.customer_gates = cleaned or None
+    else:
+        fleet.approval_gates = cleaned
     await log_audit(
         db,
         user=user,
