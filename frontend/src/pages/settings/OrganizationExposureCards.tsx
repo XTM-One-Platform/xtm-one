@@ -775,8 +775,12 @@ export function OrganizationExposureCards({
     );
   };
 
-  // The PIR score thresholds always carry the backend's defaults, so they never make a policy "set".
-  const policySet = JSON.stringify({ ...policy, pir_min_score_vulnerability: undefined, pir_min_score_threat: undefined }) !== JSON.stringify(EMPTY_POLICY);
+  // A PIR score threshold equal to its backend default never makes a policy "set"; a customized one does.
+  const atDefault = (key: keyof typeof PIR_SCORE_DEFAULTS) => policy[key] == null || policy[key] === PIR_SCORE_DEFAULTS[key];
+  const policySet =
+    !atDefault("pir_min_score_vulnerability") ||
+    !atDefault("pir_min_score_threat") ||
+    JSON.stringify({ ...policy, pir_min_score_vulnerability: undefined, pir_min_score_threat: undefined }) !== JSON.stringify(EMPTY_POLICY);
 
   /** CTEM-08: a PIR score threshold, 0 to 100; empty sends nothing and the backend default applies. */
   const pirField = (key: "pir_min_score_vulnerability" | "pir_min_score_threat", title: string, helper: string, info: string) => {

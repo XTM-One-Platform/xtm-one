@@ -188,6 +188,18 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     expect(within(card2).getAllByRole("img", { name: "About this field" })).toHaveLength(7);
   });
 
+  it("counts a customized PIR threshold as a set policy, a default one not (#1000 review)", () => {
+    mockApi();
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_crown_jewel_criticality: "", exclusions: [], accepted_risks: [] };
+    const atDefault: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 70, pir_min_score_threat: 75 } };
+    const { unmount } = renderWithProviders(<Harness initial={atDefault} editing={false} />);
+    expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
+    unmount();
+    const custom: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 60 } };
+    renderWithProviders(<Harness initial={custom} editing={false} />);
+    expect(within(screen.getByTestId("settings.organization.prioritization-policy")).queryByText(/No policy yet/)).toBeNull();
+  });
+
   it("maps a refused PIR score to its field", () => {
     expect(exposureIssueFromRefusal(BASE, "prioritization_policy.pir_min_score_threat: Input should be less than or equal to 100")).toMatchObject({ section: "score", field: "pir_min_score_threat" });
   });
