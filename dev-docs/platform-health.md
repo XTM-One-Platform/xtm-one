@@ -791,9 +791,17 @@ decision written here).
 - `identity.HealthRole` gains `module_analyst`; `fleet_seed.FLEET_ASSIGNMENTS` and
   `AssignmentKey` gain `module_analyst`; `cycles.TargetType` gains `module`;
   `digest.py` gains the member's sections.
-- `services/health/module_analyst.py`: triggers (`due_registrations`, the finding set
-  hash per registration, debounce), the tool allow-list, the quota exemption predicate
-  (`is_module_analyst_run`), the ceiling ledger.
+- `services/health/module_analyst.py`: triggers, the tool allow-list, the quota exemption
+  predicate (`is_module_analyst_run`), the ceiling ledger. The triggers (S14a-2b) are
+  `module_analyst_tick`, run by `cycles.health_tick` after the signals: every 5 minutes
+  (mark `module_analyst` in `health_schedule_marks`) it hashes each active module
+  registration's open findings (`analysis.finding_set_hash`) and `due_trigger` decides
+  `change` (the hash differs from the one last taken, outside the debounce) or `daily`
+  (no cycle on it this UTC day); the hash taken, the last firing and its refusal are a
+  `health_signal_states` row of kind `module_findings`, target type `module`. At most 6
+  cycles a pass, changes first; a passing refusal (budget, licence, AI off) is retried
+  on the next pass. Settings: `HealthSettings.module_analyst` (`enabled`, on by default;
+  `change_min_interval_minutes`, 120, 15 to 1,440; `excluded_registration_ids`).
 - Built-in tools of the health group for the member: `list_module_findings`,
   `record_finding_recommendation`, `record_agentic_finding`; the module reads are the
   registration integration's own read tools behind the allow-list. The first two ship in

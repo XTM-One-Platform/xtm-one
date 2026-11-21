@@ -555,3 +555,7 @@ async def health_tick(*, ai_on: bool) -> None:
     from app.services.health.signals import signals_tick
 
     await signals_tick()
+    # The Module Analyst's triggers (#101 S14a-2b, section 12.2): XTM One mode only.
+    from app.services.health.module_analyst import module_analyst_tick
+
+    await module_analyst_tick()

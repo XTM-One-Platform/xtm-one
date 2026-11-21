@@ -209,6 +209,26 @@ class HealthAlertEmailSettings(BaseModel):
         return list(dict.fromkeys(_valid_recipient(value) for value in values))
 
 
+class HealthModuleAnalystSettings(BaseModel):
+    """The Module Analyst (#101 S14, dev-docs section 12.1): on by default in XTM One mode.
+
+    ``change_min_interval_minutes`` is the debounce of section 12.2: at most one
+    change-triggered cycle per registration in that window. A registration listed in
+    ``excluded_registration_ids`` gets no cycle.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    change_min_interval_minutes: int = Field(default=120, ge=15, le=24 * 60)
+    excluded_registration_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
+
+    @field_validator("excluded_registration_ids")
+    @classmethod
+    def _unique(cls, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(dict.fromkeys(ids))
+
+
 #: The longest name Platform Health may be given.
 MAX_NAME_LENGTH = 40
 
@@ -263,6 +283,8 @@ class HealthSettings(BaseModel):
     openaev: HealthOpenAEVThresholds = Field(default_factory=HealthOpenAEVThresholds)
     #: The alert emails (#101 S12), off by default.
     alert_emails: HealthAlertEmailSettings = Field(default_factory=HealthAlertEmailSettings)
+    #: The Module Analyst's switch, debounce and exclusions (#101 S14a-2b).
+    module_analyst: HealthModuleAnalystSettings = Field(default_factory=HealthModuleAnalystSettings)
 
     @field_validator("name")
     @classmethod
