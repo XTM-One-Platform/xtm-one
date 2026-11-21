@@ -20017,7 +20017,6 @@
   "Integrations and their tools": "Intégrations et leurs outils",
   "Skills and custom tools": "Compétences et outils personnalisés",
   "Organization notes": "Notes de l'organisation",
-  "Release default": "Valeur de la version",
   "Added after the product's persona on every run, never in its place.": "Ajoutées après le persona du produit à chaque exécution, jamais à sa place.",
   "Who owns which asset, how tickets are routed, what to leave alone": "Qui possède quel actif, comment les tickets sont routés, ce qu'il ne faut pas toucher",
   "Organization notes saved": "Notes de l'organisation enregistrées",
@@ -20037,5 +20036,14 @@
   "The binding could not be changed": "La liaison n'a pas pu être modifiée",
   "Unbind {name}": "Délier {name}",
   "Bind an integration to {slot}": "Lier une intégration à {slot}",
-  "Bind an integration": "Lier une intégration"
+  "Bind an integration": "Lier une intégration",
+  "What each layer means": "Ce que signifie chaque couche",
+  "What organization notes are": "Ce que sont les notes de l'organisation",
+  "Every run of this agent reads them after the product's persona, never in its place: who owns which asset, how tickets are routed, what to leave alone. Up to 4,000 characters. Empty, the agent runs on the persona alone.": "Chaque exécution de cet agent les lit après la persona du produit, jamais à sa place : qui possède quel actif, comment les tickets sont acheminés, ce qu'il ne faut pas toucher. Jusqu'à 4 000 caractères. Vides, l'agent s'exécute avec sa seule persona.",
+  "This is a built-in {entity} pre-configured by the platform. Its persona, handovers and gates are locked; its organization notes and integrations stay yours.": "Ceci est un {entity} intégré préconfiguré par la plateforme. Sa persona, ses transferts et ses validations sont verrouillés ; ses notes d'organisation et ses intégrations restent les vôtres.",
+  "Built-in fleets ship with the platform: their members, handovers and gates are locked; the integrations bound to their capability slots stay yours.": "Les flottes intégrées sont livrées avec la plateforme : leurs membres, transferts et validations sont verrouillés ; les intégrations liées à leurs emplacements de capacité restent les vôtres.",
+  "What capability slots are": "Ce que sont les emplacements de capacité",
+  "{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}": "{total, plural, one {{connected} emplacement connecté sur #} other {{connected} emplacements connectés sur #}}",
+  "Show slots": "Afficher les emplacements",
+  "Hide slots": "Masquer les emplacements"
 }
