@@ -6,7 +6,7 @@
  * VisibilityFilter / TagFilter. Pair it with `useViewMode()`, which persists
  * the choice.
  */
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
@@ -15,15 +15,21 @@ import type { ViewMode } from "@/hooks/useViewMode";
 interface ViewToggleProps {
   value: ViewMode;
   onChange: (mode: ViewMode) => void;
+  /** The views the page offers, in order (default grid and list; Work Items adds graph). */
+  modes?: readonly ViewMode[];
   className?: string;
 }
 
+/** Labels are catalog keys. @i18n-keys */
 const OPTIONS: { key: ViewMode; label: string; icon: React.ElementType }[] = [
   { key: "grid", label: "Grid view", icon: LayoutGrid },
   { key: "list", label: "List view", icon: List },
+  { key: "graph", label: "Graph view", icon: Network },
 ];
 
-export function ViewToggle({ value, onChange, className }: ViewToggleProps) {
+const DEFAULT_MODES: readonly ViewMode[] = ["grid", "list"];
+
+export function ViewToggle({ value, onChange, modes = DEFAULT_MODES, className }: ViewToggleProps) {
   const { t_i18n } = useFormatter();
   return (
     <div
@@ -31,7 +37,7 @@ export function ViewToggle({ value, onChange, className }: ViewToggleProps) {
       aria-label={t_i18n("View mode")}
       className={cn("flex gap-1 rounded-sm bg-elevation-hover p-0.5 items-center", className)}
     >
-      {OPTIONS.map(({ key, label, icon: Icon }) => {
+      {OPTIONS.filter((option) => modes.includes(option.key)).map(({ key, label, icon: Icon }) => {
         const isActive = key === value;
         return (
           <Tip key={key} content={t_i18n(label)}>
