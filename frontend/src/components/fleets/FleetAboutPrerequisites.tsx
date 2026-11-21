@@ -334,7 +334,9 @@ function Line({
     unreadable: t_i18n("Not shared with you"),
     to_confirm: t_i18n("To confirm"),
   }[line.state];
-  const fixable = !readOnly && line.state === "not_met" && line.can_fix && line.fix_route;
+  // Platform Health off is fixed in Settings even on its read-only fleet (UX r1 B3 on #980): the one line with a way out.
+  const settingsFix = line.reason_code === "platform_health_off";
+  const fixable = (!readOnly || settingsFix) && line.state === "not_met" && line.can_fix && line.fix_route;
   return (
     <li className="flex items-center gap-3 p-4 content-compact" data-testid="about-prerequisite" data-state={line.state}>
       <StateIcon state={line.state} />

@@ -143,6 +143,26 @@ def test_no_prerequisite_of_the_health_fleet_is_fixable_from_its_page() -> None:
     assert kept[0].can_fix is True
 
 
+def test_platform_health_off_line_keeps_its_settings_fix_for_the_administrator() -> None:
+    """UX r2 B3 on #980: the Settings switch stays the one fix of the health fleet.
+
+    ``can_fix`` comes in as ``can_open`` computed it: true for an administrator,
+    false for anyone else; the lock keeps it on that line and clears every other.
+    """
+    from app.api.v1.fleets import _lock_fixes_on_health_fleet
+
+    health = SimpleNamespace(is_builtin=True, slug="platform-health")
+    admin = [
+        SimpleNamespace(reason_code="platform_health_off", can_fix=True),
+        SimpleNamespace(reason_code="not_bound", can_fix=True),
+    ]
+    _lock_fixes_on_health_fleet(health, admin)  # type: ignore[arg-type]
+    assert [line.can_fix for line in admin] == [True, False]
+    member = [SimpleNamespace(reason_code="platform_health_off", can_fix=False)]
+    _lock_fixes_on_health_fleet(health, member)  # type: ignore[arg-type]
+    assert member[0].can_fix is False
+
+
 def test_responses_carry_the_read_only_reason_field() -> None:
     from app.api.v1.schemas.agent import AgentResponse
     from app.api.v1.schemas.fleet import FleetResponse
