@@ -410,8 +410,6 @@ _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
     {"name": "create_servicenow_change"},
-    # #917: the Mobilization role opens a case's ticket through the sync layer.
-    {"name": "sync_ctem_case_ticket", "when": {"create": ["true"]}},
 ]
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
@@ -936,6 +934,68 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"trigger": "Weekly investment review", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Monthly Board pack", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+    ],
+}
+
+# The Platform Health fleet (#974): seeded by ``app.services.health.fleet_seed``, not
+# ``BUILTIN_FLEETS``. Read-only, switched and scheduled in Settings > Agents and
+# automations > Platform Health, so the text names no action an administrator
+# could take on the fleet itself (no role label, no handover, no automation to
+# switch on). Its live prerequisite (Platform Health on) is computed by
+# ``fleet_about.live_prerequisites``; nothing is documented as a manual step.
+PLATFORM_HEALTH_DOC: dict[str, str] = {
+    "purpose": (
+        "Keep the platform's agents, flows and memory healthy without anyone asking: Platform Health "
+        "watches quality, failures, cost and memory, investigates what degrades, and proposes the fix."
+    ),
+    "use_case": (
+        "Built in and on by default. The Memory Steward tidies agent memory every day, the Quality "
+        "Analyst and the Flow Lab review agents and flows every week, and a weekly digest summarizes "
+        "what was found and fixed. A signal (a feedback drop, a failure rate, a cost increase, a model "
+        "change) starts an investigation of the agent or flow concerned."
+    ),
+    "triggers": (
+        "- **Signals**: a feedback drop, a failure rate, a cost increase or a model change on an agent or a flow.\n"
+        "- **Memory review**: daily, on the schedule set in Settings.\n"
+        "- **Quality review**: weekly, on the schedule set in Settings.\n"
+        "- **Flow review**: weekly, on the schedule set in Settings.\n"
+        "- **Weekly digest**: on the schedule set in Settings."
+    ),
+    "flow": (
+        "1. Detect: a schedule fires or a signal crosses its threshold.\n"
+        "2. Investigate: the specialist reads the runs, feedback and memory of the target.\n"
+        "3. Propose: a finding and, when one helps, an improvement proposal a person decides on.\n"
+        "4. Report: the weekly digest lists the cycles closed."
+    ),
+    "objects_created": "Health cycles, findings, improvement proposals and the weekly digest.",
+    "prerequisites": (
+        "Platform Health switched on in Settings > Agents and automations > Platform Health, where its "
+        "schedules, signals and budget are set. The fleet itself is built in and read-only."
+    ),
+}
+
+PLATFORM_HEALTH_STRUCTURED: dict[str, Any] = {
+    "purpose_line": "Agents, flows and memory kept healthy, without anyone asking.",
+    "outcome_line": "Findings, improvement proposals a person decides on, and a weekly digest.",
+    "triggers": [
+        {
+            "module": "platform",
+            "name": "Signals",
+            "filter": "Feedback drop, failure rate, cost increase or model change",
+        },
+        {"module": "schedule", "name": "Memory review", "filter": "Daily, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Quality review", "filter": "Weekly, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Flow review", "filter": "Weekly, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Weekly digest", "filter": "On the schedule set in Settings"},
+    ],
+    "steps": [
+        {"title": "Detect", "detail": "A schedule fires or a signal crosses its threshold."},
+        {"title": "Investigate", "detail": "The runs, feedback and memory of the target are read."},
+        {"title": "Propose", "detail": "A finding, and an improvement proposal a person decides on.", "gate": True},
+        {"title": "Report", "detail": "The weekly digest lists the cycles closed."},
+    ],
+    "objects": [
+        {"module": "platform", "objects": ["Health cycles", "Findings", "Improvement proposals", "Weekly digest"]},
     ],
 }
 
