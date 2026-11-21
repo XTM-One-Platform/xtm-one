@@ -11,7 +11,7 @@ PostgreSQL 11+, no rewrite; the check is only widened, so its validation scan
 cannot fail.
 
 Revision ID: c857ctemcaseloop1
-Revises: h127healthmodanalyst01
+Revises: c1crq2vertical1
 Create Date: 2026-11-21 09:40:00.000000
 """
 
@@ -25,7 +25,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c857ctemcaseloop1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "h127healthmodanalyst01"
+down_revision: str | Sequence[str] | None = "c1crq2vertical1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
