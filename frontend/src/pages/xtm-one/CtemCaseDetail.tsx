@@ -99,6 +99,15 @@ const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Escalated: SLA breached",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
+  // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
+  source_event: "OpenAEV result received",
+};
+
+/** The OpenAEV event of a `source_event` history row, translated where drawn (#956). */
+const SOURCE_EVENT_LABEL: Record<string, string> = {
+  simulation_finished: "Simulation finished",
+  finding_updated: "Finding updated",
+  finding_deleted: "Finding deleted",
 };
 
 /** The result word of a validation history row, translated where drawn. */
@@ -450,6 +459,9 @@ export default function CtemCaseDetail() {
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
                 {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
+                {e.to && e.kind === "source_event" && (
+                  <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
+                )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (

@@ -151,6 +151,21 @@ async def route(
     return out
 
 
+def case_frames(pending: list[tuple[str, dict[str, Any], str]], at: datetime) -> list[dict[str, str]]:
+    """One ``ctem_case_update`` frame per case a delivery moved (CTEM-15-UI, #956): ids and states only."""
+    from app.services.ctem_loop_stream import case_frame
+
+    frames: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for _name, data, _eid in pending:
+        case_id = str(data.get("case_id") or "")
+        if not case_id or case_id in seen:
+            continue
+        seen.add(case_id)
+        frames.append(case_frame(case_id, str(data.get("state") or ""), HISTORY_KIND, at.isoformat()))
+    return frames
+
+
 async def note_event(event: str, payload: Mapping[str, Any], *, verified: bool) -> int:
     """Move the cases an OpenAEV delivery is about; never raises. How many case events were raised.
 
@@ -162,14 +177,18 @@ async def note_event(event: str, payload: Mapping[str, Any], *, verified: bool) 
     if not verified or settings.is_copilot_like or event not in CASE_EVENT_KEYS:
         return 0
     from app.core.database import async_session
+    from app.services.ctem_loop_stream import publish_case_updates
     from app.services.platform_events import publish
 
     try:
+        now = datetime.now(UTC)
         async with async_session() as db:
-            pending = await route(db, event, payload)
+            pending = await route(db, event, payload, now=now)
             if not pending:
                 return 0
             await db.commit()
+        # The case page, the board and Act now re-read at once (live, no poll).
+        await publish_case_updates(case_frames(pending, now))
         raised = 0
         for name, data, eid in pending:
             if await publish(name, data, event_id=eid):
