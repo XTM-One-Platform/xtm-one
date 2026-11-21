@@ -334,7 +334,7 @@ def bound_integration_id(assignment: Any, agent: Any) -> str | None:
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, str] | str:
     """``(api, integration_id, secret)`` or the reason it cannot be built."""
-    from app.integrations.providers.openaev._common import _api, _headers
+    from app.integrations.providers.openaev._common import _api, _headers, is_not_found_error
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
     from app.services.trigger_provisioning import receiver_secret
@@ -370,7 +370,7 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, s
     async def api(method: str, path: str, body: Any) -> Any:
         resp, err = await _api(base_url, headers, method, path, f"{method} {path}", json=body)
         if err:
-            if method == "get" and "404" in err:
+            if method == "get" and is_not_found_error(err):
                 return None
             raise OpenAEVApiError(err)
         if resp is None or not resp.content:
