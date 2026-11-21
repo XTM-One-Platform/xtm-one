@@ -60,7 +60,8 @@ HEALTH_ACTOR: Final = "concierge"
 #: The principal's stable id. Never a ``users`` row.
 HEALTH_PRINCIPAL_ID: Final[uuid.UUID] = uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
 
-HealthRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter"]
+#: ``module_analyst``: the Module Analyst (#101 S14, ``dev-docs/platform-health.md`` section 12).
+HealthRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter", "module_analyst"]
 HEALTH_ROLES: Final[frozenset[str]] = frozenset(get_args(HealthRole))
 
 
