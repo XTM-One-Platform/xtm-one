@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * /runners/:id - one enrolled machine.
+ * /desktop/runners/:id - one enrolled machine.
  *
  * The XTM One Desktop page lists the machines YOU can see - own, shared with
  * you, company-managed - admins included. The by-id route keeps the
@@ -28,11 +28,11 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { MonitorSmartphone } from "lucide-react";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { CompanyManagedBadge } from "@/components/ui/company-managed-badge";
-import { NotFoundState } from "@/components/ui/not-found-state";
 import { DetailPageSkeleton } from "@/components/ui/detail-page-skeleton";
 import { useRunner } from "@/hooks/api/useRunnerApi";
 import { useRunnersEnabled } from "@/hooks/useDesktop";
 import { RunnerCard } from "@/pages/desktop/RunnersSection";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { useFormatter } from "@/i18n";
 
 export default function RunnerDetail() {
@@ -61,19 +61,8 @@ export default function RunnerDetail() {
     return <DetailPageSkeleton backTo={backTo} backLabel={backLabel} tabs={0} />;
   }
 
-  if (!runner) {
-    return (
-      <NotFoundState
-        icon={MonitorSmartphone}
-        title="Machine not found"
-        description="This machine may have been deleted, re-enrolled under a new record, or you don't have access."
-        actionLabel="View XTM One Desktop"
-        onAction={() => navigate("/desktop")}
-        backTo={backTo}
-        backLabel={backLabel}
-      />
-    );
-  }
+  // An unknown id (or one you cannot read) is an address no page answers (#797 S4).
+  if (!runner) return <RouteNotFound />;
 
   return (
     <div className="space-y-6">

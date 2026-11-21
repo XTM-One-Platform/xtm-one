@@ -227,7 +227,7 @@ export default function TaskHistory({
 
   // --- Run type: assignments, flows, or both interleaved ---
   // The flow feed follows the `FLOW_BUILDER` feature flag: every card in it
-  // deep-links into `/flows/<id>/builder`, which redirects home while the
+  // deep-links into `/flows/library/<id>`, which redirects home while the
   // builder is hidden. A stale `?type=flows` URL falls back to "all" rather
   // than rendering a feed that cannot exist — with both halves disabled the
   // page would otherwise show an empty state and a pager over nothing.
@@ -943,7 +943,7 @@ export default function TaskHistory({
 
   const itemKey = (item: ExecutionItem) => item.run.id;
   const openItem = (item: ExecutionItem) =>
-    navigate(item.kind === "flow" ? `/flows/${item.run.flow_id}/builder?run=${item.run.id}` : `/operations/executions/${item.run.id}`);
+    navigate(item.kind === "flow" ? `/flows/library/${item.run.flow_id}?run=${item.run.id}` : `/operations/executions/${item.run.id}`);
 
   // layout="fixed" with the widths of EXECUTION_COLUMN_WIDTHS: the Run title takes what is
   // left and the long texts truncate with the DS tooltip, so the list never scrolls

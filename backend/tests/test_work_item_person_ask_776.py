@@ -31,7 +31,12 @@ def test_a_complete_card_is_accepted():
 
 @pytest.mark.parametrize("ask", [None, {}, {"question": " "}, "text"])
 def test_no_question_names_every_field(ask):
-    assert person_ask_missing(ask) == ["ask.question", "ask.context", "ask.options (at least 2)"]
+    assert person_ask_missing(ask) == [
+        "ask.question",
+        "ask.context",
+        "ask.options (at least 2)",
+        "ask.recommendation",
+    ]
 
 
 def test_a_card_without_context_is_refused_naming_it():
@@ -51,6 +56,16 @@ def test_a_card_with_one_option_is_refused_naming_it():
     with pytest.raises(ValueError) as exc:
         refuse_incomplete_person_ask(normalize_ask(ask))
     assert "ask.options (at least 2)" in str(exc.value)
+    assert "ask.context" not in str(exc.value)
+
+
+def test_a_card_without_recommendation_is_refused_naming_it():
+    """#834: the reader sees which answer the agent recommends."""
+    ask = _card()
+    del ask["recommendation"]
+    with pytest.raises(ValueError) as exc:
+        refuse_incomplete_person_ask(normalize_ask(ask))
+    assert "ask.recommendation" in str(exc.value)
     assert "ask.context" not in str(exc.value)
 
 

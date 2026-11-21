@@ -26,7 +26,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * shows them.
  *
  * Tab state is URL-backed (`/flows/:tab?`) via `useTabParam`. The builder lives
- * one level deeper, on `/flows/:id/builder`, so a full-height canvas is not
+ * one level deeper, on `/flows/library/:id`, so a full-height canvas is not
  * squeezed under this page's header and tab bar. The schedule is a view of the
  * map (`/flows/map/schedule`), not a tab; a segment naming no tab is not found
  * (#797).

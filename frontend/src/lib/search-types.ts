@@ -28,7 +28,7 @@ export const SEARCH_TYPE_VIEW: Record<SearchType, SearchTypeView> = {
   agent: { plural: "Agents", singular: "Agent", icon: "bot", href: by("/agents") },
   fleet: { plural: "Fleets", singular: "Fleet", icon: "network", href: by("/fleets") },
   assignment: { plural: "Assignments", singular: "Assignment", icon: "calendar", href: by("/agents/assignments") },
-  flow: { plural: "Flows", singular: "Flow", icon: "link-2", href: (hit) => `/flows/${hit.id}/builder` },
+  flow: { plural: "Flows", singular: "Flow", icon: "link-2", href: (hit) => `/flows/library/${hit.id}` },
   intent: { plural: "Intents", singular: "Intent", icon: "compass", href: () => "/intents" },
   conversation: { plural: "Conversations", singular: "Conversation", icon: "quote", href: (hit) => `/chat?c=${hit.id}` },
   work_item: {

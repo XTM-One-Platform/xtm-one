@@ -144,6 +144,32 @@ def json_argument_error(name: str, raw: str, exc: json.JSONDecodeError) -> str:
     )
 
 
+# Replacement records a write answers per list (at most this many shown).
+_REPLACED_SHOWN = 5
+
+
+def _replaced_item_lines(list_key: str, rows: list[dict[str, Any]]) -> list[str]:
+    """One line per item a unique_by append replaced: what the stored item lost or changed.
+
+    A run that read no match, then appended, learns here that another run wrote
+    that item between its read and its write (the fields it dropped are named).
+    """
+    lines: list[str] = []
+    for row in rows[:_REPLACED_SHOWN]:
+        ident = json.dumps(row.get("identity") or {}, default=str)[:_WRITE_KEY_CHARS]
+        lost = ", ".join(row.get("lost") or []) or "none"
+        changed = ", ".join(row.get("changed") or []) or "none"
+        lines.append(
+            f"    - replaced {ident}: fields dropped {lost[: _WRITE_KEY_CHARS * 2]}; "
+            f"fields changed {changed[: _WRITE_KEY_CHARS * 2]}"
+        )
+    if len(rows) > _REPLACED_SHOWN:
+        lines.append(
+            f"    - and {len(rows) - _REPLACED_SHOWN} more replaced in {json.dumps(list_key)[:_WRITE_KEY_CHARS]}"
+        )
+    return lines
+
+
 def _is_note_only(
     parsed: dict[str, dict | None],
     *,
@@ -945,6 +971,7 @@ def build_shared_state_tools(
                 f"{counts.get('appended', 0)} appended, {counts.get('removed', 0)} removed, "
                 f"{updated}{replaced}{trimmed}{size} item(s) now"
             )
+            lines.extend(_replaced_item_lines(list_key, (state.get("replaced_items") or {}).get(list_key) or []))
         value = state.get("value")
         if value:
             dumped = json.dumps(value, default=str)
@@ -1564,11 +1591,13 @@ def build_shared_state_tools(
             )
         try:
             source = await get_state(user_id=acting_user_id, key=_ns(key), reader=writer)
+            retention = (source or {}).get("retention") or {}
             archived = unset_archive(
                 (source or {}).get("value") or {},
                 update,
                 source_key=key,
                 at=datetime.now(UTC).isoformat(),
+                item_key=retention.get("item_key") if isinstance(retention, dict) else None,
             )
         except ValueError as exc:
             return f"Error: {exc}"

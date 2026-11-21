@@ -19,7 +19,7 @@ person had to find the question in it. ``ask`` carries the decision itself, so
 a view renders it as a card with one button per option:
 
 ``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?}],
-"recommendation"?: option key, "deadline"?: ISO-8601}``
+"recommendation"?: option key, "deadline"?: ISO-8601, "links"?: [{"label", "url"}]}``
 
 * ``question``: one sentence, required.
 * ``context``: 2 to 4 short plain lines for the reader (what the matter is,
@@ -29,6 +29,10 @@ a view renders it as a card with one button per option:
   None at all: the person answers in free text.
 * ``recommendation``: the key of the option the agent recommends.
 * ``deadline``: when the answer is needed, normalized to ISO-8601 UTC.
+* ``links``: the sources the reader opens to decide (a Jira ticket, a pull
+  request, a document), http(s) only, up to :data:`MAX_LINKS`; rendered as
+  buttons under the question. When the agent gives none, the write path fills
+  them from the item's own text (:func:`with_source_links`, #834): no model.
 
 The question, the context and the option texts are read by a person: they
 are refused when they carry what only an agent reads (a timestamp, an id, a
@@ -46,8 +50,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 MAX_QUESTION_CHARS = 500
 MAX_CONTEXT_CHARS = 800
@@ -55,10 +61,12 @@ MAX_OPTIONS = 6
 MAX_KEY_CHARS = 40
 MAX_LABEL_CHARS = 120
 MAX_EFFECT_CHARS = 400
+MAX_LINKS = 6
+MAX_URL_CHARS = 1000
 
 ASK_FIELDS_MESSAGE = (
     "ask is {question, context?, options?: [{key, label, effect?}], recommendation?: an option key, "
-    "deadline?: ISO-8601}"
+    "deadline?: ISO-8601, links?: [{label, url}]}"
 )
 
 # What a person never reads on a decision card (#776): each pattern with what
@@ -95,7 +103,8 @@ _UNREADABLE: tuple[tuple[re.Pattern[str], str], ...] = (
 READABLE_ASK_EXAMPLE = (
     'good: {"question": "Post Legal\'s comment asking the supplier for the 4 missing documents?", '
     '"context": "The contract review found 4 documents missing. Go posts the prepared comment; '
-    'Edit lets you change it first; No closes the review as is."}; bad: {"question": "CARD SENT '
+    'Edit lets you change it first; No closes the review as is.", "links": [{"label": "FIN-796", '
+    '"url": "https://example.atlassian.net/browse/FIN-796"}]}; bad: {"question": "CARD SENT '
     '2026-11-20T11:43:58Z (msg 1795175038574): waiting for GO / EDIT / NO, timer legal:fin-796-reminder"}'
 )
 
@@ -170,6 +179,97 @@ def _options(value: object) -> list[dict[str, str]]:
     return out
 
 
+_URL = re.compile(r"https?://[^\s<>()\[\]\"'`]+")
+_JIRA_KEY = re.compile(r"/browse/([A-Z][A-Z0-9]+-\d+)")
+_GITHUB = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/(pull|issues)/(\d+)")
+
+
+def _link_label(url: str) -> str | None:
+    """The button text of a source URL the write path recognises; ``None`` for any other URL."""
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return None
+    if host.endswith(".atlassian.net"):
+        key = _JIRA_KEY.search(url)
+        return key.group(1) if key else "Jira"
+    if host == "github.com":
+        match = _GITHUB.match(url)
+        if match:
+            kind = "PR" if match.group(3) == "pull" else "Issue"
+            return f"{match.group(2)} {kind} #{match.group(4)}"
+        return None
+    if host in ("notion.so", "notion.site") or host.endswith((".notion.so", ".notion.site")):
+        return "Notion page"
+    if host == "concordnow.com" or host.endswith(".concordnow.com"):
+        return "Concord document"
+    return None
+
+
+def _strings(value: object) -> Iterator[str]:
+    """Every string of *value*, nested dict values and list items included, decoded (no JSON escapes)."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _strings(item)
+    elif value is not None:
+        yield str(value)
+
+
+def source_links(*texts: object) -> list[dict[str, str]]:
+    """The Jira, GitHub, Notion and Concord links found in *texts*, first seen first (#834).
+
+    Deterministic, no model: what the write path and the backfill put in
+    ``ask.links`` when the agent wrote none. A payload is read string by string,
+    so a JSON escape (``\\n``) never runs into a URL.
+    """
+    links: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for text in texts:
+        for raw in _strings(text):
+            for match in _URL.finditer(raw):
+                url = match.group(0).rstrip(".,;:!?")[:MAX_URL_CHARS]
+                label = _link_label(url)
+                if label is None or url in seen:
+                    continue
+                seen.add(url)
+                links.append({"label": label, "url": url})
+                if len(links) >= MAX_LINKS:
+                    return links
+    return links
+
+
+def with_source_links(ask: dict[str, Any] | None, *texts: object) -> dict[str, Any] | None:
+    """*ask* with ``links`` filled from *texts* when it has none; *ask* unchanged otherwise."""
+    if not isinstance(ask, dict) or ask.get("links"):
+        return ask
+    links = source_links(*texts)
+    return {**ask, "links": links} if links else ask
+
+
+def _links(value: object) -> list[dict[str, str]]:
+    if value in (None, "", []):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("ask.links must be a list of {label, url}")
+    if len(value) > MAX_LINKS:
+        raise ValueError(f"ask.links lists at most {MAX_LINKS} links ({len(value)} given)")
+    out: list[dict[str, str]] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise ValueError("ask.links must be a list of {label, url}")
+        url = str(raw.get("url") or "").strip()[:MAX_URL_CHARS]
+        if not re.match(r"^https?://\S+$", url):
+            raise ValueError(f"ask.links url {url!r} is not an http(s) address")
+        label = _text(raw.get("label"), MAX_LABEL_CHARS) or _link_label(url) or url.split("/", 3)[2]
+        out.append({"label": label, "url": url})
+    return out
+
+
 def normalize_ask(value: object) -> dict[str, Any] | None:
     """The ask as stored, ``None`` when cleared (``{}``, ``null``, blank text).
 
@@ -189,7 +289,7 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
         raise ValueError(ASK_FIELDS_MESSAGE)
     if not value:
         return None
-    unknown = sorted(set(value) - {"question", "context", "options", "recommendation", "deadline"})
+    unknown = sorted(set(value) - {"question", "context", "options", "recommendation", "deadline", "links"})
     if unknown:
         raise ValueError(f"ask has unknown field(s) {', '.join(unknown)}: {ASK_FIELDS_MESSAGE}")
     question = _text(value.get("question"), MAX_QUESTION_CHARS)
@@ -215,6 +315,9 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
     deadline = _deadline(value.get("deadline"))
     if deadline:
         ask["deadline"] = deadline
+    links = _links(value.get("links"))
+    if links:
+        ask["links"] = links
     return ask
 
 
@@ -222,16 +325,18 @@ def person_ask_missing(ask: object) -> list[str]:
     """What a decision card for a person still lacks in *ask* (#776).
 
     An agent that parks an item for a person (``needs_human``) writes the card
-    the person reads: a question, the context and at least two options.
-    Empty when the ask is complete.
+    the person reads: a question, the context, at least two options and the
+    one it recommends (#834). Empty when the ask is complete.
     """
     if not isinstance(ask, dict) or not str(ask.get("question") or "").strip():
-        return ["ask.question", "ask.context", "ask.options (at least 2)"]
+        return ["ask.question", "ask.context", "ask.options (at least 2)", "ask.recommendation"]
     missing: list[str] = []
     if not str(ask.get("context") or "").strip():
         missing.append("ask.context")
     if len(ask.get("options") or []) < 2:
         missing.append("ask.options (at least 2)")
+    if not str(ask.get("recommendation") or "").strip():
+        missing.append("ask.recommendation")
     return missing
 
 
@@ -259,4 +364,6 @@ def ask_lines(ask: object) -> list[str]:
         lines.append(f"    - [{option.get('key')}] {option.get('label')}{mark}{effect}")
     if ask.get("deadline"):
         lines.append(f"    - answer needed by {ask['deadline']}")
+    for link in ask.get("links") or []:
+        lines.append(f"    - source: {link.get('label')} {link.get('url')}")
     return lines

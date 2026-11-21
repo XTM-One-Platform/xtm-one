@@ -26,7 +26,7 @@ test("the flow builder hands its paused notice the Owner and access URL", () => 
   const props = call.slice(0, call.indexOf("/>"));
   assert.match(props, /entity="flow"/);
   assert.match(props, /ownerAccessHref=\{ownerAccessUrl\(flow\.id\)\}/);
-  assert.equal(ownerAccessUrl("f1"), "/flows/f1/builder?panel=owner-access");
+  assert.equal(ownerAccessUrl("f1"), "/flows/library/f1?panel=owner-access");
 });
 
 test("the notice links to it through the router, for an admin only", () => {

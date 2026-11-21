@@ -71,8 +71,8 @@ const OBJECT_TYPE_CONFIG: Record<PlatformObjectType, { label: string; icon: Reac
   // An enrolled machine - an XTM One Desktop install or a headless runner.
   // The Desktop page lists only YOUR fleet; this is where an
   // admin sees every machine, whoever enrolled it.
-  runner: { label: "Machine", icon: MonitorSmartphone, route: "/runners/:id" },
-  flow: { label: "Flow", icon: Workflow, route: "/flows/:id/builder" },
+  runner: { label: "Machine", icon: MonitorSmartphone, route: "/desktop/runners/:id" },
+  flow: { label: "Flow", icon: Workflow, route: "/flows/library/:id" },
   dataset: { label: "Dataset", icon: Database, route: "/evaluations/datasets/:id" },
   evaluation: { label: "Evaluation", icon: FlaskConical, route: "/evaluations/:id" },
   variable: { label: "Variable", icon: Braces, route: "/connections/variables/:id" },

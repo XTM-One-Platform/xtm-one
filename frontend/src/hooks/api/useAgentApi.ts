@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEntityListScope } from "@/hooks/useEntityListScope";
-import { api } from "@/lib/api";
+import { api, notFoundIsOrdinary } from "@/lib/api";
 import { REFETCH_INTERVAL_SLOW, REFETCH_INTERVAL_FAST } from "@/lib/constants";
 import { entityListKey, entityListPath } from "@/lib/entity-list-scope";
 import { dropFromFlowNodeCatalog, syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
@@ -84,11 +84,16 @@ export function useAgents(options?: EntityListOptions) {
   });
 }
 
-export function useAgent(agentId: string) {
+export function useAgent(
+  agentId: string,
+  /** A 404 is an answer (no data, no retry), not a fault thrown to the page boundary: the detail page renders Page not found (#797 S4). */
+  options: { notFoundIsOrdinary?: boolean } = {},
+) {
   return useQuery<Agent>({
     queryKey: ["agent", agentId],
     queryFn: () => api.get(`/agents/${agentId}`),
     enabled: !!agentId,
+    ...(options.notFoundIsOrdinary ? notFoundIsOrdinary : {}),
   });
 }
 

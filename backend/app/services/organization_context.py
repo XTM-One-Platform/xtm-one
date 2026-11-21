@@ -354,6 +354,16 @@ class AcceptedRisk(BaseModel):
     reason: str = Field(default="", max_length=1000)
 
 
+class SeveritySla(BaseModel):
+    """Hours to fix a CTEM case of each severity (#847): P1 a day, P2 three days, P3 thirty days."""
+
+    model_config = _Strict
+
+    p1: int = Field(default=24, ge=1, le=24 * 365)
+    p2: int = Field(default=72, ge=1, le=24 * 365)
+    p3: int = Field(default=720, ge=1, le=24 * 365)
+
+
 class PrioritizationPolicy(BaseModel):
     """The explicit rules the CTEM prioritization funnel and its agents apply (#11543).
 
@@ -375,6 +385,13 @@ class PrioritizationPolicy(BaseModel):
     min_crown_jewel_criticality: Literal["", "low", "medium", "high", "critical"] = ""
     exclusions: list[PolicyExclusion] = Field(default_factory=list, max_length=200)
     accepted_risks: list[AcceptedRisk] = Field(default_factory=list, max_length=500)
+    #: CTEM scope gate (#847): a confirmed signal opens a case when its subject's criticality (assets,
+    #: crown jewels, risk scenarios) is at least this; below, it goes to the watchlist.
+    scope_min_criticality: Literal["low", "medium", "high", "critical"] = "high"
+    #: CTEM scope gate (#847): a case also needs an OpenCRQ risk scenario holding the subject.
+    require_risk_scenario: bool = False
+    #: CTEM scope gate (#847): the time to fix a case of each severity, in hours (the case's ``sla_due_at``).
+    sla_hours: SeveritySla = Field(default_factory=SeveritySla)
 
 
 #: The values the settings page proposes for a first policy (never applied unless saved).
@@ -794,10 +811,11 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
 def exposure_counts(profile: OrganizationProfile) -> dict[str, int]:
     """The size of each part #11543 added (the policy counts its explicit rules)."""
     policy = profile.prioritization_policy
+    defaults = PrioritizationPolicy()
     rules = sum(
         1
-        for name, value in policy.model_dump().items()
-        if name not in ("exclusions", "accepted_risks") and value != PrioritizationPolicy.model_fields[name].default
+        for name in PrioritizationPolicy.model_fields
+        if name not in ("exclusions", "accepted_risks") and getattr(policy, name) != getattr(defaults, name)
     )
     return {
         "assets_exposure": len(profile.assets_exposure),

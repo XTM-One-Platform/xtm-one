@@ -379,7 +379,7 @@ export function FlowExecutionRow({ run, typeBadge }: { run: FlowRunSummary; type
   const errorTone = runErrorIsNeutral(run) ? "neutral" : "error";
   // The row shows the status, the trigger, the line and the run id; "+N" counts the rest.
   const hiddenFacts = Math.max(0, facts.length - 3 - (run.error || summary ? 1 : 0));
-  const open = () => navigate(`/flows/${run.flow_id}/builder?run=${run.id}`);
+  const open = () => navigate(`/flows/library/${run.flow_id}?run=${run.id}`);
   const trigger = t_i18n(run.trigger_type.replace("_", " "));
 
   return (

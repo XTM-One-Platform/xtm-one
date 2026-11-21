@@ -1249,14 +1249,29 @@ def _patch_item(
     return out
 
 
-def unset_archive(value: dict, update: dict | None, *, source_key: str, at: str) -> list[dict]:
+#: Fields that identify an item on their own, kept in an unset archive's
+#: ``match`` whatever the patch matched on (a bulk unset matched on a status).
+_UNSET_ARCHIVE_IDENTITY_FIELDS = ("id", "key", "slug")
+
+
+def unset_archive(
+    value: dict,
+    update: dict | None,
+    *,
+    source_key: str,
+    at: str,
+    item_key: str | None = None,
+) -> list[dict]:
     """The archive objects an ``update``'s ``unset`` would remove from *value*.
 
     One object per matched item that holds at least one of the unset fields:
     ``{source_key, list, match, archived_at, fields}``, ``match`` being the
-    item's values of the patch's match fields (its identity) and ``fields``
-    the values the unset drops. The caller appends them to an archive key
-    before it writes the update, so a field leaves the live list only once
+    item's values of the patch's match fields plus its own identity (the
+    retention's *item_key*, ``id``, ``key`` or ``slug`` when it holds them),
+    so an item unset by a bulk match such as ``{"state": "done"}`` is still
+    found in the archive by its key, and ``fields`` the values the unset
+    drops. The caller appends them to an archive key before it writes the
+    update, so a field leaves the live list only once
     its text is stored elsewhere. Nothing to unset answers an empty list.
     """
     archived: list[dict] = []
@@ -1276,6 +1291,9 @@ def unset_archive(value: dict, update: dict | None, *, source_key: str, at: str)
                 if not removed:
                     continue
                 identity = {f: item[f] for m in matches for f in m if f in item}
+                for f in (item_key, *_UNSET_ARCHIVE_IDENTITY_FIELDS):
+                    if f and f in item and f not in identity:
+                        identity[f] = item[f]
                 archived.append(
                     {
                         "source_key": source_key,
@@ -1286,6 +1304,18 @@ def unset_archive(value: dict, update: dict | None, *, source_key: str, at: str)
                     }
                 )
     return archived
+
+
+def _replacement_record(
+    old: object, new: dict[str, Any], fields: tuple[str, ...] | None, identity: list[Any] | None
+) -> dict[str, Any]:
+    """What a ``unique_by`` replacement overwrote: the identity, the fields lost and changed."""
+    old_fields = old if isinstance(old, dict) else {}
+    return {
+        "identity": dict(zip(fields or (), identity or [], strict=False)),
+        "lost": sorted(k for k in old_fields if k not in new),
+        "changed": sorted(k for k in old_fields if k in new and old_fields[k] != new[k]),
+    }
 
 
 def _identity(item: object, fields: tuple[str, ...] | None) -> list | None:
@@ -1307,6 +1337,7 @@ def apply_list_ops(
     protect: dict[str, object] | None = None,
     overflow_appends: list[dict[str, Any]] | None = None,
     fold: dict | None = None,
+    replaced_items: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[dict, dict[str, dict[str, int]]]:
     """Apply list removals, field updates, appends, folds then trims to *value*; answer it and the counts.
 
@@ -1347,6 +1378,11 @@ def apply_list_ops(
     sharing those values is merged into the first one (:func:`fold_list_items`),
     counted as ``folded``, so duplicates an older write left are merged on the
     server instead of read, merged by hand and rewritten.
+    ``replaced_items`` receives, per list, one record per item a ``unique_by``
+    append replaced with a different one: its identity, the fields the stored
+    item had that the appended one lacks (``lost``) and the fields whose value
+    changed (``changed``), so a caller that read no match and appended a new
+    item sees that it overwrote one another run wrote since its read.
     """
     append = _list_ops_shape(append, "append")
     remove = _list_ops_shape(remove, "remove")
@@ -1417,6 +1453,10 @@ def apply_list_ops(
             if same:
                 if current[same[0]] != item or len(same) > 1:
                     replaced += 1
+                    if replaced_items is not None:
+                        replaced_items.setdefault(key, []).append(
+                            _replacement_record(current[same[0]], item, fields, identity)
+                        )
                 current[same[0]] = item
                 for i in reversed(same[1:]):
                     del current[i]
@@ -2471,6 +2511,7 @@ async def upsert_state(
     expires = _lifecycle_datetime(expires_at)
     condition = None if terminal_condition is None else (terminal_condition.strip()[:500] or "")
     list_changes: dict[str, dict[str, int]] = {}
+    replaced_items: dict[str, list[dict[str, Any]]] = {}
     unset = [k for k in dict.fromkeys(unset_keys or []) if isinstance(k, str) and k]
     unset_done: list[str] = []
     # Dated notes the hold check writes with the change (a takeover).
@@ -2521,6 +2562,7 @@ async def upsert_state(
                 new_value.update(value)
         policy = policy_set if policy_set is not None else (getattr(state, "retention", None) or {})
         overflow_appends.clear()
+        replaced_items.clear()
         if path_list_ops:
             # The list changes apply to the lists of the object under the path,
             # under the row lock: two runs changing one nested list never drop
@@ -2541,10 +2583,14 @@ async def upsert_state(
                 update=update,
                 fold=fold,
                 guard_trim=guard_trim,
+                replaced_items=replaced_items,
             )
             new_value = write_at_path(base_value, value_path, nested, replace=True)
             list_changes.clear()
             list_changes.update({f"{'.'.join(value_path)}.{name}": counts for name, counts in changes.items()})
+            nested_replaced = {f"{'.'.join(value_path)}.{name}": rows for name, rows in replaced_items.items()}
+            replaced_items.clear()
+            replaced_items.update(nested_replaced)
         elif append or remove or keep_last or update or fold:
             dropped: dict[str, list] = {}
             base_value = new_value if new_value is not None else dict(state.value or {})
@@ -2560,6 +2606,7 @@ async def upsert_state(
                 dropped=dropped,
                 protect=retention_protect(policy, base_value),
                 overflow_appends=overflow_appends,
+                replaced_items=replaced_items,
             )
             if expect_dropped is not None and dropped != expect_dropped:
                 raise ValueError(
@@ -2716,6 +2763,8 @@ async def upsert_state(
         out = serialize_state(state)
         if list_changes:
             out["list_changes"] = dict(list_changes)
+        if replaced_items:
+            out["replaced_items"] = {k: list(v) for k, v in replaced_items.items()}
         if unset:
             out["unset_keys"] = list(unset_done)
         warning = size_warning(state.value)

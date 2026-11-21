@@ -548,7 +548,7 @@ Health surface that links there is drawn for administrators only, either by its 
 because only an administrator page renders it (Overview, Signals, analysis panel, the
 Settings blocks). The surfaces open to everyone (agent improvement row, flow panel,
 improvements inbox, cycles list, profile opt-out) link only to the target's own page
-(`/agents/<id>`, `/flows/<id>/builder`, `/assignments/<id>`), which has no route guard and
+(`/agents/<id>`, `/flows/library/<id>`, `/assignments/<id>`), which has no route guard and
 checks access itself. The guard lists every Health file with its audience: a new file fails
 until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
 its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
@@ -822,7 +822,7 @@ decision written here).
 | Slice | Content | UI |
 |---|---|---|
 | S14 spec | This section | no |
-| S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k) | no |
+| S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2 the member's seed, triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i) | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now" | yes |
 | S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n | yes |

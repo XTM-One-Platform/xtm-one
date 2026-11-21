@@ -139,7 +139,7 @@ export function BuilderToolbar({
     // Wraps instead of clipping: at 1024 the actions moved to a
     // second row rather than hiding Run past the edge and squeezing the name.
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-elevation-subtle layer-1 bg-elevation-default px-3 py-2">
-      <BackButton to="/flows" label="Back to Flows" />
+      <BackButton to="/flows/library" label="Back to Flows" />
 
       <Input
         value={draftName}
