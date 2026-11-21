@@ -71,6 +71,7 @@ import app.models.health_cycle
 import app.models.health_dataset
 import app.models.health_experiment
 import app.models.health_finding
+import app.models.health_module_analyst
 import app.models.health_pet
 import app.models.improvement_proposal
 import app.models.integration

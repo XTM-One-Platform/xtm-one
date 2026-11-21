@@ -54,7 +54,8 @@ from app.services.health.fleet_seed import AssignmentKey, fleet_assignment
 logger = logging.getLogger(__name__)
 
 CycleTrigger = Literal["schedule", "signal", "on_demand"]
-TargetType = Literal["agent", "flow", "assignment"]
+#: ``module``: a registered platform (``PlatformRegistration.id``), the Module Analyst's target (#101 S14).
+TargetType = Literal["agent", "flow", "assignment", "module"]
 ScheduleKey = Literal["memory", "quality", "flows", "digest"]
 SCHEDULE_KEYS: Final[tuple[str, ...]] = get_args(ScheduleKey)
 
@@ -149,6 +150,10 @@ async def _target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.U
     from app.models.flow import Flow
     from app.services.health.consent import in_supervision_scope
 
+    if target_type == "module":
+        from app.services.health.module_analyst import registration_in_scope
+
+        return await registration_in_scope(db, target_id)
     if target_type == "agent":
         if (
             await db.execute(select(Agent.id).where(Agent.id == target_id, Agent.is_sandbox.is_(False)))
