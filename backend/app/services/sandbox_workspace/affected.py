@@ -280,6 +280,48 @@ def marked_with(text: str, markers: Iterable[str]) -> list[str]:
     return [m for m in markers if re.search(r"\bpytest\.mark\." + re.escape(m) + r"\b", text)]
 
 
+def selected_markers(argv: Iterable[str]) -> tuple[str, ...]:
+    """The pytest markers a check's *argv* selects with a plain ``-m X`` (or ``-m "X or Y"``).
+
+    A ``not``, an ``and`` or any other expression answers none: only a check that runs every file marked X
+    is named to run them.
+    """
+    args = list(argv)
+    found: list[str] = []
+    for i, arg in enumerate(args):
+        if i and posixpath.basename(args[i - 1]).startswith("python"):
+            continue  # `python -m pytest`: a module, not a marker
+        if arg == "-m" and i + 1 < len(args):
+            expression = args[i + 1]
+        elif arg.startswith("-m") and len(arg) > 2:
+            expression = arg[2:].lstrip("=")
+        else:
+            continue
+        names = [p.strip() for p in expression.split(" or ")]
+        if all(_MARKER_NAME.fullmatch(n) and n not in ("not", "and", "or") for n in names):
+            found.extend(names)
+    return tuple(dict.fromkeys(found))
+
+
+def marker_runners(
+    checks: Iterable[tuple[str, Iterable[str], str]], cwd: str, markers: Iterable[str]
+) -> dict[str, list[str]]:
+    """Marker -> the checks (*checks*: name, argv, directory) of the directory *cwd* that select it with ``-m``.
+
+    What the answer names for a file a check's ``-m "not X"`` deselects (``integration`` -> ``backend-integration``).
+    """
+    wanted = list(markers)
+    here = cwd.strip("/")
+    runners: dict[str, list[str]] = {}
+    for name, argv, directory in checks:
+        if directory.strip("/") != here:
+            continue
+        for marker in selected_markers(argv):
+            if marker in wanted:
+                runners.setdefault(marker, []).append(name)
+    return runners
+
+
 def is_source_scan(text: str, scans: Iterable[re.Pattern[str]] = ()) -> bool:
     """Whether a test file's *text* walks a directory (``readdirSync``, ``import.meta.glob``...), carries
     :data:`SOURCE_SCAN_MARKER`, or matches one of the check's own *scans* (``affected_scan_patterns``)."""
@@ -786,6 +828,8 @@ class Selection:
     #: Selected test file -> the markers it applies that the check's ``-m "not X"`` deselects: pytest collects
     #: the file and runs none (or only part) of its tests, so the answer names them and the marker.
     deselected: dict[str, list[str]] = field(default_factory=dict)
+    #: Deselected marker -> the checks of the same directory that select it (:func:`marker_runners`).
+    runners: dict[str, list[str]] = field(default_factory=dict)
 
     def runnable(self) -> list[str]:
         """The selected test files this checkout can run: every one but those reading a directory it lacks."""
@@ -832,7 +876,8 @@ class Selection:
                 + ", which this check does not run: "
                 + ", ".join(files[:NAMED_IN_NOTE])
                 + (f", +{len(files) - NAMED_IN_NOTE} more" if len(files) > NAMED_IN_NOTE else "")
-                + ". Run them with the check that selects that marker (args: these files) before the push."
+                + ". "
+                + self._runner_sentence(markers)
             )
         if self.scoped:
             rows.append(
@@ -842,6 +887,19 @@ class Selection:
                 + "."
             )
         return "\n".join([head, *rows, *self.notes])
+
+    def _runner_sentence(self, markers: list[str]) -> str:
+        """How to run the deselected files: the check naming each marker, else the generic advice."""
+        named = [f"{', '.join(self.runners[m])} ({m})" for m in markers if self.runners.get(m)]
+        if not named:
+            return "Run them with the check that selects that marker (args: these files) before the push."
+        missing = [m for m in markers if not self.runners.get(m)]
+        return (
+            "Run them with "
+            + "; ".join(named)
+            + " (args: these files) before the push."
+            + (f" No check of this directory selects {', '.join(missing)}." if missing else "")
+        )
 
 
 async def affected_tests(
