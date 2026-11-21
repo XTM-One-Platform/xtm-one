@@ -29,6 +29,7 @@ from app.models.flow import Flow
 from app.models.flow_run import FlowRun
 from app.models.user import User
 from app.models.work_item import WorkItem
+from app.services import decision_router
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
@@ -182,6 +183,40 @@ async def test_a_second_pause_cancels_the_first_open_decision(sessions):
             select(func.count()).select_from(Decision).where(Decision.source_id == item.id, Decision.status == "open")
         )
         assert open_count == 1
+
+
+async def test_refusal_is_audited_after_the_rollback_on_a_real_session(sessions, monkeypatch):
+    from fastapi import HTTPException
+
+    make, _ = sessions
+    async with make() as session:
+        user, _agent = await _user_and_agent(session)
+        item = WorkItem(id=uuid.uuid4(), user_id=user.id, title="Refused", status="open", needs_human=True)
+        session.add(item)
+        await session.commit()
+        user_id, item_id = user.id, item.id
+
+    async def _refuse(*args, **kwargs):
+        raise HTTPException(status_code=403, detail="not yours")
+
+    monkeypatch.setattr(decision_router, "_dispatch", _refuse)
+    async with make() as session:
+        # The user and the decision row are loaded on the request session: the
+        # rollback of the refusal audit expires both.
+        person = await session.get(User, user_id)
+        with pytest.raises(HTTPException) as exc:
+            await decision_router.answer_decision(session, f"work_item:{item_id}", person, option="A", surface="bell")
+        assert exc.value.status_code == 403
+    async with make() as session:
+        [row] = await _decisions(session, item_id)
+        assert row.status == "open"
+        assert await _events(session, row.id) == ["asked", "refused"]
+        refused = (
+            await session.execute(
+                select(DecisionEvent).where(DecisionEvent.decision_id == row.id, DecisionEvent.event == "refused")
+            )
+        ).scalar_one()
+        assert (refused.actor_id, refused.surface, refused.detail["status"]) == (user_id, "bell", 403)
 
 
 async def test_downgrade_on_a_seeded_database_then_upgrade_again(sessions):

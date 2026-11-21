@@ -102,12 +102,17 @@ def run_response(ask: dict[str, Any] | None, option: str | None, text: str | Non
 async def _record_refusal(db: AsyncSession, row: Decision | None, user: Any, surface: str, exc: HTTPException) -> None:
     if row is None:
         return
+    # The rollback expires every instance of the session (the row, and the user
+    # when this request loaded it): read their ids first, a lazy refresh on an
+    # AsyncSession raises MissingGreenlet.
+    decision_id = row.id
+    actor_id = getattr(user, "id", None)
     await db.rollback()
     db.add(
         DecisionEvent(
-            decision_id=row.id,
+            decision_id=decision_id,
             event="refused",
-            actor_id=getattr(user, "id", None),
+            actor_id=actor_id,
             surface=surface,
             detail={"status": exc.status_code, "reason": str(exc.detail)[:300]},
         )
