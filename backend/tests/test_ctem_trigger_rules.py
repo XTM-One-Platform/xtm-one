@@ -191,3 +191,18 @@ def test_pir_filter_reason_is_a_no_op_without_the_rule_or_on_other_deliveries() 
     payload = _flagged("vulnerability", [("p1", 10)])
     assert asyncio.run(rules.pir_filter_reason(None, {}, payload)) is None
     assert asyncio.run(rules.pir_filter_reason(None, {"pir_min_score": "policy"}, _has("nginx"))) is None
+
+
+def test_pir_filter_reason_drops_playbook_deliveries_of_other_entity_types() -> None:
+    import asyncio
+
+    report = _flagged("report", [("p1", 90)])
+    typed = {"pir_min_score": "policy", "provision": {"entity_types": ["Vulnerability"]}}
+    reason = asyncio.run(rules.pir_filter_reason(None, typed, report))
+    assert reason is not None and "not one of" in reason
+    untyped = {"pir_min_score": "policy"}
+    reason = asyncio.run(rules.pir_filter_reason(None, untyped, report))
+    assert reason is not None and "no PIR score threshold" in reason
+    threat_cfg = {"pir_min_score": "policy", "provision": {"entity_types": ["Intrusion-Set"]}}
+    reason = asyncio.run(rules.pir_filter_reason(None, threat_cfg, _flagged("vulnerability", [("p1", 90)])))
+    assert reason is not None and "not one of" in reason

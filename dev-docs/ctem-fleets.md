@@ -1063,8 +1063,9 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   it cannot read drops the delivery naming why (a narrowing rule never widens
   on an outage). A delivery whose entity is not of the listener's
   `provision.entity_types` is dropped too, since one playbook per listener
-  delivers every flag of the profile PIRs. Seeded on "Vulnerability flagged
-  in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
+  delivers every flag of the profile PIRs, and so is any type the policy has
+  no threshold for (a report, an indicator): the rule fails closed. Seeded
+  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
   the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
   object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with

@@ -241,12 +241,18 @@ async def pir_filter_reason(
     """:func:`pir_drop_reason` for a trigger declaring the PIR rule, the live score read; ``None`` otherwise."""
     if not pir_rule_of(trigger_config):
         return None
-    kind = pir_kind(payload)
-    if not kind:
+    if not isinstance(payload, Mapping) or payload.get("xtm_source") != "pir_playbook":
         return None
     wrong_type = type_drop_reason(trigger_config, payload)
     if wrong_type is not None:
         return wrong_type
+    kind = pir_kind(payload)
+    if not kind:
+        # Fail closed: a playbook delivery of a type with no policy threshold never starts a run.
+        data = payload.get("data")
+        raw = data.get("type") if isinstance(data, Mapping) else None
+        name = raw.strip().lower() if isinstance(raw, str) and raw.strip() else "an entity"
+        return f"pir_min_score: {name} has no PIR score threshold in the policy"
     pir_ids = delivered_pir_ids(payload)
     if not pir_ids:
         return pir_drop_reason(kind, 0, {})
