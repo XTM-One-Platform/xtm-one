@@ -11,9 +11,9 @@ import { useNavigate } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { NotFoundState } from "@/components/ui/not-found-state";
 
-/** The design-system compass, sized like the other not-found icons. */
+/** The design-system compass, sized by NotFoundState's class like the other not-found icons. */
 function NotFoundIcon({ className }: { className?: string }) {
-  return <Icon name="compass" size={40} className={className} aria-hidden />;
+  return <Icon name="compass" className={className} aria-hidden />;
 }
 
 export default function RouteNotFound() {
