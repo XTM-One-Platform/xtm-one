@@ -941,15 +941,18 @@ describe("Work Items list in French", () => {
   });
 });
 
+// The URL the tab last wrote, read by the probe beside it (a mutated holder, never a reassigned variable).
+const LOCATION = { search: "" };
+function LocationProbe() {
+  const { search } = useLocation();
+  LOCATION.search = search;
+  return null;
+}
+
 // Clear all filters clears every filter of the page, not only the table's own keys (#1001):
 // the view, owner, fleet, status and search leave the URL in one write; the open item, the
 // segment and the sort stay.
 describe("Work Items Clear all filters", () => {
-  let search = "";
-  function LocationProbe() {
-    search = useLocation().search;
-    return null;
-  }
   const renderAt = (query: string) =>
     renderWithProviders(
       <MemoryRouter initialEntries={[`/operations?vis=mine${query}`]}>
@@ -962,7 +965,7 @@ describe("Work Items Clear all filters", () => {
     // The fleet key waits on the reader's fleet access here; clearFilterParams' own test covers it.
     renderAt("&view=waiting&agent=agent-1&status=blocked&wi_q=deploy&q=old&stale=stale&wi_sort=due:asc&item=regular&wi_page=2");
     fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
-    const params = new URLSearchParams(search);
+    const params = new URLSearchParams(LOCATION.search);
     for (const key of ["view", "agent", "status", "wi_q", "q", "stale", "wi_page"]) expect(params.has(key), key).toBe(false);
     expect(params.get("vis")).toBe("mine");
     expect(params.get("item")).toBe("regular");
@@ -975,7 +978,7 @@ describe("Work Items Clear all filters", () => {
     try {
       renderAt("&view=waiting&status=blocked");
       fireEvent.click(screen.getByTestId("work-items-empty-clear-all"));
-      const params = new URLSearchParams(search);
+      const params = new URLSearchParams(LOCATION.search);
       expect(params.has("view")).toBe(false);
       expect(params.has("status")).toBe(false);
     } finally {
@@ -987,11 +990,6 @@ describe("Work Items Clear all filters", () => {
 // The quick filters on the row (#1001): Waiting for me and Stale with the server's count,
 // the same `view` key as the Filters pill, a second click clears it.
 describe("Work Items quick filters", () => {
-  let search = "";
-  function LocationProbe() {
-    search = useLocation().search;
-    return null;
-  }
   it("toggles the view from the row, synced with the Filters pill", () => {
     renderWithProviders(
       <MemoryRouter initialEntries={["/operations?vis=mine"]}>
@@ -1004,14 +1002,14 @@ describe("Work Items quick filters", () => {
     const waiting = within(quick).getByRole("button", { name: /Waiting for me/ });
     expect(waiting.textContent).toContain("2");
     fireEvent.click(waiting);
-    expect(new URLSearchParams(search).get("view")).toBe("waiting");
+    expect(new URLSearchParams(LOCATION.search).get("view")).toBe("waiting");
     expect(lastListRead()).toMatchObject({ waiting_for_me: true });
     expect(within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     const view = within(screen.getByRole("group", { name: "Filters" })).getByRole("group", { name: "View filter" });
     expect(within(view).getByRole("button", { name: "Waiting for me" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ }));
-    expect(new URLSearchParams(search).has("view")).toBe(false);
+    expect(new URLSearchParams(LOCATION.search).has("view")).toBe(false);
   });
 
   it("marks the rows that wait for the reader", () => {
