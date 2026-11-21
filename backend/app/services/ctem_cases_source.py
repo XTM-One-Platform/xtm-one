@@ -41,6 +41,7 @@ from app.integrations.providers.opencti._common import _graphql
 from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
+from app.services import ctem_fixed_version as fixed_versions
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
     _OCTI_STACK_SOFTWARE,
@@ -146,13 +147,22 @@ def opencti_issues(
     stack: list[dict[str, str]],
     relations: list[dict[str, Any]],
     remediations: list[dict[str, Any]],
+    provider_ranges: dict[str, list[fixed_versions.AffectedRange]] | None = None,
 ) -> list[rules.SourceIssue]:
     """Build the OpenCTI issues from the raw nodes (pure: the reader feeds it).
 
     One issue per (vulnerability, matched stack product); the product and
     vendor are the stack entry's, so the key folds to what the profile lists.
     A vulnerability with a Course of Action takes it (R1, first by name).
+
+    The fixed version (CTEM-11) comes from, in order, OpenCTI's affected
+    ranges (hook, empty until OpenCTI carries them), a course of action that
+    is a plain upgrade, the ranges a connected enrichment provider gave in
+    *provider_ranges* (keyed ``<VULNERABILITY NAME>|<stack label, lower case>``), else
+    it stays unknown. With the stack entry's declared version, an issue outside
+    every known range is marked not affected.
     """
+    provider_ranges = provider_ranges or {}
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, str]] = {}
     for node in software:
@@ -184,6 +194,13 @@ def opencti_issues(
         seen.add(pair)
         name = (vuln.get("name") or "").strip() or vuln["id"]
         coa = coa_of.get(vuln["id"])
+        installed = (entry.get("version") or "").strip() or None
+        resolution = fixed_versions.resolve(
+            installed=installed,
+            opencti=fixed_versions.opencti_ranges(vuln),
+            course_of_action_version=fixed_versions.version_from_course_of_action(coa[1] if coa else None),
+            provider=provider_ranges.get(f"{name.upper()}|{entry['label'].lower()}", ()),
+        )
         out.append(
             rules.SourceIssue(
                 source="opencti",
@@ -199,6 +216,9 @@ def opencti_issues(
                 epss=_float(vuln.get("x_opencti_epss_score")),
                 kev=bool(vuln.get("x_opencti_cisa_kev")),
                 first_seen_at=_when(vuln.get("created_at")),
+                fixed_version=resolution.fixed_version,
+                installed_version=installed,
+                not_affected=resolution.not_affected,
             )
         )
     return out
@@ -583,4 +603,10 @@ async def recompute_for_user(
     await db.commit()
     await forget_view(str(user_id), vertical)
     answer.update(applied=True, issues=len(read.issues), **counts)
+    # Members the declared version keeps out of every case (CTEM-11), listed with the reason.
+    answer["not_affected_issues"] = [
+        {"issue": i.member_id, "name": i.name, "product": i.product, "reason": i.not_affected}
+        for i in read.issues
+        if i.not_affected
+    ][:50]
     return answer

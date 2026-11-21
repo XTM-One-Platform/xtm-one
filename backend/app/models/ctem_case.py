@@ -159,6 +159,7 @@ class CtemCaseEvent(Base):
     #: A user id, an agent id, or ``system``.
     actor: Mapped[str] = mapped_column(String(64), nullable=False)
     #: created | state | owner | due | issue_added | issue_closed | issue_reopened | merge | split | note
+    #: | retargeted (a folded upgrade target moved, CTEM-11)
     #: | signal | validation | ticket | sla_breached (#857)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.

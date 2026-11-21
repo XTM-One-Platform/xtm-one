@@ -85,6 +85,9 @@ async def apply_recompute(
     """
     now = now or datetime.now(UTC)
     issues = list(issues)
+    # A member the declared version puts outside every affected range is closed with that reason (CTEM-11).
+    not_affected = {i.member_id: i.not_affected for i in issues if i.not_affected}
+    closed = list(dict.fromkeys([*closed, *not_affected]))
     cases = await _scope_cases(db, organization_id, vertical)
     members = await _members(db, [c.id for c in cases])
     by_id = {str(c.id): c for c in cases}
@@ -129,6 +132,14 @@ async def apply_recompute(
             continue
         case = by_id[plan.case_id]
         rows = {f"{r.source}:{r.external_id}": r for r in members[case.id]}
+        if plan.add_keys:
+            # The folded upgrade target moved: the case keeps its members and takes the new key (CTEM-11).
+            case.keys = [*(case.keys or []), *(k for k in plan.add_keys if k not in (case.keys or []))]
+            if plan.remediation is not None:
+                case.title = plan.remediation.title
+                case.fixed_version = plan.remediation.fixed_version
+            for key in plan.add_keys:
+                db.add(_event(case.id, actor, "retargeted", to_value=key, at=now))
         for member_id in plan.add:
             source, external_id = _split_member(member_id)
             db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
@@ -138,8 +149,9 @@ async def apply_recompute(
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
         for member_id in plan.resolve:
             rows[member_id].open = False
-            db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=rules.CLOSED_AT_SOURCE, at=now))
-        if plan.add or plan.reopen or plan.resolve:
+            evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
+            db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
+        if plan.add or plan.reopen or plan.resolve or plan.add_keys:
             counts["updated"] += 1
         if plan.new_state:
             db.add(
@@ -157,7 +169,9 @@ async def apply_recompute(
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
             case.state = plan.new_state
             case.state_since = now
-    counts["no_known_fix"] = len(rules.group_issues(issues).no_known_fix)
+    grouping = rules.group_issues(issues)
+    counts["no_known_fix"] = len(grouping.no_known_fix)
+    counts["not_affected"] = len(grouping.not_affected)
     return counts
 
 

@@ -73,7 +73,14 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
         counts = await store.apply_recompute(
             session, organization_id=org_id, vertical="cyber", issues=[_issue("v1", "CVE-1")], now=NOW
         )
-        assert counts == {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
+        assert counts == {
+            "created": 1,
+            "updated": 0,
+            "resolved": 0,
+            "reopened": 0,
+            "no_known_fix": 0,
+            "not_affected": 0,
+        }
         case = (await session.execute(select(CtemCase))).scalar_one()
         due = NOW + timedelta(days=14)
         await store.update_case(
