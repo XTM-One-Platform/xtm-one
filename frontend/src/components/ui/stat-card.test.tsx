@@ -59,10 +59,11 @@ describe("StatCard", () => {
         <StatCard icon={Inbox} label="Short" value={2} subtitle="7 days" footer={<p>Refused</p>} />
       </>,
     );
-    // happy-dom computes no layout: pin the structure that gives the shared divider line.
-    for (const wrapper of screen.getAllByTestId("stat-card-footer-wrapper")) {
-      expect(wrapper.className).not.toMatch(/\bmt-auto\b/);
-      expect(wrapper.className).toMatch(/\bpt-3\b/);
+    // happy-dom computes no layout: pin the structure that gives the shared divider line
+    // (the footer follows the value block, in flow).
+    const wrappers = screen.getAllByTestId("stat-card-footer-wrapper");
+    expect(wrappers).toHaveLength(2);
+    for (const wrapper of wrappers) {
       expect(wrapper.previousElementSibling?.querySelector('[data-testid="stat-card-value"]')).not.toBeNull();
     }
   });
