@@ -206,3 +206,13 @@ def test_pir_filter_reason_drops_playbook_deliveries_of_other_entity_types() -> 
     threat_cfg = {"pir_min_score": "policy", "provision": {"entity_types": ["Intrusion-Set"]}}
     reason = asyncio.run(rules.pir_filter_reason(None, threat_cfg, _flagged("vulnerability", [("p1", 90)])))
     assert reason is not None and "not one of" in reason
+
+
+def test_the_per_assignment_receiver_loads_the_agent_for_the_pir_score_rule() -> None:
+    # The live PIR score read on a registered (platform-managed) OpenCTI mints
+    # its token for the agent's owner: without the agent every delivery drops.
+    from app.api.v1 import webhooks
+
+    assert webhooks._filter_reads_as_agent({"provider": "opencti", "pir_min_score": "policy"})
+    assert not webhooks._filter_reads_as_agent({"provider": "opencti"})
+    assert not webhooks._filter_reads_as_agent({"provider": "opencti", "pir_min_score": 1})
