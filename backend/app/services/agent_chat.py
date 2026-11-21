@@ -4594,6 +4594,11 @@ async def run_agent_chat(
 
             if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
+            # The learned skill (#914): a built-in agent records durable lessons.
+            from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
+
+            if offers_learned_lesson_tool(is_builtin=agent.is_builtin):
+                composite.add_tools(*build_learned_lesson_tool(agent_id=str(agent.id), user_id=user_id))
             # The onboarding interview of the profile (#11224): an
             # administrator's turn only, the profile API being admin-only.
             if _caller_admin:

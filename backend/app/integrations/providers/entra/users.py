@@ -76,10 +76,8 @@ def register(
             return err
         return fmt_list(items, _fmt_user, noun="user", skiptoken=next_tok)
 
-    async def get_entra_user(
-        user_id: str, include_signin_activity: bool = False
-    ) -> str:
-        select = _USER_SELECT + ",givenName,surname,usageLocation,companyName"
+    async def get_entra_user(user_id: str, include_signin_activity: bool = False) -> str:
+        select = _USER_SELECT + ",givenName,surname,usageLocation,companyName,lastPasswordChangeDateTime"
         if include_signin_activity:
             select += ",signInActivity"
         data, err = await client.get_json(
@@ -101,6 +99,8 @@ def register(
             lines.append(f"  company: {u['companyName']}")
         if u.get("createdDateTime"):
             lines.append(f"  created: {dt(u['createdDateTime'])}")
+        if u.get("lastPasswordChangeDateTime"):
+            lines.append(f"  last password change: {dt(u['lastPasswordChangeDateTime'])}")
         sia = u.get("signInActivity") or {}
         if sia:
             lines.append(
@@ -499,7 +499,8 @@ def register(
         ToolDefinition(
             name="get_entra_user",
             description=(
-                "Get a single Entra ID user's full profile by id or UPN. Set "
+                "Get a single Entra ID user's full profile by id or UPN, with "
+                "the last password change time. Set "
                 "include_signin_activity to also return last interactive / "
                 "non-interactive sign-in times (requires Entra ID P1/P2 + "
                 "AuditLog.Read.All) - useful for finding stale or dormant accounts."

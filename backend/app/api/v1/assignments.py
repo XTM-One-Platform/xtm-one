@@ -727,6 +727,12 @@ async def create_assignment(
     fleet_error = await fleet_scope_error(body.trigger_type, body.trigger_config, agent.id)
     if fleet_error is not None:
         raise HTTPException(status_code=422, detail=fleet_error)
+    from app.services.trigger_provisioning import provision_spec_error
+
+    # A provision block the scheduler pass would refuse is refused now (#970).
+    provision_error = provision_spec_error(body.trigger_type, body.trigger_config)
+    if provision_error is not None:
+        raise HTTPException(status_code=422, detail=provision_error)
 
     # Resolve the optional "run as" identity (company-managed agents only).
     # The agent is company-managed ⟹ assert_writable_agent above already
@@ -4222,6 +4228,14 @@ async def update_assignment(
         concurrency_error = work_item_concurrency_error(body.trigger_config)
         if concurrency_error is not None:
             raise HTTPException(status_code=422, detail=concurrency_error)
+    # A provision block judged as it will be saved, refused now rather than
+    # on the scheduler pass (#970).
+    if body.trigger_config is not None:
+        from app.services.trigger_provisioning import provision_spec_error
+
+        provision_error = provision_spec_error(saved_type, body.trigger_config)
+        if provision_error is not None:
+            raise HTTPException(status_code=422, detail=provision_error)
 
     # Pause provenance: remember the state BEFORE the generic setattr
     # loop below so a pause/resume can be told apart from any other edit and
