@@ -78,6 +78,10 @@ interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
+  /** OpenAEV finding lifecycle (CTEM-14-UI); absent when the source carries none. */
+  retest_status?: "open" | "not_reproduced" | "resolved" | null;
+  last_tested_at?: string | null;
+  retest_pending?: boolean;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -190,32 +194,6 @@ export function useCtemCases(options?: {
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
     placeholderData: keepPreviousData,
     ...(options?.throwOnError === false ? { throwOnError: false } : {}),
-  });
-}
-
-/** One loop duration over the cases the caller sees: the median in hours, `null` with no sample. */
-interface CtemLoopDuration {
-  median_hours: number | null;
-  count: number;
-}
-
-/** How fast the loop runs (`GET /ctem-cases/measures`, CTEM-30), read from the case history. */
-interface CtemLoopMeasures {
-  signal_to_case: CtemLoopDuration;
-  case_to_validation: CtemLoopDuration;
-  case_to_decision: CtemLoopDuration;
-  case_to_passing_retest: CtemLoopDuration;
-  closed_on_proof: { share: number | null; proven: number; resolved: number };
-  case_count: number;
-}
-
-export function useCtemLoopMeasures() {
-  return useQuery<{ vertical: string; measures: CtemLoopMeasures }>({
-    queryKey: ["ctem-cases", "measures"],
-    queryFn: () => api.get("/ctem-cases/measures"),
-    retry: ctemCasesRetry,
-    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
-    throwOnError: false,
   });
 }
 
