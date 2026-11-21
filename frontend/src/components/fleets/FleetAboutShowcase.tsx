@@ -203,7 +203,11 @@ export function FleetAboutShowcase({
   const [metShown, setMetShown] = useState(false);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const s = doc.structured ?? {};
-  const automations = automationCount(health, assignments);
+  // The read-only Platform Health fleet counts Platform Health itself (#974): its assignments start from Settings.
+  const automations =
+    readOnly && health?.automations
+      ? { on: health.automations.enabled, total: health.automations.total }
+      : automationCount(health, assignments);
   // One status source with the header pill (UX r1 B2): the health's automations, as `FleetHeaderStatus` reads them.
   const status = fleetOptIn(health?.automations) ?? aboutStatus(health, automations);
   const last = lastRunAt(health);
