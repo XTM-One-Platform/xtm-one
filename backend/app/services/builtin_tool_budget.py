@@ -117,7 +117,10 @@ from app.services.builtin_tool_groups import schema_chars
 #: 19 Nov 2026).
 #: Raised to 470,900 for the readable decision card ask (#776: coordination +579,
 #: 20 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 470_900
+#: Raised to 472,300 for the health_modules group (#101 S14a-2b: list_module_findings and
+#: record_finding_recommendation, +1,300, carried by Platform Health's Module Analyst alone,
+#: total 472,200 on 21 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 472_300
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

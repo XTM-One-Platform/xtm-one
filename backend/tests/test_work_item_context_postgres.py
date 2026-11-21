@@ -114,9 +114,11 @@ async def test_agents_are_named_only_when_the_reader_may_open_them():
         )
         context = await world.describe(item)
 
-    # The "owner agent" placeholder this replaces: a colleague's private agent
-    # is said to be one the reader cannot open, and never named.
-    assert context["owner_agent"] == {"id": None, "name": None, "icon": None, "accessible": False}
+    # A colleague's private OWNER agent keeps its name, read-only: no id, no
+    # link (#858). Who holds the work is part of the item.
+    assert context["owner_agent"]["id"] is None
+    assert context["owner_agent"]["name"] == "Their Agent"
+    assert context["owner_agent"]["accessible"] is False
     assert context["created_by_agent"]["name"] == "My Agent"
     assert context["created_by_agent"]["accessible"] is True
     assert context["claimed_by_agent"] is None

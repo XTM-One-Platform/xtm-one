@@ -444,6 +444,9 @@ _ROLE_GATES = {
     # update_fleet raises the autonomy level for an administrator's chat agent
     # only, on confirmation (#10439): a permission gate on the caller's role.
     ("services/builtin_tools/fleets.py", "_check_autonomy_raise"): 1,
+    # list_module_findings: read by the Platform Health Module Analyst or an
+    # administrator only, a permission gate on the role (#101, S14a-2b).
+    ("services/builtin_tools/health_modules.py", "_may_read"): 1,
     # unbind_agent_from_intent: an administrator removes the global binding, anyone
     # else only their own personal override: a permission gate on the role.
     ("services/builtin_tools/intent_bindings.py", "_unbind_agent_from_intent"): 1,

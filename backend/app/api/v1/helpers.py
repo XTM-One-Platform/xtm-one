@@ -3434,6 +3434,27 @@ def visible_to_user_column_clause(model_cls: type[VisibilityQueryable], user_id_
     """
     from sqlalchemy import exists
 
+    return or_(
+        and_(
+            exists().where(User.id == user_id_column, User.role == "admin"),
+            *([hidden] if (hidden := hidden_rows_excluded(model_cls)) is not None else []),
+        ),
+        shared_with_user_column_clause(model_cls, user_id_column),
+    )
+
+
+def shared_with_user_column_clause(model_cls: type[VisibilityQueryable], user_id_column: Any) -> Any:
+    """:func:`visible_to_user_column_clause` without the administrator tier.
+
+    The entity is the person's own, company-managed and not narrowed, or
+    shared with them or with one of their groups: what they open because it
+    was GIVEN to them, never because their role reaches everything. A grant
+    that hands work to an agent (a work item filed for another person's
+    agent) reads this one, so an administrator's role is no standing
+    channel into a colleague's private agent.
+    """
+    from sqlalchemy import exists
+
     person_grant = model_cls.shared_user_ids.cast(JSONB).op("?")(cast(user_id_column, SAText))
     if not jsonb_cast_indexed(model_cls.shared_user_ids):
         person_grant = when_json_parseable(model_cls.shared_user_ids, person_grant)
@@ -3441,7 +3462,6 @@ def visible_to_user_column_clause(model_cls: type[VisibilityQueryable], user_id_
     if not jsonb_cast_indexed(model_cls.shared_group_ids):
         group_grant = when_json_parseable(model_cls.shared_group_ids, group_grant)
     visible = or_(
-        exists().where(User.id == user_id_column, User.role == "admin"),
         model_cls.user_id == user_id_column,
         _company_managed_visible(model_cls),
         person_grant,
