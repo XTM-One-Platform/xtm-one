@@ -19830,9 +19830,6 @@
   "Deployment": "Despliegue",
   "Workflow run": "Ejecución de workflow",
   "Goes back to the queue by itself once what it waits for is released: nothing to do.": "Vuelve solo a la cola en cuanto se libera lo que espera: no hay nada que hacer.",
-  "Health Modules": "Módulos de Platform Health",
-  "Investigate registered modules and recommend on their findings": "Investigar los módulos registrados y recomendar sobre sus hallazgos",
-  "Platform Health's Module Analyst: reads the open findings of a registered OpenCTI, OpenAEV or OpenCRQ with the recommendations already attached, and attaches its own recommendation to each finding the module reads explain. Never writes to a module. Works only inside a Platform Health run.": "Module Analyst de Platform Health: lee los hallazgos abiertos de un OpenCTI, OpenAEV u OpenCRQ registrado con las recomendaciones ya adjuntas, y adjunta su propia recomendación a cada hallazgo que las lecturas del módulo explican. Nunca escribe en un módulo. Solo funciona dentro de una ejecución de Platform Health.",
   "Signal received": "Señal recibida",
   "Reconcile": "Conciliación",
   "Scope gate": "Control del alcance",
@@ -19895,5 +19892,13 @@
   "Crown jewel minimum criticality": "Criticidad mínima de los activos críticos",
   "Risk scenario required": "Escenario de riesgo obligatorio",
   "{rule}: passed": "{rule}: cumplido",
-  "{rule}: failed": "{rule}: no cumplido"
+  "{rule}: failed": "{rule}: no cumplido",
+  "Open all signals": "Abrir todas las señales",
+  "Open the signals: {state}": "Abrir las señales: {state}",
+  "No signal in this state yet": "Todavía no hay señales en este estado",
+  "Showing {shown} of {total}": "Se muestran {shown} de {total}",
+  "First seen": "Visto por primera vez",
+  "Seen": "Visto",
+  "{count, plural, one {# time} other {# times}}": "{count, plural, one {# vez} other {# veces}}",
+  "Open the source": "Abrir la fuente"
 }
