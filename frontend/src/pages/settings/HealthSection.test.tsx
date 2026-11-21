@@ -86,6 +86,15 @@ beforeEach(() => {
   get.mockReset().mockImplementation((url: string) => {
     if (url === "/health/settings") return Promise.resolve(settings);
     if (url === "/health/budget") return Promise.resolve(budget);
+    if (url === "/health/analysis")
+      return Promise.resolve({
+        enabled: true,
+        ceilings_set: true,
+        ceilings: { day_tokens: 100000, day_cost_usd: "1", month_tokens: 3100000, month_cost_usd: "31" },
+        day: { tokens: 4763, cost_usd: "0.031852", reserved_tokens: 0 },
+        month: { tokens: 9526, cost_usd: "0.063704", reserved_tokens: 0 },
+        modules: [],
+      });
     if (url === "/health/name") return Promise.resolve({ name: "Platform Health", default_name: "Platform Health" });
     return Promise.resolve([]);
   });
@@ -110,6 +119,14 @@ describe("HealthSection read view", () => {
     expect(settingsView).toHaveTextContent("$100");
     expect(settingsView).not.toHaveTextContent("500,000");
     expect(settingsView).not.toHaveTextContent("10,000,000");
+  });
+
+  it("shows today's and this month's analysis spend against the ceilings, next to them (#961)", async () => {
+    renderSection();
+    const spend = await screen.findByTestId("health.analysis-spend");
+    expect(screen.getByTestId("health.analysis")).toContainElement(spend);
+    expect(spend).toHaveTextContent("Tokens: 4.8K of 100K");
+    expect(spend).toHaveTextContent("Tokens: 9.5K of 3.1M");
   });
 
   it("writes the month's spend in dollars, without a trailing USD", async () => {

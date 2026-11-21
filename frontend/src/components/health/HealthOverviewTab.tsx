@@ -35,9 +35,10 @@ import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/comp
 import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { HealthAnalysisPanel } from "@/components/health/HealthAnalysisPanel";
+import { ModuleAnalysisSummary } from "@/components/health/ModuleAnalysisSummary";
 import {
   useDismissHealthFindings,
+  useHealthAnalysis,
   useHealthFindings,
   useHealthHistory,
   useHealthOverview,
@@ -364,6 +365,9 @@ const FINDINGS_PAGE = 200;
 export function HealthOverviewTab() {
   const { t_i18n } = useFormatter();
   const overview = useHealthOverview();
+  const isAdmin = overview.data?.scope === "all";
+  // Each module card shows the outcome of its analysis (#961); stored rows, no model call.
+  const analysis = useHealthAnalysis({ enabled: isAdmin });
   // One list per status, each with its own page and its own server total (#634 review P2): a shared page of
   // the three statuses let resolved and dismissed rows push open ones off it once they accumulate.
   const openFindings = useHealthFindings({ status: ["open"], limit: FINDINGS_PAGE });
@@ -577,12 +581,20 @@ export function HealthOverviewTab() {
             value={String(card.score)}
             subtitle={moduleCardSubtitle(card, t_i18n)}
             iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
+            footer={
+              // The outcome of the module's analysis (#961): administrators, modules with open findings.
+              isAdmin ? (
+                <ModuleAnalysisSummary
+                  module={card.module}
+                  hasOpenFindings={card.critical + card.warning + card.info > 0}
+                  overview={analysis.data}
+                />
+              ) : undefined
+            }
           />
         ))}
       </div>
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
-      {/* The analysis layer (#101 S9c): administrators only, after the history, before the findings. */}
-      {overview.data?.scope === "all" ? <HealthAnalysisPanel /> : null}
       {nothingFound ? (
         <EmptyState
           icon={HealthGlyph}

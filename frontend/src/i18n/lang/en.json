@@ -19974,5 +19974,8 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.",
   "Restricted asset": "Restricted asset",
   "Techniques in attack order": "Techniques in attack order",
-  "Recorded how it would be exploited": "Recorded how it would be exploited"
+  "Recorded how it would be exploited": "Recorded how it would be exploited",
+  "AI summary": "AI summary",
+  "As of": "As of",
+  "{module} actions": "{module} actions"
 }

@@ -19974,5 +19974,8 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Aún no hay lectura de explotación: el triaje la escribe desde OpenCRQ cuando un escenario de riesgo contiene un activo afectado.",
   "Restricted asset": "Activo restringido",
   "Techniques in attack order": "Técnicas en el orden del ataque",
-  "Recorded how it would be exploited": "Registró cómo se explotaría"
+  "Recorded how it would be exploited": "Registró cómo se explotaría",
+  "AI summary": "Resumen de IA",
+  "As of": "A fecha de",
+  "{module} actions": "Acciones de {module}"
 }
