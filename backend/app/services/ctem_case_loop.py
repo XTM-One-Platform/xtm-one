@@ -168,25 +168,23 @@ def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None
 _SEVERITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
 
-def case_data(case: CtemCase, **extra: Any) -> dict[str, Any]:
-    """The payload of a case event: ids and facts only, never a source issue's content (no title)."""
-    data = {
+def case_data(case: CtemCase) -> dict[str, Any]:
+    """The payload of a case event: the case id and its routing, nothing else (#933).
+
+    Severity, SLA, owner, risk scenarios, the signal and the validation stay on
+    the case, read with ``get_ctem_case`` under the run's own view. The event
+    reaches only subscribers whose run-as user sees the case
+    (``platform_events.can_read_object``).
+    """
+    return {
         "case_id": str(case.id),
-        "organization_id": str(case.organization_id),
         "vertical": case.vertical,
         "state": case.state,
-        "remediation_kind": case.remediation_kind,
         "trigger_path": case.trigger_path,
-        "severity": case.severity,
-        "sla_due_at": case.sla_due_at.isoformat() if case.sla_due_at else None,
-        "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
-        "risk_scenario_ids": list(case.risk_scenario_ids or []),
         "object_type": "ctem_case",
         "object_id": str(case.id),
         "participant_agent_ids": [],
     }
-    data.update(extra)
-    return data
 
 
 def _event_id(name: str, case: CtemCase, marker: str) -> str:
@@ -275,7 +273,7 @@ async def open_from_signal(
     if events is not None:
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
-        events.add(CASE_OPENED, case_data(case, signal_id=str(signal.id)), _event_id(CASE_OPENED, case, "open"))
+        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
     return case
 
 
@@ -346,14 +344,12 @@ async def record_validation(
             db.add(_transition(case, "resolved", now, evidence=evidence, actor=actor))
             case.resolution_kind = "not_exposed" if result == "not_exposed" else "fixed"
             if events is not None:
-                events.add(
-                    CASE_RESOLVED, case_data(case, validation=entry), _event_id(CASE_RESOLVED, case, at)
-                )
+                events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, at))
     elif result == "failed" and case.state in ("resolved", "mitigated_watching"):
         db.add(_transition(case, "needs_attention", now, reason=f"re-test failed: {evidence}", actor=actor))
         case.resolution_kind = None
         if events is not None:
-            events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, at))
+            events.add(CASE_REOPENED, case_data(case), _event_id(CASE_REOPENED, case, at))
     if events is not None:
         events.frame(case, "validation", now)
     return case
@@ -361,8 +357,6 @@ async def record_validation(
 
 #: What a ticket reference's status may say, mapped from the ITSM's own workflow by the writer.
 TICKET_STATUSES: tuple[str, ...] = ("open", "in_progress", "done", "cancelled")
-#: Where a synced ticket stands against its case (#917): written by ``services/ctem_ticketing.py``.
-TICKET_SYNC_STATES: tuple[str, ...] = ("linked", "in_sync", "out_of_date", "error")
 
 
 def record_ticket(
@@ -375,17 +369,12 @@ def record_ticket(
     status: str = "open",
     actor: str = rules.SYSTEM_ACTOR,
     now: datetime | None = None,
-    sync: dict[str, Any] | None = None,
 ) -> CtemCase:
     """Write or update a ticket reference on *case* (#891); never moves the case state.
 
     One entry per ``(integration, key)``: a second write of the same ticket
     updates its status and url in place, so a rerun never lists a ticket twice.
     The case closes on proof (a validation reference), not on a ticket. The caller commits.
-
-    *sync* (#917) is the sync record of a ticket the sync layer manages:
-    ``{state, since, error, fix, provider, correlation, external_status}``; it
-    replaces the stored one and alone never raises a ``ticket`` event.
     """
     integration = (integration or "").strip()[:80]
     key = (key or "").strip()[:120]
@@ -401,24 +390,12 @@ def record_ticket(
         "status": status,
         "at": now.isoformat(),
     }
-    if sync is not None:
-        state = sync.get("state")
-        if state not in TICKET_SYNC_STATES:
-            raise rules.CaseRuleError(f"unknown ticket sync state {state!r}: one of {', '.join(TICKET_SYNC_STATES)}")
-        entry["sync"] = {k: v for k, v in sync.items() if v not in (None, "")}
     tickets = [dict(t) for t in (case.tickets or [])]
     previous = next((t for t in tickets if (t.get("integration"), t.get("key")) == (integration, key)), None)
     if previous is not None:
-        same_status = previous.get("status") == status and (entry["url"] in (None, previous.get("url")))
-        if "sync" not in entry and previous.get("sync"):
-            entry["sync"] = previous["sync"]
-        if same_status and entry.get("sync") == previous.get("sync"):
+        if previous.get("status") == status and (entry["url"] in (None, previous.get("url"))):
             return case
         entry["url"] = entry["url"] or previous.get("url")
-        if same_status:
-            entry["at"] = previous.get("at", entry["at"])
-            case.tickets = [entry if t is previous else t for t in tickets][-20:]
-            return case
         tickets = [entry if t is previous else t for t in tickets]
     else:
         tickets.append(entry)
