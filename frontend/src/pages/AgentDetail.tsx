@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useTick } from "@/hooks/useTick";
@@ -75,7 +75,7 @@ import { EvaluationTab } from "./agent-detail/EvaluationTab";
 import { VersioningTab } from "./agent-detail/VersioningTab";
 import { ObservabilityTab } from "./agent-detail/ObservabilityTab";
 import { FeedbackTab } from "./agent-detail/FeedbackTab";
-import { agentDetailTabs, legacyAgentTabTarget, type AgentTab } from "./agent-detail/tabs";
+import { agentDetailTabs, type AgentTab } from "./agent-detail/tabs";
 import { AgentSuccessorDialog } from "./agent-detail/AgentSuccessorDialog";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 
@@ -90,7 +90,7 @@ export default function AgentDetail() {
   const agenticEnabled = useAgenticAIEnabled();
   const { t_i18n } = useFormatter();
   useTick(REFETCH_INTERVAL_SLOW); // keep relative timestamps fresh
-  const { id, tab: tabSegment, section } = useParams<{ id: string; tab?: string; section?: string }>();
+  const { id, section } = useParams<{ id: string; tab?: string; section?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -123,10 +123,6 @@ export default function AgentDetail() {
   const [successorId, setSuccessorId] = useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [duplicateGateOpen, setDuplicateGateOpen] = useState(false);
-
-  // The former Budget tab and Overview links to the ROI section open Value (#11037).
-  const legacyTarget = id ? legacyAgentTabTarget(`/agents/${id}`, tabSegment, location.search, location.hash) : null;
-  if (legacyTarget) return <Navigate to={legacyTarget} replace state={location.state} />;
 
   if (isLoading) return <DetailPageSkeleton backTo={backTo} backLabel={backLabel} tabs={6} descriptionLines={1} actions={3} />;
   if (!agent) return (

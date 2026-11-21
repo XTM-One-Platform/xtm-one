@@ -45,8 +45,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { workItemsPath } from "@/lib/task-routes";
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { isKnownMapView, legacyMapLocation, mapViewPath, readMapView, type MapView } from "@/lib/map-view";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { isKnownMapView, mapViewPath, readMapView, type MapView } from "@/lib/map-view";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { Radio } from "lucide-react";
 import { ScheduleView } from "@/components/ui/schedule-view";
 import { AgentFocusPicker } from "@/components/ui/agent-focus-picker";
@@ -219,8 +220,6 @@ export default function MapTab() {
   // The view is the path segment (`/flows/map/schedule`, #10203 S2); the query keeps the map's state.
   const { mapView } = useParams<{ mapView?: string }>();
   const view: MapView = readMapView(mapView);
-  // A link written before the path routes (`?view=schedule`) is replaced by its path.
-  const legacyTarget = legacyMapLocation(searchParams);
   const setView = useCallback(
     (next: MapView) => {
       const params = new URLSearchParams(searchParams);
@@ -676,12 +675,8 @@ export default function MapTab() {
     onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
   });
 
-  if (legacyTarget) return <Navigate to={legacyTarget} replace />;
-  // An unknown view segment shows the graph: the address says so too (UX A2 on #10220).
-  if (!isKnownMapView(mapView)) {
-    const query = searchParams.toString();
-    return <Navigate to={`${mapViewPath("graph")}${query ? `?${query}` : ""}`} replace />;
-  }
+  // An unknown view segment is not found: no redirect (#797).
+  if (!isKnownMapView(mapView)) return <RouteNotFound />;
 
   return (
     <div className="space-y-6">

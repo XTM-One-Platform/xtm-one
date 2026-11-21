@@ -166,6 +166,7 @@ const Profile = lazyWithRetry(() => import("@/pages/Profile"));
 const AgentAccountPage = lazyWithRetry(() => import("@/pages/profile/agent-accounts/AgentAccountPage"));
 /* XTM One Desktop: download, connect a machine, manage the enrolled ones. */
 const Desktop = lazyWithRetry(() => import("@/pages/Desktop"));
+const RouteNotFound = lazyWithRetry(() => import("@/pages/RouteNotFound"));
 /* One enrolled machine by id - the page the admin Objects browser opens. */
 const RunnerDetail = lazyWithRetry(() => import("@/pages/RunnerDetail"));
 const Relays = lazyWithRetry(() => import("@/pages/Relays"));
@@ -224,26 +225,6 @@ function TermsGate({ children }: { children: React.ReactNode }) {
    * consent screen (the waiting arcade): see `termsOfUsePending`. */
   if (termsOfUsePending(terms)) return <TermsOfUse terms={terms} />;
   return <>{children}</>;
-}
-
-/** Redirect a legacy route to its new location, preserving the query string. */
-function LegacyRedirect({ to }: { to: string }) {
-  const { search } = useLocation();
-  return <Navigate to={`${to}${search}`} replace />;
-}
-
-/** `/concierge...` (the former Concierge page) to `/health...`, the rest of the
- *  path, the query and the hash kept (#101 S1). */
-function HealthLegacyRedirect() {
-  const { pathname, search, hash } = useLocation();
-  return <Navigate to={`${pathname.replace(/^\/concierge/, "/health")}${search}${hash}`} replace />;
-}
-
-/** `/flows/fleets...` (the former Fleets tab of Agentic Flow) to `/fleets...`,
- *  the rest of the path, the query and the hash kept (#9301 N2c). */
-function FleetsLegacyRedirect() {
-  const { pathname, search, hash } = useLocation();
-  return <Navigate to={`${pathname.replace(/^\/flows\/fleets/, "/fleets")}${search}${hash}`} replace />;
 }
 
 /**
@@ -469,8 +450,7 @@ export default function App() {
 
       {/* A deck opened by its public link: the token in the address is
           the only credential, so it sits outside ProtectedRoute - and outside
-          AppLayout, like the viewer. More specific than the `/public/*`
-          catalog redirect below, so the router picks it. */}
+          AppLayout, like the viewer. */}
       {/* The PDF a public link offers is printed by the platform's
           headless browser from this page: the static render, reading the deck
           through the public routes with the link's own token. */}
@@ -695,8 +675,6 @@ export default function App() {
         <Route path="/agents/:id/chats/:conversationId" element={<Page><AgentChatConversation /></Page>} />
         <Route path="/agents/:id/:tab?/:section?" element={<Page><AgentDetail /></Page>} />
         <Route path="/health/:tab?" element={<AdminRoute><Page><Health /></Page></AdminRoute>} />
-        {/* The former Concierge page (#101 S1): `/concierge[/tab]` opens Platform Health, the tab and query kept. */}
-        <Route path="/concierge/*" element={<HealthLegacyRedirect />} />
         <Route path="/evaluations" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Evaluations /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/new" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><NewEvaluation /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />
@@ -715,9 +693,6 @@ export default function App() {
             `/approval`, `/schedule`, `/operations/:list`, `/roi`; none is About. */}
         <Route path="/fleets" element={<Page><Fleets /></Page>} />
         <Route path="/fleets/:fleetId/:tab?/:list?" element={<Page><FleetPage /></Page>} />
-        {/* The Fleets tab of Agentic Flow became `/fleets` (#9301 N2c): every
-            old link lands on the same fleet, tab, query and hash. */}
-        <Route path="/flows/fleets/*" element={<FleetsLegacyRedirect />} />
         {/* Deeper than `/flows/:tab?`, so `/flows/map` and `/flows/<uuid>/builder`
             never collide. Creation is a POST followed by a navigate — a
             `/flows/new` route WOULD collide with the tab segment. */}
@@ -794,11 +769,8 @@ export default function App() {
         <Route path="/analytics/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
         <Route path="/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
         <Route path="/trace-sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
-        <Route path="/traces/sessions" element={<AdminRoute><LegacyRedirect to="/trace-sessions" /></AdminRoute>} />
         <Route path="/traces/:id/:tab?" element={<Page><TraceDetail /></Page>} />
         <Route path="/logs" element={<AdminRoute><Page><AuditLogs /></Page></AdminRoute>} />
-        {/* The runners tab moved to its own page; old links follow. */}
-        <Route path="/profile/runners" element={<Navigate to="/desktop" replace />} />
         <Route path="/profile/agent-accounts/:accountId/:tab?" element={<Page><AgentAccountPage /></Page>} />
         <Route path="/profile/:tab?" element={<Page><Profile /></Page>} />
         <Route path="/desktop" element={<Page><Desktop /></Page>} />
@@ -814,6 +786,8 @@ export default function App() {
         <Route path="/settings/:tab?/:section?" element={<AdminRoute><Page><Settings /></Page></AdminRoute>} />
         {/* A sub-view of a section: the organization profile's tab (#12329, /settings/organization/profile/<tab>). */}
         <Route path="/settings/:tab/:section/:view" element={<AdminRoute><Page><Settings /></Page></AdminRoute>} />
+        {/* No alias and no redirect (#797): an unknown path, a former one included, is not found, in the app chrome. */}
+        <Route path="*" element={<Page><RouteNotFound /></Page>} />
       </Route>
 
       {/* Internal catalog (requires auth + feature flag) */}
@@ -844,10 +818,7 @@ export default function App() {
       ) : (
         <Route path="/catalog/*" element={<Navigate to="/" replace />} />
       )}
-      {/* Redirect old /public URLs to /catalog */}
-      <Route path="/public/*" element={<Navigate to="/catalog" replace />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </ArcadeProvider>
   );

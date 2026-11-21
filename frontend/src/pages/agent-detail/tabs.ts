@@ -84,31 +84,3 @@ export function agentDetailTabs({
     { key: "activity", label: "Activity", icon: Activity },
   ];
 }
-
-/** The anchors the ROI section answered to on the Overview before #11037. */
-const LEGACY_ROI_HASHES = new Set(["#roi", "#agent-roi", "#agent-roi-title", "#agent-roi-section"]);
-
-/** Whether a query string carries the ROI section's state: its window or its chat table. */
-function carriesRoiState(search: string): boolean {
-  const params = new URLSearchParams(search);
-  return [...params.keys()].some((key) => key === "window" || key.startsWith("chat_"));
-}
-
-/**
- * Where an old agent page link lands now (#11037), or `null` when it is current:
- * the former Budget tab, and an Overview link to the ROI section (its anchor, or
- * the `?window=` / `chat_*` state the section kept in the URL), open the Value
- * tab with the query kept. *tab* is the page's `:tab` segment, empty on Overview.
- */
-export function legacyAgentTabTarget(
-  agentPath: string,
-  tab: string | undefined,
-  search: string,
-  hash: string,
-): string | null {
-  const toValue = `${agentPath}/value${search}`;
-  if (tab === "budget") return toValue;
-  const onOverview = !tab || tab === "overview";
-  if (onOverview && (LEGACY_ROI_HASHES.has(hash) || carriesRoiState(search))) return toValue;
-  return null;
-}

@@ -67,6 +67,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { useCallback, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { Boxes, CopyPlus, Crown, GitFork, Lock, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BuiltinBadge } from "@/components/ui/builtin-badge";
@@ -141,7 +142,6 @@ import {
   FLEET_TABS,
   fleetViewPath,
   isKnownFleetTab,
-  legacyFleetLocation,
   readFleetTab,
   type FleetView,
 } from "@/lib/fleet-operations";
@@ -221,10 +221,8 @@ export default function FleetPage() {
   const now = useNow();
   const liveEdges = useMemo(() => liveHandoverEdges(delegations, now), [delegations, now]);
 
-  // The tab is the path segment (#10203 S2); a legacy `?view=` / `?ops=` / `?mode=` link is replaced below.
+  // The tab is the path segment (#10203 S2); a former `?view=` / `?ops=` / `?mode=` link is not read (#797).
   const requestedView = readFleetTab(tabSegment);
-  // Only the bare fleet path is read: inside a tab, `?view=` belongs to the list it embeds (Stale / Scheduled).
-  const legacyTarget = fleetId && !tabSegment ? legacyFleetLocation(fleetId, searchParams) : null;
   // Read only while the Data flow view shows it: no other view asks for it.
   const flowQuery = useFleetFlow(fleet ? fleetId : null, requestedView === "flow");
   // Another view is a new history entry (back and forward move between tabs)
@@ -398,10 +396,8 @@ export default function FleetPage() {
   const wideViewport = useMediaQuery("(min-width: 1280px)", true);
   useRailHold(!!fleet?.can_manage && aiPanelOpen && !wideViewport);
 
-  // A link written before the path routes lands on its tab, the address replaced.
-  if (legacyTarget) return <Navigate to={legacyTarget} replace state={location.state} />;
-  // An unknown tab segment lands on About, the address replaced.
-  if (fleetId && !isKnownFleetTab(tabSegment)) return <Navigate to={fleetViewPath(fleetId, FLEET_DEFAULT_VIEW)} replace state={location.state} />;
+  // An unknown tab segment is not found: no redirect (#797).
+  if (fleetId && !isKnownFleetTab(tabSegment)) return <RouteNotFound />;
 
   if (fleetLoading) return <PageSkeleton cards={2} />;
 
