@@ -15812,6 +15812,7 @@
   "Or answer in your own words": "O responde con tus propias palabras",
   "Only an administrator can answer a company-managed work item.": "Solo un administrador puede responder a un elemento de trabajo gestionado por la empresa.",
   "An agent waits for your decision on this work item.": "Un agente espera tu decisión sobre este elemento de trabajo.",
+  "Decision needed: {title}": "Decisión pendiente: {title}",
   "Show the full description": "Mostrar la descripción completa",
   "Delete {name}": "Eliminar {name}",
   "New preset": "Nuevo ajuste predefinido",
@@ -19764,6 +19765,10 @@
   "An injector, collector or executor that has not reported for this long raises a warning, e.g. 60.": "Un inyector, colector o ejecutor que no ha informado durante este tiempo genera una advertencia, p. ej. 60.",
   "Agents offline above": "Agentes sin conexión por encima de",
   "More agents offline than this share raises a warning, e.g. 50.": "Una proporción de agentes sin conexión superior a este valor genera una advertencia, p. ej. 50.",
+  "Brief": "Encargo",
+  "An agent run": "Una ejecución de agente",
+  "The platform": "La plataforma",
+  "Copy {value}": "Copiar {value}",
   "Sent to {agent}": "Enviado a {agent}",
   "It takes the work item now and records the outcome on it.": "Toma el elemento de trabajo ahora y anota en él el resultado.",
   "Already sent": "Ya enviado",
@@ -19809,9 +19814,5 @@
   "The digest lists warning and critical findings.": "El resumen incluye los hallazgos de advertencia y críticos.",
   "The digest lists critical findings only.": "El resumen solo incluye los hallazgos críticos.",
   "Emails the recipients below about health findings.": "Envía a los destinatarios indicados los hallazgos de salud.",
-  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos.",
-  "Status and scope": "Estado y alcance",
-  "Spend limits": "Límites de gasto",
-  "Health checks": "Comprobaciones de salud",
-  "Alerts": "Alertas"
+  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos."
 }
