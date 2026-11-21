@@ -1315,6 +1315,8 @@ export default function WorkItemsTab({
           </>
         }
         externalFilterCount={moreFilterCount}
+        // A Status away from open work narrows the list too: Clear all shows for it (UX r1 B1 on #1004).
+        toolbarFilterActive={!!statusParam}
         onClearAll={clearAllFilters}
         // The filters are the server's: the Status pill on the row, the view, scope, fleet and
         // owner in the Filters pill above (each a URL key), never a client `filters` list.

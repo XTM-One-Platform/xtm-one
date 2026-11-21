@@ -973,6 +973,24 @@ describe("Work Items Clear all filters", () => {
     expect(lastListRead()).toMatchObject({ open_only: true });
   });
 
+  // UX round 1 on #1004, B1: a Status or a search alone narrows the list, so Clear all shows.
+  it("offers Clear all for a Status alone and clears it", () => {
+    renderAt("&status=blocked");
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
+    expect(new URLSearchParams(LOCATION.search).has("status")).toBe(false);
+  });
+
+  it("offers Clear all for a search alone and clears it", () => {
+    renderAt("&wi_q=deploy");
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
+    expect(new URLSearchParams(LOCATION.search).has("wi_q")).toBe(false);
+  });
+
+  it("shows no Clear all on the default open view", () => {
+    renderAt("");
+    expect(screen.queryAllByRole("button", { name: "Clear all filters" })).toHaveLength(0);
+  });
+
   it("clears from the Waiting for me empty state too", () => {
     ITEMS = [];
     try {

@@ -1284,6 +1284,8 @@ export default function TaskHistory({
           toolbar={hideHeader ? cleanupButton : undefined}
           filterPills={morePills}
           externalFilterCount={moreFilterCount}
+          // A Status chosen on the toolbar narrows the list too: Clear all shows for it (UX r1 B1 on #1004).
+          toolbarFilterActive={selectedStatuses.length > 0}
           // Clear all clears what the count counts, the status and search too, in one write (#1001).
           onClearAll={() =>
             setSearchParams(

@@ -439,6 +439,11 @@ export interface DataTableProps<T> {
    */
   externalFilterCount?: number;
   /**
+   * A filter the page draws on the toolbar row and counts on its own pill (a Status pill
+   * away from its default): not in the Filters badge, but "Clear all filters" shows for it.
+   */
+  toolbarFilterActive?: boolean;
+  /**
    * Replaces the table's own clear when the page holds filters outside it: "Clear all
    * filters" then clears every filter of the page in one write (the caller keeps the sort).
    */
@@ -578,6 +583,7 @@ function DataTableView<T>({
   server,
   onStateChange,
   externalFilterCount = 0,
+  toolbarFilterActive = false,
   onClearAll,
   density = "compact",
   layout = "auto",
@@ -720,7 +726,8 @@ function DataTableView<T>({
   const narrowing = !!state.search.trim() || !!search?.value.trim() || filterCount > 0;
   // "Clear all filters" shows when a filter or the page's own search narrows the list
   // (standard v2: a search, tag or pill; never the scope alone, UX round 1 on #10920, B2).
-  const clearable = filterCount > 0 || !!search?.value.trim();
+  // The table's own search and a toolbar filter count too (UX round 1 on #1004, B1).
+  const clearable = filterCount > 0 || !!search?.value.trim() || !!state.search.trim() || toolbarFilterActive;
 
   // A card list (`renderGrid`) has no header to click: the toolbar offers these instead.
   const sortableColumns = columns.filter((column) => column.sortValue && !column.exportOnly);
