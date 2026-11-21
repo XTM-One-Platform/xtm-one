@@ -322,6 +322,68 @@ def test_a_literal_on_both_sides_of_an_edited_description_selects_nothing():
     assert "received_since" not in names and literals == set()
 
 
+WORDING_BEFORE = b'''"""Budget guard of the Concierge."""
+
+
+def check_budget(spent, cap):
+    # The Concierge stops here.
+    if spent > cap:
+        raise ValueError(f"Concierge budget spent: {spent}")
+    return cap - spent
+'''
+
+WORDING_AFTER = b'''"""Budget guard of Platform Health."""
+
+
+def check_budget(spent, cap):
+    # Platform Health stops here.
+    if spent > cap:
+        raise ValueError(f"Platform Health budget spent: {spent}")
+    return cap - spent
+'''
+
+
+def test_a_wording_only_change_names_the_replaced_words_not_its_definitions_or_module() -> None:
+    wording: set[str] = set()
+    names = affected.changed_identifiers(
+        "backend/app/budget.py", WORDING_BEFORE, WORDING_AFTER, base="backend", wording=wording
+    )
+    assert names == {"Concierge", "Platform", "Health"} == wording
+    assert affected.wording_words("budget.py", WORDING_BEFORE.decode(), WORDING_AFTER.decode()) == names
+    # A code change, a non-Python file or an identical text is not wording-only.
+    code = WORDING_AFTER.replace(b"spent > cap", b"spent >= cap")
+    assert affected.wording_words("budget.py", WORDING_BEFORE.decode(), code.decode()) is None
+    assert affected.wording_words("budget.ts", "a", "b") is None
+    assert affected.wording_words("budget.py", "x = 1\n", "x = 1\n") is None
+    assert "check_budget" in affected.changed_identifiers("backend/app/budget.py", WORDING_BEFORE, code, base="backend")
+
+
+async def test_a_wording_only_change_selects_the_test_pinning_the_text_not_the_tests_importing_the_module() -> None:
+    workspace = _workspace()
+    tree = [
+        ("backend/app/budget.py", WORDING_BEFORE),
+        (
+            "backend/tests/test_budget.py",
+            b"from app.budget import check_budget\n\ndef test_it():\n    assert check_budget(1, 2) == 1\n",
+        ),
+        ("backend/tests/test_budget_message.py", b"def test_msg(err):\n    assert 'Concierge budget' in str(err)\n"),
+    ]
+    record = build_record(
+        provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=[], files=tree
+    )
+    await workspace.put_tree([(f"co/{p}", d) for p, d in tree] + [(record.record_path, record.to_json())])
+    await workspace.put_tree([("co/backend/app/budget.py", WORDING_AFTER)])
+    changes = changes_since(record, await workspace.entries(refresh=True))
+
+    async def read_base(repo_path: str) -> bytes | str:
+        return dict(tree).get(repo_path, "not checked out")
+
+    selection = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
+    assert list(selection.tests) == ["tests/test_budget_message.py"]
+    assert not selection.scoped
+    assert any("change wording only" in n and "backend/app/budget.py" in n for n in selection.notes)
+
+
 async def test_a_new_test_file_runs_alone_its_literals_and_names_select_no_other_test():
     workspace = _workspace()
     tree = [

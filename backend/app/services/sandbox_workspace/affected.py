@@ -128,6 +128,14 @@ Three more rules keep the selection precise (gap family
   ``affected=true`` runs only :meth:`Selection.runnable` (32 of 46 selected
   files of a backend checkout failed 21 times on FileNotFoundError in 590 s).
 
+A wording-only change of a Python file (:func:`wording_words`: its code
+tokens equal on both sides, strings, comments and docstrings aside) names
+neither its definitions nor its module path: the words it replaced select
+the tests pinning the former or new text, and a note names the files. A
+product rename in error texts and docstrings of 17 modules selected 55 test
+files through the edited functions and module paths, about 60 minutes of
+run for no code change.
+
 Generic on purpose: no tool, repository or framework name is known here
 (invariant 18); a test file is recognised by its name only.
 """
@@ -137,9 +145,11 @@ from __future__ import annotations
 import asyncio
 import difflib
 import fnmatch
+import io
 import posixpath
 import re
 import time
+import tokenize
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -412,6 +422,56 @@ def _touched(path: str, text: str, lines: set[int], literals: set[str], defined:
     return out
 
 
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+#: Token types whose text is wording, never code: a change confined to them changes no behaviour a name reaches.
+_WORDING_TOKENS = frozenset(
+    {tokenize.STRING, tokenize.COMMENT, tokenize.NL, getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)}
+)
+
+
+def _python_tokens(text: str) -> tuple[list[tuple[int, str]], list[str]] | None:
+    """The code tokens of *text* (type, text) and the text of its wording tokens; ``None`` when it does not tokenize."""
+    code: list[tuple[int, str]] = []
+    wording: list[str] = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type in _WORDING_TOKENS:
+                if token.type != tokenize.NL:
+                    wording.append(token.string)
+            else:
+                code.append((token.type, token.string))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    return code, wording
+
+
+def wording_words(path: str, old_text: str, new_text: str) -> set[str] | None:
+    """The words a wording-only change of a Python file replaces, or ``None`` when the change touches code.
+
+    Wording-only: the code tokens of both sides are equal (strings, comments and
+    docstrings aside) and their text differs. The answer is the words removed or
+    added inside them (a word diff), kept when distinctive (:func:`_kept`): a
+    test pinning the former message names them, a test merely importing the
+    module does not. A rename of a product in error texts and docstrings across
+    17 modules selected 55 test files through the edited definitions and module
+    paths, about 60 minutes of run for no code change.
+    """
+    if not path.endswith(".py") or old_text == new_text:
+        return None
+    old = _python_tokens(old_text)
+    new = _python_tokens(new_text)
+    if old is None or new is None or old[0] != new[0]:
+        return None
+    before = _WORD.findall(" ".join(old[1]))
+    after = _WORD.findall(" ".join(new[1]))
+    words: set[str] = set()
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
+        if tag != "equal":
+            words.update(before[i1:i2])
+            words.update(after[j1:j2])
+    return {w for w in words if _kept(w)}
+
+
 def python_module(path: str, base: str) -> str:
     """The import path of the Python module *path* seen from *base* (the check's directory), ``""`` otherwise."""
     if not path.endswith(".py") or (base and not is_under(path, base)):
@@ -430,6 +490,7 @@ def changed_identifiers(
     generic: set[str] | None = None,
     literals: set[str] | None = None,
     defined: set[str] | None = None,
+    wording: set[str] | None = None,
 ) -> set[str]:
     """What a change of *path* touches: definitions, literals on changed lines, and its module path.
 
@@ -446,9 +507,21 @@ def changed_identifiers(
     stays out) and when it is distinctive (:func:`distinctive_literal`): a
     JSON-schema keyword (``description``, ``properties``) or a short plain dict
     key (``sources``) is set aside as generic, never searched.
+
+    A wording-only change of a Python file (:func:`wording_words`: strings,
+    comments and docstrings alone) names neither its definitions nor its module
+    path: the words it replaced are the answer, also added to *wording* when
+    given, so they select the tests pinning that text and no test importing the
+    module for another reason.
     """
     old_text = reading.decode(before) if before is not None and reading.is_text(before) else None
     new_text = reading.decode(after) if after is not None and reading.is_text(after) else None
+    if old_text is not None and new_text is not None:
+        words = wording_words(path, old_text, new_text)
+        if words is not None:
+            if wording is not None:
+                wording |= words
+            return words
     names: set[str] = set()
     if old_text is not None and new_text is not None:
         old_lines, new_lines = _changed_lines(old_text.splitlines(), new_text.splitlines())
@@ -775,6 +848,8 @@ async def affected_tests(
     generic: set[str] = set()
     quoted: dict[str, set[str]] = {}
     definitions: set[str] = set()
+    #: Changed Python file -> the words of a wording-only change (strings, comments, docstrings alone).
+    worded: dict[str, set[str]] = {}
 
     async def one(repo_path: str, mark: str) -> set[str]:
         after = before = None
@@ -792,6 +867,11 @@ async def affected_tests(
                     unread_bases.append(repo_path)
         literals = quoted.setdefault(repo_path, set())
         words = None if is_test_file(repo_path) else generic
+        if before is not None and after is not None and reading.is_text(before) and reading.is_text(after):
+            replaced = wording_words(repo_path, reading.decode(before), reading.decode(after))
+            if replaced is not None:
+                worded[repo_path] = replaced
+                return replaced
         return changed_identifiers(repo_path, before, after, base=base, generic=words, literals=literals, defined=definitions)
 
     found = await asyncio.gather(*(one(p, m) for p, m in marked))
@@ -803,6 +883,10 @@ async def affected_tests(
             # A changed test runs because it changed: its literals and test names select no other file.
             own_names += 1
             quoted.pop(repo_path, None)
+        elif repo_path in worded:
+            # Wording alone: the replaced words select the tests pinning the text, the module path selects nothing.
+            quoted.pop(repo_path, None)
+            out.identifiers |= names
         elif module:
             # The literals stay free: a schema key is asserted by tests that never import its module.
             literals = quoted.get(repo_path, set())
@@ -812,6 +896,14 @@ async def affected_tests(
             out.identifiers |= names
     if own_names:
         out.notes.append(f"{own_names} changed test file(s) run as changed; their own names select no other test file.")
+    wording_only = sorted(p for p in worded if not is_test_file(p))
+    if wording_only:
+        out.notes.append(
+            f"{len(wording_only)} changed file(s) change wording only (strings, comments, docstrings): "
+            + ", ".join(wording_only[:NAMED_IN_NOTE])
+            + (f", +{len(wording_only) - NAMED_IN_NOTE} more" if len(wording_only) > NAMED_IN_NOTE else "")
+            + "; only the tests naming a replaced word are selected, never by their definitions or module path."
+        )
     for module in out.scoped:
         out.scoped[module] -= out.identifiers
     # A top-level directory name (``"frontend"`` in a checks list) is in every test reading that tree: no selector.
