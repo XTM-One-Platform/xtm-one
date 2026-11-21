@@ -35,6 +35,7 @@ import { Spinner } from "@filigran/design-system";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemStageAssessments } from "@/hooks/api/useCtemMetricsApi";
+import type { CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
@@ -46,6 +47,7 @@ import type { CtemBand, CtemStage, CtemVertical } from "@/types";
 import { MiniTrend } from "./ctem-viz";
 import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
+import { SignalCounter } from "./loop/SignalCounter";
 import { assessmentBusy } from "./landing-refresh";
 import { historyWindow, seriesChange } from "./trend-window";
 
@@ -96,6 +98,15 @@ export interface LifecycleBandProps {
   now?: Date;
   /** The posture behind every column is being rebuilt (#12183). */
   refreshing?: boolean;
+  /**
+   * The CTEM signals by state (CTEM-01-UI): a compact counter under the ring
+   * key, each count opening the signal list of the loop trace. Absent outside
+   * XTM One mode or before the first read.
+   */
+  signals?: {
+    counts: Partial<Record<CtemSignalState, number>>;
+    onOpen: (state: CtemSignalState | null) => void;
+  } | null;
 }
 
 /** The score series of one stage over the last `days` days (`null` on a day with none). */
@@ -325,7 +336,7 @@ function RowAction({ children, onClick, href }: { children: ReactNode; onClick?:
 
 export function LifecycleBandCard({
   stages, live, covered, total, history, vertical, aiLockReason, opencrq,
-  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false,
+  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false, signals = null,
 }: LifecycleBandProps) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
@@ -392,6 +403,13 @@ export function LifecycleBandCard({
               <Icon name="building-2" size={16} /> {t_i18n("Inner ring: In your context (qualitative)")}
             </span>
           </Tip>
+          {/* Wide card: at the right end of the ring key row. Narrower: a line of
+              its own on the card's left edge, never pushed right (#877 UX round 1 B3). */}
+          {signals && (
+            <span className="min-w-0 basis-full @5xl:ml-auto @5xl:basis-auto">
+              <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
+            </span>
+          )}
         </div>
         <div className="relative">
           {/* The track the stages sit on: one line through the rings' row. */}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.models.general_assistant_config import (
@@ -63,6 +64,29 @@ def test_one_group_per_catalog_id():
     # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14).
     assert len(_IDS) == len(set(_IDS)) == 28
     assert set(_IDS) == set(catalog)
+
+
+def test_every_group_text_is_in_every_catalog():
+    """``useBuiltinTools`` renders name, tagline, detail and category through
+    ``t_i18n``: a key missing from a catalog shows the English text in that
+    locale, silently (#877 dropped the Health Modules keys in a merge)."""
+    lang = Path(__file__).resolve().parents[2] / "frontend/src/i18n/lang"
+    for locale in ("en", "fr", "es", "ja"):
+        catalog = json.loads((lang / f"{locale}.json").read_text(encoding="utf-8"))
+        missing = sorted(
+            {
+                key
+                for group in BUILTIN_TOOL_GROUPS
+                for key in (
+                    None if group.named_after_platform else group.name,
+                    group.tagline,
+                    group.detail,
+                    group.category,
+                )
+                if key and key not in catalog
+            }
+        )
+        assert not missing, f"{locale}.json lacks built-in tool group keys: {missing}"
 
 
 def test_audience_flags_match_the_backend_sets():
