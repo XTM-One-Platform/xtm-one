@@ -545,7 +545,7 @@ Health surface that links there is drawn for administrators only, either by its 
 because only an administrator page renders it (Overview, Signals, analysis panel, the
 Settings blocks). The surfaces open to everyone (agent improvement row, flow panel,
 improvements inbox, cycles list, profile opt-out) link only to the target's own page
-(`/agents/<id>`, `/flows/<id>/builder`, `/assignments/<id>`), which has no route guard and
+(`/agents/<id>`, `/flows/library/<id>`, `/assignments/<id>`), which has no route guard and
 checks access itself. The guard lists every Health file with its audience: a new file fails
 until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
 its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).

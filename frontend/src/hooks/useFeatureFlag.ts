@@ -53,7 +53,7 @@ export function useFeatureFlag(flag: FeatureFlag): boolean {
  * has a 60s `staleTime` with `refetchOnWindowFocus` left on, so alt-tabbing
  * away and back is enough to trigger one. Reading `isError` raw meant a
  * transient 5xx during that refetch tore down whatever the flag was gating:
- * on `/flows/<id>/builder` that unmounted the canvas and took unsaved graph
+ * on `/flows/library/<id>` that unmounted the canvas and took unsaved graph
  * edits with it, over a flag that was known and enabled the whole time.
  *
  * So `isError` here means *only* "no config and the fetch failed", and

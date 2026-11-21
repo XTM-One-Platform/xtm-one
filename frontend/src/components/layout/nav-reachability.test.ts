@@ -237,7 +237,7 @@ test("every destination is a route of App.tsx, behind the guard the table record
 test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
   const routes = appRoutes();
-  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?", "/runs/:id", "/assignments/:id/:tab?"]) {
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?", "/runs/:id", "/assignments/:id/:tab?", "/flows/:id/builder", "/runners/:id"]) {
     assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
   }
   // The only redirects left are access guards (home, or the login page): never one page aliasing another.
@@ -251,6 +251,15 @@ test("no route redirects or aliases a former address; an unknown one is not foun
   assert.ok(catchAll, "a catch-all route exists");
   assert.match(catchAll.body, /<RouteNotFound \/>/);
   assert.ok(routes.some((route) => route.path === "/fleets"), "/fleets is a page of its own");
+});
+
+test("an unknown agent, assignment or run id is Page not found, never a section error (#797 S4)", () => {
+  for (const page of ["AgentDetail.tsx", "AssignmentDetail.tsx", "RunDetail.tsx"]) {
+    const source = readFileSync(new URL(`../../pages/${page}`, import.meta.url), "utf8");
+    assert.match(source, /notFoundIsOrdinary: true/, `${page} reads its entity with a 404 as an answer`);
+    assert.match(source, /if \(!(agent|assignment|run)\) return <RouteNotFound \/>;/, `${page} renders RouteNotFound`);
+    assert.doesNotMatch(source, /<NotFoundState/, `${page} draws no page-local not-found state`);
+  }
 });
 
 test("Agentic Flow keeps the map and the library, never a Fleets tab (two rows never open one page)", () => {

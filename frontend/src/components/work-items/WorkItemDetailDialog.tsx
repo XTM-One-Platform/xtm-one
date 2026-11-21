@@ -139,7 +139,7 @@ function InboxLine({ inbox }: { inbox: WorkItemInboxRef }) {
   const Icon = inbox.kind === "flow" ? Workflow : Zap;
   const name = inbox.accessible && inbox.id ? (
     <Link
-      to={inbox.kind === "flow" ? `/flows/${inbox.id}/builder` : `/agents/assignments/${inbox.id}`}
+      to={inbox.kind === "flow" ? `/flows/library/${inbox.id}` : `/agents/assignments/${inbox.id}`}
       className="text-accent hover:underline"
     >
       {inbox.name}

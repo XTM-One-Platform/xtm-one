@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * /runners/:id - one enrolled machine.
+ * /desktop/runners/:id - one enrolled machine.
  *
  * The XTM One Desktop page lists the machines YOU can see - own, shared with
  * you, company-managed - admins included. The by-id route keeps the

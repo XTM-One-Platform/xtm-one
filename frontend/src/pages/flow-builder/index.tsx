@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * FlowBuilder — the visual flow composition surface.
  *
  * Full-height three-pane layout: node library, canvas, config drawer. Lives on
- * `/flows/:id/builder` rather than as a tab of `/flows` so the canvas gets the
+ * `/flows/library/:id` rather than as a tab of `/flows` so the canvas gets the
  * whole viewport — a builder squeezed under a page title and a tab bar is the
  * thing this feature exists to stop being.
  *
@@ -1469,7 +1469,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
             : t_i18n("Everything in the file was imported cleanly."),
           variant: partial ? "info" : "success",
         });
-        navigate(`/flows/${imported.id}/builder`);
+        navigate(`/flows/library/${imported.id}`);
       } catch (err) {
         toast({
           title: t_i18n("Import failed"),

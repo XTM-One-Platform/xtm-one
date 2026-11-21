@@ -84,13 +84,13 @@ test.describe.serial('Flows — owner and access', () => {
 
   test('?panel=owner-access opens the drawer for an admin and is consumed', async ({ page }) => {
     // The paused-flow notice links here: the URL is the contract.
-    await page.goto(`/flows/${flowId}/builder?panel=owner-access`);
+    await page.goto(`/flows/library/${flowId}?panel=owner-access`);
     await expect(page.getByRole('complementary', { name: 'Owner and access' })).toBeVisible();
     await expect(page).not.toHaveURL(/panel=owner-access/);
   });
 
   test('an admin makes the flow company-managed and back from the builder', async ({ page }) => {
-    await page.goto(`/flows/${flowId}/builder`);
+    await page.goto(`/flows/library/${flowId}`);
     await page.getByRole('button', { name: 'Owner and access' }).click();
     const drawer = page.getByRole('complementary', { name: 'Owner and access' });
     await expect(drawer).toBeVisible();
@@ -107,7 +107,7 @@ test.describe.serial('Flows — owner and access', () => {
   });
 
   test('an admin transfers the flow to another active user', async ({ page }) => {
-    await page.goto(`/flows/${flowId}/builder`);
+    await page.goto(`/flows/library/${flowId}`);
     await page.getByRole('button', { name: 'Owner and access' }).click();
     const drawer = page.getByRole('complementary', { name: 'Owner and access' });
 
@@ -123,12 +123,12 @@ test.describe.serial('Flows — owner and access', () => {
     await page.reload();
     await new LoginPage(page).login(regularEmail, REGULAR_USER_PASSWORD);
 
-    await page.goto(`/flows/${flowId}/builder`);
+    await page.goto(`/flows/library/${flowId}`);
     await expect(page.getByRole('textbox', { name: 'Flow name' })).toHaveValue(FLOW_NAME);
     await expect(page.getByRole('button', { name: 'Owner and access' })).toHaveCount(0);
 
     // The deep link does not open it for them either, and is still consumed.
-    await page.goto(`/flows/${flowId}/builder?panel=owner-access`);
+    await page.goto(`/flows/library/${flowId}?panel=owner-access`);
     await expect(page.getByRole('textbox', { name: 'Flow name' })).toHaveValue(FLOW_NAME);
     await expect(page).not.toHaveURL(/panel=owner-access/);
     await expect(page.getByRole('complementary', { name: 'Owner and access' })).toHaveCount(0);

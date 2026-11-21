@@ -223,7 +223,7 @@ export function useAuthConfig() {
        Retries stay at the app default (main.tsx: two attempts for network
        errors, one retry otherwise) rather than `usePlatformConfig`'s three.
        Nothing blocks on the platform config, whereas `/flows` and
-       `/flows/:id/builder` now hold a skeleton until this settles — three
+       `/flows/library/:id` now hold a skeleton until this settles — three
        retries would put a full 1s + 2s + 4s backoff in front of the page on a
        single transient 500. */
     throwOnError: false,

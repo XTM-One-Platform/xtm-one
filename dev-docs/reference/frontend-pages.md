@@ -170,7 +170,7 @@ clicking it, or navigate by URL.
 | Agent Chat Conversation | `/agents/:id/chats/:conversationId` | `useAgent`, `useAgentChatDetailInfinite` |
 | Agent Flow | `/agents/flow` | `useAgents` |
 | Flows (map views: `/flows/map`, `/flows/map/schedule`) | `/flows/:tab?`, `/flows/map/:mapView` | `useFlows`, `useCreateFlow`, `useDeleteFlow`, `useDuplicateFlow`, `useExportFlow`, `useImportFlow`, `useAgents`, `useUpdateAgent`, `useAssignments`, `useGeneralAssistantConfig`, `useActiveAgentIds`, `useAllAssignmentRuns`, `useAgentDelegations`, `useWorkItems`, `useAssignmentSchedule` |
-| Flow Builder (behind `FLOW_BUILDER`) | `/flows/:id/builder` | `useFlow`, `useUpdateFlow`, `useFlowNodeCatalog`, `useFlowVersions`, `useRestoreFlowVersion`, `useImportFlow` |
+| Flow Builder (behind `FLOW_BUILDER`) | `/flows/library/:id` | `useFlow`, `useUpdateFlow`, `useFlowNodeCatalog`, `useFlowVersions`, `useRestoreFlowVersion`, `useImportFlow` |
 | Integrations | `/integrations` | `useIntegrations`, `useProviderCatalog`, `useCreateIntegration`, `useDeleteIntegration` |
 | Integration Detail | `/integrations/:id/:tab?` | `useIntegrations`, `useUpdateIntegration`, `useDeleteIntegration`, `useTestIntegration`, `useAuthorizeIntegration` |
 | OAuth implicit sign-in callback | `/oauth/implicit` | none |

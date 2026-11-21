@@ -207,7 +207,7 @@ async def evidence_links(
             flow_id = (await db.execute(select(FlowRun.flow_id).where(FlowRun.id == ref_id))).scalar_one_or_none()
             target = await resolve_target(db, user, user_group_ids, "flow", flow_id) if flow_id else None
             if target is not None:
-                href = f"/flows/{flow_id}/builder"
+                href = f"/flows/library/{flow_id}"
         elif kind == "evaluation_run" and user.is_admin and evaluation_enabled():
             href = f"/evaluations/runs/{ref_id}"
         links.append(EvidenceLink(kind, str(ref_id) if href else None, href, href is None))

@@ -688,15 +688,15 @@ export default function App() {
         <Route path="/flows/:tab?" element={<Page><Flows /></Page>} />
         {/* The map's sub-views are path segments (#10203 S2): `/flows/map/schedule`. */}
         <Route path="/flows/map/:mapView" element={<Page><Flows /></Page>} />
-        {/* One fleet; the static `fleets` segment ranks above `/flows/:id/builder`. */}
+        {/* One fleet; the static `fleets` segment ranks above `/flows/library/:id`. */}
         {/* Its tabs are path segments (#10203 S2): `/graph`, `/data-flow`, `/members`,
             `/approval`, `/schedule`, `/operations/:list`, `/roi`; none is About. */}
         <Route path="/fleets" element={<Page><Fleets /></Page>} />
         <Route path="/fleets/:fleetId/:tab?/:list?" element={<Page><FleetPage /></Page>} />
-        {/* Deeper than `/flows/:tab?`, so `/flows/map` and `/flows/<uuid>/builder`
+        {/* Deeper than `/flows/:tab?`, so `/flows/map` and `/flows/library/<uuid>`
             never collide. Creation is a POST followed by a navigate — a
             `/flows/new` route WOULD collide with the tab segment. */}
-        <Route path="/flows/:id/builder" element={<FeatureFlagGate flag="FLOW_BUILDER"><Page><FlowBuilder /></Page></FeatureFlagGate>} />
+        <Route path="/flows/library/:id" element={<FeatureFlagGate flag="FLOW_BUILDER"><Page><FlowBuilder /></Page></FeatureFlagGate>} />
         <Route path="/integrations" element={<Page><Integrations /></Page>} />
         <Route path="/integrations/:id/:tab?" element={<Page><IntegrationDetail /></Page>} />
         <Route path="/integrations/new" element={<Page><NewIntegration /></Page>} />
@@ -774,7 +774,7 @@ export default function App() {
         <Route path="/profile/agent-accounts/:accountId/:tab?" element={<Page><AgentAccountPage /></Page>} />
         <Route path="/profile/:tab?" element={<Page><Profile /></Page>} />
         <Route path="/desktop" element={<Page><Desktop /></Page>} />
-        <Route path="/runners/:id" element={<Page><RunnerDetail /></Page>} />
+        <Route path="/desktop/runners/:id" element={<Page><RunnerDetail /></Page>} />
         <Route path="/connections/relays" element={<Page><Relays /></Page>} />
         <Route path="/connections/relays/:id/:tab?" element={<Page><RelayGroupDetail /></Page>} />
         <Route path="/ai-adoption/:tab?" element={

@@ -4238,7 +4238,7 @@ def seed_concierge_signals(token: str, agent: str, base: str) -> dict[str, dict[
                                                        "url": f"{base}/concierge/signals"},
         f"concierge cycles ({len(rows['cycles'])} new)": {"id": ",".join(rows["cycles"]),
                                                          "url": f"{base}/concierge/cycles"},
-        "concierge flow target": {"id": rows["flow"], "url": f"{base}/flows/{rows['flow']}/builder"},
+        "concierge flow target": {"id": rows["flow"], "url": f"{base}/flows/library/{rows['flow']}"},
         "concierge assignment target": {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"},
     }
 

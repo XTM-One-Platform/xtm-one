@@ -48,7 +48,7 @@ test("a target links to its own page", () => {
       healthTargetHref(null, "x"),
       healthTargetHref("agent", null),
     ],
-    ["/agents/a1", "/flows/f1/builder", "/agents/assignments/s1", null, null],
+    ["/agents/a1", "/flows/library/f1", "/agents/assignments/s1", null, null],
   );
 });
 

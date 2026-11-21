@@ -251,7 +251,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         run_id = _str(metadata, "flow_run_id")
         route = "/flows"
         if _is_uuid(flow_id):
-            route = f"/flows/{flow_id}/builder"
+            route = f"/flows/library/{flow_id}"
             if source == "flow_hitl" and _is_uuid(run_id):
                 route += f"?run={run_id}"
         return item(source, route, "Flow")
