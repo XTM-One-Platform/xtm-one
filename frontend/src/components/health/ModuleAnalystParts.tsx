@@ -154,7 +154,8 @@ export function AnalystRecommendationBlock({ recommendation }: { recommendation:
   const { t_i18n } = useFormatter();
   const tools = [...new Set(recommendation.evidence.map((read) => read.tool).filter((tool): tool is string => Boolean(tool)))];
   return (
-    <div className="space-y-1 rounded-md border border-elevation-subtle p-3" data-testid="health-analyst-recommendation">
+    // The sibling of the check's "Recommendation" section: same heading, same left edge, no frame (UX round 1 B4 on #953).
+    <div className="space-y-1" data-testid="health-analyst-recommendation">
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Module Analyst")}</h4>
         <Badge variant="outline" className="whitespace-nowrap">

@@ -76,7 +76,8 @@ const SEVERITY_BADGE: Record<HealthSeverity, "destructive" | "warning" | "second
 
 /** Where a finding comes from: a deterministic check or the Module Analyst (#101 S14c). @i18n-keys */
 const SOURCE_LABELS = {
-  checks: "Checks",
+  // "Checks" is the checkbox field's key (fr "Coches"): the source has its own words (UX round 1 B1 on #953).
+  checks: "Health checks",
   agentic: "Agentic",
 } as const;
 
@@ -599,7 +600,8 @@ export function HealthOverviewTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="health-module-cards">
+      {/* items-start: a card with the analyst footer never stretches its row neighbour into an empty band (UX round 1 B3 on #953). */}
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="health-module-cards">
         {cards.map((card) => (
           <StatCard
             key={card.module}
