@@ -255,8 +255,21 @@ describe("the gate counts", () => {
     signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 1, confirmed: 1 }, signals: [] } };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(screen.getByTestId("ctem-funnel-gate-counts").textContent).toBe(
-      "Gates: 3 signals in, 2 confirmed, 1 in scope, 0 cases (1 on the watchlist)",
+      "Signals: 3 in, 2 confirmed, 1 in scope, 0 opened a case, 1 on the watchlist",
     );
+    signalsRead.value = { data: undefined };
+  });
+
+  // UX r1 B1 on #875: a count that shares a noun with another count on the same
+  // card names its scope; the gate line never reads as a second total of cases.
+  it("names its scope so its cases never read as the card's open cases", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: { total: 4, counts: { to_validate: 1, discarded: 1, watchlist: 1, case_opened: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    const line = screen.getByTestId("ctem-funnel-gate-counts").textContent ?? "";
+    expect(line.startsWith("Signals: ")).toBe(true);
+    expect(line).toContain("1 opened a case");
+    expect(line).not.toMatch(/\d+ cases?\b/);
     signalsRead.value = { data: undefined };
   });
 });

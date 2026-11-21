@@ -747,10 +747,9 @@ function SignalGateCounts() {
   if (gate.total === 0) return null;
   return (
     <p className="content-compact text-default-secondary tabular-nums" data-testid="ctem-funnel-gate-counts">
-      {t_i18n(
-        "Gates: {total, plural, one {# signal in} other {# signals in}}, {confirmed} confirmed, {inScope} in scope, {cases, plural, one {# case} other {# cases}} ({watchlist} on the watchlist)",
-        gate,
-      )}
+      {/* UX r1 B1 on #875: the card already counts open cases; this line names its
+          scope (signals) so its "opened a case" never reads as a second case total. */}
+      {t_i18n("Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist", gate)}
     </p>
   );
 }

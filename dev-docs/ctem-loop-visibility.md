@@ -87,8 +87,11 @@ sentence; an in-scope or unknown code has none. The inputs say whether an
 asset matched ("None matched" on a decided record) and the criticality against
 the threshold X ("Medium, below High"). The Prioritization stage draws the two
 gates as one line under the funnel, never a new card: signals in, confirmed,
-in scope, cases and the watchlist, from the counts by state of
-`GET /ctem-signals`, refreshed by the `ctem_signal_update` frame.
+in scope, opened a case and the watchlist, from the counts by state of
+`GET /ctem-signals`, refreshed by the `ctem_signal_update` frame. The line
+opens with "Signals:" and says "opened a case", never "cases": the same card
+already counts open cases, and a count that shares a noun with another count
+on the same card names its scope (UX r1 B1 on #875).
 
 ## 4. The loop trace
 
