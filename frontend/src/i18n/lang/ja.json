@@ -20001,7 +20001,6 @@
   "Last investigation": "前回の調査",
   "Not investigated yet": "未調査",
   "Investigate now": "今すぐ調査",
-  "Investigate {module} now": "{module} を今すぐ調査",
   "Investigation started": "調査を開始しました",
   "Ceiling reached": "上限に達しました",
   "Findings changed": "検出事項の変更",
