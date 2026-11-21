@@ -85,7 +85,14 @@ export default function CtemCases() {
       onSuccess: (result) =>
         toast(
           result.applied
-            ? { title: t_i18n("Cases recomputed"), variant: "success" }
+            ? {
+                title: t_i18n("Cases recomputed"),
+                // The issues the declared tech stack version keeps out of every case (CTEM-11, #928).
+                ...(result.not_affected
+                  ? { description: t_i18n("{count, plural, one {# issue is not affected by the version you run.} other {# issues are not affected by the version you run.}}", { count: result.not_affected }) }
+                  : {}),
+                variant: "success",
+              }
             : {
                 title: t_i18n("Nothing recomputed"),
                 description: t_i18n("{products} did not answer: no case was changed.", { products: (result.missing ?? []).join(", ") }),

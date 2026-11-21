@@ -865,6 +865,18 @@ export function OrganizationSection() {
       firstSort: "asc",
       csv: ({ value }) => value.cpe,
     },
+    {
+      // The version the organization runs (CTEM-11, #928): a case then names the version to reach.
+      key: "version",
+      header: "Version (optional)",
+      hideable: true,
+      width: readWidth(140),
+      cell: ({ value }) => readCell(value.version ?? ""),
+      interactive: true,
+      sortValue: sortable<TechRow>(({ value }) => (value.version ?? "").toLowerCase()),
+      firstSort: "asc",
+      csv: ({ value }) => value.version ?? "",
+    },
   ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
@@ -978,6 +990,7 @@ export function OrganizationSection() {
     { key: "product", header: "Product", width: readWidth(240), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    { key: "version", header: "Version (optional)", hideable: true, width: readWidth(140), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
   ];
   const aiEdit: ListEditColumn<AiSystem>[] = [
     { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
@@ -1019,12 +1032,12 @@ export function OrganizationSection() {
     tech_stack: {
       title: "Paste products",
       example: "Jira, Atlassian",
-      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
       spec: {
-        fields: ["product", "vendor", "cpe"],
-        empty: { product: "", vendor: "", cpe: "" },
+        fields: ["product", "vendor", "cpe", "version"],
+        empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
-        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
     },
@@ -1884,7 +1897,7 @@ export function OrganizationSection() {
                 {listEditAction("tech_stack")}
                 {pasteAction("tech_stack")}
                 {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "" })}>
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
@@ -1895,7 +1908,7 @@ export function OrganizationSection() {
             {listEditor("tech_stack", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
-              searchFields: (v) => [v.product, v.vendor, v.cpe],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
               rowLabel: (v) => v.product,
               storageKey: "settings-organization-tech-stack",
               rowTestId: "settings.organization.tech-row",
