@@ -97,6 +97,7 @@ from app.api.v1.schemas.fleet import (
     FleetBulkAction,
     FleetBulkOutcome,
     FleetBulkResponse,
+    FleetCapabilitySlotsResponse,
     FleetCardResponse,
     FleetControlResponse,
     FleetCostResponse,
@@ -131,6 +132,7 @@ from app.api.v1.schemas.fleet import (
     FleetMemberMove,
     FleetMemberResponse,
     FleetMembersBulkUpdate,
+    FleetMemberSlots,
     FleetMemberUpdate,
     FleetOrganizationRunEstimate,
     FleetPrerequisiteConfirmRequest,
@@ -140,6 +142,7 @@ from app.api.v1.schemas.fleet import (
     FleetRunEstimateResponse,
     FleetRunStatsResponse,
     FleetSharedStateHygieneResponse,
+    FleetSlotBind,
     FleetSourceChange,
     FleetSourceChangesResponse,
     FleetSpecApply,
@@ -847,6 +850,253 @@ async def update_fleet_member(
     await db.commit()
     await db.refresh(row)
     return (await _member_responses(db, user, fleet, [row], user_group_ids))[0]
+
+
+# --- Capability slots (#914 slice 2) ------------------------------------------
+#
+# A slot binds an integration on the member's AGENT, never on the fleet: on a
+# built-in fleet that is the agent's customer layer
+# (``services.builtin_customer_layer``), which the seed never rewrites, so the
+# fleet's own write lock (``_ensure_writable``) does not apply. The agent's
+# manage rule does: company-managed takes an administrator.
+
+
+async def _connected_integrations(db: AsyncSession, user: User, user_group_ids: list[str]) -> list[Any]:
+    from app.models.integration import Integration
+    from app.services.fleet_capability_slots import IntegrationRef
+    from app.services.integration_state import INTEGRATION_CONNECTED
+
+    rows = (
+        (
+            await db.execute(
+                user_visible_query(Integration, user.id, user_group_ids, is_admin=user.is_admin).where(
+                    Integration.status == INTEGRATION_CONNECTED
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        IntegrationRef(
+            integration_id=str(r.id), provider=r.provider, name=r.name, company_managed=bool(r.is_company_managed)
+        )
+        for r in rows
+    ]
+
+
+def _slot_model(state: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetCapabilitySlot, FleetSlotIntegration
+
+    def _ref(i: Any) -> FleetSlotIntegration:
+        return FleetSlotIntegration(integration_id=i.integration_id, provider=i.provider, name=i.name)
+
+    return FleetCapabilitySlot(
+        capability=state.capability,
+        label=state.label,
+        state=state.state,
+        bound=[_ref(i) for i in state.bound],
+        candidates=[_ref(i) for i in state.candidates],
+    )
+
+
+async def _member_slots(
+    db: AsyncSession, user: User, user_group_ids: list[str], row: FleetMember, agent: Agent, connected: list[Any]
+) -> FleetMemberSlots:
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import slot_states
+
+    states = slot_states(
+        row.role_label,
+        agent.integration_bindings,
+        connected,
+        PROVIDER_CATALOG,
+        company_managed_only=bool(agent.is_company_managed),
+    )
+    return FleetMemberSlots(
+        member_id=str(row.id),
+        agent_id=str(agent.id),
+        name=agent.name,
+        role_label=row.role_label or "",
+        can_edit=can_manage(user, agent, user_group_ids),
+        slots=[_slot_model(s) for s in states],
+    )
+
+
+@router.get("/{fleet_id}/capability-slots", response_model=FleetCapabilitySlotsResponse)
+async def get_fleet_capability_slots(
+    fleet_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetCapabilitySlotsResponse:
+    """Each home member's capability slots: filled, empty or unavailable (#914 slice 2).
+
+    Read only: no model call, no quota, no run. A member whose role declares
+    no slot, or whose agent the reader cannot see, is left out.
+    """
+    from app.services.fleet_capability_slots import slots_for_role
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    fleet = await _visible_fleet(db, user, fleet_id, user_group_ids)
+    rows = [
+        r
+        for r in await fleet_members(db, fleet.id)
+        if r.role == FLEET_ROLE_MEMBER and r.agent_id is not None and slots_for_role(r.role_label)
+    ]
+    agents = (
+        {
+            a.id: a
+            for a in (
+                await db.execute(
+                    select(Agent).where(
+                        Agent.id.in_([r.agent_id for r in rows]),
+                        user_visible_filter(Agent, user.id, user_group_ids, is_admin=user.is_admin),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if rows
+        else {}
+    )
+    connected = await _connected_integrations(db, user, user_group_ids) if agents else []
+    members = [
+        await _member_slots(db, user, user_group_ids, r, agents[r.agent_id], connected)
+        for r in rows
+        if r.agent_id in agents
+    ]
+    return FleetCapabilitySlotsResponse(fleet_id=str(fleet.id), members=members)
+
+
+async def _slot_member_agent(
+    db: AsyncSession, user: User, user_group_ids: list[str], fleet_id: str, member_id: str
+) -> tuple[FleetMember, Agent]:
+    fleet = await _visible_fleet(db, user, fleet_id, user_group_ids)
+    member_uuid = parse_path_id(member_id, not_found_detail="Fleet member not found")
+    row = (
+        await db.execute(
+            select(FleetMember).where(
+                FleetMember.id == member_uuid,
+                FleetMember.fleet_id == fleet.id,
+                FleetMember.role == FLEET_ROLE_MEMBER,
+            )
+        )
+    ).scalar_one_or_none()
+    agent = (
+        (
+            await db.execute(
+                select(Agent).where(
+                    Agent.id == row.agent_id,
+                    user_visible_filter(Agent, user.id, user_group_ids, is_admin=user.is_admin),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None and row.agent_id is not None
+        else None
+    )
+    if row is None or agent is None:
+        raise HTTPException(status_code=404, detail="Fleet member not found")
+    if not can_manage(user, agent, user_group_ids):
+        detail = (
+            "Only admins can edit company-managed agents"
+            if agent.is_company_managed
+            else "You don't have permission to edit this agent."
+        )
+        raise HTTPException(status_code=403, detail=detail)
+    return row, agent
+
+
+async def _audit_slot_change(
+    db: AsyncSession, user: User, agent: Agent, *, verb: str, capability: str, integration_id: str
+) -> None:
+    # The seed never writes ``integration_bindings``, so nothing is recorded in
+    # ``customer_fields`` for it (as on ``PUT /agents/{id}``).
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="agent",
+        entity_id=agent.id,
+        entity_name=agent.name,
+        summary=f"{verb} an integration on the '{capability}' slot of '{agent.name}'",
+        details={"capability": capability, "integration_id": integration_id, "slug": agent.slug},
+    )
+
+
+@router.post("/{fleet_id}/members/{member_id}/slots/{capability}", response_model=FleetMemberSlots)
+async def bind_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    body: FleetSlotBind,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Bind a connected integration to a member's capability slot, in one click (#914 slice 2).
+
+    Adds it to the member agent's ``integration_bindings``; on a built-in that
+    is the customer layer, kept by every seed run.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_with
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = parse_uuid(body.integration_id, label="integration_id")
+    integration = next((i for i in connected if i.integration_id == str(wanted)), None)
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Integration not found or not connected")
+    try:
+        agent.integration_bindings = bindings_with(
+            row.role_label,
+            capability,
+            agent.integration_bindings,
+            integration,
+            PROVIDER_CATALOG,
+            company_managed_only=bool(agent.is_company_managed),
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(
+        db, user, agent, verb="Bound", capability=capability, integration_id=integration.integration_id
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+@router.delete("/{fleet_id}/members/{member_id}/slots/{capability}/{integration_id}", response_model=FleetMemberSlots)
+async def unbind_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    integration_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Unbind an integration from a member's capability slot (#914 slice 2)."""
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_without
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    target = str(parse_path_id(integration_id, not_found_detail="This integration is not bound to that slot."))
+    try:
+        agent.integration_bindings = bindings_without(
+            row.role_label, capability, agent.integration_bindings, target, PROVIDER_CATALOG
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(db, user, agent, verb="Unbound", capability=capability, integration_id=target)
+    await db.commit()
+    await db.refresh(agent)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
 
 
 @router.post("/{fleet_id}/members/{member_id}/instruction-draft", response_model=FleetMemberInstructionDraftResponse)

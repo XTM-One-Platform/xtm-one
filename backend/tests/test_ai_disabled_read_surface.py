@@ -1444,6 +1444,11 @@ _EXEMPT_DETERMINISTIC_TOOLING = {
     # fleet manager (#10469 S2): who and when stored, no model call,
     # licence-gated like the fleet.
     "confirm_fleet_prerequisite_endpoint",
+    # A connected integration bound to or unbound from a member's capability
+    # slot (#914 slice 2): the member agent's integration bindings written,
+    # no model call, licence-gated like the fleet.
+    "bind_fleet_member_slot",
+    "unbind_fleet_member_slot",
     # A custom fleet's approval gate catalog stored (#10014): configuration
     # computed in code, no model call, licence-gated like the fleet. Adding
     # gates only adds pauses, so AI off must not block it either.
