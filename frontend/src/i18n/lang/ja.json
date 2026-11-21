@@ -19821,5 +19821,7 @@
   "Page not found": "ページが見つかりません",
   "No page answers this address. The menu on the left lists every page.": "このアドレスに対応するページはありません。左のメニューにすべてのページがあります。",
   "Go to Home": "ホームへ移動",
-  "Back to Home": "ホームに戻る"
+  "Back to Home": "ホームに戻る",
+  "Mitigated, watching": "緩和済み、監視中",
+  "{count, plural, one {+# mitigated in {days} d} other {+# mitigated in {days} d}}": "{count, plural, other {{days} 日間で +# 件緩和}}"
 }
