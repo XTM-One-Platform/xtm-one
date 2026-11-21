@@ -266,7 +266,7 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
     from app.models.health_cycle import HealthScheduleMark, HealthSignalState
     from app.services.health.settings import load_health_settings
 
-    if not app_settings.is_xtm_one:
+    if app_settings.is_copilot_like:
         return 0
     health = await load_health_settings(db)
     if not health.enabled or not health.module_analyst.enabled:

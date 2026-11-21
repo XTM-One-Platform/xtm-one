@@ -88,7 +88,7 @@ class _Db:
 async def test_nothing_starts_in_copilot_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import config
 
-    monkeypatch.setattr(type(config.settings), "is_xtm_one", property(lambda _self: False))
+    monkeypatch.setattr(type(config.settings), "is_copilot_like", property(lambda _self: True))
     assert await module_analyst.run_module_triggers(_Db(), now=NOW) == 0  # type: ignore[arg-type]
 
 
@@ -102,7 +102,7 @@ async def test_nothing_starts_when_switched_off(monkeypatch: pytest.MonkeyPatch,
     from app.core import config
     from app.services.health import settings as health_settings
 
-    monkeypatch.setattr(type(config.settings), "is_xtm_one", property(lambda _self: True))
+    monkeypatch.setattr(type(config.settings), "is_copilot_like", property(lambda _self: False))
 
     async def _load(_db: Any) -> HealthSettings:
         return HealthSettings.model_validate(value)
