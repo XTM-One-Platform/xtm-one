@@ -21,7 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * folded), then the "Brief" they were written over. Presentation only: the
  * stored text is not rewritten.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
@@ -89,6 +89,19 @@ function NoteEntry({
   const long = isLongNote(note.body);
   const [open, setOpen] = useState(false);
   const folded = long && !open;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // A folded body always shows its first lines: nothing may leave it scrolled
+  // (UX round 3, B1: "Show less" after a keyboard visit kept scrollTop 405 px).
+  useLayoutEffect(() => {
+    if (folded && bodyRef.current) bodyRef.current.scrollTop = 0;
+  }, [folded]);
+  const openOnFocus = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    const target = event.target;
+    event.currentTarget.scrollTop = 0;
+    setOpen(true);
+    // Once open, bring the focused link or chip into the dialog's visible area.
+    requestAnimationFrame(() => target.scrollIntoView?.({ block: "nearest" }));
+  }, []);
   const when = intl.formatDate(note.at, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const author = run?.agent?.name ?? (note.runId ? t_i18n("An agent run") : t_i18n("The platform"));
   return (
@@ -115,12 +128,15 @@ function NoteEntry({
           the list item's caption font (126 px): about 5 lines of content-base,
           faded at the bottom (UX round 2, A6). Focus
           never lands in the hidden part: a link or chip below the fold opens the
-          note when it takes focus (UX round 2, B1). */}
+          note when it takes focus (UX round 2, B1). overflow-clip, not
+          overflow-hidden: a clip box cannot be scrolled, so the browser's focus
+          scroll never moves the folded text (UX round 3, B1). */}
       <div
-        className={cn("relative pt-1", folded && "max-h-[10.5em] overflow-hidden")}
+        ref={bodyRef}
+        className={cn("relative pt-1", folded && "max-h-[10.5em] overflow-clip")}
         data-testid="work-item-note-body"
         data-folded={folded ? "true" : undefined}
-        onFocusCapture={folded ? () => setOpen(true) : undefined}
+        onFocusCapture={folded ? openOnFocus : undefined}
       >
         <NoteMarkdown text={note.body} repo={repo} />
         {folded && (

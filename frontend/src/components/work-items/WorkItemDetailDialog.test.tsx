@@ -836,12 +836,14 @@ describe("the work item detail", () => {
     const body = screen.getByTestId("work-item-note-body");
     // A height cap on the wrapper, never -webkit-line-clamp: the text sits in block children.
     expect(body.className).not.toContain("line-clamp");
-    expect(body.className).toContain("overflow-hidden");
+    // overflow-clip, never overflow-hidden: a clip box cannot be scrolled by a focus (UX round 3 B1).
+    expect(body.className).toContain("overflow-clip");
+    expect(body.className).not.toContain("overflow-hidden");
     expect(body.getAttribute("data-folded")).toBe("true");
     expect(screen.getByTestId("work-item-note-fade")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(body.getAttribute("data-folded")).toBeNull();
-    expect(body.className).not.toContain("overflow-hidden");
+    expect(body.className).not.toContain("overflow-clip");
     expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
     expect(body.getAttribute("data-folded")).toBe("true");
@@ -853,10 +855,28 @@ describe("the work item detail", () => {
     const body = screen.getByTestId("work-item-note-body");
     expect(body.getAttribute("data-folded")).toBe("true");
     const link = within(body).getByRole("link", { name: /the run log/ });
+    const intoView = vi.fn();
+    link.scrollIntoView = intoView;
+    const frames = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    // The browser's focus scroll of the folded box, which the handler undoes
+    // (jsdom has no layout: an own writable scrollTop stands in for it).
+    Object.defineProperty(body, "scrollTop", { configurable: true, writable: true, value: 405 });
     act(() => link.focus());
+    frames.mockRestore();
     expect(body.getAttribute("data-folded")).toBeNull();
-    expect(body.className).not.toContain("overflow-hidden");
+    expect(body.className).not.toContain("overflow-clip");
+    expect(body.scrollTop).toBe(0);
+    // The focused link is brought into the dialog's visible area once the note opens (UX round 3 B1).
+    expect(intoView).toHaveBeenCalledWith({ block: "nearest" });
     expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+    // Folding again by keyboard leaves the body at its first lines.
+    body.scrollTop = 405;
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(body.scrollTop).toBe(0);
   });
 
   it("renders no script or iframe a description carries", () => {
