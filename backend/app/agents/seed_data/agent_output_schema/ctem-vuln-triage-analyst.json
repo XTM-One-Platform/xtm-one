@@ -27,6 +27,21 @@
               "measured_resistance": {"type": ["string", "null"]}
             }
           },
+          "exploitation": {
+            "type": "array",
+            "description": "From get_opencrq_cve_exploitation, one entry per OpenCRQ asset reached; empty when OpenCRQ is not bound",
+            "items": {
+              "type": "object",
+              "properties": {
+                "risk_scenario_id": {"type": "string"},
+                "asset": {"type": "string"},
+                "exposure": {"type": "string"},
+                "techniques": {"type": "array", "items": {"type": "string"}, "description": "ATT&CK ids in attack order"},
+                "reading": {"type": "string", "description": "Why these techniques: a mapping naming the CVE, or the topology rule line"}
+              },
+              "required": ["asset", "techniques", "reading"]
+            }
+          },
           "reason": {"type": "string", "description": "One sentence: why matched, or why closed not applicable"},
           "context_fields_used": {"type": "array", "items": {"type": "string"}},
           "context_fields_missing": {"type": "array", "items": {"type": "string"}}

@@ -377,6 +377,20 @@
       "closed": true
     }
   ],
+  "get_opencrq_cve_exploitation": [
+    {
+      "procedures": [
+        "riskScenarios.getCveExploitation"
+      ],
+      "fields": [
+        "cveId",
+        "limit",
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "get_opencrq_cve_finding": [
     {
       "procedures": [

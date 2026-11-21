@@ -130,6 +130,10 @@
     "cve.getInfo",
     "tenants.getTenants"
   ],
+  "get_opencrq_cve_exploitation": [
+    "riskScenarios.getCveExploitation",
+    "tenants.getTenants"
+  ],
   "get_opencrq_cve_finding": [
     "findingScore.getUniqueCveFinding",
     "organizations.getOrganization",
