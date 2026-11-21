@@ -11,7 +11,7 @@ The column set mirrors ``app/models/health_analysis.py``, so a fresh install's
 ``create_all`` and this body agree.
 
 Revision ID: h128healthmaspend01
-Revises: c857ctemcaseloop1
+Revises: c891ctemfleetcase1
 Create Date: 2026-11-21 15:05:00.000000
 """
 
@@ -23,7 +23,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "h128healthmaspend01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c857ctemcaseloop1"
+down_revision: str | Sequence[str] | None = "c891ctemfleetcase1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
