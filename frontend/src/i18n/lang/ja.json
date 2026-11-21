@@ -19947,7 +19947,6 @@
   "Due date from the SLA": "SLA から期限を設定",
   "When a case gets its ticket in the ticketing system.": "ケースがチケット管理システムでチケットを得るタイミング。",
   "The Jira issue type or the ServiceNow table. Empty: {value}.": "Jira の課題タイプまたは ServiceNow のテーブル。空欄: {value}。",
-  "Every ticket carries them, separated by commas.": "すべてのチケットに付きます。カンマ区切り。",
   "Priority for {severity} cases": "{severity} ケースの優先度",
   "Empty: {value}.": "空欄: {value}。",
   "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.": "チケットのステータス名をケースのチケットステータスに対応付けます。最初に参照され、対応のない名前はシステムの分類に従います。",
@@ -19957,6 +19956,7 @@
   "Map a status": "ステータスを対応付け",
   "A ticket moved to done starts the case's re-test; the case closes on the re-test, never on the ticket.": "完了にしたチケットはケースの再テストを開始します。ケースは再テストで閉じ、チケットでは閉じません。",
   "When a failed re-test reopens the case.": "再テストの失敗でケースが再オープンされたとき。",
+  "Every ticket carries them.": "すべてのチケットに付きます。",
   "The ticket's due date is the case's SLA due date.": "チケットの期限はケースの SLA 期限です。",
   "CTEM case sync": "CTEM ケースの同期",
   "How CTEM cases open, update and close their tickets. A change applies to the next sync.": "CTEM ケースがチケットを起票、更新、クローズする方法。変更は次の同期から適用されます。",
@@ -19979,5 +19979,13 @@
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, other {SLA を {shown} 日超過}}",
   "P1 case opened by the loop: {sla}": "ループが開いた P1 ケース: {sla}",
   "P1 case opened by the loop": "ループが開いた P1 ケース",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, other {# 件 緩和済み・監視中}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, other {# 件 緩和済み・監視中}}",
+  "When the CTEM case sync opens the ticket of a case. Example: at Mobilize, for P1 and P2 cases. Used by the Mobilization role through ctem.mobilize; a case never gets a ticket without it. Empty: at Mobilize, for P1 and P2 cases.": "CTEMケース同期がケースのチケットを作成するタイミング。例: モビライズ時、P1とP2のケース。ctem.mobilize を通じてモビライゼーションロールが使用します。これがなければケースにチケットは作成されません。空の場合: モビライズ時、P1とP2のケース。",
+  "The kind of record each ticket is. Example: Task or Bug in Jira, incident or change_request in ServiceNow. Used by the CTEM case sync when it opens a ticket. Empty: the default named under the field.": "各チケットのレコードの種類。例: Jira の Task や Bug、ServiceNow の incident や change_request。CTEMケース同期がチケットを作成するときに使用します。空の場合: フィールドの下に示す既定値。",
+  "Labels put on every ticket the CTEM case sync opens, to find them in the ticketing system. Example: ctem, security. Empty: tickets carry no label.": "CTEMケース同期が作成するすべてのチケットに付けるラベル。チケットシステムで見つけるために使います。例: ctem, security。空の場合: チケットにラベルは付きません。",
+  "The ticket priority for a case of this severity, as the ticketing system names it. Example: Highest in Jira, 1 in ServiceNow. Used by the CTEM case sync on create and update. Empty: the default named under the field.": "この重大度のケースに対するチケットの優先度(チケットシステムでの名前)。例: Jira の Highest、ServiceNow の 1。CTEMケース同期が作成と更新で使用します。空の場合: フィールドの下に示す既定値。",
+  "Your own ticket status names mapped to the case ticket status. Example: Jira Ready for QA to Done. Read by the CTEM case sync before the system's own status categories. Empty: the system's categories alone decide (To Do, In Progress, Done; New, In Progress, Resolved).": "独自のチケットステータス名をケースのチケットステータスに対応付けます。例: Jira の Ready for QA を完了に。CTEMケース同期がシステム自身のステータスカテゴリより先に読みます。空の場合: システムのカテゴリだけで決まります(To Do、In Progress、Done、New、In Progress、Resolved)。",
+  "Whether a ticket moved to done asks for the case's re-test. Example: the owner closes the ticket, the re-test runs, the case resolves only if it passes. Used by the CTEM case sync. Off: a done ticket changes nothing on the case.": "完了にしたチケットがケースの再テストを求めるかどうか。例: 担当者がチケットを閉じると再テストが実行され、合格した場合のみケースが解決されます。CTEMケース同期が使用します。オフの場合: 完了したチケットはケースに何も変更しません。",
+  "What the CTEM case sync does with the ticket when a failed re-test reopens its case. Example: reopen the same ticket, or open a new one linked to it. Default: reopen the same ticket.": "再テストの失敗でケースが再オープンされたときに、CTEMケース同期がチケットをどう扱うか。例: 同じチケットを再オープンする、またはリンクした新しいチケットを作成する。既定: 同じチケットを再オープン。",
+  "Whether the ticket's due date is the case's SLA due date. Example: a P1 case due in 24 hours gives a ticket due the same day. Used by the CTEM case sync on create and update. Off: tickets carry no due date.": "チケットの期限をケースのSLA期限にするかどうか。例: 24時間以内が期限のP1ケースは、同じ日が期限のチケットになります。CTEMケース同期が作成と更新で使用します。オフの場合: チケットに期限は付きません。"
 }
