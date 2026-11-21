@@ -18,8 +18,10 @@ import { useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, type CtemSignal, type CtemSignalState,
+  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useProposeSignalScope,
+  type CtemDecisionRecord, type CtemSignal, type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
+import { Button } from "@/components/ui/button";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
@@ -27,7 +29,7 @@ import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
 
 export const LOOP_PARAM = "loop";
@@ -71,6 +73,57 @@ function evidenceText(value: unknown): string {
   return "";
 }
 
+/** One fact of the CTEM-08 trigger rules a signal's evidence carries, and the evidence key it says. */
+type SignalRuleFact =
+  | { key: "software"; software: string; matched: boolean; checked: boolean }
+  | { key: "pir"; score: number };
+
+/**
+ * What the CTEM-08 trigger rules can say about a signal (CTEM-08-UI), read
+ * from its evidence and its decision record, never claiming more than they
+ * prove (#1000 UX round 1 B2):
+ * - `software`: the source of the relationship. The listener writes it for
+ *   every relationship to a vulnerability, before any tech stack match, so the
+ *   rule "vulnerability on software we run" is named only when the scope gate
+ *   resolved the signal to a tech stack product (`matched`); `checked` says the
+ *   gate has read it at all.
+ * - `pir`: the highest PIR score at delivery. The run gate reads the live score,
+ *   so this is a fact about the PIR flag, never a claim that the rule fired.
+ * Both facts are returned when the evidence carries both.
+ */
+export function signalRuleFacts(
+  evidence: Record<string, unknown> | null | undefined,
+  decision?: CtemDecisionRecord | null,
+): SignalRuleFact[] {
+  const facts: SignalRuleFact[] = [];
+  const software = evidence?.software;
+  const name = Array.isArray(software) ? software.find((s): s is string => typeof s === "string" && s.length > 0) : undefined;
+  if (name) {
+    const products = decision?.reconcile?.tech_stack;
+    facts.push({ key: "software", software: name, matched: Array.isArray(products) && products.length > 0, checked: Boolean(decision) });
+  }
+  const pir = evidence?.pir;
+  const scores = (Array.isArray(pir) ? pir : [])
+    .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>).score_at_delivery : undefined))
+    .filter((s): s is number => typeof s === "number");
+  if (scores.length > 0) facts.push({ key: "pir", score: Math.max(...scores) });
+  return facts;
+}
+
+/** A rule fact as a row of the signal facts: a label that never says "triggered" unless the rule matched. */
+function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  if (fact.key === "pir") {
+    return { label: t_i18n("PIR match"), value: t_i18n("Flagged in a PIR (score at delivery {score})", { score: fact.score }) };
+  }
+  if (fact.matched) {
+    return { label: t_i18n("Trigger rule"), value: t_i18n("Vulnerability on software we run: {software}", { software: fact.software }) };
+  }
+  return {
+    label: t_i18n("Source software"),
+    value: fact.checked ? t_i18n("{software}, not in the tech stack", { software: fact.software }) : fact.software,
+  };
+}
+
 /**
  * What the signal is, before where it is in the loop (CTEM-01-UI): its
  * subject, its source with the link to the source object, when it was first
@@ -80,8 +133,11 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const link = safeExternalUrl(signalSourceLink(signal.evidence));
   const provider = CTEM_PRODUCT_INFO[signal.source.provider]?.name ?? signal.source.provider;
+  const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
+  const shownKeys: string[] = ruleFacts.map((fact) => fact.key);
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
+    .filter(([key]) => !shownKeys.includes(key))
     .map(([key, value]) => ({ key, value: evidenceText(value) }))
     .filter((row) => row.value)
     .slice(0, 8);
@@ -100,6 +156,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
         provider
       ),
     },
+    ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },
@@ -129,6 +186,39 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   );
 }
 
+/**
+ * "Tune scope" on a watchlisted signal (CTEM-30, #937): one optional action
+ * that stores a proposal to lower the scope threshold to this signal's
+ * criticality. An administrator accepts or rejects it on the Exposure tab of
+ * Settings > Organization (card "Proposed changes"); nothing waits on it and
+ * the signal stays on the watchlist until then. The button names the change
+ * (UX round 1 A3 on #941): the threshold it would set.
+ */
+function ProposeScope({ signal }: { signal: CtemSignal }) {
+  const { t_i18n } = useFormatter();
+  const propose = useProposeSignalScope();
+  const criticality = signal.decision?.scope?.criticality;
+  const level = String(levelLabel(criticality, t_i18n));
+  if (signal.state !== "watchlist" || signal.decision?.reason_code !== "below_scope_threshold" || !criticality) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-caption" data-testid="ctem-signal-propose-scope">
+      {propose.isSuccess ? (
+        <span className="text-default-secondary" role="status">
+          {t_i18n("Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.")}
+        </span>
+      ) : (
+        <>
+          <Button variant="secondary" size="sm" disabled={propose.isPending} onClick={() => propose.mutate(signal.id)}>
+            {t_i18n("Propose scope threshold {level}", { level })}
+          </Button>
+          <span className="text-default-secondary">{t_i18n("Optional: nothing waits on it.")}</span>
+        </>
+      )}
+      {propose.isError && <span className="text-feedback-error-primary" role="alert">{t_i18n("The proposal could not be saved")}</span>}
+    </div>
+  );
+}
+
 function SignalTrace({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
@@ -141,6 +231,7 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
       </div>
       <SignalFacts signal={signal} />
       <DecisionReason state={signal.state} decision={signal.decision} showInputs />
+      <ProposeScope signal={signal} />
       {/* One vertical list at every width (#851 UX round 1 B1): the dialog is
           896 px at most, so a row of ten cells (81 px each) wraps its labels
           and staggers the status captions; the list keeps one baseline. */}

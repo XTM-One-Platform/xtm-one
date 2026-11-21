@@ -28,7 +28,7 @@ from ._common import (
     findings_fate,
     inject_read_answer,
     inject_targets_line,
-    json_answer,
+    json_window,
     keep_findings_params,
     keep_findings_schema,
     mirror_content_targets,
@@ -74,6 +74,7 @@ def register(
         search: str = "",
         limit: int = 20,
         keep_findings: bool = True,
+        offset: int = 0,
     ) -> str:
         action = (action or "").strip().lower()
         scope = (scope or "scenario").strip().lower()
@@ -93,7 +94,7 @@ def register(
                 )
                 if err:
                     return err
-                return inject_read_answer(resp.json())
+                return inject_read_answer(resp.json(), offset=offset)
             if action == "status":
                 if not inject_id:
                     return "inject_id is required."
@@ -103,7 +104,7 @@ def register(
                 )
                 if err:
                     return err
-                return json_answer(resp.json())
+                return json_window(resp.json(), offset)
             return "For scope 'global', valid actions are: get, status."
 
         base = _base(scope, parent_id)
@@ -207,7 +208,7 @@ def register(
             )
             if err:
                 return err
-            return inject_read_answer(resp.json())
+            return inject_read_answer(resp.json(), offset=offset)
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -410,6 +411,11 @@ def register(
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
                     "keep_findings": keep_findings_schema(),
+                    "offset": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "get/status: character to read on from when the answer was cut.",
+                    },
                 },
                 "required": ["action"],
             },

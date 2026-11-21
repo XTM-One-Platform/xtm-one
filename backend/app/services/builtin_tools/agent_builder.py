@@ -4369,6 +4369,11 @@ def build_agent_builder_tool(
                 fleet_err = await fleet_scope_error(trigger_type, trig_config, agent.id)
                 if fleet_err is not None:
                     return fleet_err
+                from app.services.trigger_provisioning import provision_spec_error
+
+                provision_err = provision_spec_error(trigger_type, trig_config)
+                if provision_err is not None:
+                    return f"{provision_err} Nothing was saved."
 
                 # Reject invalid cron expressions on schedule triggers, like the
                 # API schema does for HTTP-driven creates.
@@ -7946,6 +7951,12 @@ def build_agent_builder_tool(
                 )
                 if fleet_err is not None:
                     return f"{fleet_err} Nothing was saved."
+                if parsed_config is not None:
+                    from app.services.trigger_provisioning import provision_spec_error
+
+                    provision_err = provision_spec_error(trigger_type or assignment.trigger_type, parsed_config)
+                    if provision_err is not None:
+                        return f"{provision_err} Nothing was saved."
             if parsed_config is not None:
                 # Only an integration the new trigger ADDS is checked, like the
                 # REST update: the stored one is never re-judged.

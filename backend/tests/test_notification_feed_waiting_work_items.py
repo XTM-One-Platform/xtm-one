@@ -66,15 +66,93 @@ def test_a_row_without_a_valid_id_is_not_shown():
     assert feed.present_waiting_work_item(_waiting(id="nope")) is None
 
 
-def test_a_waiting_item_stays_unread_until_answered_or_opened() -> None:
+def test_a_waiting_item_stays_unread_until_answered() -> None:
     item = feed.present_waiting_work_item(_waiting())
     assert item is not None
     from datetime import UTC, datetime
 
     # "Mark all read" never reads a decision still waiting.
     assert feed.is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set())
-    # #901: the recipient who opened or dismissed the entry has read it.
-    assert not feed.is_unread(item, read_at=None, dismissed={item.id})
+    # #991: opening or dismissing it does not read it either; only the answer
+    # (the item leaves the waiting population) clears the entry.
+    assert feed.is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed={item.id})
+
+
+def _flow_entry(run_id: str, created: str = "2026-11-07T08:00:00+00:00"):
+    activity = SimpleNamespace(
+        id="6c2f3e1d-2222-4a5b-9c7d-2e3f4a5b6c7d",
+        activity_type="notification",
+        agent_name=None,
+        title="Approve the export",
+        summary="Send the report?",
+        extra_data={
+            "notification_source": "flow_hitl",
+            "flow_id": "7d3e4f2a-3333-4a5b-9c7d-2e3f4a5b6c7d",
+            "flow_run_id": run_id,
+        },
+        created_at=created,
+    )
+    return feed.present_activity(activity, flows_enabled=True)
+
+
+@pytest.mark.parametrize(
+    ("status", "waiting", "expected"),
+    [
+        ("awaiting", {"kind": "human", "released": False}, True),
+        ("awaiting", {"kind": "human", "released": True}, False),
+        ("awaiting", {"kind": "breakpoint", "released": False}, False),
+        ("completed", None, False),
+        ("cancelled", {"kind": "human", "released": False}, False),
+    ],
+)
+def test_a_flow_ask_waits_only_while_parked_on_an_unanswered_question(status, waiting, expected):
+    run = SimpleNamespace(status=status, state={"waiting": waiting} if waiting is not None else {})
+    assert feed.flow_ask_waits(run) is expected
+
+
+@pytest.mark.asyncio
+async def test_a_flow_ask_stays_unread_until_answered_then_reads_like_any_entry():
+    from datetime import UTC, datetime
+
+    waiting_run = "9e4f5a3b-4444-4a5b-9c7d-2e3f4a5b6c7d"
+    answered_run = "0f5a6b4c-5555-4a5b-9c7d-2e3f4a5b6c7d"
+    entries = [_flow_entry(waiting_run), _flow_entry(answered_run)]
+    assert all(e is not None and e.kind == "flow_hitl" and not e.awaiting_answer for e in entries)
+
+    rows = [
+        SimpleNamespace(id=waiting_run, status="awaiting", state={"waiting": {"kind": "human"}}),
+        SimpleNamespace(id=answered_run, status="completed", state={}),
+    ]
+
+    class _Result:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return rows
+
+    class _Db:
+        async def execute(self, _statement):
+            return _Result()
+
+    marked = await feed.mark_waiting_flow_asks(_Db(), entries)
+    later = datetime(2030, 1, 1, tzinfo=UTC)
+    assert [m.awaiting_answer for m in marked] == [True, False]
+    assert feed.is_unread(marked[0], read_at=later, dismissed={marked[0].id})
+    assert not feed.is_unread(marked[1], read_at=None, dismissed={marked[1].id})
+
+
+def test_other_kinds_keep_the_901_read_on_open():
+    from datetime import UTC, datetime
+
+    item = feed.NotificationItem(id="r", kind="reminder", created_at="2026-11-07T08:00:00+00:00", route="/", title="t")
+    assert feed.is_unread(item, read_at=None, dismissed=set())
+    assert not feed.is_unread(item, read_at=None, dismissed={"r"})
+    # A flag on a kind that is not a decision never pins it.
+    flagged = feed.NotificationItem(
+        id="x", kind="run", created_at="2026-11-07T08:00:00+00:00", route="/", title="t", awaiting_answer=True
+    )
+    assert not feed.is_unread(flagged, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set())
 
 
 def _patch_sources(monkeypatch, waiting_rows, calls):

@@ -471,8 +471,24 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   the call (the `budget.py` ledger, renamed). Over the ceiling the call is refused and the
   page says so. Test (e) forces an over-spend.
 - Traces carry their own source (`platform_health`), excluded from customer quota and
-  from agentic execution counts, visible in observability; the spend is shown on the
-  Health page.
+  from agentic execution counts, visible in observability; the spend is shown in
+  Settings > Platform Health, next to the ceilings, never on the Health page (#961).
+- Where the outcome shows (#961, 21 Nov 2026): on each module card of the Health page, one
+  "AI summary" block (`components/health/ModuleAnalysisSummary.tsx`, the `StatCard` footer):
+  the first line of `summary` (the headline, the first fix), clamped to two lines, with
+  "As of <time>"; Show more opens the whole text and the order of fixes in the shared
+  `InfoPopover`, never in place, so the cards of a grid row keep one height. Show more is
+  offered when the summary holds more than its headline OR the clamped headline is cut
+  (measured after layout and on resize, `scrollHeight > clientHeight`), so a one-line
+  summary too long for two lines still opens in full. The footer
+  follows the subtitle in normal flow, never pinned to the card bottom: the dividers of one
+  grid row share one y and the spare height falls below the footer content. A module with no open finding, or the analysis off, shows
+  no block and its card no footer (`analysisRowFor` decides it in the overview); a refused or failed analysis shows one muted line with its
+  reason in plain words, never a success badge. Analyse now is the item of the card's
+  actions menu, disabled with its reason while AI is off, the analysis is off or a ceiling
+  is cleared. Administrators only (overview scope `all`). The former full-width Analysis
+  panel (`HealthAnalysisPanel.tsx`) is removed. One AI block per card: the Module Analyst
+  line of section 12.7 joins this block, never a second one.
 - As built (S9a): `services/health/analysis.py`, tables `health_module_analyses` and
   `health_analysis_spend` (periods `D:YYYY-MM-DD`, `M:YYYY-MM`, row-locked month then day),
   `HealthSettings.analysis` (off, four ceilings, any cleared refuses `ceiling_not_set`), a
@@ -496,7 +512,9 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 
 - Enrolled agents and fleets (list, bulk enrol, bulk remove).
 - Per module (XTM One mode only): check toggles and the (E) thresholds of section 4.
-- Analysis: on or off, daily and monthly ceiling.
+- Analysis: on or off, daily and monthly ceiling, and under them today's and this month's
+  analysis spend against each ceiling (`AnalysisSpendLines`, from `GET /health/analysis`;
+  moved from the Health page by #961).
 - Alert emails: off by default; recipients, minimum severity, immediate for a new
   critical finding plus a daily digest, one email per finding (dedupe on finding id).
   Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`): after
@@ -516,7 +534,9 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 
 - Left menu "Platform Health" (`/health`), generic AI leaf, both modes.
 - Overview: one card per module present (agents, fleets; plus XTM One, OpenCTI, OpenAEV,
-  OpenCRQ in XTM One mode) with score, counts by severity and trend.
+  OpenCRQ in XTM One mode) with score, counts by severity and trend; for an administrator,
+  a card with open findings carries the AI summary of section 6 and an actions menu
+  (Analyse now). No spend and no analysis panel on the page (#961).
 - Findings list filterable by module, severity, category, status.
 - Finding detail: evidence, recommendation, doc link, history, dismiss with reason,
   "Ask AI" (where AI runs).
@@ -861,5 +881,5 @@ decision written here).
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
-| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n | yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n | S14d-1 no, S14d-2 yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |

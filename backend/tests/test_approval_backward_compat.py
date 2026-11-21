@@ -50,7 +50,7 @@ def test_free_text_injection_is_the_fallback_branch():
     decisions_at = source.find("if run.approval_decisions:")
     # Anchor on the injection itself, not on the tool's registration earlier in
     # this same function, which also mentions request_human_input.
-    free_text_at = source.find('content=f"Human response: {defuse_secret_markers(run.human_input_response)}"')
+    free_text_at = source.find("content=run_answer_text(")
 
     assert decisions_at != -1, "structured-decision branch missing"
     assert free_text_at != -1, "free-text injection missing"

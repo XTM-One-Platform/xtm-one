@@ -1643,6 +1643,19 @@ def _filtered_out(m: _AssignmentMatcher, payload: object) -> str | None:
     return _trigger_filter_reason(m.event, payload, m.payload_filter)
 
 
+def _filter_reads_as_agent(trigger_config: object) -> bool:
+    """Whether an assignment's filter reads a platform as its agent's owner.
+
+    A filter naming the ``enriched.`` facts does, and so does the CTEM PIR
+    score rule, whose live read on a registered (platform-managed) OpenCTI
+    mints its token for that user: without the agent it has no identity and
+    drops every delivery, the ones above the threshold included.
+    """
+    from app.services.ctem_trigger_rules import pir_rule_of
+
+    return needs_enrichment(trigger_filter(trigger_config)) or pir_rule_of(trigger_config)
+
+
 async def _assignment_filter_reason(
     db,
     provider: str,
@@ -4795,12 +4808,10 @@ async def receive_assignment_webhook(
             # poller and the Graph notifications do; a dropped delivery is
             # counted on the assignment.
             if wf.trigger_type == "integration_event":
-                # The agent is read here only for a filter naming the
-                # ``enriched.`` facts, and a disabled one reads nothing: the
-                # delivery is then refused below, unread.
-                filter_agent = (
-                    await db.get(Agent, wf.agent_id) if needs_enrichment(trigger_filter(config)) else None
-                )
+                # The agent is read here only when the filter acts as it
+                # (``_filter_reads_as_agent``); a disabled one reads nothing:
+                # the delivery is then refused below, unread.
+                filter_agent = await db.get(Agent, wf.agent_id) if _filter_reads_as_agent(config) else None
                 if filter_agent is not None and not filter_agent.enabled:
                     return await _finalize_dedup(
                         dedup_key,

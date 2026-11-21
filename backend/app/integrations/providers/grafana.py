@@ -585,11 +585,22 @@ def _format_loki_logs(
           {"stream": {"job": "app", ...}, "values": [["<ns>", "<line>"], ...]}
       ]}}
 
+    A metric query (``sum by (x) (...)``) answers ``resultType`` ``matrix``
+    (``{"metric": {...}, "values": [...]}``) or ``vector``
+    (``{"metric": {...}, "value": [ts, v]}``): each series is headed by its
+    label set, so the values of a grouped query are never shown unlabelled.
+
     Each line is cut at ``line_chars`` and the answer stops at ``total_chars``;
     what is left out is counted, never silently dropped.
     """
     result_data = data.get("data", {})
     results = result_data.get("result", [])
+    is_metric = result_data.get("resultType") in ("matrix", "vector")
+    if is_metric:
+        results = [
+            {**s, "values": [s["value"]]} if "values" not in s and isinstance(s.get("value"), list) else s
+            for s in results
+        ]
     available = sum(len(s.get("values") or []) for s in results)
 
     if not results:
@@ -602,7 +613,7 @@ def _format_loki_logs(
     cut_lines = 0
 
     for stream_entry in results:
-        stream_labels = stream_entry.get("stream", {})
+        stream_labels = stream_entry.get("metric" if is_metric else "stream") or {}
         values = stream_entry.get("values", [])  # [[ns_timestamp, log_line], ...]
 
         if not values:
@@ -610,7 +621,7 @@ def _format_loki_logs(
 
         # Format stream label selector for context
         label_str = ", ".join(f'{k}="{v}"' for k, v in stream_labels.items())
-        lines.append(f"Stream: {{{label_str}}}")
+        lines.append(f"{'Series' if is_metric else 'Stream'}: {{{label_str}}}")
         lines.append("-" * min(60, len(label_str) + 10))
 
         for ts_ns, log_line in values:
@@ -624,9 +635,9 @@ def _format_loki_logs(
                     "line_format, or lower limit)"
                 )
                 return "\n".join(lines)
-            # Convert nanoseconds → human-readable UTC timestamp
+            # Convert nanoseconds (seconds for a metric sample) → UTC timestamp
             try:
-                ts_sec = int(ts_ns) / 1_000_000_000
+                ts_sec = float(ts_ns) if is_metric else int(ts_ns) / 1_000_000_000
                 ts_fmt = datetime.fromtimestamp(ts_sec, tz=UTC).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"
                 )
@@ -643,7 +654,11 @@ def _format_loki_logs(
 
         lines.append("")
 
-    total = f"Total: {total_lines} log line(s) across {len(results)} stream(s)."
+    total = (
+        f"Total: {total_lines} sample(s) across {len(results)} series."
+        if is_metric
+        else f"Total: {total_lines} log line(s) across {len(results)} stream(s)."
+    )
     if cut_lines:
         total += f" {cut_lines} line(s) cut at {line_chars:,} characters."
     lines.append(total)

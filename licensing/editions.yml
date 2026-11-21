@@ -408,6 +408,7 @@ ee:
   # Backend: fleets, work items, runs and triggers
   - backend/app/services/fleet*.py
   - backend/app/services/work_item_*.py
+  - backend/app/services/decision_*.py
   - backend/app/services/run_*.py
   - backend/app/services/handed_back_sweep.py
   - backend/app/services/schedule_overlap.py

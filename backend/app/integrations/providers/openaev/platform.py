@@ -26,7 +26,7 @@ from typing import Any
 from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import PlatformCapabilities, _api, _search_body, json_answer
+from ._common import PlatformCapabilities, _api, _search_body, is_not_found_error, json_answer
 
 
 def _version_from_body(body: str | None) -> str:
@@ -250,7 +250,7 @@ def register(
                 f"resolve the connector instance of {k[:-1]} {connector_id}",
             )
             if err:
-                if len(kinds) > 1 and "404" in err:
+                if len(kinds) > 1 and is_not_found_error(err):
                     continue
                 return None, err
             data = resp.json() if resp is not None else None
@@ -393,7 +393,7 @@ def register(
                 if ids is None:
                     # A connector instance id passed as connector_id: OpenAEV
                     # knows no connector by it, but it names an instance.
-                    if "404" not in found and not found.startswith("No injector"):
+                    if not is_not_found_error(found) and not found.startswith("No injector"):
                         return found
                     instance_resp, instance_err = await _api(
                         base_url,
@@ -439,7 +439,7 @@ def register(
 
         def _instance_err(err: str) -> str:
             # The usual mistake: a connector or catalog id passed as the instance id.
-            if resolved_from or "404" not in err:
+            if resolved_from or not is_not_found_error(err):
                 return err
             return (
                 f"{err} If {connector_instance_id} is an injector, collector or "

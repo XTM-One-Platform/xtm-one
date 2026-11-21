@@ -42,7 +42,6 @@ type Audience =
 
 const SURFACES: Readonly<Record<string, Audience>> = {
   "components/health/CycleDigestView.tsx": { kind: "any" },
-  "components/health/HealthAnalysisPanel.tsx": { kind: "admin-via", via: "components/health/HealthOverviewTab.tsx" },
   "components/health/HealthCompanion.tsx": { kind: "admin-self" },
   "components/health/HealthConsentNotice.tsx": { kind: "any" },
   "components/health/HealthCyclesList.tsx": { kind: "any" },
@@ -54,6 +53,8 @@ const SURFACES: Readonly<Record<string, Audience>> = {
   "components/health/ImprovementEvidence.tsx": { kind: "any" },
   "components/health/ImprovementProposalView.tsx": { kind: "any" },
   "components/health/ImprovementsInbox.tsx": { kind: "any" },
+  "components/health/ModuleAnalysisSummary.tsx": { kind: "admin-via", via: "components/health/HealthOverviewTab.tsx" },
+  "components/health/ModuleAnalystParts.tsx": { kind: "admin-via", via: "components/health/HealthOverviewTab.tsx" },
   "components/health/PetSprite.tsx": { kind: "any" },
   "pages/Health.tsx": { kind: "admin-route", route: "/health" },
   "pages/flow-builder/HealthPanel.tsx": { kind: "any" },
