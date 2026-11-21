@@ -124,8 +124,15 @@ type GraphNodeData = {
 
 const HIDDEN_HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0 } as const;
 
-/** The canvas's own fit padding, on mount and after a resize. */
-const FIT_VIEW_OPTIONS = { padding: 0.12 } as const;
+/**
+ * The canvas's own fit padding, on mount and after a resize. The top side reserves the
+ * controls bar inside the frame (top-2 plus its height, room for one wrap) so no node is
+ * fitted under it (UX r2 B1 on #979); the other sides keep the 12% margin.
+ */
+const GRAPH_BAR_INSET_PX = 64;
+const FIT_VIEW_OPTIONS = {
+  padding: { top: `${GRAPH_BAR_INSET_PX}px`, right: 0.12, bottom: 0.12, left: 0.12 },
+} as const;
 
 /**
  * A node's keyboard side of a button: Tab reaches it, Enter and Space select it.

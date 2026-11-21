@@ -29,6 +29,17 @@ test("the canvas fits the graph again after a resize (UX r1 A1 on #979)", () => 
   assert.match(VIEW, /<FitOnResize \/>/);
 });
 
+test("the fit reserves the in-frame bar at the top, so no node is fitted under it (UX r2 B1 on #979)", () => {
+  // The bar sits at top-2 (8 px) and is one control row high (about 42 px): the top fit
+  // inset must clear it with a gap, on mount and after a resize (same options).
+  const inset = Number(/const GRAPH_BAR_INSET_PX = (\d+);/.exec(VIEW)?.[1]);
+  assert.ok(inset >= 56, `top inset ${inset}px clears the bar`);
+  assert.match(VIEW, /padding: \{ top: `\$\{GRAPH_BAR_INSET_PX\}px`/);
+  assert.match(VIEW, /className="pointer-events-none absolute inset-x-2 top-2 z-10/);
+  assert.match(VIEW, /fitViewOptions=\{FIT_VIEW_OPTIONS\}/);
+  assert.match(VIEW, /fitView\(FIT_VIEW_OPTIONS\)/);
+});
+
 test("the graph glyph of the view switch is the design system's Icon (UX r1 B4 on #979)", () => {
   assert.equal(/from "lucide-react"[^\n]*Network|\bNetwork\b,/.test(TOGGLE), false);
   assert.match(TOGGLE, /<Icon name="network"/);
