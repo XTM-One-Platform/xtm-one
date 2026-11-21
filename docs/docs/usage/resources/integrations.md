@@ -348,6 +348,16 @@ An agent keeps a Google Sheets spreadsheet up to date the way a person does, as 
 
 They use the OAuth scope `https://www.googleapis.com/auth/spreadsheets`, which the integration requests, or the `https://www.googleapis.com/auth/drive` scope it already held: an integration authorized before shows a permissions change, and works without re-authorizing. The Google Cloud project of the integration's OAuth client must have the **Google Sheets API** enabled; until it is, the tools say so.
 
+### Pennylane: ledger, invoices, bank transactions and analytics
+
+An agent connected to Pennylane (Company API v2) reads and keeps the books the way an accountant does in Pennylane. One integration per Pennylane company: paste a company API token, or a firm token with the **Company ID** it should act on.
+
+- **Ledger.** `search_pennylane_ledger_entry_lines` filters lines by date range, journal, ledger account (or an account number prefix such as `606`) and analytical category, with account and journal labels and page totals. `get_pennylane_trial_balance` sums every account over a period; `create_pennylane_export` starts a FEC, general ledger or analytical general ledger export that `get_pennylane_export` reads once ready. Ledger entries are created and updated only when balanced.
+- **Invoices.** Customer and supplier invoices list by date, party, status, number or analytical category; `get_pennylane_invoice` gives the lines, payments and matched bank transactions, `download_pennylane_invoice_pdf` puts the PDF in the conversation. Customer invoices are created as drafts; finalizing, sending and the e-invoicing calls are their own tools.
+- **Banking.** Bank transactions list with what they are matched to (`unmatched_only=true` for what is left to reconcile); matching, lettering and analytical categorisation are tools, as are bank accounts, bank establishments and SEPA, GoCardless and Pro account mandates.
+- **Changes.** `list_pennylane_changes` reads Pennylane's changelogs (four weeks) for incremental reads.
+- **Guardrails.** A tool is a read when its endpoint is a GET, else a write, so a read-only binding withholds every write. Marking an invoice paid, a supplier payment status, bank account and mandate writes, sending a document and deletions wait for a person's approval at each call. The tools that show or change bank data form one group (`BANK_DETAIL_TOOLS`) a deny list can withhold. A missing scope is named in the error; the token is never echoed.
+
 ### Ashby: candidates, applications, interviews and scorecards
 
 An agent connected to Ashby works the recruiting pipeline the way a recruiter reads it in Ashby.

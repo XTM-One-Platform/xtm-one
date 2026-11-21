@@ -16,8 +16,16 @@ One module per domain, each a ``register(ctx, executor)``:
 * ``parties``    - customers, suppliers (IBAN masked), products, quotes.
 * ``banking``    - bank accounts, transactions, analytical categories and
                    categorisation, file attachments, changelogs.
+* ``catalog``    - every other endpoint of the API, one tool each: bank
+                   accounts and establishments, SEPA / GoCardless / Pro
+                   account mandates, lettering, products, quotes, commercial
+                   documents, billing subscriptions, purchase requests,
+                   invoice lifecycle, webhooks.
 
-No tool initiates a payment, changes bank details or touches mandates.
+A tool is a read when its endpoint is a GET, else a write. Writes that touch
+money, bank data or mandates, send a document outside, or delete declare
+``always_ask``: each call waits for a person's approval. The bank group is
+:data:`BANK_DETAIL_TOOLS`.
 """
 
 from __future__ import annotations
@@ -27,9 +35,14 @@ from typing import Any
 from app.integrations.base import BaseIntegration, OAuthDefaults
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from . import accounting, banking, invoices, parties
+from . import accounting, banking, catalog, invoices, parties
 from ._common import PennylaneContext
-from .banking import BANK_DETAIL_TOOLS
+from .banking import BANK_ACCOUNT_TOOLS
+from .catalog import CATALOG_BANK_TOOLS
+
+#: Every tool that shows or changes bank accounts, establishments or mandates:
+#: one named group a binding or a deny list can withhold.
+BANK_DETAIL_TOOLS = BANK_ACCOUNT_TOOLS | CATALOG_BANK_TOOLS
 
 __all__ = ["BANK_DETAIL_TOOLS", "PennylaneIntegration", "build_tools", "validate_connection"]
 
@@ -77,7 +90,7 @@ class PennylaneIntegration(BaseIntegration):
         ok, _ = await validate_connection(token)
         return ok
 
-    async def get_user_info(self, token: str) -> dict:
+    async def get_user_info(self, token: str) -> dict[str, Any]:
         ok, message, data = await _me(token)
         if not ok:
             return {}
@@ -93,6 +106,6 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
     """Every Pennylane tool, for the stored credential *token* (``[company_id||]token``)."""
     ctx = PennylaneContext.from_token(token, persist_file_fn=kwargs.get("persist_file_fn"))
     tools: list[ToolDefinition] = []
-    for module in (accounting, invoices, parties, banking):
+    for module in (accounting, invoices, parties, banking, catalog):
         tools += module.register(ctx, executor)
     return tools

@@ -83,7 +83,7 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         start, err = to_date(date_from, "date_from")
         end, err2 = to_date(date_to, "date_to")
         if err or err2:
-            return err or err2
+            return err or err2 or ""
         party_field = "customer_id" if kind == "customer" else "supplier_id"
         conditions: list[tuple[str, str, Any]] = [
             ("date", "gteq", start),
@@ -513,20 +513,22 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         ),
         definition(
             "mark_pennylane_customer_invoice_paid",
-            "SENSITIVE: mark a customer invoice as paid in Pennylane's books (moves no money).",
+            "Mark a customer invoice as paid in Pennylane's books (moves no money). Waits for a person's approval.",
             {"invoice_id": id_schema("customer invoice")},
             ["invoice_id"],
             priority=2,
+            always_ask=True,
         ),
         definition(
             "set_pennylane_supplier_invoice_payment_status",
-            "SENSITIVE: set a supplier invoice's payment status (to_be_paid, paid_offline, to_be_processed); initiates no payment.",
+            "Set a supplier invoice's payment status (paid or to_be_paid); initiates no payment. Waits for a person's approval.",
             {
                 "invoice_id": id_schema("supplier invoice"),
                 "payment_status": {"type": "string", "enum": list(SUPPLIER_PAYMENT_STATUSES)},
             },
             ["invoice_id", "payment_status"],
             priority=2,
+            always_ask=True,
         ),
         definition(
             "set_pennylane_supplier_invoice_accounting_validated",

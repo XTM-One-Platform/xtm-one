@@ -168,6 +168,11 @@ def clamp(value: Any, default: int = DEFAULT_PAGE, maximum: int = MAX_PAGE) -> i
 # ---------------------------------------------------------------------------
 
 
+def as_dict(value: Any) -> dict[str, Any]:
+    """*value* when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
 def text(value: Any, limit: int = MAX_TEXT) -> str:
     out = " ".join(str(value or "").split())
     return out if len(out) <= limit else out[: limit - 1] + "…"
@@ -204,10 +209,11 @@ def categories_label(categories: Any) -> str:
             continue
         label = cat.get("label") or f"#{cat.get('id')}"
         weight = cat.get("weight")
-        group = cat.get("category_group") if isinstance(cat.get("category_group"), dict) else {}
+        raw_group = cat.get("category_group")
+        group: dict[str, Any] = raw_group if isinstance(raw_group, dict) else {}
         prefix = f"{group.get('label')}: " if group.get("label") else ""
         try:
-            share = f" {float(weight) * 100:.0f}%" if weight not in (None, "", "1", "1.0") else ""
+            share = f" {float(str(weight)) * 100:.0f}%" if weight not in (None, "", "1", "1.0") else ""
         except (TypeError, ValueError):
             share = ""
         parts.append(f"{prefix}{label}{share}")
@@ -272,7 +278,7 @@ class PennylaneContext:
             out["X-Company-Id"] = self.company_id
         return out
 
-    def _limiter(self):
+    def _limiter(self) -> Any:
         return get_shared_rate_limiter(
             f"pennylane:{app_token_cache_key('pennylane', self.api_token)}",
             rate=_RATE_PER_SECOND,
@@ -287,7 +293,7 @@ class PennylaneContext:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        body: dict[str, Any] | None = None,
+        body: dict[str, Any] | list[dict[str, Any]] | None = None,
         files: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
         action: str = "",
@@ -344,7 +350,9 @@ class PennylaneContext:
         except ValueError:
             return None, f"Error: Pennylane answered {action} with something that is not JSON."
 
-    async def get(self, client, path: str, params: dict[str, Any] | None = None, action: str = ""):
+    async def get(
+        self, client: httpx.AsyncClient, path: str, params: dict[str, Any] | None = None, action: str = ""
+    ) -> tuple[Any, str | None]:
         return await self.request(client, "get", path, params=params, action=action)
 
     async def page(
@@ -356,19 +364,20 @@ class PennylaneContext:
         limit: int = DEFAULT_PAGE,
         cursor: str = "",
         action: str = "",
-    ) -> tuple[Page | None, str | None]:
+    ) -> tuple[Page, str | None]:
+        """One page, and the error that emptied it (the page is then empty)."""
         query = dict(params or {})
         query["limit"] = limit
         if cursor:
             query["cursor"] = cursor
         data, err = await self.get(client, path, query, action)
         if err:
-            return None, err
+            return Page(items=[]), err
         if isinstance(data, list):
             return Page(items=[i for i in data if isinstance(i, dict)]), None
         items = data.get("items") if isinstance(data, dict) else None
         if not isinstance(items, list):
-            return None, f"Error: Pennylane answered {action or path} without an items list."
+            return Page(items=[]), f"Error: Pennylane answered {action or path} without an items list."
         nxt = data.get("next_cursor") if data.get("has_more") else None
         return Page(items=[i for i in items if isinstance(i, dict)], next_cursor=nxt or None), None
 
@@ -418,8 +427,13 @@ def definition(
     *,
     priority: int = 1,
     read_only: bool = False,
+    always_ask: bool = False,
 ) -> ToolDefinition:
-    """One Pennylane ``ToolDefinition``: 0 core reads, 1 others, 2 long tail and sensitive writes."""
+    """One Pennylane ``ToolDefinition``: 0 core reads, 1 others, 2 long tail and sensitive writes.
+
+    *always_ask*: each call waits for a person's approval (money, bank data,
+    mandates, a document sent outside, a deletion).
+    """
     return ToolDefinition(
         name=name,
         description=description,
@@ -427,6 +441,7 @@ def definition(
         source=SOURCE,
         priority=priority,
         read_only=read_only,
+        always_ask=always_ask,
     )
 
 

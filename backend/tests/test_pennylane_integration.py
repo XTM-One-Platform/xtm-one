@@ -18,7 +18,7 @@ import pytest
 from app.api.v1 import integration_testing
 from app.api.v1.integration_catalog import PROVIDER_CATALOG
 from app.integrations.providers import pennylane
-from app.integrations.providers.pennylane import _common
+from app.integrations.providers.pennylane import _common, catalog
 from app.services.integration_tools import PROVIDER_TOOLS, _SafeIntegrationExecutor
 from app.services.tool_classification import definition_tool_type
 from tests.integration_file_fakes import RecordingPersist, call, fake_api, file_context_with
@@ -131,7 +131,7 @@ def test_every_tool_is_registered_and_named_for_the_provider():
         assert name in executor._handlers
 
 
-#: Tools whose calls change nothing in Pennylane.
+#: Hand-written tools whose calls change nothing in Pennylane (the catalog's reads are its GETs).
 READS = {
     "get_pennylane_company",
     "list_pennylane_fiscal_years",
@@ -156,7 +156,7 @@ READS = {
     "list_pennylane_transactions",
     "list_pennylane_categories",
     "list_pennylane_changes",
-}
+} | {op.name for op in catalog.OPS if op.method == "get"}
 
 
 def test_reads_are_reads_and_every_other_tool_is_a_write():
@@ -171,14 +171,49 @@ def test_reads_are_reads_and_every_other_tool_is_a_write():
     assert "create_pennylane_export" in writes
 
 
-def test_no_tool_moves_money_or_changes_bank_details():
+def test_the_whole_api_surface_is_exposed():
+    """Every Company API v2 operation has a tool: nothing left out by policy."""
     _, tools = _executor()
-    for tool in tools:
-        lowered = tool.name.lower()
-        assert not any(
-            word in lowered for word in ("pay_", "payment_order", "transfer", "iban", "mandate", "bank_detail")
-        )
-    assert {"list_pennylane_bank_accounts"} == pennylane.BANK_DETAIL_TOOLS
+    names = {t.name for t in tools}
+    for expected in (
+        "create_pennylane_bank_account",
+        "list_pennylane_bank_establishments",
+        "create_pennylane_sepa_mandate",
+        "cancel_pennylane_gocardless_mandate",
+        "request_pennylane_pro_account_mandate",
+        "letter_pennylane_ledger_lines",
+        "finalize_pennylane_customer_invoice",
+        "set_pennylane_supplier_e_invoice_status",
+        "create_pennylane_webhook_subscription",
+    ):
+        assert expected in names
+    assert len(names) >= 140
+
+
+def test_sensitive_writes_wait_for_a_person():
+    _, tools = _executor()
+    by_name = {t.name: t for t in tools}
+    for name in (
+        "mark_pennylane_customer_invoice_paid",
+        "set_pennylane_supplier_invoice_payment_status",
+        "create_pennylane_bank_account",
+        "create_pennylane_sepa_mandate",
+        "delete_pennylane_sepa_mandate",
+        "cancel_pennylane_gocardless_mandate",
+        "send_pennylane_customer_invoice",
+        "finalize_pennylane_customer_invoice",
+    ):
+        assert by_name[name].always_ask, name
+    assert not any(t.always_ask for t in tools if t.read_only)
+
+
+def test_bank_tools_form_one_named_group():
+    _, tools = _executor()
+    names = {t.name for t in tools}
+    bank = set(pennylane.BANK_DETAIL_TOOLS)
+    assert bank.issubset(names)
+    assert "list_pennylane_bank_accounts" in bank
+    assert all("mandate" not in n or n in pennylane.BANK_DETAIL_TOOLS for n in names)
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +563,31 @@ async def test_supplier_payment_status_accepts_only_the_documented_values():
             executor, "set_pennylane_supplier_invoice_payment_status", invoice_id=501, payment_status="wire_now"
         )
     assert "Error" in result.content and not sent
+
+
+@pytest.mark.asyncio
+async def test_catalog_tools_fill_the_path_and_pass_the_body():
+    api = FakePennylane(
+        {
+            "POST ledger_entry_lines/lettering": httpx.Response(201, json={"id": 1}),
+            "GET sepa_mandates": listing(
+                [{"id": 4, "iban": "FR7630006000011234567890189", "customer": {"id": 12, "name": "Acme"}}]
+            ),
+            "GET customer_invoices/7/categories": [{"id": 9, "label": "R&D", "weight": "1"}],
+        }
+    )
+    executor, _ = _executor()
+    with fake_api(api):
+        lettered = await call(executor, "letter_pennylane_ledger_lines", ledger_entry_lines=[{"id": 1}, {"id": 2}])
+        mandates = await call(executor, "list_pennylane_sepa_mandates")
+        cats = await call(executor, "get_pennylane_invoice_categories", kind="customer", id=7)
+        refused = await call(executor, "get_pennylane_invoice_categories", kind="other", id=7)
+    assert api.bodies("POST", "ledger_entry_lines/lettering")[0] == {"ledger_entry_lines": [{"id": 1}, {"id": 2}]}
+    assert "Done" in lettered.content
+    assert "FR7630006000011234567890189" not in mandates.content and "0189" in mandates.content
+    assert "Acme" in mandates.content
+    assert "R&D" in cats.content
+    assert "kind must be one of" in refused.content
 
 
 @pytest.mark.asyncio

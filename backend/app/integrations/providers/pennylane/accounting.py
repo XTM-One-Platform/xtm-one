@@ -14,6 +14,7 @@ from ._common import (
     DATE_TO,
     LIMIT,
     PennylaneContext,
+    as_dict,
     categories_label,
     clamp,
     definition,
@@ -38,10 +39,10 @@ EXPORTS = {
 
 
 def _ledger_line(item: dict[str, Any], accounts: dict[int, str], journals: dict[int, str]) -> str:
-    account = item.get("ledger_account") if isinstance(item.get("ledger_account"), dict) else {}
+    account = as_dict(item.get("ledger_account"))
     account_id = account.get("id")
     account_label = accounts.get(int(account_id)) if account_id is not None else None
-    journal = item.get("journal") if isinstance(item.get("journal"), dict) else {}
+    journal = as_dict(item.get("journal"))
     journal_id = journal.get("id")
     journal_label = journals.get(int(journal_id)) if journal_id is not None else None
     return "- " + line(
@@ -166,7 +167,7 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         start, err = to_date(date_from, "date_from")
         end, err2 = to_date(date_to, "date_to")
         if err or err2:
-            return err or err2
+            return err or err2 or ""
         journals = id_list(journal_ids)
         flt = filters(("date", "gteq", start), ("date", "lteq", end), ("journal_id", "in", journals))
         async with ctx.client() as client:
@@ -180,7 +181,7 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
             return "No ledger entry matches."
         rows = []
         for i in page.items:
-            journal = i.get("journal") if isinstance(i.get("journal"), dict) else {}
+            journal = as_dict(i.get("journal"))
             jid = journal.get("id")
             rows.append(
                 "- "
@@ -232,7 +233,7 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         start, err = to_date(date_from, "date_from")
         end, err2 = to_date(date_to, "date_to")
         if err or err2:
-            return err or err2
+            return err or err2 or ""
         accounts_filter = id_list(ledger_account_ids)
         async with ctx.client() as client:
             accounts = await ctx.names(client, "ledger_accounts")

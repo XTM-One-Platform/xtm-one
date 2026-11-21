@@ -1,7 +1,7 @@
 """Bank accounts and transactions (with their matching), analytical category
 groups and categories, analytical categorisation writes, file attachments and
 the changelogs read for incremental reads. No tool initiates a payment or
-changes bank details; bank accounts form :data:`BANK_DETAIL_TOOLS`."""
+changes bank details; bank accounts form :data:`BANK_ACCOUNT_TOOLS`."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from ._common import (
 )
 
 #: Tools that show bank account data: one group a binding can withhold.
-BANK_DETAIL_TOOLS = frozenset({"list_pennylane_bank_accounts"})
+BANK_ACCOUNT_TOOLS = frozenset({"list_pennylane_bank_accounts"})
 
 #: Changelog resources and their endpoint.
 CHANGELOGS = {
@@ -119,7 +119,7 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         start, err = to_date(date_from, "date_from")
         end, err2 = to_date(date_to, "date_to")
         if err or err2:
-            return err or err2
+            return err or err2 or ""
         flt = filters(
             ("date", "gteq", start), ("date", "lteq", end), ("bank_account_id", "in", id_list(bank_account_ids))
         )
@@ -204,8 +204,8 @@ def register(ctx: PennylaneContext, executor: CallableToolExecutor) -> list[Tool
         if object_type not in CATEGORISABLE:
             return f"Error: object_type must be one of {', '.join(CATEGORISABLE)}."
         body, err = _weights(categories)
-        if err:
-            return err
+        if err or body is None:
+            return err or "Error: no category given."
         async with ctx.client() as client:
             _, err = await ctx.request(
                 client,
